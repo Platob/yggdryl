@@ -50,9 +50,9 @@ use crate::{TimeUnit, UnionMode};
 
 use super::bytes::BytesType;
 use super::string::StringType;
-use crate::types::DecimalType;
 use crate::types::enums::EnumType;
 use crate::types::sequence::SequenceType;
+use crate::types::{DateType, DecimalType, DurationType};
 
 /// Whether a pair with no shared family may meet by being re-encoded.
 ///
@@ -964,10 +964,12 @@ fn merge_temporal(left: &DataType, right: &DataType, how: Widening) -> Option<Da
     );
     Some(match left_family {
         0 => {
-            if matches!(left, DataType::Date64) || matches!(right, DataType::Date64) {
-                DataType::Date64
+            if matches!(left, DataType::Date(DateType::Date64))
+                || matches!(right, DataType::Date(DateType::Date64))
+            {
+                DataType::date64()
             } else {
-                DataType::Date32
+                DataType::date32()
             }
         }
         1 => DataType::time(unit).ok()?,
@@ -975,17 +977,19 @@ fn merge_temporal(left: &DataType, right: &DataType, how: Widening) -> Option<Da
             // A zone one side declares is kept: a naive reading of a zoned
             // column loses the offset, which is not a merge but a cast.
             let timezone = match (left, right) {
-                (DataType::DateTime64 { timezone, .. }, _) if !timezone.is_naive() => *timezone,
-                (_, DataType::DateTime64 { timezone, .. }) if !timezone.is_naive() => *timezone,
+                (DataType::DateTime(leaf), _) if !leaf.timezone().is_naive() => leaf.timezone(),
+                (_, DataType::DateTime(leaf)) if !leaf.timezone().is_naive() => leaf.timezone(),
                 _ => crate::Timezone::NAIVE,
             };
-            DataType::DateTime64 { unit, timezone }
+            DataType::datetime64(unit, timezone).ok()?
         }
         _ => {
-            if matches!(left, DataType::Duration64(_)) || matches!(right, DataType::Duration64(_)) {
-                DataType::Duration64(unit)
+            if matches!(left, DataType::Duration(DurationType::Duration64(_)))
+                || matches!(right, DataType::Duration(DurationType::Duration64(_)))
+            {
+                DataType::duration64(unit).ok()?
             } else {
-                DataType::Duration32(unit)
+                DataType::duration32(unit).ok()?
             }
         }
     })
@@ -994,11 +998,10 @@ fn merge_temporal(left: &DataType, right: &DataType, how: Widening) -> Option<Da
 /// The temporal family and unit of a datatype, if it has one.
 const fn temporal_parts(dtype: &DataType) -> Option<(u8, TimeUnit)> {
     match dtype {
-        DataType::Date32 => Some((0, TimeUnit::Day)),
-        DataType::Date64 => Some((0, TimeUnit::Millisecond)),
-        DataType::Time32(unit) | DataType::Time64(unit) => Some((1, *unit)),
-        DataType::DateTime64 { unit, .. } => Some((2, *unit)),
-        DataType::Duration32(unit) | DataType::Duration64(unit) => Some((3, *unit)),
+        DataType::Date(leaf) => Some((0, leaf.unit())),
+        DataType::Time(leaf) => Some((1, leaf.unit())),
+        DataType::DateTime(leaf) => Some((2, leaf.unit())),
+        DataType::Duration(leaf) => Some((3, leaf.unit())),
         _ => None,
     }
 }

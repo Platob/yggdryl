@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use yggdryl::types::DateTimeType;
 use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, i256};
 
 pub(crate) fn nested(depth: usize) -> Scalar {
@@ -39,10 +40,10 @@ pub(crate) fn typed() -> (Scalar, Field) {
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Second,
                     timezone: Timezone::UTC,
-                },
+                }),
                 false,
             ),
             Field::new("payload", DataType::binary(), false),

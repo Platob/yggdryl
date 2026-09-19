@@ -10,7 +10,7 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, Env, FnArgs, Function, JsObjectValue, JsValue, Null, Object, Result,
     ToNapiValue, Unknown,
 };
-use yggdryl::types::DecimalType;
+use yggdryl::types::{DateType, DecimalType, DurationType, IntervalType, TimeType};
 use yggdryl::{DataType, Field as CoreField, Scalar, TemporalFamily, TimeUnit, i256};
 
 use crate::napi_error;
@@ -64,23 +64,23 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         D::Int8
         | D::Int16
         | D::Int32
-        | D::Date32
-        | D::Time32(_)
+        | D::Date(DateType::Date32)
+        | D::Time(TimeType::Time32(_))
         | D::UInt8
         | D::UInt16
         | D::UInt32
         | D::Float16
         | D::Float32
         | D::Float64
-        | D::Duration32(_)
-        | D::Interval(TimeUnit::YearMonth) => JsValueHint::Number,
+        | D::Duration(DurationType::Duration32(_))
+        | D::Interval(IntervalType::Interval(TimeUnit::YearMonth)) => JsValueHint::Number,
         // 64-bit and wider integers exceed the safe-integer range.
         D::Int64
         | D::UInt64
-        | D::DateTime64 { .. }
-        | D::Date64
-        | D::Time64(_)
-        | D::Duration64(_)
+        | D::DateTime(_)
+        | D::Date(DateType::Date64)
+        | D::Time(TimeType::Time64(_))
+        | D::Duration(DurationType::Duration64(_))
         | D::Decimal(_) => JsValueHint::BigInt,
         // A geospatial value is its Well-Known Binary payload, so the pair
         // projects exactly as the byte family does.
@@ -107,7 +107,7 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         D::Version => JsValueHint::Version,
         // Day-time and month-day-nano intervals are integer tuples, and a
         // struct projects positionally, exactly like a list.
-        D::Interval(TimeUnit::DayTime | TimeUnit::MonthDayNano)
+        D::Interval(IntervalType::Interval(TimeUnit::DayTime | TimeUnit::MonthDayNano))
         | D::Sequence(_)
         | D::Structure(_) => JsValueHint::Array,
         // A union carries its selected type id, so `union_to_js` builds a
@@ -241,23 +241,22 @@ fn temporal_to_js<'env>(
 ) -> Result<Option<Unknown<'env>>> {
     use DataType as D;
 
+    // Every family's leaf states its own unit and width, so one arm per
+    // family projects what eight arms per width did.
     let output = match dtype {
-        D::Date32 => temporal_value_to_js(env, value, TemporalFamily::Date, TimeUnit::Day, 32)?,
-        D::Date64 => {
-            temporal_value_to_js(env, value, TemporalFamily::Date, TimeUnit::Millisecond, 64)?
+        D::Date(leaf) => {
+            temporal_value_to_js(env, value, leaf.family(), leaf.unit(), leaf.bit_width())?
         }
-        D::Time32(unit) => temporal_value_to_js(env, value, TemporalFamily::Time, *unit, 32)?,
-        D::Time64(unit) => temporal_value_to_js(env, value, TemporalFamily::Time, *unit, 64)?,
-        D::DateTime64 { unit, .. } => {
-            temporal_value_to_js(env, value, TemporalFamily::DateTime, *unit, 64)?
+        D::Time(leaf) => {
+            temporal_value_to_js(env, value, leaf.family(), leaf.unit(), leaf.bit_width())?
         }
-        D::Duration32(unit) => {
-            temporal_value_to_js(env, value, TemporalFamily::Duration, *unit, 32)?
+        D::DateTime(leaf) => {
+            temporal_value_to_js(env, value, leaf.family(), leaf.unit(), leaf.bit_width())?
         }
-        D::Duration64(unit) => {
-            temporal_value_to_js(env, value, TemporalFamily::Duration, *unit, 64)?
+        D::Duration(leaf) => {
+            temporal_value_to_js(env, value, leaf.family(), leaf.unit(), leaf.bit_width())?
         }
-        D::Interval(unit) => interval_to_js(env, value, *unit)?,
+        D::Interval(leaf) => interval_to_js(env, value, leaf.unit())?,
         _ => return Ok(None),
     };
     Ok(Some(output))

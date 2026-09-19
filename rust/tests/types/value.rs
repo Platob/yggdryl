@@ -1,5 +1,6 @@
 //! The value a datatype accepts: canonicalization, readings, and absence.
 
+use yggdryl::types::{DateTimeType, DurationType, TimeType};
 use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -69,7 +70,9 @@ fn integer_canonicalization_preserves_every_declared_width() {
 
 #[test]
 fn year_month_interval_canonicalizes_to_the_exact_interval_leaf() {
-    let schema = root([DataType::Interval(TimeUnit::YearMonth).required_field("months")]);
+    let schema = root([DataType::interval(TimeUnit::YearMonth)
+        .unwrap()
+        .required_field("months")]);
 
     let canonical = schema
         .canonicalize_value(Scalar::from_sequence([Scalar::from(18)]))
@@ -85,13 +88,14 @@ fn year_month_interval_canonicalizes_to_the_exact_interval_leaf() {
 #[test]
 fn temporal_casts_preserve_family_and_timezone() {
     let schema = root([
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Millisecond,
             timezone: Timezone::UTC,
-        }
+        })
         .required_field("at"),
-        DataType::Time32(TimeUnit::Second).required_field("clock"),
-        DataType::Duration32(TimeUnit::Millisecond).required_field("elapsed"),
+        DataType::Time(TimeType::Time32(TimeUnit::Second)).required_field("clock"),
+        DataType::Duration(DurationType::Duration32(TimeUnit::Millisecond))
+            .required_field("elapsed"),
     ]);
     let valid = Scalar::from_sequence([
         Scalar::datetime64(1, TimeUnit::Second, Timezone::UTC).unwrap(),
@@ -156,7 +160,7 @@ mod readings {
             Scalar::d128(1_050, 2)
         );
         assert_eq!(
-            DataType::Date32.scalar("1970-01-02").unwrap(),
+            DataType::date32().scalar("1970-01-02").unwrap(),
             Scalar::date32(1)
         );
 

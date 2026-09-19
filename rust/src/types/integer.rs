@@ -9,7 +9,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::types::arithmetic::{Arithmetic, ArithmeticTarget, invalid_binary};
 use crate::types::typed::define_field_types;
 use crate::types::value::{PathSegment, ValidationFailure, canonical_error, expected};
-use crate::{DataType, DataTypeId, Error, Result, Scalar, TimeUnit, Value};
+use crate::{DataType, DataTypeId, Error, IntervalType, Result, Scalar, TimeUnit, Value};
 
 // ------------------------------------------------------------------------
 // Integer datatype family and predicates used by run-end validation.
@@ -221,7 +221,7 @@ pub(crate) fn canonical_signed(dtype: &DataType, value: &Scalar) -> Result<(Scal
         DataType::Int8 => Scalar::from(i8::try_from(integer).map_err(canonical_integer_error)?),
         DataType::Int16 => Scalar::from(i16::try_from(integer).map_err(canonical_integer_error)?),
         DataType::Int32 => Scalar::from(i32::try_from(integer).map_err(canonical_integer_error)?),
-        DataType::Int64 | DataType::Interval(TimeUnit::YearMonth) => {
+        DataType::Int64 | DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)) => {
             Scalar::from(i64::try_from(integer).map_err(canonical_integer_error)?)
         }
         _ => unreachable!("signed canonicalization requires a signed datatype"),

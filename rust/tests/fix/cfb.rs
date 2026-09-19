@@ -419,12 +419,15 @@ fn the_eight_types_resolve_through_the_schema_grammars_own_names() {
         // `utc-date` is a day, and a day is that day's midnight in UTC.
         (
             10015,
-            DataType::DateTime64 {
+            DataType::DateTime(yggdryl::DateTimeType::DateTime64 {
                 unit: yggdryl::TimeUnit::Nanosecond,
                 timezone: yggdryl::Timezone::UTC,
-            },
+            }),
         ),
-        (273, DataType::Time64(yggdryl::TimeUnit::Nanosecond)),
+        (
+            273,
+            DataType::Time(yggdryl::TimeType::Time64(yggdryl::TimeUnit::Nanosecond)),
+        ),
     ] {
         assert_eq!(
             registry.field_by_tag(tag).unwrap().dtype(),
@@ -435,7 +438,7 @@ fn the_eight_types_resolve_through_the_schema_grammars_own_names() {
     // `utc-timestamp` is the one that carries a zone.
     assert!(matches!(
         registry.field_by_tag(60).unwrap().dtype(),
-        DataType::DateTime64 { .. }
+        DataType::DateTime(_)
     ));
 }
 

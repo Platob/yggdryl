@@ -49,7 +49,7 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::types::StructureType;
+use crate::types::{DateTimeType, StructureType};
 use crate::{DataType, Field, Result};
 
 use super::FixRegistry;
@@ -1746,7 +1746,7 @@ fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
 }
 
 /// Exact layout shared by FIX event, creation, grid and previous clocks.
-pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime64 {
+pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime(DateTimeType::DateTime64 {
     unit: crate::TimeUnit::Nanosecond,
     timezone: crate::Timezone::UTC,
-};
+});

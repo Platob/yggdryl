@@ -119,7 +119,7 @@ fn nested_root() -> Field {
             scale: 2,
         })
         .required_field("price"),
-        DataType::Date32.required_field("day"),
+        DataType::date32().required_field("day"),
     ])
 }
 

@@ -867,8 +867,6 @@ impl fmt::Display for DataType {
             | D::Float16
             | D::Float32
             | D::Float64
-            | D::Date32
-            | D::Date64
             | D::Country
             | D::Currency
             | D::Mic
@@ -887,19 +885,12 @@ impl fmt::Display for DataType {
             | D::MediaType
             | D::Url
             | D::Variant => formatter.write_str(self.name()),
-            D::DateTime64 { unit, timezone } if timezone.is_naive() => {
-                write!(formatter, "datetime64({unit})")
-            }
-            D::DateTime64 { unit, timezone } => {
-                write!(formatter, "datetime64({unit},")?;
-                fmt_quoted(formatter, timezone.as_str())?;
-                formatter.write_char(')')
-            }
-            D::Time32(unit) => write!(formatter, "time32({unit})"),
-            D::Time64(unit) => write!(formatter, "time64({unit})"),
-            D::Duration32(unit) => write!(formatter, "duration32({unit})"),
-            D::Duration64(unit) => write!(formatter, "duration64({unit})"),
-            D::Interval(unit) => write!(formatter, "interval({unit})"),
+            // Each temporal family spells its own leaf and parameters.
+            D::DateTime(leaf) => fmt::Display::fmt(leaf, formatter),
+            D::Date(leaf) => fmt::Display::fmt(leaf, formatter),
+            D::Time(leaf) => fmt::Display::fmt(leaf, formatter),
+            D::Duration(leaf) => fmt::Display::fmt(leaf, formatter),
+            D::Interval(leaf) => fmt::Display::fmt(leaf, formatter),
             D::Bytes(parameters) => fmt::Display::fmt(parameters, formatter),
             D::String(parameters) => fmt::Display::fmt(parameters, formatter),
             D::Sequence(SequenceType::List(field)) => {
@@ -1010,7 +1001,7 @@ fn fmt_field(formatter: &mut fmt::Formatter<'_>, field: &Field) -> fmt::Result {
     fmt::Display::fmt(field, formatter)
 }
 
-fn fmt_quoted(formatter: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
+pub(crate) fn fmt_quoted(formatter: &mut fmt::Formatter<'_>, value: &str) -> fmt::Result {
     formatter.write_char('"')?;
     for character in value.chars() {
         match character {
@@ -1137,8 +1128,8 @@ impl<'a> Parser<'a> {
             | "timestampntz"
             | "timestampltz"
             | "timestampwithtimezone" => self.parse_datetime64(&keyword, depth)?,
-            "date" | "date32" => DataType::Date32,
-            "date64" | "datemillisecond" => DataType::Date64,
+            "date" | "date32" => DataType::date32(),
+            "date64" | "datemillisecond" => DataType::date64(),
             "time" => self.parse_sql_time(depth)?,
             "time32" => {
                 let (unit, unit_start) = self.parse_required_time_unit(depth)?;
@@ -1159,7 +1150,7 @@ impl<'a> Parser<'a> {
                 DataType::duration64(self.parse_required_time_unit(depth)?.0)?
             }
             "duration64" => DataType::duration64(self.parse_required_time_unit(depth)?.0)?,
-            "interval" => DataType::Interval(self.parse_interval_unit(depth)?),
+            "interval" => DataType::interval(self.parse_interval_unit(depth)?)?,
             // One byte family, one grammar: an optional bound that reads as
             // the width on the fixed leaf and as the maximum on the sized
             // one, which `binary(32)` is the shorter spelling of. Which word

@@ -23,6 +23,7 @@ use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_mai
 use yggdryl::arrow::{BatchReader, batch_reader, cast_reader};
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::types::DateTimeType;
 use yggdryl::types::FieldValue as _;
 use yggdryl::{
     ArrowCastOptions, ArrowScalar, DataType, Field, IOBase, IOMedia, IOMode, MediaType, MimeType,
@@ -63,10 +64,10 @@ fn root() -> Field {
             .expect("the price width is valid")
             .required_field("price"),
         DataType::Int64.required_field("size"),
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        }
+        })
         .required_field("timestamp"),
     ])
     .expect("the trade root is valid")
@@ -366,10 +367,10 @@ fn collect_benchmarks(criterion: &mut Criterion) {
 /// a wider scale so the cast is a cast rather than an identity.
 fn cast_target() -> Field {
     DataType::from_fields([
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        }
+        })
         .required_field("timestamp"),
         DataType::utf8().required_field("symbol"),
         DataType::decimal128(18, 6)

@@ -21,9 +21,8 @@ use std::str::FromStr;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::DecimalType;
-use crate::types::UuidType;
 use crate::types::string::is_text_storage;
+use crate::types::{DateTimeType, DateType, DecimalType, TimeType, UuidType};
 use crate::{DataType, Error, Result, TimeUnit};
 
 /// A primitive type from the Iceberg specification.
@@ -110,25 +109,25 @@ impl PrimitiveType {
             Self::Float => DataType::Float32,
             Self::Double => DataType::Float64,
             Self::Decimal { precision, scale } => DataType::decimal(precision, scale)?,
-            Self::Date => DataType::Date32,
+            Self::Date => DataType::date32(),
             // Iceberg fixes every temporal resolution at microseconds.
             Self::Time => DataType::time(TimeUnit::Microsecond)?,
-            Self::Timestamp => DataType::DateTime64 {
+            Self::Timestamp => DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: crate::Timezone::NAIVE,
-            },
-            Self::Timestamptz => DataType::DateTime64 {
+            }),
+            Self::Timestamptz => DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: crate::Timezone::UTC,
-            },
-            Self::TimestampNs => DataType::DateTime64 {
+            }),
+            Self::TimestampNs => DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: crate::Timezone::NAIVE,
-            },
-            Self::TimestamptzNs => DataType::DateTime64 {
+            }),
+            Self::TimestamptzNs => DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: crate::Timezone::UTC,
-            },
+            }),
             // An unknown column always reads as null, which is exactly Arrow's
             // null datatype rather than a placeholder of some other width.
             Self::Unknown => DataType::Null,
@@ -179,22 +178,22 @@ impl PrimitiveType {
                     scale: *scale,
                 }
             }
-            DataType::Date32 => Self::Date,
-            DataType::Time64(TimeUnit::Microsecond) => Self::Time,
-            DataType::DateTime64 {
+            DataType::Date(DateType::Date32) => Self::Date,
+            DataType::Time(TimeType::Time64(TimeUnit::Microsecond)) => Self::Time,
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone,
-            } => {
+            }) => {
                 if timezone.is_naive() {
                     Self::Timestamp
                 } else {
                     Self::Timestamptz
                 }
             }
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone,
-            } => {
+            }) => {
                 if timezone.is_naive() {
                     Self::TimestampNs
                 } else {

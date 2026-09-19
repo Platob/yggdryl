@@ -4,6 +4,7 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::types::BytesType;
 use yggdryl::types::SequenceType;
 use yggdryl::types::UuidType;
+use yggdryl::types::{DateTimeType, DurationType, IntervalType, TimeType};
 use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
 
 fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &str) {
@@ -47,33 +48,33 @@ fn direct_arrow_values_round_trip_through_core() {
 #[test]
 fn every_temporal_and_interval_unit_round_trips_through_all_core_formats() {
     let values = [
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Second,
             timezone: Timezone::NAIVE,
-        },
-        DataType::DateTime64 {
+        }),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Millisecond,
             timezone: Timezone::UTC,
-        },
-        DataType::DateTime64 {
+        }),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::from_str("Europe/Paris").unwrap(),
-        },
-        DataType::DateTime64 {
+        }),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
-        },
-        DataType::Time32(TimeUnit::Second),
-        DataType::Time32(TimeUnit::Millisecond),
-        DataType::Time64(TimeUnit::Microsecond),
-        DataType::Time64(TimeUnit::Nanosecond),
-        DataType::Duration64(TimeUnit::Second),
-        DataType::Duration64(TimeUnit::Millisecond),
-        DataType::Duration64(TimeUnit::Microsecond),
-        DataType::Duration64(TimeUnit::Nanosecond),
-        DataType::Interval(TimeUnit::YearMonth),
-        DataType::Interval(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::MonthDayNano),
+        }),
+        DataType::Time(TimeType::Time32(TimeUnit::Second)),
+        DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
+        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+        DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Millisecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
     ];
 
     for value in values {
@@ -107,7 +108,7 @@ fn duration32_projects_to_arrow_and_imports_at_arrows_native_width() {
         );
         assert_eq!(
             DataType::from_arrow_datatype(&arrow).unwrap(),
-            DataType::Duration64(unit)
+            DataType::duration64(unit).unwrap()
         );
     }
 }
@@ -140,18 +141,18 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
         DataType::Float16,
         DataType::Float32,
         DataType::Float64,
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::from_str("Europe/Paris").unwrap(),
-        },
-        DataType::Date32,
-        DataType::Date64,
-        DataType::Time32(TimeUnit::Millisecond),
-        DataType::Time64(TimeUnit::Microsecond),
-        DataType::Duration64(TimeUnit::Nanosecond),
-        DataType::Interval(TimeUnit::YearMonth),
-        DataType::Interval(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::MonthDayNano),
+        }),
+        DataType::date32(),
+        DataType::date64(),
+        DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
+        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
         DataType::binary(),
         DataType::fixed_binary(16).unwrap(),
         DataType::large_binary(),
@@ -320,16 +321,24 @@ fn an_extension_schema_survives_an_ipc_round_trip() {
 
 #[test]
 fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
-    assert!(DataType::Time32(TimeUnit::Nanosecond).validate().is_err());
-    assert!(DataType::Time64(TimeUnit::Second).validate().is_err());
+    assert!(
+        DataType::Time(TimeType::Time32(TimeUnit::Nanosecond))
+            .validate()
+            .is_err()
+    );
+    assert!(
+        DataType::Time(TimeType::Time64(TimeUnit::Second))
+            .validate()
+            .is_err()
+    );
     for invalid in [
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::YearMonth,
             timezone: Timezone::NAIVE,
-        },
-        DataType::Duration32(TimeUnit::DayTime),
-        DataType::Duration64(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::Second),
+        }),
+        DataType::Duration(DurationType::Duration32(TimeUnit::DayTime)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::DayTime)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::Second)),
     ] {
         assert!(invalid.validate().is_err());
         assert!(invalid.clone().into_arrow_datatype().is_err());
@@ -376,7 +385,7 @@ fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
 
 #[test]
 fn invariant_errors_match_across_construction_validation_and_arrow_projection() {
-    let invalid_time = DataType::Time32(TimeUnit::Nanosecond);
+    let invalid_time = DataType::Time(TimeType::Time32(TimeUnit::Nanosecond));
     for error in [
         DataType::time32(TimeUnit::Nanosecond).unwrap_err(),
         invalid_time.validate().unwrap_err(),

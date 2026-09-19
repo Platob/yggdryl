@@ -6,9 +6,9 @@ use std::sync::Arc;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
 use yggdryl::types::{
-    BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialType,
-    IntegerType, MapType, RunEndEncodedType, StringType, TemporalType, TimeUnit, UnionFields,
-    UnionMode,
+    BytesType, DataType, DateTimeType, DateType, DecimalType, DictionaryType, DurationType, Fields,
+    FloatingType, GeospatialType, IntegerType, IntervalType, MapType, RunEndEncodedType,
+    StringType, TimeType, TimeUnit, UnionFields, UnionMode,
 };
 use yggdryl::{Charset, Error, Field, Timezone};
 
@@ -25,9 +25,31 @@ fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
     let decimal_family = DecimalType::try_from(&decimal).unwrap();
     assert_eq!(DataType::from(decimal_family), decimal);
 
-    let temporal = DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap();
-    let temporal_family = TemporalType::try_from(&temporal).unwrap();
-    assert_eq!(temporal_family.into_dtype().unwrap(), temporal);
+    // The five temporal families each hold their own payload; a unit or a
+    // zone is a parameter of the leaf and survives the round trip.
+    let datetime = DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap();
+    let datetime_family = DateTimeType::try_from(&datetime).unwrap();
+    assert_eq!(datetime_family.unit(), TimeUnit::Microsecond);
+    assert_eq!(DataType::from(datetime_family), datetime);
+
+    let date = DateType::try_from(&DataType::date64()).unwrap();
+    assert_eq!(date, DateType::Date64);
+    assert_eq!(DataType::from(date), DataType::date64());
+
+    let time = DataType::time64(TimeUnit::Nanosecond).unwrap();
+    let time_family = TimeType::try_from(&time).unwrap();
+    assert_eq!(time_family, TimeType::Time64(TimeUnit::Nanosecond));
+    assert_eq!(DataType::from(time_family), time);
+
+    let duration = DataType::duration32(TimeUnit::Second).unwrap();
+    let duration_family = DurationType::try_from(&duration).unwrap();
+    assert_eq!(duration_family, DurationType::Duration32(TimeUnit::Second));
+    assert_eq!(DataType::from(duration_family), duration);
+
+    let interval = DataType::interval(TimeUnit::DayTime).unwrap();
+    let interval_family = IntervalType::try_from(&interval).unwrap();
+    assert_eq!(interval_family.unit(), TimeUnit::DayTime);
+    assert_eq!(DataType::from(interval_family), interval);
 
     let text = DataType::large_utf8().string_parameters().unwrap();
     assert_eq!(text, StringType::LargeUtf8String);
@@ -295,7 +317,7 @@ fn nested_serde_and_core_validators_keep_distinct_error_contracts() {
 #[test]
 fn structural_serialization_rejects_public_enum_invalid_states() {
     let invalid = [
-        DataType::Time32(TimeUnit::Nanosecond),
+        DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)),
         DataType::Bytes(BytesType::FixedBinary(0)),
         DataType::String(StringType::FixedUtf8String(0)),
         DataType::Decimal(DecimalType::Decimal128 {
@@ -335,21 +357,21 @@ fn sql_hive_spark_and_arrow_spellings_parse_recursively() {
 fn temporal_decimal_and_wrapper_forms_are_validated() {
     assert_eq!(
         DataType::from_str("timestamp(9,'Europe/Paris')").unwrap(),
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: yggdryl::Timezone::from_str("Europe/Paris").unwrap()
-        }
+        })
     );
     assert_eq!(
         DataType::from_str("TIMESTAMP WITH TIME ZONE").unwrap(),
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: yggdryl::Timezone::UTC
-        }
+        })
     );
     assert_eq!(
         DataType::from_str("interval year to month").unwrap(),
-        DataType::Interval(TimeUnit::YearMonth)
+        DataType::interval(TimeUnit::YearMonth).unwrap()
     );
     assert_eq!(
         DataType::from_str("[{(decimal256(76,-20))}]").unwrap(),
@@ -424,18 +446,19 @@ fn every_arrow_variant_has_a_lossless_owned_equivalent() {
         DataType::Float16,
         DataType::Float32,
         DataType::Float64,
-        DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            timezone: yggdryl::Timezone::from_str("Europe/Paris").unwrap(),
-        },
-        DataType::Date32,
-        DataType::Date64,
+        DataType::datetime64(
+            TimeUnit::Nanosecond,
+            yggdryl::Timezone::from_str("Europe/Paris").unwrap(),
+        )
+        .unwrap(),
+        DataType::date32(),
+        DataType::date64(),
         DataType::time32(TimeUnit::Millisecond).unwrap(),
         DataType::time64(TimeUnit::Microsecond).unwrap(),
-        DataType::Duration64(TimeUnit::Nanosecond),
-        DataType::Interval(TimeUnit::YearMonth),
-        DataType::Interval(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::MonthDayNano),
+        DataType::duration64(TimeUnit::Nanosecond).unwrap(),
+        DataType::interval(TimeUnit::YearMonth).unwrap(),
+        DataType::interval(TimeUnit::DayTime).unwrap(),
+        DataType::interval(TimeUnit::MonthDayNano).unwrap(),
         DataType::binary(),
         DataType::fixed_binary(16).unwrap(),
         DataType::large_binary(),
@@ -528,10 +551,10 @@ fn long_timezones_reuse_process_interned_storage_across_arrow_conversions() {
     );
 
     let borrowed = DataType::from_arrow_datatype(&arrow).unwrap();
-    let DataType::DateTime64 {
+    let DataType::DateTime(DateTimeType::DateTime64 {
         unit: _,
         timezone: borrowed_timezone,
-    } = &borrowed
+    }) = &borrowed
     else {
         panic!("timestamp import changed variant");
     };
@@ -544,10 +567,10 @@ fn long_timezones_reuse_process_interned_storage_across_arrow_conversions() {
     assert_eq!(borrowed_arrow_timezone.as_ref(), timezone.as_ref());
 
     let owned = DataType::try_from(arrow).unwrap();
-    let DataType::DateTime64 {
+    let DataType::DateTime(DateTimeType::DateTime64 {
         unit: _,
         timezone: owned_timezone,
-    } = &owned
+    }) = &owned
     else {
         panic!("timestamp import changed variant");
     };
@@ -584,7 +607,11 @@ fn arrow_import_enforces_one_shared_recursion_budget() {
 
 #[test]
 fn public_field_collections_validate_children_without_clone_helpers() {
-    let invalid = Field::new("invalid", DataType::Time32(TimeUnit::Nanosecond), false);
+    let invalid = Field::new(
+        "invalid",
+        DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)),
+        false,
+    );
     assert!(Fields::from_fields([invalid.clone()]).is_err());
     assert!(UnionFields::from_fields([(0, invalid)]).is_err());
 }

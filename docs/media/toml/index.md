@@ -166,7 +166,7 @@ A Struct Field yields a row `Sequence` in Rust; bindings restore field names, an
 
 ### Dates and times
 
-Every native temporal carries a `TimeUnit` and a non-null [`Timezone`](../../types/numeric.md).
+Every native temporal carries a `TimeUnit` and a non-null [`Timezone`](../../types/temporal.md#timezone).
 
 | value | TOML behavior |
 | --- | --- |

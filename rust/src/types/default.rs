@@ -218,13 +218,10 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Float16
             | DataType::Float32
             | DataType::Float64
-            | DataType::DateTime64 { .. }
-            | DataType::Date32
-            | DataType::Date64
-            | DataType::Time32(_)
-            | DataType::Time64(_)
-            | DataType::Duration32(_)
-            | DataType::Duration64(_)
+            | DataType::DateTime(_)
+            | DataType::Date(_)
+            | DataType::Time(_)
+            | DataType::Duration(_)
             | DataType::Interval(_)
             | DataType::Bytes(_)
             | DataType::String(_)
@@ -305,16 +302,15 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Int16
         | D::Int32
         | D::Int64
-        | D::DateTime64 { .. }
-        | D::Date32
-        | D::Date64
-        | D::Time32(_)
-        | D::Time64(_)
-        | D::Duration32(_)
-        | D::Duration64(_) => scalar(DefaultPlan::Signed, false),
+        | D::DateTime(_)
+        | D::Date(_)
+        | D::Time(_)
+        | D::Duration(_) => scalar(DefaultPlan::Signed, false),
         D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => scalar(DefaultPlan::Unsigned, false),
         D::Float16 | D::Float32 | D::Float64 => scalar(DefaultPlan::Float, false),
-        D::Interval(unit) if unit.is_interval() => scalar(DefaultPlan::Interval(*unit), false),
+        D::Interval(leaf) if leaf.unit().is_interval() => {
+            scalar(DefaultPlan::Interval(leaf.unit()), false)
+        }
         D::Interval(_) => fatal(path, "invalid interval layout"),
         // The empty payload, or on the fixed layout the zero-filled slot of
         // its width: bytes are never padded, so the width is the value.

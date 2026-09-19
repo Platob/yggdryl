@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 use yggdryl::text::json;
 use yggdryl::text::{self, Format, Formatting, Limits};
+use yggdryl::types::DateTimeType;
 use yggdryl::{
     DataType, DataTypeId, Error, Field, Scalar, TimeUnit, Timezone, from_json_scalar,
     from_json_scalar_with_field, i256, into_json_scalar,
@@ -16,7 +17,7 @@ fn field_directed_json_restores_exact_decimal_and_interval_leaves() {
     let decoded = from_json_scalar_with_field(&encoded, &decimal.required_field("value")).unwrap();
     assert_eq!(decoded.id(), DataTypeId::Decimal32);
 
-    let interval = DataType::Interval(TimeUnit::MonthDayNano);
+    let interval = DataType::interval(TimeUnit::MonthDayNano).unwrap();
     let value = interval
         .scalar(Scalar::from_sequence([
             Scalar::from(1),
@@ -75,10 +76,10 @@ fn typed_row_field() -> Field {
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Second,
                     timezone: Timezone::UTC,
-                },
+                }),
                 false,
             ),
             Field::new(
@@ -177,10 +178,10 @@ fn a_field_folds_an_out_of_day_clock_and_reads_an_elapsed_one() {
     // A datetime carries the hour into the next date instead of folding it.
     let at = Field::new(
         "at",
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Second,
             timezone: Timezone::UTC,
-        },
+        }),
         false,
     );
     assert_eq!(

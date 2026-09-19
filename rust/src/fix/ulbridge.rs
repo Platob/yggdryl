@@ -50,10 +50,7 @@
 /// // widened probe must leave this capture exactly where it was.
 /// assert_eq!(
 ///     captures.field("timestamp")?.dtype(),
-///     &yggdryl::DataType::DateTime64 {
-///         unit: yggdryl::TimeUnit::Millisecond,
-///         timezone: yggdryl::Timezone::NAIVE,
-///     },
+///     &yggdryl::DataType::datetime64(yggdryl::TimeUnit::Millisecond, yggdryl::Timezone::NAIVE)?,
 /// );
 /// # Ok(())
 /// # }

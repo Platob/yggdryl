@@ -9,11 +9,11 @@ use std::sync::Arc;
 
 use super::Field;
 use crate::metadata::write_json_string as write_quoted;
-use crate::types::DecimalType;
 use crate::types::enums::EnumType;
 use crate::types::mapping::MappingType;
 use crate::types::sequence::SequenceType;
 use crate::types::structure::StructureType;
+use crate::types::{DateTimeType, DecimalType, DurationType, IntervalType, TimeType};
 use crate::{
     DataType, Fields, Metadata, RunEndEncodedType, UnionFields, hashing::stable_hash_display,
 };
@@ -303,14 +303,14 @@ impl DiffEngine {
         use DataType as D;
         match (&left, &right) {
             (
-                D::DateTime64 {
+                D::DateTime(DateTimeType::DateTime64 {
                     unit: left_unit,
                     timezone: left_zone,
-                },
-                D::DateTime64 {
+                }),
+                D::DateTime(DateTimeType::DateTime64 {
                     unit: right_unit,
                     timezone: right_zone,
-                },
+                }),
             ) => {
                 if left_unit != right_unit {
                     self.pending.push_back(changed_display(
@@ -327,11 +327,20 @@ impl DiffEngine {
                     ));
                 }
             }
-            (D::Time32(left), D::Time32(right))
-            | (D::Time64(left), D::Time64(right))
-            | (D::Duration32(left), D::Duration32(right))
-            | (D::Duration64(left), D::Duration64(right))
-            | (D::Interval(left), D::Interval(right)) => {
+            (D::Time(TimeType::Time32(left)), D::Time(TimeType::Time32(right)))
+            | (D::Time(TimeType::Time64(left)), D::Time(TimeType::Time64(right)))
+            | (
+                D::Duration(DurationType::Duration32(left)),
+                D::Duration(DurationType::Duration32(right)),
+            )
+            | (
+                D::Duration(DurationType::Duration64(left)),
+                D::Duration(DurationType::Duration64(right)),
+            )
+            | (
+                D::Interval(IntervalType::Interval(left)),
+                D::Interval(IntervalType::Interval(right)),
+            ) => {
                 if left != right {
                     self.pending.push_back(changed_display(
                         &property_path(&path, "unit"),

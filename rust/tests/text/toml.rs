@@ -2,6 +2,7 @@ use std::io::{Cursor, Read};
 use std::str::FromStr;
 
 use yggdryl::text::toml as ytoml;
+use yggdryl::types::DateTimeType;
 use yggdryl::{
     DataType, DataTypeId, Error, Field, Limits, Scalar, TimeUnit, Timezone, from_toml_scalar,
     from_toml_scalar_with_field, i256, into_toml_scalar,
@@ -10,7 +11,7 @@ use yggdryl::{
 #[test]
 fn field_directed_toml_restores_exact_leaves_inside_a_record() {
     let decimal = DataType::decimal32(9, 2).unwrap();
-    let interval = DataType::Interval(TimeUnit::MonthDayNano);
+    let interval = DataType::interval(TimeUnit::MonthDayNano).unwrap();
     let field = DataType::from_fields([
         decimal.clone().required_field("price"),
         interval.clone().required_field("span"),
@@ -92,10 +93,10 @@ fn typed_row_field() -> Field {
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Second,
                     timezone: Timezone::UTC,
-                },
+                }),
                 false,
             ),
             Field::new(

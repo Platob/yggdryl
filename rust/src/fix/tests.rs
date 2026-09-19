@@ -4128,40 +4128,31 @@ fn every_type_adopted_backward_parses_the_wire_spelling_of_its_era() {
             9_001,
             "UTCTimeOnly",
             "10:15:30.123",
-            DataType::Time64(crate::TimeUnit::Nanosecond),
+            DataType::time64(crate::TimeUnit::Nanosecond).unwrap(),
         ),
         (
             9_002,
             "LocalMktTime",
             "10:15:30",
-            DataType::Time64(crate::TimeUnit::Nanosecond),
+            DataType::time64(crate::TimeUnit::Nanosecond).unwrap(),
         ),
         (
             9_003,
             "UTCTimestamp",
             "20240102-10:15:30.123",
-            DataType::DateTime64 {
-                unit: crate::TimeUnit::Nanosecond,
-                timezone: crate::Timezone::UTC,
-            },
+            DataType::datetime64(crate::TimeUnit::Nanosecond, crate::Timezone::UTC).unwrap(),
         ),
         (
             9_004,
             "TZTimeOnly",
             "10:15:30-05:00",
-            DataType::DateTime64 {
-                unit: crate::TimeUnit::Nanosecond,
-                timezone: crate::Timezone::UTC,
-            },
+            DataType::datetime64(crate::TimeUnit::Nanosecond, crate::Timezone::UTC).unwrap(),
         ),
         (
             9_005,
             "LocalMktDate",
             "20240102",
-            DataType::DateTime64 {
-                unit: crate::TimeUnit::Nanosecond,
-                timezone: crate::Timezone::NAIVE,
-            },
+            DataType::datetime64(crate::TimeUnit::Nanosecond, crate::Timezone::NAIVE).unwrap(),
         ),
     ] {
         let held: DataType = spelling.parse().expect("a resolvable FIX datatype");

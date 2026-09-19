@@ -10,6 +10,7 @@ use arrow_array::{
     TimestampNanosecondArray,
 };
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+use yggdryl::types::DateTimeType;
 use yggdryl::{DataType, DigestAlgorithm, Field, TimeUnit, Timezone};
 
 /// Rows per fixture, enough that the per-row cost dominates the setup.
@@ -177,10 +178,10 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
 fn holder_fixtures() -> (Field, Field, RecordBatch) {
     let event = Field::new(
         "event",
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        },
+        }),
         false,
     );
     let symbol = Field::new("symbol", DataType::utf8(), false);

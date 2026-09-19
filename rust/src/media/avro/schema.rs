@@ -9,7 +9,7 @@
 //! schema be finite.
 //!
 //! Logical types are modeled because the value model above this codec is
-//! typed: a `date` int decodes as a calendar [`Date32`](crate::types::temporal::Date32)
+//! typed: a `date` int decodes as a calendar [`Date32`](crate::types::Date32)
 //! rather than a bare count, and a `decimal` keeps its unscaled integer and
 //! scale exactly. An annotation this implementation does not know - or one
 //! whose attributes are invalid for its underlying type - degrades to the
@@ -26,7 +26,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{DataType, Limits, Result, Scalar, TimeUnit, Timezone};
 
 use super::datum::invalid;
-use crate::types::UuidType;
+use crate::types::{DateTimeType, TimeType, UuidType};
 
 /// Maximum structural nesting accepted by the recursive schema parser.
 ///
@@ -390,33 +390,33 @@ impl Node {
             Self::Double => DataType::Float64,
             Self::Bytes => DataType::binary(),
             Self::String | Self::Enum(_) => DataType::utf8(),
-            Self::Date => DataType::Date32,
-            Self::TimeMillis => DataType::Time32(TimeUnit::Millisecond),
-            Self::TimeMicros => DataType::Time64(TimeUnit::Microsecond),
-            Self::TimestampMillis => DataType::DateTime64 {
+            Self::Date => DataType::date32(),
+            Self::TimeMillis => DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
+            Self::TimeMicros => DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+            Self::TimestampMillis => DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Millisecond,
                 timezone: Timezone::UTC,
-            },
-            Self::TimestampMicros => DataType::DateTime64 {
+            }),
+            Self::TimestampMicros => DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: Timezone::UTC,
-            },
-            Self::TimestampNanos => DataType::DateTime64 {
+            }),
+            Self::TimestampNanos => DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
-            Self::LocalTimestampMillis => DataType::DateTime64 {
+            }),
+            Self::LocalTimestampMillis => DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Millisecond,
                 timezone: Timezone::NAIVE,
-            },
-            Self::LocalTimestampMicros => DataType::DateTime64 {
+            }),
+            Self::LocalTimestampMicros => DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: Timezone::NAIVE,
-            },
-            Self::LocalTimestampNanos => DataType::DateTime64 {
+            }),
+            Self::LocalTimestampNanos => DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::NAIVE,
-            },
+            }),
             Self::Uuid | Self::UuidFixed(_) => DataType::Uuid(UuidType::Uuid),
             Self::Decimal(decimal) => DataType::decimal(
                 u8::try_from(decimal.precision).map_err(|_| {
@@ -432,7 +432,7 @@ impl Node {
                     ))
                 })?,
             )?,
-            Self::Duration(_) => DataType::Interval(TimeUnit::MonthDayNano),
+            Self::Duration(_) => DataType::interval(TimeUnit::MonthDayNano)?,
             Self::Fixed(fixed) => {
                 DataType::fixed_binary(u32::try_from(fixed.size).map_err(|_| {
                     invalid(format_smolstr!(

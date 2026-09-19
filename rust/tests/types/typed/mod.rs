@@ -3,8 +3,8 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use yggdryl::types::UncheckedFieldScalar;
-use yggdryl::types::temporal::Interval;
+use yggdryl::types::interval::Interval;
+use yggdryl::types::{DateTimeType, UncheckedFieldScalar};
 use yggdryl::{DataType, Field, FieldScalar, Scalar, TimeUnit, Timezone};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
@@ -35,10 +35,10 @@ fn nullability_is_the_fields_rule() {
         DataType::Int64,
         DataType::utf8(),
         DataType::binary(),
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
-        },
+        }),
     ] {
         let nullable = Field::new("value", dtype.clone(), true);
         let typed = FieldScalar::new(&nullable, Scalar::Null).unwrap();
@@ -88,7 +88,7 @@ fn text_is_read_under_the_field_through_the_one_text_door() {
         Some(&b"ABC"[..])
     );
 
-    let day = Field::new("day", DataType::Date32, true);
+    let day = Field::new("day", DataType::date32(), true);
     let typed = FieldScalar::parse_str(&day, "2024-01-01").unwrap();
     assert_eq!(typed.value(), &Scalar::date32(19_723));
     assert_eq!(typed.into_str(), "2024-01-01");

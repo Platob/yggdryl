@@ -1,19 +1,50 @@
-//! Calendar, clock, duration, and interval datatypes.
+//! What the five temporal families share, and nothing any one of them owns.
+//!
+//! A date, a time of day, a datetime, a duration and an interval are five
+//! families - [`crate::types::date`], [`crate::types::time`],
+//! [`crate::types::datetime`], [`crate::types::duration`] and
+//! [`crate::types::interval`] - each holding its own datatype payload, its
+//! `DataType` constructors and its values, with its `Field` leaf declared
+//! beside the other families' in `field.rs`. This file holds
+//! what several of them read: [`TemporalValue`], the contract every temporal
+//! value answers; [`TemporalFamily`], the word a value or a datatype names
+//! its family by; the `temporal_leaf!` macro the family files build their
+//! count-unit-zone values with; the unit validators the constructors call;
+//! the classic ISO 8601 spellings every reader and writer of temporal text
+//! goes through; and the `Scalar` accessors that read across the families -
+//! [`crate::Scalar::temporal_family`], [`crate::Scalar::temporal_unit`],
+//! [`crate::Scalar::temporal_count`] - with the arithmetic that uses them.
+//!
+//! ```
+//! use yggdryl::types::{DateType, TimeType};
+//! use yggdryl::{DataType, Scalar, TemporalFamily, TimeUnit, Timezone};
+//!
+//! # fn main() -> yggdryl::Result<()> {
+//! // A value knows its family and its unit whichever width holds it.
+//! let day = Scalar::from_date(20_000, TimeUnit::Day, Timezone::NAIVE)?;
+//! let at = Scalar::from_datetime(1, TimeUnit::Microsecond, Timezone::UTC)?;
+//! assert_eq!(day.temporal_family(), Some(TemporalFamily::Date));
+//! assert_eq!(at.temporal_family(), Some(TemporalFamily::DateTime));
+//! assert_eq!(at.temporal_unit(), Some(TimeUnit::Microsecond));
+//! assert_eq!(at.temporal_timezone(), Some(Timezone::UTC));
+//!
+//! // So does a datatype: the family payload is what a leaf belongs to.
+//! assert_eq!(DateType::Date32.family(), TemporalFamily::Date);
+//! assert_eq!(DataType::time(TimeUnit::Second)?, DataType::Time(TimeType::Time32(TimeUnit::Second)));
+//! # Ok(())
+//! # }
+//! ```
 
-pub use scalars::{
-    Date32, Date64, DateTime64, Duration32, Duration64, Interval, TemporalFamily, TemporalValue,
-    Time32, Time64,
-};
+pub use scalars::{TemporalFamily, TemporalValue};
 pub(crate) use scalars::{validate_date64, validate_time};
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 
 use crate::types::invalid;
-use crate::types::parser::{Parser, Token, TokenKind, is_closing_or_separator, precision_to_unit};
+use crate::types::parser::{Parser, Token, TokenKind, is_closing_or_separator};
 use crate::types::timezone::{civil_from_days, days_from_civil};
-use crate::types::typed::define_field_types;
-use crate::{DataType, DataTypeId, Error, Result, TimeUnit, Timezone};
+use crate::{Error, Result, TimeUnit, Timezone};
 
-/// Arrow casts owned by this datatype family.
+/// Arrow casts every temporal family shares: they take any temporal.
 pub(crate) mod casts {
     use crate::types::enums::EnumType;
     use std::sync::Arc;
@@ -126,15 +157,15 @@ pub(crate) mod casts {
     }
 
     /// Whether a target datatype holds temporals, however it encodes them.
+    ///
+    /// An interval is temporal too and has no classic spelling, so it is not
+    /// a target the text readers answer for.
     pub(crate) fn holds_temporal(target: &DataType) -> bool {
         match target {
-            DataType::Date32
-            | DataType::Date64
-            | DataType::Time32(_)
-            | DataType::Time64(_)
-            | DataType::DateTime64 { .. }
-            | DataType::Duration32(_)
-            | DataType::Duration64(_) => true,
+            DataType::Date(_)
+            | DataType::Time(_)
+            | DataType::DateTime(_)
+            | DataType::Duration(_) => true,
             DataType::Enum(EnumType::Dictionary(dictionary)) => holds_temporal(dictionary.value()),
             DataType::RunEndEncoded(encoded) => holds_temporal(encoded.values().dtype()),
             _ => false,
@@ -174,162 +205,8 @@ pub(crate) mod casts {
 }
 
 // ------------------------------------------------------------------------
-// Temporal units and validated time-of-day construction.
+// The unit rules the family constructors and their Arrow boundaries share.
 // ------------------------------------------------------------------------
-
-/// One temporal or interval datatype.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[non_exhaustive]
-pub enum TemporalType {
-    /// Day-count date.
-    Date32,
-    /// Millisecond-count date.
-    Date64,
-    /// 32-bit time of day.
-    Time32(TimeUnit),
-    /// 64-bit time of day.
-    Time64(TimeUnit),
-    /// 64-bit datetime with an explicit timezone.
-    DateTime64 { unit: TimeUnit, timezone: Timezone },
-    /// 32-bit duration.
-    Duration32(TimeUnit),
-    /// 64-bit duration.
-    Duration64(TimeUnit),
-    /// Calendar interval layout.
-    Interval(TimeUnit),
-}
-
-impl TemporalType {
-    /// Return the exact datatype identifier.
-    pub const fn id(self) -> DataTypeId {
-        match self {
-            Self::Date32 => DataTypeId::Date32,
-            Self::Date64 => DataTypeId::Date64,
-            Self::Time32(_) => DataTypeId::Time32,
-            Self::Time64(_) => DataTypeId::Time64,
-            Self::DateTime64 { .. } => DataTypeId::DateTime64,
-            Self::Duration32(_) => DataTypeId::Duration32,
-            Self::Duration64(_) => DataTypeId::Duration64,
-            Self::Interval(_) => DataTypeId::Interval,
-        }
-    }
-
-    /// Validate and convert this family member into the root datatype.
-    pub fn into_dtype(self) -> Result<DataType> {
-        match self {
-            Self::Date32 => Ok(DataType::Date32),
-            Self::Date64 => Ok(DataType::Date64),
-            Self::Time32(unit) => DataType::time32(unit),
-            Self::Time64(unit) => DataType::time64(unit),
-            Self::DateTime64 { unit, timezone } => DataType::datetime64(unit, timezone),
-            Self::Duration32(unit) => DataType::duration32(unit),
-            Self::Duration64(unit) => DataType::duration64(unit),
-            Self::Interval(unit) if unit.is_interval() => Ok(DataType::Interval(unit)),
-            Self::Interval(_) => Err(invalid(
-                "Interval",
-                "unit must be year_month, day_time, or month_day_nano",
-            )),
-        }
-    }
-}
-
-impl From<TemporalType> for DataType {
-    fn from(value: TemporalType) -> Self {
-        match value {
-            TemporalType::Date32 => Self::Date32,
-            TemporalType::Date64 => Self::Date64,
-            TemporalType::Time32(unit) => Self::Time32(unit),
-            TemporalType::Time64(unit) => Self::Time64(unit),
-            TemporalType::DateTime64 { unit, timezone } => Self::DateTime64 { unit, timezone },
-            TemporalType::Duration32(unit) => Self::Duration32(unit),
-            TemporalType::Duration64(unit) => Self::Duration64(unit),
-            TemporalType::Interval(unit) => Self::Interval(unit),
-        }
-    }
-}
-
-impl TryFrom<&DataType> for TemporalType {
-    type Error = Error;
-
-    fn try_from(value: &DataType) -> Result<Self> {
-        match value {
-            DataType::Date32 => Ok(Self::Date32),
-            DataType::Date64 => Ok(Self::Date64),
-            DataType::Time32(unit) => Ok(Self::Time32(*unit)),
-            DataType::Time64(unit) => Ok(Self::Time64(*unit)),
-            DataType::DateTime64 { unit, timezone } => Ok(Self::DateTime64 {
-                unit: *unit,
-                timezone: *timezone,
-            }),
-            DataType::Duration32(unit) => Ok(Self::Duration32(*unit)),
-            DataType::Duration64(unit) => Ok(Self::Duration64(*unit)),
-            DataType::Interval(unit) => Ok(Self::Interval(*unit)),
-            other => Err(Error::InvalidDataType {
-                kind: "temporal",
-                reason: format_smolstr!("expected a temporal datatype, got {other}"),
-            }),
-        }
-    }
-}
-
-impl DataType {
-    /// Creates a 64-bit datetime with an explicit timezone marker.
-    ///
-    /// Use [`Timezone::NAIVE`] for a wall-clock column without timezone
-    /// interpretation.
-    pub fn datetime64(unit: TimeUnit, timezone: Timezone) -> Result<Self> {
-        if !unit.is_arrow_time() {
-            return Err(invalid(
-                "DateTime64",
-                "unit must be second, millisecond, microsecond, or nanosecond",
-            ));
-        }
-        Ok(Self::DateTime64 { unit, timezone })
-    }
-
-    /// Creates the Arrow time-of-day type selected by the requested unit.
-    ///
-    /// Seconds and milliseconds use [`Self::Time32`], while microseconds and
-    /// nanoseconds use [`Self::Time64`]. Validation is delegated to
-    /// [`Self::time32`] or [`Self::time64`]. Calendar interval layouts are not
-    /// time-of-day resolutions and return an error.
-    pub fn time(unit: TimeUnit) -> Result<Self> {
-        match unit {
-            TimeUnit::Second | TimeUnit::Millisecond => Self::time32(unit),
-            TimeUnit::Microsecond | TimeUnit::Nanosecond => Self::time64(unit),
-            TimeUnit::Day | TimeUnit::YearMonth | TimeUnit::DayTime | TimeUnit::MonthDayNano => {
-                Err(invalid("Time", "unit must be a temporal resolution"))
-            }
-        }
-    }
-
-    /// Creates a 32-bit time-of-day type with a valid physical unit.
-    pub fn time32(unit: TimeUnit) -> Result<Self> {
-        validate_time32_unit(unit)?;
-        Ok(Self::Time32(unit))
-    }
-
-    /// Creates a 64-bit time-of-day type with a valid physical unit.
-    pub fn time64(unit: TimeUnit) -> Result<Self> {
-        validate_time64_unit(unit)?;
-        Ok(Self::Time64(unit))
-    }
-
-    /// Creates a 32-bit elapsed-time type with a fixed-length resolution.
-    pub fn duration32(unit: TimeUnit) -> Result<Self> {
-        validate_duration_unit("Duration32", unit)?;
-        Ok(Self::Duration32(unit))
-    }
-
-    /// Creates a 64-bit elapsed-time type with a fixed-length resolution.
-    ///
-    /// Arrow durations are physically 64-bit at every resolution, so Arrow
-    /// import always selects this variant.
-    pub fn duration64(unit: TimeUnit) -> Result<Self> {
-        validate_duration_unit("Duration64", unit)?;
-        Ok(Self::Duration64(unit))
-    }
-}
 
 pub(crate) fn validate_time32_unit(unit: TimeUnit) -> Result<()> {
     if matches!(unit, TimeUnit::Second | TimeUnit::Millisecond) {
@@ -358,12 +235,161 @@ pub(crate) fn validate_duration_unit(kind: &'static str, unit: TimeUnit) -> Resu
     }
 }
 
+/// The refusal a temporal value answers for a count, unit or zone its
+/// width cannot hold: a value problem, so an invalid record rather than an
+/// invalid datatype. The reason is a literal, so nothing allocates.
+pub(crate) fn invalid_record(reason: &'static str) -> Error {
+    Error::InvalidRecord {
+        path: SmolStr::new_static("$"),
+        reason: SmolStr::new_static(reason),
+    }
+}
+
+/// [`invalid_record`] for a reason that names the value or the unit it
+/// refused, and so is written at the refusal.
+pub(crate) fn invalid_record_text(reason: SmolStr) -> Error {
+    Error::InvalidRecord {
+        path: SmolStr::new_static("$"),
+        reason,
+    }
+}
+
 // ------------------------------------------------------------------------
-// Temporal and interval field markers.
+// The count-unit-zone value every family but the interval builds.
 // ------------------------------------------------------------------------
 
-define_field_types!(Date32Type, Date32);
-define_field_types!(Date64Type, Date64);
+/// Emit one temporal value: a count at one width, its unit and its zone,
+/// with its [`crate::Value`] and [`TemporalValue`] impls.
+///
+/// The family files invoke this, so every path inside is absolute: `$valid`
+/// is the family's rule over the unit and the zone, `$reason` the refusal
+/// it states, and `$dtype` reads the family datatype back off a value.
+macro_rules! temporal_leaf {
+    (
+        $name:ident, $count:ty, $family:ident, $bits:literal,
+        valid = $valid:expr,
+        dtype = $dtype:expr,
+        $reason:literal $(,)?
+    ) => {
+        #[doc = concat!("One exact `", stringify!($name), "` count, unit, and timezone.")]
+        #[derive(
+            Clone,
+            Copy,
+            Debug,
+            ::serde::Deserialize,
+            Eq,
+            Hash,
+            Ord,
+            PartialEq,
+            PartialOrd,
+            ::serde::Serialize,
+        )]
+        pub struct $name {
+            count: $count,
+            unit: $crate::TimeUnit,
+            timezone: $crate::Timezone,
+        }
+
+        impl $name {
+            /// Validate and construct this exact temporal representation.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`crate::Error::InvalidRecord`] for a unit or a zone
+            /// this width does not carry.
+            pub fn new(
+                count: $count,
+                unit: $crate::TimeUnit,
+                timezone: $crate::Timezone,
+            ) -> $crate::Result<Self> {
+                if !$valid(unit, timezone) {
+                    return Err($crate::types::temporal::invalid_record($reason));
+                }
+                Ok(Self {
+                    count,
+                    unit,
+                    timezone,
+                })
+            }
+
+            /// Return the stored count.
+            pub const fn count(&self) -> $count {
+                self.count
+            }
+
+            /// Return the count's unit.
+            pub const fn unit(&self) -> $crate::TimeUnit {
+                self.unit
+            }
+
+            /// Return the explicit timezone marker.
+            pub const fn timezone(&self) -> $crate::Timezone {
+                self.timezone
+            }
+        }
+
+        impl ::std::fmt::Display for $name {
+            fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                write!(formatter, "{}@{}[{}]", self.count, self.unit, self.timezone)
+            }
+        }
+
+        // The leaf, its `Scalar` variant and its `DataTypeId` share one name.
+        impl $crate::Value for $name {
+            fn dtype(&self) -> $crate::Result<$crate::DataType> {
+                $dtype(self)
+            }
+
+            fn into_scalar(self) -> $crate::Scalar {
+                $crate::Scalar::$name(self)
+            }
+
+            fn from_scalar(value: &$crate::Scalar) -> Option<&Self> {
+                match value {
+                    $crate::Scalar::$name(value) => Some(value),
+                    _ => None,
+                }
+            }
+        }
+
+        impl $crate::types::temporal::TemporalValue for $name {
+            const FAMILY: $crate::types::temporal::TemporalFamily =
+                $crate::types::temporal::TemporalFamily::$family;
+            const BIT_WIDTH: u8 = $bits;
+
+            fn count(&self) -> i64 {
+                i64::from(self.count())
+            }
+
+            fn unit(&self) -> $crate::TimeUnit {
+                self.unit()
+            }
+
+            fn timezone(&self) -> $crate::Timezone {
+                self.timezone()
+            }
+
+            fn with_unit(self, unit: $crate::TimeUnit) -> $crate::Result<Self> {
+                let value = $crate::Scalar::$name(self);
+                let count = value.temporal_count_at(unit).ok_or_else(|| {
+                    $crate::types::temporal::invalid_record("temporal unit conversion is not exact")
+                })?;
+                let count = <$count>::try_from(count).map_err(|_| {
+                    $crate::types::temporal::invalid_record(
+                        "converted temporal count exceeds its physical width",
+                    )
+                })?;
+                Self::new(count, unit, self.timezone())
+            }
+
+            fn with_timezone(self, timezone: $crate::Timezone) -> $crate::Result<Self> {
+                Self::new(self.count(), self.unit(), timezone)
+            }
+        }
+    };
+}
+
+pub(crate) use temporal_leaf;
 
 // The classic ISO 8601 spellings of the temporals, beside the temporals they
 // spell. Crate-private: the structured-text codecs and the scalar renderer are
@@ -1560,99 +1586,11 @@ mod iso_tests {
 }
 
 // ------------------------------------------------------------------------
-// Temporal datatype grammar.
+// The unit grammar every temporal spelling reads through; each family's
+// own keyword arm lives in its file.
 // ------------------------------------------------------------------------
 
 impl Parser<'_> {
-    pub(crate) fn parse_datetime64(&mut self, keyword: &str, depth: usize) -> Result<DataType> {
-        self.check_depth(depth)?;
-        let mut unit = TimeUnit::Microsecond;
-        let mut timezone = if keyword == "timestampltz" || keyword == "timestampwithtimezone" {
-            Timezone::UTC
-        } else {
-            Timezone::NAIVE
-        };
-
-        if let Some(close) = self.consume_opening() {
-            if self.peek_symbol() != Some(close) {
-                if let Some(precision) = self.peek_integer() {
-                    let precision_start = self.current_position();
-                    self.index += 1;
-                    unit = precision_to_unit(precision, precision_start)?;
-                } else if self.peek_word_is("none") {
-                    self.index += 1;
-                    timezone = Timezone::NAIVE;
-                } else if self.peek_word_is("some") {
-                    self.index += 1;
-                    let inner_close = self
-                        .consume_opening()
-                        .ok_or_else(|| self.error_here("expected Some(timezone)"))?;
-                    timezone = self.parse_timezone()?;
-                    self.expect_symbol(inner_close)?;
-                } else {
-                    let (parsed, unit_start) =
-                        self.parse_time_unit_span(Some(close), "datetime64 unit")?;
-                    unit = parsed;
-                    if !unit.is_arrow_time() {
-                        return Err(self.error_at(
-                            unit_start,
-                            "datetime64 requires a temporal resolution unit",
-                        ));
-                    }
-                }
-
-                if self.consume_separator() {
-                    self.consume_label("timezone");
-                    if self.peek_word_is("none") {
-                        self.index += 1;
-                        timezone = Timezone::NAIVE;
-                    } else if self.peek_word_is("some") {
-                        self.index += 1;
-                        let inner_close = self
-                            .consume_opening()
-                            .ok_or_else(|| self.error_here("expected Some(timezone)"))?;
-                        timezone = self.parse_timezone()?;
-                        self.expect_symbol(inner_close)?;
-                    } else {
-                        timezone = self.parse_timezone()?;
-                    }
-                }
-            }
-            self.expect_symbol(close)?;
-        }
-
-        if self.consume_word("with") {
-            self.expect_word("time")?;
-            self.expect_word("zone")?;
-            timezone = Timezone::UTC;
-        } else if self.consume_word("without") {
-            self.expect_word("time")?;
-            self.expect_word("zone")?;
-            timezone = Timezone::NAIVE;
-        }
-
-        DataType::datetime64(unit, timezone)
-    }
-
-    pub(crate) fn parse_sql_time(&mut self, depth: usize) -> Result<DataType> {
-        self.check_depth(depth)?;
-        if self.peek_opening().is_none() {
-            return DataType::time(TimeUnit::Microsecond);
-        }
-        let close = self
-            .consume_opening()
-            .ok_or_else(|| self.error_here("expected time unit"))?;
-        let (unit, unit_start) = if let Some(precision) = self.peek_integer() {
-            let start = self.current_position();
-            self.index += 1;
-            (precision_to_unit(precision, start)?, start)
-        } else {
-            self.parse_time_unit_span(Some(close), "time unit")?
-        };
-        self.expect_symbol(close)?;
-        DataType::time(unit).map_err(|error| self.error_at(unit_start, format_smolstr!("{error}")))
-    }
-
     pub(crate) fn parse_required_time_unit(&mut self, depth: usize) -> Result<(TimeUnit, usize)> {
         self.check_depth(depth)?;
         let close = self
@@ -1664,37 +1602,6 @@ impl Parser<'_> {
         }
         self.expect_symbol(close)?;
         Ok((unit, unit_start))
-    }
-
-    pub(crate) fn parse_interval_unit(&mut self, depth: usize) -> Result<TimeUnit> {
-        self.check_depth(depth)?;
-        let (unit, unit_start, sql_style) = if self
-            .tokens
-            .get(self.index)
-            .is_none_or(|_| self.is_time_unit_boundary(self.index, None))
-        {
-            (TimeUnit::MonthDayNano, self.current_position(), false)
-        } else if let Some(close) = self.consume_opening() {
-            let (unit, unit_start) = self.parse_time_unit_span(Some(close), "interval unit")?;
-            self.expect_symbol(close)?;
-            (unit, unit_start, false)
-        } else {
-            let (unit, unit_start) = self.parse_time_unit_span(None, "interval unit")?;
-            (unit, unit_start, true)
-        };
-        // In SQL, bare `INTERVAL DAY` names the day-time interval family;
-        // parenthesized `interval(day)` remains the scalar Date32 unit and is
-        // rejected below rather than contextually reinterpreted.
-        let unit = if sql_style && unit == TimeUnit::Day {
-            TimeUnit::DayTime
-        } else {
-            unit
-        };
-        if unit.is_interval() {
-            Ok(unit)
-        } else {
-            Err(self.error_at(unit_start, "interval requires an interval layout"))
-        }
     }
 
     pub(crate) fn parse_time_unit_span(
@@ -1817,29 +1724,22 @@ impl Parser<'_> {
         }
     }
 }
-/// Width-accurate temporal values with explicit units and zones.
-///
-/// ```
-/// use yggdryl::{Scalar, TemporalFamily, TimeUnit, Timezone};
-///
-/// let day = Scalar::from_date(20_000, TimeUnit::Day, Timezone::NAIVE)?;
-/// let at = Scalar::from_datetime(1, TimeUnit::Microsecond, Timezone::UTC)?;
-/// assert_eq!(day.as_date32().map(|(count, ..)| count), Some(20_000));
-/// assert_eq!(day.temporal_family(), Some(TemporalFamily::Date));
-/// assert_eq!(at.temporal_family(), Some(TemporalFamily::DateTime));
-/// assert_eq!(at.temporal_unit(), Some(TimeUnit::Microsecond));
-/// assert_eq!(at.temporal_timezone(), Some(Timezone::UTC));
-/// # Ok::<(), yggdryl::Error>(())
-/// ```
-pub(crate) mod scalars {
-    use std::fmt;
 
+/// What every temporal value answers, and the readings that cross the
+/// families: the family, the unit, the zone and the count of any temporal,
+/// its classic text both ways, and the arithmetic over two of them.
+pub(crate) mod scalars {
     use crate::types::arithmetic::{Arithmetic, invalid_binary};
+    use crate::types::date::DateType;
+    use crate::types::datetime::DateTimeType;
     use crate::types::decimal::exact_value_parts;
+    use crate::types::duration::DurationType;
+    use crate::types::time::TimeType;
     use crate::types::value::{ValidationFailure, expected};
-    use crate::{DataType, Error, Result, Scalar, TimeUnit, Timezone, Value, i256};
-    use serde::{Deserialize, Serialize};
-    use smol_str::{SmolStr, format_smolstr};
+    use crate::{DataType, Error, Result, Scalar, TimeUnit, Timezone, i256};
+    use smol_str::format_smolstr;
+
+    use super::{invalid_record, invalid_record_text};
 
     /// Operations shared by every temporal representation.
     pub trait TemporalValue: crate::Value {
@@ -1858,295 +1758,6 @@ pub(crate) mod scalars {
         fn with_unit(self, unit: TimeUnit) -> Result<Self>;
         /// Restate this value with another valid timezone marker.
         fn with_timezone(self, timezone: Timezone) -> Result<Self>;
-    }
-
-    fn invalid_temporal_leaf(reason: &'static str) -> Error {
-        Error::InvalidRecord {
-            path: SmolStr::new_static("$"),
-            reason: SmolStr::new_static(reason),
-        }
-    }
-
-    macro_rules! temporal_leaf {
-        ($name:ident, $count:ty, $valid:expr, $reason:literal) => {
-            #[doc = concat!("One exact `", stringify!($name), "` count, unit, and timezone.")]
-            #[derive(
-                Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
-            )]
-            pub struct $name {
-                count: $count,
-                unit: TimeUnit,
-                timezone: Timezone,
-            }
-
-            impl $name {
-                /// Validate and construct this exact temporal representation.
-                pub fn new(count: $count, unit: TimeUnit, timezone: Timezone) -> Result<Self> {
-                    if !$valid(unit, timezone) {
-                        return Err(invalid_temporal_leaf($reason));
-                    }
-                    Ok(Self {
-                        count,
-                        unit,
-                        timezone,
-                    })
-                }
-
-                /// Return the stored count.
-                pub const fn count(&self) -> $count {
-                    self.count
-                }
-
-                /// Return the count's unit.
-                pub const fn unit(&self) -> TimeUnit {
-                    self.unit
-                }
-
-                /// Return the explicit timezone marker.
-                pub const fn timezone(&self) -> Timezone {
-                    self.timezone
-                }
-            }
-
-            impl fmt::Display for $name {
-                fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    write!(formatter, "{}@{}[{}]", self.count, self.unit, self.timezone)
-                }
-            }
-        };
-    }
-
-    temporal_leaf!(
-        Date32,
-        i32,
-        |unit: TimeUnit, timezone: Timezone| unit == TimeUnit::Day && timezone.is_naive(),
-        "Date32 requires day units and the NAIVE timezone"
-    );
-    temporal_leaf!(
-        Date64,
-        i64,
-        |unit: TimeUnit, timezone: Timezone| unit == TimeUnit::Millisecond && timezone.is_naive(),
-        "Date64 requires millisecond units and the NAIVE timezone"
-    );
-    temporal_leaf!(
-        Time32,
-        i32,
-        |unit: TimeUnit, timezone: Timezone| matches!(
-            unit,
-            TimeUnit::Second | TimeUnit::Millisecond
-        ) && timezone.is_naive(),
-        "Time32 requires second or millisecond units and the NAIVE timezone"
-    );
-    temporal_leaf!(
-        Time64,
-        i64,
-        |unit: TimeUnit, timezone: Timezone| matches!(
-            unit,
-            TimeUnit::Microsecond | TimeUnit::Nanosecond
-        ) && timezone.is_naive(),
-        "Time64 requires microsecond or nanosecond units and the NAIVE timezone"
-    );
-    temporal_leaf!(
-        DateTime64,
-        i64,
-        |unit: TimeUnit, _timezone: Timezone| unit.is_arrow_time(),
-        "DateTime64 requires an Arrow clock resolution"
-    );
-    temporal_leaf!(
-        Duration32,
-        i32,
-        |unit: TimeUnit, timezone: Timezone| unit.is_temporal() && timezone.is_naive(),
-        "Duration32 requires a fixed temporal unit and the NAIVE timezone"
-    );
-    temporal_leaf!(
-        Duration64,
-        i64,
-        |unit: TimeUnit, timezone: Timezone| unit.is_temporal() && timezone.is_naive(),
-        "Duration64 requires a fixed temporal unit and the NAIVE timezone"
-    );
-
-    const _: () = assert!(std::mem::size_of::<DateTime64>() == 16);
-
-    /// One Arrow interval represented without losing any of its three layouts.
-    #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-    pub struct Interval {
-        months: i32,
-        days: i32,
-        nanoseconds: i64,
-        unit: TimeUnit,
-    }
-
-    impl<'de> Deserialize<'de> for Interval {
-        fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            #[derive(Deserialize)]
-            struct Wire {
-                months: i32,
-                days: i32,
-                nanoseconds: i64,
-                unit: TimeUnit,
-            }
-
-            let value = Wire::deserialize(deserializer)?;
-            Self::new(value.months, value.days, value.nanoseconds, value.unit)
-                .map_err(serde::de::Error::custom)
-        }
-    }
-
-    impl Interval {
-        /// Construct an interval, rejecting fields the selected layout cannot hold.
-        pub fn new(months: i32, days: i32, nanoseconds: i64, unit: TimeUnit) -> Result<Self> {
-            let valid = match unit {
-                TimeUnit::YearMonth => days == 0 && nanoseconds == 0,
-                TimeUnit::DayTime => {
-                    months == 0
-                        && nanoseconds % 1_000_000 == 0
-                        && i32::try_from(nanoseconds / 1_000_000).is_ok()
-                }
-                TimeUnit::MonthDayNano => true,
-                _ => false,
-            };
-            if !valid {
-                return Err(invalid_temporal_leaf(
-                    "Interval components do not fit the selected layout",
-                ));
-            }
-            Ok(Self {
-                months,
-                days,
-                nanoseconds,
-                unit,
-            })
-        }
-
-        /// Return the month component.
-        pub const fn months(&self) -> i32 {
-            self.months
-        }
-
-        /// Return the day component.
-        pub const fn days(&self) -> i32 {
-            self.days
-        }
-
-        /// Return the nanosecond component.
-        pub const fn nanoseconds(&self) -> i64 {
-            self.nanoseconds
-        }
-
-        /// Return the physical interval layout.
-        pub const fn unit(&self) -> TimeUnit {
-            self.unit
-        }
-    }
-
-    impl fmt::Display for Interval {
-        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(
-                formatter,
-                "{}mo:{}d:{}ns@{}",
-                self.months, self.days, self.nanoseconds, self.unit
-            )
-        }
-    }
-
-    macro_rules! temporal_value {
-        ($leaf:ident, $id:ident) => {
-            impl Value for $leaf {
-                fn dtype(&self) -> Result<DataType> {
-                    Scalar::$id(*self).dtype()
-                }
-
-                fn into_scalar(self) -> Scalar {
-                    Scalar::$id(self)
-                }
-
-                fn from_scalar(value: &Scalar) -> Option<&Self> {
-                    match value {
-                        Scalar::$id(value) => Some(value),
-                        _ => None,
-                    }
-                }
-            }
-        };
-        ($leaf:ident, $family:ident, $bits:literal, $count:ty) => {
-            temporal_value!($leaf, $leaf);
-
-            impl TemporalValue for $leaf {
-                const FAMILY: TemporalFamily = TemporalFamily::$family;
-                const BIT_WIDTH: u8 = $bits;
-
-                fn count(&self) -> i64 {
-                    i64::from(self.count())
-                }
-
-                fn unit(&self) -> TimeUnit {
-                    self.unit()
-                }
-
-                fn timezone(&self) -> Timezone {
-                    self.timezone()
-                }
-
-                fn with_unit(self, unit: TimeUnit) -> Result<Self> {
-                    let value = Scalar::$leaf(self);
-                    let count = value.temporal_count_at(unit).ok_or_else(|| {
-                        invalid_temporal_leaf("temporal unit conversion is not exact")
-                    })?;
-                    let count = <$count>::try_from(count).map_err(|_| {
-                        invalid_temporal_leaf("converted temporal count exceeds its physical width")
-                    })?;
-                    Self::new(count, unit, self.timezone())
-                }
-
-                fn with_timezone(self, timezone: Timezone) -> Result<Self> {
-                    Self::new(self.count(), self.unit(), timezone)
-                }
-            }
-        };
-    }
-
-    // The leaf, its `Scalar` variant and its `DataTypeId` share one name.
-    temporal_value!(Date32, Date, 32, i32);
-    temporal_value!(Date64, Date, 64, i64);
-    temporal_value!(Time32, Time, 32, i32);
-    temporal_value!(Time64, Time, 64, i64);
-    temporal_value!(DateTime64, DateTime, 64, i64);
-    temporal_value!(Duration32, Duration, 32, i32);
-    temporal_value!(Duration64, Duration, 64, i64);
-    temporal_value!(Interval, Interval);
-
-    impl TemporalValue for Interval {
-        const FAMILY: TemporalFamily = TemporalFamily::Interval;
-        const BIT_WIDTH: u8 = 128;
-
-        fn count(&self) -> i64 {
-            self.nanoseconds()
-        }
-
-        fn unit(&self) -> TimeUnit {
-            self.unit()
-        }
-
-        fn timezone(&self) -> Timezone {
-            Timezone::NAIVE
-        }
-
-        fn with_unit(self, unit: TimeUnit) -> Result<Self> {
-            Self::new(self.months(), self.days(), self.nanoseconds(), unit)
-        }
-
-        fn with_timezone(self, timezone: Timezone) -> Result<Self> {
-            if timezone.is_naive() {
-                Ok(self)
-            } else {
-                Err(invalid_temporal_leaf(
-                    "Interval requires the NAIVE timezone",
-                ))
-            }
-        }
     }
 
     /// One logical temporal family, independent of its physical width.
@@ -2178,202 +1789,6 @@ pub(crate) mod scalars {
     }
 
     impl Scalar {
-        /// Build the exact date width selected by its unit.
-        pub fn from_date(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self> {
-            match unit {
-                TimeUnit::Day => Self::date32_in(narrow_i32(count, "date32")?, unit, zone),
-                TimeUnit::Millisecond => Self::date64_in(count, unit, zone),
-                _ => Err(invalid("date unit must be day or millisecond")),
-            }
-        }
-
-        /// Build the exact time-of-day width selected by its unit.
-        pub fn from_time(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self> {
-            match unit {
-                TimeUnit::Second | TimeUnit::Millisecond => {
-                    Self::time32(narrow_i32(count, "time32")?, unit, zone)
-                }
-                TimeUnit::Microsecond | TimeUnit::Nanosecond => Self::time64(count, unit, zone),
-                _ => Err(invalid(
-                    "time unit must be second, millisecond, microsecond, or nanosecond",
-                )),
-            }
-        }
-
-        /// Build a 64-bit epoch or wall-clock datetime.
-        pub fn from_datetime(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self> {
-            Self::datetime64(count, unit, zone)
-        }
-
-        /// Build the narrowest duration width that holds `count`.
-        pub fn from_duration(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self> {
-            match i32::try_from(count) {
-                Ok(count) => Self::duration32_in(count, unit, zone),
-                Err(_) => Self::duration64_in(count, unit, zone),
-            }
-        }
-
-        /// Build a Date32 day count.
-        pub const fn date32(days: i32) -> Self {
-            Self::Date32(Date32 {
-                count: days,
-                unit: TimeUnit::Day,
-                timezone: Timezone::NAIVE,
-            })
-        }
-
-        /// Build a Date32 after validating its unit and zone.
-        pub fn date32_in(days: i32, unit: TimeUnit, zone: Timezone) -> Result<Self> {
-            require(unit == TimeUnit::Day, "date32 unit must be day")?;
-            require(zone.is_naive(), "date32 timezone must be NAIVE")?;
-            Date32::new(days, unit, zone).map(Self::Date32)
-        }
-
-        /// Build a Date64 millisecond count.
-        pub const fn date64(milliseconds: i64) -> Self {
-            Self::Date64(Date64 {
-                count: milliseconds,
-                unit: TimeUnit::Millisecond,
-                timezone: Timezone::NAIVE,
-            })
-        }
-
-        /// Build a Date64 after validating its unit and zone.
-        pub fn date64_in(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self> {
-            require(
-                unit == TimeUnit::Millisecond,
-                "date64 unit must be millisecond",
-            )?;
-            require(zone.is_naive(), "date64 timezone must be NAIVE")?;
-            Date64::new(count, unit, zone).map(Self::Date64)
-        }
-
-        /// Build a 32-bit time of day.
-        pub fn time32(count: i32, unit: TimeUnit, zone: Timezone) -> Result<Self> {
-            require(
-                matches!(unit, TimeUnit::Second | TimeUnit::Millisecond),
-                "time32 unit must be second or millisecond",
-            )?;
-            require(
-                zone.is_naive(),
-                "time32 timezone must be NAIVE because its datatype has no timezone",
-            )?;
-            Time32::new(count, unit, zone).map(Self::Time32)
-        }
-
-        /// Build a 64-bit time of day.
-        pub fn time64(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self> {
-            require(
-                matches!(unit, TimeUnit::Microsecond | TimeUnit::Nanosecond),
-                "time64 unit must be microsecond or nanosecond",
-            )?;
-            require(
-                zone.is_naive(),
-                "time64 timezone must be NAIVE because its datatype has no timezone",
-            )?;
-            Time64::new(count, unit, zone).map(Self::Time64)
-        }
-
-        /// Build an instant or wall-clock datetime at 64-bit width.
-        pub fn datetime64(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self> {
-            require(
-                unit.is_arrow_time(),
-                "datetime64 requires an Arrow time unit",
-            )?;
-            DateTime64::new(count, unit, zone).map(Self::DateTime64)
-        }
-
-        /// Parse a timezone and build a 64-bit datetime.
-        pub fn datetime64_in(count: i64, unit: TimeUnit, zone: &str) -> Result<Self> {
-            Self::datetime64(count, unit, Timezone::from_str(zone)?)
-        }
-
-        /// Build a 32-bit duration.
-        pub fn duration32(count: i32, unit: TimeUnit) -> Result<Self> {
-            Self::duration32_in(count, unit, Timezone::NAIVE)
-        }
-
-        /// Build a 32-bit duration after validating its explicit timezone marker.
-        pub fn duration32_in(count: i32, unit: TimeUnit, zone: Timezone) -> Result<Self> {
-            require(
-                unit.is_temporal(),
-                "duration32 requires a fixed temporal unit",
-            )?;
-            require(zone.is_naive(), "duration32 timezone must be NAIVE")?;
-            Duration32::new(count, unit, zone).map(Self::Duration32)
-        }
-
-        /// Build a 64-bit duration.
-        pub fn duration64(count: i64, unit: TimeUnit) -> Result<Self> {
-            Self::duration64_in(count, unit, Timezone::NAIVE)
-        }
-
-        /// Build a 64-bit duration after validating its explicit timezone marker.
-        pub fn duration64_in(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self> {
-            require(
-                unit.is_temporal(),
-                "duration64 requires a fixed temporal unit",
-            )?;
-            require(zone.is_naive(), "duration64 timezone must be NAIVE")?;
-            Duration64::new(count, unit, zone).map(Self::Duration64)
-        }
-
-        /// Return Date32's count, unit, and zone.
-        pub const fn as_date32(&self) -> Option<(i32, TimeUnit, &Timezone)> {
-            match self {
-                Self::Date32(value) => Some((value.count(), value.unit(), &value.timezone)),
-                _ => None,
-            }
-        }
-
-        /// Return Date64's count, unit, and zone.
-        pub const fn as_date64(&self) -> Option<(i64, TimeUnit, &Timezone)> {
-            match self {
-                Self::Date64(value) => Some((value.count(), value.unit(), &value.timezone)),
-                _ => None,
-            }
-        }
-
-        /// Return Time32's count, unit, and zone.
-        pub const fn as_time32(&self) -> Option<(i32, TimeUnit, &Timezone)> {
-            match self {
-                Self::Time32(value) => Some((value.count(), value.unit(), &value.timezone)),
-                _ => None,
-            }
-        }
-
-        /// Return Time64's count, unit, and zone.
-        pub const fn as_time64(&self) -> Option<(i64, TimeUnit, &Timezone)> {
-            match self {
-                Self::Time64(value) => Some((value.count(), value.unit(), &value.timezone)),
-                _ => None,
-            }
-        }
-
-        /// Return DateTime64's count, unit, and zone.
-        pub const fn as_datetime64(&self) -> Option<(i64, TimeUnit, &Timezone)> {
-            match self {
-                Self::DateTime64(value) => Some((value.count(), value.unit(), &value.timezone)),
-                _ => None,
-            }
-        }
-
-        /// Return Duration32's count, unit, and zone.
-        pub const fn as_duration32(&self) -> Option<(i32, TimeUnit, &Timezone)> {
-            match self {
-                Self::Duration32(value) => Some((value.count(), value.unit(), &value.timezone)),
-                _ => None,
-            }
-        }
-
-        /// Return Duration64's count, unit, and zone.
-        pub const fn as_duration64(&self) -> Option<(i64, TimeUnit, &Timezone)> {
-            match self {
-                Self::Duration64(value) => Some((value.count(), value.unit(), &value.timezone)),
-                _ => None,
-            }
-        }
-
         /// Return the logical family of any temporal, or `None` for a
         /// non-temporal.
         pub const fn temporal_family(&self) -> Option<TemporalFamily> {
@@ -2447,7 +1862,8 @@ pub(crate) mod scalars {
         /// the spelling names is restated in the declared one and has to land
         /// exactly - `10:00:00.500` is no `time32(second)` - and the zone is the
         /// datatype's: a zoned datetime wants an offset in the text, while a
-        /// `NAIVE` datetime refuses one.
+        /// `NAIVE` datetime refuses one. An interval has no classic spelling, so
+        /// it is no target here.
         ///
         /// # Errors
         ///
@@ -2455,49 +1871,41 @@ pub(crate) mod scalars {
         /// when the count does not fit the declared unit and width.
         pub(crate) fn from_temporal_text(dtype: &DataType, text: &str) -> Result<Self> {
             match dtype {
-                DataType::Date32 => Ok(Self::date32(crate::types::temporal::parse_date(text)?)),
-                DataType::Date64 => i64::from(crate::types::temporal::parse_date(text)?)
+                DataType::Date(DateType::Date32) => Ok(Self::date32(super::parse_date(text)?)),
+                DataType::Date(DateType::Date64) => i64::from(super::parse_date(text)?)
                     .checked_mul(86_400_000)
                     .map(Self::date64)
-                    .ok_or_else(|| invalid("date64 count must fit signed 64 bits")),
-                DataType::Time32(unit) => {
+                    .ok_or_else(|| invalid_record("date64 count must fit signed 64 bits")),
+                DataType::Time(TimeType::Time32(unit)) => {
                     let count = restated(clock_of_day(text)?, *unit, "time32")?;
                     Self::time32(narrow_i32(count, "time32")?, *unit, Timezone::NAIVE)
                 }
-                DataType::Time64(unit) => {
+                DataType::Time(TimeType::Time64(unit)) => {
                     let count = restated(clock_of_day(text)?, *unit, "time64")?;
                     Self::time64(count, *unit, Timezone::NAIVE)
                 }
-                DataType::DateTime64 { unit, timezone } if timezone.is_naive() => {
-                    let count = restated(
-                        crate::types::temporal::parse_datetime(text)?,
-                        *unit,
-                        "datetime64",
-                    )?;
+                DataType::DateTime(DateTimeType::DateTime64 { unit, timezone })
+                    if timezone.is_naive() =>
+                {
+                    let count = restated(super::parse_datetime(text)?, *unit, "datetime64")?;
                     Self::datetime64(count, *unit, Timezone::NAIVE)
                 }
-                DataType::DateTime64 { unit, timezone } => {
-                    let (count, source, _) = crate::types::temporal::parse_timestamp(text)?;
+                DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
+                    let (count, source, _) = super::parse_timestamp(text)?;
                     let count = restated((count, source), *unit, "datetime64")?;
                     Self::datetime64(count, *unit, *timezone)
                 }
-                DataType::Duration32(unit) => {
-                    let count = restated(
-                        crate::types::temporal::parse_duration(text)?,
-                        *unit,
-                        "duration32",
-                    )?;
+                DataType::Duration(DurationType::Duration32(unit)) => {
+                    let count = restated(super::parse_duration(text)?, *unit, "duration32")?;
                     Self::duration32(narrow_i32(count, "duration32")?, *unit)
                 }
-                DataType::Duration64(unit) => {
-                    let count = restated(
-                        crate::types::temporal::parse_duration(text)?,
-                        *unit,
-                        "duration64",
-                    )?;
+                DataType::Duration(DurationType::Duration64(unit)) => {
+                    let count = restated(super::parse_duration(text)?, *unit, "duration64")?;
                     Self::duration64(count, *unit)
                 }
-                other => Err(invalid(format!("{other} holds no temporal text"))),
+                other => Err(invalid_record_text(format_smolstr!(
+                    "{other} holds no temporal text"
+                ))),
             }
         }
 
@@ -2579,7 +1987,7 @@ pub(crate) mod scalars {
                 .checked_sub(6)
                 .is_some_and(|start| matches!(text.as_bytes()[start], b'+' | b'-'));
         if zoned {
-            return Err(invalid(
+            return Err(invalid_record(
                 "time-of-day cannot carry a timezone; use DateTime64 for a zoned instant",
             ));
         }
@@ -2603,22 +2011,24 @@ pub(crate) mod scalars {
                 .flatten()
         };
         restate(i128::from(count))
-            .ok_or_else(|| invalid(format!("{kind} count is no exact {unit}")))
+            .ok_or_else(|| invalid_record_text(format_smolstr!("{kind} count is no exact {unit}")))
     }
 
-    fn narrow_i32(count: i64, kind: &'static str) -> Result<i32> {
-        i32::try_from(count).map_err(|_| invalid(format!("{kind} count must fit signed 32 bits")))
+    /// Narrow a count to the 32-bit widths, naming the width that refused it.
+    pub(crate) fn narrow_i32(count: i64, kind: &'static str) -> Result<i32> {
+        i32::try_from(count).map_err(|_| {
+            invalid_record_text(format_smolstr!("{kind} count must fit signed 32 bits"))
+        })
     }
 
-    fn invalid(reason: impl Into<smol_str::SmolStr>) -> Error {
-        Error::InvalidRecord {
-            path: "$".into(),
-            reason: reason.into(),
+    /// The one refusal a value constructor states for a unit or zone its
+    /// width does not carry.
+    pub(crate) fn require(valid: bool, reason: &'static str) -> Result<()> {
+        if valid {
+            Ok(())
+        } else {
+            Err(invalid_record(reason))
         }
-    }
-
-    fn require(valid: bool, reason: &'static str) -> Result<()> {
-        if valid { Ok(()) } else { Err(invalid(reason)) }
     }
 
     /// Nanoseconds in one count of a fixed-length unit; an interval layout has none.
@@ -2690,21 +2100,25 @@ pub(crate) mod scalars {
         pub(crate) dtype: DataType,
     }
 
+    /// The family, unit, zone and datatype of one temporal value; an interval
+    /// takes no arithmetic and answers `None`.
     pub(crate) fn temporal_value_parts(value: &Scalar) -> Option<TemporalParts> {
         let family = value.temporal_family()?;
         let unit = value.temporal_unit()?;
         let zone = value.temporal_timezone()?;
+        // The value already proved its unit and zone, so the datatype is
+        // written as it is rather than checked again.
         let dtype = match value {
-            Scalar::Date32(_) => DataType::Date32,
-            Scalar::Date64(_) => DataType::Date64,
-            Scalar::Time32(_) => DataType::Time32(unit),
-            Scalar::Time64(_) => DataType::Time64(unit),
-            Scalar::DateTime64(_) => DataType::DateTime64 {
+            Scalar::Date32(_) => DataType::date32(),
+            Scalar::Date64(_) => DataType::date64(),
+            Scalar::Time32(_) => DataType::Time(TimeType::Time32(unit)),
+            Scalar::Time64(_) => DataType::Time(TimeType::Time64(unit)),
+            Scalar::DateTime64(_) => DataType::DateTime(DateTimeType::DateTime64 {
                 unit,
                 timezone: zone,
-            },
-            Scalar::Duration32(_) => DataType::Duration32(unit),
-            Scalar::Duration64(_) => DataType::Duration64(unit),
+            }),
+            Scalar::Duration32(_) => DataType::Duration(DurationType::Duration32(unit)),
+            Scalar::Duration64(_) => DataType::Duration(DurationType::Duration64(unit)),
             _ => return None,
         };
         Some(TemporalParts {
@@ -2717,13 +2131,10 @@ pub(crate) mod scalars {
 
     pub(crate) fn temporal_target(dtype: &DataType) -> Option<(TemporalFamily, TimeUnit)> {
         match dtype {
-            DataType::Date32 => Some((TemporalFamily::Date, TimeUnit::Day)),
-            DataType::Date64 => Some((TemporalFamily::Date, TimeUnit::Millisecond)),
-            DataType::Time32(unit) | DataType::Time64(unit) => Some((TemporalFamily::Time, *unit)),
-            DataType::DateTime64 { unit, .. } => Some((TemporalFamily::DateTime, *unit)),
-            DataType::Duration32(unit) | DataType::Duration64(unit) => {
-                Some((TemporalFamily::Duration, *unit))
-            }
+            DataType::Date(leaf) => Some((TemporalFamily::Date, leaf.unit())),
+            DataType::Time(leaf) => Some((TemporalFamily::Time, leaf.unit())),
+            DataType::DateTime(leaf) => Some((TemporalFamily::DateTime, leaf.unit())),
+            DataType::Duration(leaf) => Some((TemporalFamily::Duration, leaf.unit())),
             _ => None,
         }
     }
@@ -2767,8 +2178,13 @@ pub(crate) mod scalars {
                 Arithmetic::Add | Arithmetic::Sub,
             ) => {
                 let unit = finer_unit(left_parts.unit, right_parts.unit);
-                let wide = matches!(left_parts.dtype, DataType::Duration64(_))
-                    || matches!(right_parts.dtype, DataType::Duration64(_));
+                let wide = matches!(
+                    left_parts.dtype,
+                    DataType::Duration(DurationType::Duration64(_))
+                ) || matches!(
+                    right_parts.dtype,
+                    DataType::Duration(DurationType::Duration64(_))
+                );
                 if wide {
                     DataType::duration64(unit)
                 } else {
@@ -3004,39 +2420,33 @@ pub(crate) mod scalars {
     }
 
     fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar> {
+        let narrowed = |kind: &'static str| {
+            i32::try_from(count).map_err(|_| Error::ArithmeticOverflow {
+                operation: "temporal arithmetic",
+                kind,
+            })
+        };
         match dtype {
-            DataType::Date32 => Scalar::date32_in(
-                i32::try_from(count).map_err(|_| Error::ArithmeticOverflow {
-                    operation: "temporal arithmetic",
-                    kind: "date32",
-                })?,
-                unit,
-                Timezone::NAIVE,
-            ),
-            DataType::Date64 => Scalar::date64_in(count, unit, Timezone::NAIVE),
-            DataType::Time32(expected) if *expected == unit => Scalar::time32(
-                i32::try_from(count).map_err(|_| Error::ArithmeticOverflow {
-                    operation: "temporal arithmetic",
-                    kind: "time32",
-                })?,
-                unit,
-                Timezone::NAIVE,
-            ),
-            DataType::Time64(expected) if *expected == unit => {
+            DataType::Date(DateType::Date32) => {
+                Scalar::date32_in(narrowed("date32")?, unit, Timezone::NAIVE)
+            }
+            DataType::Date(DateType::Date64) => Scalar::date64_in(count, unit, Timezone::NAIVE),
+            DataType::Time(TimeType::Time32(expected)) if *expected == unit => {
+                Scalar::time32(narrowed("time32")?, unit, Timezone::NAIVE)
+            }
+            DataType::Time(TimeType::Time64(expected)) if *expected == unit => {
                 Scalar::time64(count, unit, Timezone::NAIVE)
             }
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: expected,
                 timezone,
-            } if *expected == unit => Scalar::datetime64(count, unit, *timezone),
-            DataType::Duration32(expected) if *expected == unit => Scalar::duration32(
-                i32::try_from(count).map_err(|_| Error::ArithmeticOverflow {
-                    operation: "temporal arithmetic",
-                    kind: "duration32",
-                })?,
-                unit,
-            ),
-            DataType::Duration64(expected) if *expected == unit => Scalar::duration64(count, unit),
+            }) if *expected == unit => Scalar::datetime64(count, unit, *timezone),
+            DataType::Duration(DurationType::Duration32(expected)) if *expected == unit => {
+                Scalar::duration32(narrowed("duration32")?, unit)
+            }
+            DataType::Duration(DurationType::Duration64(expected)) if *expected == unit => {
+                Scalar::duration64(count, unit)
+            }
             _ => Err(Error::InvalidArithmetic {
                 operation: "temporal arithmetic",
                 left: temporal_kind_name(dtype),
@@ -3046,141 +2456,15 @@ pub(crate) mod scalars {
         }
     }
 
+    /// The name a refusal states a temporal result under: the leaf's own,
+    /// or `temporal` for a datatype the arithmetic does not answer.
     const fn temporal_kind_name(dtype: &DataType) -> &'static str {
         match dtype {
-            DataType::Date32 => "date32",
-            DataType::Date64 => "date64",
-            DataType::Time32(_) => "time32",
-            DataType::Time64(_) => "time64",
-            DataType::DateTime64 { .. } => "datetime64",
-            DataType::Duration32(_) => "duration32",
-            DataType::Duration64(_) => "duration64",
+            DataType::Date(_)
+            | DataType::Time(_)
+            | DataType::DateTime(_)
+            | DataType::Duration(_) => dtype.name(),
             _ => "temporal",
         }
     }
 }
-
-// ------------------------------------------------------------------------
-// Arrow projection: the calendar, clock, and elapsed-count storages.
-// ------------------------------------------------------------------------
-
-mod arrow {
-    use std::sync::Arc;
-
-    use arrow_schema::DataType as ArrowDataType;
-    use smol_str::{SmolStr, format_smolstr};
-
-    use super::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
-    use crate::types::invalid;
-    use crate::{DataType, Result, TimeUnit, Timezone};
-
-    /// The Arrow storage one temporal datatype lays out.
-    ///
-    /// A unit Arrow cannot state is refused here rather than silently widened:
-    /// the datatype is public, so `time32(nanosecond)` can reach this boundary
-    /// and this is where it stops.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the unit is not one the width carries, or when the
-    /// datatype belongs to another family.
-    pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
-        Ok(match dtype {
-            DataType::DateTime64 { unit, timezone } => ArrowDataType::Timestamp(
-                unit.into_arrow_time()?,
-                (!timezone.is_naive()).then(|| Arc::<str>::from(timezone.as_smol_str().clone())),
-            ),
-            DataType::Date32 => ArrowDataType::Date32,
-            DataType::Date64 => ArrowDataType::Date64,
-            DataType::Time32(unit) => {
-                validate_time32_unit(*unit)?;
-                ArrowDataType::Time32(unit.into_arrow_time()?)
-            }
-            DataType::Time64(unit) => {
-                validate_time64_unit(*unit)?;
-                ArrowDataType::Time64(unit.into_arrow_time()?)
-            }
-            DataType::Duration32(unit) => {
-                validate_duration_unit("Duration32", *unit)?;
-                ArrowDataType::Duration(unit.into_arrow_time()?)
-            }
-            DataType::Duration64(unit) => {
-                validate_duration_unit("Duration64", *unit)?;
-                ArrowDataType::Duration(unit.into_arrow_time()?)
-            }
-            DataType::Interval(unit) => ArrowDataType::Interval(unit.into_arrow_interval()?),
-            other => {
-                return Err(invalid(
-                    "temporal",
-                    format_smolstr!("expected a temporal datatype, got {other}"),
-                ));
-            }
-        })
-    }
-
-    /// The same projection, consuming the zone name rather than cloning it.
-    ///
-    /// # Errors
-    ///
-    /// [`arrow_storage`] carries the rule.
-    pub(crate) fn into_arrow_storage(dtype: DataType) -> Result<ArrowDataType> {
-        match dtype {
-            DataType::DateTime64 { unit, timezone } => Ok(ArrowDataType::Timestamp(
-                unit.into_arrow_time()?,
-                (!timezone.is_naive()).then(|| Arc::<str>::from(timezone.into_smol_str())),
-            )),
-            other => arrow_storage(&other),
-        }
-    }
-
-    /// The temporal datatype one Arrow storage imports as.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the zone name is not one this crate canonicalizes,
-    /// when the unit is not one the width carries, or when the storage belongs
-    /// to another family.
-    pub(crate) fn from_arrow_storage(value: &ArrowDataType) -> Result<DataType> {
-        match value {
-            ArrowDataType::Timestamp(unit, timezone) => {
-                let timezone = timezone.as_ref().map_or(Ok(Timezone::NAIVE), |value| {
-                    Timezone::from_smol_str(SmolStr::from(Arc::clone(value)))
-                })?;
-                DataType::datetime64(TimeUnit::from_arrow_time(*unit), timezone)
-            }
-            ArrowDataType::Date32 => Ok(DataType::Date32),
-            ArrowDataType::Date64 => Ok(DataType::Date64),
-            ArrowDataType::Time32(unit) => DataType::time32(TimeUnit::from_arrow_time(*unit)),
-            ArrowDataType::Time64(unit) => DataType::time64(TimeUnit::from_arrow_time(*unit)),
-            ArrowDataType::Duration(unit) => DataType::duration64(TimeUnit::from_arrow_time(*unit)),
-            ArrowDataType::Interval(unit) => {
-                Ok(DataType::Interval(TimeUnit::from_arrow_interval(*unit)))
-            }
-            other => Err(invalid(
-                "temporal",
-                format_smolstr!("expected a temporal storage, got {other}"),
-            )),
-        }
-    }
-
-    /// The same import, consuming Arrow's shared zone name rather than cloning.
-    ///
-    /// # Errors
-    ///
-    /// [`from_arrow_storage`] carries the rule.
-    pub(crate) fn from_arrow_storage_owned(value: ArrowDataType) -> Result<DataType> {
-        match value {
-            ArrowDataType::Timestamp(unit, timezone) => {
-                let timezone = timezone.map_or(Ok(Timezone::NAIVE), |value| {
-                    Timezone::from_smol_str(SmolStr::from(value))
-                })?;
-                DataType::datetime64(TimeUnit::from_arrow_time(unit), timezone)
-            }
-            other => from_arrow_storage(&other),
-        }
-    }
-}
-
-pub(crate) use arrow::{
-    arrow_storage, from_arrow_storage, from_arrow_storage_owned, into_arrow_storage,
-};

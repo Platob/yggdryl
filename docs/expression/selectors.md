@@ -59,7 +59,7 @@
     assert_eq!(stored.fields()[2].get_metadata("transform:expression"), Some("size * 2"));
     // A call over plain columns is stored as the function and its sources.
     let year: Selector = "year(event) as year".parse()?;
-    let dated = DataType::from_fields([DataType::Date32.required_field("event")])?.required_field("rows");
+    let dated = DataType::from_fields([DataType::date32().required_field("event")])?.required_field("rows");
     let stored_year = year.into_field(&dated)?;
     assert_eq!(stored_year.fields()[0].get_metadata("transform:function"), Some("year"));
     assert_eq!(stored_year.fields()[0].get_metadata("transform:sources"), Some(r#"["event"]"#));

@@ -43,19 +43,21 @@ use smol_str::SmolStr;
 
 use super::boolean::Boolean;
 use super::bytes::Bytes;
+use super::date::{Date32, Date64};
+use super::datetime::DateTime64;
 use super::decimal::{Decimal32, Decimal64, Decimal128, Decimal256};
+use super::duration::{Duration32, Duration64};
 use super::floating::{Float16, Float32, Float64};
 use super::geospatial::{Geography, Geometry};
 use super::integer::{
     Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128,
     compare_integer_parts, integer_parts,
 };
+use super::interval::Interval;
 use super::mapping::{Map, Mapping};
 use super::string::Str;
 use super::temporal::scalars::temporal_key;
-use super::temporal::{
-    Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64,
-};
+use super::time::{Time32, Time64};
 use super::uuid::Uuid;
 use super::version::Version;
 use super::{
@@ -585,7 +587,7 @@ impl<'de> Deserialize<'de> for Scalar {
             DateTime64(Temporal64),
             Duration32(Temporal32),
             Duration64(Temporal64),
-            Interval(super::temporal::Interval),
+            Interval(super::interval::Interval),
             Sequence(Vec<Scalar>),
             Mapping(Vec<(Scalar, Scalar)>),
             Record(RecordEntries),
@@ -2083,7 +2085,7 @@ mod tests {
     /// enums fed, pinned at the values the two-level representation produced.
     #[test]
     fn hash_derived_stable_hashes_keep_their_pre_flattening_values() {
-        use crate::types::temporal::Interval;
+        use crate::types::interval::Interval;
         let interval = Interval::new(1, 2, 3_000_000, crate::TimeUnit::MonthDayNano).unwrap();
         for (name, value, expected) in [
             (

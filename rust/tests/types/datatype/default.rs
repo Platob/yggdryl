@@ -1,6 +1,7 @@
 use yggdryl::types::BytesType;
 use yggdryl::types::DecimalType;
 use yggdryl::types::SequenceType;
+use yggdryl::types::{DateTimeType, DurationType, IntervalType, TimeType};
 use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode};
 
 fn all_variants() -> Vec<DataType> {
@@ -19,19 +20,19 @@ fn all_variants() -> Vec<DataType> {
         DataType::Float16,
         DataType::Float32,
         DataType::Float64,
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        },
-        DataType::Date32,
-        DataType::Date64,
-        DataType::Time32(TimeUnit::Millisecond),
-        DataType::Time64(TimeUnit::Nanosecond),
-        DataType::Duration32(TimeUnit::Second),
-        DataType::Duration64(TimeUnit::Second),
-        DataType::Interval(TimeUnit::YearMonth),
-        DataType::Interval(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::MonthDayNano),
+        }),
+        DataType::date32(),
+        DataType::date64(),
+        DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
+        DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
+        DataType::Duration(DurationType::Duration32(TimeUnit::Second)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
         DataType::binary(),
         DataType::from_str("binary(16)").unwrap(),
         DataType::fixed_binary(3).unwrap(),
@@ -215,11 +216,11 @@ fn field_defaults_apply_physical_union_and_run_end_nulls() {
 #[test]
 fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
     for invalid in [
-        DataType::Time32(TimeUnit::Nanosecond),
-        DataType::Time64(TimeUnit::Millisecond),
-        DataType::Duration32(TimeUnit::DayTime),
-        DataType::Duration64(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::Second),
+        DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)),
+        DataType::Time(TimeType::Time64(TimeUnit::Millisecond)),
+        DataType::Duration(DurationType::Duration32(TimeUnit::DayTime)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::DayTime)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::Second)),
         DataType::Bytes(BytesType::FixedBinary(0)),
         DataType::Sequence(SequenceType::FixedSizeList(
             std::sync::Arc::new(Field::new("item", DataType::Int32, false)),

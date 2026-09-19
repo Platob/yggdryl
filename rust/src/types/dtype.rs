@@ -5,19 +5,23 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::types::date::DateType;
+use crate::types::datetime::DateTimeType;
 use crate::types::decimal::DecimalType;
+use crate::types::duration::DurationType;
 use crate::types::enums::EnumType;
+use crate::types::interval::IntervalType;
 use crate::types::mapping::MappingType;
 use crate::types::runend::RunEndEncodedType;
 use crate::types::sequence::SequenceType;
 use crate::types::structure::StructureType;
+use crate::types::time::TimeType;
 use crate::types::union::UnionFields;
 use crate::types::uuid::UuidType;
-use crate::{DataTypeId, DataTypeKind, Error, Field, Result, Scalar, TimeUnit, UnionMode};
+use crate::{DataTypeId, DataTypeKind, Error, Field, Result, Scalar, UnionMode};
 
 use super::decimal::validate_decimal;
 use super::geospatial::GeospatialParameters;
-use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 use crate::types::enums::validate_dictionary_key;
 use crate::types::mapping::validate_map_entries;
 use crate::types::runend::validate_run_ends;
@@ -66,27 +70,36 @@ pub enum DataType {
     Float32,
     /// IEEE 64-bit floating point.
     Float64,
-    /// A 64-bit datetime count with an explicit timezone marker.
-    DateTime64 {
-        /// The count's temporal resolution.
-        unit: TimeUnit,
-        /// An IANA zone, fixed offset, or [`crate::Timezone::NAIVE`].
-        timezone: crate::Timezone,
-    },
-    /// Days since the Unix epoch.
-    Date32,
-    /// Milliseconds since the Unix epoch representing whole days.
-    Date64,
-    /// 32-bit time of day; seconds and milliseconds are valid.
-    Time32(TimeUnit),
-    /// 64-bit time of day; microseconds and nanoseconds are valid.
-    Time64(TimeUnit),
-    /// 32-bit elapsed-time count.
-    Duration32(TimeUnit),
-    /// 64-bit elapsed-time count.
-    Duration64(TimeUnit),
-    /// Calendar interval.
-    Interval(TimeUnit),
+    /// An instant or a wall-clock reading: the whole datetime family.
+    ///
+    /// The leaf - a 64-bit count today - is [`DateTimeType`]'s business,
+    /// not this enum's. Every leaf carries one resolution and one zone, so
+    /// a reader asks [`DateTimeType::unit`] and [`DateTimeType::timezone`]
+    /// and never branches on the width.
+    DateTime(DateTimeType),
+    /// A calendar day: the whole date family.
+    ///
+    /// The leaf - a day count or the milliseconds of a midnight - is
+    /// [`DateType`]'s business, not this enum's. The unit is what the width
+    /// means, so a reader asks [`DateType::unit`].
+    Date(DateType),
+    /// A time of day: the whole time family.
+    ///
+    /// The leaf - which width holds the count - is [`TimeType`]'s business,
+    /// not this enum's. Every leaf carries one resolution, so a reader asks
+    /// [`TimeType::unit`] and never branches on the width.
+    Time(TimeType),
+    /// An elapsed count: the whole duration family.
+    ///
+    /// The leaf - which width holds the count - is [`DurationType`]'s
+    /// business, not this enum's. Every leaf carries one resolution, so a
+    /// reader asks [`DurationType::unit`] and never branches on the width.
+    Duration(DurationType),
+    /// A calendar span: the whole interval family.
+    ///
+    /// The leaf - one today, carrying which of Arrow's three layouts the
+    /// column stores - is [`IntervalType`]'s business, not this enum's.
+    Interval(IntervalType),
     /// Bytes: one layout, one optional byte bound.
     ///
     /// Every byte column the crate has, `binary`, `varbinary(16)` and
@@ -277,14 +290,11 @@ impl DataType {
             Self::Float16 => DataTypeId::Float16,
             Self::Float32 => DataTypeId::Float32,
             Self::Float64 => DataTypeId::Float64,
-            Self::DateTime64 { .. } => DataTypeId::DateTime64,
-            Self::Date32 => DataTypeId::Date32,
-            Self::Date64 => DataTypeId::Date64,
-            Self::Time32(_) => DataTypeId::Time32,
-            Self::Time64(_) => DataTypeId::Time64,
-            Self::Duration32(_) => DataTypeId::Duration32,
-            Self::Duration64(_) => DataTypeId::Duration64,
-            Self::Interval(_) => DataTypeId::Interval,
+            Self::DateTime(leaf) => leaf.id(),
+            Self::Date(leaf) => leaf.id(),
+            Self::Time(leaf) => leaf.id(),
+            Self::Duration(leaf) => leaf.id(),
+            Self::Interval(leaf) => leaf.id(),
             Self::Bytes(parameters) => parameters.id(),
             Self::String(parameters) => parameters.id(),
             Self::Country => DataTypeId::Country,
@@ -425,16 +435,15 @@ impl DataType {
     /// enum variants cannot bypass an interop boundary.
     pub fn validate(&self) -> Result<()> {
         match self {
-            Self::DateTime64 { unit, .. } if !unit.is_arrow_time() => {
-                Err(invalid(self.name(), "unit must be a temporal resolution"))
-            }
-            Self::Time32(unit) => validate_time32_unit(*unit),
-            Self::Time64(unit) => validate_time64_unit(*unit),
-            Self::Duration32(unit) => validate_duration_unit("Duration32", *unit),
-            Self::Duration64(unit) => validate_duration_unit("Duration64", *unit),
-            Self::Interval(unit) if !unit.is_interval() => {
-                Err(invalid("Interval", "unit must be an interval layout"))
-            }
+            // Every parameterised temporal leaf is public with its unit
+            // beside it, so a width can carry a resolution it does not hold
+            // until it is checked here or at a boundary; a date has no
+            // parameter to refuse and answers `Ok`.
+            Self::DateTime(leaf) => leaf.validate(),
+            Self::Date(leaf) => leaf.validate(),
+            Self::Time(leaf) => leaf.validate(),
+            Self::Duration(leaf) => leaf.validate(),
+            Self::Interval(leaf) => leaf.validate(),
             // The variant is public, so a caller can build a fixed layout
             // without the width that makes it fixed. This is where it stops.
             Self::Bytes(parameters) => parameters.validate(),
@@ -492,20 +501,13 @@ impl Ord for DataType {
 
         use DataType as D;
         match (self, other) {
-            (
-                D::DateTime64 {
-                    unit: left_unit,
-                    timezone: left_zone,
-                },
-                D::DateTime64 {
-                    unit: right_unit,
-                    timezone: right_zone,
-                },
-            ) => (left_unit, left_zone).cmp(&(right_unit, right_zone)),
-            (D::Time32(left), D::Time32(right))
-            | (D::Time64(left), D::Time64(right))
-            | (D::Duration32(left), D::Duration32(right))
-            | (D::Duration64(left), D::Duration64(right)) => left.cmp(right),
+            // A temporal payload derives its order with the leaves in
+            // identifier order and the parameters after, which is the order
+            // the eight variants they replaced held.
+            (D::DateTime(left), D::DateTime(right)) => left.cmp(right),
+            (D::Date(left), D::Date(right)) => left.cmp(right),
+            (D::Time(left), D::Time(right)) => left.cmp(right),
+            (D::Duration(left), D::Duration(right)) => left.cmp(right),
             (D::Interval(left), D::Interval(right)) => left.cmp(right),
             (D::Bytes(left), D::Bytes(right)) => left.cmp(right),
             (D::Sequence(SequenceType::List(left)), D::Sequence(SequenceType::List(right)))
@@ -604,13 +606,13 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Float16 => 10,
         DataType::Float32 => 11,
         DataType::Float64 => 12,
-        DataType::DateTime64 { .. } => 13,
-        DataType::Date32 => 14,
-        DataType::Date64 => 15,
-        DataType::Time32(_) => 16,
-        DataType::Time64(_) => 17,
-        DataType::Duration32(_) => 18,
-        DataType::Duration64(_) => 19,
+        // Each temporal family takes the first of the ranks its widths held,
+        // and the payload's own order separates the widths, so nothing after
+        // them moves.
+        DataType::DateTime(_) => 13,
+        DataType::Date(_) => 14,
+        DataType::Time(_) => 16,
+        DataType::Duration(_) => 18,
         DataType::Interval(_) => 20,
         // The one byte variant takes the first of the four ranks the binary
         // variants it replaced held, so nothing after it moves.
@@ -784,7 +786,9 @@ mod arrow {
     use crate::types::url::UrlType;
     use crate::types::uuid::UuidType;
     use crate::types::version::VersionType;
-    use crate::types::{bytes, code, decimal, floating, integer, string, temporal};
+    use crate::types::{
+        bytes, code, date, datetime, decimal, duration, floating, integer, interval, string, time,
+    };
     use crate::{Error, Field, Result};
 
     impl DataType {
@@ -818,14 +822,11 @@ mod arrow {
                 | R::UInt32
                 | R::UInt64 => integer::arrow_storage(self)?,
                 R::Float16 | R::Float32 | R::Float64 => floating::arrow_storage(self)?,
-                R::DateTime64 { .. }
-                | R::Date32
-                | R::Date64
-                | R::Time32(_)
-                | R::Time64(_)
-                | R::Duration32(_)
-                | R::Duration64(_)
-                | R::Interval(_) => temporal::arrow_storage(self)?,
+                R::DateTime(_) => datetime::arrow_storage(self)?,
+                R::Date(_) => date::arrow_storage(self)?,
+                R::Time(_) => time::arrow_storage(self)?,
+                R::Duration(_) => duration::arrow_storage(self)?,
+                R::Interval(_) => interval::arrow_storage(self)?,
                 R::Bytes(parameters) => bytes::arrow_storage(*parameters)?,
                 R::String(parameters) => string::arrow_storage(*parameters)?,
                 R::Country
@@ -872,7 +873,7 @@ mod arrow {
         pub fn into_arrow_datatype(self) -> Result<ArrowDataType> {
             use DataType as R;
             match self {
-                R::DateTime64 { .. } => temporal::into_arrow_storage(self),
+                R::DateTime(_) => datetime::into_arrow_storage(self),
                 R::Sequence(sequence) => sequence.into_arrow_storage(),
                 R::Structure(structure) => structure.into_arrow_storage(),
                 R::Union(fields, mode) => fields.into_arrow_storage(mode),
@@ -927,13 +928,11 @@ mod arrow {
                 | A::UInt32
                 | A::UInt64 => integer::from_arrow_storage(value),
                 A::Float16 | A::Float32 | A::Float64 => floating::from_arrow_storage(value),
-                A::Timestamp(..)
-                | A::Date32
-                | A::Date64
-                | A::Time32(_)
-                | A::Time64(_)
-                | A::Duration(_)
-                | A::Interval(_) => temporal::from_arrow_storage(value),
+                A::Timestamp(..) => datetime::from_arrow_storage(value),
+                A::Date32 | A::Date64 => date::from_arrow_storage(value),
+                A::Time32(_) | A::Time64(_) => time::from_arrow_storage(value),
+                A::Duration(_) => duration::from_arrow_storage(value),
+                A::Interval(_) => interval::from_arrow_storage(value),
                 A::Binary | A::LargeBinary | A::BinaryView | A::FixedSizeBinary(_) => {
                     bytes::from_arrow_storage(value)
                 }
@@ -978,7 +977,7 @@ mod arrow {
             let children = depth + 1;
             use ArrowDataType as A;
             match value {
-                A::Timestamp(..) => temporal::from_arrow_storage_owned(value),
+                A::Timestamp(..) => datetime::from_arrow_storage_owned(value),
                 A::List(_)
                 | A::ListView(_)
                 | A::FixedSizeList(..)

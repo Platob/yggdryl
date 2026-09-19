@@ -86,7 +86,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     );
     assert_eq!(
         row.get_field_by_path("at").map(|field| field.dtype().clone()),
-        Some(DataType::DateTime64 { unit: TimeUnit::Nanosecond, timezone: Timezone::UTC })
+        Some(DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?)
     );
 
     // Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
@@ -94,7 +94,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     // than to a day a consumer would have to cast before comparing it.
     assert_eq!(
         DataType::from_str("utc_date_only")?,
-        DataType::DateTime64 { unit: TimeUnit::Nanosecond, timezone: Timezone::UTC },
+        DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?,
     );
     assert_eq!(DataType::LOGICAL_NAMES[0], ("currency", DataType::Currency));
 
@@ -291,6 +291,7 @@ to the outer node and Arrow's values are a bare datatype.
 === "Rust"
 
     ```rust
+    use yggdryl::types::TimeType;
     use yggdryl::{DataType, TimeUnit};
 
     let value = DataType::from_str("map<string,array<decimal(38,18)>>")?;
@@ -300,9 +301,10 @@ to the outer node and Arrow's values are a bare datatype.
     assert_eq!(value.clone().into_arrow_datatype()?, arrow);
     assert_eq!(DataType::try_from(arrow)?, value);
 
-    // Projection re-checks parameters, so a directly built enum value cannot escape.
-    assert!(DataType::Time32(TimeUnit::Nanosecond).into_arrow_datatype().is_err());
-    assert!(DataType::Time32(TimeUnit::Nanosecond).into_arrow_datatype_ffi().is_err());
+    // Projection re-checks parameters, so a directly built leaf cannot escape.
+    let broken = DataType::Time(TimeType::Time32(TimeUnit::Nanosecond));
+    assert!(broken.clone().into_arrow_datatype().is_err());
+    assert!(broken.into_arrow_datatype_ffi().is_err());
     ```
 
 === "Python"
@@ -534,7 +536,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
     // A rewrite that would reinterpret values is refused, and the path is named.
     let error = DataType::from_fields([Field::new(
         "created",
-        DataType::DateTime64 { unit: TimeUnit::Nanosecond, timezone: Timezone::NAIVE },
+        DataType::datetime64(TimeUnit::Nanosecond, Timezone::NAIVE)?,
         false,
     )])?
     .into_scheme_compat(&Scheme::SPARK)
@@ -608,9 +610,10 @@ On a [Field](field.md) the call keeps name, nullability, and metadata, and rebui
 Building the enum by hand is Rust only; `validate` is in Python too. It catches states the public enum admits but no constructor produces.
 
 ```rust
+use yggdryl::types::TimeType;
 use yggdryl::{DataType, Field, TimeUnit};
 
-let broken = DataType::Time32(TimeUnit::Nanosecond);
+let broken = DataType::Time(TimeType::Time32(TimeUnit::Nanosecond));
 assert!(broken.validate().is_err());
 assert!(DataType::time32(TimeUnit::Nanosecond).is_err());
 

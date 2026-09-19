@@ -1731,13 +1731,9 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         // count is a physical detail and the literal is what a person wrote.
         // The reading is the crate's one text reading, so a literal and a
         // cast of the same text land on the same value.
-        D::Date32
-        | D::Date64
-        | D::Time32(_)
-        | D::Time64(_)
-        | D::DateTime64 { .. }
-        | D::Duration32(_)
-        | D::Duration64(_) => Scalar::from_temporal_text(dtype, text)?,
+        D::Date(_) | D::Time(_) | D::DateTime(_) | D::Duration(_) => {
+            Scalar::from_temporal_text(dtype, text)?
+        }
         D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => text
             .parse::<u128>()
             .map(Scalar::from)

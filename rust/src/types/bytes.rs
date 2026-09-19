@@ -525,13 +525,10 @@ pub(crate) mod casts {
             DataType::Float64 => 32,
             DataType::Decimal(DecimalType::Decimal128 { .. }) => 41,
             DataType::Decimal(DecimalType::Decimal256 { .. }) => 78,
-            DataType::DateTime64 { .. }
-            | DataType::Date32
-            | DataType::Date64
-            | DataType::Time32(_)
-            | DataType::Time64(_)
-            | DataType::Duration32(_)
-            | DataType::Duration64(_)
+            DataType::DateTime(_)
+            | DataType::Date(_)
+            | DataType::Time(_)
+            | DataType::Duration(_)
             | DataType::Interval(_) => 128,
             _ => 0,
         };

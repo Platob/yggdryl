@@ -10,7 +10,6 @@ use std::collections::HashSet;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::DecimalType;
 use crate::types::boolean::boolean_from_text;
 use crate::types::bytes::bytes_from_value;
 use crate::types::decimal::{validate_decimal_value, validate_decimal256_value};
@@ -24,6 +23,7 @@ use crate::types::sequence::SequenceType;
 use crate::types::string::str_from_value;
 use crate::types::structure::StructureType;
 use crate::types::temporal::{validate_date64, validate_time};
+use crate::types::{DateTimeType, DateType, DecimalType, DurationType, TimeType};
 use crate::types::{
     Decimal32, Decimal64, Decimal128, Interval, Str, StringType, ascii_bytes, ascii_text_sized,
     code_cell_text, default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null,
@@ -431,27 +431,20 @@ fn restated(dtype: &DataType, value: &Scalar) -> Option<i128> {
         {
             value.decimal_unscaled_at(*scale)
         }
-        D::DateTime64 { unit, timezone }
-            if temporal_matches(value, TemporalFamily::DateTime, Some(timezone)) =>
+        D::DateTime(leaf)
+            if temporal_matches(value, TemporalFamily::DateTime, Some(&leaf.timezone())) =>
         {
-            value.temporal_count_at(*unit).map(i128::from)
+            value.temporal_count_at(leaf.unit()).map(i128::from)
         }
-        D::Duration32(unit) | D::Duration64(unit)
-            if temporal_matches(value, TemporalFamily::Duration, None) =>
-        {
-            value.temporal_count_at(*unit).map(i128::from)
+        D::Duration(leaf) if temporal_matches(value, TemporalFamily::Duration, None) => {
+            value.temporal_count_at(leaf.unit()).map(i128::from)
         }
-        D::Time32(unit) | D::Time64(unit)
-            if temporal_matches(value, TemporalFamily::Time, None) =>
-        {
-            value.temporal_count_at(*unit).map(i128::from)
+        D::Time(leaf) if temporal_matches(value, TemporalFamily::Time, None) => {
+            value.temporal_count_at(leaf.unit()).map(i128::from)
         }
-        D::Date32 if temporal_matches(value, TemporalFamily::Date, None) => {
-            value.temporal_count_at(TimeUnit::Day).map(i128::from)
+        D::Date(leaf) if temporal_matches(value, TemporalFamily::Date, None) => {
+            value.temporal_count_at(leaf.unit()).map(i128::from)
         }
-        D::Date64 if temporal_matches(value, TemporalFamily::Date, None) => value
-            .temporal_count_at(TimeUnit::Millisecond)
-            .map(i128::from),
         _ => None,
     }
 }
@@ -538,13 +531,9 @@ fn read_text_as(dtype: &DataType, text: &str) -> Option<Result<Scalar>> {
         | D::Decimal(DecimalType::Decimal64 { .. })
         | D::Decimal(DecimalType::Decimal128 { .. })
         | D::Decimal(DecimalType::Decimal256 { .. }) => Scalar::from_decimal_text(dtype, text),
-        D::Date32
-        | D::Date64
-        | D::Time32(_)
-        | D::Time64(_)
-        | D::DateTime64 { .. }
-        | D::Duration32(_)
-        | D::Duration64(_) => Scalar::from_temporal_text(dtype, text),
+        D::Date(_) | D::Time(_) | D::DateTime(_) | D::Duration(_) => {
+            Scalar::from_temporal_text(dtype, text)
+        }
         _ => return None,
     })
 }
@@ -647,7 +636,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Date32 => {
+        D::Date(DateType::Date32) => {
             let count = temporal_or_integer(value, TimeUnit::Day, TemporalFamily::Date, None)?;
             let canonical = Scalar::date32(
                 i32::try_from(count)
@@ -656,14 +645,14 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Date64 => {
+        D::Date(DateType::Date64) => {
             let count =
                 temporal_or_integer(value, TimeUnit::Millisecond, TemporalFamily::Date, None)?;
             let canonical = Scalar::date64(count);
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Time32(unit) => {
+        D::Time(TimeType::Time32(unit)) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::Time, None)?;
             let canonical = Scalar::time32(
                 i32::try_from(count)
@@ -674,20 +663,20 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Time64(unit) => {
+        D::Time(TimeType::Time64(unit)) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::Time, None)?;
             let canonical = Scalar::time64(count, *unit, Timezone::NAIVE)?;
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::DateTime64 { unit, timezone } => {
+        D::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
             let count =
                 temporal_or_integer(value, *unit, TemporalFamily::DateTime, Some(timezone))?;
             let canonical = Scalar::datetime64(count, *unit, *timezone)?;
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Duration32(unit) => {
+        D::Duration(DurationType::Duration32(unit)) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::Duration, None)?;
             let canonical = Scalar::duration32(
                 i32::try_from(count)
@@ -697,7 +686,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
-        D::Duration64(unit) => {
+        D::Duration(DurationType::Duration64(unit)) => {
             let count = temporal_or_integer(value, *unit, TemporalFamily::Duration, None)?;
             let canonical = Scalar::duration64(count, *unit)?;
             let changed = !same_temporal_representation(value, &canonical);
@@ -711,7 +700,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
     match dtype {
         D::Null | D::Boolean => Ok((value.clone(), false)),
         D::Int8 | D::Int16 | D::Int32 | D::Int64 => canonical_signed(dtype, value),
-        D::Interval(unit) => canonical_interval(*unit, value),
+        D::Interval(leaf) => canonical_interval(leaf.unit(), value),
         D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => canonical_unsigned(dtype, value),
         D::Float16 => canonical_float(value, FloatWidth::Float16),
         D::Float32 => canonical_float(value, FloatWidth::Float32),
@@ -886,13 +875,10 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Decimal(DecimalType::Decimal64 { .. })
         | D::Decimal(DecimalType::Decimal128 { .. })
         | D::Decimal(DecimalType::Decimal256 { .. })
-        | D::DateTime64 { .. }
-        | D::Date32
-        | D::Date64
-        | D::Time32(_)
-        | D::Time64(_)
-        | D::Duration32(_)
-        | D::Duration64(_) => unreachable!("typed scalars returned above"),
+        | D::DateTime(_)
+        | D::Date(_)
+        | D::Time(_)
+        | D::Duration(_) => unreachable!("typed scalars returned above"),
         D::Mapping(map) => canonical_map(map, value),
         D::RunEndEncoded(encoded) => canonicalize_field_value(encoded.values(), value),
         // A variant value is any value: the tree describes itself.
@@ -1425,27 +1411,27 @@ fn validate_dtype_value(
         D::Float16 | D::Float32 | D::Float64 => {
             require(value.as_f64().is_some(), dtype.name(), value)
         }
-        D::DateTime64 { .. } | D::Duration64(_) => validate_signed(
+        D::DateTime(_) | D::Duration(DurationType::Duration64(_)) => validate_signed(
             value,
             i128::from(i64::MIN),
             i128::from(i64::MAX),
             dtype.name(),
         ),
-        D::Duration32(_) => validate_signed(
+        D::Duration(DurationType::Duration32(_)) => validate_signed(
             value,
             i128::from(i32::MIN),
             i128::from(i32::MAX),
             dtype.name(),
         ),
-        D::Date32 => validate_signed(
+        D::Date(DateType::Date32) => validate_signed(
             value,
             i128::from(i32::MIN),
             i128::from(i32::MAX),
             dtype.name(),
         ),
-        D::Date64 => validate_date64(value),
-        D::Time32(unit) | D::Time64(unit) => validate_time(value, *unit),
-        D::Interval(unit) => validate_interval_value(value, *unit),
+        D::Date(DateType::Date64) => validate_date64(value),
+        D::Time(leaf) => validate_time(value, leaf.unit()),
+        D::Interval(leaf) => validate_interval_value(value, leaf.unit()),
         // Bytes are checked the way they are built: the bound alone.
         D::Bytes(parameters) => match value {
             Scalar::Bytes(bytes) => bytes

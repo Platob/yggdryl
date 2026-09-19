@@ -1,8 +1,8 @@
 //! The temporal scalar: exact widths, the zone every value carries, and
 //! the readers that answer for each family.
 
-use yggdryl::types::temporal::{Date32, DateTime64, Interval};
-use yggdryl::{DataTypeId, Scalar, TemporalFamily, TimeUnit, Timezone, Value};
+use yggdryl::types::{Date32, DateTime64, Interval};
+use yggdryl::{DataType, DataTypeId, Scalar, TemporalFamily, TimeUnit, Timezone, Value};
 
 #[test]
 fn constructors_reject_illegal_width_unit_combinations() {
@@ -14,6 +14,11 @@ fn constructors_reject_illegal_width_unit_combinations() {
     assert!(Scalar::duration64_in(1, TimeUnit::Second, Timezone::UTC).is_err());
     assert!(Scalar::date32_in(1, TimeUnit::DayTime, Timezone::NAIVE).is_err());
     assert!(Scalar::date64_in(1, TimeUnit::Second, Timezone::NAIVE).is_err());
+    // An interval refuses a component its layout has nowhere to put, and a
+    // unit that is no layout.
+    assert!(Scalar::interval(1, 2, 0, TimeUnit::YearMonth).is_err());
+    assert!(Scalar::interval(1, 0, 0, TimeUnit::DayTime).is_err());
+    assert!(Scalar::interval(0, 0, 0, TimeUnit::Second).is_err());
 }
 
 #[test]
@@ -38,6 +43,7 @@ fn every_temporal_carries_a_zone() {
         Scalar::datetime64(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
         Scalar::duration32(1, TimeUnit::Millisecond).unwrap(),
         Scalar::duration64(1, TimeUnit::Microsecond).unwrap(),
+        Scalar::interval(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
     ];
     assert!(values.iter().all(Scalar::is_temporal));
 }
@@ -129,7 +135,7 @@ fn temporal_readers_answer_every_temporal_variant() {
             1,
         ),
         (
-            Scalar::Interval(interval),
+            Scalar::interval(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
             TemporalFamily::Interval,
             TimeUnit::MonthDayNano,
             Timezone::NAIVE,
@@ -144,7 +150,8 @@ fn temporal_readers_answer_every_temporal_variant() {
         assert_eq!(value.temporal_count(), Some(*count), "{value:?}");
     }
     // An interval restates no count across units; all three of its
-    // components are read by matching `Scalar::Interval` directly.
+    // components are read by matching `Scalar::Interval` directly, and the
+    // constructor built exactly the value the struct does.
     assert_eq!(cases[7].0.temporal_count_at(TimeUnit::Nanosecond), None);
     assert!(matches!(cases[7].0, Scalar::Interval(held) if held == interval));
     assert_eq!(cases[0].0.as_date32().map(|(count, ..)| count), Some(1));
@@ -164,16 +171,31 @@ fn temporal_readers_answer_every_temporal_variant() {
 
 #[test]
 fn a_temporal_leaf_is_its_own_family() {
+    // A value's datatype is its family's, with the parameters the value
+    // carries.
     let value = Scalar::datetime64(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
     let leaf = <DateTime64 as Value>::from_scalar(&value).copied().unwrap();
     assert_eq!(leaf.dtype().unwrap().id(), DataTypeId::DateTime64);
+    assert_eq!(
+        leaf.dtype().unwrap(),
+        DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).unwrap()
+    );
     assert_eq!(<DateTime64 as Value>::into_scalar(leaf), value);
     assert!(<Date32 as Value>::from_scalar(&value).is_none());
+
+    let day = <Date32 as Value>::from_scalar(&Scalar::date32(1))
+        .copied()
+        .unwrap();
+    assert_eq!(day.dtype().unwrap(), DataType::date32());
 
     let interval = Interval::new(1, 0, 0, TimeUnit::YearMonth).unwrap();
     let held = <Interval as Value>::into_scalar(interval);
     assert_eq!(<Interval as Value>::from_scalar(&held), Some(&interval));
     assert_eq!(interval.dtype().unwrap().id(), DataTypeId::Interval);
+    assert_eq!(
+        interval.dtype().unwrap(),
+        DataType::interval(TimeUnit::YearMonth).unwrap()
+    );
 }
 
 #[test]

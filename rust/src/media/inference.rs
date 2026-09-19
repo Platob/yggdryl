@@ -28,10 +28,7 @@
 //! assert_eq!(Scalar::d128(1_050, 2).dtype()?, DataType::decimal128(4, 2)?);
 //! assert_eq!(
 //!     Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::NAIVE)?.dtype()?,
-//!     DataType::DateTime64 {
-//!         unit: TimeUnit::Microsecond,
-//!         timezone: Timezone::NAIVE,
-//!     },
+//!     DataType::datetime64(TimeUnit::Microsecond, Timezone::NAIVE)?,
 //! );
 //! assert_eq!(
 //!     Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]).dtype()?,
@@ -44,7 +41,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::UuidType;
-use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, i256};
+use crate::{DataType, Error, Field, Result, Scalar, i256};
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
 const MAX_DECIMAL_PRECISION: usize = 76;
@@ -207,20 +204,14 @@ impl Scalar {
             Self::Bytes(bytes) => bytes.dtype(),
             Self::Geometry(_) => DataType::geometry(None),
             Self::Geography(_) => DataType::geography(None, None),
-            Self::Date32(_) => Ok(DataType::Date32),
-            Self::Date64(_) => Ok(DataType::Date64),
+            Self::Date32(_) => Ok(DataType::date32()),
+            Self::Date64(_) => Ok(DataType::date64()),
             Self::Time32(value) => DataType::time32(value.unit()),
             Self::Time64(value) => DataType::time64(value.unit()),
-            Self::DateTime64(value) => {
-                resolution(value.unit(), "datetime64")?;
-                Ok(DataType::DateTime64 {
-                    unit: value.unit(),
-                    timezone: value.timezone(),
-                })
-            }
-            Self::Duration32(value) => Ok(DataType::Duration32(value.unit())),
-            Self::Duration64(value) => Ok(DataType::Duration64(value.unit())),
-            Self::Interval(value) => Ok(DataType::Interval(value.unit())),
+            Self::DateTime64(value) => DataType::datetime64(value.unit(), value.timezone()),
+            Self::Duration32(value) => DataType::duration32(value.unit()),
+            Self::Duration64(value) => DataType::duration64(value.unit()),
+            Self::Interval(value) => DataType::interval(value.unit()),
             Self::Sequence(values) => {
                 let (dtype, nullable) = agreed(values.as_slice().iter(), "sequence item", depth)?;
                 Ok(DataType::list(Field::new("item", dtype, nullable)))
@@ -344,17 +335,6 @@ fn decimal_precision(unscaled: i256, scale: i8) -> Result<u8> {
 /// Return the exact decimal a 128-bit integer of `digits` digits needs.
 fn integer_decimal(digits: u32) -> Result<DataType> {
     DataType::decimal(u8::try_from(digits.max(1)).unwrap_or(1), 0)
-}
-
-/// Reject a calendar interval layout where a temporal resolution is required.
-fn resolution(unit: TimeUnit, kind: &'static str) -> Result<()> {
-    if unit.is_arrow_time() {
-        Ok(())
-    } else {
-        Err(unnameable(format_smolstr!(
-            "a {kind} unit must be a temporal resolution, got {unit}"
-        )))
-    }
 }
 
 /// Return how many decimal digits a magnitude is written with.

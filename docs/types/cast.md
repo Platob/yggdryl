@@ -222,7 +222,7 @@ width it declares and pads to it on the way out, because that is what the fixed 
     // A digit the declared scale cannot state is a value change, so it is refused.
     assert!(money.scalar("1.005").is_err());
 
-    assert_eq!(DataType::Date32.scalar("1970-01-02")?, Scalar::date32(1));
+    assert_eq!(DataType::date32().scalar("1970-01-02")?, Scalar::date32(1));
     assert_eq!(DataType::utf8().scalar(7_i64)?, Scalar::from("7"));
     assert_eq!(DataType::binary().scalar("hi")?, Scalar::from(b"hi".to_vec()));
 

@@ -565,14 +565,14 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 === "Rust"
 
     ```rust
-    use yggdryl::types::{DateTime64Field, DateTime64Type, FieldValue as _, Int64Field, StringField, StringType};
+    use yggdryl::types::{DateTimeField, DateTimeType, FieldValue as _, Int64Field, StringField, StringType};
     use yggdryl::{DataType, Field, TimeUnit, Timezone};
 
     let id = Int64Field::unit("id", false);
     let symbol = StringField::new("symbol", StringType::default(), true);
-    let at = DateTime64Field::new(
+    let at = DateTimeField::new(
         "at",
-        DateTime64Type::new(TimeUnit::Microsecond, Timezone::NAIVE),
+        DateTimeType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE },
         false,
     );
 
@@ -625,7 +625,7 @@ Keys and values are strings in lexical key order, so equal entries compare and h
 | alias | constructors |
 | --- | --- |
 | a datatype that carries no parameters (`Int64Field`, `VariantField`, `VersionField`, `UrlField`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`, `IsinField`, `SideField`, `StateField`, `TimeInForceField`) | `unit(name, nullable)`: there is nothing to pass, so naming the datatype again would say it twice |
-| a family with leaves or parameters (`StringField`, `BytesField`, `UuidField`, `DecimalField`, `DateTime64Field`, `SequenceField`, `GeometryField`, `GeographyField`) | `new(name, dtype, nullable)`, taking that family's own payload |
+| a family with leaves or parameters (`StringField`, `BytesField`, `UuidField`, `DecimalField`, `DateField`, `TimeField`, `DateTimeField`, `DurationField`, `IntervalField`, `SequenceField`, `GeometryField`, `GeographyField`) | `new(name, dtype, nullable)`, taking that family's own payload |
 | from a `Field` | `FieldValue::from_field` borrows the leaf, `None` for another variant; `into_field` widens back to the root |
 | bindings | `types.int64` / `fields.int64` return the native `Field`, typed for a checker only; `types.string(name, layout=, charset=, fixed=, max=)` / `fields.string(name, { layout, charset, fixed, max })`, `types.bytes` / `fields.bytes`, `types.fixed_ascii(name, width)` / `fields.fixedAscii(name, width)`, `types.version` / `fields.version` |
 
@@ -683,7 +683,7 @@ protocol is done, so a required column its protocol did not write is still refus
     let mut row_digest = DataType::UInt64.nullable_field("row_digest");
     row_digest.as_digest_mut().set_holder()?;
     let root = DataType::from_fields([
-        DataType::Date32.required_field("event"),
+        DataType::date32().required_field("event"),
         year,
         row_digest,
     ])?

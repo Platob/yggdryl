@@ -1,5 +1,6 @@
 //! Typing a regex: named captures become fields, with order, nullability and format types.
 
+use yggdryl::types::{DateTimeType, TimeType};
 use yggdryl::{DataType, Error, Field, TimeUnit, Timezone};
 
 #[test]
@@ -25,17 +26,17 @@ fn named_captures_keep_order_nullability_and_format_types() {
     assert_eq!(dtype.field("enabled").unwrap().dtype(), &DataType::Boolean);
     assert_eq!(dtype.field("id").unwrap().dtype(), &DataType::Int64);
     assert_eq!(dtype.field("price").unwrap().dtype(), &DataType::Float64);
-    assert_eq!(dtype.field("date").unwrap().dtype(), &DataType::Date32);
+    assert_eq!(dtype.field("date").unwrap().dtype(), &DataType::date32());
     assert_eq!(
         dtype.field("clock").unwrap().dtype(),
-        &DataType::Time64(TimeUnit::Microsecond)
+        &DataType::Time(TimeType::Time64(TimeUnit::Microsecond))
     );
     assert_eq!(
         dtype.field("stamp").unwrap().dtype(),
-        &DataType::DateTime64 {
+        &DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Second,
             timezone: Timezone::UTC,
-        }
+        })
     );
     assert_eq!(dtype.field("text").unwrap().dtype(), &DataType::utf8());
     assert!(fields.iter().all(Field::is_nullable));

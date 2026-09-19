@@ -5,10 +5,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
 use super::{DataType, TimeUnit, UnionFields, UnionMode};
-use crate::types::DecimalType;
 use crate::types::UuidType;
 use crate::types::enums::EnumType;
 use crate::types::sequence::SequenceType;
+use crate::types::{DateTimeType, DateType, DecimalType, DurationType, TimeType};
 use crate::{Error, Field, Result, Scalar};
 
 /// Structural JSON and Serde implementations for fields.
@@ -709,17 +709,17 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Float16 => Self::Float16 {},
             D::Float32 => Self::Float32 {},
             D::Float64 => Self::Float64 {},
-            D::DateTime64 { unit, timezone } => Self::DateTime64 {
+            D::DateTime(DateTimeType::DateTime64 { unit, timezone }) => Self::DateTime64 {
                 unit: *unit,
                 timezone: (!timezone.is_naive()).then(|| timezone.as_str()),
             },
-            D::Date32 => Self::Date32 {},
-            D::Date64 => Self::Date64 {},
-            D::Time32(unit) => Self::Time32 { unit: *unit },
-            D::Time64(unit) => Self::Time64 { unit: *unit },
-            D::Duration32(unit) => Self::Duration32 { unit: *unit },
-            D::Duration64(unit) => Self::Duration64 { unit: *unit },
-            D::Interval(unit) => Self::Interval { unit: *unit },
+            D::Date(DateType::Date32) => Self::Date32 {},
+            D::Date(DateType::Date64) => Self::Date64 {},
+            D::Time(TimeType::Time32(unit)) => Self::Time32 { unit: *unit },
+            D::Time(TimeType::Time64(unit)) => Self::Time64 { unit: *unit },
+            D::Duration(DurationType::Duration32(unit)) => Self::Duration32 { unit: *unit },
+            D::Duration(DurationType::Duration64(unit)) => Self::Duration64 { unit: *unit },
+            D::Interval(leaf) => Self::Interval { unit: leaf.unit() },
             D::Bytes(parameters) => {
                 let parameters = *parameters;
                 Self::Binary {
@@ -995,13 +995,13 @@ impl TryFrom<DataTypeWire> for DataType {
             DataTypeWire::Float32 {} => Self::Float32,
             DataTypeWire::Float64 {} => Self::Float64,
             DataTypeWire::DateTime64 { unit, timezone } => Self::datetime64(unit, timezone)?,
-            DataTypeWire::Date32 {} => Self::Date32,
-            DataTypeWire::Date64 {} => Self::Date64,
+            DataTypeWire::Date32 {} => Self::date32(),
+            DataTypeWire::Date64 {} => Self::date64(),
             DataTypeWire::Time32 { unit } => Self::time32(unit)?,
             DataTypeWire::Time64 { unit } => Self::time64(unit)?,
             DataTypeWire::Duration32 { unit } => Self::duration32(unit)?,
             DataTypeWire::Duration64 { unit } => Self::duration64(unit)?,
-            DataTypeWire::Interval { unit } => Self::Interval(unit),
+            DataTypeWire::Interval { unit } => Self::interval(unit)?,
             DataTypeWire::Binary { layout, max, fixed } => {
                 Self::bytes(bytes_parameters(layout, max, fixed)?)?
             }
@@ -1143,8 +1143,8 @@ impl DataType {
             D::Float16 => tag("float16"),
             D::Float32 => tag("float32"),
             D::Float64 => tag("float64"),
-            D::Date32 => tag("date32"),
-            D::Date64 => tag("date64"),
+            D::Date(DateType::Date32) => tag("date32"),
+            D::Date(DateType::Date64) => tag("date64"),
             D::Country => tag("country"),
             D::Currency => tag("currency"),
             D::Mic => tag("mic"),
@@ -1162,7 +1162,7 @@ impl DataType {
             D::Timezone => tag("timezone"),
             D::MimeType => tag("mimetype"),
             D::MediaType => tag("mediatype"),
-            D::DateTime64 { unit, timezone } => {
+            D::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
                 tag("datetime64");
                 entries.push((key("unit"), unit_value(*unit)));
                 // Omitted for the explicit NAIVE marker, exactly as the JSON
@@ -1174,25 +1174,25 @@ impl DataType {
                     ));
                 }
             }
-            D::Time32(unit) => {
+            D::Time(TimeType::Time32(unit)) => {
                 tag("time32");
                 entries.push((key("unit"), unit_value(*unit)));
             }
-            D::Time64(unit) => {
+            D::Time(TimeType::Time64(unit)) => {
                 tag("time64");
                 entries.push((key("unit"), unit_value(*unit)));
             }
-            D::Duration32(unit) => {
+            D::Duration(DurationType::Duration32(unit)) => {
                 tag("duration32");
                 entries.push((key("unit"), unit_value(*unit)));
             }
-            D::Duration64(unit) => {
+            D::Duration(DurationType::Duration64(unit)) => {
                 tag("duration64");
                 entries.push((key("unit"), unit_value(*unit)));
             }
-            D::Interval(unit) => {
+            D::Interval(leaf) => {
                 tag("interval");
-                entries.push((key("unit"), unit_value(*unit)));
+                entries.push((key("unit"), unit_value(leaf.unit())));
             }
             D::Bytes(parameters) => {
                 let parameters = *parameters;
@@ -1417,8 +1417,8 @@ impl DataType {
             "float16" => Self::Float16,
             "float32" => Self::Float32,
             "float64" => Self::Float64,
-            "date32" => Self::Date32,
-            "date64" => Self::Date64,
+            "date32" => Self::date32(),
+            "date64" => Self::date64(),
             "country" => Self::Country,
             "currency" => Self::Currency,
             "mic" => Self::Mic,
@@ -1455,7 +1455,7 @@ impl DataType {
             "time64" => Self::time64(unit("unit")?)?,
             "duration32" => Self::duration32(unit("unit")?)?,
             "duration64" => Self::duration64(unit("unit")?)?,
-            "interval" => Self::Interval(unit("unit")?),
+            "interval" => Self::interval(unit("unit")?)?,
             "binary" => {
                 let layout = match at("layout") {
                     None => crate::types::BytesType::Binary,

@@ -195,17 +195,17 @@ mod widths {
             (DataType::Mic, Scalar::from("XNAS"), DataTypeId::Mic),
             (DataType::Cfi, Scalar::from("ESXXXX"), DataTypeId::Cfi),
             (
-                DataType::Interval(TimeUnit::YearMonth),
+                DataType::interval(TimeUnit::YearMonth).unwrap(),
                 Scalar::from(15),
                 DataTypeId::Interval,
             ),
             (
-                DataType::Interval(TimeUnit::DayTime),
+                DataType::interval(TimeUnit::DayTime).unwrap(),
                 Scalar::from_sequence([Scalar::from(2), Scalar::from(3)]),
                 DataTypeId::Interval,
             ),
             (
-                DataType::Interval(TimeUnit::MonthDayNano),
+                DataType::interval(TimeUnit::MonthDayNano).unwrap(),
                 Scalar::from_sequence([Scalar::from(1), Scalar::from(2), Scalar::from(3)]),
                 DataTypeId::Interval,
             ),
@@ -295,6 +295,7 @@ mod bulk {
 mod restating {
     use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
     use yggdryl::Timezone;
+    use yggdryl::types::{DateTimeType, DurationType};
 
     #[test]
     fn a_decimal_is_written_at_the_scale_its_column_declares() {
@@ -319,10 +320,10 @@ mod restating {
 
     #[test]
     fn a_temporal_is_written_at_the_unit_its_column_declares() {
-        let micros = DataType::DateTime64 {
+        let micros = DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::NAIVE,
-        };
+        });
         let at =
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, yggdryl::Timezone::NAIVE).unwrap();
 
@@ -336,17 +337,17 @@ mod restating {
             .unwrap()
         );
         assert_eq!(
-            round_trip(DataType::Date32, Scalar::date32(19_723)),
+            round_trip(DataType::date32(), Scalar::date32(19_723)),
             Scalar::date32(19_723)
         );
         // A Date64 spells its day in milliseconds; the day is what reads back.
         assert_eq!(
-            round_trip(DataType::Date64, Scalar::date32(2)),
+            round_trip(DataType::date64(), Scalar::date32(2)),
             Scalar::date64(172_800_000)
         );
         assert_eq!(
             round_trip(
-                DataType::Duration64(TimeUnit::Millisecond),
+                DataType::Duration(DurationType::Duration64(TimeUnit::Millisecond)),
                 Scalar::duration64(90, TimeUnit::Second).unwrap()
             ),
             Scalar::duration64(90_000, TimeUnit::Millisecond).unwrap()
@@ -367,10 +368,10 @@ mod restating {
         // Coarsening that would drop a digit is refused, naming the kind.
         let seconds = Field::new(
             "at",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            },
+            }),
             true,
         );
         let error = scalar_array(
@@ -384,7 +385,11 @@ mod restating {
 
     #[test]
     fn duration32_checks_its_logical_width_on_both_arrow_directions() {
-        let field = Field::new("elapsed", DataType::Duration32(TimeUnit::Second), false);
+        let field = Field::new(
+            "elapsed",
+            DataType::Duration(DurationType::Duration32(TimeUnit::Second)),
+            false,
+        );
         let maximum = Scalar::duration32(i32::MAX, TimeUnit::Second).unwrap();
         assert_eq!(round_trip(field.dtype().clone(), maximum.clone()), maximum);
 

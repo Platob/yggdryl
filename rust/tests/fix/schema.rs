@@ -188,10 +188,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(typed(120), DataType::Currency, "SettlCurrency(120)");
     assert_eq!(typed(54), DataType::Side, "Side(54)");
     assert_eq!(typed(35), DataType::utf8(), "MsgType(35)");
-    assert!(
-        matches!(typed(60), DataType::DateTime64 { .. }),
-        "TransactTime"
-    );
+    assert!(matches!(typed(60), DataType::DateTime(_)), "TransactTime");
     // Every price and quantity is FIX's own field, exact at the one width
     // this crate keeps a number at.
     assert_eq!(typed(44), DataType::decimal128(38, 18).unwrap());

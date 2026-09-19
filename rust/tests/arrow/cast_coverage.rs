@@ -14,6 +14,7 @@ use arrow_array::{
     StringViewArray, StructArray, Time32SecondArray, Time64MicrosecondArray, Time64NanosecondArray,
     TimestampSecondArray,
 };
+use yggdryl::types::DateTimeType;
 use yggdryl::types::FieldValue as _;
 use yggdryl::{ArrowCastOptions, DataType, Field, TimeUnit, Timezone};
 
@@ -262,10 +263,10 @@ fn temporal_text_reads_this_crates_spellings_and_keeps_arrows() {
     let instants: ArrayRef = Arc::new(StringArray::from(vec![
         "2026-08-17T10:00:00+02:00[Europe/Paris]",
     ]));
-    let paris = DataType::DateTime64 {
+    let paris = DataType::DateTime(DateTimeType::DateTime64 {
         unit: TimeUnit::Second,
         timezone: Timezone::from_str("Europe/Paris").unwrap(),
-    };
+    });
     let read = cast(&paris.nullable_field("at"), instants).unwrap();
     assert_eq!(
         read.as_any()
@@ -405,10 +406,10 @@ fn an_encoded_temporal_column_reads_and_spells_like_a_plain_one() {
 fn a_zone_arrow_cannot_name_never_sinks_this_crates_reading() {
     // Arrow parses a target zone once for the whole column and refuses a named
     // one, so its failure must leave the values this crate read standing.
-    let paris = DataType::DateTime64 {
+    let paris = DataType::DateTime(DateTimeType::DateTime64 {
         unit: TimeUnit::Second,
         timezone: Timezone::from_str("Europe/Paris").unwrap(),
-    };
+    });
     let mixed: ArrayRef = Arc::new(StringArray::from(vec![
         "2026-08-17T10:00:00+02:00",
         "not an instant",

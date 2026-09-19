@@ -40,9 +40,9 @@ use arrow_schema::DataType as ArrowDataType;
 use half::f16;
 
 use super::{Error, Result};
-use crate::types::DecimalType;
 use crate::types::enums::EnumType;
 use crate::types::sequence::SequenceType;
+use crate::types::{DateTimeType, DateType, DecimalType, DurationType, IntervalType, TimeType};
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<ArrayRef> {
@@ -106,7 +106,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             .map(f16::from_f64)),
         DataType::Float32 => primitive!(Float32Array, narrow_f32),
         DataType::Float64 => primitive!(Float64Array, |value: &&Scalar| exact_f64(value)),
-        DataType::DateTime64 { unit, .. } => match unit {
+        DataType::DateTime(DateTimeType::DateTime64 { unit, .. }) => match unit {
             TimeUnit::Second => physical_primitive!(TimestampSecondArray, temporal_i64(*unit)),
             TimeUnit::Millisecond => {
                 physical_primitive!(TimestampMillisecondArray, temporal_i64(*unit))
@@ -119,19 +119,19 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             }
             _ => return Err(unsupported(dtype, "invalid timestamp unit")),
         },
-        DataType::Date32 => primitive!(Date32Array, date_i32),
-        DataType::Date64 => primitive!(Date64Array, date_i64),
-        DataType::Time32(unit) => match unit {
+        DataType::Date(DateType::Date32) => primitive!(Date32Array, date_i32),
+        DataType::Date(DateType::Date64) => primitive!(Date64Array, date_i64),
+        DataType::Time(TimeType::Time32(unit)) => match unit {
             TimeUnit::Second => primitive!(Time32SecondArray, temporal_i32(*unit)),
             TimeUnit::Millisecond => primitive!(Time32MillisecondArray, temporal_i32(*unit)),
             _ => return Err(unsupported(dtype, "invalid time32 unit")),
         },
-        DataType::Time64(unit) => match unit {
+        DataType::Time(TimeType::Time64(unit)) => match unit {
             TimeUnit::Microsecond => primitive!(Time64MicrosecondArray, temporal_i64(*unit)),
             TimeUnit::Nanosecond => primitive!(Time64NanosecondArray, temporal_i64(*unit)),
             _ => return Err(unsupported(dtype, "invalid time64 unit")),
         },
-        DataType::Duration32(unit) => match unit {
+        DataType::Duration(DurationType::Duration32(unit)) => match unit {
             TimeUnit::Second => primitive!(DurationSecondArray, |value: &&Scalar| {
                 temporal_i32(*unit)(value).map(i64::from)
             }),
@@ -146,20 +146,20 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             }),
             _ => return Err(unsupported(dtype, "invalid duration32 unit")),
         },
-        DataType::Duration64(unit) => match unit {
+        DataType::Duration(DurationType::Duration64(unit)) => match unit {
             TimeUnit::Second => primitive!(DurationSecondArray, temporal_i64(*unit)),
             TimeUnit::Millisecond => primitive!(DurationMillisecondArray, temporal_i64(*unit)),
             TimeUnit::Microsecond => primitive!(DurationMicrosecondArray, temporal_i64(*unit)),
             TimeUnit::Nanosecond => primitive!(DurationNanosecondArray, temporal_i64(*unit)),
             _ => return Err(unsupported(dtype, "invalid duration64 unit")),
         },
-        DataType::Interval(TimeUnit::YearMonth) => {
+        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)) => {
             primitive!(IntervalYearMonthArray, interval_year_month)
         }
-        DataType::Interval(TimeUnit::DayTime) => {
+        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)) => {
             primitive!(IntervalDayTimeArray, interval_day_time)
         }
-        DataType::Interval(TimeUnit::MonthDayNano) => {
+        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)) => {
             primitive!(IntervalMonthDayNanoArray, interval_month_day_nano)
         }
         DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
@@ -329,7 +329,7 @@ pub(crate) fn value_from_array(
         // Every temporal reads as its typed value: the count alone is not
         // the datum, the unit and zone are, and the typed spelling is what
         // serializes losslessly and compares across resolutions.
-        DataType::DateTime64 { unit, timezone } => match unit {
+        DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => match unit {
             TimeUnit::Second => primitive!(TimestampSecondArray, |value| {
                 Scalar::datetime64(value, *unit, *timezone)
             })?,
@@ -344,9 +344,13 @@ pub(crate) fn value_from_array(
             })?,
             _ => return Err(unsupported(dtype, "invalid timestamp unit")),
         },
-        DataType::Date32 => primitive!(Date32Array, |value| { Scalar::date32(value) }),
-        DataType::Date64 => primitive!(Date64Array, |value| { Scalar::date64(value) }),
-        DataType::Time32(unit) => match unit {
+        DataType::Date(DateType::Date32) => {
+            primitive!(Date32Array, |value| { Scalar::date32(value) })
+        }
+        DataType::Date(DateType::Date64) => {
+            primitive!(Date64Array, |value| { Scalar::date64(value) })
+        }
+        DataType::Time(TimeType::Time32(unit)) => match unit {
             TimeUnit::Second => primitive!(Time32SecondArray, |value| Scalar::time32(
                 value,
                 *unit,
@@ -359,7 +363,7 @@ pub(crate) fn value_from_array(
             ))?,
             _ => return Err(unsupported(dtype, "invalid time32 unit")),
         },
-        DataType::Time64(unit) => match unit {
+        DataType::Time(TimeType::Time64(unit)) => match unit {
             TimeUnit::Microsecond => primitive!(Time64MicrosecondArray, |value| Scalar::time64(
                 value,
                 *unit,
@@ -372,8 +376,10 @@ pub(crate) fn value_from_array(
             ))?,
             _ => return Err(unsupported(dtype, "invalid time64 unit")),
         },
-        DataType::Duration32(unit) => duration32_from_array(array, index, *unit)?,
-        DataType::Duration64(unit) => match unit {
+        DataType::Duration(DurationType::Duration32(unit)) => {
+            duration32_from_array(array, index, *unit)?
+        }
+        DataType::Duration(DurationType::Duration64(unit)) => match unit {
             TimeUnit::Second => primitive!(DurationSecondArray, |value| {
                 Scalar::duration64(value, *unit)
             })?,
@@ -388,7 +394,7 @@ pub(crate) fn value_from_array(
             })?,
             _ => return Err(unsupported(dtype, "invalid duration64 unit")),
         },
-        DataType::Interval(TimeUnit::YearMonth) => {
+        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)) => {
             let months = downcast::<IntervalYearMonthArray>(array)?.value(index);
             Scalar::Interval(crate::types::Interval::new(
                 months,
@@ -397,7 +403,7 @@ pub(crate) fn value_from_array(
                 TimeUnit::YearMonth,
             )?)
         }
-        DataType::Interval(TimeUnit::DayTime) => {
+        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)) => {
             let value = downcast::<IntervalDayTimeArray>(array)?.value(index);
             Scalar::Interval(crate::types::Interval::new(
                 0,
@@ -406,7 +412,7 @@ pub(crate) fn value_from_array(
                 TimeUnit::DayTime,
             )?)
         }
-        DataType::Interval(TimeUnit::MonthDayNano) => {
+        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)) => {
             let value = downcast::<IntervalMonthDayNanoArray>(array)?.value(index);
             Scalar::Interval(crate::types::Interval::new(
                 value.months,
@@ -1275,7 +1281,7 @@ fn duration32_from_array(array: &dyn Array, index: usize, unit: TimeUnit) -> Res
         TimeUnit::Nanosecond => downcast::<DurationNanosecondArray>(array)?.value(index),
         _ => {
             return Err(unsupported(
-                &DataType::Duration32(unit),
+                &DataType::Duration(DurationType::Duration32(unit)),
                 "invalid duration32 unit",
             ));
         }

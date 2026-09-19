@@ -1,3 +1,4 @@
+use yggdryl::types::{DateTimeType, DurationType, TimeType};
 use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
 
 #[test]
@@ -116,38 +117,38 @@ fn empty_diff_exactly_matches_equality_for_parameterized_and_nested_types() {
     let item = || Field::new("item", DataType::utf8(), true);
     let pairs = vec![
         (
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            },
-            DataType::DateTime64 {
+            }),
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
         (
-            DataType::Time32(TimeUnit::Second),
-            DataType::Time32(TimeUnit::Millisecond),
+            DataType::Time(TimeType::Time32(TimeUnit::Second)),
+            DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
         ),
         (
-            DataType::Time64(TimeUnit::Microsecond),
-            DataType::Time64(TimeUnit::Nanosecond),
+            DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+            DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
         ),
         (
-            DataType::Duration32(TimeUnit::Second),
-            DataType::Duration32(TimeUnit::Nanosecond),
+            DataType::Duration(DurationType::Duration32(TimeUnit::Second)),
+            DataType::Duration(DurationType::Duration32(TimeUnit::Nanosecond)),
         ),
         (
-            DataType::Duration64(TimeUnit::Second),
-            DataType::Duration64(TimeUnit::Nanosecond),
+            DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
+            DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
         ),
         (
-            DataType::Duration32(TimeUnit::Second),
-            DataType::Duration64(TimeUnit::Second),
+            DataType::Duration(DurationType::Duration32(TimeUnit::Second)),
+            DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
         ),
         (
-            DataType::Interval(TimeUnit::YearMonth),
-            DataType::Interval(TimeUnit::DayTime),
+            DataType::interval(TimeUnit::YearMonth).unwrap(),
+            DataType::interval(TimeUnit::DayTime).unwrap(),
         ),
         (
             DataType::fixed_binary(8).unwrap(),

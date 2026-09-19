@@ -291,10 +291,10 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             .unwrap_or_else(|| panic!("{name}"))
     };
     let typed = |name: &str| field(name).dtype();
-    let clock = DataType::DateTime64 {
+    let clock = DataType::DateTime(yggdryl::DateTimeType::DateTime64 {
         unit: yggdryl::TimeUnit::Nanosecond,
         timezone: yggdryl::Timezone::UTC,
-    };
+    });
     for name in ["currhashcode", "crosshashcode", "seqnum"] {
         assert_eq!(typed(name), &DataType::UInt64, "{name}");
     }

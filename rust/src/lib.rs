@@ -121,11 +121,11 @@ pub use types::{
     Value, Vocabulary,
 };
 pub use types::{
-    BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialParameters,
-    GeospatialType, IntegerType, MapType, MappingType, MediaTypeField, MediaTypeType,
-    MimeTypeField, MimeTypeType, RunEndEncodedType, StringEnum, StringType, Struct2Type,
-    StructType, StructureType, TemporalType, TimezoneField, TimezoneType, UnionFields, UrlField,
-    UrlType, Version, VersionField, VersionType,
+    BytesType, DataType, DateTimeType, DateType, DecimalType, DictionaryType, DurationType, Fields,
+    FloatingType, GeospatialParameters, GeospatialType, IntegerType, IntervalType, MapType,
+    MappingType, MediaTypeField, MediaTypeType, MimeTypeField, MimeTypeType, RunEndEncodedType,
+    StringEnum, StringType, Struct2Type, StructType, StructureType, TimeType, TimezoneField,
+    TimezoneType, UnionFields, UrlField, UrlType, Version, VersionField, VersionType,
 };
 pub use union_mode::UnionMode;
 pub use uri::{

@@ -536,11 +536,9 @@ mod shared {
                     .find(|(plain, _)| plain == parameters)
                     .map(|(_, field)| field)
                     .or_else(|| interned(self)),
-                Self::DateTime64 { .. }
-                | Self::Time32(_)
-                | Self::Time64(_)
-                | Self::Duration32(_)
-                | Self::Duration64(_)
+                Self::DateTime(_)
+                | Self::Time(_)
+                | Self::Duration(_)
                 | Self::Interval(_)
                 | Self::Decimal(DecimalType::Decimal32 { .. })
                 | Self::Decimal(DecimalType::Decimal64 { .. })

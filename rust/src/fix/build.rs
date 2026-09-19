@@ -2083,7 +2083,8 @@ pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
             [b'N' | b'n'] => Some(Scalar::from(false)),
             _ => None,
         },
-        DataType::DateTime64 { timezone, .. } => {
+        DataType::DateTime(leaf) => {
+            let timezone = leaf.timezone();
             // The zone a value states outranks the column's, and a column
             // stating none takes no zone rather than Z: a `LocalMktDate` and
             // a `LocalMktDatetime` are local market values, and rendering

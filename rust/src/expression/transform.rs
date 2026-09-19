@@ -294,7 +294,7 @@ mod arrow {
         /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
         /// let mut year = DataType::Int32.nullable_field("year");
         /// year.as_transform_mut().set_term(&"year(event)".parse()?)?;
-        /// let root = DataType::from_fields([DataType::Date32.required_field("event"), year])?
+        /// let root = DataType::from_fields([DataType::date32().required_field("event"), year])?
         ///     .required_field("row");
         ///
         /// let batch = RecordBatch::try_from_iter([(

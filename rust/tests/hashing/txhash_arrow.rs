@@ -15,6 +15,7 @@ use yggdryl::hashing::txhash::arrow::{
 use yggdryl::hashing::txhash::{TxHash, TxHasher};
 use yggdryl::hashing::xxhash::Xxh3;
 use yggdryl::hashing::xxhash::arrow::{column_digests, row_digests};
+use yggdryl::types::DateTimeType;
 use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
 
 const INSTANTS: [i64; 3] = [
@@ -41,10 +42,10 @@ fn batch(fields: &[Field], columns: Vec<ArrayRef>) -> RecordBatch {
 fn event_field() -> Field {
     Field::new(
         "event",
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: UNIT,
             timezone: Timezone::UTC,
-        },
+        }),
         false,
     )
 }
@@ -588,10 +589,10 @@ fn a_dotted_time_path_reads_an_instant_under_a_nested_struct() {
 fn an_instant_that_does_not_fit_the_holder_unit_is_refused_by_cell() {
     let seconds = Field::new(
         "event",
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Second,
             timezone: Timezone::UTC,
-        },
+        }),
         false,
     );
     let mut key = coupled("key", 16, "event");
@@ -628,7 +629,7 @@ fn the_instant_may_be_an_integer_or_date_column() {
         "an integer is the count already"
     );
 
-    let day = Field::new("day", DataType::Date32, false);
+    let day = Field::new("day", DataType::date32(), false);
     let root = struct_root([day.clone(), symbol_field(), coupled("key", 16, "day")]);
     let source = batch(
         &[day, symbol_field()],
@@ -647,10 +648,10 @@ fn the_instant_may_be_an_integer_or_date_column() {
 fn a_null_instant_nulls_a_nullable_holder_and_refuses_a_required_one() {
     let event = Field::new(
         "event",
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: UNIT,
             timezone: Timezone::UTC,
-        },
+        }),
         true,
     );
     let sparse: ArrayRef = Arc::new(

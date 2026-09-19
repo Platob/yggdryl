@@ -14,8 +14,9 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple, PyType};
 use yggdryl::types::{DataTypeValue as _, FieldValue as _, SequenceType};
 use yggdryl::{
-    DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme,
-    StringEnum as CoreStringEnum, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
+    DataType as CoreDataType, DateTimeType, EdgeAlgorithm as CoreEdgeAlgorithm,
+    Scheme as CoreScheme, StringEnum as CoreStringEnum, TimeUnit as CoreTimeUnit,
+    UnionMode as CoreUnionMode,
 };
 
 use crate::types::field::PyField;
@@ -447,8 +448,8 @@ impl PyDataType {
             "float16" => CoreDataType::Float16,
             "float32" => CoreDataType::Float32,
             "float64" => CoreDataType::Float64,
-            "date32" => CoreDataType::Date32,
-            "date64" => CoreDataType::Date64,
+            "date32" => CoreDataType::date32(),
+            "date64" => CoreDataType::date64(),
             "binary" => CoreDataType::binary(),
             "large_binary" => CoreDataType::large_binary(),
             "binary_view" => CoreDataType::binary_view(),
@@ -539,7 +540,7 @@ impl PyDataType {
                         "interval requires an interval layout unit",
                     ));
                 }
-                CoreDataType::Interval(unit)
+                CoreDataType::interval(unit).map_err(value_error)?
             }
             _ => {
                 return Err(PyValueError::new_err(format!(
@@ -1471,11 +1472,9 @@ impl PyDataType {
     /// the native value avoids projecting a `PyArrow` datatype for every cell.
     fn _time_unit(&self) -> Option<&'static str> {
         match &self.inner {
-            CoreDataType::DateTime64 { unit, .. }
-            | CoreDataType::Time32(unit)
-            | CoreDataType::Time64(unit)
-            | CoreDataType::Duration32(unit)
-            | CoreDataType::Duration64(unit) => Some(unit.as_str()),
+            CoreDataType::DateTime(leaf) => Some(leaf.unit().as_str()),
+            CoreDataType::Time(leaf) => Some(leaf.unit().as_str()),
+            CoreDataType::Duration(leaf) => Some(leaf.unit().as_str()),
             _ => None,
         }
     }
@@ -1483,7 +1482,9 @@ impl PyDataType {
     /// Internal field-class conversion view of a `DateTime64` timezone.
     fn _timezone(&self) -> Option<&str> {
         match &self.inner {
-            CoreDataType::DateTime64 { timezone, .. } => Some(timezone.as_str()),
+            CoreDataType::DateTime(DateTimeType::DateTime64 { timezone, .. }) => {
+                Some(timezone.as_str())
+            }
             _ => None,
         }
     }
@@ -1491,12 +1492,9 @@ impl PyDataType {
     /// The explicit time zone of a `DateTime64`, including `NAIVE`.
     #[getter]
     fn timezone(&self) -> Option<crate::types::timezone::PyTimezone> {
-        match &self.inner {
-            CoreDataType::DateTime64 { timezone, .. } => {
-                Some(crate::types::timezone::PyTimezone::from_core(*timezone))
-            }
-            _ => None,
-        }
+        self.inner
+            .datetime_type()
+            .map(|leaf| crate::types::timezone::PyTimezone::from_core(leaf.timezone()))
     }
 
     /// Whether a `map` declares its keys sorted, `None` for every other.

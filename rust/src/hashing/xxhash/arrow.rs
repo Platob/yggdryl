@@ -51,10 +51,10 @@ use super::scalar::{
     write_signed, write_string, write_temporal, write_unsigned,
 };
 use crate::hashing::txhash::{DIGEST_TIME_KEY, DIGEST_UNIT_KEY};
-use crate::types::DecimalType;
 use crate::types::FieldValue as _;
 use crate::types::enums::EnumType;
 use crate::types::sequence::SequenceType;
+use crate::types::{DateTimeType, DateType, DecimalType, DurationType, TimeType};
 
 /// The state operations shared by the runtime dispatcher and concrete states.
 ///
@@ -1130,21 +1130,21 @@ fn feed_cell(
             ),
             *scale,
         ),
-        DataType::Date32 => temporal(
+        DataType::Date(DateType::Date32) => temporal(
             digester,
             TemporalFamily::Date,
             i64::from(downcast::<Date32Array>(array)?.value(index)),
             TimeUnit::Day,
             &Timezone::NAIVE,
         ),
-        DataType::Date64 => temporal(
+        DataType::Date(DateType::Date64) => temporal(
             digester,
             TemporalFamily::Date,
             downcast::<Date64Array>(array)?.value(index),
             TimeUnit::Millisecond,
             &Timezone::NAIVE,
         ),
-        DataType::Time32(unit) => {
+        DataType::Time(TimeType::Time32(unit)) => {
             let count = match unit {
                 TimeUnit::Second => downcast::<Time32SecondArray>(array)?.value(index),
                 TimeUnit::Millisecond => downcast::<Time32MillisecondArray>(array)?.value(index),
@@ -1158,7 +1158,7 @@ fn feed_cell(
                 &Timezone::NAIVE,
             );
         }
-        DataType::Time64(unit) => {
+        DataType::Time(TimeType::Time64(unit)) => {
             let count = match unit {
                 TimeUnit::Microsecond => downcast::<Time64MicrosecondArray>(array)?.value(index),
                 TimeUnit::Nanosecond => downcast::<Time64NanosecondArray>(array)?.value(index),
@@ -1172,7 +1172,7 @@ fn feed_cell(
                 &Timezone::NAIVE,
             );
         }
-        DataType::DateTime64 { unit, timezone } => {
+        DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
             let count = match unit {
                 TimeUnit::Second => downcast::<TimestampSecondArray>(array)?.value(index),
                 TimeUnit::Millisecond => downcast::<TimestampMillisecondArray>(array)?.value(index),
@@ -1182,7 +1182,7 @@ fn feed_cell(
             };
             temporal(digester, TemporalFamily::DateTime, count, *unit, timezone);
         }
-        DataType::Duration64(unit) => {
+        DataType::Duration(DurationType::Duration64(unit)) => {
             let count = match unit {
                 TimeUnit::Second => downcast::<DurationSecondArray>(array)?.value(index),
                 TimeUnit::Millisecond => downcast::<DurationMillisecondArray>(array)?.value(index),
@@ -1208,7 +1208,7 @@ fn feed_cell(
         // union, dictionary, and run-end layout composes child values instead
         // of holding one buffer. A variant refuses by name there, because its
         // binary encoding lands with the Iceberg v3 layer.
-        DataType::Duration32(_)
+        DataType::Duration(DurationType::Duration32(_))
         | DataType::Interval(_)
         | DataType::Country
         | DataType::Currency

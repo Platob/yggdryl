@@ -1139,7 +1139,7 @@ A holder naming `digest:time` stores the instant it names in front of its digest
     use yggdryl::hashing::txhash::TxHash;
     use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
 
-    let event = Field::new("event", DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::UTC }, false);
+    let event = Field::new("event", DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC)?, false);
     let symbol = Field::new("symbol", DataType::utf8(), false);
     let mut key = Field::new("key", DataType::fixed_binary(16)?, false);
     key.as_digest_mut().set_holder()?;

@@ -1018,8 +1018,9 @@ mod typed {
         crate::types::floating::Float64Type,
         arrow_array::Float64Array
     );
-    typed_array!(crate::types::temporal::Date32Type, arrow_array::Date32Array);
-    typed_array!(crate::types::temporal::Date64Type, arrow_array::Date64Array);
+    // A date's width is the leaf, so the family has no single array type: a
+    // `date32` column is a `Date32Array` and a `date64` one a `Date64Array`.
+    opaque_array!(crate::types::DateType);
     // A decimal's backing integer is the leaf, so the family has no single
     // array type: a `decimal32` column is a `Decimal32Array` and a
     // `decimal256` one a `Decimal256Array`.
@@ -1055,17 +1056,15 @@ mod typed {
     typed_array!(crate::types::GeometryType, arrow_array::BinaryArray);
     typed_array!(crate::types::GeographyType, arrow_array::BinaryArray);
 
-    // A unit decides the physical width of a temporal value, a key type decides
-    // the physical width of a dictionary index, a string's layout and charset
-    // decide which text or byte array holds it and a byte layout which binary
-    // array, so these have no single array type.
+    // A leaf and its unit decide the physical width of a temporal value, a key
+    // type decides the physical width of a dictionary index, a string's layout
+    // and charset decide which text or byte array holds it and a byte layout
+    // which binary array, so these have no single array type.
     opaque_array!(crate::types::string::StringType);
     opaque_array!(crate::types::bytes::BytesType);
-    opaque_array!(crate::types::DateTime64Type);
-    opaque_array!(crate::types::Time32Type);
-    opaque_array!(crate::types::Time64Type);
-    opaque_array!(crate::types::Duration32Type);
-    opaque_array!(crate::types::Duration64Type);
+    opaque_array!(crate::types::DateTimeType);
+    opaque_array!(crate::types::TimeType);
+    opaque_array!(crate::types::DurationType);
     opaque_array!(crate::types::IntervalType);
     opaque_array!(crate::types::EnumType);
     opaque_array!(crate::types::RunEndType);

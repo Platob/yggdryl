@@ -7,6 +7,7 @@ use regex::bytes::Regex;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::media::IORecordOptions;
+use crate::types::DateTimeType;
 use crate::{DataType, Error, Field, FieldPath, Level, Result, Timezone};
 
 use super::{LeadingFragment, LineSep};
@@ -31,10 +32,10 @@ pub(crate) const MIMETYPE_COLUMN: &str = "mimetype";
 /// handle's modification time is already counted in it, so the two sources
 /// answer one column rather than two resolutions of it.
 pub(crate) fn mtime_dtype() -> DataType {
-    DataType::DateTime64 {
+    DataType::DateTime(DateTimeType::DateTime64 {
         unit: crate::TimeUnit::Nanosecond,
         timezone: Timezone::UTC,
-    }
+    })
 }
 
 /// A regex whose source, rather than its compiled automaton, is value identity.
@@ -633,11 +634,8 @@ impl TextOptions {
             return DataType::utf8();
         }
         match (capture.dtype(), self.timezone) {
-            (DataType::DateTime64 { unit, timezone }, Some(configured)) if timezone.is_naive() => {
-                DataType::DateTime64 {
-                    unit: *unit,
-                    timezone: configured,
-                }
+            (DataType::DateTime(leaf), Some(configured)) if leaf.timezone().is_naive() => {
+                DataType::DateTime(leaf.with_timezone(configured))
             }
             (dtype, _) => dtype.clone(),
         }

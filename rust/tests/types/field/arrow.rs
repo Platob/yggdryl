@@ -7,7 +7,7 @@ use arrow_schema::{
     ffi::{FFI_ArrowSchema, Flags},
 };
 use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
-use yggdryl::types::BytesType;
+use yggdryl::types::{BytesType, DateTimeType};
 use yggdryl::{ArrowCastOptions, DataType, EdgeAlgorithm, Field, Nullability, TimeUnit, Timezone};
 
 fn assert_flag(schema: &arrow_schema::ffi::FFI_ArrowSchema, flag: Flags) {
@@ -125,10 +125,10 @@ fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state(
     assert!(
         Field::new(
             "bad",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::YearMonth,
                 timezone: Timezone::NAIVE
-            },
+            }),
             false,
         )
         .into_arrow_field_ffi()
@@ -387,7 +387,7 @@ fn applied_root() -> Field {
     let mut inner_digest = DataType::UInt64.nullable_field("trade_digest");
     inner_digest.as_digest_mut().set_holder().unwrap();
     let trade = DataType::from_fields([
-        DataType::Date32.required_field("event"),
+        DataType::date32().required_field("event"),
         inner_year,
         inner_digest,
     ])
@@ -653,7 +653,7 @@ fn required_applied_root() -> Field {
         .unwrap();
     let mut row_digest = DataType::UInt64.required_field("row_digest");
     row_digest.as_digest_mut().set_holder().unwrap();
-    DataType::from_fields([DataType::Date32.required_field("event"), year, row_digest])
+    DataType::from_fields([DataType::date32().required_field("event"), year, row_digest])
         .unwrap()
         .required_field("row")
 }
@@ -718,7 +718,7 @@ fn a_strict_apply_refuses_an_ordinary_required_column_the_source_lacks() {
     let root = Field::new(
         "row",
         DataType::from_fields([
-            DataType::Date32.required_field("event"),
+            DataType::date32().required_field("event"),
             DataType::utf8().required_field("venue"),
         ])
         .unwrap(),

@@ -103,8 +103,8 @@ impl JsDataType {
             "float16" => CoreDataType::Float16,
             "float32" => CoreDataType::Float32,
             "float64" => CoreDataType::Float64,
-            "date32" => CoreDataType::Date32,
-            "date64" => CoreDataType::Date64,
+            "date32" => CoreDataType::date32(),
+            "date64" => CoreDataType::date64(),
             "binary" => CoreDataType::binary(),
             "large_binary" => CoreDataType::large_binary(),
             "binary_view" => CoreDataType::binary_view(),
@@ -174,7 +174,7 @@ impl JsDataType {
             "duration64" if unit.is_temporal() => {
                 CoreDataType::duration64(unit).map_err(napi_error)?
             }
-            "interval" if unit.is_interval() => CoreDataType::Interval(unit),
+            "interval" if unit.is_interval() => CoreDataType::interval(unit).map_err(napi_error)?,
             "datetime64" | "duration32" | "duration64" => {
                 return Err(Error::from_reason(format!(
                     "{kind} requires a temporal resolution unit"

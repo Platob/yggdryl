@@ -51,14 +51,10 @@ pub(crate) fn time_unit_benchmarks(criterion: &mut Criterion) {
 /// cost what it always did and a date must cost less than one, not more. Both
 /// pay the same scalar wrapper, so what the numbers differ by is the reading.
 pub(crate) fn temporal_text_benchmarks(criterion: &mut Criterion) {
-    let naive = DataType::DateTime64 {
-        unit: TimeUnit::Nanosecond,
-        timezone: Timezone::NAIVE,
-    };
-    let utc = DataType::DateTime64 {
-        unit: TimeUnit::Nanosecond,
-        timezone: Timezone::UTC,
-    };
+    let naive = DataType::datetime64(TimeUnit::Nanosecond, Timezone::NAIVE)
+        .expect("nanoseconds are a clock resolution");
+    let utc = DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)
+        .expect("nanoseconds are a clock resolution");
     let mut group = criterion.benchmark_group("temporal_text");
     for (name, dtype, spelling) in [
         ("datetime_extended", &naive, "2026-08-18T10:15:30.123456789"),

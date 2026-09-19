@@ -1938,7 +1938,7 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
 #[test]
 fn a_date_column_reads_the_compact_wire_date_and_nulls_what_is_not_one() {
     let mut narrow = FixRegistry::new();
-    let mut settled = DataType::Date32.nullable_field("settldate");
+    let mut settled = DataType::date32().nullable_field("settldate");
     settled.as_fix_mut().set_tag(64).unwrap();
     narrow.insert(settled).unwrap();
     let reader = super::fixed_codec(Arc::new(narrow));

@@ -1,7 +1,9 @@
 //! The datatype a value names, and what it refuses to name.
 
 mod scalars {
-    use yggdryl::{DataType, Scalar, TimeUnit, Timezone, i256};
+    use yggdryl::{
+        DataType, DateTimeType, DurationType, Scalar, TimeType, TimeUnit, Timezone, i256,
+    };
 
     #[test]
     fn each_integer_width_keeps_the_column_that_holds_it() {
@@ -86,44 +88,44 @@ mod scalars {
 
     #[test]
     fn a_temporal_names_its_unit_and_its_zone() {
-        assert_eq!(Scalar::date32(0).dtype().unwrap(), DataType::Date32);
+        assert_eq!(Scalar::date32(0).dtype().unwrap(), DataType::date32());
         assert_eq!(
             Scalar::time64(0, TimeUnit::Microsecond, Timezone::NAIVE)
                 .unwrap()
                 .dtype()
                 .unwrap(),
-            DataType::Time64(TimeUnit::Microsecond)
+            DataType::Time(TimeType::Time64(TimeUnit::Microsecond))
         );
         assert_eq!(
             Scalar::time32(0, TimeUnit::Second, Timezone::NAIVE)
                 .unwrap()
                 .dtype()
                 .unwrap(),
-            DataType::Time32(TimeUnit::Second)
+            DataType::Time(TimeType::Time32(TimeUnit::Second))
         );
         assert_eq!(
             Scalar::duration32(0, TimeUnit::Nanosecond)
                 .unwrap()
                 .dtype()
                 .unwrap(),
-            DataType::Duration32(TimeUnit::Nanosecond)
+            DataType::Duration(DurationType::Duration32(TimeUnit::Nanosecond))
         );
         assert_eq!(
             Scalar::duration64(0, TimeUnit::Nanosecond)
                 .unwrap()
                 .dtype()
                 .unwrap(),
-            DataType::Duration64(TimeUnit::Nanosecond)
+            DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond))
         );
         assert_eq!(
             Scalar::datetime64_in(0, TimeUnit::Microsecond, "Asia/Calcutta")
                 .unwrap()
                 .dtype()
                 .unwrap(),
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: yggdryl::Timezone::from_str("Asia/Kolkata").unwrap()
-            }
+            })
         );
     }
 }

@@ -91,7 +91,7 @@
 
 use smol_str::format_smolstr;
 
-use crate::{DataType, Error, Result, TimeUnit, Timezone};
+use crate::{DataType, DateTimeType, Error, Result, TimeType, TimeUnit, Timezone};
 
 use super::parser::normalized;
 
@@ -175,25 +175,31 @@ impl DataType {
         // The temporals.
         (
             "utctimestamp",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
         (
             "tztimestamp",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
         // Every zone-less time of day is one type. A FIX time is ASCII
         // whatever the version, and the two names differ in which clock the
         // value is read against rather than in what it can hold - so pinning
         // one to seconds makes a capture carrying both cast per row to
         // compare them, and loses a millisecond the wire actually sent.
-        ("utctimeonly", DataType::Time64(TimeUnit::Nanosecond)),
-        ("localmkttime", DataType::Time64(TimeUnit::Nanosecond)),
+        (
+            "utctimeonly",
+            DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
+        ),
+        (
+            "localmkttime",
+            DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
+        ),
         // A FIX date is a day, and a day is an instant at midnight rather
         // than a second type to cast through: a capture joining a settlement
         // date to a transact time compares them directly, and a venue that
@@ -202,40 +208,40 @@ impl DataType {
         // and a local market date states none, so it must not claim one.
         (
             "utcdate",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
         (
             "utcdateonly",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
         (
             "localmktdate",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::NAIVE,
-            },
+            }),
         ),
         // A local market value states no zone, so it must not claim one.
         // `Naive` is that statement made explicitly rather than by omission.
         (
             "localmktdatetime",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::NAIVE,
-            },
+            }),
         ),
         (
             "tztimeonly",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
         // The remaining text and binary shapes.
         ("multiplecharvalue", DataType::utf8()),
@@ -254,7 +260,7 @@ impl DataType {
     /// name resolves identically alone and inside an expression.
     ///
     /// ```
-    /// use yggdryl::{DataType, TimeUnit, Timezone};
+    /// use yggdryl::{DataType, DateTimeType, TimeUnit, Timezone};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// // One canonical spelling: a name resolves to a datatype and displays
@@ -270,20 +276,20 @@ impl DataType {
     /// assert_eq!(row.get_field_by_path("ccy").map(|field| field.dtype().clone()), Some(DataType::Currency));
     /// assert_eq!(
     ///     row.get_field_by_path("at").map(|field| field.dtype().clone()),
-    ///     Some(DataType::DateTime64 {
+    ///     Some(DataType::DateTime(DateTimeType::DateTime64 {
     ///         unit: TimeUnit::Nanosecond,
     ///         timezone: Timezone::UTC,
-    ///     })
+    ///     }))
     /// );
     ///
     /// // Separators and case are folded, exactly as elsewhere in the grammar.
     /// // A FIX date is that day's midnight, so it resolves to an instant.
     /// assert_eq!(
     ///     DataType::from_logical_name(" utc_date_only ")?,
-    ///     DataType::DateTime64 {
+    ///     DataType::DateTime(DateTimeType::DateTime64 {
     ///         unit: TimeUnit::Nanosecond,
     ///         timezone: Timezone::UTC,
-    ///     }
+    ///     })
     /// );
     /// # Ok(())
     /// # }

@@ -1,4 +1,4 @@
-use yggdryl::types::UuidType;
+use yggdryl::types::{DateTimeType, DurationType, IntervalType, TimeType, UuidType};
 use yggdryl::{DataType, DataTypeId, Field, TimeUnit, Timezone};
 
 #[test]
@@ -103,61 +103,73 @@ fn datatype_parser_reuses_unified_temporal_and_interval_aliases() {
     for (source, expected) in [
         (
             "datetime64(Second)",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            },
+            }),
         ),
         (
             "datetime64(Nanoseconds,UTC)",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
         (
             "timestamp(nano seconds,UTC)",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
-        ("time32(seconds)", DataType::Time32(TimeUnit::Second)),
+        (
+            "time32(seconds)",
+            DataType::Time(TimeType::Time32(TimeUnit::Second)),
+        ),
         (
             "time32(milli seconds)",
-            DataType::Time32(TimeUnit::Millisecond),
+            DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
         ),
         (
             "time64(Microsecond)",
-            DataType::Time64(TimeUnit::Microsecond),
+            DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
         ),
         (
             "time64(micro seconds)",
-            DataType::Time64(TimeUnit::Microsecond),
+            DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
         ),
         (
             "duration32(MILLIS)",
-            DataType::Duration32(TimeUnit::Millisecond),
+            DataType::Duration(DurationType::Duration32(TimeUnit::Millisecond)),
         ),
         (
             "duration64(micro seconds)",
-            DataType::Duration64(TimeUnit::Microsecond),
+            DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
         ),
         (
             "interval(YearMonth)",
-            DataType::Interval(TimeUnit::YearMonth),
+            DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
         ),
         (
             "interval(DAY TO SECOND)",
-            DataType::Interval(TimeUnit::DayTime),
+            DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
         ),
         (
             "interval(MonthDayNano)",
-            DataType::Interval(TimeUnit::MonthDayNano),
+            DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
         ),
-        ("interval", DataType::Interval(TimeUnit::MonthDayNano)),
-        ("INTERVAL YEAR", DataType::Interval(TimeUnit::YearMonth)),
-        ("INTERVAL DAY", DataType::Interval(TimeUnit::DayTime)),
+        (
+            "interval",
+            DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
+        ),
+        (
+            "INTERVAL YEAR",
+            DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
+        ),
+        (
+            "INTERVAL DAY",
+            DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
+        ),
     ] {
         assert_eq!(DataType::from_str(source).unwrap(), expected, "{source:?}");
     }
@@ -209,7 +221,7 @@ fn datatype_unit_errors_point_at_the_original_unit_token() {
 
 #[test]
 fn bare_interval_defaults_before_postfix_list_wrapping() {
-    let interval = DataType::Interval(TimeUnit::MonthDayNano);
+    let interval = DataType::interval(TimeUnit::MonthDayNano).unwrap();
     let list = DataType::list(Field::new("item", interval, true));
     let nested_list = DataType::list(Field::new("item", list.clone(), true));
 
@@ -303,17 +315,17 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
         DataType::Uuid(UuidType::Uuid),
         DataType::Version,
         DataType::variant(),
-        DataType::Date32,
-        DataType::Date64,
+        DataType::date32(),
+        DataType::date64(),
         DataType::time(TimeUnit::Second).unwrap(),
         DataType::time(TimeUnit::Nanosecond).unwrap(),
         DataType::datetime64(TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
         DataType::datetime64(TimeUnit::Microsecond, "UTC".parse::<Timezone>().unwrap()).unwrap(),
         DataType::duration32(TimeUnit::Second).unwrap(),
         DataType::duration64(TimeUnit::Nanosecond).unwrap(),
-        DataType::Interval(TimeUnit::YearMonth),
-        DataType::Interval(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::MonthDayNano),
+        DataType::interval(TimeUnit::YearMonth).unwrap(),
+        DataType::interval(TimeUnit::DayTime).unwrap(),
+        DataType::interval(TimeUnit::MonthDayNano).unwrap(),
         DataType::decimal32(9, 2).unwrap(),
         DataType::decimal64(18, 2).unwrap(),
         DataType::decimal128(38, 2).unwrap(),

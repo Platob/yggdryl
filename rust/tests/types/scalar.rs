@@ -523,7 +523,7 @@ fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
 
 #[test]
 fn every_scalar_family_exposes_its_leaf_contract() {
-    use yggdryl::types::{bytes, decimal, geospatial, integer, sequence, string, temporal, uuid};
+    use yggdryl::types::{bytes, decimal, geospatial, integer, sequence, string, time, uuid};
     use yggdryl::{
         CodeValue, DecimalValue, GeospatialValue, IntegerValue, NestedValue, TemporalValue,
     };
@@ -541,7 +541,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     );
     assert!(DecimalValue::rescale(decimal, 1).is_err());
 
-    let time = temporal::Time32::new(2, TimeUnit::Second, Timezone::NAIVE).unwrap();
+    let time = time::Time32::new(2, TimeUnit::Second, Timezone::NAIVE).unwrap();
     let milliseconds = TemporalValue::with_unit(time, TimeUnit::Millisecond).unwrap();
     assert_eq!(milliseconds.count(), 2_000);
     assert_eq!(milliseconds.unit(), TimeUnit::Millisecond);
@@ -586,7 +586,8 @@ fn every_scalar_family_exposes_its_leaf_contract() {
 #[test]
 fn concrete_leaves_preserve_their_physical_identity() {
     use yggdryl::types::{
-        bytes, decimal, geospatial, integer, mapping, sequence, string, structure, temporal, uuid,
+        bytes, date, datetime, decimal, geospatial, integer, mapping, sequence, string, structure,
+        uuid,
     };
 
     let integer = integer::Int32::new(-7);
@@ -598,11 +599,11 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert_eq!(decimal.scale(), 2);
     assert_eq!(decimal.to_string(), "12.50");
 
-    let datetime = temporal::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+    let datetime = datetime::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
     assert_eq!(datetime.count(), 7);
     assert_eq!(datetime.unit(), TimeUnit::Nanosecond);
     assert_eq!(datetime.timezone(), Timezone::UTC);
-    assert!(temporal::Date32::new(0, TimeUnit::Second, Timezone::NAIVE).is_err());
+    assert!(date::Date32::new(0, TimeUnit::Second, Timezone::NAIVE).is_err());
 
     let utf8 = string::Str::new("東京");
     let view = utf8
@@ -671,7 +672,9 @@ fn concrete_leaves_preserve_their_physical_identity() {
 
 #[test]
 fn width_variants_keep_exact_members_and_logical_identity() {
-    use yggdryl::types::{bytes, decimal, geospatial, integer, sequence, string, temporal};
+    use yggdryl::types::{
+        bytes, datetime, decimal, geospatial, integer, sequence, string, temporal,
+    };
 
     let signed = Scalar::Int32(integer::Int32::new(7));
     let unsigned = Scalar::UInt8(integer::UInt8::new(7));
@@ -728,7 +731,7 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     assert!(sequence.is_container());
 
     let datetime = Scalar::DateTime64(
-        temporal::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+        datetime::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
     );
     assert_eq!(
         datetime.temporal_family(),

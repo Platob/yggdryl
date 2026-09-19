@@ -391,7 +391,7 @@ fn two_datatypes_meet_at_the_one_that_holds_both() {
     );
     assert_eq!(up(&DataType::Int64, &DataType::utf8()), DataType::utf8());
     assert_eq!(up(&DataType::Boolean, &DataType::utf8()), DataType::utf8());
-    assert_eq!(up(&DataType::Date32, &DataType::utf8()), DataType::utf8());
+    assert_eq!(up(&DataType::date32(), &DataType::utf8()), DataType::utf8());
 
     // A pair with no meeting point that is not a re-encoding is refused, and
     // the refusal names both sides.

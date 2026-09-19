@@ -14,8 +14,8 @@ use crate::{DataType, Field, Result, Scalar, TimeUnit};
 
 use super::datum::invalid;
 use super::schema::{Node, Schema};
-use crate::types::DecimalType;
 use crate::types::sequence::SequenceType;
+use crate::types::{DateTimeType, DateType, DecimalType, IntervalType, TimeType};
 
 /// Project an Avro schema as the crate's `Field` schema.
 ///
@@ -211,10 +211,10 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         // Avro's `bytes` has no maximum, so a bound is dropped here; the cast
         // on the way in already held every value to it.
         DataType::Bytes(parameters) if !parameters.is_fixed() => plain("bytes"),
-        DataType::Date32 => logical("int", "date"),
-        DataType::Time32(TimeUnit::Millisecond) => logical("int", "time-millis"),
-        DataType::Time64(TimeUnit::Microsecond) => logical("long", "time-micros"),
-        DataType::DateTime64 { unit, timezone } => {
+        DataType::Date(DateType::Date32) => logical("int", "date"),
+        DataType::Time(TimeType::Time32(TimeUnit::Millisecond)) => logical("int", "time-millis"),
+        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)) => logical("long", "time-micros"),
+        DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
             let annotation = match (unit, !timezone.is_naive()) {
                 (TimeUnit::Millisecond, true) => "timestamp-millis",
                 (TimeUnit::Microsecond, true) => "timestamp-micros",
@@ -226,7 +226,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
             };
             logical("long", annotation)
         }
-        DataType::Interval(TimeUnit::MonthDayNano) => {
+        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)) => {
             *counter += 1;
             Scalar::from_record([
                 ("type", Scalar::from("fixed")),

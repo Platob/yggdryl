@@ -38,7 +38,7 @@ mod limits {
     use crate::types::sequence::SequenceType;
 
     use crate::arrow::{Error, Result};
-    use crate::types::DecimalType;
+    use crate::types::{DateType, DecimalType, IntervalType, TimeType};
     use crate::{DataType, Field, Scalar, TimeUnit, UnionMode};
 
     // Composite Arrow layouts can turn one logical null or inactive union member
@@ -327,9 +327,9 @@ mod limits {
                 DataType::Int32
                 | DataType::UInt32
                 | DataType::Float32
-                | DataType::Date32
-                | DataType::Time32(_)
-                | DataType::Interval(TimeUnit::YearMonth)
+                | DataType::Date(DateType::Date32)
+                | DataType::Time(TimeType::Time32(_))
+                | DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth))
                 | DataType::Decimal(DecimalType::Decimal32 { .. }) => self.add_fixed_rows(rows, 4)?,
                 // A registered code is US-ASCII text bounded at the width its
                 // standard fixes, so it charges one 32-bit offset a row and at
@@ -354,15 +354,14 @@ mod limits {
                 DataType::Int64
                 | DataType::UInt64
                 | DataType::Float64
-                | DataType::DateTime64 { .. }
-                | DataType::Date64
-                | DataType::Time64(_)
-                | DataType::Duration32(_)
-                | DataType::Duration64(_)
-                | DataType::Interval(TimeUnit::DayTime)
+                | DataType::DateTime(_)
+                | DataType::Date(DateType::Date64)
+                | DataType::Time(TimeType::Time64(_))
+                | DataType::Duration(_)
+                | DataType::Interval(IntervalType::Interval(TimeUnit::DayTime))
                 | DataType::Decimal(DecimalType::Decimal64 { .. })
                 | DataType::Sequence(SequenceType::ListView(_)) => self.add_fixed_rows(rows, 8)?,
-                DataType::Interval(TimeUnit::MonthDayNano)
+                DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano))
                 | DataType::Decimal(DecimalType::Decimal128 { .. })
                 | DataType::Uuid(_)
                 | DataType::Sequence(SequenceType::LargeListView(_)) => {
@@ -443,9 +442,9 @@ mod limits {
                 DataType::Int32
                 | DataType::UInt32
                 | DataType::Float32
-                | DataType::Date32
-                | DataType::Time32(_)
-                | DataType::Interval(TimeUnit::YearMonth)
+                | DataType::Date(DateType::Date32)
+                | DataType::Time(TimeType::Time32(_))
+                | DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth))
                 | DataType::Decimal(DecimalType::Decimal32 { .. }) => self.add_fixed_rows(rows, 4)?,
                 // A registered code is US-ASCII text bounded at the width its
                 // standard fixes, so it charges one 32-bit offset a row and at
@@ -470,15 +469,14 @@ mod limits {
                 DataType::Int64
                 | DataType::UInt64
                 | DataType::Float64
-                | DataType::DateTime64 { .. }
-                | DataType::Date64
-                | DataType::Time64(_)
-                | DataType::Duration32(_)
-                | DataType::Duration64(_)
-                | DataType::Interval(TimeUnit::DayTime)
+                | DataType::DateTime(_)
+                | DataType::Date(DateType::Date64)
+                | DataType::Time(TimeType::Time64(_))
+                | DataType::Duration(_)
+                | DataType::Interval(IntervalType::Interval(TimeUnit::DayTime))
                 | DataType::Decimal(DecimalType::Decimal64 { .. })
                 | DataType::Sequence(SequenceType::ListView(_)) => self.add_fixed_rows(rows, 8)?,
-                DataType::Interval(TimeUnit::MonthDayNano)
+                DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano))
                 | DataType::Decimal(DecimalType::Decimal128 { .. })
                 | DataType::Uuid(_)
                 | DataType::Sequence(SequenceType::LargeListView(_)) => self.add_fixed_rows(rows, 16)?,

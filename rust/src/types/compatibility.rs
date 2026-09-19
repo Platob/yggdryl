@@ -12,9 +12,9 @@ use crate::text::{elide_display, expected_got};
 use crate::{Error, Field, Result, Scheme, TimeUnit};
 
 use super::{BytesType, DataType, StringType, preflight_schema, preflight_schema_shape};
-use crate::types::DecimalType;
 use crate::types::enums::EnumType;
 use crate::types::sequence::SequenceType;
+use crate::types::{DateTimeType, DateType, DecimalType, IntervalType, TimeType};
 
 const ARROW_EXTENSION_NAME_KEY: &str = "ARROW:extension:name";
 const ARROW_EXTENSION_METADATA_KEY: &str = "ARROW:extension:metadata";
@@ -304,7 +304,7 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::Int64
         | D::Float32
         | D::Float64
-        | D::Date32 => Ok((dtype.clone(), false)),
+        | D::Date(DateType::Date32) => Ok((dtype.clone(), false)),
         // Plain `binary` and plain `utf8` are the one byte and the one
         // string a foreign engine names.
         D::Bytes(parameters) if *parameters == BytesType::default() => Ok((dtype.clone(), false)),
@@ -314,45 +314,42 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         D::UInt32 => Ok((D::Int64, true)),
         D::UInt64 => Ok((D::decimal128(20, 0)?, true)),
         D::Float16 => Ok((D::Float32, true)),
-        D::DateTime64 {
+        D::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             ..
-        } => Ok((dtype.clone(), false)),
-        D::DateTime64 { unit, .. } => unit_mismatch(Target::Spark, path, "timestamp", *unit, "us"),
-        D::Date64 => incompatible(
+        }) => Ok((dtype.clone(), false)),
+        D::DateTime(leaf) => unit_mismatch(Target::Spark, path, "timestamp", leaf.unit(), "us"),
+        D::Date(DateType::Date64) => incompatible(
             Target::Spark,
             path,
             "date64 milliseconds require a value cast to Spark date32 days",
         ),
-        D::Time32(unit) | D::Time64(unit) => incompatible(
+        D::Time(leaf) => incompatible(
             Target::Spark,
             path,
             format_smolstr!(
-                "time-of-day compatibility is Spark-version-dependent and has no conservative common encoding, got {} of {unit}",
-                dtype.name()
+                "time-of-day compatibility is Spark-version-dependent and has no conservative common encoding, got {} of {}",
+                dtype.name(),
+                leaf.unit()
             ),
         ),
-        D::Duration32(TimeUnit::Microsecond) | D::Duration64(TimeUnit::Microsecond) => {
-            Ok((dtype.clone(), false))
-        }
-        D::Duration32(unit) | D::Duration64(unit) => {
-            unit_mismatch(Target::Spark, path, dtype.name(), *unit, "us")
-        }
-        D::Interval(TimeUnit::YearMonth) => Ok((dtype.clone(), false)),
-        D::Interval(TimeUnit::DayTime) => incompatible(
+        D::Duration(leaf) if leaf.unit() == TimeUnit::Microsecond => Ok((dtype.clone(), false)),
+        D::Duration(leaf) => unit_mismatch(Target::Spark, path, dtype.name(), leaf.unit(), "us"),
+        D::Interval(IntervalType::Interval(TimeUnit::YearMonth)) => Ok((dtype.clone(), false)),
+        D::Interval(IntervalType::Interval(TimeUnit::DayTime)) => incompatible(
             Target::Spark,
             path,
             "Spark day-time intervals use duration(microsecond), not interval(day_time)",
         ),
-        D::Interval(TimeUnit::MonthDayNano) => incompatible(
+        D::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)) => incompatible(
             Target::Spark,
             path,
             "interval(month_day_nano) is not in the conservative cross-version Spark interchange subset",
         ),
-        D::Interval(unit) => incompatible(
+        D::Interval(leaf) => incompatible(
             Target::Spark,
             path,
-            format_smolstr!("expected an interval layout, got {unit}"),
+            format_smolstr!("expected an interval layout, got {}", leaf.unit()),
         ),
         D::Bytes(_) => Ok((D::binary(), true)),
         // No fixed-width text and no charset to declare here, so a string
@@ -427,41 +424,57 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::UInt64
         | D::Float32
         | D::Float64
-        | D::Date32 => Ok((dtype.clone(), false)),
+        | D::Date(DateType::Date32) => Ok((dtype.clone(), false)),
         // Plain `binary` and plain `utf8` are the one byte and the one
         // string a foreign engine names.
         D::Bytes(parameters) if *parameters == BytesType::default() => Ok((dtype.clone(), false)),
         D::String(parameters) if *parameters == StringType::default() => Ok((dtype.clone(), false)),
         D::Float16 => Ok((D::Float32, true)),
         // Polars datetimes are millisecond, microsecond, or nanosecond.
-        D::DateTime64 {
+        D::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond,
             ..
-        } => Ok((dtype.clone(), false)),
-        D::DateTime64 { unit, .. } => {
-            unit_mismatch(Target::Polars, path, "timestamp", *unit, "ms, us, or ns")
-        }
-        D::Date64 => incompatible(
+        }) => Ok((dtype.clone(), false)),
+        D::DateTime(leaf) => unit_mismatch(
+            Target::Polars,
+            path,
+            "timestamp",
+            leaf.unit(),
+            "ms, us, or ns",
+        ),
+        D::Date(DateType::Date64) => incompatible(
             Target::Polars,
             path,
             "date64 milliseconds require a value cast to Polars date32 days",
         ),
         // Polars `Time` is nanoseconds since midnight.
-        D::Time64(TimeUnit::Nanosecond) => Ok((dtype.clone(), false)),
-        D::Time32(unit) | D::Time64(unit) => {
-            unit_mismatch(Target::Polars, path, "time-of-day", *unit, "time64 of ns")
-        }
-        D::Duration32(TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond)
-        | D::Duration64(TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond) => {
-            Ok((dtype.clone(), false))
-        }
-        D::Duration32(unit) | D::Duration64(unit) => {
-            unit_mismatch(Target::Polars, path, dtype.name(), *unit, "ms, us, or ns")
-        }
-        D::Interval(unit) => incompatible(
+        D::Time(TimeType::Time64(TimeUnit::Nanosecond)) => Ok((dtype.clone(), false)),
+        D::Time(leaf) => unit_mismatch(
             Target::Polars,
             path,
-            format_smolstr!("Polars has no calendar interval type, got interval({unit})"),
+            "time-of-day",
+            leaf.unit(),
+            "time64 of ns",
+        ),
+        D::Duration(leaf)
+            if matches!(
+                leaf.unit(),
+                TimeUnit::Millisecond | TimeUnit::Microsecond | TimeUnit::Nanosecond
+            ) =>
+        {
+            Ok((dtype.clone(), false))
+        }
+        D::Duration(leaf) => unit_mismatch(
+            Target::Polars,
+            path,
+            dtype.name(),
+            leaf.unit(),
+            "ms, us, or ns",
+        ),
+        D::Interval(leaf) => incompatible(
+            Target::Polars,
+            path,
+            format_smolstr!("Polars has no calendar interval type, got {leaf}"),
         ),
         D::Bytes(_) => Ok((D::binary(), true)),
         // No fixed-width text and no charset to declare here, so a string
@@ -524,43 +537,40 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::UInt64
         | D::Float32
         | D::Float64
-        | D::Date32 => Ok((dtype.clone(), false)),
+        | D::Date(DateType::Date32) => Ok((dtype.clone(), false)),
         // Plain `binary` and plain `utf8` are the one byte and the one
         // string a foreign engine names.
         D::Bytes(parameters) if *parameters == BytesType::default() => Ok((dtype.clone(), false)),
         D::String(parameters) if *parameters == StringType::default() => Ok((dtype.clone(), false)),
         D::Float16 => Ok((D::Float32, true)),
         // `datetime64[ns]` is the pandas timestamp representation.
-        D::DateTime64 {
+        D::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             ..
-        } => Ok((dtype.clone(), false)),
-        D::DateTime64 { unit, .. } => unit_mismatch(Target::Pandas, path, "timestamp", *unit, "ns"),
-        D::Date64 => incompatible(
+        }) => Ok((dtype.clone(), false)),
+        D::DateTime(leaf) => unit_mismatch(Target::Pandas, path, "timestamp", leaf.unit(), "ns"),
+        D::Date(DateType::Date64) => incompatible(
             Target::Pandas,
             path,
             "date64 milliseconds require a value cast to a pandas date32 day representation",
         ),
-        D::Time32(unit) | D::Time64(unit) => incompatible(
+        D::Time(leaf) => incompatible(
             Target::Pandas,
             path,
             format_smolstr!(
-                "pandas has no time-of-day dtype and materializes it as opaque objects, got {} of {unit}",
-                dtype.name()
+                "pandas has no time-of-day dtype and materializes it as opaque objects, got {} of {}",
+                dtype.name(),
+                leaf.unit()
             ),
         ),
         // `timedelta64[ns]` is the pandas duration representation.
-        D::Duration32(TimeUnit::Nanosecond) | D::Duration64(TimeUnit::Nanosecond) => {
-            Ok((dtype.clone(), false))
-        }
-        D::Duration32(unit) | D::Duration64(unit) => {
-            unit_mismatch(Target::Pandas, path, dtype.name(), *unit, "ns")
-        }
-        D::Interval(unit) => incompatible(
+        D::Duration(leaf) if leaf.unit() == TimeUnit::Nanosecond => Ok((dtype.clone(), false)),
+        D::Duration(leaf) => unit_mismatch(Target::Pandas, path, dtype.name(), leaf.unit(), "ns"),
+        D::Interval(leaf) => incompatible(
             Target::Pandas,
             path,
             format_smolstr!(
-                "a pandas IntervalDtype describes value bounds, not an Arrow calendar interval, got interval({unit})"
+                "a pandas IntervalDtype describes value bounds, not an Arrow calendar interval, got {leaf}"
             ),
         ),
         D::Bytes(_) => Ok((D::binary(), true)),
@@ -627,7 +637,7 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         | D::Int64
         | D::Float32
         | D::Float64
-        | D::Date32
+        | D::Date(DateType::Date32)
         // Iceberg is the one target that names an identifier type.
         | D::Uuid(_) => Ok((dtype.clone(), false)),
         // Plain `binary`, and `fixed[n]`, which is also how `uuid` is
@@ -647,35 +657,31 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         D::UInt32 => Ok((D::Int64, true)),
         D::UInt64 => Ok((D::decimal128(20, 0)?, true)),
         D::Float16 => Ok((D::Float32, true)),
-        D::Date64 => incompatible(
+        D::Date(DateType::Date64) => incompatible(
             Target::Iceberg,
             path,
             "date64 milliseconds require a value cast to Iceberg date32 days",
         ),
         // Iceberg `time` is microseconds since midnight.
-        D::Time64(TimeUnit::Microsecond) => Ok((dtype.clone(), false)),
-        D::Time32(unit) | D::Time64(unit) => {
-            unit_mismatch(Target::Iceberg, path, "time-of-day", *unit, "us")
-        }
+        D::Time(TimeType::Time64(TimeUnit::Microsecond)) => Ok((dtype.clone(), false)),
+        D::Time(leaf) => unit_mismatch(Target::Iceberg, path, "time-of-day", leaf.unit(), "us"),
         // `timestamp`/`timestamptz` are microseconds; the `_ns` pair is nanoseconds.
-        D::DateTime64 {
+        D::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond | TimeUnit::Nanosecond,
             ..
-        } => {
-            Ok((dtype.clone(), false))
+        }) => Ok((dtype.clone(), false)),
+        D::DateTime(leaf) => {
+            unit_mismatch(Target::Iceberg, path, "timestamp", leaf.unit(), "us or ns")
         }
-        D::DateTime64 { unit, .. } => {
-            unit_mismatch(Target::Iceberg, path, "timestamp", *unit, "us or ns")
-        }
-        D::Duration32(unit) | D::Duration64(unit) => incompatible(
+        D::Duration(leaf) => incompatible(
             Target::Iceberg,
             path,
-            format_smolstr!("Iceberg has no elapsed-time type, got {}({unit})", dtype.name()),
+            format_smolstr!("Iceberg has no elapsed-time type, got {}({})", dtype.name(), leaf.unit()),
         ),
-        D::Interval(unit) => incompatible(
+        D::Interval(leaf) => incompatible(
             Target::Iceberg,
             path,
-            format_smolstr!("Iceberg has no calendar interval type, got interval({unit})"),
+            format_smolstr!("Iceberg has no calendar interval type, got {leaf}"),
         ),
         D::Bytes(_) => Ok((D::binary(), true)),
         // Iceberg has `string` and `fixed[n]` and no charset to declare, so a

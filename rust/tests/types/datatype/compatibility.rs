@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use yggdryl::types::DecimalType;
 use yggdryl::types::SequenceType;
+use yggdryl::types::{DateTimeType, DurationType, IntervalType, TimeType};
 use yggdryl::{DataType, DataTypeId, Error, Field, Scheme, TimeUnit, Timezone, UnionMode};
 
 #[test]
@@ -100,10 +101,10 @@ fn spark_physical_rewrite_table_covers_offset_numeric_and_decimal_families() {
 fn spark_errors_are_path_aware_and_extension_rewrites_are_atomic() {
     let source = DataType::from_fields([Field::new(
         "a.b",
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
-        },
+        }),
         false,
     )])
     .unwrap();
@@ -265,10 +266,10 @@ fn polars_and_pandas_reject_maps_with_a_named_alternative() {
 
 #[test]
 fn temporal_resolution_errors_name_the_expected_and_actual_unit() {
-    let nanosecond = DataType::DateTime64 {
+    let nanosecond = DataType::DateTime(DateTimeType::DateTime64 {
         unit: TimeUnit::Nanosecond,
         timezone: Timezone::NAIVE,
-    };
+    });
 
     // pandas is nanosecond-native, Spark is microsecond-native.
     assert_eq!(
@@ -286,10 +287,10 @@ fn temporal_resolution_errors_name_the_expected_and_actual_unit() {
     assert!(message.contains("got ns"), "{message}");
     assert!(message.contains("value cast"), "{message}");
 
-    let second = DataType::DateTime64 {
+    let second = DataType::DateTime(DateTimeType::DateTime64 {
         unit: TimeUnit::Second,
         timezone: Timezone::NAIVE,
-    };
+    });
     let polars_message = second
         .into_scheme_compat(&Scheme::POLARS)
         .unwrap_err()
@@ -304,10 +305,10 @@ fn every_target_reports_a_path_for_a_nested_failure() {
         "outer",
         DataType::list(Field::new(
             "item",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            },
+            }),
             true,
         )),
         true,
@@ -369,13 +370,13 @@ fn compatibility_preflight_reports_its_own_operation_kind() {
 #[test]
 fn spark_temporal_decimal_and_union_boundaries_are_explicit() {
     for accepted in [
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        },
-        DataType::Duration32(TimeUnit::Microsecond),
-        DataType::Duration64(TimeUnit::Microsecond),
-        DataType::Interval(TimeUnit::YearMonth),
+        }),
+        DataType::Duration(DurationType::Duration32(TimeUnit::Microsecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
         DataType::decimal128(38, 0).unwrap(),
     ] {
         assert_eq!(
@@ -384,17 +385,17 @@ fn spark_temporal_decimal_and_union_boundaries_are_explicit() {
         );
     }
     for rejected in [
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
-        },
-        DataType::Date64,
-        DataType::Time32(TimeUnit::Second),
-        DataType::Time64(TimeUnit::Microsecond),
-        DataType::Duration32(TimeUnit::Nanosecond),
-        DataType::Duration64(TimeUnit::Nanosecond),
-        DataType::Interval(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::MonthDayNano),
+        }),
+        DataType::date64(),
+        DataType::Time(TimeType::Time32(TimeUnit::Second)),
+        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+        DataType::Duration(DurationType::Duration32(TimeUnit::Nanosecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
         DataType::decimal128(9, -1).unwrap(),
         DataType::decimal256(39, 0).unwrap(),
         DataType::union(
@@ -567,28 +568,28 @@ fn iceberg_widens_everything_outside_its_closed_primitive_vocabulary() {
         DataType::Int64,
         DataType::Float32,
         DataType::Float64,
-        DataType::Date32,
+        DataType::date32(),
         DataType::binary(),
         DataType::utf8(),
         DataType::fixed_binary(16).unwrap(),
         DataType::fixed_binary(8).unwrap(),
-        DataType::Time64(TimeUnit::Microsecond),
-        DataType::DateTime64 {
+        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::NAIVE,
-        },
-        DataType::DateTime64 {
+        }),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        },
-        DataType::DateTime64 {
+        }),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
-        },
-        DataType::DateTime64 {
+        }),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::UTC,
-        },
+        }),
         DataType::decimal128(38, 9).unwrap(),
     ] {
         assert_eq!(
@@ -603,34 +604,34 @@ fn iceberg_widens_everything_outside_its_closed_primitive_vocabulary() {
 fn iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual() {
     let cases = vec![
         (
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            },
+            }),
             vec!["expected timestamp of us or ns", "got s", "value cast"],
         ),
         (
-            DataType::Time32(TimeUnit::Millisecond),
+            DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
             vec!["expected time-of-day of us", "got ms"],
         ),
         (
-            DataType::Time64(TimeUnit::Nanosecond),
+            DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
             vec!["expected time-of-day of us", "got ns"],
         ),
         (
-            DataType::Date64,
+            DataType::date64(),
             vec!["date64 milliseconds", "Iceberg date32 days"],
         ),
         (
-            DataType::Duration32(TimeUnit::Microsecond),
+            DataType::Duration(DurationType::Duration32(TimeUnit::Microsecond)),
             vec!["no elapsed-time type", "got duration32(us)"],
         ),
         (
-            DataType::Duration64(TimeUnit::Microsecond),
+            DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
             vec!["no elapsed-time type", "got duration64(us)"],
         ),
         (
-            DataType::Interval(TimeUnit::MonthDayNano),
+            DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
             vec!["no calendar interval type", "got interval(month_day_nano)"],
         ),
         (

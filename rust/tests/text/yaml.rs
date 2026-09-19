@@ -3,6 +3,7 @@ use std::str::FromStr;
 
 use saphyr_parser::{Event, EventReceiver, Parser};
 use yggdryl::text::yaml;
+use yggdryl::types::DateTimeType;
 use yggdryl::{
     DataType, DataTypeId, Field, Limits, Scalar, TimeUnit, Timezone, from_yaml_scalar,
     from_yaml_scalar_with_field, i256, into_yaml_scalar,
@@ -16,7 +17,7 @@ fn field_directed_yaml_restores_exact_decimal_and_interval_leaves() {
     let decoded = from_yaml_scalar_with_field(&encoded, &decimal.required_field("value")).unwrap();
     assert_eq!(decoded.id(), DataTypeId::Decimal64);
 
-    let interval = DataType::Interval(TimeUnit::DayTime);
+    let interval = DataType::interval(TimeUnit::DayTime).unwrap();
     let value = interval
         .scalar(Scalar::from_sequence([Scalar::from(2), Scalar::from(3)]))
         .unwrap();
@@ -85,10 +86,10 @@ fn typed_row_field() -> Field {
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Second,
                     timezone: Timezone::UTC,
-                },
+                }),
                 false,
             ),
             Field::new(

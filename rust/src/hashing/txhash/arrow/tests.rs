@@ -11,10 +11,7 @@ const UNIT: TimeUnit = TimeUnit::Microsecond;
 
 #[test]
 fn accepts_time_agrees_with_the_column_reader() {
-    let zoned = |unit| DataType::DateTime64 {
-        unit,
-        timezone: Timezone::UTC,
-    };
+    let zoned = |unit| DataType::datetime64(unit, Timezone::UTC).unwrap();
     for dtype in [
         DataType::Int8,
         DataType::Int16,
@@ -24,19 +21,16 @@ fn accepts_time_agrees_with_the_column_reader() {
         DataType::UInt16,
         DataType::UInt32,
         DataType::UInt64,
-        DataType::Date32,
-        DataType::Date64,
+        DataType::date32(),
+        DataType::date64(),
         zoned(TimeUnit::Second),
         zoned(TimeUnit::Nanosecond),
-        DataType::DateTime64 {
-            unit: TimeUnit::Millisecond,
-            timezone: Timezone::NAIVE,
-        },
+        DataType::datetime64(TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
         DataType::utf8(),
         DataType::Float64,
         DataType::Boolean,
-        DataType::Time64(TimeUnit::Microsecond),
-        DataType::Duration64(TimeUnit::Second),
+        DataType::time64(TimeUnit::Microsecond).unwrap(),
+        DataType::duration64(TimeUnit::Second).unwrap(),
     ] {
         let arrow = Field::new("x", dtype.clone(), true)
             .into_arrow_field()

@@ -492,11 +492,11 @@ assert_eq!(
 // nanosecond pair.
 assert_eq!(
     PrimitiveType::from_str("timestamp")?.into_dtype()?,
-    DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }
+    DataType::datetime64(TimeUnit::Microsecond, Timezone::NAIVE)?
 );
 assert_eq!(
     PrimitiveType::from_str("timestamp_ns")?.into_dtype()?,
-    DataType::DateTime64 { unit: TimeUnit::Nanosecond, timezone: Timezone::NAIVE }
+    DataType::datetime64(TimeUnit::Nanosecond, Timezone::NAIVE)?
 );
 assert_eq!(
     PrimitiveType::from_str("time")?.into_dtype()?,
@@ -554,7 +554,7 @@ assert_eq!(
 let widened = DataType::Int8.into_scheme_compat(&Scheme::ICEBERG)?;
 assert_eq!(widened, DataType::Int32);
 assert_eq!(PrimitiveType::from_dtype(&widened)?.to_string(), "int");
-assert!(DataType::Interval(TimeUnit::YearMonth).into_scheme_compat(&Scheme::ICEBERG).is_err());
+assert!(DataType::interval(TimeUnit::YearMonth)?.into_scheme_compat(&Scheme::ICEBERG).is_err());
 ```
 
 | Iceberg | `DataType` | Version |

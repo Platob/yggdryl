@@ -12,6 +12,7 @@ use yggdryl::hashing::xxhash::arrow::{column_digests, row_digests};
 use yggdryl::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::types::Uuid;
 use yggdryl::types::UuidType;
+use yggdryl::types::{DateTimeType, DurationType};
 use yggdryl::{DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -394,14 +395,14 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([Scalar::from(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
         ),
         (
-            Field::new("date32", DataType::Date32, true),
+            Field::new("date32", DataType::date32(), true),
             Scalar::from_sequence([
                 Scalar::date32_in(20_000, TimeUnit::Day, Timezone::NAIVE).unwrap(),
                 Scalar::Null,
             ]),
         ),
         (
-            Field::new("date64", DataType::Date64, true),
+            Field::new("date64", DataType::date64(), true),
             Scalar::from_sequence([
                 Scalar::date64_in(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
                 Scalar::Null,
@@ -450,10 +451,10 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "timestamp_utc",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Microsecond,
                     timezone: utc,
-                },
+                }),
                 true,
             ),
             Scalar::from_sequence([
@@ -464,10 +465,10 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "timestamp_naive",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Nanosecond,
                     timezone: Timezone::NAIVE,
-                },
+                }),
                 true,
             ),
             Scalar::from_sequence([
@@ -478,10 +479,10 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "timestamp_second",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Second,
                     timezone: utc,
-                },
+                }),
                 true,
             ),
             Scalar::from_sequence([
@@ -492,10 +493,10 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "timestamp_millisecond_offset",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Millisecond,
                     timezone: offset,
-                },
+                }),
                 true,
             ),
             Scalar::from_sequence([
@@ -504,7 +505,11 @@ fn columns() -> Vec<(Field, Scalar)> {
             ]),
         ),
         (
-            Field::new("duration64", DataType::Duration64(TimeUnit::Second), true),
+            Field::new(
+                "duration64",
+                DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
+                true,
+            ),
             Scalar::from_sequence([
                 Scalar::duration64_in(90, TimeUnit::Second, Timezone::NAIVE).unwrap(),
                 Scalar::Null,
@@ -513,7 +518,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "duration64_millisecond",
-                DataType::Duration64(TimeUnit::Millisecond),
+                DataType::Duration(DurationType::Duration64(TimeUnit::Millisecond)),
                 true,
             ),
             Scalar::from_sequence([
@@ -524,7 +529,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "duration64_microsecond",
-                DataType::Duration64(TimeUnit::Microsecond),
+                DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
                 true,
             ),
             Scalar::from_sequence([
@@ -535,7 +540,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "duration64_nanosecond",
-                DataType::Duration64(TimeUnit::Nanosecond),
+                DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
                 true,
             ),
             Scalar::from_sequence([
@@ -557,7 +562,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "interval_year_month",
-                DataType::Interval(TimeUnit::YearMonth),
+                DataType::interval(TimeUnit::YearMonth).unwrap(),
                 true,
             ),
             Scalar::from_sequence([
@@ -570,7 +575,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "interval_day_time",
-                DataType::Interval(TimeUnit::DayTime),
+                DataType::interval(TimeUnit::DayTime).unwrap(),
                 true,
             ),
             Scalar::from_sequence([
@@ -583,7 +588,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "interval_month_day_nano",
-                DataType::Interval(TimeUnit::MonthDayNano),
+                DataType::interval(TimeUnit::MonthDayNano).unwrap(),
                 true,
             ),
             Scalar::from_sequence([
@@ -1054,7 +1059,7 @@ fn a_column_digest_still_refuses_what_no_cast_can_reconcile() {
     // completes with: a value the declaration cannot hold is named, because a
     // null is a value here and two unconvertible cells must not become one.
     let array: ArrayRef = Arc::new(StringArray::from(vec!["AAPL", "MSFT"]));
-    let field = Field::new("when", DataType::Date32, false);
+    let field = Field::new("when", DataType::date32(), false);
     let error =
         column_digests(array, &field, DigestAlgorithm::Xxh3).expect_err("a symbol is not a date");
     assert!(

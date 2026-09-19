@@ -453,20 +453,16 @@ fn is_signed_numeric(dtype: &DataType) -> bool {
             | DataType::Float32
             | DataType::Float64
     ) || decimal_parts(unwrap_dictionary(dtype)).is_some()
-        || matches!(
-            unwrap_dictionary(dtype),
-            DataType::Duration32(_) | DataType::Duration64(_)
-        )
+        || matches!(unwrap_dictionary(dtype), DataType::Duration(_))
 }
 
 /// The temporal family and unit of a datatype, if it has one.
 pub(crate) const fn temporal_parts(dtype: &DataType) -> Option<(u8, TimeUnit)> {
     match dtype {
-        DataType::Date32 => Some((0, TimeUnit::Day)),
-        DataType::Date64 => Some((0, TimeUnit::Millisecond)),
-        DataType::Time32(unit) | DataType::Time64(unit) => Some((1, *unit)),
-        DataType::DateTime64 { unit, .. } => Some((2, *unit)),
-        DataType::Duration32(unit) | DataType::Duration64(unit) => Some((3, *unit)),
+        DataType::Date(leaf) => Some((0, leaf.unit())),
+        DataType::Time(leaf) => Some((1, leaf.unit())),
+        DataType::DateTime(leaf) => Some((2, leaf.unit())),
+        DataType::Duration(leaf) => Some((3, leaf.unit())),
         _ => None,
     }
 }
@@ -498,14 +494,14 @@ pub(crate) fn common_type(left: &DataType, right: &DataType) -> Option<DataType>
 fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Option<DataType> {
     let left = unwrap_dictionary(left);
     let right = unwrap_dictionary(right);
-    if matches!(left, DataType::Duration32(_) | DataType::Duration64(_))
+    if matches!(left, DataType::Duration(_))
         && is_integer(right)
         && matches!(operator, Operator::Mul | Operator::Div)
     {
         return Some(left.clone());
     }
     if is_integer(left)
-        && matches!(right, DataType::Duration32(_) | DataType::Duration64(_))
+        && matches!(right, DataType::Duration(_))
         && matches!(operator, Operator::Mul)
     {
         return Some(right.clone());
@@ -583,7 +579,7 @@ fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Opt
     }
     if is_integer(&shared)
         || is_float(&shared)
-        || (matches!(shared, DataType::Duration32(_) | DataType::Duration64(_))
+        || (matches!(shared, DataType::Duration(_))
             && matches!(operator, Operator::Add | Operator::Sub))
     {
         return Some(shared);

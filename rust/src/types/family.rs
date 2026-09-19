@@ -526,48 +526,6 @@ macro_rules! payload_datatype {
 }
 
 payload_datatype!(
-    DateTime64Type, DateTime64, Temporal,
-    fields { unit: crate::TimeUnit, timezone: crate::Timezone },
-    read DataType::DateTime64 { unit, timezone } => Self::new(*unit, *timezone),
-    write DataType::DateTime64 { unit, timezone },
-);
-
-payload_datatype!(
-    Time32Type, Time32, Temporal,
-    fields { unit: crate::TimeUnit },
-    read DataType::Time32(unit) => Self::new(*unit),
-    write DataType::Time32(unit),
-);
-
-payload_datatype!(
-    Time64Type, Time64, Temporal,
-    fields { unit: crate::TimeUnit },
-    read DataType::Time64(unit) => Self::new(*unit),
-    write DataType::Time64(unit),
-);
-
-payload_datatype!(
-    Duration32Type, Duration32, Temporal,
-    fields { unit: crate::TimeUnit },
-    read DataType::Duration32(unit) => Self::new(*unit),
-    write DataType::Duration32(unit),
-);
-
-payload_datatype!(
-    Duration64Type, Duration64, Temporal,
-    fields { unit: crate::TimeUnit },
-    read DataType::Duration64(unit) => Self::new(*unit),
-    write DataType::Duration64(unit),
-);
-
-payload_datatype!(
-    IntervalType, Interval, Temporal,
-    fields { unit: crate::TimeUnit },
-    read DataType::Interval(unit) => Self::new(*unit),
-    write DataType::Interval(unit),
-);
-
-payload_datatype!(
     UnionType, Union, Nested,
     fields { fields: crate::UnionFields, mode: crate::UnionMode },
     read DataType::Union(fields, mode) => Self::new(fields.clone(), *mode),

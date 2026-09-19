@@ -16,12 +16,12 @@ use crate::metadata::{
 };
 use crate::types::{
     BloombergType, BooleanType, BytesType, CfiType, CountryType, CurrencyType, CusipType,
-    Date32Type, Date64Type, DateTime64Type, DecimalType, Duration32Type, Duration64Type, EnumType,
-    Float16Type, Float32Type, Float64Type, GeographyType, GeometryType, Int8Type, Int16Type,
-    Int32Type, Int64Type, IntervalType, IsinType, MappingType, MediaTypeType, MicType,
-    MimeTypeType, NullType, RunEndType, SedolType, SequenceType, SideType, StateType, StringType,
-    StructureType, Time32Type, Time64Type, TimeInForceType, TimezoneType, UInt8Type, UInt16Type,
-    UInt32Type, UInt64Type, UnionType, UrlType, UuidType, VariantType, VersionType,
+    DateTimeType, DateType, DecimalType, DurationType, EnumType, Float16Type, Float32Type,
+    Float64Type, GeographyType, GeometryType, Int8Type, Int16Type, Int32Type, Int64Type,
+    IntervalType, IsinType, MappingType, MediaTypeType, MicType, MimeTypeType, NullType,
+    RunEndType, SedolType, SequenceType, SideType, StateType, StringType, StructureType,
+    TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
+    UnionType, UrlType, UuidType, VariantType, VersionType,
 };
 use crate::types::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
@@ -1609,13 +1609,10 @@ field_leaves! {
     Float16 => Float16Field / Float16Type,
     Float32 => Float32Field / Float32Type,
     Float64 => Float64Field / Float64Type,
-    DateTime64 => DateTime64Field / DateTime64Type,
-    Date32 => Date32Field / Date32Type,
-    Date64 => Date64Field / Date64Type,
-    Time32 => Time32Field / Time32Type,
-    Time64 => Time64Field / Time64Type,
-    Duration32 => Duration32Field / Duration32Type,
-    Duration64 => Duration64Field / Duration64Type,
+    DateTime => DateTimeField / DateTimeType,
+    Date => DateField / DateType,
+    Time => TimeField / TimeType,
+    Duration => DurationField / DurationType,
     Interval => IntervalField / IntervalType,
     Bytes => BytesField / BytesType,
     String => StringField / StringType,
@@ -2129,7 +2126,7 @@ mod arrow {
         /// let mut stored = DataType::UInt64.nullable_field("row_digest");
         /// stored.as_digest_mut().set_holder()?;
         /// let root = DataType::from_fields([
-        ///     DataType::Date32.required_field("event"),
+        ///     DataType::date32().required_field("event"),
         ///     year,
         ///     stored,
         /// ])?
@@ -2192,7 +2189,7 @@ mod arrow {
         /// let mut year = DataType::Int32.nullable_field("year");
         /// year.as_partition_mut().set_sources(["event"])?;
         /// year.as_partition_mut().set_transform(Function::Year)?;
-        /// let root = DataType::from_fields([DataType::Date32.required_field("event"), year])?
+        /// let root = DataType::from_fields([DataType::date32().required_field("event"), year])?
         ///     .required_field("row");
         ///
         /// let stored = Schema::new(vec![ArrowField::new(

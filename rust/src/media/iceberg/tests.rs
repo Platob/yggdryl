@@ -21,7 +21,7 @@ use super::{
     SnapshotRef, SortField, SortOrder, Table, TableMetadata, Transform, assign_field_ids,
     schema_from_json, schema_into_json,
 };
-use crate::types::DecimalType;
+use crate::types::{DateTimeType, DecimalType, TimeType};
 
 #[test]
 fn immutable_reports_and_metadata_have_complete_value_traits() {
@@ -1340,6 +1340,7 @@ mod schema_documents {
 
 mod types {
     use super::super::PrimitiveType;
+    use crate::types::DateTimeType;
     use crate::{DataType, TimeUnit};
 
     #[test]
@@ -1384,17 +1385,17 @@ mod types {
     fn iceberg_temporal_types_are_microsecond_precision_unless_v3_says_otherwise() {
         assert_eq!(
             PrimitiveType::Timestamp.into_dtype().unwrap(),
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: crate::Timezone::NAIVE
-            }
+            })
         );
         assert_eq!(
             PrimitiveType::TimestampNs.into_dtype().unwrap(),
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: crate::Timezone::NAIVE
-            }
+            })
         );
         assert_eq!(
             PrimitiveType::Time.into_dtype().unwrap(),
@@ -1503,6 +1504,7 @@ mod types {
 mod partition_specs {
     use super::{PartitionSpec, Transform, trade_schema};
     use crate::media::iceberg::assign_field_ids;
+    use crate::types::DateTimeType;
     use crate::{DataType, Scalar};
 
     #[test]
@@ -1582,7 +1584,7 @@ mod partition_specs {
     fn a_partition_directory_is_spelled_the_way_every_other_lake_spells_it() {
         let schema = DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Date32.nullable_field("day"),
+            DataType::date32().nullable_field("day"),
         ])
         .unwrap()
         .required_field("row");
@@ -1632,13 +1634,13 @@ mod partition_specs {
 
     #[test]
     fn transform_result_types_and_validation_are_owned_by_apache_iceberg() {
-        let timestamp = DataType::DateTime64 {
+        let timestamp = DataType::DateTime(DateTimeType::DateTime64 {
             unit: crate::TimeUnit::Microsecond,
             timezone: crate::Timezone::NAIVE,
-        };
+        });
         assert_eq!(
             Transform::Day.result_type(&timestamp).unwrap(),
-            DataType::Date32
+            DataType::date32()
         );
         for transform in [Transform::Year, Transform::Month, Transform::Hour] {
             assert_eq!(transform.result_type(&timestamp).unwrap(), DataType::Int32);
@@ -1664,7 +1666,7 @@ mod partition_specs {
         );
         assert!(
             Transform::Truncate(3)
-                .result_type(&DataType::Date32)
+                .result_type(&DataType::date32())
                 .is_err()
         );
         assert!(Transform::Bucket(0).result_type(&DataType::Int32).is_err());
@@ -1673,7 +1675,7 @@ mod partition_specs {
     #[test]
     fn scalar_transform_plan_is_total_at_date_extremes_and_truncates_binary() {
         let mut schema = DataType::from_fields([
-            DataType::Date32.required_field("day"),
+            DataType::date32().required_field("day"),
             DataType::binary().required_field("payload"),
         ])
         .unwrap()
@@ -2185,6 +2187,7 @@ mod tables {
     };
     use crate::IOMedia;
     use crate::media::IORecordOptions;
+    use crate::types::DateTimeType;
     use crate::{DataType, Scalar, TimeUnit};
 
     #[test]
@@ -2590,25 +2593,25 @@ mod tables {
         let mut schema = DataType::from_fields([
             DataType::Int32.required_field("id"),
             DataType::utf8().required_field("text"),
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: crate::Timezone::NAIVE,
-            }
+            })
             .required_field("ts_year"),
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: crate::Timezone::NAIVE,
-            }
+            })
             .required_field("ts_month"),
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: crate::Timezone::NAIVE,
-            }
+            })
             .required_field("ts_day"),
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: crate::Timezone::NAIVE,
-            }
+            })
             .required_field("ts_hour"),
             DataType::Int64.required_field("retired"),
         ])
@@ -5881,12 +5884,12 @@ mod datatype_coverage {
                 scale: 4,
             })
             .nullable_field("price"),
-            DataType::Date32.nullable_field("day"),
-            DataType::Time64(TimeUnit::Microsecond).nullable_field("tod"),
-            DataType::DateTime64 {
+            DataType::date32().nullable_field("day"),
+            DataType::Time(TimeType::Time64(TimeUnit::Microsecond)).nullable_field("tod"),
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: crate::Timezone::NAIVE,
-            }
+            })
             .nullable_field("at"),
             DataType::utf8().nullable_field("name"),
             DataType::binary().nullable_field("raw"),
@@ -6861,6 +6864,7 @@ mod isolation {
     use crate::holder::local::Folder;
     use crate::holder::{Buffer, Holder};
     use crate::media::{IORecordOptions, RecordOptions};
+    use crate::types::DateTimeType;
     use crate::{DataType, Field, IOBase, IOMedia, Scalar, TimeUnit, Timezone};
 
     /// A table folder that records every relative path resolved through it.
@@ -7026,10 +7030,10 @@ mod isolation {
         let path = root("isolation-timepartition");
         let mut schema = DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: Timezone::UTC,
-            }
+            })
             .required_field("timepartition"),
         ])
         .unwrap()

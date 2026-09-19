@@ -5,7 +5,7 @@ use std::sync::Arc;
 use arrow_array::types::Int8Type;
 use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, Int32Array, StringArray};
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::types::UuidType;
+use yggdryl::types::{DateTimeType, DurationType, TimeType, UuidType};
 use yggdryl::{DataType, DataTypeId, Field, FieldScalar, Scalar, TimeUnit, Timezone, UnionMode};
 
 fn representative_types() -> Vec<DataType> {
@@ -16,19 +16,19 @@ fn representative_types() -> Vec<DataType> {
         DataType::Int8,
         DataType::UInt64,
         DataType::Float16,
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::UTC,
-        },
-        DataType::Date32,
-        DataType::Date64,
-        DataType::Time32(TimeUnit::Second),
-        DataType::Time64(TimeUnit::Microsecond),
-        DataType::Duration32(TimeUnit::Millisecond),
-        DataType::Duration64(TimeUnit::Millisecond),
-        DataType::Interval(TimeUnit::YearMonth),
-        DataType::Interval(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::MonthDayNano),
+        }),
+        DataType::date32(),
+        DataType::date64(),
+        DataType::Time(TimeType::Time32(TimeUnit::Second)),
+        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+        DataType::Duration(DurationType::Duration32(TimeUnit::Millisecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Millisecond)),
+        DataType::interval(TimeUnit::YearMonth).unwrap(),
+        DataType::interval(TimeUnit::DayTime).unwrap(),
+        DataType::interval(TimeUnit::MonthDayNano).unwrap(),
         DataType::binary(),
         DataType::fixed_binary(2).unwrap(),
         DataType::large_binary(),
@@ -146,12 +146,15 @@ fn leaf_defaults_keep_their_declared_physical_identity() {
         (DataType::Cfi, DataTypeId::Cfi),
         (DataType::Uuid(UuidType::Uuid), DataTypeId::Uuid),
         (
-            DataType::Interval(TimeUnit::YearMonth),
+            DataType::interval(TimeUnit::YearMonth).unwrap(),
             DataTypeId::Interval,
         ),
-        (DataType::Interval(TimeUnit::DayTime), DataTypeId::Interval),
         (
-            DataType::Interval(TimeUnit::MonthDayNano),
+            DataType::interval(TimeUnit::DayTime).unwrap(),
+            DataTypeId::Interval,
+        ),
+        (
+            DataType::interval(TimeUnit::MonthDayNano).unwrap(),
             DataTypeId::Interval,
         ),
         (DataType::geometry(None).unwrap(), DataTypeId::Geometry),

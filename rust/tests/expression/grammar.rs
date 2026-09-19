@@ -14,6 +14,7 @@ use yggdryl::expression::{
     Attribute, Bound, Bounds, ColumnBounds, Cost, Expression, Filter, Literal, Projection,
     Residual, Selector, Term,
 };
+use yggdryl::types::DateTimeType;
 use yggdryl::{DataType, Field, MediaType, Result, Scalar, TimeUnit, Timezone, Url};
 
 // ---------------------------------------------------------------------------
@@ -221,10 +222,10 @@ fn rows_schema() -> Field {
             Field::new("b", DataType::Boolean, true),
             Field::new(
                 "t",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Microsecond,
                     timezone: Timezone::UTC,
-                },
+                }),
                 true,
             ),
             Field::new("n", DataType::Int32, true).with_partition(true),

@@ -2,6 +2,7 @@
 //! serialized form is expressed over it.
 
 use yggdryl::Scalar;
+use yggdryl::types::DateTimeType;
 use yggdryl::{DataType, Field, Metadata, PythonKind, PythonMetadata, TimeUnit};
 
 /// One representative field per shape the model can carry.
@@ -74,10 +75,10 @@ fn shapes() -> Vec<Field> {
         DataType::decimal128(38, 6)
             .unwrap()
             .nullable_field("amount"),
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: "Europe/Paris".parse().unwrap(),
-        }
+        })
         .nullable_field("at"),
         DataType::run_end_encoded(
             DataType::Int32.required_field("run_ends"),

@@ -137,7 +137,8 @@ nav:
       - Scalar: types/scalar.md
       - Cast: types/cast.md
     - Families:
-      - Numeric & temporal: types/numeric.md
+      - Numeric: types/numeric.md
+      - Temporal: types/temporal.md
       - Strings & bytes: types/text.md
       - Codes: types/codes.md
       - UUID: types/uuid.md

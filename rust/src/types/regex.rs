@@ -48,11 +48,11 @@ impl DataType {
     /// )?;
     /// assert_eq!(
     ///     stamps.field("comma")?.dtype(),
-    ///     &DataType::DateTime64 { unit: TimeUnit::Millisecond, timezone: Timezone::NAIVE },
+    ///     &DataType::datetime64(TimeUnit::Millisecond, Timezone::NAIVE)?,
     /// );
     /// assert_eq!(
     ///     stamps.field("wide")?.dtype(),
-    ///     &DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE },
+    ///     &DataType::datetime64(TimeUnit::Microsecond, Timezone::NAIVE)?,
     /// );
     /// # Ok(())
     /// # }
@@ -396,10 +396,7 @@ fn temporal_dtype(capture: &Hir, expression: &Regex) -> Option<DataType> {
                     let value = format!("2024-02-01{separator}12:34:56{fraction}{zone}");
                     if expression.is_match(value.as_bytes()) {
                         if let Some(dtype) = resolved_dtype(&value, |unit| {
-                            Some(DataType::DateTime64 {
-                                unit,
-                                timezone: Timezone::UTC,
-                            })
+                            DataType::datetime64(unit, Timezone::UTC).ok()
                         }) {
                             return Some(dtype);
                         }
@@ -408,10 +405,7 @@ fn temporal_dtype(capture: &Hir, expression: &Regex) -> Option<DataType> {
                 let value = format!("2024-02-01{separator}12:34:56{fraction}");
                 if expression.is_match(value.as_bytes()) {
                     if let Some(dtype) = resolved_dtype(&value, |unit| {
-                        Some(DataType::DateTime64 {
-                            unit,
-                            timezone: Timezone::NAIVE,
-                        })
+                        DataType::datetime64(unit, Timezone::NAIVE).ok()
                     }) {
                         return Some(dtype);
                     }
@@ -423,7 +417,7 @@ fn temporal_dtype(capture: &Hir, expression: &Regex) -> Option<DataType> {
     if calendar {
         let date = "2024-02-01";
         if expression.is_match(date.as_bytes()) {
-            if let Some(dtype) = temporal_scalar_dtype(date, DataType::Date32) {
+            if let Some(dtype) = temporal_scalar_dtype(date, DataType::date32()) {
                 return Some(dtype);
             }
         }

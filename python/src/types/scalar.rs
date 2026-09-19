@@ -22,8 +22,8 @@ use yggdryl::arrow::{array_from_value, batch_from_value, scalar_array};
 use yggdryl::types::bytes::{Bytes, BytesType};
 use yggdryl::types::decimal::{Decimal32, Decimal64};
 use yggdryl::types::geospatial::{Geography, Geometry};
+use yggdryl::types::interval::Interval;
 use yggdryl::types::string::{Str, StringType};
-use yggdryl::types::temporal::Interval;
 use yggdryl::types::{
     Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce,
 };

@@ -150,7 +150,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .expect("a transform of one argument");
     let declaring = Field::new(
         "row",
-        DataType::from_fields([DataType::Date32.required_field("event"), derived])
+        DataType::from_fields([DataType::date32().required_field("event"), derived])
             .expect("the two columns are unique"),
         false,
     );

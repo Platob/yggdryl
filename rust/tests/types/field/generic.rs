@@ -2,6 +2,7 @@ use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
+use yggdryl::types::TimeType;
 use yggdryl::{
     DataType, DigestAlgorithm, Error, Field, MediaType, Metadata, MimeType, PythonKind,
     PythonMetadata, Scheme, TimeUnit, Url,
@@ -262,7 +263,7 @@ fn invalid_dtype_replacement_is_transactional() {
     let mut field = Field::new("value", DataType::utf8(), true);
     assert!(
         field
-            .set_dtype(DataType::Time32(TimeUnit::Nanosecond))
+            .set_dtype(DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)))
             .is_err()
     );
     assert_eq!(field.dtype(), &DataType::utf8());

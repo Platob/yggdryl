@@ -21,6 +21,7 @@ use crate::holder::Buffer;
 use crate::holder::Holder;
 use crate::media::IORecordOptions;
 use crate::types::temporal as iso;
+use crate::types::{DateTimeType, DateType};
 use crate::{Charset, Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone, Url};
 use crate::{Cursor, IOBase, charset};
 
@@ -1368,13 +1369,13 @@ pub(crate) fn parse_capture(
             .filter(|value| value.is_finite())
             .map(Scalar::from)
             .ok_or_else(invalid),
-        DataType::Date32 | DataType::Time32(_) | DataType::Time64(_) => {
+        DataType::Date(DateType::Date32) | DataType::Time(_) => {
             Scalar::from_temporal_text(dtype, value).map_err(|_| invalid())
         }
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit,
             timezone: zone,
-        } if !zone.is_naive() => {
+        }) if !zone.is_naive() => {
             // A reading that names its own offset is the crate's; a naive one
             // is autotyping's own rule, a wall clock in the column's zone.
             if let Ok(instant) = Scalar::from_temporal_text(dtype, value) {
@@ -1386,9 +1387,7 @@ pub(crate) fn parse_capture(
             let count = rescale(count, source, *unit).ok_or_else(invalid)?;
             Scalar::datetime64(count, *unit, *zone).map_err(|_| invalid())
         }
-        DataType::DateTime64 { .. } => {
-            Scalar::from_temporal_text(dtype, value).map_err(|_| invalid())
-        }
+        DataType::DateTime(_) => Scalar::from_temporal_text(dtype, value).map_err(|_| invalid()),
         _ => Err(format_smolstr!(
             "autotype produced unsupported datatype {dtype}"
         )),

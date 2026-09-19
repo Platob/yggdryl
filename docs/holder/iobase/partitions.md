@@ -419,7 +419,7 @@ column that is absent, or present holding nothing but nulls, is filled.
     let mut year = DataType::Int32.nullable_field("year");
     year.as_partition_mut().set_sources(["event"])?;
     year.as_partition_mut().set_transform(Function::Year)?;
-    let root = DataType::from_fields([DataType::Date32.required_field("event"), year])?
+    let root = DataType::from_fields([DataType::date32().required_field("event"), year])?
         .required_field("row");
 
     let batch = RecordBatch::try_from_iter([(

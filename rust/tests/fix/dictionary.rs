@@ -8,8 +8,8 @@ use std::collections::BTreeSet;
 use yggdryl::holder::local::Folder;
 use yggdryl::types::SequenceType;
 use yggdryl::{
-    DataType, Field, FixCategory, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, Scalar,
-    TimeUnit, Timezone,
+    DataType, DateTimeType, Field, FixCategory, FixRegistry, STANDARD_HEADER_TAGS,
+    STANDARD_TRAILER_TAGS, Scalar, TimeType, TimeUnit, Timezone,
 };
 
 fn seed() -> FixRegistry {
@@ -373,12 +373,16 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     // `LocalMktTime` and `UTCTimeOnly` are one type for the same reason.
     for field in every_field(&registry) {
         match field.dtype() {
-            DataType::Date32 | DataType::Date64 => {
+            DataType::Date(_) => {
                 panic!("{} is still a day rather than an instant", field.name())
             }
-            DataType::Time32(_) => panic!("{} is still typed to a second", field.name()),
-            DataType::Time64(unit) => assert_eq!(*unit, TimeUnit::Nanosecond, "{}", field.name()),
-            DataType::DateTime64 { unit, timezone } => {
+            DataType::Time(TimeType::Time32(_)) => {
+                panic!("{} is still typed to a second", field.name())
+            }
+            DataType::Time(TimeType::Time64(unit)) => {
+                assert_eq!(*unit, TimeUnit::Nanosecond, "{}", field.name())
+            }
+            DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
                 assert_eq!(*unit, TimeUnit::Nanosecond, "{}", field.name());
                 // Two zones, and only two: what the datatype's own name says.
                 // A `UTCTimestamp` is UTC and a `LocalMktDate` states no zone,
@@ -394,18 +398,22 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
 
     // The registry's own entries, where each field is counted once.
-    let clock = DataType::DateTime64 {
+    let clock = DataType::DateTime(DateTimeType::DateTime64 {
         unit: TimeUnit::Nanosecond,
         timezone: Timezone::UTC,
-    };
+    });
     let mut times = 0_usize;
     let mut naive = 0_usize;
     let mut utc = 0_usize;
     for field in registry.iter() {
         match field.dtype() {
-            DataType::Time64(_) => times += 1,
-            DataType::DateTime64 { timezone, .. } if timezone.is_naive() => naive += 1,
-            DataType::DateTime64 { .. } => utc += 1,
+            DataType::Time(TimeType::Time64(_)) => times += 1,
+            DataType::DateTime(DateTimeType::DateTime64 { timezone, .. })
+                if timezone.is_naive() =>
+            {
+                naive += 1
+            }
+            DataType::DateTime(_) => utc += 1,
             _ => {}
         }
     }
@@ -556,11 +564,13 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// tree answers. It last moved when the string family became eighteen
 /// leaves: a string column hashes one leaf that already carries its charset
 /// and its count, where it used to hash a layout, a charset and an optional
-/// bound beside them.
+/// bound beside them. It last moved when the eight temporal variants became
+/// five families: a temporal column hashes its family's leaf one level
+/// deeper, where it used to hash a variant of its own.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 1_751_502_319_482_455_976);
+    assert_eq!(registry.stable_hash(), 6_481_707_078_094_394_546);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

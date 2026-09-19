@@ -11,10 +11,13 @@ mod compatibility;
 pub mod country;
 pub mod currency;
 pub mod cusip;
+pub mod date;
+pub mod datetime;
 pub mod decimal;
 mod default;
 mod diff;
 mod dtype;
+pub mod duration;
 mod enumeration;
 pub mod enums;
 mod family;
@@ -23,6 +26,7 @@ pub mod floating;
 pub mod geospatial;
 pub(crate) mod i256;
 pub mod integer;
+pub mod interval;
 pub mod isin;
 pub mod mapping;
 pub mod media_type;
@@ -43,6 +47,7 @@ pub mod state;
 pub mod string;
 pub mod structure;
 pub mod temporal;
+pub mod time;
 pub mod timeinforce;
 pub mod timezone;
 mod typed;
@@ -68,6 +73,8 @@ pub(crate) use code::{code_refusal, code_text};
 pub use country::*;
 pub use currency::*;
 pub use cusip::*;
+pub use date::*;
+pub use datetime::*;
 pub use decimal::*;
 pub(crate) use default::{
     default_value_for_field, preflight_schema, preflight_schema_shape, value_is_logically_null,
@@ -76,12 +83,12 @@ pub(crate) use diff::push_field_name_path;
 pub use diff::{Differences, OwnedDifferences};
 pub use dtype::{DataType, VariantType};
 pub(crate) use dtype::{invalid, validate_non_negative};
+pub use duration::*;
 pub use enumeration::Vocabulary;
 pub use enums::*;
 pub use family::{
-    Children, DataTypeValue, DateTime64Type, DictionaryOptions, Duration32Type, Duration64Type,
-    FieldSidecar, FieldValue, GeographyType, GeometryType, IntervalType, NestedValue, RunEndType,
-    Time32Type, Time64Type, UnionType,
+    Children, DataTypeValue, DictionaryOptions, FieldSidecar, FieldValue, GeographyType,
+    GeometryType, NestedValue, RunEndType, UnionType,
 };
 pub use field::*;
 pub use floating::*;
@@ -92,6 +99,7 @@ pub(crate) use geospatial::{
     GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, is_variant_storage,
 };
 pub use integer::*;
+pub use interval::*;
 pub use isin::*;
 pub use mapping::*;
 pub(crate) use media_type::MEDIATYPE_EXTENSION_NAME;
@@ -113,8 +121,8 @@ pub use state::*;
 pub use string::*;
 pub(crate) use string::{ascii_bytes, ascii_text, ascii_text_sized, trim_padding};
 pub use structure::*;
-pub use temporal::TemporalFamily;
 pub use temporal::*;
+pub use time::*;
 pub use timeinforce::*;
 pub(crate) use timezone::TIMEZONE_EXTENSION_NAME;
 pub use timezone::{Timezone, TimezoneType};

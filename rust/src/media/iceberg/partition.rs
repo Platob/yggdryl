@@ -112,7 +112,7 @@ impl Transform {
 
         Ok(match self {
             Self::Identity | Self::Truncate(_) => source.clone(),
-            Self::Day => DataType::Date32,
+            Self::Day => DataType::date32(),
             Self::Bucket(_) | Self::Year | Self::Month | Self::Hour => DataType::Int32,
             Self::Void | Self::Unknown => unreachable!("returned above"),
         })

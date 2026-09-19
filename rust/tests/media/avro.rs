@@ -1448,7 +1448,7 @@ mod records {
     use yggdryl::media::avro;
     use yggdryl::media::avro::AvroOptions;
     use yggdryl::media::{IORecordOptions, RecordOptions};
-    use yggdryl::{DataType, DataTypeId, Field, MediaType, Scalar, TimeUnit, Url};
+    use yggdryl::{DataType, DataTypeId, DateTimeType, Field, MediaType, Scalar, TimeUnit, Url};
     use yggdryl::{IOBase, IOMedia};
 
     /// One canonical batch with a nullable column and a list column.
@@ -1677,7 +1677,9 @@ mod records {
             DataType::decimal32(9, 2).unwrap().required_field("small"),
             DataType::decimal64(18, 2).unwrap().required_field("large"),
             DataType::fixed_binary(3).unwrap().required_field("raw"),
-            DataType::Interval(TimeUnit::MonthDayNano).required_field("span"),
+            DataType::interval(TimeUnit::MonthDayNano)
+                .unwrap()
+                .required_field("span"),
         ])
         .unwrap()
         .required_field("row");
@@ -2224,9 +2226,9 @@ mod records {
         // cannot be spelled.
         let schema = Field::new(
             "row",
-            DataType::from_fields([
-                DataType::Interval(yggdryl::TimeUnit::MonthDayNano).required_field("span")
-            ])
+            DataType::from_fields([DataType::interval(yggdryl::TimeUnit::MonthDayNano)
+                .unwrap()
+                .required_field("span")])
             .unwrap(),
             false,
         );
@@ -2276,11 +2278,11 @@ mod records {
         let schema = Field::new(
             "row",
             DataType::from_fields([
-                DataType::Date32.required_field("day"),
-                DataType::DateTime64 {
+                DataType::date32().required_field("day"),
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: yggdryl::TimeUnit::Microsecond,
                     timezone: yggdryl::Timezone::UTC,
-                }
+                })
                 .nullable_field("at"),
                 DataType::decimal(10, 2).unwrap().required_field("cost"),
             ])

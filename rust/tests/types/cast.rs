@@ -15,8 +15,8 @@ fn bits() -> ArrowCastOptions {
 }
 use yggdryl::types::FieldValue as _;
 use yggdryl::types::{
-    DateTime64Field, GeometryField, Int32Field, Int64Field, StringField, StructureField,
-    UInt32Field, UInt64Field, VariantField,
+    DateTimeField, DateTimeType, GeometryField, Int32Field, Int64Field, StringField,
+    StructureField, UInt32Field, UInt64Field, VariantField,
 };
 use yggdryl::{DataType, EdgeAlgorithm, Field};
 use yggdryl::{TimeUnit, Timezone};
@@ -120,12 +120,12 @@ fn a_struct_field_casts_children_by_name() {
 #[test]
 fn a_parameterized_temporal_field_casts_to_a_shared_array() {
     // A unit decides the physical width, so the result stays an ArrayRef.
-    let field = DateTime64Field::try_new(
+    let field = DateTimeField::try_new(
         "at",
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Millisecond,
             timezone: Timezone::NAIVE,
-        },
+        }),
         false,
     )
     .unwrap();
