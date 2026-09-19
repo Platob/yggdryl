@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "trdinstrmtleg"
+        "FIX:component": "trdinstrmtleg"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "trdinstrmtleg",
+    "FIX:counter": "555",
+    "FIX:tag": "359778",
     "description": "Required if NoLegs(555) > 0.",
-    "display": "TrdInstrmtLegGrp",
-    "fix:component": "trdinstrmtleg",
-    "fix:counter": "555",
-    "fix:tag": "359778"
+    "display": "TrdInstrmtLegGrp"
   }
 }

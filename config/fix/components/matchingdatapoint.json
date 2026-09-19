@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchingdatapointindicator",
-          "fix:tag": "2782"
+          "FIX:field": "matchingdatapointindicator",
+          "FIX:tag": "2782"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchingdatapointvalue",
-          "fix:tag": "2783"
+          "FIX:field": "matchingdatapointvalue",
+          "FIX:tag": "2783"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchingdatapointtype",
-          "fix:tag": "2784"
+          "FIX:field": "matchingdatapointtype",
+          "FIX:tag": "2784"
         }
       },
       {
@@ -43,15 +43,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchingdatapointname",
-          "fix:tag": "2785"
+          "FIX:field": "matchingdatapointname",
+          "FIX:tag": "2785"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MatchingDataPoint",
-    "fix:tag": "830160"
+    "FIX:tag": "830160",
+    "display": "MatchingDataPoint"
   }
 }

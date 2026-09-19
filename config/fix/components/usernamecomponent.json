@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "username",
-          "fix:tag": "553"
+          "FIX:field": "username",
+          "FIX:tag": "553"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "Username",
-    "fix:tag": "755376"
+    "FIX:tag": "755376",
+    "display": "Username"
   }
 }

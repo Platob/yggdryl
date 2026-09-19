@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "hop"
+        "FIX:component": "hop"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "HopGrp",
-    "fix:component": "hop",
-    "fix:counter": "627",
-    "fix:tag": "1081747"
+    "FIX:component": "hop",
+    "FIX:counter": "627",
+    "FIX:tag": "1081747",
+    "display": "HopGrp"
   }
 }

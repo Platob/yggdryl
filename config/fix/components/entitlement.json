@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementindicator",
-          "fix:tag": "1774"
+          "FIX:field": "entitlementindicator",
+          "FIX:tag": "1774"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementtype",
-          "fix:tag": "1775"
+          "FIX:field": "entitlementtype",
+          "FIX:tag": "1775"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementsubtype",
-          "fix:tag": "2402"
+          "FIX:field": "entitlementsubtype",
+          "FIX:tag": "2402"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noentitlementattrib",
-          "fix:tag": "1777"
+          "FIX:field": "noentitlementattrib",
+          "FIX:tag": "1777"
         }
       },
       {
@@ -54,7 +54,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "entitlementattribgrp"
+          "FIX:group": "entitlementattribgrp"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementid",
-          "fix:tag": "1776"
+          "FIX:field": "entitlementid",
+          "FIX:tag": "1776"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementplatform",
-          "fix:tag": "1784"
+          "FIX:field": "entitlementplatform",
+          "FIX:tag": "1784"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noinstrumentscopes",
-          "fix:tag": "1656"
+          "FIX:field": "noinstrumentscopes",
+          "FIX:tag": "1656"
         }
       },
       {
@@ -97,7 +97,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrumentscopegrp"
+          "FIX:group": "instrumentscopegrp"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketsegments",
-          "fix:tag": "1310"
+          "FIX:field": "nomarketsegments",
+          "FIX:tag": "1310"
         }
       },
       {
@@ -118,7 +118,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "marketsegmentscopegrp"
+          "FIX:group": "marketsegmentscopegrp"
         }
       },
       {
@@ -128,8 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementstartdate",
-          "fix:tag": "1782"
+          "FIX:field": "entitlementstartdate",
+          "FIX:tag": "1782"
         }
       },
       {
@@ -139,15 +139,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementenddate",
-          "fix:tag": "1783"
+          "FIX:field": "entitlementenddate",
+          "FIX:tag": "1783"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "Entitlement",
-    "fix:tag": "1021859"
+    "FIX:tag": "1021859",
+    "display": "Entitlement"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventtype",
-          "fix:tag": "40192"
+          "FIX:field": "protectiontermeventtype",
+          "FIX:tag": "40192"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventvalue",
-          "fix:tag": "40193"
+          "FIX:field": "protectiontermeventvalue",
+          "FIX:tag": "40193"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventcurrency",
-          "fix:tag": "40194"
+          "FIX:field": "protectiontermeventcurrency",
+          "FIX:tag": "40194"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventperiod",
-          "fix:tag": "40195"
+          "FIX:field": "protectiontermeventperiod",
+          "FIX:tag": "40195"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventunit",
-          "fix:tag": "40196"
+          "FIX:field": "protectiontermeventunit",
+          "FIX:tag": "40196"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventdaytype",
-          "fix:tag": "40197"
+          "FIX:field": "protectiontermeventdaytype",
+          "FIX:tag": "40197"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "protectiontermeventratesource",
-          "fix:tag": "40198"
+          "FIX:field": "protectiontermeventratesource",
+          "FIX:tag": "40198"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noprotectiontermeventqualifiers",
-          "fix:tag": "40199"
+          "FIX:field": "noprotectiontermeventqualifiers",
+          "FIX:tag": "40199"
         }
       },
       {
@@ -98,14 +98,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "protectiontermeventqualifiergrp"
+          "FIX:group": "protectiontermeventqualifiergrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ProtectionTermEvent",
-    "fix:tag": "805391"
+    "FIX:tag": "805391",
+    "display": "ProtectionTermEvent"
   }
 }

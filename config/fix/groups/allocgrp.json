@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "alloc"
+        "FIX:component": "alloc"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "alloc",
+    "FIX:counter": "78",
+    "FIX:tag": "340092",
     "description": "Required if NoAllocs(78) > 0.",
-    "display": "AllocGrp",
-    "fix:component": "alloc",
-    "fix:counter": "78",
-    "fix:tag": "340092"
+    "display": "AllocGrp"
   }
 }

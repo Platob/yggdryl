@@ -1,6 +1,6 @@
-//! The canonical JSON documents the `fix:` namespace stores, read borrowed.
+//! The canonical JSON documents the `FIX:` namespace stores, read borrowed.
 //!
-//! Five `fix:` properties hold more than one text can say. Three are
+//! Five `FIX:` properties hold more than one text can say. Three are
 //! documents of entries: the [code set](super::codes), the
 //! [directions](super::directions) a line is read under and the
 //! [replacements](super::replacements) a value is restated through. Two are
@@ -416,7 +416,7 @@ pub(super) fn decode_text(
     quoted.push('"');
     quoted.push_str(body);
     quoted.push('"');
-    let decoded = crate::text::json::from_utf8(&quoted)?;
+    let decoded = crate::json::from_utf8(&quoted)?;
     decoded
         .as_str()
         .map(ToOwned::to_owned)
@@ -585,7 +585,7 @@ impl Writer {
             return Ok(());
         }
         self.text
-            .push_str(&crate::text::json::into_utf8(&Scalar::from(value))?);
+            .push_str(&crate::json::into_utf8(&Scalar::from(value))?);
         Ok(())
     }
 
@@ -679,7 +679,7 @@ impl Writer {
 // spelled.
 // ---------------------------------------------------------------------------
 
-/// One `fix:` property whose stored value is a canonical document.
+/// One `FIX:` property whose stored value is a canonical document.
 ///
 /// Five properties hold one - three arrays of entries and two bare lists -
 /// and this is what names one of them to the pair a store crosses:
@@ -687,15 +687,15 @@ impl Writer {
 /// [`Self::text_of`] restates that JSON as the canonical text.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Kind {
-    /// [`super::codes`], under `fix:codes`.
+    /// [`super::codes`], under `FIX:codes`.
     Codes,
-    /// [`super::directions`], under `fix:directions`.
+    /// [`super::directions`], under `FIX:directions`.
     Directions,
-    /// [`super::replacements`], under `fix:replacements`.
+    /// [`super::replacements`], under `FIX:replacements`.
     Replacements,
-    /// [`FixField::names`](super::FixField::names), under `fix:names`.
+    /// [`FixField::names`](super::FixField::names), under `FIX:names`.
     Names,
-    /// [`FixField::tags`](super::FixField::tags), under `fix:tags`.
+    /// [`FixField::tags`](super::FixField::tags), under `FIX:tags`.
     Tags,
 }
 
@@ -723,11 +723,11 @@ impl Kind {
     /// The metadata key this document is stored under.
     pub(super) const fn key(self) -> &'static str {
         match self {
-            Self::Codes => "fix:codes",
-            Self::Directions => "fix:directions",
-            Self::Replacements => "fix:replacements",
-            Self::Names => "fix:names",
-            Self::Tags => "fix:tags",
+            Self::Codes => "FIX:codes",
+            Self::Directions => "FIX:directions",
+            Self::Replacements => "FIX:replacements",
+            Self::Names => "FIX:names",
+            Self::Tags => "FIX:tags",
         }
     }
 
@@ -910,7 +910,7 @@ impl Kind {
     }
 }
 
-/// One field as a FIX store spells it: a native `Field` document whose `fix:`
+/// One field as a FIX store spells it: a native `Field` document whose `FIX:`
 /// document properties are the JSON they are rather than one escaped line.
 ///
 /// The shape [`FixRegistry::write_into`](super::FixRegistry::write_into) and
@@ -932,7 +932,7 @@ impl Kind {
 /// let document = fix::into_fix_document(side.clone())?;
 /// let codes = document
 ///     .get_key_str("metadata")
-///     .and_then(|metadata| metadata.get_key_str("fix:codes"))
+///     .and_then(|metadata| metadata.get_key_str("FIX:codes"))
 ///     .expect("the code set");
 /// // The JSON it is, not the text it is stored as.
 /// assert_eq!(codes.len(), 1);
@@ -971,7 +971,7 @@ pub fn from_fix_document(document: Scalar) -> Result<crate::Field> {
     crate::Field::from_value(load(document)?)
 }
 
-/// One native Field document as a store writes it: every `fix:` document
+/// One native Field document as a store writes it: every `FIX:` document
 /// property expanded into the JSON it is.
 ///
 /// Applied to the whole document rather than to one field, because a named

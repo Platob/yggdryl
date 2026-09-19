@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpositionid",
-          "fix:tag": "1862"
+          "FIX:field": "relatedpositionid",
+          "FIX:tag": "1862"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpositionidsource",
-          "fix:tag": "1863"
+          "FIX:field": "relatedpositionidsource",
+          "FIX:tag": "1863"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpositiondate",
-          "fix:tag": "1864"
+          "FIX:field": "relatedpositiondate",
+          "FIX:tag": "1864"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "RelatedPosition",
-    "fix:tag": "754302"
+    "FIX:tag": "754302",
+    "display": "RelatedPosition"
   }
 }

@@ -3,7 +3,7 @@
 //!
 //! A graph is elements that know their own identity and the identities of
 //! the elements they descend from, and [`element`] holds the four traits
-//! that state it. [`Element`] is the node: its [`Uuid`](crate::types::Uuid),
+//! that state it. [`Element`] is the node: its [`Uuid`](crate::Uuid),
 //! the one it has elsewhere, the names it goes by and its parents' UUIDs,
 //! read and written, the order it stands in, and how it follows and merges.
 //! [`Event`] is an element that also happened at one instant and stands in

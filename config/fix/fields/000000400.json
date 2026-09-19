@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40000",
       "description": "Number of bonds in the repeating group.",
-      "display": "NoAdditionalTermBondRefs",
-      "fix:tag": "40000"
+      "display": "NoAdditionalTermBondRefs"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40001",
       "description": "Security identifier of the bond.",
-      "display": "AdditionalTermBondSecurityID",
-      "fix:tag": "40001"
+      "display": "AdditionalTermBondSecurityID"
     }
   },
   {
@@ -30,9 +30,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source scheme of the AdditionalTermBondSecurityID(40001) value.",
-      "display": "AdditionalTermBondSecurityIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -199,7 +197,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "40002"
+      "FIX:tag": "40002",
+      "description": "Identifies the source scheme of the AdditionalTermBondSecurityID(40001) value.",
+      "display": "AdditionalTermBondSecurityIDSource"
     }
   },
   {
@@ -209,9 +209,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40003",
       "description": "Description of the bond.",
-      "display": "AdditionalTermBondDesc",
-      "fix:tag": "40003"
+      "display": "AdditionalTermBondDesc"
     }
   },
   {
@@ -221,9 +221,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40004",
       "description": "Byte length of encoded (non-ASCII characters) EncodedAdditionalTermBondDesc(40005) field.",
-      "display": "EncodedAdditionalTermBondDescLen",
-      "fix:tag": "40004"
+      "display": "EncodedAdditionalTermBondDescLen"
     }
   },
   {
@@ -233,9 +233,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40005",
       "description": "Encoded (non-ASCII characters) representation of the AdditionalTermBondDesc(40003) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the AdditionalTermBondDesc(40003) field.",
-      "display": "EncodedAdditionalTermBondDesc",
-      "fix:tag": "40005"
+      "display": "EncodedAdditionalTermBondDesc"
     }
   },
   {
@@ -245,9 +245,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40006",
       "description": "Specifies the currency the bond value is denominated in. Uses ISO 4217 currency codes.",
-      "display": "AdditionalTermBondCurrency",
-      "fix:tag": "40006"
+      "display": "AdditionalTermBondCurrency"
     }
   },
   {
@@ -257,9 +257,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40007",
       "description": "Issuer of the bond.",
-      "display": "AdditionalTermBondIssuer",
-      "fix:tag": "40007"
+      "display": "AdditionalTermBondIssuer"
     }
   },
   {
@@ -269,9 +269,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40008",
       "description": "Byte length of encoded (non-ASCII characters) EncodedAdditionalTermBondIssuer(40009) field.",
-      "display": "EncodedAdditionalTermBondIssuerLen",
-      "fix:tag": "40008"
+      "display": "EncodedAdditionalTermBondIssuerLen"
     }
   },
   {
@@ -281,9 +281,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40009",
       "description": "Encoded (non-ASCII characters) representation of the AdditionalTermBondIssuer(40007) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the AdditionalTermBondIssuer(40007) field.",
-      "display": "EncodedAdditionalTermBondIssuer",
-      "fix:tag": "40009"
+      "display": "EncodedAdditionalTermBondIssuer"
     }
   },
   {
@@ -293,9 +293,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the bond's payment priority in the event of a default.",
-      "display": "AdditionalTermBondSeniority",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "SD",
           "name": "SeniorSecured",
@@ -327,7 +325,9 @@
           "doc": "Senior Non-Preferred"
         }
       ],
-      "fix:tag": "40010"
+      "FIX:tag": "40010",
+      "description": "Specifies the bond's payment priority in the event of a default.",
+      "display": "AdditionalTermBondSeniority"
     }
   },
   {
@@ -337,9 +337,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Coupon type of the bond.",
-      "display": "AdditionalTermBondCouponType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Zero",
@@ -361,7 +359,9 @@
           "doc": "Structured"
         }
       ],
-      "fix:tag": "40011"
+      "FIX:tag": "40011",
+      "description": "Coupon type of the bond.",
+      "display": "AdditionalTermBondCouponType"
     }
   },
   {
@@ -371,9 +371,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40012",
       "description": "Coupon rate of the bond. See also CouponRate(223).",
-      "display": "AdditionalTermBondCouponRate",
-      "fix:tag": "40012"
+      "display": "AdditionalTermBondCouponRate"
     }
   },
   {
@@ -384,9 +384,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40013",
       "description": "The maturity date of the bond.",
-      "display": "AdditionalTermBondMaturityDate",
-      "fix:tag": "40013"
+      "display": "AdditionalTermBondMaturityDate"
     }
   },
   {
@@ -398,9 +398,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40014",
       "description": "The par value of the bond.",
-      "display": "AdditionalTermBondParValue",
-      "fix:tag": "40014"
+      "display": "AdditionalTermBondParValue"
     }
   },
   {
@@ -412,9 +412,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40015",
       "description": "Total issued amount of the bond.",
-      "display": "AdditionalTermBondCurrentTotalIssuedAmount",
-      "fix:tag": "40015"
+      "display": "AdditionalTermBondCurrentTotalIssuedAmount"
     }
   },
   {
@@ -424,9 +424,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40016",
       "description": "Time unit multiplier for the frequency of the bond's coupon payment.",
-      "display": "AdditionalTermBondCouponFrequencyPeriod",
-      "fix:tag": "40016"
+      "display": "AdditionalTermBondCouponFrequencyPeriod"
     }
   },
   {
@@ -436,9 +436,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the frequency of the bond's coupon payment.",
-      "display": "AdditionalTermBondCouponFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -480,7 +478,9 @@
           "doc": "Term"
         }
       ],
-      "fix:tag": "40017"
+      "FIX:tag": "40017",
+      "description": "Time unit associated with the frequency of the bond's coupon payment.",
+      "display": "AdditionalTermBondCouponFrequencyUnit"
     }
   },
   {
@@ -490,9 +490,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
-      "display": "AdditionalTermBondDayCount",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OneOne",
@@ -614,7 +612,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "40018"
+      "FIX:tag": "40018",
+      "description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
+      "display": "AdditionalTermBondDayCount"
     }
   },
   {
@@ -624,9 +624,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40019",
       "description": "Number of additional terms in the repeating group.",
-      "display": "NoAdditionalTerms",
-      "fix:tag": "40019"
+      "display": "NoAdditionalTerms"
     }
   },
   {
@@ -636,9 +636,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40020",
       "description": "Indicates whether the condition precedent bond is applicable. The swap contract is only valid if the bond is issued and if there is any dispute over the terms of fixed stream then the bond terms would be used.",
-      "display": "AdditionalTermConditionPrecedentBondIndicator",
-      "fix:tag": "40020"
+      "display": "AdditionalTermConditionPrecedentBondIndicator"
     }
   },
   {
@@ -648,9 +648,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40021",
       "description": "Indicates whether the discrepancy clause is applicable.",
-      "display": "AdditionalTermDiscrepancyClauseIndicator",
-      "fix:tag": "40021"
+      "display": "AdditionalTermDiscrepancyClauseIndicator"
     }
   },
   {
@@ -660,9 +660,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40022",
       "description": "Number of elements in the repeating group.",
-      "display": "NoCashSettlTerms",
-      "fix:tag": "40022"
+      "display": "NoCashSettlTerms"
     }
   },
   {
@@ -672,9 +672,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40023",
       "description": "Specifies the currency the CashSettlAmount(40034) is denominated in. Uses ISO 4217 currency codes.",
-      "display": "CashSettlCurrency",
-      "fix:tag": "40023"
+      "display": "CashSettlCurrency"
     }
   },
   {
@@ -684,9 +684,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40024",
       "description": "The number of business days after settlement conditions have been satisfied, when the calculation agent is to obtain a price quotation on the reference obligation for the purpose of cash settlement.",
-      "display": "CashSettlValuationFirstBusinessDayOffset",
-      "fix:tag": "40024"
+      "display": "CashSettlValuationFirstBusinessDayOffset"
     }
   },
   {
@@ -697,9 +697,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40025",
       "description": "The time of valuation.",
-      "display": "CashSettlValuationTime",
-      "fix:tag": "40025"
+      "display": "CashSettlValuationTime"
     }
   },
   {
@@ -709,9 +709,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40026",
       "description": "Identifies the business center calendar used at valuation time for cash settlement purposes e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "CashSettlBusinessCenter",
-      "fix:tag": "40026"
+      "display": "CashSettlBusinessCenter"
     }
   },
   {
@@ -721,9 +721,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The type of quote used to determine the cash settlement price.",
-      "display": "CashSettlQuoteMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bid",
@@ -740,7 +738,9 @@
           "doc": "Offer"
         }
       ],
-      "fix:tag": "40027"
+      "FIX:tag": "40027",
+      "description": "The type of quote used to determine the cash settlement price.",
+      "display": "CashSettlQuoteMethod"
     }
   },
   {
@@ -752,9 +752,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40028",
       "description": "When determining the cash settlement amount, if weighted average price quotes are to be obtained for the reference obligation, this is the upper limit to the outstanding principal balance of the reference obligation for which the quote should be obtained. If not specified, the ISDA definitions provide for a fallback amount equal to floating rate payer calculation amount.",
-      "display": "CashSettlQuoteAmount",
-      "fix:tag": "40028"
+      "display": "CashSettlQuoteAmount"
     }
   },
   {
@@ -764,9 +764,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40029",
       "description": "Specifies the currency the CashSettlQuoteAmount(40028) is denominated in. Uses ISO 4217 Currency Code.",
-      "display": "CashSettlQuoteCurrency",
-      "fix:tag": "40029"
+      "display": "CashSettlQuoteCurrency"
     }
   },
   {
@@ -778,9 +778,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40030",
       "description": "When determining the cash settlement amount, if weighted average price quotes are to be obtained for the reference obligation, this is the minimum intended threshold amount of outstanding principal balance of the reference obligation for which the quote should be obtained. If not specified, the ISDA definitions provide for a fallback amount of the lower of either USD1,000,000 (or its equivalent in the relevant obligation currency) or the (minimum) quoted amount.",
-      "display": "CashSettlMinimumQuoteAmount",
-      "fix:tag": "40030"
+      "display": "CashSettlMinimumQuoteAmount"
     }
   },
   {
@@ -790,9 +790,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40031",
       "description": "Specifies the currency the CashSettlMinimumQuoteAmount(40030) is denominated in. Uses ISO 4217 Currency Code.",
-      "display": "CashSettlMinimumQuoteCurrency",
-      "fix:tag": "40031"
+      "display": "CashSettlMinimumQuoteCurrency"
     }
   },
   {
@@ -802,9 +802,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40032",
       "description": "Identifies the dealer from whom price quotations for the reference obligation are obtained for the purpose of cash settlement valuation calculation.",
-      "display": "CashSettlDealer",
-      "fix:tag": "40032"
+      "display": "CashSettlDealer"
     }
   },
   {
@@ -814,9 +814,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40033",
       "description": "The number of business days used in the determination of the cash settlement payment date.",
-      "display": "CashSettlBusinessDays",
-      "fix:tag": "40033"
+      "display": "CashSettlBusinessDays"
     }
   },
   {
@@ -828,9 +828,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40034",
       "description": "The amount paid between the trade parties, seller to the buyer, for cash settlement on the cash settlement date.",
-      "display": "CashSettlAmount",
-      "fix:tag": "40034"
+      "display": "CashSettlAmount"
     }
   },
   {
@@ -840,9 +840,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40035",
       "description": "Used for fixed recovery, this specifies the recovery level as determined at contract inception, to be applied in the event of a default. The factor is used to calculate the amount paid by the seller to the buyer for cash settlement on the cash settlement date. The amount calculated is (1 - CashSettlRecoveryFactor(40035)) x floating rate payer calculation amount. The currency is derived from the floating rate payer calculation amount.",
-      "display": "CashSettlRecoveryFactor",
-      "fix:tag": "40035"
+      "display": "CashSettlRecoveryFactor"
     }
   },
   {
@@ -852,9 +852,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40036",
       "description": "Indicates whether fixed settlement is applicable or not applicable in a recovery lock.",
-      "display": "CashSettlFixedTermIndicator",
-      "fix:tag": "40036"
+      "display": "CashSettlFixedTermIndicator"
     }
   },
   {
@@ -864,9 +864,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40037",
       "description": "Indicates whether accrued interest is included or not in the value provided in CashSettlAmount(40034). For cash settlement this specifies whether quotations should be obtained inclusive or not of accrued interest.",
-      "display": "CashSettlAccruedInterestIndicator",
-      "fix:tag": "40037"
+      "display": "CashSettlAccruedInterestIndicator"
     }
   },
   {
@@ -876,9 +876,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The ISDA defined methodology for determining the final price of the reference obligation for purposes of cash settlement.",
-      "display": "CashSettlValuationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Market",
@@ -920,7 +918,9 @@
           "doc": "Average blended highest"
         }
       ],
-      "fix:tag": "40038"
+      "FIX:tag": "40038",
+      "description": "The ISDA defined methodology for determining the final price of the reference obligation for purposes of cash settlement.",
+      "display": "CashSettlValuationMethod"
     }
   },
   {
@@ -930,9 +930,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40039",
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
-      "display": "CashSettlTermXID",
-      "fix:tag": "40039"
+      "display": "CashSettlTermXID"
     }
   },
   {
@@ -942,9 +942,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40040",
       "description": "Number of financing definitions in the repeating group.",
-      "display": "NoContractualDefinitions",
-      "fix:tag": "40040"
+      "display": "NoContractualDefinitions"
     }
   },
   {
@@ -954,9 +954,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40041",
       "description": "Specifies which contract definition, such as those published by ISDA, will apply for the terms of the trade. See https://fpml.org/coding-scheme/contractual-definitions for values.",
-      "display": "ContractualDefinition",
-      "fix:tag": "40041"
+      "display": "ContractualDefinition"
     }
   },
   {
@@ -966,9 +966,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40042",
       "description": "Number of contractual matrices in the repeating group.",
-      "display": "NoContractualMatrices",
-      "fix:tag": "40042"
+      "display": "NoContractualMatrices"
     }
   },
   {
@@ -978,9 +978,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40043",
       "description": "Identifies the applicable contract matrix. See https://fpml.org/coding-scheme/matrix-type-1-0.xml for values.",
-      "display": "ContractualMatrixSource",
-      "fix:tag": "40043"
+      "display": "ContractualMatrixSource"
     }
   },
   {
@@ -991,9 +991,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40044",
       "description": "The publication date of the applicable version of the contract matrix. If not specified, the ISDA Standard Terms Supplement defines rules for which version of the matrix is applicable.",
-      "display": "ContractualMatrixDate",
-      "fix:tag": "40044"
+      "display": "ContractualMatrixDate"
     }
   },
   {
@@ -1003,9 +1003,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40045",
       "description": "Specifies the applicable key into the relevant contract matrix. In the case of 2000 ISDA Definitions Settlement Matrix for Early Termination and Swaptions, the ContractualMatrixTerm(40045) is not applicable and is to be omitted. See https://fpml.org/coding-scheme/credit-matrix-transaction-type for values.",
-      "display": "ContractualMatrixTerm",
-      "fix:tag": "40045"
+      "display": "ContractualMatrixTerm"
     }
   },
   {
@@ -1015,9 +1015,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40046",
       "description": "Number of financing terms supplements in the repeating group.",
-      "display": "NoFinancingTermSupplements",
-      "fix:tag": "40046"
+      "display": "NoFinancingTermSupplements"
     }
   },
   {
@@ -1027,9 +1027,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40047",
       "description": "Identifies the applicable contractual supplement. See https://fpml.org/coding-scheme/contractual-supplement for values.",
-      "display": "FinancingTermSupplementDesc",
-      "fix:tag": "40047"
+      "display": "FinancingTermSupplementDesc"
     }
   },
   {
@@ -1040,9 +1040,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40048",
       "description": "The publication date of the applicable version of the contractual supplement.",
-      "display": "FinancingTermSupplementDate",
-      "fix:tag": "40048"
+      "display": "FinancingTermSupplementDate"
     }
   },
   {
@@ -1052,9 +1052,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40049",
       "description": "Number of swap streams in the repeating group.",
-      "display": "NoStreams",
-      "fix:tag": "40049"
+      "display": "NoStreams"
     }
   },
   {
@@ -1064,9 +1064,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of swap stream.",
-      "display": "StreamType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "PaymentCashSettlement",
@@ -1078,7 +1076,9 @@
           "doc": "Physical delivery"
         }
       ],
-      "fix:tag": "40050"
+      "FIX:tag": "40050",
+      "description": "Type of swap stream.",
+      "display": "StreamType"
     }
   },
   {
@@ -1088,9 +1088,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40051",
       "description": "A short descriptive name given to the payment stream. Eg. CDS, Fixed, Float, Float2, GBP. The description has no intrinsic meaning but should be arbitrarily chosen by the remitter as reference.",
-      "display": "StreamDesc",
-      "fix:tag": "40051"
+      "display": "StreamDesc"
     }
   },
   {
@@ -1100,9 +1100,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The side of the party paying the stream.",
-      "display": "StreamPaySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buy",
@@ -1114,7 +1112,9 @@
           "doc": "Sell"
         }
       ],
-      "fix:tag": "40052"
+      "FIX:tag": "40052",
+      "description": "The side of the party paying the stream.",
+      "display": "StreamPaySide"
     }
   },
   {
@@ -1124,9 +1124,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The side of the party receiving the stream.",
-      "display": "StreamReceiveSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buy",
@@ -1138,7 +1136,9 @@
           "doc": "Sell"
         }
       ],
-      "fix:tag": "40053"
+      "FIX:tag": "40053",
+      "description": "The side of the party receiving the stream.",
+      "display": "StreamReceiveSide"
     }
   },
   {
@@ -1150,9 +1150,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40054",
       "description": "Notional, or initial notional value for the payment stream. Use the PaymentScheduleGrp component to specify the rate steps.",
-      "display": "StreamNotional",
-      "fix:tag": "40054"
+      "display": "StreamNotional"
     }
   },
   {
@@ -1162,9 +1162,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40055",
       "description": "Specifies the currency the StreamNotional(40054) is denominated in. Uses ISO 4217 currency codes.",
-      "display": "StreamCurrency",
-      "fix:tag": "40055"
+      "display": "StreamCurrency"
     }
   },
   {
@@ -1174,9 +1174,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40056",
       "description": "Free form text to specify additional information or enumeration description when a standard value does not apply.",
-      "display": "StreamText",
-      "fix:tag": "40056"
+      "display": "StreamText"
     }
   },
   {
@@ -1187,9 +1187,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40057",
       "description": "The unadjusted effective date.",
-      "display": "UnderlyingStreamEffectiveDateUnadjusted",
-      "fix:tag": "40057"
+      "display": "UnderlyingStreamEffectiveDateUnadjusted"
     }
   },
   {
@@ -1199,9 +1199,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the underlying instrument's stream's effective, or relative effective, date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
-      "display": "UnderlyingStreamEffectiveDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1243,7 +1241,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40058"
+      "FIX:tag": "40058",
+      "description": "The business day convention used to adjust the underlying instrument's stream's effective, or relative effective, date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
+      "display": "UnderlyingStreamEffectiveDateBusinessDayConvention"
     }
   },
   {
@@ -1253,9 +1253,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40059",
       "description": "The business center calendar used to adjust the underlying instrument's stream's effective, or relative effective, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "UnderlyingStreamEffectiveDateBusinessCenter",
-      "fix:tag": "40059"
+      "display": "UnderlyingStreamEffectiveDateBusinessCenter"
     }
   },
   {
@@ -1265,9 +1265,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40060",
       "description": "Specifies the anchor date when the effective date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "UnderlyingStreamEffectiveDateRelativeTo",
-      "fix:tag": "40060"
+      "display": "UnderlyingStreamEffectiveDateRelativeTo"
     }
   },
   {
@@ -1277,9 +1277,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40061",
       "description": "Time unit multiplier for the relative effective date offset.",
-      "display": "UnderlyingStreamEffectiveDateOffsetPeriod",
-      "fix:tag": "40061"
+      "display": "UnderlyingStreamEffectiveDateOffsetPeriod"
     }
   },
   {
@@ -1289,9 +1289,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative effective date offset.",
-      "display": "UnderlyingStreamEffectiveDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1313,7 +1311,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40062"
+      "FIX:tag": "40062",
+      "description": "Time unit associated with the relative effective date offset.",
+      "display": "UnderlyingStreamEffectiveDateOffsetUnit"
     }
   },
   {
@@ -1323,9 +1323,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative effective date offset.",
-      "display": "UnderlyingStreamEffectiveDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -1357,7 +1355,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "40063"
+      "FIX:tag": "40063",
+      "description": "Specifies the day type of the relative effective date offset.",
+      "display": "UnderlyingStreamEffectiveDateOffsetDayType"
     }
   },
   {
@@ -1368,9 +1368,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40064",
       "description": "The adjusted effective date.",
-      "display": "UnderlyingStreamEffectiveDateAdjusted",
-      "fix:tag": "40064"
+      "display": "UnderlyingStreamEffectiveDateAdjusted"
     }
   },
   {
@@ -1381,9 +1381,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40065",
       "description": "The unadjusted termination date.",
-      "display": "StreamTerminationDateUnadjusted",
-      "fix:tag": "40065"
+      "display": "StreamTerminationDateUnadjusted"
     }
   },
   {
@@ -1393,9 +1393,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the instrument's stream's termination, or relative termination, date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "StreamTerminationDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1437,7 +1435,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40066"
+      "FIX:tag": "40066",
+      "description": "The business day convention used to adjust the instrument's stream's termination, or relative termination, date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "StreamTerminationDateBusinessDayConvention"
     }
   },
   {
@@ -1447,9 +1447,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40067",
       "description": "The business center calendar used to adjust the instrument's stream's termination, or relative termination, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "StreamTerminationDateBusinessCenter",
-      "fix:tag": "40067"
+      "display": "StreamTerminationDateBusinessCenter"
     }
   },
   {
@@ -1459,9 +1459,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40068",
       "description": "Specifies the anchor date when the termination date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "StreamTerminationDateRelativeTo",
-      "fix:tag": "40068"
+      "display": "StreamTerminationDateRelativeTo"
     }
   },
   {
@@ -1471,9 +1471,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40069",
       "description": "Time unit multiplier for the relative termination date offset.",
-      "display": "StreamTerminationDateOffsetPeriod",
-      "fix:tag": "40069"
+      "display": "StreamTerminationDateOffsetPeriod"
     }
   },
   {
@@ -1483,9 +1483,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative termination date offset.",
-      "display": "StreamTerminationDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1507,7 +1505,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40070"
+      "FIX:tag": "40070",
+      "description": "Time unit associated with the relative termination date offset.",
+      "display": "StreamTerminationDateOffsetUnit"
     }
   },
   {
@@ -1517,9 +1517,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative termination date offset.",
-      "display": "StreamTerminationDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -1551,7 +1549,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "40071"
+      "FIX:tag": "40071",
+      "description": "Specifies the day type of the relative termination date offset.",
+      "display": "StreamTerminationDateOffsetDayType"
     }
   },
   {
@@ -1562,9 +1562,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40072",
       "description": "The adjusted termination date.",
-      "display": "StreamTerminationDateAdjusted",
-      "fix:tag": "40072"
+      "display": "StreamTerminationDateAdjusted"
     }
   },
   {
@@ -1574,9 +1574,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust calculation periods. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "StreamCalculationPeriodBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1618,7 +1616,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40073"
+      "FIX:tag": "40073",
+      "description": "The business day convention used to adjust calculation periods. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "StreamCalculationPeriodBusinessDayConvention"
     }
   },
   {
@@ -1628,9 +1628,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40074",
       "description": "The business center calendar used to adjust calculation periods, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "StreamCalculationPeriodBusinessCenter",
-      "fix:tag": "40074"
+      "display": "StreamCalculationPeriodBusinessCenter"
     }
   },
   {
@@ -1641,9 +1641,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40075",
       "description": "The unadjusted first calculation period start date if before the effective date.",
-      "display": "StreamFirstPeriodStartDateUnadjusted",
-      "fix:tag": "40075"
+      "display": "StreamFirstPeriodStartDateUnadjusted"
     }
   },
   {
@@ -1653,9 +1653,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the instrument's stream's first calculation period start date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "StreamFirstPeriodStartDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1697,7 +1695,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40076"
+      "FIX:tag": "40076",
+      "description": "The business day convention used to adjust the instrument's stream's first calculation period start date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "StreamFirstPeriodStartDateBusinessDayConvention"
     }
   },
   {
@@ -1707,9 +1707,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40077",
       "description": "The business center calendar used to adjust the instrument's stream's first calculation period start date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "StreamFirstPeriodStartDateBusinessCenter",
-      "fix:tag": "40077"
+      "display": "StreamFirstPeriodStartDateBusinessCenter"
     }
   },
   {
@@ -1720,9 +1720,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40078",
       "description": "The adjusted first calculation period start date, if it is before the effective date.",
-      "display": "StreamFirstPeriodStartDateAdjusted",
-      "fix:tag": "40078"
+      "display": "StreamFirstPeriodStartDateAdjusted"
     }
   },
   {
@@ -1733,9 +1733,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40079",
       "description": "The unadjusted first start date of the regular calculation period, if there is an initial stub period.",
-      "display": "StreamFirstRegularPeriodStartDateUnadjusted",
-      "fix:tag": "40079"
+      "display": "StreamFirstRegularPeriodStartDateUnadjusted"
     }
   },
   {
@@ -1746,9 +1746,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40080",
       "description": "The unadjusted end date of the initial compounding period.",
-      "display": "StreamFirstCompoundingPeriodEndDateUnadjusted",
-      "fix:tag": "40080"
+      "display": "StreamFirstCompoundingPeriodEndDateUnadjusted"
     }
   },
   {
@@ -1759,9 +1759,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40081",
       "description": "The unadjusted last regular period end date if there is a final stub period.",
-      "display": "StreamLastRegularPeriodEndDateUnadjusted",
-      "fix:tag": "40081"
+      "display": "StreamLastRegularPeriodEndDateUnadjusted"
     }
   },
   {
@@ -1771,9 +1771,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40082",
       "description": "Time unit multiplier for the frequency at which calculation period end dates occur.",
-      "display": "StreamCalculationFrequencyPeriod",
-      "fix:tag": "40082"
+      "display": "StreamCalculationFrequencyPeriod"
     }
   },
   {
@@ -1783,9 +1783,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the frequency at which calculation period end dates occur.",
-      "display": "StreamCalculationFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1827,7 +1825,9 @@
           "doc": "Term"
         }
       ],
-      "fix:tag": "40083"
+      "FIX:tag": "40083",
+      "description": "Time unit associated with the frequency at which calculation period end dates occur.",
+      "display": "StreamCalculationFrequencyUnit"
     }
   },
   {
@@ -1837,9 +1837,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "StreamCalculationRollConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FirstDay",
@@ -2071,7 +2069,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "40084"
+      "FIX:tag": "40084",
+      "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "StreamCalculationRollConvention"
     }
   },
   {
@@ -2081,9 +2081,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40085",
       "description": "Number of settlement rate fallbacks in the repeating group",
-      "display": "NoSettlRateFallbacks",
-      "fix:tag": "40085"
+      "display": "NoSettlRateFallbacks"
     }
   },
   {
@@ -2093,9 +2093,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40086",
       "description": "The maximum number of days to wait for a quote from the disrupted settlement rate option before proceding to this method.",
-      "display": "SettlRatePostponementMaximumDays",
-      "fix:tag": "40086"
+      "display": "SettlRatePostponementMaximumDays"
     }
   },
   {
@@ -2105,9 +2105,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source of the rate information.",
-      "display": "LegPaymentStreamNonDeliverableSettlRateSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bloomberg",
@@ -2134,7 +2132,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "40087"
+      "FIX:tag": "40087",
+      "description": "Identifies the source of the rate information.",
+      "display": "LegPaymentStreamNonDeliverableSettlRateSource"
     }
   },
   {
@@ -2144,9 +2144,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40088",
       "description": "Indicates whether to request a settlement rate quote from the market.",
-      "display": "SettlRatePostponementSurvey",
-      "fix:tag": "40088"
+      "display": "SettlRatePostponementSurvey"
     }
   },
   {
@@ -2156,9 +2156,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to identify the settlement rate postponement calculation agent.",
-      "display": "SettlRatePostponementCalculationAgent",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ExercisingParty",
@@ -2180,7 +2178,9 @@
           "doc": "As specified in the standard terms supplement"
         }
       ],
-      "fix:tag": "40089"
+      "FIX:tag": "40089",
+      "description": "Used to identify the settlement rate postponement calculation agent.",
+      "display": "SettlRatePostponementCalculationAgent"
     }
   },
   {
@@ -2190,9 +2190,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40090",
       "description": "Number of provisions in the repeating group.",
-      "display": "NoProvisions",
-      "fix:tag": "40090"
+      "display": "NoProvisions"
     }
   },
   {
@@ -2202,9 +2202,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of provisions.",
-      "display": "ProvisionType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "MandatoryEarlyTermination",
@@ -2246,7 +2244,9 @@
           "doc": "Puttable"
         }
       ],
-      "fix:tag": "40091"
+      "FIX:tag": "40091",
+      "description": "Type of provisions.",
+      "display": "ProvisionType"
     }
   },
   {
@@ -2257,9 +2257,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40092",
       "description": "The unadjusted date of the provision.",
-      "display": "ProvisionDateUnadjusted",
-      "fix:tag": "40092"
+      "display": "ProvisionDateUnadjusted"
     }
   },
   {
@@ -2269,9 +2269,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the instrument's provision's dates. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "ProvisionDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -2313,7 +2311,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40093"
+      "FIX:tag": "40093",
+      "description": "The business day convention used to adjust the instrument's provision's dates. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "ProvisionDateBusinessDayConvention"
     }
   },
   {
@@ -2323,9 +2323,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40094",
       "description": "The business center calendar used to adjust the instrument's provision's dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "ProvisionDateBusinessCenter",
-      "fix:tag": "40094"
+      "display": "ProvisionDateBusinessCenter"
     }
   },
   {
@@ -2336,9 +2336,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40095",
       "description": "The adjusted date of the provision.",
-      "display": "ProvisionDateAdjusted",
-      "fix:tag": "40095"
+      "display": "ProvisionDateAdjusted"
     }
   },
   {
@@ -2348,9 +2348,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40096",
       "description": "Time unit multiplier for the provision's tenor period.",
-      "display": "ProvisionDateTenorPeriod",
-      "fix:tag": "40096"
+      "display": "ProvisionDateTenorPeriod"
     }
   },
   {
@@ -2360,9 +2360,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the provision's tenor period.",
-      "display": "ProvisionDateTenorUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -2384,7 +2382,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40097"
+      "FIX:tag": "40097",
+      "description": "Time unit associated with the provision's tenor period.",
+      "display": "ProvisionDateTenorUnit"
     }
   },
   {
@@ -2394,9 +2394,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to identify the calculation agent. The calculation agent may be identified in ProvisionCalculationAgent(40098) or in the ProvisionParties component.",
-      "display": "ProvisionCalculationAgent",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ExercisingParty",
@@ -2418,7 +2416,9 @@
           "doc": "As specified in the standard terms supplement"
         }
       ],
-      "fix:tag": "40098"
+      "FIX:tag": "40098",
+      "description": "Used to identify the calculation agent. The calculation agent may be identified in ProvisionCalculationAgent(40098) or in the ProvisionParties component.",
+      "display": "ProvisionCalculationAgent"
     }
   },
   {
@@ -2428,9 +2428,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "If optional early termination is not available to both parties then this component identifies the buyer of the option through its side of the trade.",
-      "display": "ProvisionOptionSinglePartyBuyerSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buy",
@@ -2442,7 +2440,9 @@
           "doc": "Sell"
         }
       ],
-      "fix:tag": "40099"
+      "FIX:tag": "40099",
+      "description": "If optional early termination is not available to both parties then this component identifies the buyer of the option through its side of the trade.",
+      "display": "ProvisionOptionSinglePartyBuyerSide"
     }
   }
 ]

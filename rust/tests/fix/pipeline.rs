@@ -23,7 +23,7 @@ use arrow_array::RecordBatch;
 use arrow_array::cast::AsArray;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::media::text::TextOptions;
+use yggdryl::text::TextOptions;
 use yggdryl::{
     FixCodec, FixRegistry, IOMedia, Scalar, TimeUnit, Timezone, Url, fix_schema,
     fix_schema_carrying,
@@ -248,7 +248,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
             "mimetype",
             "body",
             "timestamp",
-            "threadId",
+            "msgthreadid",
             "level"
         ],
         "{names:?}"
@@ -261,7 +261,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
             .position(|held| *held == name)
             .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
     };
-    for pair in ["level", "currunix", "creatunix", "prevunix"].windows(2) {
+    for pair in ["level", "currunix", "creaunix", "prevunix"].windows(2) {
         assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
     }
     let header = names
@@ -279,7 +279,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         "timestamp",
         "msgsessionid",
         "msgctxid",
-        "pluginid",
+        "msgpluginid",
         "msgseqnum",
     ] {
         assert_eq!(
@@ -389,7 +389,7 @@ fn a_message_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
         text_column(&read, "level")[FILL_ROW].as_deref(),
         Some("INFO")
     );
-    let thread = column(&read, "threadId");
+    let thread = column(&read, "msgthreadid");
     assert_eq!(thread[ROUTED_ROW].as_i64(), Some(15_333));
     assert_eq!(thread[HEARTBEAT_ROW].as_i64(), Some(15_261));
     // The bracket's sequence number is FIX's own `MsgSeqNum(34)`, so it fills
@@ -418,7 +418,7 @@ fn a_message_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     // names a line moved between are what the line itself spells, and no
     // line here spells one, nor which plugin the message came through
     // before.
-    let plugin = tag_text(&read, yggdryl::PLUGINID_TAG_NAME.0);
+    let plugin = tag_text(&read, yggdryl::MSGPLUGINID_TAG_NAME.0);
     assert_eq!(
         plugin[HEARTBEAT_ROW].as_deref(),
         Some("OMS_X1_TradeCapture")
@@ -584,7 +584,7 @@ fn every_row_keeps_its_event_clock_capture_clock_and_fix_version() {
     let carried = column(&read, "timestamp");
     let stamp = tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0);
     let snapshot = tag_column(&read, yggdryl::SNAPUNIX_TAG_NAME.0);
-    let created = tag_column(&read, yggdryl::CREATUNIX_TAG_NAME.0);
+    let created = tag_column(&read, yggdryl::CREAUNIX_TAG_NAME.0);
     assert_eq!(stamp.len(), MESSAGES);
     assert_eq!(clock.len(), CAPTURE.len());
     for (row, line) in CARRYING.into_iter().enumerate() {
@@ -684,7 +684,7 @@ fn a_json_document_is_one_unknown_row_carrying_only_what_the_row_stated() {
         column(&stage, "timestamp")[CARRYING[RESPONSE_ROW]]
     );
     assert_eq!(
-        tag_text(&read, yggdryl::PLUGINID_TAG_NAME.0)[RESPONSE_ROW].as_deref(),
+        tag_text(&read, yggdryl::MSGPLUGINID_TAG_NAME.0)[RESPONSE_ROW].as_deref(),
         Some("Jolokia")
     );
     assert_eq!(
@@ -784,7 +784,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     for filled in [
         34,
         yggdryl::MSGCTXID_TAG_NAME.0,
-        yggdryl::PLUGINID_TAG_NAME.0,
+        yggdryl::MSGPLUGINID_TAG_NAME.0,
         yggdryl::CURRUNIX_TAG_NAME.0,
     ] {
         assert!(
@@ -892,7 +892,7 @@ fn a_line_of_two_frames_is_two_rows_and_a_sentence_is_none() {
         Some(1_786_689_990_947)
     );
     assert_eq!(
-        tag_text(&read, yggdryl::PLUGINID_TAG_NAME.0),
+        tag_text(&read, yggdryl::MSGPLUGINID_TAG_NAME.0),
         vec![Some("ULMSG_BROKER_TO_DMZ".to_owned()); 2]
     );
     assert_eq!(

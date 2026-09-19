@@ -1,4 +1,5 @@
-use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DataType, Field, StructureType, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DateTimeType, DurationType, TimeType};
 
 #[test]
 fn equals_can_ignore_only_metadata_recursively() {
@@ -90,13 +91,15 @@ fn differences_without_metadata_do_not_render_nested_metadata_as_context() {
     let private_child =
         Field::from_parts("private", DataType::utf8(), true, [("secret", "left")]).unwrap();
     let left = DataType::list(private_child);
-    let right = DataType::from_fields([Field::new("public", DataType::utf8(), true)]).unwrap();
+    let right = DataType::from(
+        StructureType::from_fields([Field::new("public", DataType::utf8(), true)]).unwrap(),
+    );
     let changed_kind = left.show_diff(&right, false, true);
     assert_eq!(changed_kind, "≠ $.kind: list → struct");
     assert!(!changed_kind.contains("secret"));
 
-    let left = DataType::from_fields(std::iter::empty()).unwrap();
-    let right = DataType::from_fields([Field::from_parts(
+    let left = DataType::from(StructureType::from_fields(std::iter::empty()).unwrap());
+    let right = StructureType::from_fields([Field::from_parts(
         "added",
         DataType::list(
             Field::from_parts("item", DataType::utf8(), true, [("secret", "right")]).unwrap(),
@@ -105,6 +108,7 @@ fn differences_without_metadata_do_not_render_nested_metadata_as_context() {
         [("secret", "root")],
     )
     .unwrap()])
+    .map(DataType::from)
     .unwrap();
     let added = left.show_diff(&right, false, true);
     assert!(added.contains("+ $.fields[0]: field(name=\"added\",dtype=list,nullable=true)"));
@@ -116,42 +120,42 @@ fn empty_diff_exactly_matches_equality_for_parameterized_and_nested_types() {
     let item = || Field::new("item", DataType::utf8(), true);
     let pairs = vec![
         (
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            },
-            DataType::DateTime64 {
+            }),
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
         (
-            DataType::Time32(TimeUnit::Second),
-            DataType::Time32(TimeUnit::Millisecond),
+            DataType::Time(TimeType::Time32(TimeUnit::Second)),
+            DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
         ),
         (
-            DataType::Time64(TimeUnit::Microsecond),
-            DataType::Time64(TimeUnit::Nanosecond),
+            DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+            DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
         ),
         (
-            DataType::Duration32(TimeUnit::Second),
-            DataType::Duration32(TimeUnit::Nanosecond),
+            DataType::Duration(DurationType::Duration32(TimeUnit::Second)),
+            DataType::Duration(DurationType::Duration32(TimeUnit::Nanosecond)),
         ),
         (
-            DataType::Duration64(TimeUnit::Second),
-            DataType::Duration64(TimeUnit::Nanosecond),
+            DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
+            DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
         ),
         (
-            DataType::Duration32(TimeUnit::Second),
-            DataType::Duration64(TimeUnit::Second),
+            DataType::Duration(DurationType::Duration32(TimeUnit::Second)),
+            DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
         ),
         (
-            DataType::Interval(TimeUnit::YearMonth),
-            DataType::Interval(TimeUnit::DayTime),
+            DataType::interval(TimeUnit::YearMonth).unwrap(),
+            DataType::interval(TimeUnit::DayTime).unwrap(),
         ),
         (
-            DataType::fixed_size_binary(8).unwrap(),
-            DataType::fixed_size_binary(16).unwrap(),
+            DataType::fixed_binary(8).unwrap(),
+            DataType::fixed_binary(16).unwrap(),
         ),
         (
             DataType::fixed_size_list(item(), 2).unwrap(),

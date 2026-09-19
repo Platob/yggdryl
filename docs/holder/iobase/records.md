@@ -31,13 +31,13 @@ The media type picks the encoding; batches arrive one at a time.
     use yggdryl::arrow;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, Url};
+    use yggdryl::{DataType, StructureType, Url};
 
     // A non-null struct Field is the schema.
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
-    ])?
+    ])?)
     .required_field("row");
 
     let arrow_schema = schema.clone().into_arrow_schema()?;
@@ -206,7 +206,7 @@ Rust only.
 
 ```rust
 use yggdryl::media::IORecordOptions;
-use yggdryl::{IOBase, IOMedia};
+use yggdryl::{IOBase, IOMedia, StructureType};
 use yggdryl::holder::Buffer;
 use yggdryl::{DataType, MimeType, Scalar};
 
@@ -218,10 +218,10 @@ impl From<Quote> for Scalar {
     }
 }
 
-let field = DataType::from_fields([
+let field = DataType::from(StructureType::from_fields([
     DataType::Int32.required_field("id"),
     DataType::utf8().required_field("symbol"),
-])?
+])?)
 .required_field("quote");
 let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
 let options = handle.record_options()?.with_field(field);
@@ -407,13 +407,13 @@ The options field selects and casts in one pass; columns it omits are never read
     use yggdryl::media::IORecordOptions;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
-    let stored = DataType::from_fields([
+    let stored = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
         DataType::utf8().required_field("venue"),
-    ])?
+    ])?)
     .required_field("row");
     let arrow_schema = stored.into_arrow_schema()?;
 
@@ -431,7 +431,7 @@ The options field selects and casts in one pass; columns it omits are never read
     handle.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &plain)?;
 
     // One of the three columns, declared as this read's schema.
-    let wanted = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+    let wanted = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
 
     let projected = handle.read_arrow_reader(&plain.clone().with_field(wanted))?;
     assert_eq!(projected.schema().fields().len(), 1);
@@ -448,10 +448,10 @@ The options field selects and casts in one pass; columns it omits are never read
 
     // A column it does not hold cannot be projected out of it, so the encoding
     // reads everything and the cast supplies that column as nulls.
-    let invented = DataType::from_fields([
+    let invented = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("nowhere"),
-    ])?
+    ])?)
     .required_field("row");
     let widened = handle.read_arrow_reader(&plain.with_field(invented))?;
     assert_eq!(widened.schema().fields().len(), 2);
@@ -566,9 +566,9 @@ The options field selects and casts in one pass; columns it omits are never read
     use yggdryl::media::IORecordOptions;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let arrow_schema = schema.into_arrow_schema()?;
     let batch = RecordBatch::try_new(
@@ -694,12 +694,12 @@ Overwrite replaces the resource, append retains stored rows, merge updates match
     use yggdryl::media::IORecordOptions;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, Url};
+    use yggdryl::{DataType, StructureType, Url};
 
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
-    ])?
+    ])?)
     .required_field("row");
     let arrow_schema = schema.clone().into_arrow_schema()?;
     let rows = |ids: Vec<i64>, symbols: Vec<&'static str>| {

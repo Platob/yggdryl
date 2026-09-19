@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "returnratedate"
+        "FIX:component": "returnratedate"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "returnratedate",
+    "FIX:counter": "42709",
+    "FIX:tag": "1049252",
     "description": "Required if NoReturnRateDates(42709) > 0.",
-    "display": "ReturnRateDateGrp",
-    "fix:component": "returnratedate",
-    "fix:counter": "42709",
-    "fix:tag": "1049252"
+    "display": "ReturnRateDateGrp"
   }
 }

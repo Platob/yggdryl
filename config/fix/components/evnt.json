@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "eventtype",
-          "fix:tag": "865"
+          "FIX:field": "eventtype",
+          "FIX:tag": "865"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "eventdate",
-          "fix:tag": "866"
+          "FIX:field": "eventdate",
+          "FIX:tag": "866"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "eventtime",
-          "fix:tag": "1145"
+          "FIX:field": "eventtime",
+          "FIX:tag": "1145"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "eventtimeunit",
-          "fix:tag": "1827"
+          "FIX:field": "eventtimeunit",
+          "FIX:tag": "1827"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "eventtimeperiod",
-          "fix:tag": "1826"
+          "FIX:field": "eventtimeperiod",
+          "FIX:tag": "1826"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "eventmonthyear",
-          "fix:tag": "2340"
+          "FIX:field": "eventmonthyear",
+          "FIX:tag": "2340"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "eventpx",
-          "fix:tag": "867"
+          "FIX:field": "eventpx",
+          "FIX:tag": "867"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "eventtext",
-          "fix:tag": "868"
+          "FIX:field": "eventtext",
+          "FIX:tag": "868"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedeventtextlen",
-          "fix:tag": "1578"
+          "FIX:field": "encodedeventtextlen",
+          "FIX:tag": "1578"
         }
       },
       {
@@ -109,15 +109,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedeventtext",
-          "fix:tag": "1579"
+          "FIX:field": "encodedeventtext",
+          "FIX:tag": "1579"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "Evnt",
-    "fix:tag": "910581"
+    "FIX:tag": "910581",
+    "display": "Evnt"
   }
 }

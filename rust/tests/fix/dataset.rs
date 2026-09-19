@@ -17,7 +17,7 @@ use arrow_array::RecordBatch;
 use yggdryl::graph::{Event, MarketElement};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
+use yggdryl::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::{FixCodec, FixMsg, FixRegistry, IOMedia, Scalar, Timezone, Url};
 
 use super::path;
@@ -374,7 +374,7 @@ fn a_parse_fills_the_crate_columns_the_line_only_implied() {
     assert_eq!(fill.get_miccode().map(|held| held.as_str()), Some("XSWX"));
     assert_eq!(
         Some(fill.get_state().clone()),
-        yggdryl::types::State::from_spelling("1"),
+        yggdryl::State::from_spelling("1"),
     );
     // A stated value is never a derived one: the line said 260 remain.
     assert_eq!(fill.by_tag(151).unwrap(), super::decimal("260"));
@@ -443,7 +443,7 @@ fn the_writer_re_emits_each_rows_own_wire_and_none_of_the_captures_columns() {
         // The capture's columns are the capture's: the body the line was
         // read from, its place in the object and the bridge's row header
         // are not content, so none of them reaches a counterparty.
-        for carried in ["|body=", "|rownum=", "|mimetype=", "|url=", "|threadId="] {
+        for carried in ["|body=", "|rownum=", "|mimetype=", "|url=", "|msgthreadid="] {
             assert!(!written[at].contains(carried), "row {at}: {}", written[at]);
         }
         if PARTIES_NESTING_A_SUBGROUP.contains(&at) {

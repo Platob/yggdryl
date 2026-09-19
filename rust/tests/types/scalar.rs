@@ -10,11 +10,11 @@ const POINT_EMPTY_WKB: [u8; 21] = [
 
 use std::sync::Arc;
 
-use yggdryl::types::floating::FloatingValue;
-use yggdryl::types::{Float16, Float32, Float64, Scalar};
-use yggdryl::{
-    DataType, DataTypeId, DataTypeKind, ScalarFamily, ScalarValue, TimeUnit, Timezone, i256,
-};
+use yggdryl::{Code, FamilyValue, FloatingValue, Geospatial, Nested, Temporal, TemporalValue};
+use yggdryl::{DataType, DataTypeId, DataTypeKind, TimeUnit, Timezone, Value, i256};
+use yggdryl::{Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64};
+use yggdryl::{Float16, Float32, Float64, Floating, Scalar};
+use yggdryl::{Int8, Int16, Int32, Int64, Int128, Integer, UInt8, UInt16, UInt32, UInt64, UInt128};
 
 fn order() -> Scalar {
     Scalar::from_mapping([
@@ -158,6 +158,60 @@ fn integer_widths_preserve_width_with_logical_comparison() {
 }
 
 #[test]
+fn the_eleven_codes_sort_by_which_code_then_by_text() {
+    use std::hash::{Hash, Hasher};
+
+    use yggdryl::{Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, TimeInForce};
+
+    fn hash_of(value: &Scalar) -> u64 {
+        let mut hasher = std::hash::DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    // The eleven share one value rank, so nothing but the identity separates
+    // them - and that identity is the one their datatypes sort by, which is
+    // what makes a sorted column of fields and a sorted column of values agree.
+    let ascending = [
+        Scalar::Country(Country::new("FR").unwrap()),
+        Scalar::Currency(Currency::new("EUR").unwrap()),
+        Scalar::Mic(Mic::new("XPAR").unwrap()),
+        Scalar::Cfi(Cfi::new("ESVUFR").unwrap()),
+        Scalar::Side(yggdryl::Side::new("BUY").unwrap()),
+        Scalar::State(yggdryl::State::read("New").unwrap()),
+        Scalar::TimeInForce(TimeInForce::new("1").unwrap()),
+        Scalar::Isin(Isin::new("US0378331005").unwrap()),
+        Scalar::Cusip(Cusip::new("037833100").unwrap()),
+        Scalar::Sedol(Sedol::new("2046251").unwrap()),
+        Scalar::Bloomberg(Bloomberg::new("BBG000B9XRY4").unwrap()),
+    ];
+    for pair in ascending.windows(2) {
+        assert!(pair[0] < pair[1], "{:?} !< {:?}", pair[0], pair[1]);
+        assert_eq!(
+            pair[0].cmp(&pair[1]),
+            pair[0].dtype().unwrap().cmp(&pair[1].dtype().unwrap()),
+            "the values disagree with their datatypes"
+        );
+    }
+
+    // Two codes whose bytes agree are two values, and their hashes say so.
+    let currency = Scalar::Currency(Currency::new("XXX").unwrap());
+    let country = Scalar::Country(Country::new("XX").unwrap());
+    assert_ne!(currency, country);
+    assert_ne!(hash_of(&currency), hash_of(&country));
+
+    // Within one code the text decides, and hash agrees with order.
+    let one = Scalar::Currency(Currency::new("EUR").unwrap());
+    let other = Scalar::Currency(Currency::new("USD").unwrap());
+    assert!(one < other);
+    assert_eq!(
+        hash_of(&one),
+        hash_of(&Scalar::Currency(Currency::new("EUR").unwrap()))
+    );
+    assert_ne!(hash_of(&one), hash_of(&other));
+}
+
+#[test]
 fn cross_width_numbers_agree_in_equality_order_and_hash() {
     use std::hash::{Hash, Hasher};
 
@@ -194,8 +248,8 @@ fn cross_width_numbers_agree_in_equality_order_and_hash() {
             Scalar::from(1.5_f64),
         ],
         vec![
-            Scalar::Decimal32(yggdryl::types::Decimal32::new(1_250, 2)),
-            Scalar::Decimal64(yggdryl::types::Decimal64::new(12_500, 3)),
+            Scalar::Decimal32(yggdryl::Decimal32::new(1_250, 2)),
+            Scalar::Decimal64(yggdryl::Decimal64::new(12_500, 3)),
             Scalar::d128(125, 1),
             Scalar::d256(i256::from_i128(125), 1),
         ],
@@ -218,10 +272,10 @@ fn cross_width_numbers_agree_in_equality_order_and_hash() {
     assert!(Scalar::from(half::f16::from_f32(1.0)) < Scalar::from(1.5_f64));
     assert!(Scalar::from(2.5_f32) > Scalar::from(1.5_f64));
     assert!(
-        Scalar::Decimal32(yggdryl::types::Decimal32::new(1_249, 2))
+        Scalar::Decimal32(yggdryl::Decimal32::new(1_249, 2))
             < Scalar::d256(i256::from_i128(125), 1)
     );
-    assert!(Scalar::d128(-1, 0) < Scalar::Decimal64(yggdryl::types::Decimal64::new(0, 4)));
+    assert!(Scalar::d128(-1, 0) < Scalar::Decimal64(yggdryl::Decimal64::new(0, 4)));
 
     // Different kinds stay apart even when their numbers agree.
     assert_ne!(Scalar::from(1_i32), Scalar::from(1.0_f64));
@@ -285,7 +339,7 @@ fn a_geospatial_value_is_its_own_kind_over_its_bytes() {
         bytes
     };
     let wkb = point_wkb(1.0, 2.0);
-    let point = Scalar::Geometry(yggdryl::types::Geometry::new(wkb.clone()).unwrap());
+    let point = Scalar::Geometry(yggdryl::Geometry::new(wkb.clone()).unwrap());
     assert_eq!(point.kind(), "geometry");
 
     // The same bytes under the bytes kind are a different value: the kind
@@ -295,10 +349,10 @@ fn a_geospatial_value_is_its_own_kind_over_its_bytes() {
     assert_ne!(hash_of(&point), hash_of(&bytes));
 
     // Within the kind, the bytes compare, and equal values hash equal.
-    let equal = Scalar::Geometry(yggdryl::types::Geometry::new(wkb).unwrap());
+    let equal = Scalar::Geometry(yggdryl::Geometry::new(wkb).unwrap());
     assert_eq!(point, equal);
     assert_eq!(hash_of(&point), hash_of(&equal));
-    let later = Scalar::Geometry(yggdryl::types::Geometry::new(point_wkb(3.0, 4.0)).unwrap());
+    let later = Scalar::Geometry(yggdryl::Geometry::new(point_wkb(3.0, 4.0)).unwrap());
     assert_eq!(
         point.cmp(&later),
         point.as_bytes().unwrap().cmp(later.as_bytes().unwrap())
@@ -310,7 +364,7 @@ fn the_structural_wire_round_trips_a_geospatial_value() {
     let mut wkb = vec![1_u8, 1, 0, 0, 0];
     wkb.extend_from_slice(&1.0_f64.to_le_bytes());
     wkb.extend_from_slice(&2.0_f64.to_le_bytes());
-    let point = Scalar::Geometry(yggdryl::types::Geometry::new(wkb).unwrap());
+    let point = Scalar::Geometry(yggdryl::Geometry::new(wkb).unwrap());
     let encoded = serde_json::to_string(&point).unwrap();
     assert!(encoded.contains("\"type\":\"geometry\""), "{encoded}");
     let decoded: Scalar = serde_json::from_str(&encoded).unwrap();
@@ -319,9 +373,8 @@ fn the_structural_wire_round_trips_a_geospatial_value() {
 
 #[test]
 fn the_structural_wire_validates_interval_layouts() {
-    let value = Scalar::Interval(
-        yggdryl::types::Interval::new(0, 1, 2_000_000, TimeUnit::DayTime).unwrap(),
-    );
+    let value =
+        Scalar::Interval(yggdryl::Interval::new(0, 1, 2_000_000, TimeUnit::DayTime).unwrap());
     let encoded = serde_json::to_string(&value).unwrap();
     let decoded: Scalar = serde_json::from_str(&encoded).unwrap();
     assert_eq!(decoded, value);
@@ -428,8 +481,7 @@ fn records_are_sorted_and_rebuilt_by_field_name() {
 fn native_and_json_accessors_have_explicit_borrowing_semantics() {
     let text = Scalar::from("AAPL");
     let bytes = Scalar::from(b"AAPL".as_slice());
-    let geometry =
-        Scalar::Geometry(yggdryl::types::Geometry::new(POINT_EMPTY_WKB.as_slice()).unwrap());
+    let geometry = Scalar::Geometry(yggdryl::Geometry::new(POINT_EMPTY_WKB.as_slice()).unwrap());
     assert_eq!(text.as_str(), Some("AAPL"));
     assert_eq!(text.as_bytes(), None);
     assert_eq!(bytes.as_bytes(), Some(b"AAPL".as_slice()));
@@ -441,13 +493,10 @@ fn native_and_json_accessors_have_explicit_borrowing_semantics() {
         ("active", Scalar::from(true)),
     ])
     .unwrap();
-    let json_bytes = record.as_json_bytes().unwrap();
-    let json_utf8 = record.as_json_utf8().unwrap();
+    let json_bytes = record.into_json_bytes().unwrap();
+    let json_utf8 = record.into_json().unwrap();
     assert_eq!(json_bytes, json_utf8.as_bytes());
-    assert_eq!(
-        yggdryl::text::json::from_bytes(&json_bytes).unwrap(),
-        record
-    );
+    assert_eq!(yggdryl::json::from_bytes(&json_bytes).unwrap(), record);
 }
 
 #[test]
@@ -458,41 +507,238 @@ fn time_construction_refuses_zones_its_datatype_cannot_preserve() {
 #[test]
 fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
     let leaf = Float32::from_f32(1.25);
-    let scalar = ScalarValue::into_scalar(leaf);
+    let scalar = Value::into_scalar(leaf);
 
-    assert_eq!(<Float32 as ScalarValue>::ID, DataTypeId::Float32);
-    assert_eq!(<Float32 as ScalarValue>::KIND, DataTypeKind::Floating);
-    assert_eq!(ScalarValue::dtype(&leaf).unwrap(), DataType::Float32);
-    assert_eq!(<Float32 as ScalarValue>::from_scalar(&scalar), Some(&leaf));
-    // A width leaf is its own family.
-    let family: Float32 = ScalarValue::into_family(leaf);
-    assert_eq!(family, leaf);
-    assert_eq!(<Float32 as ScalarValue>::from_family(&family), Some(&leaf));
-    assert_eq!(ScalarFamily::id(&family), DataTypeId::Float32);
-    assert_eq!(ScalarFamily::dtype(&family).unwrap(), DataType::Float32);
-    assert_eq!(
-        <Float32 as ScalarFamily>::from_scalar(&scalar),
-        Some(&family)
-    );
-    assert_eq!(ScalarFamily::into_scalar(family), scalar);
+    assert_eq!(Value::dtype(&leaf).unwrap().id(), DataTypeId::Float32);
+    assert_eq!(Value::dtype(&leaf).unwrap(), DataType::Float32);
+    assert_eq!(<Float32 as Value>::from_scalar(&scalar), Some(&leaf));
+    assert_eq!(Value::into_scalar(leaf), scalar);
     assert_eq!(FloatingValue::as_f64(&leaf), 1.25);
     assert_eq!(<Float32 as FloatingValue>::BIT_WIDTH, 32);
 }
 
+/// One leaf beside the family variant that shares its name, and what the
+/// family owes it: the widening `From<Leaf>`, the scalar variant of the same
+/// name, the leaf's own datatype and its rendering.
+#[macro_export]
+macro_rules! family_leaf {
+    ($family:ident :: $variant:ident, $leaf:expr) => {{
+        let leaf = $leaf;
+        (
+            $family::$variant(leaf.clone()),
+            $family::from(leaf.clone()),
+            yggdryl::Scalar::$variant(leaf.clone()),
+            yggdryl::Value::dtype(&leaf).unwrap(),
+            leaf.to_string(),
+        )
+    }};
+}
+
+/// One family leaf as [`family_leaf!`] states it: the family variant, the
+/// widened leaf, the scalar, the leaf's datatype and its rendering.
+pub(crate) type FamilyLeaf<F> = (F, F, Scalar, DataType, String);
+
+/// What a family enum answers for each of its leaves: `from_scalar` narrows
+/// the leaf's scalar to that variant, `dtype` and `Display` are the leaf's,
+/// `into_scalar` and `From<Family> for Scalar` widen back to the scalar the
+/// leaf widens to, `KIND` is the family's, and a scalar of another kind
+/// narrows to nothing.
+pub(crate) fn assert_family_round_trip<F>(
+    leaves: Vec<FamilyLeaf<F>>,
+    kind: DataTypeKind,
+    other: &Scalar,
+) where
+    F: FamilyValue,
+    Scalar: From<F>,
+{
+    assert_eq!(F::KIND, kind);
+    for (held, widened, scalar, dtype, display) in leaves {
+        assert_eq!(widened, held, "{scalar:?}");
+        assert_eq!(F::from_scalar(&scalar), Some(held.clone()), "{scalar:?}");
+        assert_eq!(scalar.family(), kind, "{scalar:?}");
+        assert_eq!(held.dtype().unwrap(), dtype, "{scalar:?}");
+        assert_eq!(held.to_string(), display, "{scalar:?}");
+        assert_eq!(held.clone().into_scalar(), scalar, "{scalar:?}");
+        assert_eq!(Scalar::from(held), scalar, "{scalar:?}");
+    }
+    assert_ne!(other.family(), kind, "{other:?}");
+    assert_eq!(F::from_scalar(other), None, "{other:?}");
+    assert_eq!(F::from_scalar(&Scalar::Null), None);
+}
+
+#[test]
+fn the_integer_family_stands_for_every_width() {
+    assert_family_round_trip(
+        vec![
+            family_leaf!(Integer::Int8, Int8::new(-8)),
+            family_leaf!(Integer::Int16, Int16::new(-16)),
+            family_leaf!(Integer::Int32, Int32::new(-32)),
+            family_leaf!(Integer::Int64, Int64::new(-64)),
+            family_leaf!(Integer::UInt8, UInt8::new(8)),
+            family_leaf!(Integer::UInt16, UInt16::new(16)),
+            family_leaf!(Integer::UInt32, UInt32::new(32)),
+            family_leaf!(Integer::UInt64, UInt64::new(64)),
+            family_leaf!(Integer::Int128, Int128::new(i128::MIN)),
+            family_leaf!(Integer::UInt128, UInt128::new(u128::MAX)),
+        ],
+        DataTypeKind::Integer,
+        &Scalar::from(1.5_f64),
+    );
+}
+
+#[test]
+fn the_floating_family_stands_for_every_width() {
+    assert_family_round_trip(
+        vec![
+            family_leaf!(
+                Floating::Float16,
+                Float16::from_f16(half::f16::from_f32(1.5))
+            ),
+            family_leaf!(Floating::Float32, Float32::from_f32(1.25)),
+            family_leaf!(Floating::Float64, Float64::from_f64(0.1)),
+        ],
+        DataTypeKind::Floating,
+        &Scalar::from(1_i64),
+    );
+}
+
+#[test]
+fn every_family_accessor_answers_its_own_kind_and_no_other() {
+    let mut point = vec![1, 1, 0, 0, 0];
+    point.extend_from_slice(&1.5_f64.to_le_bytes());
+    point.extend_from_slice(&2.5_f64.to_le_bytes());
+    // One value of every kind, so each accessor meets every other kind.
+    let values = [
+        Scalar::Null,
+        Scalar::from(true),
+        Scalar::from(7_i32),
+        Scalar::from(u128::MAX),
+        Scalar::from(1.5_f32),
+        Scalar::d128(125, 1),
+        Scalar::date32(1),
+        Scalar::interval(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
+        Scalar::from("text"),
+        Scalar::Currency(yggdryl::Currency::new("EUR").unwrap()),
+        Scalar::from(vec![1_u8, 2]),
+        Scalar::Uuid(yggdryl::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap()),
+        Scalar::Timezone(Timezone::UTC),
+        Scalar::Geometry(yggdryl::Geometry::new(point.clone()).unwrap()),
+        Scalar::Geography(yggdryl::Geography::new(point).unwrap()),
+        Scalar::from_sequence([Scalar::from(1_i64)]),
+        Scalar::from_mapping([(Scalar::from("k"), Scalar::from(1_i64))]).unwrap(),
+        Scalar::from_record([("id", Scalar::from(1_i64))]).unwrap(),
+    ];
+
+    // An accessor is the family's own narrowing: it answers exactly where
+    // the scalar's kind is the family's, and what it answers widens back to
+    // the scalar it read.
+    macro_rules! answers_its_own_kind {
+        ($accessor:ident, $family:ident) => {
+            for value in &values {
+                let held = value.$accessor();
+                assert_eq!(held, $family::from_scalar(value), "{value:?}");
+                assert_eq!(
+                    held.is_some(),
+                    value.family() == DataTypeKind::$family,
+                    "{value:?}"
+                );
+                if let Some(held) = held {
+                    assert_eq!(Scalar::from(held), *value, "{value:?}");
+                }
+            }
+        };
+    }
+    answers_its_own_kind!(as_integer, Integer);
+    answers_its_own_kind!(as_floating, Floating);
+    answers_its_own_kind!(as_temporal, Temporal);
+    answers_its_own_kind!(as_code, Code);
+    answers_its_own_kind!(as_geospatial, Geospatial);
+    answers_its_own_kind!(as_nested, Nested);
+
+    // The decimal family narrows through its own `from_scalar`; `as_decimal`
+    // is the coefficient-and-scale reader.
+    let price = Scalar::d128(125, 1);
+    assert_eq!(price.as_decimal(), Some((i256::from_i128(125), 1)));
+    assert!(matches!(
+        yggdryl::Decimal::from_scalar(&price),
+        Some(yggdryl::Decimal::Decimal128(_))
+    ));
+    assert_eq!(Scalar::from(7_i32).as_decimal(), None);
+}
+
+#[test]
+fn a_temporal_names_its_family_as_a_datatype_spells_it() {
+    // The five words are the datatypes' own, so the family read off a value
+    // is the word a column of it declares.
+    let cases = [
+        (
+            Temporal::from(Date32::new(1, TimeUnit::Day, Timezone::NAIVE).unwrap()),
+            "date",
+        ),
+        (
+            Temporal::from(
+                Date64::new(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
+            ),
+            "date",
+        ),
+        (
+            Temporal::from(Time32::new(1, TimeUnit::Second, Timezone::NAIVE).unwrap()),
+            "time",
+        ),
+        (
+            Temporal::from(Time64::new(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()),
+            "time",
+        ),
+        (
+            Temporal::from(DateTime64::new(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap()),
+            "datetime",
+        ),
+        (
+            Temporal::from(Duration32::new(-1, TimeUnit::Millisecond, Timezone::NAIVE).unwrap()),
+            "duration",
+        ),
+        (
+            Temporal::from(Duration64::new(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()),
+            "duration",
+        ),
+        (
+            Temporal::from(Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()),
+            "interval",
+        ),
+    ];
+    for (held, family) in &cases {
+        assert_eq!(held.family(), *family, "{held:?}");
+        assert_eq!(
+            Scalar::from(held.clone())
+                .as_temporal()
+                .map(|held| held.family()),
+            Some(*family),
+            "{held:?}"
+        );
+    }
+
+    // Each leaf type states the same word as a constant.
+    assert_eq!(Date32::FAMILY, "date");
+    assert_eq!(Date64::FAMILY, "date");
+    assert_eq!(Time32::FAMILY, "time");
+    assert_eq!(Time64::FAMILY, "time");
+    assert_eq!(DateTime64::FAMILY, "datetime");
+    assert_eq!(Duration32::FAMILY, "duration");
+    assert_eq!(Duration64::FAMILY, "duration");
+    assert_eq!(Interval::FAMILY, "interval");
+}
+
 #[test]
 fn every_scalar_family_exposes_its_leaf_contract() {
-    use yggdryl::types::{bytes, decimal, geospatial, integer, nested, string, temporal, uuid};
     use yggdryl::{
         CodeValue, DecimalValue, GeospatialValue, IntegerValue, NestedValue, TemporalValue,
     };
+    use yggdryl::{bytes, decimal, geospatial, integer, sequence, string, time, uuid};
 
     let integer = integer::UInt128::new(u128::MAX);
     assert_eq!(IntegerValue::as_i128(&integer), None);
     assert_eq!(IntegerValue::as_u128(&integer), Some(u128::MAX));
-    assert_eq!(
-        ScalarValue::dtype(&integer).unwrap().id(),
-        DataTypeId::Decimal256
-    );
+    assert_eq!(Value::dtype(&integer).unwrap().id(), DataTypeId::Decimal256);
 
     let decimal = decimal::Decimal32::new(1_251, 2);
     assert_eq!(DecimalValue::coefficient(&decimal), i256::from_i128(1_251));
@@ -502,59 +748,54 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     );
     assert!(DecimalValue::rescale(decimal, 1).is_err());
 
-    let time = temporal::Time32::new(2, TimeUnit::Second, Timezone::NAIVE).unwrap();
+    let time = time::Time32::new(2, TimeUnit::Second, Timezone::NAIVE).unwrap();
     let milliseconds = TemporalValue::with_unit(time, TimeUnit::Millisecond).unwrap();
     assert_eq!(milliseconds.count(), 2_000);
     assert_eq!(milliseconds.unit(), TimeUnit::Millisecond);
 
     let text = string::Str::new("AAPL")
-        .try_with_parameters(string::StringParameters::utf8(
-            string::StringLayout::LargeString,
-        ))
+        .try_with_parameters(string::StringType::LargeUtf8String)
         .unwrap();
     assert_eq!(text.as_str(), "AAPL");
-    assert_eq!(ScalarValue::dtype(&text).unwrap(), DataType::large_utf8());
+    assert_eq!(Value::dtype(&text).unwrap(), DataType::large_utf8());
 
     let bytes = bytes::Bytes::new([1, 2, 3])
-        .try_with_parameters(bytes::BytesParameters::new(bytes::BytesLayout::BinaryView))
+        .try_with_parameters(bytes::BytesType::BinaryView)
         .unwrap();
     assert_eq!(bytes.as_bytes(), [1, 2, 3]);
-    assert_eq!(ScalarValue::dtype(&bytes).unwrap(), DataType::binary_view());
+    assert_eq!(Value::dtype(&bytes).unwrap(), DataType::binary_view());
 
-    let currency = string::Currency::new("USD").unwrap();
-    assert_eq!(<string::Currency as CodeValue>::WIDTH, 3);
+    let currency = yggdryl::Currency::new("USD").unwrap();
+    assert_eq!(<yggdryl::Currency as CodeValue>::WIDTH, 3);
     assert_eq!(CodeValue::as_str(&currency), "USD");
-    assert_eq!(ScalarValue::dtype(&currency).unwrap(), DataType::Currency);
+    assert_eq!(Value::dtype(&currency).unwrap(), DataType::Currency);
 
     let geometry = geospatial::Geometry::new(POINT_EMPTY_WKB.as_slice()).unwrap();
     assert_eq!(
         GeospatialValue::as_bytes(&geometry),
         POINT_EMPTY_WKB.as_slice()
     );
-    assert_eq!(
-        ScalarValue::dtype(&geometry).unwrap().id(),
-        DataTypeId::Geometry
-    );
+    assert_eq!(Value::dtype(&geometry).unwrap().id(), DataTypeId::Geometry);
 
-    let sequence = nested::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from(2_i32)]));
+    let sequence = sequence::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from(2_i32)]));
     assert_eq!(NestedValue::len(&sequence), 2);
     assert_eq!(NestedValue::children(&sequence).count(), 2);
-    assert_eq!(
-        ScalarValue::dtype(&sequence).unwrap().id(),
-        DataTypeId::List
-    );
+    assert_eq!(Value::dtype(&sequence).unwrap().id(), DataTypeId::List);
 
     let uuid = uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
-    assert_eq!(ScalarValue::dtype(&uuid).unwrap(), DataType::Uuid);
+    assert_eq!(Value::dtype(&uuid).unwrap(), DataType::Uuid);
 
-    let scalar = ScalarValue::into_scalar(text);
-    assert_eq!(scalar.id(), DataTypeId::LargeString);
+    let scalar = Value::into_scalar(text);
+    assert_eq!(scalar.id(), DataTypeId::LargeUtf8String);
     assert_eq!(scalar.family(), DataTypeKind::Text);
 }
 
 #[test]
 fn concrete_leaves_preserve_their_physical_identity() {
-    use yggdryl::types::{bytes, decimal, geospatial, integer, nested, string, temporal, uuid};
+    use yggdryl::{
+        bytes, date, datetime, decimal, geospatial, integer, mapping, sequence, string, structure,
+        uuid,
+    };
 
     let integer = integer::Int32::new(-7);
     assert_eq!(integer.get(), -7);
@@ -565,56 +806,48 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert_eq!(decimal.scale(), 2);
     assert_eq!(decimal.to_string(), "12.50");
 
-    let datetime = temporal::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+    let datetime = datetime::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
     assert_eq!(datetime.count(), 7);
     assert_eq!(datetime.unit(), TimeUnit::Nanosecond);
     assert_eq!(datetime.timezone(), Timezone::UTC);
-    assert!(temporal::Date32::new(0, TimeUnit::Second, Timezone::NAIVE).is_err());
+    assert!(date::Date32::new(0, TimeUnit::Second, Timezone::NAIVE).is_err());
 
     let utf8 = string::Str::new("東京");
     let view = utf8
         .clone()
-        .try_with_parameters(string::StringParameters::utf8(
-            string::StringLayout::StringView,
-        ))
+        .try_with_parameters(string::StringType::Utf8StringView)
         .unwrap();
     assert_eq!(utf8.as_str(), view.as_str());
-    assert_eq!(utf8.layout(), string::StringLayout::String);
-    assert_eq!(view.layout(), string::StringLayout::StringView);
+    assert_eq!(utf8.parameters(), string::StringType::Utf8String);
+    assert_eq!(view.parameters(), string::StringType::Utf8StringView);
     assert_eq!(
         serde_json::from_str::<string::Str>(&serde_json::to_string(&utf8).unwrap()).unwrap(),
         utf8
     );
 
     let ascii = string::Str::new("FIX")
-        .try_with_parameters(string::StringParameters::ascii(
-            string::StringLayout::String,
-        ))
+        .try_with_parameters(string::StringType::AsciiString)
         .unwrap();
-    let currency = string::Currency::new("USD").unwrap();
+    let currency = yggdryl::Currency::new("USD").unwrap();
     assert_eq!(ascii.as_str(), "FIX");
     assert_eq!(ascii.charset(), yggdryl::Charset::Ascii);
     assert_eq!(currency.as_str(), "USD");
     assert!(
         string::Str::new("café")
-            .try_with_parameters(string::StringParameters::ascii(
-                string::StringLayout::String
-            ))
+            .try_with_parameters(string::StringType::AsciiString)
             .is_err()
     );
     assert!(
         string::Str::new("")
-            .try_with_parameters(string::StringParameters::ascii(
-                string::StringLayout::FixedString
-            ))
+            .try_with_parameters(string::StringType::FixedAsciiString(0))
             .is_err()
     );
-    assert!(string::Cfi::new("TOO-LONG").is_err());
+    assert!(yggdryl::Cfi::new("TOO-LONG").is_err());
 
     let binary = bytes::Bytes::from(vec![0, 1, 0xff]);
     let binary_view = binary
         .clone()
-        .try_with_parameters(bytes::BytesParameters::new(bytes::BytesLayout::BinaryView))
+        .try_with_parameters(bytes::BytesType::BinaryView)
         .unwrap();
     assert_eq!(binary.as_bytes(), binary_view.as_bytes());
     assert_eq!(binary.to_string(), "0001ff");
@@ -630,11 +863,14 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert_eq!(geometry.as_bytes(), point);
     assert!(geospatial::Geography::new(vec![0xff]).is_err());
 
-    let sequence = nested::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from("one")]));
-    assert_eq!(sequence.as_slice().len(), 2);
-    let mapping = nested::Mapping::new(Arc::from([(Scalar::from("one"), Scalar::from(1_i32))]));
+    let values = sequence::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from("one")]));
+    assert_eq!(values.as_slice().len(), 2);
+    let mapping = mapping::Mapping::Map(mapping::Map::new(Arc::from([(
+        Scalar::from("one"),
+        Scalar::from(1_i32),
+    )])));
     assert_eq!(mapping.as_slice().len(), 1);
-    let record = nested::Record::new(Arc::new(std::collections::BTreeMap::from([(
+    let record = structure::Record::new(Arc::new(std::collections::BTreeMap::from([(
         "one".into(),
         Scalar::from(1_i32),
     )])));
@@ -643,7 +879,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
 
 #[test]
 fn width_variants_keep_exact_members_and_logical_identity() {
-    use yggdryl::types::{bytes, decimal, geospatial, integer, nested, string, temporal};
+    use yggdryl::{bytes, datetime, decimal, geospatial, integer, sequence, string};
 
     let signed = Scalar::Int32(integer::Int32::new(7));
     let unsigned = Scalar::UInt8(integer::UInt8::new(7));
@@ -665,26 +901,24 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let utf8 = string::Str::new("same");
     let large = utf8
         .clone()
-        .try_with_parameters(string::StringParameters::utf8(
-            string::StringLayout::LargeString,
-        ))
+        .try_with_parameters(string::StringType::LargeUtf8String)
         .unwrap();
     assert_eq!(utf8, large);
 
     let binary = bytes::Bytes::from(vec![1, 2]);
     let view = binary
         .clone()
-        .try_with_parameters(bytes::BytesParameters::new(bytes::BytesLayout::BinaryView))
+        .try_with_parameters(bytes::BytesType::BinaryView)
         .unwrap();
     assert_eq!(binary, view);
 
     // A code carries its identity: two codes whose bytes agree are two
     // values, and neither is the string spelling the same bytes.
-    let side = string::Code::Side(string::Side::new("BUY").unwrap());
-    let time_in_force = string::Code::TimeInForce(string::TimeInForce::new("BUY").unwrap());
+    let side = Scalar::Side(yggdryl::Side::new("BUY").unwrap());
+    let time_in_force = Scalar::TimeInForce(yggdryl::TimeInForce::new("BUY").unwrap());
     assert_ne!(side, time_in_force);
     assert_eq!(side.as_str(), time_in_force.as_str());
-    assert_ne!(Scalar::from(side), Scalar::from("BUY"));
+    assert_ne!(side, Scalar::from("BUY"));
 
     let mut point = vec![1, 1, 0, 0, 0];
     point.extend_from_slice(&1.5_f64.to_le_bytes());
@@ -693,7 +927,7 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let geography = Scalar::Geography(geospatial::Geography::new(point).unwrap());
     assert_eq!(geometry, geography);
 
-    let sequence = Scalar::Sequence(nested::Sequence::new(Arc::from([
+    let sequence = Scalar::Sequence(sequence::Sequence::new(Arc::from([
         Scalar::from(1_i32),
         Scalar::from(2_i32),
     ])));
@@ -702,15 +936,18 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     assert!(sequence.is_container());
 
     let datetime = Scalar::DateTime64(
-        temporal::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+        datetime::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
     );
     assert_eq!(
-        datetime.temporal_family(),
-        Some(temporal::TemporalFamily::DateTime)
+        datetime.as_temporal().map(|held| held.family()),
+        Some("datetime")
     );
+    assert!(matches!(
+        datetime.as_temporal(),
+        Some(Temporal::DateTime64(_))
+    ));
     assert_eq!(datetime.kind(), "datetime64");
     assert_eq!(datetime.temporal_timezone(), Some(Timezone::UTC));
-    assert_eq!(temporal::TemporalFamily::Interval.as_str(), "interval");
 
     let encoded = serde_json::to_string(&sequence).unwrap();
     assert_eq!(serde_json::from_str::<Scalar>(&encoded).unwrap(), sequence);
@@ -733,11 +970,11 @@ fn every_width_leaf_round_trips_under_its_unchanged_tag() {
         (Scalar::from(1.25_f32), "f32"),
         (Scalar::from(0.1_f64), "f64"),
         (
-            Scalar::Decimal32(yggdryl::types::decimal::Decimal32::new(1_250, 2)),
+            Scalar::Decimal32(yggdryl::decimal::Decimal32::new(1_250, 2)),
             "d32",
         ),
         (
-            Scalar::Decimal64(yggdryl::types::decimal::Decimal64::new(-7, 1)),
+            Scalar::Decimal64(yggdryl::decimal::Decimal64::new(-7, 1)),
             "d64",
         ),
         (Scalar::d128(125, 1), "d128"),
@@ -765,9 +1002,7 @@ fn every_width_leaf_round_trips_under_its_unchanged_tag() {
             "duration64",
         ),
         (
-            Scalar::Interval(
-                yggdryl::types::Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
-            ),
+            Scalar::Interval(yggdryl::Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()),
             "interval",
         ),
         (Scalar::from_sequence([Scalar::from(1_i32)]), "sequence"),
@@ -833,4 +1068,142 @@ fn nested_children_come_from_the_iterator_and_not_from_its_bound() {
     // An empty run still answers with the one shared value.
     assert!(Scalar::from_sequence([]).is_empty());
     assert!(Scalar::from_mapping([]).unwrap().is_empty());
+}
+
+#[test]
+fn truthiness_reads_absence_zero_and_emptiness_as_false() {
+    // Falsy is absence, zero at every width, empty text or bytes, and a
+    // container with nothing truthy in it.
+    for falsy in [
+        Scalar::Null,
+        Scalar::from(false),
+        Scalar::from(0_i32),
+        Scalar::from(0_u64),
+        Scalar::from(0.0_f64),
+        Scalar::from(-0.0_f64),
+        Scalar::d128(0, 4),
+        Scalar::from(""),
+        Scalar::from("   "),
+        Scalar::from(Arc::from(b"".as_slice())),
+        Scalar::from_sequence([]),
+        Scalar::from_mapping([]).unwrap(),
+        Scalar::from_record(Vec::<(&str, Scalar)>::new()).unwrap(),
+    ] {
+        assert!(!falsy.is_truthy(), "{falsy:?} should read false");
+    }
+
+    for truthy in [
+        Scalar::from(true),
+        Scalar::from(1_i32),
+        Scalar::from(-1_i64),
+        Scalar::from(f64::NAN),
+        Scalar::d128(1, 4),
+        Scalar::from("0.0"),
+        Scalar::from("anything"),
+        Scalar::from(Arc::from(b"\0".as_slice())),
+        Scalar::from_sequence([Scalar::from(1)]),
+    ] {
+        assert!(truthy.is_truthy(), "{truthy:?} should read true");
+    }
+}
+
+#[test]
+fn truthiness_reads_the_text_a_column_spells_false_with() {
+    // Wider than Python on purpose: text arrives from CSV, FIX and query
+    // strings, where a column that spells false is not asking to be read true.
+    for spelling in ["false", "FALSE", "False", " no ", "OFF", "f", "N", "0"] {
+        assert!(
+            !Scalar::from(spelling).is_truthy(),
+            "{spelling:?} should read false"
+        );
+    }
+    for spelling in ["true", "yes", "on", "1", "00", "falsey", "n/a"] {
+        assert!(
+            Scalar::from(spelling).is_truthy(),
+            "{spelling:?} should read true"
+        );
+    }
+
+    // The cast reader stays strict - this coercion does not widen it.
+    assert!(
+        yggdryl::DataType::Boolean
+            .scalar(Scalar::from("off"))
+            .is_err()
+    );
+    assert_eq!(
+        yggdryl::DataType::Boolean
+            .scalar(Scalar::from("false"))
+            .unwrap(),
+        Scalar::from(false)
+    );
+}
+
+#[test]
+fn a_container_of_empty_values_is_itself_empty() {
+    // The "struct all empty values" case: `is_empty` counts entries, so a
+    // record of three nulls is not empty - but nothing in it is set.
+    let all_null = Scalar::from_record(vec![
+        ("a", Scalar::Null),
+        ("b", Scalar::from("")),
+        ("c", Scalar::from_sequence([Scalar::Null])),
+    ])
+    .unwrap();
+    assert!(!all_null.is_empty(), "it has three fields");
+    assert!(!all_null.is_truthy(), "none of them is set");
+
+    let one_set = Scalar::from_record(vec![("a", Scalar::Null), ("b", Scalar::from(1))]).unwrap();
+    assert!(one_set.is_truthy());
+}
+
+#[test]
+fn addition_joins_a_repertoire_that_has_no_sum() {
+    // Text, bytes and sequences have no sum, so `+` joins them.
+    assert_eq!(
+        (Scalar::from("AA") + Scalar::from("PL")).unwrap(),
+        Scalar::from("AAPL")
+    );
+    assert_eq!(
+        (Scalar::from(Arc::from(b"\x01".as_slice())) + Scalar::from(Arc::from(b"\x02".as_slice())))
+            .unwrap(),
+        Scalar::from(Arc::from(b"\x01\x02".as_slice()))
+    );
+    assert_eq!(
+        (Scalar::from_sequence([Scalar::from(1)]) + Scalar::from_sequence([Scalar::from(2)]))
+            .unwrap(),
+        Scalar::from_sequence([Scalar::from(1), Scalar::from(2)])
+    );
+
+    // A code joins as the text it is, and stops being a code: `FR` and `X`
+    // concatenated are not a country.
+    let country = yggdryl::DataType::Country
+        .scalar(Scalar::from("FR"))
+        .unwrap();
+    let joined = (country + Scalar::from("X")).unwrap();
+    assert_eq!(joined, Scalar::from("FRX"));
+    assert_eq!(joined.id(), yggdryl::DataTypeId::Utf8String);
+
+    // Only `+`. Nothing else names anything a reader would agree on.
+    for refused in [
+        Scalar::from("a") - Scalar::from("b"),
+        Scalar::from("a") * Scalar::from("b"),
+        Scalar::from("a") / Scalar::from("b"),
+    ] {
+        assert!(refused.is_err());
+    }
+
+    // Two repertoires do not join, and a null still answers null.
+    assert!((Scalar::from("a") + Scalar::from(1)).is_err());
+    assert_eq!((Scalar::from("a") + Scalar::Null).unwrap(), Scalar::Null);
+}
+
+#[test]
+fn two_wkb_payloads_are_not_a_geometry() {
+    // Geospatial values read as bytes, so an untyped join would have accepted
+    // them. Laying two WKB payloads end to end does not make a geometry.
+    let point = yggdryl::DataType::geometry(None)
+        .unwrap()
+        .default_value()
+        .unwrap();
+    assert!(point.as_bytes().is_some(), "it does read as bytes");
+    assert!((point.clone() + point).is_err());
 }

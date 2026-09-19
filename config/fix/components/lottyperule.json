@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lottype",
-          "fix:tag": "1093"
+          "FIX:field": "lottype",
+          "FIX:tag": "1093"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "minlotsize",
-          "fix:tag": "1231"
+          "FIX:field": "minlotsize",
+          "FIX:tag": "1231"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LotTypeRule",
-    "fix:tag": "245094"
+    "FIX:tag": "245094",
+    "display": "LotTypeRule"
   }
 }

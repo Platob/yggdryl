@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreameffectivedatebusinesscenter",
-          "fix:tag": "40251"
+          "FIX:field": "legstreameffectivedatebusinesscenter",
+          "FIX:tag": "40251"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamEffectiveDateBusinessCenter",
-    "fix:tag": "889433"
+    "FIX:tag": "889433",
+    "display": "LegStreamEffectiveDateBusinessCenter"
   }
 }

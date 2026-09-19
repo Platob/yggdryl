@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingcomplexeventdatebusinesscentercomponent"
+        "FIX:component": "underlyingcomplexeventdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingcomplexeventdatebusinesscentercomponent",
+    "FIX:counter": "41737",
+    "FIX:tag": "587958",
     "description": "Required if NoUnderlyingComplexEventDateBusinessCenters(41737) > 0.",
-    "display": "UnderlyingComplexEventDateBusinessCenterGrp",
-    "fix:component": "underlyingcomplexeventdatebusinesscentercomponent",
-    "fix:counter": "41737",
-    "fix:tag": "587958"
+    "display": "UnderlyingComplexEventDateBusinessCenterGrp"
   }
 }

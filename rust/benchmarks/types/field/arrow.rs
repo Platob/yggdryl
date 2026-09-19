@@ -3,9 +3,10 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, UInt64Array};
 use criterion::{BatchSize, Criterion, Throughput};
-use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, Representation};
+use yggdryl::{ArrowCastOptions, DataType, Field, Representation};
 
 use super::nested_field;
+use yggdryl::FieldValue as _;
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("arrow");
@@ -14,7 +15,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             nested_field,
             |field| {
                 field
-                    .into_arrow_ref()
+                    .into_arrow_field_ref()
                     .expect("the benchmark field is valid")
             },
             BatchSize::SmallInput,
@@ -24,19 +25,23 @@ pub fn benchmarks(criterion: &mut Criterion) {
         let field = nested_field();
         field
             .clone()
-            .into_arrow_ref()
+            .into_arrow_field_ref()
             .expect("the benchmark field is valid");
         bencher.iter(|| {
             black_box(&field)
                 .clone()
-                .into_arrow_ref()
+                .into_arrow_field_ref()
                 .expect("the cached benchmark field remains valid")
         });
     });
     group.bench_function("field_projection_consuming", |bencher| {
         bencher.iter_batched(
             nested_field,
-            |field| field.into_arrow().expect("the benchmark field is valid"),
+            |field| {
+                field
+                    .into_arrow_field()
+                    .expect("the benchmark field is valid")
+            },
             BatchSize::SmallInput,
         );
     });
@@ -45,7 +50,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| {
             black_box(&field)
                 .clone()
-                .into_arrow_ffi()
+                .into_arrow_field_ffi()
                 .expect("the benchmark field is valid")
         });
     });
@@ -53,12 +58,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
         let field = nested_field();
         field
             .clone()
-            .into_arrow_ref()
+            .into_arrow_field_ref()
             .expect("the benchmark field is valid");
         bencher.iter(|| {
             black_box(&field)
                 .clone()
-                .into_arrow_ffi()
+                .into_arrow_field_ffi()
                 .expect("the cached benchmark field remains valid")
         });
     });
@@ -104,7 +109,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             "uint64_to_bytes",
             Field::new(
                 "digest",
-                DataType::fixed_size_binary(8).expect("eight bytes is a width"),
+                DataType::fixed_binary(8).expect("eight bytes is a width"),
                 true,
             ),
         ),

@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sessionstatus",
-          "fix:tag": "1409"
+          "FIX:field": "sessionstatus",
+          "FIX:tag": "1409"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -64,16 +64,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "5",
+    "FIX:tag": "769988",
     "description": "MsgType = 5",
-    "display": "Logout",
-    "fix:msgtype": "5",
-    "fix:tag": "769988"
+    "display": "Logout"
   }
 }

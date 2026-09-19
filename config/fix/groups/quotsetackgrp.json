@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "quotsetack"
+        "FIX:component": "quotsetack"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "quotsetack",
+    "FIX:counter": "296",
+    "FIX:tag": "948103",
     "description": "The number of sets of quotes in the message",
-    "display": "QuotSetAckGrp",
-    "fix:component": "quotsetack",
-    "fix:counter": "296",
-    "fix:tag": "948103"
+    "display": "QuotSetAckGrp"
   }
 }

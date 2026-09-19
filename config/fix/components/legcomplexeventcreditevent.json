@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventtype",
-          "fix:tag": "41367"
+          "FIX:field": "legcomplexeventcrediteventtype",
+          "FIX:tag": "41367"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventvalue",
-          "fix:tag": "41368"
+          "FIX:field": "legcomplexeventcrediteventvalue",
+          "FIX:tag": "41368"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventcurrency",
-          "fix:tag": "41369"
+          "FIX:field": "legcomplexeventcrediteventcurrency",
+          "FIX:tag": "41369"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventperiod",
-          "fix:tag": "41370"
+          "FIX:field": "legcomplexeventcrediteventperiod",
+          "FIX:tag": "41370"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventunit",
-          "fix:tag": "41371"
+          "FIX:field": "legcomplexeventcrediteventunit",
+          "FIX:tag": "41371"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventdaytype",
-          "fix:tag": "41372"
+          "FIX:field": "legcomplexeventcrediteventdaytype",
+          "FIX:tag": "41372"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventratesource",
-          "fix:tag": "41373"
+          "FIX:field": "legcomplexeventcrediteventratesource",
+          "FIX:tag": "41373"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventcrediteventqualifiers",
-          "fix:tag": "41374"
+          "FIX:field": "nolegcomplexeventcrediteventqualifiers",
+          "FIX:tag": "41374"
         }
       },
       {
@@ -98,14 +98,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legcomplexeventcrediteventqualifiergrp"
+          "FIX:group": "legcomplexeventcrediteventqualifiergrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEventCreditEvent",
-    "fix:tag": "422130"
+    "FIX:tag": "422130",
+    "display": "LegComplexEventCreditEvent"
   }
 }

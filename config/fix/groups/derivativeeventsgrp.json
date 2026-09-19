@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "derivativeevent"
+        "FIX:component": "derivativeevent"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "DerivativeEventsGrp",
-    "fix:component": "derivativeevent",
-    "fix:counter": "1286",
-    "fix:tag": "601776"
+    "FIX:component": "derivativeevent",
+    "FIX:counter": "1286",
+    "FIX:tag": "601776",
+    "display": "DerivativeEventsGrp"
   }
 }

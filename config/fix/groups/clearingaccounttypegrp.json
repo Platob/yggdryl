@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "clearingaccounttypecomponent"
+        "FIX:component": "clearingaccounttypecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "clearingaccounttypecomponent",
+    "FIX:counter": "1918",
+    "FIX:tag": "357549",
     "description": "Required if NoClearingAccountTypes(1918) > 0.",
-    "display": "ClearingAccountTypeGrp",
-    "fix:component": "clearingaccounttypecomponent",
-    "fix:counter": "1918",
-    "fix:tag": "357549"
+    "display": "ClearingAccountTypeGrp"
   }
 }

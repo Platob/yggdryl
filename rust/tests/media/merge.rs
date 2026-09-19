@@ -7,15 +7,16 @@ use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{DataType, Field, Url};
+use yggdryl::{DataType, Field, StructureType, Url};
 use yggdryl::{IOBase, IOMedia};
 
 /// Two columns: one key and one payload, so an update is visible.
 fn schema() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
 }
@@ -248,10 +249,11 @@ fn an_empty_target_appends_every_row() {
 
 #[test]
 fn a_null_key_matches_another_null_key() {
-    let field = DataType::from_fields([
+    let field = StructureType::from_fields([
         DataType::Int64.nullable_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     let arrow = field.clone().into_arrow_schema().unwrap();
@@ -308,11 +310,12 @@ fn a_null_key_matches_another_null_key() {
 
 #[test]
 fn a_composite_key_matches_on_every_column() {
-    let field = DataType::from_fields([
+    let field = StructureType::from_fields([
         DataType::utf8().required_field("venue"),
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     let arrow = field.clone().into_arrow_schema().unwrap();
@@ -390,11 +393,12 @@ fn an_incoming_schema_that_disagrees_is_cast_to_the_target_first() {
     // `id` arrives as text, `symbol` comes first, and `venue` is not declared
     // at all: the cast to the target reorders, converts, and drops before a
     // single key is compared.
-    let loose = DataType::from_fields([
+    let loose = StructureType::from_fields([
         DataType::utf8().nullable_field("symbol"),
         DataType::utf8().required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     let incoming = RecordBatch::try_new(

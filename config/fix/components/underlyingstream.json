@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamtype",
-          "fix:tag": "40541"
+          "FIX:field": "underlyingstreamtype",
+          "FIX:tag": "40541"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamxid",
-          "fix:tag": "42016"
+          "FIX:field": "underlyingstreamxid",
+          "FIX:tag": "42016"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamdesc",
-          "fix:tag": "40542"
+          "FIX:field": "underlyingstreamdesc",
+          "FIX:tag": "40542"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamversion",
-          "fix:tag": "43083"
+          "FIX:field": "underlyingstreamversion",
+          "FIX:tag": "43083"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamversioneffectivedate",
-          "fix:tag": "43084"
+          "FIX:field": "underlyingstreamversioneffectivedate",
+          "FIX:tag": "43084"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreampayside",
-          "fix:tag": "40543"
+          "FIX:field": "underlyingstreampayside",
+          "FIX:tag": "40543"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamreceiveside",
-          "fix:tag": "40544"
+          "FIX:field": "underlyingstreamreceiveside",
+          "FIX:tag": "40544"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamnotionalxidref",
-          "fix:tag": "42018"
+          "FIX:field": "underlyingstreamnotionalxidref",
+          "FIX:tag": "42018"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamnotional",
-          "fix:tag": "40545"
+          "FIX:field": "underlyingstreamnotional",
+          "FIX:tag": "40545"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcurrency",
-          "fix:tag": "40546"
+          "FIX:field": "underlyingstreamcurrency",
+          "FIX:tag": "40546"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamnotionaldeterminationmethod",
-          "fix:tag": "43085"
+          "FIX:field": "underlyingstreamnotionaldeterminationmethod",
+          "FIX:tag": "43085"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamnotionaladjustments",
-          "fix:tag": "43086"
+          "FIX:field": "underlyingstreamnotionaladjustments",
+          "FIX:tag": "43086"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamnotionalfrequencyperiod",
-          "fix:tag": "42019"
+          "FIX:field": "underlyingstreamnotionalfrequencyperiod",
+          "FIX:tag": "42019"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamnotionalfrequencyunit",
-          "fix:tag": "42020"
+          "FIX:field": "underlyingstreamnotionalfrequencyunit",
+          "FIX:tag": "42020"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamnotionalcommodityfrequency",
-          "fix:tag": "42021"
+          "FIX:field": "underlyingstreamnotionalcommodityfrequency",
+          "FIX:tag": "42021"
         }
       },
       {
@@ -175,8 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamnotionalunitofmeasure",
-          "fix:tag": "42022"
+          "FIX:field": "underlyingstreamnotionalunitofmeasure",
+          "FIX:tag": "42022"
         }
       },
       {
@@ -186,8 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamtotalnotional",
-          "fix:tag": "42023"
+          "FIX:field": "underlyingstreamtotalnotional",
+          "FIX:tag": "42023"
         }
       },
       {
@@ -197,8 +197,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamtotalnotionalunitofmeasure",
-          "fix:tag": "42024"
+          "FIX:field": "underlyingstreamtotalnotionalunitofmeasure",
+          "FIX:tag": "42024"
         }
       },
       {
@@ -208,7 +208,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingstreamcommodity"
+          "FIX:component": "underlyingstreamcommodity"
         }
       },
       {
@@ -218,7 +218,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingstreameffectivedate"
+          "FIX:component": "underlyingstreameffectivedate"
         }
       },
       {
@@ -228,7 +228,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingstreamterminationdate"
+          "FIX:component": "underlyingstreamterminationdate"
         }
       },
       {
@@ -238,7 +238,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingstreamcalculationperioddates"
+          "FIX:component": "underlyingstreamcalculationperioddates"
         }
       },
       {
@@ -248,7 +248,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingpaymentstream"
+          "FIX:component": "underlyingpaymentstream"
         }
       },
       {
@@ -258,8 +258,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingpaymentschedules",
-          "fix:tag": "40664"
+          "FIX:field": "nounderlyingpaymentschedules",
+          "FIX:tag": "40664"
         }
       },
       {
@@ -269,7 +269,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingpaymentschedulegrp"
+          "FIX:group": "underlyingpaymentschedulegrp"
         }
       },
       {
@@ -279,8 +279,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingpaymentstubs",
-          "fix:tag": "40708"
+          "FIX:field": "nounderlyingpaymentstubs",
+          "FIX:tag": "40708"
         }
       },
       {
@@ -290,7 +290,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingpaymentstubgrp"
+          "FIX:group": "underlyingpaymentstubgrp"
         }
       },
       {
@@ -300,7 +300,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingdeliverystream"
+          "FIX:component": "underlyingdeliverystream"
         }
       },
       {
@@ -310,8 +310,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingdeliveryschedules",
-          "fix:tag": "41756"
+          "FIX:field": "nounderlyingdeliveryschedules",
+          "FIX:tag": "41756"
         }
       },
       {
@@ -321,7 +321,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingdeliveryschedulegrp"
+          "FIX:group": "underlyingdeliveryschedulegrp"
         }
       },
       {
@@ -331,8 +331,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamtext",
-          "fix:tag": "40547"
+          "FIX:field": "underlyingstreamtext",
+          "FIX:tag": "40547"
         }
       },
       {
@@ -342,8 +342,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingstreamtextlen",
-          "fix:tag": "40988"
+          "FIX:field": "encodedunderlyingstreamtextlen",
+          "FIX:tag": "40988"
         }
       },
       {
@@ -353,15 +353,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingstreamtext",
-          "fix:tag": "40989"
+          "FIX:field": "encodedunderlyingstreamtext",
+          "FIX:tag": "40989"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingStream",
-    "fix:tag": "670137"
+    "FIX:tag": "670137",
+    "display": "UnderlyingStream"
   }
 }

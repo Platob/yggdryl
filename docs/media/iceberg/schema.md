@@ -25,14 +25,14 @@ Add a column, then read the earlier file back with the new column null.
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, SchemaUpdate, Table};
-    use yggdryl::holder::local::Folder;
-    use yggdryl::{arrow, DataType};
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, SchemaUpdate, Table};
+    use yggdryl::local::Folder;
+    use yggdryl::{StructureType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch};
     use std::sync::Arc;
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
 
     let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-evolution");
@@ -146,14 +146,14 @@ Add a column, then read the earlier file back with the new column null.
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{assign_field_ids, last_column_id, schema_into_json};
-    use yggdryl::DataType;
+    use yggdryl::iceberg::{assign_field_ids, last_column_id, schema_into_json};
+    use yggdryl::{DataType, StructureType};
 
-    let leg = DataType::from_fields([DataType::decimal(18, 4)?.required_field("price")])?;
-    let mut schema = DataType::from_fields([
+    let leg = DataType::from(StructureType::from_fields([DataType::decimal(18, 4)?.required_field("price")])?);
+    let mut schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         leg.nullable_field("leg"),
-    ])?
+    ])?)
     .required_field("row");
 
     // An unnumbered tree is no schema document, and the refusal names the fix.
@@ -234,16 +234,16 @@ Add a column, then read the earlier file back with the new column null.
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{can_promote, FormatVersion, PartitionSpec, SchemaUpdate, Table};
-    use yggdryl::holder::local::Folder;
-    use yggdryl::DataType;
+    use yggdryl::iceberg::{can_promote, FormatVersion, PartitionSpec, SchemaUpdate, Table};
+    use yggdryl::local::Folder;
+    use yggdryl::{DataType, StructureType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-evolution");
     let _ = std::fs::remove_dir_all(&root);
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int32.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
-    ])?
+    ])?)
     .required_field("row");
     let mut table = Table::create(
         Folder::new(&root)?,
@@ -374,9 +374,9 @@ Add a column, then read the earlier file back with the new column null.
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{schema_from_json, schema_into_json};
+    use yggdryl::iceberg::{schema_from_json, schema_into_json};
     use yggdryl::{DataType};
-    use yggdryl::text::json;
+    use yggdryl::json;
 
     let document = json::from_utf8(
         r#"{"type":"struct","schema-id":0,"fields":[
@@ -468,16 +468,16 @@ Documents pass through the core [JSON](../json/index.md) codec as [`Scalar`](../
 | root `name` | the name you pass; Iceberg names columns, not the schema |
 | `"required": true` | `is_nullable() == false` |
 | `id` | `PARQUET:field_id` metadata |
-| `schema-id` | `iceberg:schema-id` on the root |
-| `doc` | `iceberg:doc` |
-| v3 `initial-default`, `write-default` | `iceberg:initial-default`, `iceberg:write-default` |
+| `schema-id` | `ICEBERG:schema-id` on the root |
+| `doc` | `ICEBERG:doc` |
+| v3 `initial-default`, `write-default` | `ICEBERG:initial-default`, `ICEBERG:write-default` |
 
 ## Primitive types
 
 `PrimitiveType` is the whole Iceberg type vocabulary, parsed from the spelling in table metadata JSON. `into_dtype` is total; `from_dtype` names the datatype it refuses instead of widening it, and `iceberg` is a [compatibility target](../../types/datatype.md) like `spark` and `polars`, so lossless widenings live in one walker. Rust only.
 
 ```rust
-use yggdryl::media::iceberg::PrimitiveType;
+use yggdryl::iceberg::PrimitiveType;
 use yggdryl::{DataType, Scheme, TimeUnit, Timezone};
 
 // Every Iceberg primitive name has exactly one physical datatype.
@@ -492,11 +492,11 @@ assert_eq!(
 // nanosecond pair.
 assert_eq!(
     PrimitiveType::from_str("timestamp")?.into_dtype()?,
-    DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }
+    DataType::datetime64(TimeUnit::Microsecond, Timezone::NAIVE)?
 );
 assert_eq!(
     PrimitiveType::from_str("timestamp_ns")?.into_dtype()?,
-    DataType::DateTime64 { unit: TimeUnit::Nanosecond, timezone: Timezone::NAIVE }
+    DataType::datetime64(TimeUnit::Nanosecond, Timezone::NAIVE)?
 );
 assert_eq!(
     PrimitiveType::from_str("time")?.into_dtype()?,
@@ -516,20 +516,20 @@ assert_eq!(PrimitiveType::from_dtype(&DataType::Variant)?.to_string(), "variant"
 assert_eq!(PrimitiveType::from_str("fixed[16]")?.to_string(), "fixed[16]");
 
 // The layouts that differ only in physical storage collapse onto one name.
-// Iceberg's string is UTF-8, so every string on text storage - UTF-8 or
-// US-ASCII, any layout, a bound or not - is `string`; a string in another
-// charset holds bytes that are not UTF-8 and is refused by name.
+// Iceberg's string is UTF-8, so every string on text storage - every UTF-8
+// and US-ASCII leaf, any shape, a bound or not - is `string`; a windows-1252
+// leaf holds bytes that are not UTF-8 and is refused by name.
 assert_eq!(PrimitiveType::from_dtype(&DataType::utf8())?, PrimitiveType::String);
 assert_eq!(PrimitiveType::from_dtype(&DataType::large_utf8())?, PrimitiveType::String);
 assert_eq!(PrimitiveType::from_dtype(&DataType::fixed_ascii(4)?)?, PrimitiveType::String);
-let legacy = PrimitiveType::from_dtype(&DataType::from_str("string(windows-1252)")?)
+let legacy = PrimitiveType::from_dtype(&DataType::cp1252())
     .unwrap_err()
     .to_string();
-assert!(legacy.contains("string(windows-1252)"), "{legacy}");
+assert!(legacy.contains("cp1252"), "{legacy}");
 // A fixed byte layout is `fixed[n]`; the variable layouts are `binary`, and
 // Iceberg has no maximum, so `binary(16)` crosses unbounded.
 assert_eq!(PrimitiveType::from_dtype(&DataType::binary_view())?, PrimitiveType::Binary);
-assert_eq!(PrimitiveType::from_dtype(&DataType::fixed_size_binary(16)?)?, PrimitiveType::Fixed(16));
+assert_eq!(PrimitiveType::from_dtype(&DataType::fixed_binary(16)?)?, PrimitiveType::Fixed(16));
 assert_eq!(PrimitiveType::from_dtype(&DataType::from_str("binary(16)")?)?, PrimitiveType::Binary);
 assert_eq!(
     PrimitiveType::from_dtype(&DataType::decimal64(9, 2)?)?,
@@ -543,7 +543,7 @@ assert!(PrimitiveType::from_dtype(&DataType::Int16).is_err());
 
 // A UUID is the core's own `uuid`, so the spelling survives the round trip
 // in the datatype rather than in a marker beside the column.
-assert_eq!(PrimitiveType::Uuid.into_dtype()?, DataType::Uuid);
+assert_eq!(PrimitiveType::Uuid.into_dtype()?, DataType::uuid());
 assert_eq!(
     PrimitiveType::from_dtype(&PrimitiveType::Uuid.into_dtype()?)?.to_string(),
     "uuid"
@@ -554,7 +554,7 @@ assert_eq!(
 let widened = DataType::Int8.into_scheme_compat(&Scheme::ICEBERG)?;
 assert_eq!(widened, DataType::Int32);
 assert_eq!(PrimitiveType::from_dtype(&widened)?.to_string(), "int");
-assert!(DataType::Interval(TimeUnit::YearMonth).into_scheme_compat(&Scheme::ICEBERG).is_err());
+assert!(DataType::interval(TimeUnit::YearMonth)?.into_scheme_compat(&Scheme::ICEBERG).is_err());
 ```
 
 | Iceberg | `DataType` | Version |
@@ -583,9 +583,9 @@ assert!(DataType::Interval(TimeUnit::YearMonth).into_scheme_compat(&Scheme::ICEB
 Rust only.
 
 ```rust
-use yggdryl::media::iceberg::{schema_from_json, schema_into_json};
+use yggdryl::iceberg::{schema_from_json, schema_into_json};
 use yggdryl::{DataType};
-use yggdryl::text::json;
+use yggdryl::json;
 
 let document = json::from_utf8(
     r#"{"type":"struct","schema-id":0,"fields":[
@@ -607,7 +607,8 @@ let schema = schema_from_json("row", &document)?;
 
 // A list becomes a `List` whose item field is named `element` and carries `element-id`.
 let legs = &schema.fields()[0];
-let DataType::List(element) = legs.dtype() else { panic!("expected a list") };
+let DataType::Sequence(sequence) = legs.dtype() else { panic!("expected a list") };
+let element = sequence.item();
 assert_eq!(element.name(), "element");
 assert_eq!(element.parquet_field_id()?, Some(2));
 assert!(!element.is_nullable());
@@ -615,7 +616,8 @@ assert_eq!(element.fields()[0].name(), "price");
 
 // A map becomes a `Map` over a non-null `entries` struct of `key` and `value`.
 let tags = &schema.fields()[1];
-let DataType::Map(map) = tags.dtype() else { panic!("expected a map") };
+let DataType::Mapping(mapping) = tags.dtype() else { panic!("expected a map") };
+let map = mapping.parameters();
 assert_eq!(map.entries().name(), "entries");
 assert!(!map.entries().is_nullable());
 assert!(!map.entries().fields()[0].is_nullable());
@@ -634,11 +636,11 @@ Rust only.
 ```rust
 use arrow_array::RecordBatch;
 use yggdryl::arrow;
-use yggdryl::media::iceberg::schema_from_json;
+use yggdryl::iceberg::schema_from_json;
 use yggdryl::IOMedia;
 use yggdryl::holder::Buffer;
-use yggdryl::text::json;
-use yggdryl::media::parquet::Parquet;
+use yggdryl::json;
+use yggdryl::parquet::Parquet;
 
 let document = json::from_utf8(
     r#"{"type":"struct","fields":[
@@ -676,14 +678,14 @@ assert!(!written.fields()[0].is_nullable());
 - equivalent schema, spec, or sort order -> the builder's canonical id is reused; a conflicting requested id is reassigned.
 - `from_dtype` of `int8`, `uint32`, `interval`, `union`, `decimal256`, or a non micro/nano unit -> refused naming the datatype.
 - `Scheme::ICEBERG` -> `Int8` widens to `Int32`; `Interval` stays refused.
-- `large_utf8`, `utf8_view`, `fixed_ascii(n)`, `utf8(n)` -> `string`; `binary_view`, `large_binary`, `binary(n)` -> `binary`, the maximum dropped; `decimal64` -> `decimal(p, s)`.
-- `string(windows-1252)` or any other charset off text storage -> refused naming the datatype; only UTF-8 and US-ASCII strings are Iceberg's `string`.
+- `large_utf8`, `utf8_view`, `fixed_ascii(n)`, `sized_utf8(n)` -> `string`; `binary_view`, `large_binary`, `binary(n)` -> `binary`, the maximum dropped; `decimal64` -> `decimal(p, s)`.
+- `cp1252` or any other windows-1252 leaf -> refused naming the datatype; only the UTF-8 and US-ASCII leaves are Iceberg's `string`.
 - `fixed_size_binary(n)` -> `fixed[n]`, and back; a UUID is `uuid`, never `fixed[16]`.
 - `unknown` (v3) -> `DataType::Null`, every value reads as null; the column must be optional, is omitted from every data file, and promotes to any type.
 - `variant` (v3) -> `DataType::Variant`, the `metadata`/`value` binary pair; a data file stores it under Parquet's `VARIANT` logical type; it is not `unknown`, which has no values at all.
 - `unknown` or `variant` in a v1 or v2 table -> refused naming the column and the type; both were added in v3.
 - Official Iceberg 0.10.1 models neither name -> at its boundary each such column crosses as `binary` under its own field id and comes back as itself, in metadata documents and in manifest headers alike; the crate's own schema serde spells the two names.
-- `Uuid` -> `DataType::Uuid`, spelled `uuid` on the way back.
+- `Uuid` -> `DataType::uuid()`, spelled `uuid` on the way back.
 - map key -> always required; absent `element-required` or `value-required` -> required.
 - Python or JavaScript caller -> sees the type mapping in the schema a table reports, and commits files through the table's append and overwrite.
 
@@ -692,11 +694,11 @@ assert!(!written.fields()[0].is_nullable());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::evolve::tests
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::schema_documents
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::types
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::datatype_coverage
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::isolation
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::evolve::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::schema_documents
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::types
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::datatype_coverage
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::isolation
     cargo test --features "parquet iceberg" -p yggdryl --test media iceberg
     ```
 

@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "undsecaltid"
+        "FIX:component": "undsecaltid"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "UndSecAltIDGrp",
-    "fix:component": "undsecaltid",
-    "fix:counter": "457",
-    "fix:tag": "383668"
+    "FIX:component": "undsecaltid",
+    "FIX:counter": "457",
+    "FIX:tag": "383668",
+    "display": "UndSecAltIDGrp"
   }
 }

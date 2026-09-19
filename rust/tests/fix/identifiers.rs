@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use super::SoleMessage;
 use yggdryl::graph::Element;
-use yggdryl::{DataType, Error, Field, FixMsg, FixRegistry, Scalar, fix_schema};
+use yggdryl::{DataType, Error, Field, FixMsg, FixRegistry, Scalar, StructureType, fix_schema};
 
 fn tagged(name: &str, tag: i32) -> Field {
     let mut field = DataType::utf8().nullable_field(name);
@@ -18,12 +18,14 @@ fn component() -> Field {
     order.as_fix_mut().set_names(["ClientOrder"]).unwrap();
     order.as_fix_mut().set_tags(&[9001]).unwrap();
     let nested = DataType::list(
-        DataType::from_fields([tagged("execid", 17)])
+        StructureType::from_fields([tagged("execid", 17)])
+            .map(DataType::from)
             .unwrap()
             .required_field("item"),
     )
     .nullable_field("executions");
-    DataType::from_fields([order, tagged("orderid", 37), nested])
+    StructureType::from_fields([order, tagged("orderid", 37), nested])
+        .map(DataType::from)
         .unwrap()
         .required_field("order")
 }
@@ -38,12 +40,12 @@ fn identifier_intake_resolves_members_once_and_stores_component_order() {
             ["clordid", "orderid"]
         );
         assert_eq!(
-            field.get_metadata("fix:identifiers"),
+            field.get_metadata("FIX:identifiers"),
             Some("clordid,orderid")
         );
     }
     field.as_fix_mut().set_identifiers([] as [&str; 0]).unwrap();
-    assert!(field.get_metadata("fix:identifiers").is_none());
+    assert!(field.get_metadata("FIX:identifiers").is_none());
     assert_eq!(field.as_fix().identifiers().count(), 0);
 }
 
@@ -63,7 +65,7 @@ fn identifier_refusals_are_located_atomic_and_do_not_accept_paths() {
     ] {
         let error = field.as_fix_mut().set_identifiers(&bad).unwrap_err();
         assert!(
-            matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "fix:identifiers"),
+            matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:identifiers"),
             "{error}"
         );
         assert!(
@@ -75,9 +77,9 @@ fn identifier_refusals_are_located_atomic_and_do_not_accept_paths() {
     let mut ambiguous = tagged("another", 100);
     ambiguous.as_fix_mut().set_names(["ClientOrder"]).unwrap();
     field
-        .set_dtype(
-            DataType::from_fields(field.fields().iter().cloned().chain([ambiguous])).unwrap(),
-        )
+        .set_dtype(DataType::from(
+            StructureType::from_fields(field.fields().iter().cloned().chain([ambiguous])).unwrap(),
+        ))
         .unwrap();
     let before = field.clone();
     assert!(field.as_fix_mut().set_identifiers(["ClientOrder"]).is_err());
@@ -118,13 +120,15 @@ fn registry_merge_orders_the_incoming_selection_by_the_final_members() {
                 child.as_fix_mut().set_field_ref(&name).unwrap();
             }
         }
-        let mut stored = DataType::from_fields(members.clone())
+        let mut stored = StructureType::from_fields(members.clone())
+            .map(DataType::from)
             .unwrap()
             .required_field("order");
         stored.as_fix_mut().set_identifiers(["11"]).unwrap();
         registry.insert(stored).unwrap();
         members.reverse();
-        let mut incoming = DataType::from_fields(members)
+        let mut incoming = StructureType::from_fields(members)
+            .map(DataType::from)
             .unwrap()
             .required_field("order");
         incoming.as_fix_mut().set_identifiers(["11", "37"]).unwrap();
@@ -153,13 +157,15 @@ fn compiled_selection_borrows_tagged_reordered_values_and_skips_nulls_and_groups
     let mut registry = FixRegistry::new();
     registry.insert(definition).unwrap();
     let registry = Arc::new(registry);
-    let field = DataType::from_fields([
+    let field = StructureType::from_fields([
         tagged("venue_order", 37),
         tagged("clordid", 11),
-        DataType::from_fields([tagged("execid", 17)])
+        StructureType::from_fields([tagged("execid", 17)])
+            .map(DataType::from)
             .unwrap()
             .nullable_field("executions"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     let message = FixMsg::with_registry(
@@ -182,7 +188,8 @@ fn compiled_selection_borrows_tagged_reordered_values_and_skips_nulls_and_groups
 
 #[test]
 fn compiled_selection_keeps_member_identity_when_several_fields_share_a_tag() {
-    let mut definition = DataType::from_fields([tagged("clordid", 11), tagged("venueid", 11)])
+    let mut definition = StructureType::from_fields([tagged("clordid", 11), tagged("venueid", 11)])
+        .map(DataType::from)
         .unwrap()
         .required_field("order");
     definition
@@ -193,11 +200,12 @@ fn compiled_selection_keeps_member_identity_when_several_fields_share_a_tag() {
     let mut registry = FixRegistry::new();
     registry.insert(definition).unwrap();
     let registry = Arc::new(registry);
-    let field = DataType::from_fields([
+    let field = StructureType::from_fields([
         tagged("first_tag_holder", 11),
         tagged("venueid", 11),
         tagged("clordid", 11),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     let message = FixMsg::with_registry(
@@ -231,7 +239,8 @@ fn compiled_selection_keeps_member_identity_when_several_fields_share_a_tag() {
 
     let unnamed = FixMsg::with_registry(
         Arc::clone(&registry),
-        DataType::from_fields([tagged("unresolved", 11)])
+        StructureType::from_fields([tagged("unresolved", 11)])
+            .map(DataType::from)
             .unwrap()
             .required_field("row"),
         Scalar::from_sequence([Scalar::from("which-member")]),
@@ -250,7 +259,8 @@ fn compiled_selection_keeps_member_identity_when_several_fields_share_a_tag() {
 
 #[test]
 fn compiled_selection_skips_a_tag_shared_by_unnamed_row_children() {
-    let mut definition = DataType::from_fields([tagged("clordid", 11)])
+    let mut definition = StructureType::from_fields([tagged("clordid", 11)])
+        .map(DataType::from)
         .unwrap()
         .required_field("order");
     definition
@@ -261,7 +271,8 @@ fn compiled_selection_skips_a_tag_shared_by_unnamed_row_children() {
     let mut registry = FixRegistry::new();
     registry.insert(definition).unwrap();
     let registry = Arc::new(registry);
-    let field = DataType::from_fields([tagged("first", 11), tagged("second", 11)])
+    let field = StructureType::from_fields([tagged("first", 11), tagged("second", 11)])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let message = FixMsg::with_registry(
@@ -293,7 +304,7 @@ fn malformed_stored_declarations_are_refused_at_message_registration() {
         let mut field = component();
         field.as_fix_mut().set_msgtype("D").unwrap();
         field
-            .update_metadata([("fix:identifiers", text.to_owned())])
+            .update_metadata([("FIX:identifiers", text.to_owned())])
             .unwrap();
         let mut registry = FixRegistry::new();
         assert!(registry.insert(field).is_err(), "{text}");
@@ -322,7 +333,7 @@ fn raw_component_and_occurrence_identifiers_are_refused_before_create_or_merge()
             "clordid,11",
         ] {
             let mut raw = component();
-            raw.update_metadata([("fix:identifiers", malformed.to_owned())])
+            raw.update_metadata([("FIX:identifiers", malformed.to_owned())])
                 .unwrap();
             let raw = definition(raw);
             let mut counter = DataType::Int32.nullable_field("noorders");
@@ -370,10 +381,11 @@ fn raw_identifier_spellings_normalize_on_create_and_merge_before_references_comp
                 child.as_fix_mut().set_field_ref(&name).unwrap();
             }
         }
-        let mut raw = DataType::from_fields(members)
+        let mut raw = StructureType::from_fields(members)
+            .map(DataType::from)
             .unwrap()
             .required_field("order");
-        raw.update_metadata([("fix:identifiers", "37,ClientOrder")])
+        raw.update_metadata([("FIX:identifiers", "37,ClientOrder")])
             .unwrap();
         registry.insert(raw.clone()).unwrap();
         assert_eq!(
@@ -385,7 +397,7 @@ fn raw_identifier_spellings_normalize_on_create_and_merge_before_references_comp
                 .collect::<Vec<_>>(),
             ["clordid", "orderid"]
         );
-        raw.update_metadata([("fix:identifiers", "37,11")]).unwrap();
+        raw.update_metadata([("FIX:identifiers", "37,11")]).unwrap();
         registry.add_field(raw).unwrap();
         assert_eq!(
             registry
@@ -416,13 +428,14 @@ fn raw_identifier_spellings_normalize_after_inline_or_compact_json_children_reso
             [first, second]
         };
         for declaration in ["37,11", "OrderID,ClientOrder", "orderid,clordid"] {
-            let mut component = DataType::from_fields(members.clone())
+            let mut component = StructureType::from_fields(members.clone())
+                .map(DataType::from)
                 .unwrap()
                 .required_field("order");
             component
-                .update_metadata([("fix:identifiers", declaration)])
+                .update_metadata([("FIX:identifiers", declaration)])
                 .unwrap();
-            // The store's own shape: a field's `fix:names` is the array it is
+            // The store's own shape: a field's `FIX:names` is the array it is
             // there, never the escaped text a native document holds.
             let snapshot = Scalar::from_record([
                 (

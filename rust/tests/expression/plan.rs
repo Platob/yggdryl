@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
 use yggdryl::expression::{Expression, Selector, Term};
 use yggdryl::expression::{IntoPlan, Location, Ordering, Plan, Source, Target, Verb, Write};
-use yggdryl::{DataType, Field, Scalar, Url};
+use yggdryl::{DataType, Field, Scalar, StructureType, Url};
 
 // ---------------------------------------------------------------------------
 // Text
@@ -295,11 +295,12 @@ fn a_create_section_is_the_field_it_declares() {
         None
     );
     // Applied to a root, the read sections say what comes out.
-    let root = DataType::from_fields([
+    let root = StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("ccy"),
         DataType::Float64.nullable_field("price"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("raw");
     let read: Plan = "select id, price * 2 as doubled where price > 0"
@@ -389,7 +390,6 @@ fn a_plan_is_built_section_by_section() {
 // Streams and stores
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "arrow")]
 mod streams {
     use super::*;
     use yggdryl::arrow::BatchReader;
@@ -447,10 +447,11 @@ mod streams {
     }
 
     fn trades(rows: &[(i64, &str)]) -> RecordBatch {
-        let schema = DataType::from_fields([
+        let schema = StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("name"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("trades");
         RecordBatch::try_new(
@@ -792,7 +793,8 @@ mod streams {
             .to_string();
         assert!(error.contains("schema"), "{error}");
         // A declared schema binds even an empty stream.
-        let schema = DataType::from_fields([DataType::Int64.required_field("id")])
+        let schema = StructureType::from_fields([DataType::Int64.required_field("id")])
+            .map(DataType::from)
             .unwrap()
             .required_field("rows");
         let empty = selector

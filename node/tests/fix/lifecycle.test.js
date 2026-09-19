@@ -12,7 +12,7 @@ const assert = require('node:assert/strict')
 const path = require('node:path')
 const test = require('node:test')
 
-const { BatchReader, IOBase, Scalar, TextLine, TextOptions, fields, fix } = require('yggdryl')
+const { BatchReader, DataType, IOBase, Scalar, TextLine, TextOptions, fields, fix } = require('yggdryl')
 
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 // A second of a ULBridge's own capture, anonymized: the corpus
@@ -30,10 +30,10 @@ const CAPTURE = path.join(__dirname, '..', '..', '..', 'rust', 'tests', 'fix', '
 // The bridge's own row header, as the core spells it: what a line states
 // about itself in front of the payload.
 const ROWHEADER =
-  String.raw`^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)` +
+  String.raw`^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<msgthreadid>[1-9]\d*)` +
   String.raw`(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] ` +
-  String.raw`\[(?P<pluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) `
-const SENDING = Scalar.datetime(1_704_190_530_000_000_000n, 'ns', 'UTC')
+  String.raw`\[(?P<msgpluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) `
+const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
 
 let seedRegistry
 function seed() {
@@ -157,7 +157,7 @@ test('the walk crosses Arrow both ways without a second parse', () => {
 test('a bridge capture parses whole and walks its chains', () => {
   const registry = seed()
   const codec = reading(registry, {
-    captureNames: ['timestamp', 'threadId', 'msgsessionid', 'msgctxid', 'msgseqnum', 'pluginid', 'level'],
+    captureNames: ['timestamp', 'msgthreadid', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid', 'level'],
   })
   const messages = captured(codec)
   // Every line that carries a message is one message, the JSON documents
@@ -167,7 +167,7 @@ test('a bridge capture parses whole and walks its chains', () => {
   // What a bridge's row header states reaches the capture, and what its own
   // namespaces state reaches the metadata.
   const report = messages.find((message) => message.header().msgtype === '8')
-  assert.equal(report.capture().pluginid, 'ULBridge')
+  assert.equal(report.capture().msgpluginid, 'ULBridge')
   assert.match(report.capture().msgctxid, /^[0-9a-f]{10}$/)
   assert.match(report.capture().msgsessionid, /^[0-9a-f]{8}$/)
   assert.ok(Object.keys(report.metadata).some((key) => key.startsWith('ullink.')))

@@ -20,7 +20,7 @@
 //! # A field holds a plan
 //!
 //! A struct [`Field`] already says what columns exist, of what type, nullable
-//! or not. With the [`transform:`](super::TransformField) protocol it also
+//! or not. With the [`TRANSFORM:`](super::TransformField) protocol it also
 //! says how a column is computed, so [`Selector::into_field`] writes a
 //! selector into a field and [`Selector::from_field`] reads it back - which is
 //! what lets a declared field on record options carry a whole projection, and
@@ -37,7 +37,7 @@ use super::bind::Bound;
 use super::eval::convert;
 use super::path::FieldPath;
 use super::term::Term;
-use crate::{DataType, Error, Field, Metadata, Result, Scalar};
+use crate::{DataType, Error, Field, Metadata, Result, Scalar, StructureType};
 
 /// One output column: the term that computes it, its name, and what it is
 /// published as.
@@ -592,7 +592,7 @@ impl Selector {
             }
             children.push(child);
         }
-        DataType::from_fields(children)
+        StructureType::from_fields(children).map(DataType::from)
     }
 
     /// The struct root this selector publishes from `root`.
@@ -672,7 +672,7 @@ impl Selector {
     /// Every child becomes one column declaration - its datatype, its
     /// nullability and its metadata, protocol views included - published
     /// under the child's name. A child carrying an explicit
-    /// `transform:expression` is read as the term that computes it, aliased
+    /// `TRANSFORM:expression` is read as the term that computes it, aliased
     /// to the child's name; a declaration that does not parse is kept as the
     /// metadata it is and refused where it is read. A root that is not a
     /// struct is one column named after it. Nothing is lost:
@@ -723,7 +723,7 @@ impl Selector {
     /// unless said otherwise. Every other projection is typed against `root`
     /// as [`Projection::field`] types it, and one that computes something
     /// other than its own column keeps the term as its
-    /// [`transform:`](crate::TransformField) declaration, so the field it
+    /// [`TRANSFORM:`](crate::TransformField) declaration, so the field it
     /// declares knows how to derive the column and [`Self::from_field`]
     /// reads the selector back. When `root` holds a column a declaration
     /// names, the declaration restates that column: the same column, cast to
@@ -786,7 +786,7 @@ impl Selector {
             }
             children.push(child);
         }
-        Ok(DataType::from_fields(children)?.required_field(name))
+        Ok(DataType::from(StructureType::from_fields(children)?).required_field(name))
     }
 
     /// Write this selector into the struct root it publishes from `root`.
@@ -1028,7 +1028,6 @@ pub(crate) fn require_present(field: &Field, null: bool) -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "arrow")]
 mod arrow {
     use std::sync::Arc;
 
@@ -1036,9 +1035,10 @@ mod arrow {
     use arrow_schema::{ArrowError, SchemaRef};
 
     use super::{BoundSelector, Selector};
+    use crate::FieldValue as _;
     use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
+    use crate::cast::ArrowCastOptions;
     use crate::expression::arrow::{collected, one_batch, struct_batch};
-    use crate::types::cast::{ArrowCast, ArrowCastOptions};
     use crate::{Error, Result};
 
     impl Selector {
@@ -1117,7 +1117,7 @@ mod arrow {
             let mut columns = Vec::with_capacity(self.projections.len());
             for (bound, field) in self.projections.iter().zip(self.output.fields()) {
                 let evaluated = bound.evaluate(batch)?;
-                let declared = field.clone().into_arrow_ref()?;
+                let declared = field.clone().into_arrow_field_ref()?;
                 let array = if evaluated.data_type() == declared.data_type() {
                     evaluated
                 } else {

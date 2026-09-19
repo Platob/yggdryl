@@ -8,11 +8,11 @@
 //! The handles fall into two families, and that is the whole argument:
 //!
 //! - **Already memory.** An in-memory [`Buffer`] is the floor a cache can
-//!   never beat, and a memory-mapped [`File`](yggdryl::holder::local::File) is a
+//!   never beat, and a memory-mapped [`File`](yggdryl::local::File) is a
 //!   `memcpy` out of the page cache the *kernel* already keeps. Wrapping
 //!   either can only add a lock, a clock read, a map lookup, and a second
 //!   copy. These rows measure that overhead honestly.
-//! - **A fetch per read.** An [`FsFile`](yggdryl::holder::fs::File) answers
+//! - **A fetch per read.** An [`FsFile`](yggdryl::fs::File) answers
 //!   every `pread` with one random-access input-file open and one positional
 //!   read through the filesystem vtable. Over [`MemoryFileSystem`] that is a
 //!   lock and a copy; over [`LocalFileSystem`] it is an `open`, a `seek`, and a
@@ -46,11 +46,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use criterion::{Criterion, Throughput};
 use yggdryl::IOBase;
-use yggdryl::coding::gzip::Gzip;
+use yggdryl::fs::{File as FsFile, FileSystem, LocalFileSystem, MemoryFileSystem};
+use yggdryl::gzip::Gzip;
 use yggdryl::holder::Buffer;
 use yggdryl::holder::buffered::BufferedOptions;
-use yggdryl::holder::fs::{File as FsFile, FileSystem, LocalFileSystem, MemoryFileSystem};
-use yggdryl::holder::local::{File, Folder};
+use yggdryl::local::{File, Folder};
 
 /// The fixture's size: twice the default byte budget, so a full scan evicts.
 const FIXTURE: u64 = 16 * 1024 * 1024;

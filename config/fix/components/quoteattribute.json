@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quoteattributetype",
-          "fix:tag": "2707"
+          "FIX:field": "quoteattributetype",
+          "FIX:tag": "2707"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quoteattributevalue",
-          "fix:tag": "2708"
+          "FIX:field": "quoteattributevalue",
+          "FIX:tag": "2708"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "QuoteAttribute",
-    "fix:tag": "641653"
+    "FIX:tag": "641653",
+    "display": "QuoteAttribute"
   }
 }

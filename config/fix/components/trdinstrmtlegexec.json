@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legrefid",
-          "fix:tag": "654"
+          "FIX:field": "legrefid",
+          "FIX:tag": "654"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legexecid",
-          "fix:tag": "1893"
+          "FIX:field": "legexecid",
+          "FIX:tag": "1893"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legexecrefid",
-          "fix:tag": "1901"
+          "FIX:field": "legexecrefid",
+          "FIX:tag": "1901"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legtradeid",
-          "fix:tag": "1894"
+          "FIX:field": "legtradeid",
+          "FIX:tag": "1894"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legtradereportid",
-          "fix:tag": "1895"
+          "FIX:field": "legtradereportid",
+          "FIX:tag": "1895"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legorderqty",
-          "fix:tag": "685"
+          "FIX:field": "legorderqty",
+          "FIX:tag": "685"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpositioneffect",
-          "fix:tag": "564"
+          "FIX:field": "legpositioneffect",
+          "FIX:tag": "564"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcoveredoruncovered",
-          "fix:tag": "565"
+          "FIX:field": "legcoveredoruncovered",
+          "FIX:tag": "565"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonested3partyids",
-          "fix:tag": "948"
+          "FIX:field": "nonested3partyids",
+          "FIX:tag": "948"
         }
       },
       {
@@ -109,7 +109,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "nestedparties3"
+          "FIX:group": "nestedparties3"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leglastpx",
-          "fix:tag": "637"
+          "FIX:field": "leglastpx",
+          "FIX:tag": "637"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpricetype",
-          "fix:tag": "686"
+          "FIX:field": "legpricetype",
+          "FIX:tag": "686"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlcurrency",
-          "fix:tag": "675"
+          "FIX:field": "legsettlcurrency",
+          "FIX:tag": "675"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlcurrencycodesource",
-          "fix:tag": "2900"
+          "FIX:field": "legsettlcurrencycodesource",
+          "FIX:tag": "2900"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legshortsaleexemptionreason",
-          "fix:tag": "1689"
+          "FIX:field": "legshortsaleexemptionreason",
+          "FIX:tag": "1689"
         }
       },
       {
@@ -174,8 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leglastqty",
-          "fix:tag": "1418"
+          "FIX:field": "leglastqty",
+          "FIX:tag": "1418"
         }
       },
       {
@@ -185,16 +185,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legqtytype",
-          "fix:tag": "1591"
+          "FIX:field": "legqtytype",
+          "FIX:tag": "1591"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdInstrmtLegExec",
-    "fix:identifiers": "legexecid,legexecrefid,legtradeid,legtradereportid",
-    "fix:tag": "120241"
+    "FIX:identifiers": "legexecid,legexecrefid,legtradeid,legtradereportid",
+    "FIX:tag": "120241",
+    "display": "TrdInstrmtLegExec"
   }
 }

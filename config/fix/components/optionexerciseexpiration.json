@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationdatebusinessdayconvention",
-          "fix:tag": "41142"
+          "FIX:field": "optionexerciseexpirationdatebusinessdayconvention",
+          "FIX:tag": "41142"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nooptionexerciseexpirationdatebusinesscenters",
-          "fix:tag": "41140"
+          "FIX:field": "nooptionexerciseexpirationdatebusinesscenters",
+          "FIX:tag": "41140"
         }
       },
       {
@@ -32,7 +32,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "optionexerciseexpirationdatebusinesscentergrp"
+          "FIX:group": "optionexerciseexpirationdatebusinesscentergrp"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nooptionexerciseexpirationdates",
-          "fix:tag": "41152"
+          "FIX:field": "nooptionexerciseexpirationdates",
+          "FIX:tag": "41152"
         }
       },
       {
@@ -53,7 +53,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "optionexerciseexpirationdategrp"
+          "FIX:group": "optionexerciseexpirationdategrp"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationdaterelativeto",
-          "fix:tag": "41143"
+          "FIX:field": "optionexerciseexpirationdaterelativeto",
+          "FIX:tag": "41143"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationdateoffsetperiod",
-          "fix:tag": "41144"
+          "FIX:field": "optionexerciseexpirationdateoffsetperiod",
+          "FIX:tag": "41144"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationdateoffsetunit",
-          "fix:tag": "41145"
+          "FIX:field": "optionexerciseexpirationdateoffsetunit",
+          "FIX:tag": "41145"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationfrequencyperiod",
-          "fix:tag": "41146"
+          "FIX:field": "optionexerciseexpirationfrequencyperiod",
+          "FIX:tag": "41146"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationfrequencyunit",
-          "fix:tag": "41147"
+          "FIX:field": "optionexerciseexpirationfrequencyunit",
+          "FIX:tag": "41147"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationrollconvention",
-          "fix:tag": "41148"
+          "FIX:field": "optionexerciseexpirationrollconvention",
+          "FIX:tag": "41148"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationdateoffsetdaytype",
-          "fix:tag": "41149"
+          "FIX:field": "optionexerciseexpirationdateoffsetdaytype",
+          "FIX:tag": "41149"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationtime",
-          "fix:tag": "41150"
+          "FIX:field": "optionexerciseexpirationtime",
+          "FIX:tag": "41150"
         }
       },
       {
@@ -151,16 +151,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseexpirationtimebusinesscenter",
-          "fix:tag": "41151"
+          "FIX:field": "optionexerciseexpirationtimebusinesscenter",
+          "FIX:tag": "41151"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "920564",
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of option exercise expiration dates.",
-    "display": "OptionExerciseExpiration",
-    "fix:tag": "920564"
+    "display": "OptionExerciseExpiration"
   }
 }

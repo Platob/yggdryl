@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "valuecheck"
+        "FIX:component": "valuecheck"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "valuecheck",
+    "FIX:counter": "1868",
+    "FIX:tag": "353060",
     "description": "Required if NoValueChecks(1868) > 0.",
-    "display": "ValueChecksGrp",
-    "fix:component": "valuecheck",
-    "fix:counter": "1868",
-    "fix:tag": "353060"
+    "display": "ValueChecksGrp"
   }
 }

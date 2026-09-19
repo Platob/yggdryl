@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ratesource",
-          "fix:tag": "1446"
+          "FIX:field": "ratesource",
+          "FIX:tag": "1446"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ratesourcetype",
-          "fix:tag": "1447"
+          "FIX:field": "ratesourcetype",
+          "FIX:tag": "1447"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "referencepage",
-          "fix:tag": "1448"
+          "FIX:field": "referencepage",
+          "FIX:tag": "1448"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ratesourcereferencepageheading",
-          "fix:tag": "2412"
+          "FIX:field": "ratesourcereferencepageheading",
+          "FIX:tag": "2412"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fxbenchmarkratefix",
-          "fix:tag": "2796"
+          "FIX:field": "fxbenchmarkratefix",
+          "FIX:tag": "2796"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ratesourcesymbol",
-          "fix:tag": "3072"
+          "FIX:field": "ratesourcesymbol",
+          "FIX:tag": "3072"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fxbenchmark",
-          "fix:tag": "3073"
+          "FIX:field": "fxbenchmark",
+          "FIX:tag": "3073"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fxbenchmarkdate",
-          "fix:tag": "3074"
+          "FIX:field": "fxbenchmarkdate",
+          "FIX:tag": "3074"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fxbenchmarktime",
-          "fix:tag": "3075"
+          "FIX:field": "fxbenchmarktime",
+          "FIX:tag": "3075"
         }
       },
       {
@@ -109,15 +109,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fxbenchmarkbusinesscenter",
-          "fix:tag": "3076"
+          "FIX:field": "fxbenchmarkbusinesscenter",
+          "FIX:tag": "3076"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "RateSource",
-    "fix:tag": "702377"
+    "FIX:tag": "702377",
+    "display": "RateSource"
   }
 }

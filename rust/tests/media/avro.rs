@@ -29,7 +29,7 @@ use yggdryl::{MediaType, MimeType, Scalar};
 
 /// A record schema exercising every branch the manifests use.
 fn manifest_shaped_schema() -> Scalar {
-    yggdryl::text::json::from_utf8(
+    yggdryl::json::from_utf8(
         r#"{"type":"record","name":"row","fields":[
             {"name":"code","type":"int","field-id":1},
             {"name":"name","type":"string","field-id":2},
@@ -88,17 +88,17 @@ mod containers {
     use super::{buffer, manifest_shaped_schema};
     use yggdryl::IOBase;
     use yggdryl::Scalar;
-    use yggdryl::media::avro;
+    use yggdryl::avro;
 
     #[test]
     fn a_container_round_trips_every_encoded_branch() {
         let schema = manifest_shaped_schema();
-        let row = yggdryl::text::json::from_utf8(
+        let row = yggdryl::json::from_utf8(
             r#"{"code":-7,"name":"AAPL","score":1.5,"raw":null,"tags":[1,2,300000],
                 "nested":{"flag":true}}"#,
         )
         .unwrap();
-        let empty = yggdryl::text::json::from_utf8(
+        let empty = yggdryl::json::from_utf8(
             r#"{"code":0,"name":"","score":null,"raw":null,"tags":[],
                 "nested":{"flag":false}}"#,
         )
@@ -168,7 +168,7 @@ mod containers {
             &mut handle,
             &manifest_shaped_schema(),
             &[],
-            &[yggdryl::text::json::from_utf8(
+            &[yggdryl::json::from_utf8(
                 r#"{"code":1,"name":"x","score":null,"raw":null,"tags":[],
                     "nested":{"flag":true}}"#,
             )
@@ -191,12 +191,12 @@ mod containers {
         let mut handle = buffer();
         avro::write_container(
             &mut handle,
-            &yggdryl::text::json::from_utf8(
+            &yggdryl::json::from_utf8(
                 r#"{"type":"record","name":"r","fields":[{"name":"v","type":"long"}]}"#,
             )
             .unwrap(),
             &[],
-            &[yggdryl::text::json::from_utf8(r#"{"v":1}"#).unwrap()],
+            &[yggdryl::json::from_utf8(r#"{"v":1}"#).unwrap()],
         )
         .unwrap();
         let mut bytes = handle.read_all_bytes().unwrap();
@@ -238,7 +238,7 @@ mod containers {
 
     #[test]
     fn a_row_budget_is_applied_after_the_mandatory_header() {
-        let schema = yggdryl::text::json::from_utf8(r#""long""#).unwrap();
+        let schema = yggdryl::json::from_utf8(r#""long""#).unwrap();
         let rows = [Scalar::from(1), Scalar::from(2)];
         let mut handle = buffer();
         avro::write_container(&mut handle, &schema, &[], &rows).unwrap();
@@ -255,8 +255,8 @@ mod schemas {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
-    use yggdryl::media::avro::Container;
-    use yggdryl::media::avro::Schema;
+    use yggdryl::avro::Container;
+    use yggdryl::avro::Schema;
 
     #[test]
     fn canonical_form_and_fingerprint_match_the_reference_implementation() {
@@ -342,7 +342,7 @@ mod schemas {
         assert_eq!(date.stable_hash(), native.stable_hash());
 
         let reparsed =
-            Schema::from_str(&yggdryl::text::json::into_utf8(&native.clone().into_json()).unwrap())
+            Schema::from_str(&yggdryl::json::into_utf8(&native.clone().into_json()).unwrap())
                 .unwrap();
         assert_eq!(native, reparsed);
 
@@ -435,15 +435,15 @@ mod schemas {
 
     #[test]
     fn the_source_json_round_trips_verbatim() {
-        let document = yggdryl::text::json::from_utf8(
+        let document = yggdryl::json::from_utf8(
             r#"{"type":"record","name":"row","fields":[{"name":"id","type":"int","field-id":42}]}"#,
         )
         .unwrap();
         let schema = Schema::from_json(&document).unwrap();
         assert_eq!(schema.clone().into_json(), document);
         // The unmodeled attribute is still in the JSON the schema writes.
-        let text = String::from_utf8(yggdryl::text::json::into_bytes(&schema.into_json()).unwrap())
-            .unwrap();
+        let text =
+            String::from_utf8(yggdryl::json::into_bytes(&schema.into_json()).unwrap()).unwrap();
         assert!(text.contains("field-id"), "{text}");
     }
 
@@ -477,20 +477,20 @@ mod schemas {
 
     #[test]
     fn a_recursive_schema_parses_and_round_trips_data() {
-        let schema_json = yggdryl::text::json::from_utf8(
+        let schema_json = yggdryl::json::from_utf8(
             r#"{"type":"record","name":"node","fields":[
                 {"name":"value","type":"long"},
                 {"name":"next","type":["null","node"],"default":null}
             ]}"#,
         )
         .unwrap();
-        let list = yggdryl::text::json::from_utf8(
+        let list = yggdryl::json::from_utf8(
             r#"{"value":1,"next":{"value":2,"next":{"value":3,"next":null}}}"#,
         )
         .unwrap();
         let mut handle = super::buffer();
-        yggdryl::media::avro::write_container(&mut handle, &schema_json, &[], &[list]).unwrap();
-        let container = yggdryl::media::avro::read_container(&handle).unwrap();
+        yggdryl::avro::write_container(&mut handle, &schema_json, &[], &[list]).unwrap();
+        let container = yggdryl::avro::read_container(&handle).unwrap();
         let tail = container.rows[0]
             .path("next.next.value")
             .and_then(yggdryl::Scalar::as_i64);
@@ -513,7 +513,7 @@ mod schemas {
         for _ in 0..20 {
             document = format!(r#"{{"type":"array","items":{document}}}"#);
         }
-        let parsed = yggdryl::text::json::from_utf8(&document).unwrap();
+        let parsed = yggdryl::json::from_utf8(&document).unwrap();
         let limits = yggdryl::Limits::new(8, 1 << 20, 1 << 20, 8);
         let message = Schema::from_json_with_limits(&parsed, limits)
             .unwrap_err()
@@ -547,12 +547,12 @@ mod schemas {
 
 mod logical {
     use yggdryl::TimeUnit;
-    use yggdryl::media::avro;
+    use yggdryl::avro;
     use yggdryl::{DataType, DataTypeId, Scalar, Timezone};
 
     /// Round-trip one value through a single-field record container.
     fn round_trip(field_type: &str, value: Scalar) -> Scalar {
-        let schema = yggdryl::text::json::from_utf8(&format!(
+        let schema = yggdryl::json::from_utf8(&format!(
             r#"{{"type":"record","name":"row","fields":[{{"name":"v","type":{field_type}}}]}}"#
         ))
         .unwrap();
@@ -633,7 +633,7 @@ mod logical {
 
     #[test]
     fn a_lossy_unit_conversion_is_refused_naming_both_units() {
-        let schema = yggdryl::text::json::from_utf8(
+        let schema = yggdryl::json::from_utf8(
             r#"{"type":"record","name":"row","fields":[
                 {"name":"v","type":{"type":"long","logicalType":"time-micros"}}
             ]}"#,
@@ -683,7 +683,7 @@ mod logical {
 
     #[test]
     fn an_overflowing_decimal_is_refused_naming_the_precision() {
-        let schema = yggdryl::text::json::from_utf8(
+        let schema = yggdryl::json::from_utf8(
             r#"{"type":"record","name":"row","fields":[
                 {"name":"v","type":{"type":"bytes","logicalType":"decimal","precision":4,"scale":0}}
             ]}"#,
@@ -699,7 +699,7 @@ mod logical {
 
     #[test]
     fn uuids_round_trip_in_both_encodings() {
-        let expected = DataType::Uuid
+        let expected = DataType::uuid()
             .scalar("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
             .unwrap();
         assert_eq!(
@@ -724,11 +724,8 @@ mod logical {
             r#"{"type":"fixed","name":"raw","size":3}"#,
             Scalar::from([1_u8, 2, 3].as_slice()),
         );
-        assert_eq!(fixed.id(), DataTypeId::FixedSizeBinary);
-        assert_eq!(
-            fixed.dtype().unwrap(),
-            DataType::fixed_size_binary(3).unwrap()
-        );
+        assert_eq!(fixed.id(), DataTypeId::FixedBinary);
+        assert_eq!(fixed.dtype().unwrap(), DataType::fixed_binary(3).unwrap());
 
         for (precision, expected) in [
             (9, DataTypeId::Decimal32),
@@ -748,8 +745,7 @@ mod logical {
     #[test]
     fn durations_round_trip_as_exact_intervals() {
         let value = Scalar::Interval(
-            yggdryl::types::Interval::new(1, 2, 3_000_000, yggdryl::TimeUnit::MonthDayNano)
-                .unwrap(),
+            yggdryl::Interval::new(1, 2, 3_000_000, yggdryl::TimeUnit::MonthDayNano).unwrap(),
         );
         assert_eq!(
             round_trip(
@@ -782,17 +778,17 @@ mod logical {
 
 mod resolution {
     use yggdryl::Scalar;
-    use yggdryl::media::avro;
-    use yggdryl::media::avro::Resolution;
-    use yggdryl::media::avro::Schema;
+    use yggdryl::avro;
+    use yggdryl::avro::Resolution;
+    use yggdryl::avro::Schema;
 
     /// Write rows with the writer schema, read them back with the reader.
     fn resolved(writer: &str, reader: &str, rows: &[&str]) -> Vec<Scalar> {
-        let writer_json = yggdryl::text::json::from_utf8(writer).unwrap();
+        let writer_json = yggdryl::json::from_utf8(writer).unwrap();
         let mut handle = super::buffer();
         let rows: Vec<Scalar> = rows
             .iter()
-            .map(|row| yggdryl::text::json::from_utf8(row).unwrap())
+            .map(|row| yggdryl::json::from_utf8(row).unwrap())
             .collect();
         avro::write_container(&mut handle, &writer_json, &[], &rows).unwrap();
         let reader = Schema::from_str(reader).unwrap();
@@ -978,13 +974,13 @@ mod resolution {
         );
         assert_eq!(rows[0].get_key_str("v").and_then(Scalar::as_i64), Some(9));
 
-        let writer_json = yggdryl::text::json::from_utf8(&writer).unwrap();
+        let writer_json = yggdryl::json::from_utf8(&writer).unwrap();
         let mut handle = super::buffer();
         avro::write_container(
             &mut handle,
             &writer_json,
             &[],
-            &[yggdryl::text::json::from_utf8(r#"{"v":null}"#).unwrap()],
+            &[yggdryl::json::from_utf8(r#"{"v":null}"#).unwrap()],
         )
         .unwrap();
         let reader = Schema::from_str(&record(r#"{"name":"v","type":"long"}"#)).unwrap();
@@ -1047,7 +1043,7 @@ mod resolution {
     fn resolving_to_the_writer_schema_is_the_identity() {
         let schema = super::manifest_shaped_schema();
         let parsed = Schema::from_json(&schema).unwrap();
-        let row = yggdryl::text::json::from_utf8(
+        let row = yggdryl::json::from_utf8(
             r#"{"code":-7,"name":"AAPL","score":1.5,"raw":null,"tags":[1],"nested":{"flag":true}}"#,
         )
         .unwrap();
@@ -1161,7 +1157,7 @@ mod resolution {
 
 mod streaming {
     use yggdryl::Scalar;
-    use yggdryl::media::avro;
+    use yggdryl::avro;
 
     #[test]
     fn blocks_stream_and_skipping_costs_nothing() {
@@ -1199,7 +1195,7 @@ mod streaming {
     #[test]
     fn a_written_container_streams_back_the_same_rows() {
         let schema = super::manifest_shaped_schema();
-        let row = yggdryl::text::json::from_utf8(
+        let row = yggdryl::json::from_utf8(
             r#"{"code":1,"name":"x","score":null,"raw":null,"tags":[],"nested":{"flag":true}}"#,
         )
         .unwrap();
@@ -1270,8 +1266,8 @@ mod streaming {
 
 mod single_object {
     use yggdryl::Scalar;
-    use yggdryl::media::avro;
-    use yggdryl::media::avro::Schema;
+    use yggdryl::avro;
+    use yggdryl::avro::Schema;
 
     #[test]
     fn a_datum_round_trips_through_the_single_object_framing() {
@@ -1321,7 +1317,7 @@ mod single_object {
 #[cfg(feature = "parquet")]
 mod snappy {
     use yggdryl::Scalar;
-    use yggdryl::media::avro;
+    use yggdryl::avro;
 
     /// Encode one long, snappy-compress it, and append the big-endian CRC-32.
     fn snappy_block(value: i64) -> Vec<u8> {
@@ -1362,7 +1358,7 @@ mod snappy {
 }
 
 mod hardening {
-    use yggdryl::media::avro;
+    use yggdryl::avro;
 
     #[test]
     fn duplicate_header_keys_are_refused_before_map_projection() {
@@ -1437,34 +1433,36 @@ mod hardening {
     }
 }
 
-#[cfg(feature = "arrow")]
 mod records {
+
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
-    use yggdryl::media::avro::Avro;
+    use yggdryl::StructureType;
+    use yggdryl::avro::Avro;
 
     use arrow_array::builder::{Float64Builder, Int64Builder, ListBuilder, StringBuilder};
     use arrow_array::types::{Float64Type, Int64Type};
     use arrow_array::{Array, RecordBatch, RecordBatchIterator, cast::AsArray};
     use arrow_schema::ArrowError;
 
+    use yggdryl::avro;
+    use yggdryl::avro::AvroOptions;
     use yggdryl::holder::Buffer;
-    use yggdryl::media::avro;
-    use yggdryl::media::avro::AvroOptions;
     use yggdryl::media::{IORecordOptions, RecordOptions};
-    use yggdryl::{DataType, DataTypeId, Field, MediaType, Scalar, TimeUnit, Url};
+    use yggdryl::{DataType, DataTypeId, DateTimeType, Field, MediaType, Scalar, TimeUnit, Url};
     use yggdryl::{IOBase, IOMedia};
 
     /// One canonical batch with a nullable column and a list column.
     fn batch() -> (Field, RecordBatch) {
         let schema = Field::new(
             "trades",
-            DataType::from_fields([
+            StructureType::from_fields([
                 DataType::Int64.required_field("id"),
                 DataType::utf8().nullable_field("symbol"),
                 DataType::Float64.nullable_field("price"),
                 DataType::list(DataType::Int64.required_field("item")).required_field("legs"),
             ])
+            .map(DataType::from)
             .unwrap(),
             false,
         );
@@ -1676,15 +1674,16 @@ mod records {
 
     #[test]
     fn record_batches_keep_exact_avro_logical_and_fixed_leaves() {
-        let field = DataType::from_fields([
-            DataType::Uuid.required_field("id"),
+        let field = StructureType::from_fields([
+            DataType::uuid().required_field("id"),
             DataType::decimal32(9, 2).unwrap().required_field("small"),
             DataType::decimal64(18, 2).unwrap().required_field("large"),
-            DataType::fixed_size_binary(3)
+            DataType::fixed_binary(3).unwrap().required_field("raw"),
+            DataType::interval(TimeUnit::MonthDayNano)
                 .unwrap()
-                .required_field("raw"),
-            DataType::Interval(TimeUnit::MonthDayNano).required_field("span"),
+                .required_field("span"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
         let rows = Scalar::from_sequence([Scalar::from_record([
@@ -1711,7 +1710,7 @@ mod records {
         let ids = read_field
             .fields()
             .iter()
-            .map(|field| field.dtype().id())
+            .map(|field| field.id())
             .collect::<Vec<_>>();
         assert_eq!(
             ids,
@@ -1719,7 +1718,7 @@ mod records {
                 DataTypeId::Uuid,
                 DataTypeId::Decimal32,
                 DataTypeId::Decimal64,
-                DataTypeId::FixedSizeBinary,
+                DataTypeId::FixedBinary,
                 DataTypeId::Interval,
             ]
         );
@@ -1747,10 +1746,11 @@ mod records {
 
         let narrow = Field::new(
             "trades",
-            DataType::from_fields([
+            StructureType::from_fields([
                 DataType::Int64.required_field("id"),
                 DataType::Float64.nullable_field("price"),
             ])
+            .map(DataType::from)
             .unwrap(),
             false,
         );
@@ -1860,7 +1860,8 @@ mod records {
 
     #[test]
     fn dimensions_skip_a_large_avro_payload_without_decoding_it() {
-        let field = DataType::from_fields([DataType::utf8().required_field("payload")])
+        let field = StructureType::from_fields([DataType::utf8().required_field("payload")])
+            .map(DataType::from)
             .unwrap()
             .required_field("rows");
         let payload = "0123456789abcdef".repeat(65_536);
@@ -1955,7 +1956,7 @@ mod records {
         for operation in ["overwrite", "append", "merge"] {
             let pulls = Arc::new(AtomicUsize::new(0));
             let mut media = Avro::new(Buffer::new()).with_field(field.clone());
-            let mut options = RecordOptions::Ipc(yggdryl::media::ipc::IpcOptions::new());
+            let mut options = RecordOptions::Ipc(yggdryl::ipc::IpcOptions::new());
             if operation == "merge" {
                 options.set_merge_by(yggdryl::expression::Selector::from_columns(["id"]));
             }
@@ -1987,10 +1988,11 @@ mod records {
 
     #[test]
     fn an_open_cache_tracks_the_final_avro_field_after_casting() {
-        let stored = DataType::from_fields([
+        let stored = StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("trades");
         let first = RecordBatch::try_new(
@@ -2011,10 +2013,11 @@ mod records {
             .unwrap();
         media.open().unwrap();
 
-        let loose = DataType::from_fields([
+        let loose = StructureType::from_fields([
             DataType::utf8().required_field("id"),
             DataType::utf8().nullable_field("symbol"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("trades");
         let incoming = RecordBatch::try_new(
@@ -2137,7 +2140,7 @@ mod records {
         let mut handle = handle();
         avro::write_container(
             &mut handle,
-            &yggdryl::text::json::from_utf8(
+            &yggdryl::json::from_utf8(
                 r#"{"type":"record","name":"row","fields":[
                     {"name":"v","type":["null","long","string"]}
                 ]}"#,
@@ -2160,7 +2163,7 @@ mod records {
         let mut handle = handle();
         avro::write_container(
             &mut handle,
-            &yggdryl::text::json::from_utf8(
+            &yggdryl::json::from_utf8(
                 r#"{"type":"record","name":"row","fields":[
                     {"name":"gap","type":["null"]},
                     {"name":"v","type":["long"]}
@@ -2169,8 +2172,8 @@ mod records {
             .unwrap(),
             &[],
             &[
-                yggdryl::text::json::from_utf8(r#"{"gap":null,"v":5}"#).unwrap(),
-                yggdryl::text::json::from_utf8(r#"{"gap":null,"v":6}"#).unwrap(),
+                yggdryl::json::from_utf8(r#"{"gap":null,"v":5}"#).unwrap(),
+                yggdryl::json::from_utf8(r#"{"gap":null,"v":6}"#).unwrap(),
             ],
         )
         .unwrap();
@@ -2193,10 +2196,11 @@ mod records {
         // declared type is already the null the wrap would add.
         let schema = Field::new(
             "row",
-            DataType::from_fields([
+            StructureType::from_fields([
                 DataType::Int64.required_field("id"),
                 DataType::Null.nullable_field("gap"),
             ])
+            .map(DataType::from)
             .unwrap(),
             false,
         );
@@ -2230,9 +2234,10 @@ mod records {
         // cannot be spelled.
         let schema = Field::new(
             "row",
-            DataType::from_fields([
-                DataType::Interval(yggdryl::TimeUnit::MonthDayNano).required_field("span")
-            ])
+            StructureType::from_fields([DataType::interval(yggdryl::TimeUnit::MonthDayNano)
+                .unwrap()
+                .required_field("span")])
+            .map(DataType::from)
             .unwrap(),
             false,
         );
@@ -2281,15 +2286,16 @@ mod records {
     fn logical_columns_round_trip_columnar() {
         let schema = Field::new(
             "row",
-            DataType::from_fields([
-                DataType::Date32.required_field("day"),
-                DataType::DateTime64 {
+            StructureType::from_fields([
+                DataType::date32().required_field("day"),
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: yggdryl::TimeUnit::Microsecond,
                     timezone: yggdryl::Timezone::UTC,
-                }
+                })
                 .nullable_field("at"),
                 DataType::decimal(10, 2).unwrap().required_field("cost"),
             ])
+            .map(DataType::from)
             .unwrap(),
             false,
         );
@@ -2353,11 +2359,11 @@ mod records {
 mod matrix {
     use yggdryl::Scalar;
     use yggdryl::TimeUnit;
-    use yggdryl::media::avro;
+    use yggdryl::avro;
 
     /// Round-trip rows through a container and hand them back.
     fn round_trip(schema: &str, rows: &[Scalar]) -> Vec<Scalar> {
-        let schema = yggdryl::text::json::from_utf8(schema).unwrap();
+        let schema = yggdryl::json::from_utf8(schema).unwrap();
         let mut handle = super::buffer();
         avro::write_container(&mut handle, &schema, &[], rows).unwrap();
         avro::read_container(&handle).unwrap().rows
@@ -2395,7 +2401,7 @@ mod matrix {
                             ]}}}}
                 ]}}}
         ]}"#;
-        let row = yggdryl::text::json::from_utf8(
+        let row = yggdryl::json::from_utf8(
             r#"{"outer":[{"by_name":{"legs":[{"flag":true},{"flag":false}],"none":[]}}]}"#,
         )
         .unwrap();
@@ -2423,8 +2429,8 @@ mod matrix {
                 {"type":"record","name":"point","fields":[{"name":"x","type":"long"}]}
             ]}
         ]}"#;
-        let some = yggdryl::text::json::from_utf8(r#"{"v":{"x":9}}"#).unwrap();
-        let none = yggdryl::text::json::from_utf8(r#"{"v":null}"#).unwrap();
+        let some = yggdryl::json::from_utf8(r#"{"v":{"x":9}}"#).unwrap();
+        let none = yggdryl::json::from_utf8(r#"{"v":null}"#).unwrap();
         let rows = round_trip(schema, &[some.clone(), none.clone()]);
         assert_eq!(rows, [some, none]);
     }
@@ -2468,7 +2474,7 @@ mod matrix {
     fn trailing_bytes_after_the_declared_rows_are_an_error() {
         // A block declaring one null row but carrying a stray byte.
         let handle = super::handmade_container("\"null\"", "null", &[(1, vec![0x2A])]);
-        let message = yggdryl::media::avro::read_container(&handle)
+        let message = yggdryl::avro::read_container(&handle)
             .unwrap_err()
             .to_string();
         assert!(message.contains("end after 1 declared rows"), "{message}");
@@ -2478,7 +2484,7 @@ mod matrix {
 mod snapshots {
     use yggdryl::IOBase;
     use yggdryl::Scalar;
-    use yggdryl::media::avro;
+    use yggdryl::avro;
 
     /// The byte snapshot of one fixed schema and data pair.
     ///
@@ -2488,7 +2494,7 @@ mod snapshots {
     /// only for a deliberate format change, never to quiet the test.
     #[test]
     fn a_fixed_container_encodes_to_exactly_these_bytes() {
-        let schema = yggdryl::text::json::from_utf8(
+        let schema = yggdryl::json::from_utf8(
             r#"{"type":"record","name":"snap","fields":[
                 {"name":"id","type":"long"},
                 {"name":"tag","type":"string"}
@@ -2496,8 +2502,8 @@ mod snapshots {
         )
         .unwrap();
         let rows = [
-            yggdryl::text::json::from_utf8(r#"{"id":1,"tag":"a"}"#).unwrap(),
-            yggdryl::text::json::from_utf8(r#"{"id":-2,"tag":"bc"}"#).unwrap(),
+            yggdryl::json::from_utf8(r#"{"id":1,"tag":"a"}"#).unwrap(),
+            yggdryl::json::from_utf8(r#"{"id":-2,"tag":"bc"}"#).unwrap(),
         ];
         let mut handle = super::buffer();
         avro::write_container(&mut handle, &schema, &[("k", "v")], &rows).unwrap();
@@ -2547,7 +2553,7 @@ mod fuzz_lite {
 
     use yggdryl::IOBase;
     use yggdryl::Limits;
-    use yggdryl::media::avro;
+    use yggdryl::avro;
 
     /// A deterministic pseudo-random byte source.
     struct Lcg(u64);
@@ -2580,7 +2586,7 @@ mod fuzz_lite {
     #[test]
     fn mutated_containers_never_panic() {
         let schema = super::manifest_shaped_schema();
-        let rows = [yggdryl::text::json::from_utf8(
+        let rows = [yggdryl::json::from_utf8(
             r#"{"code":-7,"name":"AAPL","score":1.5,"raw":null,"tags":[1,2,3],
                 "nested":{"flag":true}}"#,
         )
@@ -2649,7 +2655,9 @@ mod fuzz_lite {
 }
 
 mod limits {
+
     use std::sync::Arc;
+    use yggdryl::StructureType;
 
     use arrow_array::RecordBatchReader;
 
@@ -2660,7 +2668,8 @@ mod limits {
 
     /// A struct field is the schema of the batches it describes.
     fn schema() -> Field {
-        DataType::from_fields([DataType::Int64.required_field("id")])
+        StructureType::from_fields([DataType::Int64.required_field("id")])
+            .map(DataType::from)
             .unwrap()
             .required_field("row")
     }

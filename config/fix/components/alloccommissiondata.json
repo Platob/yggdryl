@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionamount",
-          "fix:tag": "2654"
+          "FIX:field": "alloccommissionamount",
+          "FIX:tag": "2654"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionamounttype",
-          "fix:tag": "2655"
+          "FIX:field": "alloccommissionamounttype",
+          "FIX:tag": "2655"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionamountsubtype",
-          "fix:tag": "2726"
+          "FIX:field": "alloccommissionamountsubtype",
+          "FIX:tag": "2726"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionbasis",
-          "fix:tag": "2656"
+          "FIX:field": "alloccommissionbasis",
+          "FIX:tag": "2656"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissioncurrency",
-          "fix:tag": "2657"
+          "FIX:field": "alloccommissioncurrency",
+          "FIX:tag": "2657"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissioncurrencycodesource",
-          "fix:tag": "2925"
+          "FIX:field": "alloccommissioncurrencycodesource",
+          "FIX:tag": "2925"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionunitofmeasure",
-          "fix:tag": "2658"
+          "FIX:field": "alloccommissionunitofmeasure",
+          "FIX:tag": "2658"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionunitofmeasurecurrency",
-          "fix:tag": "2659"
+          "FIX:field": "alloccommissionunitofmeasurecurrency",
+          "FIX:tag": "2659"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionunitofmeasurecurrencycodesource",
-          "fix:tag": "2926"
+          "FIX:field": "alloccommissionunitofmeasurecurrencycodesource",
+          "FIX:tag": "2926"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionrate",
-          "fix:tag": "2660"
+          "FIX:field": "alloccommissionrate",
+          "FIX:tag": "2660"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionsharedindicator",
-          "fix:tag": "2661"
+          "FIX:field": "alloccommissionsharedindicator",
+          "FIX:tag": "2661"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionamountshared",
-          "fix:tag": "2662"
+          "FIX:field": "alloccommissionamountshared",
+          "FIX:tag": "2662"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissionlegrefid",
-          "fix:tag": "2663"
+          "FIX:field": "alloccommissionlegrefid",
+          "FIX:tag": "2663"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloccommissiondesc",
-          "fix:tag": "2664"
+          "FIX:field": "alloccommissiondesc",
+          "FIX:tag": "2664"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedalloccommissiondesclen",
-          "fix:tag": "2665"
+          "FIX:field": "encodedalloccommissiondesclen",
+          "FIX:tag": "2665"
         }
       },
       {
@@ -175,15 +175,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedalloccommissiondesc",
-          "fix:tag": "2666"
+          "FIX:field": "encodedalloccommissiondesc",
+          "FIX:tag": "2666"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "AllocCommissionData",
-    "fix:tag": "382029"
+    "FIX:tag": "382029",
+    "display": "AllocCommissionData"
   }
 }

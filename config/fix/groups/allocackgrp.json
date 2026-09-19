@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "allocack"
+        "FIX:component": "allocack"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "allocack",
+    "FIX:counter": "78",
+    "FIX:tag": "698590",
     "description": "Indicates number of allocation groups to follow.",
-    "display": "AllocAckGrp",
-    "fix:component": "allocack",
-    "fix:counter": "78",
-    "fix:tag": "698590"
+    "display": "AllocAckGrp"
   }
 }

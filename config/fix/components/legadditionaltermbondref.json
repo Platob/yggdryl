@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbondsecurityid",
-          "fix:tag": "41317"
+          "FIX:field": "legadditionaltermbondsecurityid",
+          "FIX:tag": "41317"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbondsecurityidsource",
-          "fix:tag": "41318"
+          "FIX:field": "legadditionaltermbondsecurityidsource",
+          "FIX:tag": "41318"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbonddesc",
-          "fix:tag": "41319"
+          "FIX:field": "legadditionaltermbonddesc",
+          "FIX:tag": "41319"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegadditionaltermbonddesclen",
-          "fix:tag": "41320"
+          "FIX:field": "encodedlegadditionaltermbonddesclen",
+          "FIX:tag": "41320"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegadditionaltermbonddesc",
-          "fix:tag": "41321"
+          "FIX:field": "encodedlegadditionaltermbonddesc",
+          "FIX:tag": "41321"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbondcurrency",
-          "fix:tag": "41322"
+          "FIX:field": "legadditionaltermbondcurrency",
+          "FIX:tag": "41322"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbondissuer",
-          "fix:tag": "41323"
+          "FIX:field": "legadditionaltermbondissuer",
+          "FIX:tag": "41323"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegadditionaltermbondissuerlen",
-          "fix:tag": "41324"
+          "FIX:field": "encodedlegadditionaltermbondissuerlen",
+          "FIX:tag": "41324"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegadditionaltermbondissuer",
-          "fix:tag": "41325"
+          "FIX:field": "encodedlegadditionaltermbondissuer",
+          "FIX:tag": "41325"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbondseniority",
-          "fix:tag": "41326"
+          "FIX:field": "legadditionaltermbondseniority",
+          "FIX:tag": "41326"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbondcoupontype",
-          "fix:tag": "41327"
+          "FIX:field": "legadditionaltermbondcoupontype",
+          "FIX:tag": "41327"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbondcouponrate",
-          "fix:tag": "41328"
+          "FIX:field": "legadditionaltermbondcouponrate",
+          "FIX:tag": "41328"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbondmaturitydate",
-          "fix:tag": "41329"
+          "FIX:field": "legadditionaltermbondmaturitydate",
+          "FIX:tag": "41329"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbondparvalue",
-          "fix:tag": "41330"
+          "FIX:field": "legadditionaltermbondparvalue",
+          "FIX:tag": "41330"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbondcurrenttotalissuedamount",
-          "fix:tag": "41331"
+          "FIX:field": "legadditionaltermbondcurrenttotalissuedamount",
+          "FIX:tag": "41331"
         }
       },
       {
@@ -175,8 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbondcouponfrequencyperiod",
-          "fix:tag": "41332"
+          "FIX:field": "legadditionaltermbondcouponfrequencyperiod",
+          "FIX:tag": "41332"
         }
       },
       {
@@ -186,8 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbondcouponfrequencyunit",
-          "fix:tag": "41333"
+          "FIX:field": "legadditionaltermbondcouponfrequencyunit",
+          "FIX:tag": "41333"
         }
       },
       {
@@ -197,15 +197,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legadditionaltermbonddaycount",
-          "fix:tag": "41334"
+          "FIX:field": "legadditionaltermbonddaycount",
+          "FIX:tag": "41334"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegAdditionalTermBondRef",
-    "fix:tag": "269960"
+    "FIX:tag": "269960",
+    "display": "LegAdditionalTermBondRef"
   }
 }

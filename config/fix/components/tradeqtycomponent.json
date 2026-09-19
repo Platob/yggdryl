@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeqtytype",
-          "fix:tag": "1842"
+          "FIX:field": "tradeqtytype",
+          "FIX:tag": "1842"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeqty",
-          "fix:tag": "1843"
+          "FIX:field": "tradeqty",
+          "FIX:tag": "1843"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TradeQty",
-    "fix:tag": "934743"
+    "FIX:tag": "934743",
+    "display": "TradeQty"
   }
 }

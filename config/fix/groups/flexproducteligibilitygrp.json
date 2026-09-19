@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "flexproducteligibility"
+        "FIX:component": "flexproducteligibility"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "flexproducteligibility",
+    "FIX:counter": "2560",
+    "FIX:tag": "521462",
     "description": "Required if NoFlexProductEligibilities(2560) > 0.",
-    "display": "FlexProductEligibilityGrp",
-    "fix:component": "flexproducteligibility",
-    "fix:counter": "2560",
-    "fix:tag": "521462"
+    "display": "FlexProductEligibilityGrp"
   }
 }

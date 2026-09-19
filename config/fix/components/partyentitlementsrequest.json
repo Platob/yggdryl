@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementrequestid",
-          "fix:tag": "1770"
+          "FIX:field": "entitlementrequestid",
+          "FIX:tag": "1770"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "subscriptionrequesttype",
-          "fix:tag": "263"
+          "FIX:field": "subscriptionrequesttype",
+          "FIX:tag": "263"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norequestingpartyids",
-          "fix:tag": "1657"
+          "FIX:field": "norequestingpartyids",
+          "FIX:tag": "1657"
         }
       },
       {
@@ -53,7 +53,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "requestingpartygrp"
+          "FIX:group": "requestingpartygrp"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -74,7 +74,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -84,8 +84,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norequestedpartyroles",
-          "fix:tag": "1508"
+          "FIX:field": "norequestedpartyroles",
+          "FIX:tag": "1508"
         }
       },
       {
@@ -95,7 +95,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "requestedpartyrolegrp"
+          "FIX:group": "requestedpartyrolegrp"
         }
       },
       {
@@ -105,8 +105,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementstatus",
-          "fix:tag": "1883"
+          "FIX:field": "entitlementstatus",
+          "FIX:tag": "1883"
         }
       },
       {
@@ -116,8 +116,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noentitlementtypes",
-          "fix:tag": "2345"
+          "FIX:field": "noentitlementtypes",
+          "FIX:tag": "2345"
         }
       },
       {
@@ -127,7 +127,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "entitlementtypegrp"
+          "FIX:group": "entitlementtypegrp"
         }
       },
       {
@@ -137,8 +137,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementplatform",
-          "fix:tag": "1784"
+          "FIX:field": "entitlementplatform",
+          "FIX:tag": "1784"
         }
       },
       {
@@ -148,8 +148,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noinstrumentscopes",
-          "fix:tag": "1656"
+          "FIX:field": "noinstrumentscopes",
+          "FIX:tag": "1656"
         }
       },
       {
@@ -159,7 +159,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrumentscopegrp"
+          "FIX:group": "instrumentscopegrp"
         }
       },
       {
@@ -169,8 +169,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketsegments",
-          "fix:tag": "1310"
+          "FIX:field": "nomarketsegments",
+          "FIX:tag": "1310"
         }
       },
       {
@@ -180,7 +180,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "marketsegmentscopegrp"
+          "FIX:group": "marketsegmentscopegrp"
         }
       },
       {
@@ -190,8 +190,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -201,8 +201,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -212,8 +212,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -223,16 +223,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "CU",
+    "FIX:tag": "1016002",
     "description": "MsgType = CU",
-    "display": "PartyEntitlementsRequest",
-    "fix:msgtype": "CU",
-    "fix:tag": "1016002"
+    "display": "PartyEntitlementsRequest"
   }
 }

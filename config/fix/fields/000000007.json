@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "700",
       "description": "Indicates a trade that reverses a previous trade.",
-      "display": "ReversalIndicator",
-      "fix:tag": "700"
+      "display": "ReversalIndicator"
     }
   },
   {
@@ -19,9 +19,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "701",
       "description": "Include as needed to clarify yield irregularities associated with date, e.g. when it falls on a non-business day.",
-      "display": "YieldCalcDate",
-      "fix:tag": "701"
+      "display": "YieldCalcDate"
     }
   },
   {
@@ -31,9 +31,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "702",
       "description": "Number of position entries.",
-      "display": "NoPositions",
-      "fix:tag": "702"
+      "display": "NoPositions"
     }
   },
   {
@@ -43,9 +43,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to identify the type of quantity that is being returned.",
-      "display": "PosType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "ALC",
           "name": "AllocationTradeQty",
@@ -232,7 +230,9 @@
           "doc": "Loan or borrowed quantity"
         }
       ],
-      "fix:tag": "703"
+      "FIX:tag": "703",
+      "description": "Used to identify the type of quantity that is being returned.",
+      "display": "PosType"
     }
   },
   {
@@ -244,9 +244,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "704",
       "description": "Long quantity.",
-      "display": "LongQty",
-      "fix:tag": "704"
+      "display": "LongQty"
     }
   },
   {
@@ -258,9 +258,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "705",
       "description": "Short quantity.",
-      "display": "ShortQty",
-      "fix:tag": "705"
+      "display": "ShortQty"
     }
   },
   {
@@ -270,9 +270,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of this position.",
-      "display": "PosQtyStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Submitted",
@@ -289,7 +287,9 @@
           "doc": "Rejected"
         }
       ],
-      "fix:tag": "706"
+      "FIX:tag": "706",
+      "description": "Status of this position.",
+      "display": "PosQtyStatus"
     }
   },
   {
@@ -299,9 +299,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of Position amount",
-      "display": "PosAmtType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "CASH",
           "name": "CashAmount",
@@ -478,7 +476,9 @@
           "doc": "Loan value"
         }
       ],
-      "fix:tag": "707"
+      "FIX:tag": "707",
+      "description": "Type of Position amount",
+      "display": "PosAmtType"
     }
   },
   {
@@ -490,9 +490,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "708",
       "description": "Position amount",
-      "display": "PosAmt",
-      "fix:tag": "708"
+      "display": "PosAmt"
     }
   },
   {
@@ -502,9 +502,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of position transaction.",
-      "display": "PosTransType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Exercise",
@@ -586,7 +584,9 @@
           "doc": "Reopen"
         }
       ],
-      "fix:tag": "709"
+      "FIX:tag": "709",
+      "description": "Identifies the type of position transaction.",
+      "display": "PosTransType"
     }
   },
   {
@@ -596,9 +596,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "710",
       "description": "Unique identifier for the position maintenance request as assigned by the submitter",
-      "display": "PosReqID",
-      "fix:tag": "710"
+      "display": "PosReqID"
     }
   },
   {
@@ -608,9 +608,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "711",
       "description": "Number of underlying legs that make up the security.",
-      "display": "NoUnderlyings",
-      "fix:tag": "711"
+      "display": "NoUnderlyings"
     }
   },
   {
@@ -620,9 +620,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Maintenance Action to be performed.",
-      "display": "PosMaintAction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "New",
@@ -644,7 +642,9 @@
           "doc": "Reverse"
         }
       ],
-      "fix:tag": "712"
+      "FIX:tag": "712",
+      "description": "Maintenance Action to be performed.",
+      "display": "PosMaintAction"
     }
   },
   {
@@ -654,9 +654,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "713",
       "description": "Reference to the PosReqID (710) of a previous maintenance request that is being replaced or canceled.",
-      "display": "OrigPosReqRefID",
-      "fix:tag": "713"
+      "display": "OrigPosReqRefID"
     }
   },
   {
@@ -666,9 +666,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "714",
       "description": "Reference to a PosMaintRptID (721) from a previous Position Maintenance Report that is being replaced or canceled.",
-      "display": "PosMaintRptRefID",
-      "fix:tag": "714"
+      "display": "PosMaintRptRefID"
     }
   },
   {
@@ -679,9 +679,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "715",
       "description": "The business date for which the trade is expected to be cleared.",
-      "display": "ClearingBusinessDate",
-      "fix:tag": "715"
+      "display": "ClearingBusinessDate"
     }
   },
   {
@@ -691,9 +691,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies a specific settlement session",
-      "display": "SettlSessID",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "ITD",
           "name": "Intraday",
@@ -715,7 +713,9 @@
           "doc": "End Of Day"
         }
       ],
-      "fix:tag": "716"
+      "FIX:tag": "716",
+      "description": "Identifies a specific settlement session",
+      "display": "SettlSessID"
     }
   },
   {
@@ -725,9 +725,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "717",
       "description": "SubID value associated with SettlSessID(716)",
-      "display": "SettlSessSubID",
-      "fix:tag": "717"
+      "display": "SettlSessSubID"
     }
   },
   {
@@ -737,9 +737,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of adjustment to be applied. Used for Position Change Submission (PCS), Position Adjustment (PAJ), and Customer Gross Margin (CGM).",
-      "display": "AdjustmentType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ProcessRequestAsMarginDisposition",
@@ -766,7 +764,9 @@
           "doc": "Customer specific position"
         }
       ],
-      "fix:tag": "718"
+      "FIX:tag": "718",
+      "description": "Type of adjustment to be applied. Used for Position Change Submission (PCS), Position Adjustment (PAJ), and Customer Gross Margin (CGM).",
+      "display": "AdjustmentType"
     }
   },
   {
@@ -776,9 +776,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "719",
       "description": "Used to indicate when a contrary instruction for exercise or abandonment is being submitted",
-      "display": "ContraryInstructionIndicator",
-      "fix:tag": "719"
+      "display": "ContraryInstructionIndicator"
     }
   },
   {
@@ -788,9 +788,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "720",
       "description": "Indicates if requesting a rollover of prior day's spread submissions.",
-      "display": "PriorSpreadIndicator",
-      "fix:tag": "720"
+      "display": "PriorSpreadIndicator"
     }
   },
   {
@@ -800,9 +800,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "721",
       "description": "Unique identifier for this position report",
-      "display": "PosMaintRptID",
-      "fix:tag": "721"
+      "display": "PosMaintRptID"
     }
   },
   {
@@ -812,9 +812,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of Position Maintenance Request",
-      "display": "PosMaintStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Accepted",
@@ -841,7 +839,9 @@
           "doc": "Completed With Warnings"
         }
       ],
-      "fix:tag": "722"
+      "FIX:tag": "722",
+      "description": "Status of Position Maintenance Request",
+      "display": "PosMaintStatus"
     }
   },
   {
@@ -851,9 +851,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Result of Position Maintenance Request.",
-      "display": "PosMaintResult",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "SuccessfulCompletion",
@@ -870,7 +868,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "723"
+      "FIX:tag": "723",
+      "description": "Result of Position Maintenance Request.",
+      "display": "PosMaintResult"
     }
   },
   {
@@ -880,9 +880,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to specify the type of position request being made.",
-      "display": "PosReqType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Positions",
@@ -939,7 +937,9 @@
           "doc": "Position Limit Reporting Submission"
         }
       ],
-      "fix:tag": "724"
+      "FIX:tag": "724",
+      "description": "Used to specify the type of position request being made.",
+      "display": "PosReqType"
     }
   },
   {
@@ -949,9 +949,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies how the response to the request should be transmitted.",
-      "display": "ResponseTransportType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Inband",
@@ -963,7 +961,9 @@
           "doc": "Out of band"
         }
       ],
-      "fix:tag": "725"
+      "FIX:tag": "725",
+      "description": "Identifies how the response to the request should be transmitted.",
+      "display": "ResponseTransportType"
     }
   },
   {
@@ -973,9 +973,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "726",
       "description": "URI (Uniform Resource Identifier) for details or other pre-arranged value. Used in conjunction with ResponseTransportType (725) value of Out-of-Band to identify the out-of-band destination. See Appendix 6-B FIX Fields Based Upon Other Standards",
-      "display": "ResponseDestination",
-      "fix:tag": "726"
+      "display": "ResponseDestination"
     }
   },
   {
@@ -985,10 +985,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "5.0.2",
+      "FIX:tag": "727",
       "description": "Total number of Position Reports being returned.",
-      "display": "TotalNumPosReports",
-      "fix:deprecated": "5.0.2",
-      "fix:tag": "727"
+      "display": "TotalNumPosReports"
     }
   },
   {
@@ -998,9 +998,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Result of Request for Positions.",
-      "display": "PosReqResult",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ValidRequest",
@@ -1032,7 +1030,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "728"
+      "FIX:tag": "728",
+      "description": "Result of Request for Positions.",
+      "display": "PosReqResult"
     }
   },
   {
@@ -1042,9 +1042,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of Request for Positions",
-      "display": "PosReqStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Completed",
@@ -1061,7 +1059,9 @@
           "doc": "Rejected"
         }
       ],
-      "fix:tag": "729"
+      "FIX:tag": "729",
+      "description": "Status of Request for Positions",
+      "display": "PosReqStatus"
     }
   },
   {
@@ -1073,9 +1073,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "730",
       "description": "Settlement price",
-      "display": "SettlPrice",
-      "fix:tag": "730"
+      "display": "SettlPrice"
     }
   },
   {
@@ -1085,9 +1085,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of settlement price",
-      "display": "SettlPriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Final",
@@ -1099,7 +1097,9 @@
           "doc": "Theoretical"
         }
       ],
-      "fix:tag": "731"
+      "FIX:tag": "731",
+      "description": "Type of settlement price",
+      "display": "SettlPriceType"
     }
   },
   {
@@ -1111,9 +1111,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "732",
       "description": "Underlying security's SettlPrice.",
-      "display": "UnderlyingSettlPrice",
-      "fix:tag": "732"
+      "display": "UnderlyingSettlPrice"
     }
   },
   {
@@ -1123,9 +1123,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Underlying security's SettlPriceType.",
-      "display": "UnderlyingSettlPriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Final",
@@ -1137,7 +1135,9 @@
           "doc": "Theoretical"
         }
       ],
-      "fix:tag": "733"
+      "FIX:tag": "733",
+      "description": "Underlying security's SettlPriceType.",
+      "display": "UnderlyingSettlPriceType"
     }
   },
   {
@@ -1149,9 +1149,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "734",
       "description": "Previous settlement price",
-      "display": "PriorSettlPrice",
-      "fix:tag": "734"
+      "display": "PriorSettlPrice"
     }
   },
   {
@@ -1161,9 +1161,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "735",
       "description": "Number of repeating groups of QuoteQualifiers (695).",
-      "display": "NoQuoteQualifiers",
-      "fix:tag": "735"
+      "display": "NoQuoteQualifiers"
     }
   },
   {
@@ -1173,9 +1173,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "736",
       "description": "Currency code of settlement denomination for a specific AllocAccount (79).",
-      "display": "AllocSettlCurrency",
-      "fix:tag": "736"
+      "display": "AllocSettlCurrency"
     }
   },
   {
@@ -1187,9 +1187,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "737",
       "description": "Total amount due expressed in settlement currency (includes the effect of the forex transaction) for a specific AllocAccount (79).",
-      "display": "AllocSettlCurrAmt",
-      "fix:tag": "737"
+      "display": "AllocSettlCurrAmt"
     }
   },
   {
@@ -1201,9 +1201,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "738",
       "description": "Amount of interest (i.e. lump-sum) at maturity.",
-      "display": "InterestAtMaturity",
-      "fix:tag": "738"
+      "display": "InterestAtMaturity"
     }
   },
   {
@@ -1214,9 +1214,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "739",
       "description": "The effective date of a new securities issue determined by its underwriters. Often but not always the same as the Issue Date and the Interest Accrual Date",
-      "display": "LegDatedDate",
-      "fix:tag": "739"
+      "display": "LegDatedDate"
     }
   },
   {
@@ -1226,9 +1226,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "740",
       "description": "For Fixed Income, identifies MBS / ABS pool for a specific leg of a multi-leg instrument.",
-      "display": "LegPool",
-      "fix:tag": "740"
+      "display": "LegPool"
     }
   },
   {
@@ -1240,9 +1240,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "741",
       "description": "Amount of interest (i.e. lump-sum) at maturity at the account-level.",
-      "display": "AllocInterestAtMaturity",
-      "fix:tag": "741"
+      "display": "AllocInterestAtMaturity"
     }
   },
   {
@@ -1254,9 +1254,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "742",
       "description": "Amount of Accrued Interest for convertible bonds and fixed income at the allocation-level.",
-      "display": "AllocAccruedInterestAmt",
-      "fix:tag": "742"
+      "display": "AllocAccruedInterestAmt"
     }
   },
   {
@@ -1267,9 +1267,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "743",
       "description": "Date of delivery.",
-      "display": "DeliveryDate",
-      "fix:tag": "743"
+      "display": "DeliveryDate"
     }
   },
   {
@@ -1279,9 +1279,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Method by which short positions are assigned to an exercise notice during exercise and assignment processing",
-      "display": "AssignmentMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "P",
           "name": "ProRata",
@@ -1293,7 +1291,9 @@
           "doc": "Random"
         }
       ],
-      "fix:tag": "744"
+      "FIX:tag": "744",
+      "description": "Method by which short positions are assigned to an exercise notice during exercise and assignment processing",
+      "display": "AssignmentMethod"
     }
   },
   {
@@ -1305,9 +1305,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "745",
       "description": "Quantity Increment used in performing assignment.",
-      "display": "AssignmentUnit",
-      "fix:tag": "745"
+      "display": "AssignmentUnit"
     }
   },
   {
@@ -1319,9 +1319,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "746",
       "description": "Open interest that was eligible for assignment.",
-      "display": "OpenInterest",
-      "fix:tag": "746"
+      "display": "OpenInterest"
     }
   },
   {
@@ -1331,9 +1331,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Exercise Method used to in performing assignment.",
-      "display": "ExerciseMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "A",
           "name": "Automatic",
@@ -1345,7 +1343,9 @@
           "doc": "Manual"
         }
       ],
-      "fix:tag": "747"
+      "FIX:tag": "747",
+      "description": "Exercise Method used to in performing assignment.",
+      "display": "ExerciseMethod"
     }
   },
   {
@@ -1355,9 +1355,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "748",
       "description": "Total number of trade reports returned.",
-      "display": "TotNumTradeReports",
-      "fix:tag": "748"
+      "display": "TotNumTradeReports"
     }
   },
   {
@@ -1367,9 +1367,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Result of Trade Request",
-      "display": "TradeRequestResult",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Successful",
@@ -1416,7 +1414,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "749"
+      "FIX:tag": "749",
+      "description": "Result of Trade Request",
+      "display": "TradeRequestResult"
     }
   },
   {
@@ -1426,9 +1426,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of Trade Request.",
-      "display": "TradeRequestStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Accepted",
@@ -1445,7 +1443,9 @@
           "doc": "Rejected"
         }
       ],
-      "fix:tag": "750"
+      "FIX:tag": "750",
+      "description": "Status of Trade Request.",
+      "display": "TradeRequestStatus"
     }
   },
   {
@@ -1455,9 +1455,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason Trade Capture Request was rejected.",
-      "display": "TradeReportRejectReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Successful",
@@ -1507,7 +1505,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "751"
+      "FIX:tag": "751",
+      "description": "Reason Trade Capture Request was rejected.",
+      "display": "TradeReportRejectReason"
     }
   },
   {
@@ -1517,9 +1517,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to indicate if the side being reported on Trade Capture Report represents a leg of a multileg instrument or a single security.",
-      "display": "SideMultiLegReportingType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "SingleSecurity",
@@ -1536,7 +1534,9 @@
           "doc": "Multileg Security"
         }
       ],
-      "fix:tag": "752"
+      "FIX:tag": "752",
+      "description": "Used to indicate if the side being reported on Trade Capture Report represents a leg of a multileg instrument or a single security.",
+      "display": "SideMultiLegReportingType"
     }
   },
   {
@@ -1546,9 +1546,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "753",
       "description": "Number of position amount entries.",
-      "display": "NoPosAmt",
-      "fix:tag": "753"
+      "display": "NoPosAmt"
     }
   },
   {
@@ -1558,9 +1558,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "754",
       "description": "Identifies whether or not an allocation has been automatically accepted on behalf of the Carry Firm by the Clearing House.",
-      "display": "AutoAcceptIndicator",
-      "fix:tag": "754"
+      "display": "AutoAcceptIndicator"
     }
   },
   {
@@ -1570,9 +1570,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "755",
       "description": "Unique identifier for Allocation Report message.",
-      "display": "AllocReportID",
-      "fix:tag": "755"
+      "display": "AllocReportID"
     }
   },
   {
@@ -1582,9 +1582,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "756",
       "description": "Number of Nested2PartyID (757), Nested2PartyIDSource (758), and Nested2PartyRole (759) entries",
-      "display": "NoNested2PartyIDs",
-      "fix:tag": "756"
+      "display": "NoNested2PartyIDs"
     }
   },
   {
@@ -1594,9 +1594,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "757",
       "description": "PartyID value within a \"second instance\" Nested repeating group.",
-      "display": "Nested2PartyID",
-      "fix:tag": "757"
+      "display": "Nested2PartyID"
     }
   },
   {
@@ -1606,9 +1606,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "PartyIDSource value within a \"second instance\" Nested repeating group.",
-      "display": "Nested2PartyIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "KoreanInvestorID",
@@ -1796,7 +1794,9 @@
           "doc": "Korea Short Selling Registration Number"
         }
       ],
-      "fix:tag": "758"
+      "FIX:tag": "758",
+      "description": "PartyIDSource value within a \"second instance\" Nested repeating group.",
+      "display": "Nested2PartyIDSource"
     }
   },
   {
@@ -1806,9 +1806,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "PartyRole value within a \"second instance\" Nested repeating group.",
-      "display": "Nested2PartyRole",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ExecutingFirm",
@@ -2455,7 +2453,9 @@
           "doc": "Algorithm"
         }
       ],
-      "fix:tag": "759"
+      "FIX:tag": "759",
+      "description": "PartyRole value within a \"second instance\" Nested repeating group.",
+      "display": "Nested2PartyRole"
     }
   },
   {
@@ -2465,9 +2465,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "760",
       "description": "PartySubID value within a \"second instance\" Nested repeating group.",
-      "display": "Nested2PartySubID",
-      "fix:tag": "760"
+      "display": "Nested2PartySubID"
     }
   },
   {
@@ -2477,9 +2477,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies class or source of the BenchmarkSecurityID(699) value.",
-      "display": "BenchmarkSecurityIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -2646,7 +2644,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "761"
+      "FIX:tag": "761",
+      "description": "Identifies class or source of the BenchmarkSecurityID(699) value.",
+      "display": "BenchmarkSecurityIDSource"
     }
   },
   {
@@ -2656,9 +2656,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "762",
       "description": "Sub-type qualification/identification of the SecurityType. As an example for SecurityType(167)=\"REPO\", the SecuritySubType=\"General Collateral\" can be used to further specify the type of REPO.",
-      "display": "SecuritySubType",
-      "fix:tag": "762"
+      "display": "SecuritySubType"
     }
   },
   {
@@ -2668,9 +2668,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "763",
       "description": "Underlying security's SecuritySubType.",
-      "display": "UnderlyingSecuritySubType",
-      "fix:tag": "763"
+      "display": "UnderlyingSecuritySubType"
     }
   },
   {
@@ -2680,9 +2680,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "764",
       "description": "SecuritySubType of the leg instrument.",
-      "display": "LegSecuritySubType",
-      "fix:tag": "764"
+      "display": "LegSecuritySubType"
     }
   },
   {
@@ -2692,9 +2692,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "765",
       "description": "The maximum percentage that execution of one side of a program trade can exceed execution of the other.",
-      "display": "AllowableOneSidednessPct",
-      "fix:tag": "765"
+      "display": "AllowableOneSidednessPct"
     }
   },
   {
@@ -2706,9 +2706,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "766",
       "description": "The maximum amount that execution of one side of a program trade can exceed execution of the other.",
-      "display": "AllowableOneSidednessValue",
-      "fix:tag": "766"
+      "display": "AllowableOneSidednessValue"
     }
   },
   {
@@ -2718,9 +2718,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "767",
       "description": "The currency that AllowableOneSidednessValue (766) is expressed in if AllowableOneSidednessValue is used.",
-      "display": "AllowableOneSidednessCurr",
-      "fix:tag": "767"
+      "display": "AllowableOneSidednessCurr"
     }
   },
   {
@@ -2730,9 +2730,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "768",
       "description": "Number of timestamp entries.",
-      "display": "NoTrdRegTimestamps",
-      "fix:tag": "768"
+      "display": "NoTrdRegTimestamps"
     }
   },
   {
@@ -2744,9 +2744,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "769",
       "description": "Traded / Regulatory timestamp value.",
-      "display": "TrdRegTimestamp",
-      "fix:tag": "769"
+      "display": "TrdRegTimestamp"
     }
   },
   {
@@ -2756,9 +2756,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Trading / Regulatory timestamp type.",
-      "display": "TrdRegTimestampType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ExecutionTime",
@@ -2943,7 +2941,9 @@
           "doc": "Update time"
         }
       ],
-      "fix:tag": "770"
+      "FIX:tag": "770",
+      "description": "Trading / Regulatory timestamp type.",
+      "display": "TrdRegTimestampType"
     }
   },
   {
@@ -2953,9 +2953,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "771",
       "description": "Text which identifies the \"origin\" (i.e. system which was used to generate the timestamp) for the Traded / Regulatory timestamp value.",
-      "display": "TrdRegTimestampOrigin",
-      "fix:tag": "771"
+      "display": "TrdRegTimestampOrigin"
     }
   },
   {
@@ -2965,9 +2965,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "772",
       "description": "Reference identifier to be used with ConfirmTransType (666) = Replace or Cancel",
-      "display": "ConfirmRefID",
-      "fix:tag": "772"
+      "display": "ConfirmRefID"
     }
   },
   {
@@ -2977,9 +2977,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of Confirmation message being sent.",
-      "display": "ConfirmType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Status",
@@ -2996,7 +2994,9 @@
           "doc": "Confirmation Request Rejected (reason can be stated in Text (58) field)"
         }
       ],
-      "fix:tag": "773"
+      "FIX:tag": "773",
+      "description": "Identifies the type of Confirmation message being sent.",
+      "display": "ConfirmType"
     }
   },
   {
@@ -3006,9 +3006,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the reason for rejecting a Confirmation.",
-      "display": "ConfirmRejReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "MismatchedAccount",
@@ -3110,7 +3108,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "774"
+      "FIX:tag": "774",
+      "description": "Identifies the reason for rejecting a Confirmation.",
+      "display": "ConfirmRejReason"
     }
   },
   {
@@ -3120,9 +3120,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Method for booking out this order. Used when notifying a broker that an order to be settled by that broker is to be booked out as an OTC derivative (e.g. CFD or similar).",
-      "display": "BookingType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "RegularBooking",
@@ -3139,7 +3137,9 @@
           "doc": "Total Return Swap"
         }
       ],
-      "fix:tag": "775"
+      "FIX:tag": "775",
+      "description": "Method for booking out this order. Used when notifying a broker that an order to be settled by that broker is to be booked out as an OTC derivative (e.g. CFD or similar).",
+      "display": "BookingType"
     }
   },
   {
@@ -3149,9 +3149,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identified reason for rejecting an individual AllocAccount (79) detail.",
-      "display": "IndividualAllocRejCode",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "UnknownAccount",
@@ -3303,7 +3301,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "776"
+      "FIX:tag": "776",
+      "description": "Identified reason for rejecting an individual AllocAccount (79) detail.",
+      "display": "IndividualAllocRejCode"
     }
   },
   {
@@ -3313,9 +3313,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "777",
       "description": "Unique identifier for Settlement Instruction message.",
-      "display": "SettlInstMsgID",
-      "fix:tag": "777"
+      "display": "SettlInstMsgID"
     }
   },
   {
@@ -3325,9 +3325,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "778",
       "description": "Number of settlement instructions within repeating group.",
-      "display": "NoSettlInst",
-      "fix:tag": "778"
+      "display": "NoSettlInst"
     }
   },
   {
@@ -3339,9 +3339,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "779",
       "description": "Timestamp of last update to data item (or creation if no updates made since creation).",
-      "display": "LastUpdateTime",
-      "fix:tag": "779"
+      "display": "LastUpdateTime"
     }
   },
   {
@@ -3351,9 +3351,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to indicate whether settlement instructions are provided on an allocation instruction message, and if not, how they are to be derived.",
-      "display": "AllocSettlInstType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "UseDefaultInstructions",
@@ -3380,7 +3378,9 @@
           "doc": "Phone for instructions"
         }
       ],
-      "fix:tag": "780"
+      "FIX:tag": "780",
+      "description": "Used to indicate whether settlement instructions are provided on an allocation instruction message, and if not, how they are to be derived.",
+      "display": "AllocSettlInstType"
     }
   },
   {
@@ -3390,9 +3390,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "781",
       "description": "Number of SettlPartyID (782), SettlPartyIDSource (783), and SettlPartyRole (784) entries",
-      "display": "NoSettlPartyIDs",
-      "fix:tag": "781"
+      "display": "NoSettlPartyIDs"
     }
   },
   {
@@ -3402,9 +3402,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "782",
       "description": "PartyID value within a settlement parties component. Nested repeating group.",
-      "display": "SettlPartyID",
-      "fix:tag": "782"
+      "display": "SettlPartyID"
     }
   },
   {
@@ -3414,9 +3414,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "PartyIDSource value within a settlement parties component.",
-      "display": "SettlPartyIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "KoreanInvestorID",
@@ -3604,7 +3602,9 @@
           "doc": "Korea Short Selling Registration Number"
         }
       ],
-      "fix:tag": "783"
+      "FIX:tag": "783",
+      "description": "PartyIDSource value within a settlement parties component.",
+      "display": "SettlPartyIDSource"
     }
   },
   {
@@ -3614,9 +3614,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "PartyRole value within a settlement parties component.",
-      "display": "SettlPartyRole",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ExecutingFirm",
@@ -4263,7 +4261,9 @@
           "doc": "Algorithm"
         }
       ],
-      "fix:tag": "784"
+      "FIX:tag": "784",
+      "description": "PartyRole value within a settlement parties component.",
+      "display": "SettlPartyRole"
     }
   },
   {
@@ -4273,9 +4273,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "785",
       "description": "PartySubID value within a settlement parties component.",
-      "display": "SettlPartySubID",
-      "fix:tag": "785"
+      "display": "SettlPartySubID"
     }
   },
   {
@@ -4285,9 +4285,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of SettlPartySubID (785) value.",
-      "display": "SettlPartySubIDType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Firm",
@@ -4734,7 +4732,9 @@
           "doc": "Certificate registration status"
         }
       ],
-      "fix:tag": "786"
+      "FIX:tag": "786",
+      "description": "Type of SettlPartySubID (785) value.",
+      "display": "SettlPartySubIDType"
     }
   },
   {
@@ -4744,9 +4744,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to indicate whether a delivery instruction is used for securities or cash settlement.",
-      "display": "DlvyInstType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "C",
           "name": "Cash",
@@ -4758,7 +4756,9 @@
           "doc": "Securities"
         }
       ],
-      "fix:tag": "787"
+      "FIX:tag": "787",
+      "description": "Used to indicate whether a delivery instruction is used for securities or cash settlement.",
+      "display": "DlvyInstType"
     }
   },
   {
@@ -4768,9 +4768,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of financing termination.",
-      "display": "TerminationType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Overnight",
@@ -4792,7 +4790,9 @@
           "doc": "Open"
         }
       ],
-      "fix:tag": "788"
+      "FIX:tag": "788",
+      "description": "Type of financing termination.",
+      "display": "TerminationType"
     }
   },
   {
@@ -4802,9 +4802,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "789",
       "description": "Next expected MsgSeqNum value to be received.",
-      "display": "NextExpectedMsgSeqNum",
-      "fix:tag": "789"
+      "display": "NextExpectedMsgSeqNum"
     }
   },
   {
@@ -4814,9 +4814,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "790",
       "description": "Can be used to uniquely identify a specific Order Status Request message.",
-      "display": "OrdStatusReqID",
-      "fix:tag": "790"
+      "display": "OrdStatusReqID"
     }
   },
   {
@@ -4826,9 +4826,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "791",
       "description": "Unique ID of settlement instruction request message",
-      "display": "SettlInstReqID",
-      "fix:tag": "791"
+      "display": "SettlInstReqID"
     }
   },
   {
@@ -4838,9 +4838,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies reason for rejection (of a settlement instruction request message).",
-      "display": "SettlInstReqRejCode",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "UnableToProcessRequest",
@@ -4862,7 +4860,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "792"
+      "FIX:tag": "792",
+      "description": "Identifies reason for rejection (of a settlement instruction request message).",
+      "display": "SettlInstReqRejCode"
     }
   },
   {
@@ -4872,9 +4872,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "793",
       "description": "Secondary allocation identifier. Unlike the AllocID (70), this can be shared across a number of allocation instruction or allocation report messages, thereby making it possible to pass an identifier for an original allocation message on multiple messages (e.g. from one party to a second to a third, across cancel and replace messages etc.).",
-      "display": "SecondaryAllocID",
-      "fix:tag": "793"
+      "display": "SecondaryAllocID"
     }
   },
   {
@@ -4884,9 +4884,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Describes the specific type or purpose of an Allocation Report message",
-      "display": "AllocReportType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "2",
           "name": "PreliminaryRequestToIntermediary",
@@ -4963,7 +4961,9 @@
           "doc": "Sub-allocation give-up"
         }
       ],
-      "fix:tag": "794"
+      "FIX:tag": "794",
+      "description": "Describes the specific type or purpose of an Allocation Report message",
+      "display": "AllocReportType"
     }
   },
   {
@@ -4973,9 +4973,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "795",
       "description": "Reference identifier to be used with AllocTransType (7) = Replace or Cancel",
-      "display": "AllocReportRefID",
-      "fix:tag": "795"
+      "display": "AllocReportRefID"
     }
   },
   {
@@ -4985,9 +4985,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason for cancelling or replacing an Allocation Instruction or Allocation Report message",
-      "display": "AllocCancReplaceReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "OriginalDetailsIncomplete",
@@ -5009,7 +5007,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "796"
+      "FIX:tag": "796",
+      "description": "Reason for cancelling or replacing an Allocation Instruction or Allocation Report message",
+      "display": "AllocCancReplaceReason"
     }
   },
   {
@@ -5019,9 +5019,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "797",
       "description": "Indicates whether or not this message is a drop copy of another message.",
-      "display": "CopyMsgIndicator",
-      "fix:tag": "797"
+      "display": "CopyMsgIndicator"
     }
   },
   {
@@ -5031,9 +5031,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of account associated with a confirmation or other trade-level message",
-      "display": "AllocAccountType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CarriedCustomerSide",
@@ -5070,7 +5068,9 @@
           "doc": "Joint back office account (JBO)"
         }
       ],
-      "fix:tag": "798"
+      "FIX:tag": "798",
+      "description": "Type of account associated with a confirmation or other trade-level message",
+      "display": "AllocAccountType"
     }
   },
   {
@@ -5082,9 +5082,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "799",
       "description": "Average price for a specific order",
-      "display": "OrderAvgPx",
-      "fix:tag": "799"
+      "display": "OrderAvgPx"
     }
   }
 ]

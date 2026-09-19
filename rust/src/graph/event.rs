@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use super::{Element, Event, MarketElement, MarketEvent};
-use crate::types::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, Side, State, Uuid};
+use crate::{Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol, Side, State, Uuid};
 
 /// The concrete market element: every fact [`Element`] and
 /// [`MarketElement`] name, held as one field each, with no instant of its
@@ -26,13 +26,13 @@ use crate::types::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, S
 ///
 /// ```
 /// use yggdryl::graph::{Element, Event, MarketElement, MarketElementData, MarketEventData};
-/// use yggdryl::types::{Decimal, Side};
+/// use yggdryl::{Decimal18, Side};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut element = MarketElementData::default();
 /// element.set_crosscode("O-100".to_owned());
 /// element.set_px("82.5".parse()?);
-/// element.set_qty(Decimal::from_int(1_000));
+/// element.set_qty(Decimal18::from_int(1_000));
 /// element.set_side(Side::read("Buy")?);
 /// element.finalize();
 /// assert_ne!(element.get_currhashcode(), 0);
@@ -60,9 +60,9 @@ pub struct MarketElementData {
     crosshashcode: u64,
     identifiers: BTreeMap<String, String>,
     parentuuids: Vec<Uuid>,
-    px: Decimal,
+    px: Decimal18,
     currency: Currency,
-    qty: Decimal,
+    qty: Decimal18,
     unit: String,
     side: Side,
     isincode: Option<Isin>,
@@ -71,23 +71,23 @@ pub struct MarketElementData {
     bloombergcode: Option<Bloomberg>,
     cficode: Option<Cfi>,
     miccode: Option<Mic>,
-    lastpx: Option<Decimal>,
-    lastqty: Option<Decimal>,
-    avgpx: Option<Decimal>,
-    cumqty: Option<Decimal>,
-    leavesqty: Option<Decimal>,
+    lastpx: Option<Decimal18>,
+    lastqty: Option<Decimal18>,
+    avgpx: Option<Decimal18>,
+    cumqty: Option<Decimal18>,
+    leavesqty: Option<Decimal18>,
     tif: Option<String>,
     tradable: Option<bool>,
     symbolticker: Option<String>,
-    prevpx: Option<Decimal>,
-    prevqty: Option<Decimal>,
-    bidpx: Option<Decimal>,
+    prevpx: Option<Decimal18>,
+    prevqty: Option<Decimal18>,
+    bidpx: Option<Decimal18>,
     bidcurrency: Option<Currency>,
-    bidqty: Option<Decimal>,
+    bidqty: Option<Decimal18>,
     bidunit: Option<String>,
-    askpx: Option<Decimal>,
+    askpx: Option<Decimal18>,
     askcurrency: Option<Currency>,
-    askqty: Option<Decimal>,
+    askqty: Option<Decimal18>,
     askunit: Option<String>,
 }
 
@@ -102,7 +102,7 @@ impl Default for MarketElementData {
             crosshashcode: 0,
             identifiers: BTreeMap::new(),
             parentuuids: Vec::new(),
-            px: Decimal::ZERO,
+            px: Decimal18::ZERO,
             lastpx: None,
             lastqty: None,
             avgpx: None,
@@ -114,7 +114,7 @@ impl Default for MarketElementData {
             prevpx: None,
             prevqty: None,
             currency: Currency::none(),
-            qty: Decimal::ZERO,
+            qty: Decimal18::ZERO,
             unit: String::new(),
             side: Side::unknown(),
             isincode: None,
@@ -140,8 +140,8 @@ impl Element for MarketElementData {
         self.curruuid
     }
 
-    fn set_curruuid(&mut self, uuid: Uuid) {
-        self.curruuid = uuid;
+    fn set_curruuid(&mut self, curruuid: Uuid) {
+        self.curruuid = curruuid;
     }
 
     fn get_crossuuid(&self) -> Uuid {
@@ -227,11 +227,11 @@ impl Element for MarketElementData {
 }
 
 impl MarketElement for MarketElementData {
-    fn get_px(&self) -> Decimal {
+    fn get_px(&self) -> Decimal18 {
         self.px
     }
 
-    fn set_px(&mut self, px: Decimal) {
+    fn set_px(&mut self, px: Decimal18) {
         self.px = px;
     }
 
@@ -243,11 +243,11 @@ impl MarketElement for MarketElementData {
         self.currency = currency;
     }
 
-    fn get_qty(&self) -> Decimal {
+    fn get_qty(&self) -> Decimal18 {
         self.qty
     }
 
-    fn set_qty(&mut self, qty: Decimal) {
+    fn set_qty(&mut self, qty: Decimal18) {
         self.qty = qty;
     }
 
@@ -315,19 +315,19 @@ impl MarketElement for MarketElementData {
         self.miccode = miccode;
     }
 
-    fn get_lastpx(&self) -> Option<Decimal> {
+    fn get_lastpx(&self) -> Option<Decimal18> {
         self.lastpx
     }
 
-    fn set_lastpx(&mut self, px: Option<Decimal>) {
+    fn set_lastpx(&mut self, px: Option<Decimal18>) {
         self.lastpx = px;
     }
 
-    fn get_lastqty(&self) -> Option<Decimal> {
+    fn get_lastqty(&self) -> Option<Decimal18> {
         self.lastqty
     }
 
-    fn set_lastqty(&mut self, qty: Option<Decimal>) {
+    fn set_lastqty(&mut self, qty: Option<Decimal18>) {
         self.lastqty = qty;
     }
 
@@ -355,51 +355,51 @@ impl MarketElement for MarketElementData {
         self.symbolticker = ticker;
     }
 
-    fn get_avgpx(&self) -> Option<Decimal> {
+    fn get_avgpx(&self) -> Option<Decimal18> {
         self.avgpx
     }
 
-    fn set_avgpx(&mut self, px: Option<Decimal>) {
+    fn set_avgpx(&mut self, px: Option<Decimal18>) {
         self.avgpx = px;
     }
 
-    fn get_cumqty(&self) -> Option<Decimal> {
+    fn get_cumqty(&self) -> Option<Decimal18> {
         self.cumqty
     }
 
-    fn set_cumqty(&mut self, qty: Option<Decimal>) {
+    fn set_cumqty(&mut self, qty: Option<Decimal18>) {
         self.cumqty = qty;
     }
 
-    fn get_leavesqty(&self) -> Option<Decimal> {
+    fn get_leavesqty(&self) -> Option<Decimal18> {
         self.leavesqty
     }
 
-    fn set_leavesqty(&mut self, qty: Option<Decimal>) {
+    fn set_leavesqty(&mut self, qty: Option<Decimal18>) {
         self.leavesqty = qty;
     }
 
-    fn get_prevpx(&self) -> Option<Decimal> {
+    fn get_prevpx(&self) -> Option<Decimal18> {
         self.prevpx
     }
 
-    fn set_prevpx(&mut self, px: Option<Decimal>) {
+    fn set_prevpx(&mut self, px: Option<Decimal18>) {
         self.prevpx = px;
     }
 
-    fn get_prevqty(&self) -> Option<Decimal> {
+    fn get_prevqty(&self) -> Option<Decimal18> {
         self.prevqty
     }
 
-    fn set_prevqty(&mut self, qty: Option<Decimal>) {
+    fn set_prevqty(&mut self, qty: Option<Decimal18>) {
         self.prevqty = qty;
     }
 
-    fn get_bidpx(&self) -> Option<Decimal> {
+    fn get_bidpx(&self) -> Option<Decimal18> {
         self.bidpx
     }
 
-    fn set_bidpx(&mut self, px: Option<Decimal>) {
+    fn set_bidpx(&mut self, px: Option<Decimal18>) {
         self.bidpx = px;
     }
 
@@ -411,11 +411,11 @@ impl MarketElement for MarketElementData {
         self.bidcurrency = currency;
     }
 
-    fn get_bidqty(&self) -> Option<Decimal> {
+    fn get_bidqty(&self) -> Option<Decimal18> {
         self.bidqty
     }
 
-    fn set_bidqty(&mut self, qty: Option<Decimal>) {
+    fn set_bidqty(&mut self, qty: Option<Decimal18>) {
         self.bidqty = qty;
     }
 
@@ -427,11 +427,11 @@ impl MarketElement for MarketElementData {
         self.bidunit = unit;
     }
 
-    fn get_askpx(&self) -> Option<Decimal> {
+    fn get_askpx(&self) -> Option<Decimal18> {
         self.askpx
     }
 
-    fn set_askpx(&mut self, px: Option<Decimal>) {
+    fn set_askpx(&mut self, px: Option<Decimal18>) {
         self.askpx = px;
     }
 
@@ -443,11 +443,11 @@ impl MarketElement for MarketElementData {
         self.askcurrency = currency;
     }
 
-    fn get_askqty(&self) -> Option<Decimal> {
+    fn get_askqty(&self) -> Option<Decimal18> {
         self.askqty
     }
 
-    fn set_askqty(&mut self, qty: Option<Decimal>) {
+    fn set_askqty(&mut self, qty: Option<Decimal18>) {
         self.askqty = qty;
     }
 
@@ -483,12 +483,12 @@ impl MarketElement for MarketElementData {
 ///
 /// ```
 /// use yggdryl::graph::{Element, Event, MarketElement, MarketEventData};
-/// use yggdryl::types::{Decimal, Side};
+/// use yggdryl::{Decimal18, Side};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut event = MarketEventData::at(1_700_000_000_000_000_000);
 /// event.set_px("82.5".parse()?);
-/// event.set_qty(Decimal::from_int(1_000));
+/// event.set_qty(Decimal18::from_int(1_000));
 /// event.set_side(Side::read("Buy")?);
 /// // The lane the side implies fills from the event's own facts.
 /// event.fill_lanes();
@@ -499,7 +499,7 @@ impl MarketElement for MarketElementData {
 /// // Restating the same facts is the same identity; a new price is not.
 /// let mut same = MarketEventData::at(1_700_000_000_000_000_000);
 /// same.set_px("82.5".parse()?);
-/// same.set_qty(Decimal::from_int(1_000));
+/// same.set_qty(Decimal18::from_int(1_000));
 /// same.set_side(Side::read("Buy")?);
 /// same.fill_lanes();
 /// same.finalize();
@@ -516,7 +516,7 @@ pub struct MarketEventData {
     currunix: i64,
     state: State,
     seqnum: u64,
-    creatunix: Option<i64>,
+    creaunix: Option<i64>,
     expirunix: Option<i64>,
     prevunix: Option<i64>,
     prevuuid: Option<Uuid>,
@@ -534,7 +534,7 @@ impl MarketEventData {
             currunix: unix,
             state: State::unknown(),
             seqnum: 0,
-            creatunix: None,
+            creaunix: None,
             expirunix: None,
             prevunix: None,
             prevuuid: None,
@@ -555,8 +555,8 @@ impl Element for MarketEventData {
         self.element.curruuid
     }
 
-    fn set_curruuid(&mut self, uuid: Uuid) {
-        self.element.curruuid = uuid;
+    fn set_curruuid(&mut self, curruuid: Uuid) {
+        self.element.curruuid = curruuid;
     }
 
     fn get_crossuuid(&self) -> Uuid {
@@ -660,12 +660,12 @@ impl Event for MarketEventData {
         self.seqnum = seqnum;
     }
 
-    fn get_creatunix(&self) -> Option<i64> {
-        self.creatunix
+    fn get_creaunix(&self) -> Option<i64> {
+        self.creaunix
     }
 
-    fn set_creatunix(&mut self, unix: Option<i64>) {
-        self.creatunix = unix;
+    fn set_creaunix(&mut self, unix: Option<i64>) {
+        self.creaunix = unix;
     }
 
     fn get_expirunix(&self) -> Option<i64> {
@@ -702,11 +702,11 @@ impl Event for MarketEventData {
 }
 
 impl MarketElement for MarketEventData {
-    fn get_px(&self) -> Decimal {
+    fn get_px(&self) -> Decimal18 {
         self.element.px
     }
 
-    fn set_px(&mut self, px: Decimal) {
+    fn set_px(&mut self, px: Decimal18) {
         self.element.px = px;
     }
 
@@ -718,11 +718,11 @@ impl MarketElement for MarketEventData {
         self.element.currency = currency;
     }
 
-    fn get_qty(&self) -> Decimal {
+    fn get_qty(&self) -> Decimal18 {
         self.element.qty
     }
 
-    fn set_qty(&mut self, qty: Decimal) {
+    fn set_qty(&mut self, qty: Decimal18) {
         self.element.qty = qty;
     }
 
@@ -790,19 +790,19 @@ impl MarketElement for MarketEventData {
         self.element.miccode = miccode;
     }
 
-    fn get_lastpx(&self) -> Option<Decimal> {
+    fn get_lastpx(&self) -> Option<Decimal18> {
         self.element.lastpx
     }
 
-    fn set_lastpx(&mut self, px: Option<Decimal>) {
+    fn set_lastpx(&mut self, px: Option<Decimal18>) {
         self.element.lastpx = px;
     }
 
-    fn get_lastqty(&self) -> Option<Decimal> {
+    fn get_lastqty(&self) -> Option<Decimal18> {
         self.element.lastqty
     }
 
-    fn set_lastqty(&mut self, qty: Option<Decimal>) {
+    fn set_lastqty(&mut self, qty: Option<Decimal18>) {
         self.element.lastqty = qty;
     }
 
@@ -830,51 +830,51 @@ impl MarketElement for MarketEventData {
         self.element.symbolticker = ticker;
     }
 
-    fn get_avgpx(&self) -> Option<Decimal> {
+    fn get_avgpx(&self) -> Option<Decimal18> {
         self.element.avgpx
     }
 
-    fn set_avgpx(&mut self, px: Option<Decimal>) {
+    fn set_avgpx(&mut self, px: Option<Decimal18>) {
         self.element.avgpx = px;
     }
 
-    fn get_cumqty(&self) -> Option<Decimal> {
+    fn get_cumqty(&self) -> Option<Decimal18> {
         self.element.cumqty
     }
 
-    fn set_cumqty(&mut self, qty: Option<Decimal>) {
+    fn set_cumqty(&mut self, qty: Option<Decimal18>) {
         self.element.cumqty = qty;
     }
 
-    fn get_leavesqty(&self) -> Option<Decimal> {
+    fn get_leavesqty(&self) -> Option<Decimal18> {
         self.element.leavesqty
     }
 
-    fn set_leavesqty(&mut self, qty: Option<Decimal>) {
+    fn set_leavesqty(&mut self, qty: Option<Decimal18>) {
         self.element.leavesqty = qty;
     }
 
-    fn get_prevpx(&self) -> Option<Decimal> {
+    fn get_prevpx(&self) -> Option<Decimal18> {
         self.element.prevpx
     }
 
-    fn set_prevpx(&mut self, px: Option<Decimal>) {
+    fn set_prevpx(&mut self, px: Option<Decimal18>) {
         self.element.prevpx = px;
     }
 
-    fn get_prevqty(&self) -> Option<Decimal> {
+    fn get_prevqty(&self) -> Option<Decimal18> {
         self.element.prevqty
     }
 
-    fn set_prevqty(&mut self, qty: Option<Decimal>) {
+    fn set_prevqty(&mut self, qty: Option<Decimal18>) {
         self.element.prevqty = qty;
     }
 
-    fn get_bidpx(&self) -> Option<Decimal> {
+    fn get_bidpx(&self) -> Option<Decimal18> {
         self.element.bidpx
     }
 
-    fn set_bidpx(&mut self, px: Option<Decimal>) {
+    fn set_bidpx(&mut self, px: Option<Decimal18>) {
         self.element.bidpx = px;
     }
 
@@ -886,11 +886,11 @@ impl MarketElement for MarketEventData {
         self.element.bidcurrency = currency;
     }
 
-    fn get_bidqty(&self) -> Option<Decimal> {
+    fn get_bidqty(&self) -> Option<Decimal18> {
         self.element.bidqty
     }
 
-    fn set_bidqty(&mut self, qty: Option<Decimal>) {
+    fn set_bidqty(&mut self, qty: Option<Decimal18>) {
         self.element.bidqty = qty;
     }
 
@@ -902,11 +902,11 @@ impl MarketElement for MarketEventData {
         self.element.bidunit = unit;
     }
 
-    fn get_askpx(&self) -> Option<Decimal> {
+    fn get_askpx(&self) -> Option<Decimal18> {
         self.element.askpx
     }
 
-    fn set_askpx(&mut self, px: Option<Decimal>) {
+    fn set_askpx(&mut self, px: Option<Decimal18>) {
         self.element.askpx = px;
     }
 
@@ -918,11 +918,11 @@ impl MarketElement for MarketEventData {
         self.element.askcurrency = currency;
     }
 
-    fn get_askqty(&self) -> Option<Decimal> {
+    fn get_askqty(&self) -> Option<Decimal18> {
         self.element.askqty
     }
 
-    fn set_askqty(&mut self, qty: Option<Decimal>) {
+    fn set_askqty(&mut self, qty: Option<Decimal18>) {
         self.element.askqty = qty;
     }
 
@@ -952,7 +952,7 @@ fn copy_event<T: Event + ?Sized, E: Event + ?Sized>(this: &mut T, other: &E) {
     this.set_currunix(other.get_currunix());
     this.set_state(other.get_state().clone());
     this.set_seqnum(other.get_seqnum());
-    this.set_creatunix(other.get_creatunix());
+    this.set_creaunix(other.get_creaunix());
     this.set_expirunix(other.get_expirunix());
     this.set_prevunix(other.get_prevunix());
     this.set_prevuuid(other.get_prevuuid());

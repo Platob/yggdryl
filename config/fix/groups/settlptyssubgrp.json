@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "settlptyssub"
+        "FIX:component": "settlptyssub"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "SettlPtysSubGrp",
-    "fix:component": "settlptyssub",
-    "fix:counter": "801",
-    "fix:tag": "322610"
+    "FIX:component": "settlptyssub",
+    "FIX:counter": "801",
+    "FIX:tag": "322610",
+    "display": "SettlPtysSubGrp"
   }
 }

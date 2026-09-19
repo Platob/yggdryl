@@ -1,7 +1,8 @@
-//! UUID layouts belong to the UUID value, not a protocol.
+//! One identifier datatype over sixteen fixed bytes, and the value it holds.
 
-use yggdryl::types::Uuid;
-use yggdryl::{DataType, Error, Scalar};
+use yggdryl::FieldValue as _;
+use yggdryl::Uuid;
+use yggdryl::{DataType, Error, Scalar, StructureType};
 
 fn assert_round_trips(value: Uuid, version: u8, text: &str) {
     assert_eq!(value.to_string(), text);
@@ -12,8 +13,8 @@ fn assert_round_trips(value: Uuid, version: u8, text: &str) {
     assert_eq!(Uuid::from_bytes(&bytes).unwrap(), value);
     assert_eq!(Uuid::from_bytes(text.as_bytes()).unwrap(), value);
     let scalar = Scalar::Uuid(value);
-    assert_eq!(DataType::Uuid.scalar(scalar.clone()).unwrap(), scalar);
-    assert_eq!(DataType::Uuid.scalar(Scalar::from(text)).unwrap(), scalar);
+    assert_eq!(DataType::uuid().scalar(scalar.clone()).unwrap(), scalar);
+    assert_eq!(DataType::uuid().scalar(Scalar::from(text)).unwrap(), scalar);
     assert_eq!(
         serde_json::from_str::<Uuid>(&serde_json::to_string(&value).unwrap()).unwrap(),
         value
@@ -150,7 +151,7 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, RecordBatch, StringArray};
-    use yggdryl::{ArrowCast, ArrowCastOptions, Field};
+    use yggdryl::{ArrowCastOptions, Field};
 
     const TEXT: &str = "01912d68-783e-7c9a-b1f2-0123456789ab";
     let raw: [u8; 16] = [
@@ -159,7 +160,13 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
     ];
 
     let strict = || ArrowCastOptions::new().with_safe(false);
-    let row = |field: Field| Field::new("row", DataType::from_fields([field]).unwrap(), false);
+    let row = |field: Field| {
+        Field::new(
+            "row",
+            DataType::from(StructureType::from_fields([field]).unwrap()),
+            false,
+        )
+    };
     let id = Field::new("id", DataType::Uuid, false);
     let stored = id
         .cast_arrow_array(
@@ -221,7 +228,7 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
         "binary",
         "large_binary",
         "binary_view",
-        "fixed_size_binary(16)",
+        "fixed_binary(16)",
         "binary(16)",
     ] {
         let read = into(DataType::from_str(spelling).unwrap());
@@ -235,7 +242,7 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
     // refusal names both sides rather than leaving Arrow's builder to
     // complain about a slice length.
     for (spelling, expected) in [
-        ("fixed_size_binary(8)", "a fixed binary of 16 bytes"),
+        ("fixed_binary(8)", "a fixed binary of 16 bytes"),
         ("binary(8)", "at most 8 bytes"),
     ] {
         let refused = row(Field::new(
@@ -260,20 +267,21 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
         Some(raw.as_slice())
     );
     assert_eq!(
-        DataType::Uuid.scalar(Scalar::from(raw.to_vec())).unwrap(),
+        DataType::uuid().scalar(Scalar::from(raw.to_vec())).unwrap(),
         value
     );
-    assert_eq!(DataType::Uuid.scalar(Scalar::from(TEXT)).unwrap(), value);
+    assert_eq!(DataType::uuid().scalar(Scalar::from(TEXT)).unwrap(), value);
 }
 
 /// What the identifier is, how it is stored, and what is refused - the value's
 /// own contract, beside the layouts above that generate one.
 mod value {
+
     use arrow_array::{Array, FixedSizeBinaryArray};
     use arrow_schema::DataType as ArrowDataType;
+    use yggdryl::StructureType;
 
-    use yggdryl::types::DataType;
-    use yggdryl::{DataTypeId, DataTypeKind};
+    use yggdryl::{DataType, DataTypeId, DataTypeKind};
     use yggdryl::{Field, Scalar};
 
     const TEXT: &str = "01912d68-783e-7c9a-b1f2-0123456789ab";
@@ -310,14 +318,15 @@ mod value {
 
         // Every accepted rendering canonicalizes to the exact packed UUID leaf.
         let field = uuid.clone().required_field("id");
-        let row = DataType::from_fields([field.clone()])
+        let row = StructureType::from_fields([field.clone()])
+            .map(DataType::from)
             .unwrap()
             .required_field("row");
         let canonical = |value: Scalar| {
             row.canonicalize_value(Scalar::from_sequence([value]))
                 .unwrap()
         };
-        let exact = Scalar::Uuid(yggdryl::types::Uuid::new(PACKED));
+        let exact = Scalar::Uuid(yggdryl::Uuid::new(PACKED));
         let expected = Scalar::from_sequence([exact]);
         assert_eq!(canonical(Scalar::from(TEXT)), expected);
         assert_eq!(canonical(Scalar::from(TEXT.to_uppercase())), expected);
@@ -327,7 +336,7 @@ mod value {
         );
         assert_eq!(
             uuid.default_value().unwrap(),
-            Scalar::Uuid(yggdryl::types::Uuid::new(0))
+            Scalar::Uuid(yggdryl::Uuid::new(0))
         );
         assert!(
             uuid.is_default_value(&Scalar::from([0_u8; 16].to_vec()))
@@ -338,12 +347,12 @@ mod value {
     #[test]
     fn storage_is_the_canonical_arrow_uuid_extension_over_sixteen_bytes() {
         let field = Field::new("id", DataType::Uuid, false);
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
 
         assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(16));
         assert_eq!(arrow.metadata()["ARROW:extension:name"], "arrow.uuid");
         assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "");
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field);
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
 
         // The stored bytes are the identifier; the value reads back exact.
         let array = yggdryl::arrow::scalar_array(&field, &Scalar::from(TEXT)).unwrap();
@@ -354,13 +363,13 @@ mod value {
         assert_eq!(stored.value(0), PACKED.to_be_bytes());
         assert_eq!(
             yggdryl::arrow::scalar_value(&field, array.as_ref()).unwrap(),
-            Scalar::Uuid(yggdryl::types::Uuid::new(PACKED))
+            Scalar::Uuid(yggdryl::Uuid::new(PACKED))
         );
     }
 
     #[test]
     fn what_is_not_an_identifier_is_refused_by_the_one_rule() {
-        let uuid = DataType::Uuid;
+        let uuid = DataType::uuid();
         for spelling in [
             "not-a-uuid",
             "",
@@ -380,10 +389,107 @@ mod value {
         assert!(DataType::utf8().uuid_packed(TEXT.as_bytes()).is_err());
         assert!(DataType::utf8().uuid_value(PACKED).is_err());
         assert!(
-            DataType::fixed_size_binary(16)
+            DataType::fixed_binary(16)
                 .unwrap()
                 .uuid_packed(TEXT.as_bytes())
                 .is_err()
+        );
+    }
+}
+
+/// The datatype carries no parameter: a version is a fact about a value,
+/// which the value answers, and never about a column.
+mod parameters {
+    use std::collections::HashMap;
+
+    use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
+
+    use yggdryl::{DataType, DataTypeId, Field, Scalar, Uuid};
+
+    #[test]
+    fn every_version_stands_in_the_one_column_and_the_value_answers_which() {
+        let v4 = Uuid::new(0x6ba7_b810_9dad_41d1_80b4_00c0_4fd4_30c8);
+        let v7 = Uuid::from_v7(1_645_557_742_000_456, 0xfedc_ba98_7654_3210).unwrap();
+        let v8 = Uuid::from_v8(0x5c14_6b14_3c52_4afd_938a_375d_0df1_fbf6);
+        for (value, version) in [(v4, 4), (v7, 7), (v8, 8)] {
+            assert_eq!(value.version(), version);
+            assert_eq!(
+                DataType::uuid().scalar(Scalar::Uuid(value)).unwrap(),
+                Scalar::Uuid(value)
+            );
+            assert_eq!(
+                DataType::uuid()
+                    .scalar(Scalar::from(value.to_string()))
+                    .unwrap(),
+                Scalar::Uuid(value)
+            );
+        }
+        // A field adds nullability to the datatype's rule and nothing else.
+        let column = DataType::uuid().required_field("id");
+        assert_eq!(column.scalar(Scalar::Uuid(v7)).unwrap(), Scalar::Uuid(v7));
+        assert!(column.scalar(Scalar::Null).is_err());
+        assert!(
+            DataType::uuid()
+                .nullable_field("id")
+                .scalar(Scalar::Null)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn a_versioned_spelling_is_no_datatype_at_any_door() {
+        for spelling in ["uuidv4", "uuidv7", "uuidv8", "UUIDV7", "uuid(7)"] {
+            assert!(DataType::from_str(spelling).is_err(), "{spelling}");
+            assert!(spelling.parse::<DataTypeId>().is_err(), "{spelling}");
+            assert!(
+                DataType::from_json(&format!("{{\"type\":{spelling:?}}}")).is_err(),
+                "{spelling}"
+            );
+            let mapping = DataType::uuid()
+                .into_value()
+                .with_key("type", Scalar::from(spelling))
+                .unwrap();
+            assert!(DataType::from_value(mapping).is_err(), "{spelling}");
+        }
+        // The identifier numbers the retired leaves held stay unused.
+        assert_eq!(DataTypeId::ALL.len(), 84);
+        assert!(
+            DataTypeId::ALL
+                .iter()
+                .all(|id| !(69..=71).contains(&id.as_u8()))
+        );
+    }
+
+    #[test]
+    fn only_the_canonical_extension_imports_as_an_identifier() {
+        // Sixteen bytes under a name this crate does not write are the
+        // storage they are, exactly as any foreign extension is.
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            EXTENSION_TYPE_NAME_KEY.to_string(),
+            "yggdryl.uuid".to_string(),
+        );
+        metadata.insert(
+            EXTENSION_TYPE_METADATA_KEY.to_string(),
+            "{\"version\":7}".to_string(),
+        );
+        let foreign = ArrowField::new("id", ArrowDataType::FixedSizeBinary(16), false)
+            .with_metadata(metadata);
+        assert_eq!(
+            Field::from_arrow_field(&foreign).unwrap().dtype(),
+            &DataType::fixed_binary(16).unwrap()
+        );
+
+        // The canonical name with its empty document is the identifier.
+        let arrow = Field::new("id", DataType::uuid(), false)
+            .into_arrow_field()
+            .unwrap();
+        assert_eq!(arrow.metadata()[EXTENSION_TYPE_NAME_KEY], "arrow.uuid");
+        assert_eq!(arrow.metadata()[EXTENSION_TYPE_METADATA_KEY], "");
+        assert_eq!(
+            Field::from_arrow_field(&arrow).unwrap().dtype(),
+            &DataType::uuid()
         );
     }
 }

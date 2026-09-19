@@ -3,8 +3,8 @@ use std::cmp::Ordering;
 use arrow_array::{Array, FixedSizeBinaryArray};
 use arrow_schema::DataType as ArrowDataType;
 
-use yggdryl::types::{DataType, Str, StringLayout, StringParameters};
-use yggdryl::{Charset, DataTypeId, DataTypeKind};
+use yggdryl::{Charset, DataTypeId, DataTypeKind, StructureType};
+use yggdryl::{DataType, Str, StringType};
 use yggdryl::{Error, Field, Scalar, Scheme};
 
 fn hash_of(value: &DataType) -> u64 {
@@ -21,14 +21,9 @@ fn stored(array: &dyn Array) -> &FixedSizeBinaryArray {
         .expect("fixed-width string storage")
 }
 
-/// A US-ASCII string bounded to `max` bytes on the variable layout.
+/// A US-ASCII string bounded to `max` bytes: the sized leaf.
 fn bounded_ascii(max: u32) -> DataType {
-    DataType::string(
-        StringParameters::ascii(StringLayout::String)
-            .try_with_bound(max)
-            .unwrap(),
-    )
-    .unwrap()
+    DataType::sized_ascii(max).unwrap()
 }
 
 #[test]
@@ -41,9 +36,11 @@ fn every_spelling_parses_and_displays_as_its_datatype() {
         ("string", DataType::utf8()),
         ("large_utf8", DataType::large_utf8()),
         ("utf8_view", DataType::utf8_view()),
-        // A bound is the maximum on the variable layout.
+        // A number after the plain spelling is a maximum, which is the
+        // sized leaf.
         ("ascii(3)", bounded_ascii(3)),
         ("string(us-ascii,3)", bounded_ascii(3)),
+        ("sized_ascii(3)", bounded_ascii(3)),
         // A fixed width is exactly what it says, at any length.
         ("fixed_ascii(1)", DataType::fixed_ascii(1).unwrap()),
         ("fixed_ascii(3)", DataType::fixed_ascii(3).unwrap()),
@@ -97,7 +94,7 @@ fn every_spelling_parses_and_displays_as_its_datatype() {
     assert_eq!(
         row.get_field_by_path("name")
             .and_then(|field| field.dtype().string_parameters())
-            .and_then(StringParameters::max),
+            .and_then(StringType::max),
         Some(32)
     );
 }
@@ -114,7 +111,7 @@ fn a_width_of_no_bytes_is_refused_by_name() {
     );
     let error = "ascii(0)".parse::<DataType>().unwrap_err().to_string();
     assert!(
-        error.contains("expected a maximum of at least one byte, got 0"),
+        error.contains("expected a width of at least one byte, got 0"),
         "{error}"
     );
     // Bare `ascii` is the variable shape, not a missing width, and empty
@@ -131,7 +128,7 @@ fn a_width_of_no_bytes_is_refused_by_name() {
         Err(Error::Parse { .. })
     ));
     assert!(
-        DataType::String(StringParameters::ascii(StringLayout::FixedString))
+        DataType::String(StringType::FixedAsciiString(0))
             .validate()
             .is_err()
     );
@@ -267,17 +264,15 @@ fn a_code_packs_and_merges_by_the_ascii_rules() {
 
 #[test]
 fn serde_and_the_structural_value_round_trip() {
-    // One `string` tag for every string: the layout, the charset and the
-    // bound are written only where they are not the default, so a fixed
-    // width carries all three beside the tag.
+    // One `string` tag for every string: the leaf is written where it is
+    // not `utf8` and the number beside it; the leaf's name says its charset,
+    // so a fixed width carries the leaf and the width beside the tag.
     for width in [1, 3, 4, 6, 12, 16, 64] {
         let dtype = DataType::fixed_ascii(width).unwrap();
         let json = dtype.clone().into_json().unwrap();
         assert_eq!(
             json,
-            format!(
-                r#"{{"type":"string","layout":"fixed_string","charset":"us-ascii","fixed":{width}}}"#
-            )
+            format!(r#"{{"type":"string","layout":"fixed_ascii","fixed":{width}}}"#)
         );
         assert_eq!(DataType::from_json(&json).unwrap(), dtype);
 
@@ -293,25 +288,22 @@ fn serde_and_the_structural_value_round_trip() {
         assert_eq!(DataType::from_value(value).unwrap(), dtype);
     }
 
-    // The variable shape states its charset and nothing else; plain UTF-8
-    // is the bare tag.
+    // The variable shape states its leaf and nothing else; plain UTF-8 is
+    // the bare tag.
     for (dtype, json) in [
-        (
-            DataType::ascii(),
-            r#"{"type":"string","charset":"us-ascii"}"#,
-        ),
+        (DataType::ascii(), r#"{"type":"string","layout":"ascii"}"#),
         (DataType::utf8(), r#"{"type":"string"}"#),
         (
             DataType::large_utf8(),
-            r#"{"type":"string","layout":"large_string"}"#,
+            r#"{"type":"string","layout":"large_utf8"}"#,
         ),
         (
             bounded_ascii(3),
-            r#"{"type":"string","charset":"us-ascii","max":3}"#,
+            r#"{"type":"string","layout":"sized_ascii","max":3}"#,
         ),
         (
             "fixed_string(windows-1252,8)".parse().unwrap(),
-            r#"{"type":"string","layout":"fixed_string","charset":"windows-1252","fixed":8}"#,
+            r#"{"type":"string","layout":"fixed_cp1252","fixed":8}"#,
         ),
     ] {
         assert_eq!(dtype.clone().into_json().unwrap(), json);
@@ -321,6 +313,24 @@ fn serde_and_the_structural_value_round_trip() {
             dtype
         );
     }
+    // An older document spelled the shape beside a charset, and still
+    // reads as the leaf it meant.
+    for (document, dtype) in [
+        (
+            r#"{"type":"string","charset":"us-ascii"}"#,
+            DataType::ascii(),
+        ),
+        (
+            r#"{"type":"string","charset":"us-ascii","max":3}"#,
+            bounded_ascii(3),
+        ),
+        (
+            r#"{"type":"string","layout":"fixed_string","charset":"us-ascii","fixed":4}"#,
+            DataType::fixed_ascii(4).unwrap(),
+        ),
+    ] {
+        assert_eq!(DataType::from_json(document).unwrap(), dtype, "{document}");
+    }
 
     // The retired tags name nothing.
     for tag in ["utf8", "large_utf8", "utf8_view", "ascii", "fixed_ascii"] {
@@ -329,20 +339,21 @@ fn serde_and_the_structural_value_round_trip() {
             "{tag}"
         );
     }
-    // A fixed layout with no width, and a bound on the wrong side, are refused.
+    // A fixed leaf with no width, and a bound on the wrong side, are refused.
+    assert!(DataType::from_json(r#"{"type":"string","layout":"fixed_ascii"}"#).is_err());
     assert!(DataType::from_json(r#"{"type":"string","layout":"fixed_string"}"#).is_err());
     assert!(DataType::from_json(r#"{"type":"string","fixed":4}"#).is_err());
 }
 
 #[test]
 fn identity_kind_and_widths_answer_for_every_width() {
-    // One identifier covers every fixed width, because the width is a
-    // parameter of the datatype and not a variant of its own.
+    // One identifier covers every fixed width, because the width is the
+    // leaf's number and not a leaf of its own.
     for width in [1, 2, 3, 4, 6, 8, 12, 16, 64] {
         let dtype = DataType::fixed_ascii(width).unwrap();
-        assert_eq!(dtype.id(), DataTypeId::FixedString);
+        assert_eq!(dtype.id(), DataTypeId::FixedAsciiString);
         assert_eq!(dtype.kind(), DataTypeKind::Text);
-        assert_eq!(dtype.name(), "fixed_string");
+        assert_eq!(dtype.name(), "fixed_ascii");
         assert_eq!(dtype.to_string(), format!("fixed_ascii({width})"));
         assert_eq!(dtype.fixed_byte_width(), Some(width as usize));
         assert_eq!(dtype.charset(), Some(Charset::Ascii));
@@ -351,7 +362,8 @@ fn identity_kind_and_widths_answer_for_every_width() {
         dtype.validate().unwrap();
     }
     // The variable shape is the same family with no width at all.
-    assert_eq!(DataType::ascii().id(), DataTypeId::String);
+    assert_eq!(DataType::ascii().id(), DataTypeId::AsciiString);
+    assert_eq!(bounded_ascii(3).id(), DataTypeId::SizedAsciiString);
     assert_eq!(DataType::ascii().kind(), DataTypeKind::Text);
     assert_eq!(DataType::ascii().fixed_byte_width(), None);
     assert_eq!(DataType::ascii().charset(), Some(Charset::Ascii));
@@ -360,7 +372,7 @@ fn identity_kind_and_widths_answer_for_every_width() {
     assert_eq!(DataType::utf8().charset(), Some(Charset::Utf8));
     assert_eq!(bounded_ascii(3).fixed_byte_width(), None);
     assert_eq!(
-        DataType::fixed_size_binary(4).unwrap().fixed_byte_width(),
+        DataType::fixed_binary(4).unwrap().fixed_byte_width(),
         Some(4)
     );
     assert_eq!(DataType::binary().charset(), None);
@@ -368,19 +380,23 @@ fn identity_kind_and_widths_answer_for_every_width() {
 
 #[test]
 fn ordering_and_hashing_are_consistent_for_every_width() {
-    // Every string is one variant, ordered by layout, then charset, then
-    // bound; the codes follow the strings and the nested datatypes follow
-    // the codes.
-    assert!(DataType::utf8() < DataType::ascii());
+    // Every string is one variant, ordered by leaf - the six UTF-8 shapes,
+    // then the six US-ASCII ones, then windows-1252, the number ordering
+    // within a leaf; the codes follow the strings and the nested datatypes
+    // follow the codes.
+    assert!(DataType::utf8() < DataType::large_utf8());
+    assert!(DataType::large_utf8() < DataType::utf8_view());
+    assert!(DataType::utf8_view() < DataType::fixed_utf8(8).unwrap());
+    assert!(DataType::fixed_utf8(8).unwrap() < DataType::ascii());
     assert!(DataType::ascii() < DataType::fixed_ascii(2).unwrap());
     assert!(DataType::fixed_ascii(2).unwrap() < DataType::fixed_ascii(3).unwrap());
     assert!(DataType::fixed_ascii(3).unwrap() < DataType::fixed_ascii(4).unwrap());
     assert!(DataType::fixed_ascii(4).unwrap() < DataType::fixed_ascii(8).unwrap());
     assert!(DataType::fixed_ascii(8).unwrap() < DataType::fixed_ascii(12).unwrap());
     assert!(DataType::fixed_ascii(12).unwrap() < DataType::fixed_ascii(16).unwrap());
-    assert!(DataType::fixed_ascii(16).unwrap() < DataType::utf8_view());
-    assert!(DataType::utf8_view() < DataType::large_utf8());
-    assert!(DataType::large_utf8() < DataType::Country);
+    assert!(DataType::fixed_ascii(16).unwrap() < bounded_ascii(3));
+    assert!(bounded_ascii(3) < DataType::cp1252());
+    assert!(DataType::cp1252() < DataType::Country);
     assert!(DataType::Country < DataType::list(DataType::utf8().nullable_field("item")));
     assert_eq!(
         DataType::fixed_ascii(8)
@@ -456,7 +472,8 @@ fn the_default_is_the_empty_string_stored_as_all_nul() {
 #[test]
 fn values_validate_and_canonicalize_under_the_one_ascii_rule() {
     let dtype = DataType::fixed_ascii(4).unwrap();
-    let root = DataType::from_fields([dtype.clone().required_field("ccy")])
+    let root = StructureType::from_fields([dtype.clone().required_field("ccy")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let row = |value: Scalar| Scalar::from_sequence([value]);
@@ -510,7 +527,7 @@ fn values_validate_and_canonicalize_under_the_one_ascii_rule() {
         .validate_value(&row(Scalar::from_sequence([Scalar::from(7)])))
         .unwrap_err()
         .to_string();
-    assert!(refused.contains("expected fixed_string"), "{refused}");
+    assert!(refused.contains("expected fixed_ascii"), "{refused}");
 
     // A fixed value carries its own padded width, so one written at another
     // width is restated at the column's rather than kept as it arrived: the
@@ -580,7 +597,7 @@ fn arrow_storage_is_padded_and_reads_back_trimmed() {
 
 #[test]
 fn compatibility_reads_every_width_as_str() {
-    let schema = DataType::from_fields([
+    let schema = StructureType::from_fields([
         DataType::fixed_ascii(4).unwrap().nullable_field("ccy"),
         DataType::fixed_ascii(16).unwrap().required_field("code"),
         bounded_ascii(3).required_field("bounded"),
@@ -589,6 +606,7 @@ fn compatibility_reads_every_width_as_str() {
             .unwrap()
             .required_field("latin"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     for scheme in [

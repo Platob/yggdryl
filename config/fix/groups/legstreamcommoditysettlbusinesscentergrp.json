@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legstreamcommoditysettlbusinesscentercomponent"
+        "FIX:component": "legstreamcommoditysettlbusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legstreamcommoditysettlbusinesscentercomponent",
+    "FIX:counter": "41646",
+    "FIX:tag": "522474",
     "description": "Required if NoLegStreamCommoditySettlementBusinessCenters(41646) > 0.",
-    "display": "LegStreamCommoditySettlBusinessCenterGrp",
-    "fix:component": "legstreamcommoditysettlbusinesscentercomponent",
-    "fix:counter": "41646",
-    "fix:tag": "522474"
+    "display": "LegStreamCommoditySettlBusinessCenterGrp"
   }
 }

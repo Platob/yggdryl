@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legpaymentstreampricingday"
+        "FIX:component": "legpaymentstreampricingday"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legpaymentstreampricingday",
+    "FIX:counter": "41596",
+    "FIX:tag": "238414",
     "description": "Required if NoLegPaymentStreamPricingDays(41596) > 0.",
-    "display": "LegPaymentStreamPricingDayGrp",
-    "fix:component": "legpaymentstreampricingday",
-    "fix:counter": "41596",
-    "fix:tag": "238414"
+    "display": "LegPaymentStreamPricingDayGrp"
   }
 }

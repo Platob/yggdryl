@@ -222,14 +222,14 @@ export type DataTypeId =
   | 'duration64'
   | 'interval'
   | 'binary'
-  | 'fixed_size_binary'
+  | 'fixed_binary'
   | 'large_binary'
   | 'binary_view'
-  | 'string'
-  | 'fixed_string'
-  | 'string_view'
-  | 'large_string'
-  | 'large_string_view'
+  | 'utf8'
+  | 'fixed_utf8'
+  | 'utf8_view'
+  | 'large_utf8'
+  | 'large_utf8_view'
   | 'country'
   | 'currency'
   | 'mic'
@@ -244,6 +244,7 @@ export type DataTypeId =
   | 'uuid'
   | 'version'
   | 'url'
+  | 'urn'
   | 'timezone'
   | 'mimetype'
   | 'mediatype'
@@ -264,6 +265,23 @@ export type DataTypeId =
   | 'variant'
   | 'geometry'
   | 'geography'
+  | 'sorted_map'
+  | 'struct2'
+  | 'large_binary_view'
+  | 'sized_binary'
+  | 'sized_utf8'
+  | 'ascii'
+  | 'large_ascii'
+  | 'ascii_view'
+  | 'large_ascii_view'
+  | 'fixed_ascii'
+  | 'sized_ascii'
+  | 'cp1252'
+  | 'large_cp1252'
+  | 'cp1252_view'
+  | 'large_cp1252_view'
+  | 'fixed_cp1252'
+  | 'sized_cp1252'
 
 /**
  * The coarse family one datatype variant belongs to.
@@ -310,14 +328,14 @@ interface DataTypeKindById {
   duration64: 'temporal'
   interval: 'temporal'
   binary: 'bytes'
-  fixed_size_binary: 'bytes'
+  fixed_binary: 'bytes'
   large_binary: 'bytes'
   binary_view: 'bytes'
-  string: 'text'
-  fixed_string: 'text'
-  string_view: 'text'
-  large_string: 'text'
-  large_string_view: 'text'
+  utf8: 'text'
+  fixed_utf8: 'text'
+  utf8_view: 'text'
+  large_utf8: 'text'
+  large_utf8_view: 'text'
   country: 'code'
   currency: 'code'
   mic: 'code'
@@ -332,6 +350,7 @@ interface DataTypeKindById {
   uuid: 'uuid'
   version: 'text'
   url: 'text'
+  urn: 'text'
   timezone: 'text'
   mimetype: 'text'
   mediatype: 'text'
@@ -352,24 +371,60 @@ interface DataTypeKindById {
   variant: 'nested'
   geometry: 'geospatial'
   geography: 'geospatial'
+  sorted_map: 'nested'
+  struct2: 'nested'
+  large_binary_view: 'bytes'
+  sized_binary: 'bytes'
+  sized_utf8: 'text'
+  ascii: 'text'
+  large_ascii: 'text'
+  ascii_view: 'text'
+  large_ascii_view: 'text'
+  fixed_ascii: 'text'
+  sized_ascii: 'text'
+  cp1252: 'text'
+  large_cp1252: 'text'
+  cp1252_view: 'text'
+  large_cp1252_view: 'text'
+  fixed_cp1252: 'text'
+  sized_cp1252: 'text'
 }
 
 /** The family a variant identity belongs to, as the native core reports it. */
 export type DataTypeKindOf<K extends DataTypeId> = DataTypeKindById[K]
 
-/** The five layouts of the one string datatype, by identity. */
+/**
+ * The eighteen leaves of the string family, by identity: six shapes (plain,
+ * large, view, large view, fixed, sized) in each of UTF-8, US-ASCII and
+ * windows-1252.
+ */
 export type StringDataTypeId =
-  | 'string'
-  | 'fixed_string'
-  | 'string_view'
-  | 'large_string'
-  | 'large_string_view'
-/** The four layouts of the one byte datatype, by identity. */
+  | 'utf8'
+  | 'large_utf8'
+  | 'utf8_view'
+  | 'large_utf8_view'
+  | 'fixed_utf8'
+  | 'sized_utf8'
+  | 'ascii'
+  | 'large_ascii'
+  | 'ascii_view'
+  | 'large_ascii_view'
+  | 'fixed_ascii'
+  | 'sized_ascii'
+  | 'cp1252'
+  | 'large_cp1252'
+  | 'cp1252_view'
+  | 'large_cp1252_view'
+  | 'fixed_cp1252'
+  | 'sized_cp1252'
+/** The six leaves of the byte family, by identity. */
 export type BytesDataTypeId =
   | 'binary'
-  | 'fixed_size_binary'
   | 'large_binary'
   | 'binary_view'
+  | 'large_binary_view'
+  | 'fixed_binary'
+  | 'sized_binary'
 
 /** Core compatibility targets supported by DataType and Field projection. */
 export type CompatibilityScheme =
@@ -557,7 +612,7 @@ declare module './index' {
      * The one walk over a whole stream of messages, lazily: sorted by
      * instant, each stated as the one after the live message it follows -
      * its `prevuuid`, `prevunix`, `seqnum`, the predecessor among its
-     * `parentuuids` and the chain's `creatunix` - and settled again.
+     * `parentuuids` and the chain's `creaunix` - and settled again.
      */
     lifecycle(messages: Iterable<FixMsg>): FixMessages
     /**
@@ -745,23 +800,42 @@ export type IntervalValue =
   | readonly [days: number, milliseconds: number]
   | readonly [months: number, days: number, nanoseconds: bigint]
 export type IntervalField = FieldOf<'interval', IntervalValue>
-/** The one byte datatype in whichever layout its parameters declare. */
+/** The byte family in whichever leaf its parameters declare. */
 export type BytesField = FieldOf<BytesDataTypeId, Uint8Array>
 export type BinaryField = FieldOf<'binary', Uint8Array>
-export type FixedSizeBinaryField = FieldOf<'fixed_size_binary', Uint8Array>
+export type FixedSizeBinaryField = FieldOf<'fixed_binary', Uint8Array>
 export type LargeBinaryField = FieldOf<'large_binary', Uint8Array>
 export type BinaryViewField = FieldOf<'binary_view', Uint8Array>
-/** The one string datatype in whichever layout and charset it declares. */
+export type LargeBinaryViewField = FieldOf<'large_binary_view', Uint8Array>
+export type SizedBinaryField = FieldOf<'sized_binary', Uint8Array>
+/** The string family in whichever leaf its parameters declare. */
 export type StringField = FieldOf<StringDataTypeId, string>
-export type Utf8Field = FieldOf<'string', string>
-export type LargeUtf8Field = FieldOf<'large_string', string>
-export type Utf8ViewField = FieldOf<'string_view', string>
+export type Utf8Field = FieldOf<'utf8', string>
+export type LargeUtf8Field = FieldOf<'large_utf8', string>
+export type Utf8ViewField = FieldOf<'utf8_view', string>
+export type LargeUtf8ViewField = FieldOf<'large_utf8_view', string>
 /** UTF-8 padded with trailing NUL to a fixed width; read back trimmed. */
-export type FixedUtf8Field = FieldOf<'fixed_string', string>
+export type FixedUtf8Field = FieldOf<'fixed_utf8', string>
+/** UTF-8 held to a maximum byte count, stored as the bytes it is. */
+export type SizedUtf8Field = FieldOf<'sized_utf8', string>
 /** Variable-width US-ASCII text: any length, stored as the bytes it is. */
-export type AsciiField = FieldOf<'string', string>
+export type AsciiField = FieldOf<'ascii', string>
+export type LargeAsciiField = FieldOf<'large_ascii', string>
+export type AsciiViewField = FieldOf<'ascii_view', string>
+export type LargeAsciiViewField = FieldOf<'large_ascii_view', string>
 /** US-ASCII padded with trailing NUL to a fixed width; read back trimmed. */
-export type FixedAsciiField = FieldOf<'fixed_string', string>
+export type FixedAsciiField = FieldOf<'fixed_ascii', string>
+/** US-ASCII held to a maximum byte count. */
+export type SizedAsciiField = FieldOf<'sized_ascii', string>
+/** Variable-width windows-1252 text, one byte per character. */
+export type Cp1252Field = FieldOf<'cp1252', string>
+export type LargeCp1252Field = FieldOf<'large_cp1252', string>
+export type Cp1252ViewField = FieldOf<'cp1252_view', string>
+export type LargeCp1252ViewField = FieldOf<'large_cp1252_view', string>
+/** windows-1252 padded with trailing NUL to a fixed width; read back trimmed. */
+export type FixedCp1252Field = FieldOf<'fixed_cp1252', string>
+/** windows-1252 held to a maximum byte count. */
+export type SizedCp1252Field = FieldOf<'sized_cp1252', string>
 /** ISO 3166-1 alpha-2, the two-letter country code, stored as its text. */
 export type CountryField = FieldOf<'country', string>
 /** ISO 4217, the three-letter currency code, stored as its text. */
@@ -831,6 +905,7 @@ export type VersionField = FieldOf<'version', Version>
 
 /** One validated, canonical location. */
 export type UrlField = FieldOf<'url', string>
+export type UrnField = FieldOf<'urn', string>
 /** One canonical time zone name, a fixed offset, or the zone-free marker. */
 export type TimezoneField = FieldOf<'timezone', string>
 /** One validated, canonical MIME type. */
@@ -914,8 +989,7 @@ type DefaultFieldInput<K extends DataTypeId, V> = K extends
       ? number | bigint
       : K extends 'decimal32' | 'decimal64' | 'decimal128'
         ? number | bigint
-        : K extends
-              'binary' | 'fixed_size_binary' | 'large_binary' | 'binary_view'
+        : K extends BytesDataTypeId
           ? Uint8Array | ArrayBuffer
           : K extends 'version'
             ? Version | string
@@ -986,13 +1060,29 @@ export interface FieldsNamespace {
   utf8(name: string, options?: FieldOptions): Utf8Field
   largeUtf8(name: string, options?: FieldOptions): LargeUtf8Field
   utf8View(name: string, options?: FieldOptions): Utf8ViewField
+  largeUtf8View(name: string, options?: FieldOptions): LargeUtf8ViewField
   fixedUtf8(name: string, width: number, options?: FieldOptions): FixedUtf8Field
+  sizedUtf8(name: string, max: number, options?: FieldOptions): SizedUtf8Field
   ascii(name: string, options?: FieldOptions): AsciiField
+  largeAscii(name: string, options?: FieldOptions): LargeAsciiField
+  asciiView(name: string, options?: FieldOptions): AsciiViewField
+  largeAsciiView(name: string, options?: FieldOptions): LargeAsciiViewField
   fixedAscii(
     name: string,
     width: number,
     options?: FieldOptions,
   ): FixedAsciiField
+  sizedAscii(name: string, max: number, options?: FieldOptions): SizedAsciiField
+  cp1252(name: string, options?: FieldOptions): Cp1252Field
+  largeCp1252(name: string, options?: FieldOptions): LargeCp1252Field
+  cp1252View(name: string, options?: FieldOptions): Cp1252ViewField
+  largeCp1252View(name: string, options?: FieldOptions): LargeCp1252ViewField
+  fixedCp1252(
+    name: string,
+    width: number,
+    options?: FieldOptions,
+  ): FixedCp1252Field
+  sizedCp1252(name: string, max: number, options?: FieldOptions): SizedCp1252Field
   list<F extends Field>(
     name: string,
     item: F,
@@ -1044,6 +1134,7 @@ export interface FieldsNamespace {
   msghash(name: string, options?: FieldOptions): UuidField
   version(name: string, options?: FieldOptions): VersionField
   url(name: string, options?: FieldOptions): UrlField
+  urn(name: string, options?: FieldOptions): UrnField
   timezone(name: string, options?: FieldOptions): TimezoneField
   mimetype(name: string, options?: FieldOptions): MimeTypeField
   mediatype(name: string, options?: FieldOptions): MediaTypeField
@@ -1382,7 +1473,7 @@ export interface FieldsNamespace {
     name: N,
     byteWidth: number,
     options?: O,
-  ): NamedField<'fixed_size_binary', Uint8Array, N, O>
+  ): NamedField<'fixed_binary', Uint8Array, N, O>
   largeBinary<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -1407,21 +1498,28 @@ export interface FieldsNamespace {
   utf8<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
-  ): NamedField<'string', string, N, O>
+  ): NamedField<'utf8', string, N, O>
   largeUtf8<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
   >(
     name: N,
     options?: O,
-  ): NamedField<'large_string', string, N, O>
+  ): NamedField<'large_utf8', string, N, O>
   utf8View<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
   >(
     name: N,
     options?: O,
-  ): NamedField<'string_view', string, N, O>
+  ): NamedField<'utf8_view', string, N, O>
+  largeUtf8View<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'large_utf8_view', string, N, O>
   fixedUtf8<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -1429,11 +1527,40 @@ export interface FieldsNamespace {
     name: N,
     width: number,
     options?: O,
-  ): NamedField<'fixed_string', string, N, O>
+  ): NamedField<'fixed_utf8', string, N, O>
+  sizedUtf8<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    max: number,
+    options?: O,
+  ): NamedField<'sized_utf8', string, N, O>
   ascii<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
-  ): NamedField<'string', string, N, O>
+  ): NamedField<'ascii', string, N, O>
+  largeAscii<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'large_ascii', string, N, O>
+  asciiView<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'ascii_view', string, N, O>
+  largeAsciiView<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'large_ascii_view', string, N, O>
   fixedAscii<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -1441,7 +1568,56 @@ export interface FieldsNamespace {
     name: N,
     width: number,
     options?: O,
-  ): NamedField<'fixed_string', string, N, O>
+  ): NamedField<'fixed_ascii', string, N, O>
+  sizedAscii<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    max: number,
+    options?: O,
+  ): NamedField<'sized_ascii', string, N, O>
+  cp1252<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'cp1252', string, N, O>
+  largeCp1252<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'large_cp1252', string, N, O>
+  cp1252View<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'cp1252_view', string, N, O>
+  largeCp1252View<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'large_cp1252_view', string, N, O>
+  fixedCp1252<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    width: number,
+    options?: O,
+  ): NamedField<'fixed_cp1252', string, N, O>
+  sizedCp1252<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    max: number,
+    options?: O,
+  ): NamedField<'sized_cp1252', string, N, O>
   list<
     const N extends string,
     F extends Field,
@@ -2282,7 +2458,7 @@ export declare const enums: {
   readonly charsets: readonly Charset[]
   /** Every answer a handle gives about what it addresses, e.g. `'file'`. */
   readonly ioKinds: readonly string[]
-  /** Every Python form a `python:kind` declaration names, e.g. `'dataclass'`. */
+  /** Every Python form a `PYTHON:kind` declaration names, e.g. `'dataclass'`. */
   readonly pythonKinds: readonly string[]
   /** The compatibility targets `intoSchemeCompat` accepts, e.g. `'arrow'`. */
   readonly compatibilitySchemes: readonly CompatibilityScheme[]
@@ -2459,6 +2635,12 @@ declare module './index' {
 
   interface DataType extends Iterable<Field> {
     showDiffs(other: DataType, withMetadata?: boolean): IterableIterator<string>
+    /**
+     * Read one value under this datatype, which names its width, unit, scale
+     * and zone. A datatype has no name or nullability, so the read borrows a
+     * nullable one; the name never reaches the scalar.
+     */
+    scalar(value: unknown, options?: CodecOptions): Scalar
   }
   namespace DataType {
     function fromArrow(
@@ -2480,6 +2662,12 @@ declare module './index' {
   interface Field extends Iterable<readonly [string, string]> {
     showDiffs(other: Field, withMetadata?: boolean): IterableIterator<string>
     update(values: FieldMetadataInput): void
+    /**
+     * Read one value under this field, which names its width, unit, scale and
+     * zone. The same conversion as `Scalar.from(value, { field })`, spelled
+     * with the field in front.
+     */
+    scalar(value: unknown, options?: CodecOptions): Scalar
   }
   namespace Field {
     function fromArrow(value: Field | string | ArrowStringCompatible): Field
@@ -3052,7 +3240,7 @@ export interface SchemaUpdate {
   dropColumn(path: string): SchemaUpdate
   /** Record a rename of the column at `path`; its identifier is kept. */
   renameColumn(path: string, name: string): SchemaUpdate
-  /** Record a new `iceberg:doc` documentation string on the column at `path`. */
+  /** Record a new `ICEBERG:doc` documentation string on the column at `path`. */
   updateDoc(path: string, doc: string): SchemaUpdate
   /** Record that the column at `path` becomes optional. */
   makeNullable(path: string): SchemaUpdate
@@ -3143,7 +3331,7 @@ export interface Fix {
    * FIX field definitions resolved by identifier, by tag, by name, or by
    * dotted path. One namespace: an identifier is the number `field.fix.id`
    * derives from a tag and a name, a bare number is a tag, and a
-   * dictionary's membership is `fix:branches` on the field it contributed
+   * dictionary's membership is `FIX:branches` on the field it contributed
    * to - provenance a caller filters on, never a lookup tier.
    */
   readonly FixRegistry: typeof FixRegistry
@@ -3170,7 +3358,7 @@ export interface Fix {
    *
    * Columns are spelled by the dictionary's folded canonical names, so
    * `schema.indexOf('msgtype')` is where the message type sits; the tag stays
-   * each column's identity, on its `fix:tag`, and is what fills it.
+   * each column's identity, on its `FIX:tag`, and is what fills it.
    */
   schema(registry?: FixRegistry | null, name?: string | null): Field
   /**
@@ -3182,7 +3370,7 @@ export interface Fix {
    * bridge's row header spells the session instance it handled a line on as
    * `senderSessionId` for that reason, so the value reaches the FIX column
    * rather than leading the row - never over a reading the message stated
-   * itself - and its `pluginid` capture reaches the crate's own column.
+   * itself - and its `msgpluginid` capture reaches the crate's own column.
    *
    * Each carried column is nullable whatever the capture declared it: a
    * capture's own column is the reading's statement and no message holds
@@ -3202,10 +3390,10 @@ export interface Fix {
    * and the sequence, the `identifiers` and `metadata` Map groups, the
    * state, the price, the quantity, the units and the lane currencies, the
    * instrument codes, what a bridge's capture states - `msgctxid`,
-   * `pluginid`, `msgsessionid` - the capture's own columns `sourceurl` and
-   * `recordedat`, which whoever read the line states on the row and no
-   * message holds, and the `nofixentries`
-   * counting the content record. Every registry holds them from
+   * `msgpluginid`, `msgsessionid` - the capture's own column `sourceurl`,
+   * which whoever read the line states on the row and no message holds,
+   * and the `nofixentries` counting the content record. Every registry
+   * holds them from
    * construction, beside the seeded `SendingTime` (52) and `TransactTime`
    * (60) clocks.
    */

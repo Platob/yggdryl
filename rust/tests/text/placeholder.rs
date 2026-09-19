@@ -109,7 +109,7 @@ fn an_embedded_geometry_renders_as_wkt_and_binary_as_lossless_hex() {
     let placeholders = Placeholders::new()
         .with_variable(
             "SHAPE",
-            Scalar::Geometry(yggdryl::types::Geometry::new(wkb).unwrap()),
+            Scalar::Geometry(yggdryl::Geometry::new(wkb).unwrap()),
         )
         .with_variable("BROKEN", Scalar::from([0xff_u8, 0x00].as_slice()));
 
@@ -324,7 +324,7 @@ fn every_entry_point_carries_the_same_loading() {
             .media_type(),
     );
     handle
-        .write_all_bytes(&yggdryl::coding::gzip::dump(document.as_bytes()).unwrap())
+        .write_all_bytes(&yggdryl::gzip::dump(document.as_bytes()).unwrap())
         .unwrap();
     let loaded = text::from_io_with(&handle, &loading).unwrap();
     assert_eq!(loaded.get_key_str("name"), Some(&expected));

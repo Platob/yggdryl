@@ -8,7 +8,7 @@
       "kind": "text",
       "arrow": "Utf8",
       "extensionName": "yggdryl.string",
-      "extensionDocument": "{\"layout\":\"string\",\"charset\":\"us-ascii\"}",
+      "extensionDocument": "{\"layout\":\"ascii\",\"charset\":\"us-ascii\"}",
       "call": "fields.struct('row', [fields.ascii('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
@@ -18,7 +18,7 @@
       "kind": "text",
       "arrow": "FixedSizeBinary[2]",
       "extensionName": "yggdryl.string",
-      "extensionDocument": "{\"layout\":\"fixed_string\",\"charset\":\"us-ascii\",\"fixed\":2}",
+      "extensionDocument": "{\"layout\":\"fixed_ascii\",\"charset\":\"us-ascii\",\"fixed\":2}",
       "call": "fields.struct('row', [fields.fixedAscii('ccy', 2)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
@@ -28,7 +28,7 @@
       "kind": "text",
       "arrow": "FixedSizeBinary[3]",
       "extensionName": "yggdryl.string",
-      "extensionDocument": "{\"layout\":\"fixed_string\",\"charset\":\"us-ascii\",\"fixed\":3}",
+      "extensionDocument": "{\"layout\":\"fixed_ascii\",\"charset\":\"us-ascii\",\"fixed\":3}",
       "call": "fields.struct('row', [fields.fixedAscii('ccy', 3)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
@@ -38,7 +38,7 @@
       "kind": "text",
       "arrow": "FixedSizeBinary[4]",
       "extensionName": "yggdryl.string",
-      "extensionDocument": "{\"layout\":\"fixed_string\",\"charset\":\"us-ascii\",\"fixed\":4}",
+      "extensionDocument": "{\"layout\":\"fixed_ascii\",\"charset\":\"us-ascii\",\"fixed\":4}",
       "call": "fields.struct('row', [fields.fixedAscii('ccy', 4)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
@@ -48,7 +48,7 @@
       "kind": "text",
       "arrow": "FixedSizeBinary[8]",
       "extensionName": "yggdryl.string",
-      "extensionDocument": "{\"layout\":\"fixed_string\",\"charset\":\"us-ascii\",\"fixed\":8}",
+      "extensionDocument": "{\"layout\":\"fixed_ascii\",\"charset\":\"us-ascii\",\"fixed\":8}",
       "call": "fields.struct('row', [fields.fixedAscii('ccy', 8)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
@@ -58,7 +58,7 @@
       "kind": "text",
       "arrow": "FixedSizeBinary[12]",
       "extensionName": "yggdryl.string",
-      "extensionDocument": "{\"layout\":\"fixed_string\",\"charset\":\"us-ascii\",\"fixed\":12}",
+      "extensionDocument": "{\"layout\":\"fixed_ascii\",\"charset\":\"us-ascii\",\"fixed\":12}",
       "call": "fields.struct('row', [fields.fixedAscii('ccy', 12)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
@@ -68,7 +68,7 @@
       "kind": "text",
       "arrow": "FixedSizeBinary[16]",
       "extensionName": "yggdryl.string",
-      "extensionDocument": "{\"layout\":\"fixed_string\",\"charset\":\"us-ascii\",\"fixed\":16}",
+      "extensionDocument": "{\"layout\":\"fixed_ascii\",\"charset\":\"us-ascii\",\"fixed\":16}",
       "call": "fields.struct('row', [fields.fixedAscii('ccy', 16)], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {

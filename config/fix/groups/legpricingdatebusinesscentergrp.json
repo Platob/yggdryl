@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legpricingdatebusinesscentercomponent"
+        "FIX:component": "legpricingdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legpricingdatebusinesscentercomponent",
+    "FIX:counter": "41607",
+    "FIX:tag": "833012",
     "description": "Required if NoLegPricingDateBusinessCenters(41607) > 0.",
-    "display": "LegPricingDateBusinessCenterGrp",
-    "fix:component": "legpricingdatebusinesscentercomponent",
-    "fix:counter": "41607",
-    "fix:tag": "833012"
+    "display": "LegPricingDateBusinessCenterGrp"
   }
 }

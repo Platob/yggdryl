@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamformulaimagelength",
-          "fix:tag": "42451"
+          "FIX:field": "legpaymentstreamformulaimagelength",
+          "FIX:tag": "42451"
         }
       },
       {
@@ -21,16 +21,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamformulaimage",
-          "fix:tag": "42452"
+          "FIX:field": "legpaymentstreamformulaimage",
+          "FIX:tag": "42452"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "300494",
     "description": "Conditionally required when LegPaymentStreamFormulaImage(42452) is specified.",
-    "display": "LegPaymentStreamFormulaImage",
-    "fix:tag": "300494"
+    "display": "LegPaymentStreamFormulaImage"
   }
 }

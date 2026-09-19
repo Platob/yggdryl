@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "requestedrisklimittype"
+        "FIX:component": "requestedrisklimittype"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "requestedrisklimittype",
+    "FIX:counter": "1668",
+    "FIX:tag": "878988",
     "description": "Required if NoRequestedRiskLimitType > 0.",
-    "display": "RequestedRiskLimitTypesGrp",
-    "fix:component": "requestedrisklimittype",
-    "fix:counter": "1668",
-    "fix:tag": "878988"
+    "display": "RequestedRiskLimitTypesGrp"
   }
 }

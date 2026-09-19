@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricingdatebusinesscenter",
-          "fix:tag": "41231"
+          "FIX:field": "pricingdatebusinesscenter",
+          "FIX:tag": "41231"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PricingDateBusinessCenter",
-    "fix:tag": "369026"
+    "FIX:tag": "369026",
+    "display": "PricingDateBusinessCenter"
   }
 }

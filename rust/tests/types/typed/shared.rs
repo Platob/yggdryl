@@ -1,6 +1,6 @@
 //! Which datatypes keep a shared field, and that each keeps exactly one.
 
-use yggdryl::types::{BytesLayout, BytesParameters, StringLayout, StringParameters};
+use yggdryl::{BytesType, StringLayout, StringType, StructType};
 use yggdryl::{DataType, DataTypeId, Field, Scalar, TimeUnit, Timezone};
 
 #[test]
@@ -44,7 +44,7 @@ fn every_plain_utf8_layout_keeps_one_prebuilt_value_field() {
         DataType::utf8(),
         DataType::large_utf8(),
         DataType::utf8_view(),
-        DataType::String(StringParameters::utf8(StringLayout::LargeStringView)),
+        DataType::String(StringType::utf8(StringLayout::LargeStringView)),
     ] {
         let shared = dtype
             .shared_field()
@@ -74,7 +74,7 @@ fn a_parameterized_leaf_is_interned_once_per_distinct_datatype() {
         DataType::ascii(),
         DataType::from_str("utf8(32)").unwrap(),
         DataType::from_str("string(windows-1252)").unwrap(),
-        DataType::fixed_size_binary(16).unwrap(),
+        DataType::fixed_binary(16).unwrap(),
         DataType::decimal32(9, 2).unwrap(),
         DataType::decimal64(18, 4).unwrap(),
         DataType::decimal128(38, 10).unwrap(),
@@ -113,14 +113,14 @@ fn an_unbounded_or_invalid_datatype_keeps_no_shared_field() {
     for dtype in [
         DataType::list(item.clone()),
         DataType::large_list(item.clone()),
-        DataType::from_fields([item.clone()]).unwrap(),
+        DataType::from(StructureType::from_fields([item.clone()]).unwrap()),
         DataType::map(
             Field::new(
                 "entries",
-                DataType::from_fields([
+                StructureType::from_fields([
                     Field::new("key", DataType::utf8(), false),
                     Field::new("value", DataType::Int64, true),
-                ])
+                ]).map(DataType::from)
                 .unwrap(),
                 false,
             ),
@@ -134,15 +134,15 @@ fn an_unbounded_or_invalid_datatype_keeps_no_shared_field() {
     }
     // A parameter the datatype refuses never earns a permanent field.
     assert!(
-        DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary))
+        DataType::Bytes(BytesType::FixedBinary(0))
             .shared_field()
             .is_none()
     );
     assert!(
-        DataType::Decimal32 {
+        DataType::Decimal(DecimalType::Decimal32 {
             precision: 99,
             scale: 0
-        }
+        })
         .shared_field()
         .is_none()
     );
@@ -152,7 +152,7 @@ fn an_unbounded_or_invalid_datatype_keeps_no_shared_field() {
             .is_none()
     );
     assert!(
-        DataType::String(StringParameters::utf8(StringLayout::FixedString))
+        DataType::String(StringType::utf8(StringLayout::FixedString))
             .shared_field()
             .is_none()
     );
@@ -167,7 +167,7 @@ fn a_value_names_the_shared_field_of_its_own_datatype() {
     assert_eq!(
         Scalar::d128(150, 2)
             .shared_field()
-            .map(|field| field.dtype().id()),
+            .map(|field| field.id()),
         Some(DataTypeId::Decimal128)
     );
     assert_eq!(

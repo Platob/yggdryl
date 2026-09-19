@@ -1,7 +1,7 @@
 //! Byte, value and time-coupled digests under one implementation owner.
 //!
-//! [`xxhash`] implements the four xxHash algorithms, their resumable states,
-//! the canonical scalar/Arrow byte feed, and hashing handles. [`txhash`]
+//! [`crate::xxhash`] implements the four xxHash algorithms, their resumable states,
+//! the canonical scalar/Arrow byte feed, and hashing handles. [`crate::txhash`]
 //! couples a digest with an explicit Unix count and resolution. The shared
 //! dispatch vocabulary remains [`crate::DigestAlgorithm`] and [`crate::Digest`].
 //!
@@ -13,7 +13,7 @@
 //! `crosshashcode` is the XXH3-64 of the chain identifier it shares. These
 //! FIX recipes reuse the shared algorithms; they do not define another hash
 //! engine. A raw
-//! [`txhash::TxHash`] is a time/digest pair, not an RFC UUID.
+//! [`crate::txhash::TxHash`] is a time/digest pair, not an RFC UUID.
 //! These hashes detect accidental differences; they are not cryptographic
 //! integrity checks and cannot guarantee distinct identities.
 //!
@@ -21,7 +21,5 @@
 //! gates only its Arrow implementation behind the `arrow` feature.
 
 mod stable;
-pub mod txhash;
-pub mod xxhash;
 
 pub(crate) use stable::{stable_hash_display, stable_hash_of};

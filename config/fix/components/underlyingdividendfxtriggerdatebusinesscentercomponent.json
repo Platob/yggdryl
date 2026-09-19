@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendfxtriggerdatebusinesscenter",
-          "fix:tag": "42854"
+          "FIX:field": "underlyingdividendfxtriggerdatebusinesscenter",
+          "FIX:tag": "42854"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingDividendFXTriggerDateBusinessCenter",
-    "fix:tag": "797606"
+    "FIX:tag": "797606",
+    "display": "UnderlyingDividendFXTriggerDateBusinessCenter"
   }
 }

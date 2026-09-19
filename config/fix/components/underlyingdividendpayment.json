@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendpaymentdate",
-          "fix:tag": "42856"
+          "FIX:field": "underlyingdividendpaymentdate",
+          "FIX:tag": "42856"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendpaymentamount",
-          "fix:tag": "42857"
+          "FIX:field": "underlyingdividendpaymentamount",
+          "FIX:tag": "42857"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendpaymentcurrency",
-          "fix:tag": "42858"
+          "FIX:field": "underlyingdividendpaymentcurrency",
+          "FIX:tag": "42858"
         }
       },
       {
@@ -43,15 +43,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendaccruedinterest",
-          "fix:tag": "42859"
+          "FIX:field": "underlyingdividendaccruedinterest",
+          "FIX:tag": "42859"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingDividendPayment",
-    "fix:tag": "1014494"
+    "FIX:tag": "1014494",
+    "display": "UnderlyingDividendPayment"
   }
 }

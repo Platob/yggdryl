@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -21,7 +21,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedsym",
-          "fix:tag": "146"
+          "FIX:field": "norelatedsym",
+          "FIX:tag": "146"
         }
       },
       {
@@ -42,14 +42,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "strmasgnreqinstrmtgrp"
+          "FIX:group": "strmasgnreqinstrmtgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "StrmAsgnReq",
-    "fix:tag": "922475"
+    "FIX:tag": "922475",
+    "display": "StrmAsgnReq"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legextraordinaryeventtype",
-          "fix:tag": "42389"
+          "FIX:field": "legextraordinaryeventtype",
+          "FIX:tag": "42389"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legextraordinaryeventvalue",
-          "fix:tag": "42390"
+          "FIX:field": "legextraordinaryeventvalue",
+          "FIX:tag": "42390"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegExtraordinaryEvent",
-    "fix:tag": "1076730"
+    "FIX:tag": "1076730",
+    "display": "LegExtraordinaryEvent"
   }
 }

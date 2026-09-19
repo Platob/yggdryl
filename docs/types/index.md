@@ -7,8 +7,8 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 | key | value |
 | --- | --- |
 | Owns | `DataType`, `Field`, `Scalar`, and the shared enums re-exported at the crate root |
-| Arrow | projection sits behind the default `arrow` feature |
-| Bindings | Rust, [Python](../extensions/python.md), [JavaScript](../extensions/javascript.md) |
+| Arrow | projection is always compiled; the crate is Arrow-native |
+| Bindings | Rust, Python, JavaScript |
 | Rust bench target | one, `types`; each page scopes it with a Criterion filter |
 | Rust test target | one integration target, `types`, requiring `arrow` |
 
@@ -20,8 +20,9 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 | Core | [Field](field.md) | Name, datatype, nullability, metadata: the struct root, merge, and diffs |
 | Core | [Scalar](scalar.md) | The value every layer speaks, the shared enums, and `FieldScalar` |
 | Core | [Cast](cast.md) | The field as cast target, over Scalar rows, Arrow arrays, and record batches |
-| Families | [Numeric & temporal](numeric.md) | Boolean, integer, floating, decimal, and the temporal vocabulary |
-| Families | [Strings & bytes](text.md) | The string family (five layouts, any charset, one bound), the byte family (four layouts), `Str` and `Bytes`, the version and URL values, regex-capture schema inference |
+| Families | [Numeric](numeric.md) | Boolean, integer, floating, decimal, and the `Decimal18` value |
+| Families | [Temporal](temporal.md) | The five families - date, time, datetime, duration, interval - their leaves and units, the ISO spellings, the unit and zone vocabulary |
+| Families | [Strings & bytes](text.md) | The string family (eighteen leaves: six shapes in each of UTF-8, US-ASCII and windows-1252), the byte family (six leaves), `Str` and `Bytes`, the version value, the `uri` family's `url` and `urn` leaves, regex-capture schema inference |
 | Families | [Codes](codes.md) | The ten registered codes over `utf8` storage, `ascii_packed`, `StringEnum` and the ISO listings, the three securities identifiers and their check digits, the `state` lifecycle |
 | Families | [UUID](uuid.md) | The 128-bit identifier over `fixed_size_binary(16)` storage |
 | Families | [Nested](nested.md) | Children, dictionary and run-end encodings, unions |
@@ -41,7 +42,7 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib types::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- arithmetic::tests decimal::tests diff::tests merge::tests metadata::tests path::tests protocol::tests scalar::tests string::tests timezone::tests version::tests
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types
     cargo bench --manifest-path rust/Cargo.toml --bench types
     ```

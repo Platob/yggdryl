@@ -10,7 +10,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrumentextension"
+          "FIX:component": "instrumentextension"
         }
       },
       {
@@ -30,7 +30,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "financingdetails"
+          "FIX:component": "financingdetails"
         }
       },
       {
@@ -40,8 +40,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings",
-          "fix:tag": "711"
+          "FIX:field": "nounderlyings",
+          "FIX:tag": "711"
         }
       },
       {
@@ -51,7 +51,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "undinstrmtgrp"
+          "FIX:group": "undinstrmtgrp"
         }
       },
       {
@@ -61,8 +61,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs",
-          "fix:tag": "555"
+          "FIX:field": "nolegs",
+          "FIX:tag": "555"
         }
       },
       {
@@ -72,7 +72,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrmtleggrp"
+          "FIX:group": "instrmtleggrp"
         }
       },
       {
@@ -82,8 +82,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedinstruments",
-          "fix:tag": "1647"
+          "FIX:field": "norelatedinstruments",
+          "FIX:tag": "1647"
         }
       },
       {
@@ -93,7 +93,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "relatedinstrumentgrp"
+          "FIX:group": "relatedinstrumentgrp"
         }
       },
       {
@@ -103,8 +103,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitytradingstatus",
-          "fix:tag": "326"
+          "FIX:field": "securitytradingstatus",
+          "FIX:tag": "326"
         }
       },
       {
@@ -114,8 +114,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitytradingevent",
-          "fix:tag": "1174"
+          "FIX:field": "securitytradingevent",
+          "FIX:tag": "1174"
         }
       },
       {
@@ -125,8 +125,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "haltreason",
-          "fix:tag": "327"
+          "FIX:field": "haltreason",
+          "FIX:tag": "327"
         }
       },
       {
@@ -136,8 +136,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "financialstatus",
-          "fix:tag": "291"
+          "FIX:field": "financialstatus",
+          "FIX:tag": "291"
         }
       },
       {
@@ -147,8 +147,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "corporateaction",
-          "fix:tag": "292"
+          "FIX:field": "corporateaction",
+          "FIX:tag": "292"
         }
       },
       {
@@ -158,8 +158,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -169,8 +169,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -180,15 +180,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SecMassStat",
-    "fix:tag": "568071"
+    "FIX:tag": "568071",
+    "display": "SecMassStat"
   }
 }

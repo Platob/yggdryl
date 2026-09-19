@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrattribtype",
-          "fix:tag": "1313"
+          "FIX:field": "derivativeinstrattribtype",
+          "FIX:tag": "1313"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrattribvalue",
-          "fix:tag": "1314"
+          "FIX:field": "derivativeinstrattribvalue",
+          "FIX:tag": "1314"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "DerivativeInstrumentAttribute",
-    "fix:tag": "246944"
+    "FIX:tag": "246944",
+    "display": "DerivativeInstrumentAttribute"
   }
 }

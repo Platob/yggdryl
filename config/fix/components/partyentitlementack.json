@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listupdateaction",
-          "fix:tag": "1324"
+          "FIX:field": "listupdateaction",
+          "FIX:tag": "1324"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementstatus",
-          "fix:tag": "1883"
+          "FIX:field": "entitlementstatus",
+          "FIX:tag": "1883"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementresult",
-          "fix:tag": "1884"
+          "FIX:field": "entitlementresult",
+          "FIX:tag": "1884"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext",
-          "fix:tag": "1328"
+          "FIX:field": "rejecttext",
+          "FIX:tag": "1328"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen",
-          "fix:tag": "1664"
+          "FIX:field": "encodedrejecttextlen",
+          "FIX:tag": "1664"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext",
-          "fix:tag": "1665"
+          "FIX:field": "encodedrejecttext",
+          "FIX:tag": "1665"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartydetails",
-          "fix:tag": "1671"
+          "FIX:field": "nopartydetails",
+          "FIX:tag": "1671"
         }
       },
       {
@@ -87,7 +87,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "partydetailgrp"
+          "FIX:group": "partydetailgrp"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noentitlements",
-          "fix:tag": "1773"
+          "FIX:field": "noentitlements",
+          "FIX:tag": "1773"
         }
       },
       {
@@ -108,7 +108,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "entitlementgrp"
+          "FIX:group": "entitlementgrp"
         }
       },
       {
@@ -118,15 +118,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementrefid",
-          "fix:tag": "1885"
+          "FIX:field": "entitlementrefid",
+          "FIX:tag": "1885"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyEntitlementAck",
-    "fix:tag": "631943"
+    "FIX:tag": "631943",
+    "display": "PartyEntitlementAck"
   }
 }

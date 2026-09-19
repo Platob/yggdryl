@@ -1,8 +1,8 @@
-//! The `transform:` protocol: how a column is computed from the rows around
+//! The `TRANSFORM:` protocol: how a column is computed from the rows around
 //! it.
 //!
 //! A struct [`Field`] says what columns exist. A child carrying
-//! `transform:expression` also says how it is *derived*: the property holds
+//! `TRANSFORM:expression` also says how it is *derived*: the property holds
 //! the canonical text of one [`Term`] over the other columns of the same
 //! struct, and applying the field computes it. That is the same declaration a
 //! [`Selector`](super::Selector) projection makes - `year(event) as year` -
@@ -13,7 +13,7 @@
 //! # One derivation, two declarations
 //!
 //! A partition column has declared its derivation since before this protocol
-//! existed, as the pair `partition:sources` and `partition:transform` - the
+//! existed, as the pair `PARTITION:sources` and `PARTITION:transform` - the
 //! shape an Iceberg partition spec takes, one function over one source
 //! column. That pair stays what an Iceberg spec is read from, and it is *read
 //! here*: [`TransformField::term`] answers the explicit expression where one
@@ -34,7 +34,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::Function;
 use super::term::Term;
-use crate::types::protocol::{TransformField, TransformFieldMut};
+use crate::protocol::{TransformField, TransformFieldMut};
 use crate::{Error, Field, Result};
 
 /// The property naming the term a column is computed with.
@@ -47,13 +47,13 @@ const FUNCTION: &str = "function";
 const SOURCES: &str = "sources";
 
 /// The full key of the term a column is computed with.
-pub(crate) const TRANSFORM_EXPRESSION_KEY: &str = "transform:expression";
+pub(crate) const TRANSFORM_EXPRESSION_KEY: &str = "TRANSFORM:expression";
 
 /// The full key of the function a column is computed with.
-pub(crate) const TRANSFORM_FUNCTION_KEY: &str = "transform:function";
+pub(crate) const TRANSFORM_FUNCTION_KEY: &str = "TRANSFORM:function";
 
 /// The full key of the columns a function reads.
-pub(crate) const TRANSFORM_SOURCES_KEY: &str = "transform:sources";
+pub(crate) const TRANSFORM_SOURCES_KEY: &str = "TRANSFORM:sources";
 
 /// The three properties one derivation may be spelled with.
 pub(crate) const TRANSFORM_KEYS: [&str; 3] = [
@@ -65,9 +65,9 @@ pub(crate) const TRANSFORM_KEYS: [&str; 3] = [
 impl<'field> TransformField<'field> {
     /// The term this column is computed with, if it declares one.
     ///
-    /// An explicit `transform:expression` answers first. Without one, a
-    /// partition column's own declaration - its `partition:transform` over its
-    /// `partition:sources` - is the term, so a column derived either way reads
+    /// An explicit `TRANSFORM:expression` answers first. Without one, a
+    /// partition column's own declaration - its `PARTITION:transform` over its
+    /// `PARTITION:sources` - is the term, so a column derived either way reads
     /// the same here. `None` is an ordinary column.
     ///
     /// # Errors
@@ -223,7 +223,7 @@ impl TransformFieldMut<'_> {
     }
 }
 
-/// Read the function a `transform:function` property names: a grammar
+/// Read the function a `TRANSFORM:function` property names: a grammar
 /// function by canonical name or alias, or a user function by qualified name.
 ///
 /// # Errors
@@ -258,16 +258,16 @@ pub(crate) fn canonicalize_transform_expression(key: &str, value: &str) -> Resul
     Ok(term.to_string())
 }
 
-#[cfg(feature = "arrow")]
 mod arrow {
     use std::sync::Arc;
 
     use arrow_array::{Array, RecordBatch, StructArray};
     use arrow_schema::Field as ArrowField;
 
+    use crate::FieldValue as _;
     use crate::arrow::{field_from_arrow_schema, rebuilt_batch};
-    use crate::types::cast::{ArrowCast, ArrowCastOptions};
-    use crate::types::protocol::TransformField;
+    use crate::cast::ArrowCastOptions;
+    use crate::protocol::TransformField;
     use crate::{Error, Field, Result};
 
     impl TransformField<'_> {
@@ -290,11 +290,12 @@ mod arrow {
         ///
         /// use arrow_array::{ArrayRef, Date32Array, Int32Array, RecordBatch};
         /// use yggdryl::DataType;
+        /// use yggdryl::StructureType;
         ///
         /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
         /// let mut year = DataType::Int32.nullable_field("year");
         /// year.as_transform_mut().set_term(&"year(event)".parse()?)?;
-        /// let root = DataType::from_fields([DataType::Date32.required_field("event"), year])?
+        /// let root = DataType::from(StructureType::from_fields([DataType::date32().required_field("event"), year])?)
         ///     .required_field("row");
         ///
         /// let batch = RecordBatch::try_from_iter([(
@@ -425,7 +426,7 @@ mod arrow {
             match held {
                 Some(index) => columns[index] = array,
                 None => {
-                    fields.push(child.clone().into_arrow_ref()?);
+                    fields.push(child.clone().into_arrow_field_ref()?);
                     columns.push(array);
                 }
             }

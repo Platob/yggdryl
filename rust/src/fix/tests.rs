@@ -8,10 +8,11 @@ use super::global::autoload;
 use super::registry::control_byte;
 use super::store::shard_of;
 use crate::fix::{FixCodes, FixReplacement, FixReplacements};
-use crate::holder::local::Folder;
+use crate::local::Folder;
+use crate::sequence::SequenceType;
 use crate::{
     DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey, FixMsg,
-    FixRegistry, MimeType, Plan, Scalar, Version,
+    FixRegistry, MimeType, Plan, Scalar, StructureType, Version,
 };
 
 /// One path, resolved once, as every FIX navigator now takes it.
@@ -22,7 +23,7 @@ use crate::{
 /// float: `82.5` is a value a `f64` holds approximately and a decimal holds
 /// exactly.
 fn decimal(text: &str) -> Scalar {
-    Scalar::from(crate::types::Decimal::parse(text).expect("an exact number"))
+    Scalar::from(crate::Decimal18::parse(text).expect("an exact number"))
 }
 
 fn fpath(spelling: &str) -> crate::FieldPath {
@@ -49,7 +50,7 @@ fn id_of(tag: i32, name: &str) -> FixId {
     FixId::of(tag, name).unwrap()
 }
 
-/// A field carrying every `fix:` property.
+/// A field carrying every `FIX:` property.
 fn full(name: &str, tag: i32, tags: &[i32], aliases: &[&str]) -> Field {
     let mut field = tagged(name, tag);
     field.as_fix_mut().set_tags(tags).unwrap();
@@ -68,7 +69,8 @@ fn counter(name: &str, tag: i32) -> Field {
 }
 
 fn named_group(name: &str, tag: i32) -> Field {
-    let item = DataType::from_fields([tagged("Member", 9_002)])
+    let item = StructureType::from_fields([tagged("Member", 9_002)])
+        .map(DataType::from)
         .unwrap()
         .required_field("MemberComponent");
     let mut field = DataType::list(item).nullable_field(name);
@@ -93,7 +95,7 @@ fn seeded_fields() -> usize {
     *COUNT.get_or_init(|| FixRegistry::new().len())
 }
 
-/// Every message the catalog defines: a component carrying a `fix:msgtype`.
+/// Every message the catalog defines: a component carrying a `FIX:msgtype`.
 fn msgtypes(registry: &FixRegistry) -> usize {
     registry
         .definitions(FixCategory::Components)
@@ -109,7 +111,7 @@ fn crated_components() -> usize {
     crate::fix_crate_fields()
         .expect("the crate's own fields")
         .iter()
-        .filter(|field| matches!(field.dtype(), DataType::Struct(_)))
+        .filter(|field| matches!(field.dtype(), DataType::Structure(_)))
         .count()
 }
 
@@ -123,9 +125,9 @@ fn crate_names_of(groups: bool) -> Vec<&'static str> {
         .iter()
         .filter(|field| {
             if groups {
-                matches!(field.dtype(), DataType::Map(_))
+                matches!(field.dtype(), DataType::Mapping(_))
             } else {
-                !matches!(field.dtype(), DataType::Map(_) | DataType::Struct(_))
+                !matches!(field.dtype(), DataType::Mapping(_) | DataType::Structure(_))
             }
         })
         .map(Field::name)
@@ -491,7 +493,7 @@ fn membership_folds_once_sorts_and_refuses_what_it_cannot_hold() {
         .as_fix_mut()
         .set_branches(["Globex", "CME", "cme", "globex"])
         .unwrap();
-    assert_eq!(field.get_metadata("fix:branches"), Some("cme,globex"));
+    assert_eq!(field.get_metadata("FIX:branches"), Some("cme,globex"));
     assert_eq!(
         field.as_fix().branches().collect::<Vec<_>>(),
         ["cme", "globex"]
@@ -501,9 +503,9 @@ fn membership_folds_once_sorts_and_refuses_what_it_cannot_hold() {
 
     // Adding is idempotent under the fold, and keeps the list sorted.
     field.as_fix_mut().add_branch("GLOBEX").unwrap();
-    assert_eq!(field.get_metadata("fix:branches"), Some("cme,globex"));
+    assert_eq!(field.get_metadata("FIX:branches"), Some("cme,globex"));
     field.as_fix_mut().add_branch("Blp").unwrap();
-    assert_eq!(field.get_metadata("fix:branches"), Some("blp,cme,globex"));
+    assert_eq!(field.get_metadata("FIX:branches"), Some("blp,cme,globex"));
 
     // Held to the membership grammar: non-empty, no separator. A refusal
     // leaves the field exactly as it was.
@@ -514,7 +516,7 @@ fn membership_folds_once_sorts_and_refuses_what_it_cannot_hold() {
             .set_branches(refused.clone())
             .unwrap_err();
         assert!(
-            matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "fix:branches"),
+            matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:branches"),
             "{refused:?}: {error}"
         );
         assert_eq!(field, before, "{refused:?}");
@@ -527,7 +529,7 @@ fn membership_folds_once_sorts_and_refuses_what_it_cannot_hold() {
         .as_fix_mut()
         .set_branches::<[&str; 0], &str>([])
         .unwrap();
-    assert!(!field.has_metadata("fix:branches"));
+    assert!(!field.has_metadata("FIX:branches"));
     assert_eq!(field.as_fix().branches().count(), 0);
 }
 
@@ -641,7 +643,7 @@ fn an_identifier_is_one_integer_over_the_tag_and_the_folded_name() {
         let error = FixId::of(-1, name).unwrap_err();
         assert!(
             matches!(&error, Error::InvalidMetadataValue { key, reason }
-                if key == "fix:tag" && reason.contains("-1")),
+                if key == "FIX:tag" && reason.contains("-1")),
             "{name:?}: {error}"
         );
     }
@@ -690,9 +692,9 @@ fn properties_round_trip_including_empty_and_single_element_lists() {
     assert_eq!(field.as_fix().names().collect::<Vec<_>>(), ["Qty"]);
     assert_eq!(field.as_fix().description(), Some("Quantity ordered."));
     // Each list is the compact JSON array it is.
-    assert_eq!(field.get_metadata("fix:tag"), Some("38"));
-    assert_eq!(field.get_metadata("fix:tags"), Some("[152]"));
-    assert_eq!(field.get_metadata("fix:names"), Some("[\"Qty\"]"));
+    assert_eq!(field.get_metadata("FIX:tag"), Some("38"));
+    assert_eq!(field.get_metadata("FIX:tags"), Some("[152]"));
+    assert_eq!(field.get_metadata("FIX:names"), Some("[\"Qty\"]"));
 
     // Order is priority and is kept.
     field.as_fix_mut().set_tags(&[3, 1, 2]).unwrap();
@@ -701,21 +703,21 @@ fn properties_round_trip_including_empty_and_single_element_lists() {
         .set_names(["Quantity", "Qty", "OrderQuantity"])
         .unwrap();
     assert_eq!(field.as_fix().tags().unwrap(), [3, 1, 2]);
-    assert_eq!(field.get_metadata("fix:tags"), Some("[3,1,2]"));
+    assert_eq!(field.get_metadata("FIX:tags"), Some("[3,1,2]"));
     assert_eq!(
         field.as_fix().names().collect::<Vec<_>>(),
         ["Quantity", "Qty", "OrderQuantity"]
     );
     assert_eq!(
-        field.get_metadata("fix:names"),
+        field.get_metadata("FIX:names"),
         Some("[\"Quantity\",\"Qty\",\"OrderQuantity\"]")
     );
 
     // An empty list removes the property rather than storing "[]".
     field.as_fix_mut().set_tags(&[]).unwrap();
     field.as_fix_mut().set_names(Vec::<&str>::new()).unwrap();
-    assert!(!field.has_metadata("fix:tags"));
-    assert!(!field.has_metadata("fix:names"));
+    assert!(!field.has_metadata("FIX:tags"));
+    assert!(!field.has_metadata("FIX:names"));
     assert_eq!(field.as_fix().tags().unwrap(), Vec::<i32>::new());
     assert_eq!(field.as_fix().names().count(), 0);
 
@@ -742,7 +744,7 @@ fn a_property_write_rejects_bad_elements_and_leaves_the_field_unchanged() {
     ];
     for (index, error) in refusals.iter().enumerate() {
         assert!(
-            matches!(error, Error::InvalidMetadataValue { key, .. } if key.starts_with("fix:")),
+            matches!(error, Error::InvalidMetadataValue { key, .. } if key.starts_with("FIX:")),
             "refusal {index}: {error}"
         );
         assert!(error.to_string().contains("expected"), "{error}");
@@ -757,11 +759,11 @@ fn membership_round_trips_and_is_no_half_of_the_identity() {
     // Absent means the specification alone, and no identity without a tag.
     assert_eq!(field.as_fix().branches().count(), 0);
     assert_eq!(field.as_fix().id().unwrap(), None);
-    assert!(!field.has_metadata("fix:branches"));
+    assert!(!field.has_metadata("FIX:branches"));
 
     field.as_fix_mut().set_branches(["CME"]).unwrap();
     assert_eq!(field.as_fix().branches().collect::<Vec<_>>(), ["cme"]);
-    assert_eq!(field.get_metadata("fix:branches"), Some("cme"));
+    assert_eq!(field.get_metadata("FIX:branches"), Some("cme"));
     assert_eq!(field.as_fix().id().unwrap(), None, "still no tag");
 
     field.as_fix_mut().set_tag(5001).unwrap();
@@ -781,7 +783,7 @@ fn membership_round_trips_and_is_no_half_of_the_identity() {
         .as_fix_mut()
         .set_branches::<[&str; 0], &str>([])
         .unwrap();
-    assert!(!field.has_metadata("fix:branches"));
+    assert!(!field.has_metadata("FIX:branches"));
     assert_eq!(field.as_fix().id().unwrap(), Some(id));
 
     // The name is the other half: a rename is a new identity, derived on
@@ -802,7 +804,7 @@ fn registering_a_message_type_names_it_describes_it_and_never_rewrites_it() {
         FixRegistry::from_fields([tagged("msgtype", super::MSGTYPE_TAG_NAME.0)]).unwrap();
     let value = registry.register_msgtype("D", None, None).unwrap();
     assert_eq!(value.as_str(), "D");
-    assert!(matches!(value.as_field().dtype(), DataType::Struct(_)));
+    assert!(matches!(value.as_field().dtype(), DataType::Structure(_)));
 
     let held = registry
         .register_msgtype(
@@ -1240,7 +1242,8 @@ fn the_fold_table_holds_through_add_field_and_through_merge_with() {
 fn one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one() {
     let mut registry = FixRegistry::from_fields([tagged("MsgType", 35)]).unwrap();
     let message = |name: &str, code: &str| {
-        let mut field = DataType::from_fields([]).unwrap().required_field(name);
+        let mut field =
+            DataType::from(StructureType::from_fields([]).unwrap()).required_field(name);
         field.as_fix_mut().set_msgtype(code).unwrap();
         field
     };
@@ -1284,32 +1287,32 @@ fn one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one() {
 #[test]
 fn a_corrupt_stored_property_is_reported_under_its_full_key() {
     let cases = [
-        ("fix:tag", "3x"),
-        ("fix:tag", "+35"),
-        ("fix:tag", "-35"),
-        ("fix:tag", ""),
+        ("FIX:tag", "3x"),
+        ("FIX:tag", "+35"),
+        ("FIX:tag", "-35"),
+        ("FIX:tag", ""),
         // The alternates are one compact JSON array: the comma text an older
         // writer wrote is not one, and neither is a spaced, signed, empty,
         // unclosed or repeated element.
-        ("fix:tags", "1,2"),
-        ("fix:tags", "[1,,2]"),
-        ("fix:tags", "[1,1]"),
-        ("fix:tags", "[1, 2]"),
-        ("fix:tags", "[1,-2]"),
-        ("fix:tags", "[0]"),
-        ("fix:tags", "[1"),
-        ("fix:tags", "[1]]"),
-        ("fix:tags", "[2147483648]"),
-        ("fix:tags", "[1,]"),
-        ("fix:tags", "[,1]"),
-        ("fix:tags", "[01]"),
-        ("fix:tags", "[1 2]"),
+        ("FIX:tags", "1,2"),
+        ("FIX:tags", "[1,,2]"),
+        ("FIX:tags", "[1,1]"),
+        ("FIX:tags", "[1, 2]"),
+        ("FIX:tags", "[1,-2]"),
+        ("FIX:tags", "[0]"),
+        ("FIX:tags", "[1"),
+        ("FIX:tags", "[1]]"),
+        ("FIX:tags", "[2147483648]"),
+        ("FIX:tags", "[1,]"),
+        ("FIX:tags", "[,1]"),
+        ("FIX:tags", "[01]"),
+        ("FIX:tags", "[1 2]"),
     ];
     for (key, stored) in cases {
         let mut field = tagged("Symbol", 55);
         field.insert_metadata(key, stored).unwrap();
         let error = match key {
-            "fix:tag" => field.as_fix().tag().unwrap_err(),
+            "FIX:tag" => field.as_fix().tag().unwrap_err(),
             _ => field.as_fix().tags().unwrap_err(),
         };
         match &error {
@@ -1340,13 +1343,13 @@ fn a_corrupt_stored_property_is_reported_under_its_full_key() {
         "{\"Ticker\"}",
     ] {
         let mut field = tagged("Symbol", 55);
-        field.insert_metadata("fix:names", stored).unwrap();
+        field.insert_metadata("FIX:names", stored).unwrap();
         assert_eq!(field.as_fix().names().count(), 0, "{stored:?}");
     }
     // A well-formed array reads whatever produced it.
     let mut field = tagged("Symbol", 55);
     field
-        .insert_metadata("fix:names", "[\"Ticker\",\"Sym\"]")
+        .insert_metadata("FIX:names", "[\"Ticker\",\"Sym\"]")
         .unwrap();
     assert_eq!(
         field.as_fix().names().collect::<Vec<_>>(),
@@ -1372,10 +1375,10 @@ fn a_names_text_the_read_walks_as_nothing_never_enters_a_registry() {
         "[\"Ticker\",\"a\tb\"]",
     ] {
         let mut field = tagged("Symbol", 55);
-        field.insert_metadata("fix:names", stored).unwrap();
+        field.insert_metadata("FIX:names", stored).unwrap();
         let error = FixRegistry::new().insert(field.clone()).unwrap_err();
         assert!(
-            matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "fix:names"),
+            matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:names"),
             "{stored:?}: {error}"
         );
         let mut incoming = tagged("Symbol", 55);
@@ -1385,7 +1388,7 @@ fn a_names_text_the_read_walks_as_nothing_never_enters_a_registry() {
             .merge_with(&field.as_fix())
             .unwrap_err();
         assert!(
-            matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "fix:names"),
+            matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:names"),
             "{stored:?}: {error}"
         );
         assert_eq!(incoming.as_fix().names().collect::<Vec<_>>(), ["Sym"]);
@@ -1399,7 +1402,7 @@ fn a_field_without_a_tag_never_enters() {
         .unwrap_err();
     assert!(error.is_absent(), "{error}");
     let message = error.to_string();
-    assert!(message.contains("fix:tag"), "{message}");
+    assert!(message.contains("FIX:tag"), "{message}");
     assert!(message.contains("Symbol"), "{message}");
 
     let error = FixRegistry::new()
@@ -1780,12 +1783,12 @@ fn add_fields_adds_what_is_absent_and_merges_what_is_present() {
 fn add_fields_refuses_the_way_the_one_field_writes_refuse() {
     let mut registry = FixRegistry::from_fields([tagged("Symbol", 55)]).unwrap();
 
-    // No `fix:tag` is no identity, so there is nothing to add or fold under.
+    // No `FIX:tag` is no identity, so there is nothing to add or fold under.
     let error = registry
         .add_fields([DataType::utf8().nullable_field("Nameless")])
         .unwrap_err();
     assert!(error.is_absent(), "{error}");
-    assert!(error.to_string().contains("fix:tag"), "{error}");
+    assert!(error.to_string().contains("FIX:tag"), "{error}");
 
     // A datatype that disagrees with the stored definition is refused, never
     // widened - the shape a CBlock's generic `float` takes against a stored
@@ -1935,13 +1938,15 @@ fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
     let mut role = DataType::Int32.nullable_field("PartyRole");
     role.as_fix_mut().set_tag(452).unwrap();
     let mut group = DataType::list(
-        DataType::from_fields([party_id.clone(), role])
+        StructureType::from_fields([party_id.clone(), role])
+            .map(DataType::from)
             .unwrap()
             .required_field("Party"),
     )
     .nullable_field("Parties");
     group.as_fix_mut().set_counter(453).unwrap();
-    let instrument = DataType::from_fields([tagged("Symbol", 55), tagged("SecurityID", 48)])
+    let instrument = StructureType::from_fields([tagged("Symbol", 55), tagged("SecurityID", 48)])
+        .map(DataType::from)
         .unwrap()
         .nullable_field("Instrument");
 
@@ -2283,7 +2288,7 @@ fn nested_shapes_file_as_definitions_and_refuse_a_wire_tag_unchanged() {
     // the registry stands as it was.
     let mut registry = FixRegistry::from_fields([tagged("Symbol", 55)]).unwrap();
     let original = registry.clone();
-    let occurrence = DataType::from_fields([tagged("Member", 9_001)]).unwrap();
+    let occurrence = DataType::from(StructureType::from_fields([tagged("Member", 9_001)]).unwrap());
     for dtype in [
         occurrence.clone(),
         DataType::list(occurrence.required_field("item")),
@@ -2300,7 +2305,7 @@ fn nested_shapes_file_as_definitions_and_refuse_a_wire_tag_unchanged() {
         DataType::list(DataType::utf8().required_field("item")),
         DataType::dictionary(
             DataType::Int32,
-            DataType::from_fields([tagged("Member", 9_002)]).unwrap(),
+            DataType::from(StructureType::from_fields([tagged("Member", 9_002)]).unwrap()),
         )
         .unwrap(),
     ] {
@@ -2339,7 +2344,7 @@ fn derived_definition_tags_keep_the_exact_initial_slots() {
 #[test]
 fn derived_definition_tags_probe_past_scalar_and_component_occupants() {
     let mut registry = FixRegistry::from_fields([tagged("OccupiedScalar", 475_337)]).unwrap();
-    let dtype = DataType::from_fields([] as [Field; 0]).unwrap();
+    let dtype = DataType::from(StructureType::from_fields([] as [Field; 0]).unwrap());
     let mut occupied = dtype.clone().nullable_field("OccupiedComponent");
     occupied.as_fix_mut().set_tag(475_338).unwrap();
     registry
@@ -2616,12 +2621,14 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
     party_id.as_fix_mut().set_tag(448).unwrap();
     let mut role = DataType::Int32.nullable_field("PartyRole");
     role.as_fix_mut().set_tag(452).unwrap();
-    let item = DataType::from_fields([party_id, role])
+    let item = StructureType::from_fields([party_id, role])
+        .map(DataType::from)
         .unwrap()
         .required_field("Party");
     let mut group = DataType::list(item).nullable_field("Parties");
     group.as_fix_mut().set_counter(453).unwrap();
-    let instrument = DataType::from_fields([tagged("Symbol", 55)])
+    let instrument = StructureType::from_fields([tagged("Symbol", 55)])
+        .map(DataType::from)
         .unwrap()
         .nullable_field("Instrument");
     let mut qty = DataType::Int64.required_field("OrderQty");
@@ -2637,7 +2644,7 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
         .insert_definition(FixCategory::Components, instrument.clone())
         .unwrap();
     let registry = Arc::new(registry);
-    let root = DataType::from_fields([
+    let root = StructureType::from_fields([
         qty,
         instrument,
         count,
@@ -2645,6 +2652,7 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
         DataType::utf8().nullable_field("9999"),
         registry.field_by_tag(52).unwrap().clone(),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("NewOrderSingle");
     let value = Scalar::from_record([
@@ -2681,10 +2689,11 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
 
 #[test]
 fn folded_message_child_lookup_does_not_choose_between_colliding_names() {
-    let field = DataType::from_fields([
+    let field = StructureType::from_fields([
         DataType::utf8().required_field("A"),
         DataType::utf8().required_field("a"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("message");
     let message = FixMsg::with_registry(
@@ -2724,7 +2733,7 @@ fn a_message_resolves_values_through_its_registry() {
     // By tag, through the registry's canonical name. `OrderQty` is the
     // quantity the event holds, so it answers exact whatever the row's own
     // column would have typed it as.
-    let hundred = Scalar::from(crate::types::Decimal::from_int(100));
+    let hundred = Scalar::from(crate::Decimal18::from_int(100));
     assert_eq!(msg.by_tag(38).unwrap(), hundred);
     // By name, folded through the registry, and by alias.
     assert_eq!(msg.by_name("orderqty").unwrap(), hundred);
@@ -2859,7 +2868,8 @@ fn a_message_resolves_a_bare_tag_to_its_first_holder_and_an_identity_exactly() {
 
     // A message root the venue's fields shape carries no membership of its
     // own: a message is not a dictionary member.
-    let root = DataType::from_fields([venue_trade.clone(), msg_type.clone()])
+    let root = StructureType::from_fields([venue_trade.clone(), msg_type.clone()])
+        .map(DataType::from)
         .unwrap()
         .required_field("VenueExecutionReport");
     let value = Scalar::from_record([
@@ -2903,7 +2913,8 @@ fn a_message_resolves_a_bare_tag_to_its_first_holder_and_an_identity_exactly() {
 
     // A message shaped by the specification's field reaches it by the tag
     // its own child carries, whoever holds the bare tag in the dictionary.
-    let plain_root = DataType::from_fields([spec_trade, msg_type])
+    let plain_root = StructureType::from_fields([spec_trade, msg_type])
+        .map(DataType::from)
         .unwrap()
         .required_field("ExecutionReport");
     let plain = FixMsg::with_registry(
@@ -2929,11 +2940,12 @@ fn a_message_root_carrying_membership_is_read_as_any_root_is() {
     // Membership is provenance on a dictionary field; on a root it states
     // nothing the message reads, and a spelling nothing validates on read
     // is not a refusal.
-    let mut root = DataType::from_fields([tagged("MsgType", 35)])
+    let mut root = StructureType::from_fields([tagged("MsgType", 35)])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     root.as_fix_mut().set_branches(["cme"]).unwrap();
-    root.insert_metadata("fix:branches", "2cme,c me").unwrap();
+    root.insert_metadata("FIX:branches", "2cme,c me").unwrap();
     let message = FixMsg::with_registry(
         Arc::new(FixRegistry::new()),
         root,
@@ -3001,8 +3013,8 @@ fn a_message_states_each_market_number_once_and_reads_the_market_off_its_codes()
     assert_eq!(held.by_tag(44).unwrap(), decimal("82.5"));
     assert_eq!(held.by_tag(38).unwrap(), decimal("300"));
     // And what the message is *about* is what the trait reads off them.
-    assert_eq!(held.get_px(), crate::types::Decimal::parse("82.5").unwrap());
-    assert_eq!(held.get_qty(), crate::types::Decimal::parse("300").unwrap());
+    assert_eq!(held.get_px(), crate::Decimal18::parse("82.5").unwrap());
+    assert_eq!(held.get_qty(), crate::Decimal18::parse("300").unwrap());
     // `Quantity(53)` is the newer spelling and its own slot: a line that
     // said `53=` holds it there, and `OrderQty` stays empty.
     assert!(held.get_by_tag(53).is_none());
@@ -3013,11 +3025,11 @@ fn a_message_states_each_market_number_once_and_reads_the_market_off_its_codes()
     assert!(spelled.get_by_tag(38).is_none());
     assert_eq!(
         spelled.get_qty(),
-        crate::types::Decimal::parse("300").unwrap(),
+        crate::Decimal18::parse("300").unwrap(),
         "and the quantity the message is about reads either spelling"
     );
     // The last trade is its own fact beside them, under FIX's own tag.
-    assert_eq!(held.get_lastpx(), crate::types::Decimal::parse("82.5").ok());
+    assert_eq!(held.get_lastpx(), crate::Decimal18::parse("82.5").ok());
     // How long it stands, as the message spelled it: what `1` names is the
     // dictionary's to say.
     assert_eq!(held.get_tif(), Some("1"));
@@ -3185,7 +3197,7 @@ fn a_field_states_the_spellings_that_mean_nothing_was_sent() {
     let mut field = DataType::Float64.nullable_field("StopPx");
     field.as_fix_mut().set_tag(99).unwrap();
     field.as_fix_mut().set_nulls(["N/A", "NONE", ""]).unwrap();
-    assert_eq!(field.get_metadata("fix:nulls"), Some("N/A,NONE,"));
+    assert_eq!(field.get_metadata("FIX:nulls"), Some("N/A,NONE,"));
     assert_eq!(
         field.as_fix().nulls().collect::<Vec<_>>(),
         ["N/A", "NONE"],
@@ -3228,12 +3240,12 @@ fn a_null_spelling_is_refused_when_it_carries_the_separator_or_repeats() {
     let error = field.as_fix_mut().set_nulls(["NONE", "none"]).unwrap_err();
     assert!(error.to_string().contains("twice"), "{error}");
     // A refusal leaves the field exactly as it was.
-    assert_eq!(field.get_metadata("fix:nulls"), None);
+    assert_eq!(field.get_metadata("FIX:nulls"), None);
 
     // Empty input removes the property.
     field.as_fix_mut().set_nulls(["NONE"]).unwrap();
     field.as_fix_mut().set_nulls::<[&str; 0], &str>([]).unwrap();
-    assert_eq!(field.get_metadata("fix:nulls"), None);
+    assert_eq!(field.get_metadata("FIX:nulls"), None);
 }
 
 /// Fixture A: the standard `SideCodeSet`, dated as the specification dates it.
@@ -3415,7 +3427,7 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
     let field = side();
     let stored = field
         .as_metadata()
-        .get("fix:codes")
+        .get("FIX:codes")
         .expect("the code set is stored")
         .to_owned();
     assert_eq!(
@@ -3433,10 +3445,10 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
     // Taking the set away and putting it back produces the same text.
     let mut rebuilt = field.clone();
     let taken = rebuilt.as_fix_mut().remove_codes().unwrap().unwrap();
-    assert_eq!(rebuilt.as_metadata().get("fix:codes"), None);
+    assert_eq!(rebuilt.as_metadata().get("FIX:codes"), None);
     rebuilt.as_fix_mut().set_codes(&taken).unwrap();
     assert_eq!(
-        rebuilt.as_metadata().get("fix:codes"),
+        rebuilt.as_metadata().get("FIX:codes"),
         Some(stored.as_str())
     );
 
@@ -3444,7 +3456,7 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
     // refused rather than mis-scanned.
     let reordered = r#"[{"name":"Buy","value":"1"}]"#;
     let mut edited = DataType::utf8().nullable_field("Side");
-    edited.set_metadata([("fix:codes", reordered)]).unwrap();
+    edited.set_metadata([("FIX:codes", reordered)]).unwrap();
     let error = edited.as_fix().codes().next().unwrap().unwrap_err();
     assert!(
         matches!(&error, Error::Parse { target, position, .. }
@@ -3459,13 +3471,13 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
     // writer put around one is refused on its first byte like any other
     // hand edit - there is one shape, and this is not it.
     for (property, wrapped) in [
-        ("fix:codes", r#"{"codes":[{"value":"1","name":"Buy"}]}"#),
+        ("FIX:codes", r#"{"codes":[{"value":"1","name":"Buy"}]}"#),
         (
-            "fix:directions",
+            "FIX:directions",
             r#"{"directions":[{"code":"S","patterns":["^TX"]}]}"#,
         ),
         (
-            "fix:replacements",
+            "FIX:replacements",
             r#"{"replacements":[{"plan":"select 'A' as x"}]}"#,
         ),
     ] {
@@ -3473,8 +3485,8 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
         wrapper.set_metadata([(property, wrapped)]).unwrap();
         let view = wrapper.as_fix();
         let error = match property {
-            "fix:codes" => view.codes().next().unwrap().unwrap_err(),
-            "fix:directions" => view.directions().next().unwrap().unwrap_err(),
+            "FIX:codes" => view.codes().next().unwrap().unwrap_err(),
+            "FIX:directions" => view.directions().next().unwrap().unwrap_err(),
             _ => view.replacements().next().unwrap().unwrap_err(),
         };
         assert!(
@@ -3495,7 +3507,7 @@ fn two_codes_may_share_a_value_but_never_a_name_and_neither_may_be_empty() {
         .set_codes(&[FixCode::new("Buy", "1"), FixCode::new("BUY", "2")])
         .unwrap_err();
     assert!(error.to_string().contains("BUY"), "{error}");
-    assert_eq!(field.as_metadata().get("fix:codes"), None, "atomic");
+    assert_eq!(field.as_metadata().get("FIX:codes"), None, "atomic");
 
     let error = field
         .as_fix_mut()
@@ -3538,7 +3550,7 @@ fn a_code_set_carries_every_fact_the_specification_states_about_a_member() {
     // An empty set removes the property rather than storing an empty one.
     let mut cleared = field.clone();
     cleared.as_fix_mut().set_codes(&[]).unwrap();
-    assert_eq!(cleared.as_metadata().get("fix:codes"), None);
+    assert_eq!(cleared.as_metadata().get("FIX:codes"), None);
     assert_eq!(cleared.as_fix().codes().count(), 0);
 }
 
@@ -3613,7 +3625,7 @@ fn a_merge_keeps_a_stored_description_the_incoming_does_not_state() {
     incoming.as_fix_mut().set_tag(55).unwrap();
     incoming.as_fix_mut().set_names(["Ticker"]).unwrap();
 
-    // The FIX half folds the `fix:` keys and nothing else, so on its own it
+    // The FIX half folds the `FIX:` keys and nothing else, so on its own it
     // leaves a description alone in both directions: it is not FIX's key.
     incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
     assert_eq!(incoming.as_fix().description(), None);
@@ -3752,11 +3764,11 @@ fn rule80a() -> Field {
     field
 }
 
-/// A field carrying one hand-written `fix:replacements` text, unvalidated.
+/// A field carrying one hand-written `FIX:replacements` text, unvalidated.
 fn replacing(document: &str) -> Field {
     let mut field = DataType::utf8().nullable_field("rule80a");
     field
-        .set_metadata([("fix:replacements", document)])
+        .set_metadata([("FIX:replacements", document)])
         .unwrap();
     field
 }
@@ -3765,7 +3777,7 @@ fn replacing(document: &str) -> Field {
 fn a_replacement_document_round_trips_canonically_and_in_order() {
     let field = rule80a();
     assert_eq!(
-        field.get_metadata("fix:replacements"),
+        field.get_metadata("FIX:replacements"),
         Some(RULE80A_DOCUMENT)
     );
 
@@ -3797,7 +3809,7 @@ fn a_replacement_document_round_trips_canonically_and_in_order() {
 fn an_empty_replacement_set_removes_the_property() {
     let mut field = rule80a();
     field.as_fix_mut().set_replacements(&[]).unwrap();
-    assert_eq!(field.get_metadata("fix:replacements"), None);
+    assert_eq!(field.get_metadata("FIX:replacements"), None);
     assert_eq!(field.as_fix().replacements().count(), 0);
     assert!(field.as_fix().replacements().next_ok().is_none());
     // Removing what is not there is not an error.
@@ -3872,7 +3884,7 @@ fn a_hand_edited_replacement_document_is_refused_at_its_own_byte() {
             taken.as_fix_mut().remove_replacements().is_err(),
             "{document}"
         );
-        assert_eq!(taken.get_metadata("fix:replacements"), None, "{document}");
+        assert_eq!(taken.get_metadata("FIX:replacements"), None, "{document}");
     }
 
     // A refusal is fused: the walk ends where it stopped.
@@ -3901,14 +3913,14 @@ fn a_merge_lets_the_incoming_replacements_win_whole() {
             "select 'W' as ordercapacity".parse().unwrap(),
         )])
         .unwrap();
-    let stored_text = stored.get_metadata("fix:replacements").unwrap().to_owned();
+    let stored_text = stored.get_metadata("FIX:replacements").unwrap().to_owned();
 
     // Two documents have no order between them, so the incoming one is not
     // folded entry by entry: it replaces the stored one.
     let mut incoming = rule80a();
     incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
     assert_eq!(
-        incoming.get_metadata("fix:replacements"),
+        incoming.get_metadata("FIX:replacements"),
         Some(RULE80A_DOCUMENT)
     );
 
@@ -3917,7 +3929,7 @@ fn a_merge_lets_the_incoming_replacements_win_whole() {
     bare.as_fix_mut().set_tag(47).unwrap();
     bare.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
     assert_eq!(
-        bare.get_metadata("fix:replacements"),
+        bare.get_metadata("FIX:replacements"),
         Some(stored_text.as_str())
     );
 }
@@ -3948,7 +3960,7 @@ fn every_committed_replacement_is_the_document_the_rust_writer_renders() {
     let registry = committed();
     let mut documents = 0_usize;
     for field in every_committed_field(&registry) {
-        let Some(stored) = field.as_metadata().get("fix:replacements") else {
+        let Some(stored) = field.as_metadata().get("FIX:replacements") else {
             continue;
         };
         documents += 1;
@@ -4027,7 +4039,7 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
     let mut entries = HashSet::new();
     for field in registry.definitions(FixCategory::Groups) {
         assert!(groups.insert(field.name()));
-        if let DataType::Map(map) = field.dtype() {
+        if let DataType::Mapping(map) = field.dtype() {
             // The crate's two Map groups, each counted by its own tag and
             // reached through the counter door, as every group is.
             let (tag, name) = [super::IDENTIFIERS_TAG_NAME, super::METADATA_TAG_NAME]
@@ -4042,12 +4054,12 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
             assert_eq!(registry.get_field_by_counter(tag), Some(field), "{name}");
             continue;
         }
-        let DataType::List(item) = field.dtype() else {
+        let DataType::Sequence(SequenceType::List(item)) = field.dtype() else {
             panic!("{}", field.dtype());
         };
         assert!(entries.insert(item.name()));
         assert!(!item.is_nullable());
-        assert!(matches!(item.dtype(), DataType::Struct(_)));
+        assert!(matches!(item.dtype(), DataType::Structure(_)));
         let component = registry
             .definition(FixCategory::Components, item.name())
             .unwrap();
@@ -4089,9 +4101,9 @@ fn a_group_path_reaches_members_and_skips_its_occurrence_component() {
         &DataType::Int32
     );
     for field in registry.definitions(FixCategory::Groups) {
-        let DataType::List(item) = field.dtype() else {
+        let DataType::Sequence(SequenceType::List(item)) = field.dtype() else {
             assert!(
-                matches!(field.dtype(), DataType::Map(_)),
+                matches!(field.dtype(), DataType::Mapping(_)),
                 "{}: a group is a List, or one of the crate's Maps",
                 field.name()
             );
@@ -4127,40 +4139,31 @@ fn every_type_adopted_backward_parses_the_wire_spelling_of_its_era() {
             9_001,
             "UTCTimeOnly",
             "10:15:30.123",
-            DataType::Time64(crate::TimeUnit::Nanosecond),
+            DataType::time64(crate::TimeUnit::Nanosecond).unwrap(),
         ),
         (
             9_002,
             "LocalMktTime",
             "10:15:30",
-            DataType::Time64(crate::TimeUnit::Nanosecond),
+            DataType::time64(crate::TimeUnit::Nanosecond).unwrap(),
         ),
         (
             9_003,
             "UTCTimestamp",
             "20240102-10:15:30.123",
-            DataType::DateTime64 {
-                unit: crate::TimeUnit::Nanosecond,
-                timezone: crate::Timezone::UTC,
-            },
+            DataType::datetime64(crate::TimeUnit::Nanosecond, crate::Timezone::UTC).unwrap(),
         ),
         (
             9_004,
             "TZTimeOnly",
             "10:15:30-05:00",
-            DataType::DateTime64 {
-                unit: crate::TimeUnit::Nanosecond,
-                timezone: crate::Timezone::UTC,
-            },
+            DataType::datetime64(crate::TimeUnit::Nanosecond, crate::Timezone::UTC).unwrap(),
         ),
         (
             9_005,
             "LocalMktDate",
             "20240102",
-            DataType::DateTime64 {
-                unit: crate::TimeUnit::Nanosecond,
-                timezone: crate::Timezone::NAIVE,
-            },
+            DataType::datetime64(crate::TimeUnit::Nanosecond, crate::Timezone::NAIVE).unwrap(),
         ),
     ] {
         let held: DataType = spelling.parse().expect("a resolvable FIX datatype");
@@ -4224,7 +4227,7 @@ fn every_committed_code_set_is_the_document_the_rust_writer_renders() {
     let mut sets = 0_usize;
     let mut codes = 0_usize;
     for field in every_committed_field(&registry) {
-        let Some(stored) = field.as_metadata().get("fix:codes") else {
+        let Some(stored) = field.as_metadata().get("FIX:codes") else {
             continue;
         };
         sets += 1;
@@ -4261,7 +4264,7 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
         .iter()
         .find(|field| field.name() == column)
         .unwrap_or_else(|| panic!("a {column} column"));
-    let DataType::List(item) = held.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = held.dtype() else {
         panic!("a list, got {}", held.dtype());
     };
     // Exactly three fixentry levels on every root-to-leaf path, each with the
@@ -4292,7 +4295,7 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
         assert!(members[2].is_nullable(), "{column} level {level} value");
         let tail = &members[3];
         match tail.dtype() {
-            DataType::List(deeper) if level < 3 => {
+            DataType::Sequence(SequenceType::List(deeper)) if level < 3 => {
                 assert!(!tail.is_nullable(), "{column} level {level} tail");
                 held = deeper;
             }
@@ -4315,12 +4318,13 @@ fn towering(depth: usize) -> (Field, Scalar) {
     let mut field = DataType::utf8().nullable_field("leaf");
     let mut value = Scalar::from("deep");
     for level in (1..depth).rev() {
-        field = DataType::from_fields([field])
+        field = StructureType::from_fields([field])
+            .map(DataType::from)
             .unwrap()
             .nullable_field(format!("level{level}"));
         value = Scalar::from_sequence([value]);
     }
-    let root = DataType::from_fields([field]).unwrap().required_field("D");
+    let root = DataType::from(StructureType::from_fields([field]).unwrap()).required_field("D");
     (root, Scalar::from_sequence([value]))
 }
 
@@ -4546,7 +4550,7 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     }
     let group = schema.get_field("secaltidgrp").expect("the group");
     assert!(
-        matches!(group.dtype(), DataType::List(_)),
+        matches!(group.dtype(), DataType::Sequence(SequenceType::List(_))),
         "a group is typed as the registry declares it: {}",
         group.dtype()
     );
@@ -4626,7 +4630,7 @@ fn a_registry_of_the_crates_own_fields_compiles_no_derivation_at_all() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        crate::graph::MarketElement::get_isincode(&held).map(crate::types::Isin::as_str),
+        crate::graph::MarketElement::get_isincode(&held).map(crate::Isin::as_str),
         Some("US0378331005")
     );
 }

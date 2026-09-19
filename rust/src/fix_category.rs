@@ -7,18 +7,18 @@ use crate::{Error, Result};
 
 /// The independently named categories in a FIX registry.
 ///
-/// A message is a component carrying `fix:msgtype`; there is no fourth
+/// A message is a component carrying `FIX:msgtype`; there is no fourth
 /// category for it.
 ///
 /// ```
-/// use yggdryl::{DataType, FixRegistry};
+/// use yggdryl::{DataType, FixRegistry, StructureType};
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut registry = FixRegistry::new();
-/// let component = DataType::from_fields([])?.required_field("Party");
+/// let component = DataType::from(StructureType::from_fields([])?).required_field("Party");
 /// registry.insert(component)?;
 /// // A definition is filed by the shape it has: a Struct is a component,
 /// // and every shape is reached through the one set of field doors.
-/// assert_eq!(registry.field_by_name("Party")?.dtype(), &DataType::from_fields([])?);
+/// assert_eq!(registry.field_by_name("Party")?.dtype(), &DataType::from(StructureType::from_fields([])?));
 /// assert!(registry.get_field_by_tag(448).is_none());
 /// # Ok(())
 /// # }
@@ -28,7 +28,7 @@ use crate::{Error, Result};
 pub enum FixCategory {
     /// Tagged scalar wire fields, including repeating-group counters.
     Fields,
-    /// Named Struct definitions; one carrying `fix:msgtype` is a message.
+    /// Named Struct definitions; one carrying `FIX:msgtype` is a message.
     Components,
     /// Lists of component occurrences, referencing a scalar counter.
     Groups,

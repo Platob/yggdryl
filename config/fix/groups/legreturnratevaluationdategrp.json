@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legreturnratevaluationdatecomponent"
+        "FIX:component": "legreturnratevaluationdatecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legreturnratevaluationdatecomponent",
+    "FIX:counter": "42571",
+    "FIX:tag": "929998",
     "description": "Required if NoLegReturnRateValuationDates(42571) > 0.",
-    "display": "LegReturnRateValuationDateGrp",
-    "fix:component": "legreturnratevaluationdatecomponent",
-    "fix:counter": "42571",
-    "fix:tag": "929998"
+    "display": "LegReturnRateValuationDateGrp"
   }
 }

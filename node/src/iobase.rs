@@ -89,7 +89,7 @@ fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
     // backend; everything else stays local. Construction touches nothing on
     // either.
     if url.scheme().is_object_store() {
-        return yggdryl::holder::object::located(&url.to_string()).map_err(napi_error);
+        return yggdryl::object::located(&url.to_string()).map_err(napi_error);
     }
     Holder::local(url.clone().into_path().map_err(napi_error)?).map_err(napi_error)
 }
@@ -97,7 +97,7 @@ fn local_holder(url: &yggdryl::Url) -> Result<Holder> {
 /// Hold `url` as a container, on the store its scheme selects.
 fn folder_holder_for(url: &yggdryl::Url) -> Result<Holder> {
     if url.scheme().is_object_store() {
-        return yggdryl::holder::object::folder(&url.to_string())
+        return yggdryl::object::folder(&url.to_string())
             .map(Holder::ObjectFolder)
             .map_err(napi_error);
     }
@@ -110,12 +110,8 @@ fn folder_holder_for(url: &yggdryl::Url) -> Result<Holder> {
 fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
     match inner {
         Holder::FsFolder(folder) => Some(Holder::FsFolder(folder.clone())),
-        Holder::FsFile(file) => Some(Holder::FsFile(yggdryl::holder::fs::File::new(
-            file.bound().clone(),
-        ))),
-        Holder::FsPath(path) => Some(Holder::FsPath(yggdryl::holder::fs::Path::new(
-            path.bound().clone(),
-        ))),
+        Holder::FsFile(file) => Some(Holder::FsFile(yggdryl::fs::File::new(file.bound().clone()))),
+        Holder::FsPath(path) => Some(Holder::FsPath(yggdryl::fs::Path::new(path.bound().clone()))),
         _ => None,
     }
 }
@@ -124,8 +120,8 @@ fn rebuilt_arrow_holder(inner: &Holder) -> Option<Holder> {
 pub(crate) fn fs_folder_holder(inner: &Holder) -> Option<Holder> {
     let folder = match inner {
         Holder::FsFolder(folder) => folder.clone(),
-        Holder::FsFile(file) => yggdryl::holder::fs::Folder::new(file.bound().clone()),
-        Holder::FsPath(path) => yggdryl::holder::fs::Folder::new(path.bound().clone()),
+        Holder::FsFile(file) => yggdryl::fs::Folder::new(file.bound().clone()),
+        Holder::FsPath(path) => yggdryl::fs::Folder::new(path.bound().clone()),
         _ => return None,
     };
     Some(Holder::FsFolder(folder))
@@ -180,7 +176,7 @@ pub struct JsFsByteReader {
 }
 
 enum FsByteReader {
-    Core(Box<dyn yggdryl::holder::fs::ByteReader>),
+    Core(Box<dyn yggdryl::fs::ByteReader>),
     Handler(HandlerByteReader),
 }
 
@@ -238,7 +234,7 @@ pub struct JsFsRandomAccessReader {
 }
 
 enum FsRandomAccessReader {
-    Core(Box<dyn yggdryl::holder::fs::RandomAccessReader>),
+    Core(Box<dyn yggdryl::fs::RandomAccessReader>),
     Handler(HandlerRandomAccessReader),
 }
 
@@ -343,7 +339,7 @@ pub struct JsFsByteWriter {
 }
 
 enum FsByteWriter {
-    Core(Box<dyn yggdryl::holder::fs::ByteWriter>),
+    Core(Box<dyn yggdryl::fs::ByteWriter>),
     Handler(HandlerByteWriter),
 }
 
@@ -419,14 +415,14 @@ impl JsIOBase {
         Self { inner }
     }
 
-    fn bound_location(&self) -> Option<&yggdryl::holder::fs::BoundLocation> {
+    fn bound_location(&self) -> Option<&yggdryl::fs::BoundLocation> {
         self.inner.bound_location()
     }
 
-    fn bound_file(&self) -> Result<yggdryl::holder::fs::File> {
+    fn bound_file(&self) -> Result<yggdryl::fs::File> {
         self.bound_location()
             .cloned()
-            .map(yggdryl::holder::fs::File::new)
+            .map(yggdryl::fs::File::new)
             .ok_or_else(|| napi_error("this handle is not bound to an Arrow filesystem"))
     }
 
@@ -454,11 +450,10 @@ impl JsIOBase {
         path: &str,
         uri: Option<String>,
     ) -> Result<Self> {
-        let backend: std::sync::Arc<dyn yggdryl::holder::fs::FileSystem> =
+        let backend: std::sync::Arc<dyn yggdryl::fs::FileSystem> =
             std::sync::Arc::new(JsFileSystem::new(env, filesystem)?);
-        let bound =
-            yggdryl::holder::fs::BoundLocation::new(backend, path, uri).map_err(napi_error)?;
-        Ok(Self::from_core(yggdryl::holder::fs::located(bound)))
+        let bound = yggdryl::fs::BoundLocation::new(backend, path, uri).map_err(napi_error)?;
+        Ok(Self::from_core(yggdryl::fs::located(bound)))
     }
 
     /// Build a container handle for one recorded location.
@@ -590,23 +585,24 @@ impl JsIOBase {
                     .collect::<Result<std::collections::BTreeMap<_, _>>>()
             })
             .transpose()?;
-        let resolved = yggdryl::holder::fs::ResolvedFileSystemUri::from_uri(uri, options.as_ref())
+        let resolved = yggdryl::fs::ResolvedFileSystemUri::from_uri(uri, options.as_ref())
             .map_err(napi_error)?;
         match resolved.filesystem() {
-            yggdryl::holder::fs::ResolvedFileSystem::Local => {
-                let filesystem: std::sync::Arc<dyn yggdryl::holder::fs::FileSystem> =
-                    std::sync::Arc::new(yggdryl::holder::fs::LocalFileSystem::new());
-                let bound = yggdryl::holder::fs::BoundLocation::new(
+            yggdryl::fs::ResolvedFileSystem::Local => {
+                let filesystem: std::sync::Arc<dyn yggdryl::fs::FileSystem> =
+                    std::sync::Arc::new(yggdryl::fs::LocalFileSystem::new());
+                let bound = yggdryl::fs::BoundLocation::new(
                     filesystem,
                     resolved.path(),
                     Some(resolved.uri().to_owned()),
                 )
                 .map_err(napi_error)?;
-                Ok(Self::from_core(yggdryl::holder::fs::located(bound)))
+                Ok(Self::from_core(yggdryl::fs::located(bound)))
             }
-            yggdryl::holder::fs::ResolvedFileSystem::S3(_) => Err(napi_error(
-                yggdryl::Error::unsupported("S3 filesystem URI", "Arrow JS"),
-            )),
+            yggdryl::fs::ResolvedFileSystem::S3(_) => Err(napi_error(yggdryl::Error::unsupported(
+                "S3 filesystem URI",
+                "Arrow JS",
+            ))),
         }
     }
 
@@ -646,7 +642,7 @@ impl JsIOBase {
     #[napi(getter)]
     pub fn uri(&self) -> Option<String> {
         self.bound_location()
-            .and_then(yggdryl::holder::fs::BoundLocation::uri)
+            .and_then(yggdryl::fs::BoundLocation::uri)
             .map(str::to_owned)
     }
 
@@ -654,7 +650,7 @@ impl JsIOBase {
     #[napi(getter)]
     pub fn masked_uri(&self) -> Option<String> {
         self.bound_location()
-            .and_then(yggdryl::holder::fs::BoundLocation::masked_uri)
+            .and_then(yggdryl::fs::BoundLocation::masked_uri)
             .map(str::to_owned)
     }
 
@@ -1192,7 +1188,7 @@ impl JsIOBase {
         let bound = self.bound_location().ok_or_else(|| {
             napi_error("deleteRootDirContents requires a bound filesystem location")
         })?;
-        yggdryl::holder::fs::Folder::new(bound.clone())
+        yggdryl::fs::Folder::new(bound.clone())
             .delete_root_dir_contents()
             .map_err(napi_error)
     }
@@ -1379,7 +1375,7 @@ impl JsIOBase {
         &self,
         metadata: Option<std::collections::HashMap<String, String>>,
     ) -> Result<JsFsByteWriter> {
-        let metadata = metadata.map(yggdryl::holder::fs::OutputMetadata::from_entries);
+        let metadata = metadata.map(yggdryl::fs::OutputMetadata::from_entries);
         let bound = self
             .bound_location()
             .ok_or_else(|| napi_error("openOutputStream requires a bound filesystem location"))?;
@@ -1405,7 +1401,7 @@ impl JsIOBase {
         &self,
         metadata: Option<std::collections::HashMap<String, String>>,
     ) -> Result<JsFsByteWriter> {
-        let metadata = metadata.map(yggdryl::holder::fs::OutputMetadata::from_entries);
+        let metadata = metadata.map(yggdryl::fs::OutputMetadata::from_entries);
         let bound = self
             .bound_location()
             .ok_or_else(|| napi_error("openAppendStream requires a bound filesystem location"))?;
@@ -1430,7 +1426,7 @@ impl JsIOBase {
     pub fn copy_into(&self, target: &mut JsIOBase) -> Result<BigInt> {
         let copied = match (self.bound_location(), target.bound_location()) {
             (Some(source), Some(target)) => {
-                yggdryl::holder::fs::copy_bound(source, target).map_err(napi_error)?
+                yggdryl::fs::copy_bound(source, target).map_err(napi_error)?
             }
             _ => self
                 .inner
@@ -1449,7 +1445,7 @@ impl JsIOBase {
         let destination = target
             .bound_location()
             .ok_or_else(|| napi_error("moveInto requires a bound filesystem target"))?;
-        yggdryl::holder::fs::move_bound(source, destination).map_err(napi_error)?;
+        yggdryl::fs::move_bound(source, destination).map_err(napi_error)?;
         target.rebuilt()
     }
 
@@ -1611,8 +1607,8 @@ impl JsIOBase {
     ) -> Result<crate::text_line::JsTextLineIterator> {
         let defaulted = crate::media::text::JsTextOptions::new();
         let options = options.map_or(&defaulted, |options| options);
-        let lines = yggdryl::media::text::read_text_lines(&self.inner, &options.inner)
-            .map_err(napi_error)?;
+        let lines =
+            yggdryl::text::read_text_lines(&self.inner, &options.inner).map_err(napi_error)?;
         Ok(crate::text_line::JsTextLineIterator::from_core(lines))
     }
 

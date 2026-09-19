@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingstartdateunadjusted",
-          "fix:tag": "42646"
+          "FIX:field": "paymentstreamcompoundingstartdateunadjusted",
+          "FIX:tag": "42646"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingstartdaterelativeto",
-          "fix:tag": "42647"
+          "FIX:field": "paymentstreamcompoundingstartdaterelativeto",
+          "FIX:tag": "42647"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingstartdateoffsetperiod",
-          "fix:tag": "42648"
+          "FIX:field": "paymentstreamcompoundingstartdateoffsetperiod",
+          "FIX:tag": "42648"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingstartdateoffsetunit",
-          "fix:tag": "42649"
+          "FIX:field": "paymentstreamcompoundingstartdateoffsetunit",
+          "FIX:tag": "42649"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingstartdateoffsetdaytype",
-          "fix:tag": "42650"
+          "FIX:field": "paymentstreamcompoundingstartdateoffsetdaytype",
+          "FIX:tag": "42650"
         }
       },
       {
@@ -65,16 +65,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingstartdateadjusted",
-          "fix:tag": "42651"
+          "FIX:field": "paymentstreamcompoundingstartdateadjusted",
+          "FIX:tag": "42651"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "315341",
     "description": "Conditionally required when PaymentStreamCompoundingStartDateOffsetUnit(42649) is specified.",
-    "display": "PaymentStreamCompoundingStartDate",
-    "fix:tag": "315341"
+    "display": "PaymentStreamCompoundingStartDate"
   }
 }

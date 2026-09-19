@@ -8,14 +8,15 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, RecordBatch, StringArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field, Scalar, StringEnum};
+use yggdryl::FieldValue as _;
+use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, StringEnum, StructureType};
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new(
         "row",
-        DataType::from_fields(fields).expect("the benchmark fields are valid"),
+        DataType::from(StructureType::from_fields(fields).expect("the benchmark fields are valid")),
         false,
     )
 }
@@ -30,15 +31,15 @@ fn currency_columns() -> [(&'static str, DataType); 3] {
             DataType::fixed_ascii(4).expect("four bytes is a width"),
         ),
         (
-            "ascii",
-            DataType::from_str("ascii(4)").expect("four bytes is a bound"),
+            "sized_ascii",
+            DataType::sized_ascii(4).expect("four bytes is a maximum"),
         ),
     ]
 }
 
 pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("ascii");
-    for spelling in ["fixed_ascii(4)", "ascii(4)", "currency"] {
+    for spelling in ["fixed_ascii(4)", "sized_ascii(4)", "currency"] {
         group.bench_function(
             BenchmarkId::new("parse_display_round_trip", spelling),
             |bencher| {
@@ -59,7 +60,7 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
                 bencher.iter(|| {
                     black_box(&field)
                         .clone()
-                        .into_arrow()
+                        .into_arrow_field()
                         .expect("the benchmark field is valid")
                 });
             },

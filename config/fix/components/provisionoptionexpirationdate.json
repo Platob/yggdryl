@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdateunadjusted",
-          "fix:tag": "40145"
+          "FIX:field": "provisionoptionexpirationdateunadjusted",
+          "FIX:tag": "40145"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdatebusinessdayconvention",
-          "fix:tag": "40146"
+          "FIX:field": "provisionoptionexpirationdatebusinessdayconvention",
+          "FIX:tag": "40146"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noprovisionoptionexpirationdatebusinesscenters",
-          "fix:tag": "40955"
+          "FIX:field": "noprovisionoptionexpirationdatebusinesscenters",
+          "FIX:tag": "40955"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "provisionoptionexpirationdatebusinesscentergrp"
+          "FIX:group": "provisionoptionexpirationdatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdaterelativeto",
-          "fix:tag": "40148"
+          "FIX:field": "provisionoptionexpirationdaterelativeto",
+          "FIX:tag": "40148"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdateoffsetperiod",
-          "fix:tag": "40149"
+          "FIX:field": "provisionoptionexpirationdateoffsetperiod",
+          "FIX:tag": "40149"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdateoffsetunit",
-          "fix:tag": "40150"
+          "FIX:field": "provisionoptionexpirationdateoffsetunit",
+          "FIX:tag": "40150"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdateoffsetdaytype",
-          "fix:tag": "40151"
+          "FIX:field": "provisionoptionexpirationdateoffsetdaytype",
+          "FIX:tag": "40151"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdateadjusted",
-          "fix:tag": "40152"
+          "FIX:field": "provisionoptionexpirationdateadjusted",
+          "FIX:tag": "40152"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationtime",
-          "fix:tag": "40153"
+          "FIX:field": "provisionoptionexpirationtime",
+          "FIX:tag": "40153"
         }
       },
       {
@@ -119,16 +119,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationtimebusinesscenter",
-          "fix:tag": "40154"
+          "FIX:field": "provisionoptionexpirationtimebusinesscenter",
+          "FIX:tag": "40154"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "101054",
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of the provisional option expiration date.",
-    "display": "ProvisionOptionExpirationDate",
-    "fix:tag": "101054"
+    "display": "ProvisionOptionExpirationDate"
   }
 }

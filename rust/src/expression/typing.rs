@@ -30,7 +30,10 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::path::FieldSegment;
 use super::{Function, Literal, Operator, Safety, Term, named};
-use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, TimeUnit};
+use crate::DecimalType;
+use crate::enums::EnumType;
+use crate::sequence::SequenceType;
+use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, StructureType, TimeUnit};
 
 /// The widest exact decimal this crate builds by promotion.
 const DECIMAL_LIMIT: u8 = 38;
@@ -262,7 +265,11 @@ fn resolve(expression: &Term, schema: &Field) -> Result<Field> {
             for (name, value) in children.iter() {
                 fields.push(resolve(value, schema)?.with_name(name.clone()));
             }
-            Ok(named(expression, DataType::from_fields(fields)?, false))
+            Ok(named(
+                expression,
+                DataType::from(StructureType::from_fields(fields)?),
+                false,
+            ))
         }
         Term::List(items) => {
             let mut unified: Option<DataType> = None;
@@ -288,7 +295,11 @@ fn resolve(expression: &Term, schema: &Field) -> Result<Field> {
             }
             let key = Field::new("key", keys.unwrap_or(DataType::utf8()), false);
             let value = Field::new("value", values.unwrap_or(DataType::Null), nullable);
-            let entries_field = Field::new("entries", DataType::from_fields([key, value])?, false);
+            let entries_field = Field::new(
+                "entries",
+                DataType::from(StructureType::from_fields([key, value])?),
+                false,
+            );
             Ok(named(
                 expression,
                 DataType::map(entries_field, false)?,
@@ -381,7 +392,7 @@ fn unify(held: Option<&DataType>, next: &DataType, expression: &Term) -> Result<
 /// means the same thing whether or not the column is dictionary-encoded.
 pub(crate) fn unwrap_dictionary(dtype: &DataType) -> &DataType {
     match dtype {
-        DataType::Dictionary(dictionary) => unwrap_dictionary(dictionary.value()),
+        DataType::Enum(EnumType::Dictionary(dictionary)) => unwrap_dictionary(dictionary.value()),
         DataType::RunEndEncoded(encoded) => unwrap_dictionary(encoded.values().dtype()),
         other => other,
     }
@@ -428,10 +439,12 @@ pub(crate) fn is_float(dtype: &DataType) -> bool {
 /// The precision and scale of an exact decimal, if it is one.
 pub(crate) const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
     match dtype {
-        DataType::Decimal32 { precision, scale }
-        | DataType::Decimal64 { precision, scale }
-        | DataType::Decimal128 { precision, scale }
-        | DataType::Decimal256 { precision, scale } => Some((*precision, *scale)),
+        DataType::Decimal(DecimalType::Decimal32 { precision, scale })
+        | DataType::Decimal(DecimalType::Decimal64 { precision, scale })
+        | DataType::Decimal(DecimalType::Decimal128 { precision, scale })
+        | DataType::Decimal(DecimalType::Decimal256 { precision, scale }) => {
+            Some((*precision, *scale))
+        }
         _ => None,
     }
 }
@@ -448,20 +461,16 @@ fn is_signed_numeric(dtype: &DataType) -> bool {
             | DataType::Float32
             | DataType::Float64
     ) || decimal_parts(unwrap_dictionary(dtype)).is_some()
-        || matches!(
-            unwrap_dictionary(dtype),
-            DataType::Duration32(_) | DataType::Duration64(_)
-        )
+        || matches!(unwrap_dictionary(dtype), DataType::Duration(_))
 }
 
 /// The temporal family and unit of a datatype, if it has one.
 pub(crate) const fn temporal_parts(dtype: &DataType) -> Option<(u8, TimeUnit)> {
     match dtype {
-        DataType::Date32 => Some((0, TimeUnit::Day)),
-        DataType::Date64 => Some((0, TimeUnit::Millisecond)),
-        DataType::Time32(unit) | DataType::Time64(unit) => Some((1, *unit)),
-        DataType::DateTime64 { unit, .. } => Some((2, *unit)),
-        DataType::Duration32(unit) | DataType::Duration64(unit) => Some((3, *unit)),
+        DataType::Date(leaf) => Some((0, leaf.unit())),
+        DataType::Time(leaf) => Some((1, leaf.unit())),
+        DataType::DateTime(leaf) => Some((2, leaf.unit())),
+        DataType::Duration(leaf) => Some((3, leaf.unit())),
         _ => None,
     }
 }
@@ -485,7 +494,7 @@ const fn unit_rank(unit: TimeUnit) -> u8 {
 /// because an unshared pair here is a typing outcome, not an error to report.
 pub(crate) fn common_type(left: &DataType, right: &DataType) -> Option<DataType> {
     unwrap_dictionary(left)
-        .merge_exact(unwrap_dictionary(right), crate::types::Widening::Up)
+        .merge_exact(unwrap_dictionary(right), crate::Widening::Up)
         .ok()
 }
 
@@ -493,14 +502,14 @@ pub(crate) fn common_type(left: &DataType, right: &DataType) -> Option<DataType>
 fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Option<DataType> {
     let left = unwrap_dictionary(left);
     let right = unwrap_dictionary(right);
-    if matches!(left, DataType::Duration32(_) | DataType::Duration64(_))
+    if matches!(left, DataType::Duration(_))
         && is_integer(right)
         && matches!(operator, Operator::Mul | Operator::Div)
     {
         return Some(left.clone());
     }
     if is_integer(left)
-        && matches!(right, DataType::Duration32(_) | DataType::Duration64(_))
+        && matches!(right, DataType::Duration(_))
         && matches!(operator, Operator::Mul)
     {
         return Some(right.clone());
@@ -578,7 +587,7 @@ fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Opt
     }
     if is_integer(&shared)
         || is_float(&shared)
-        || (matches!(shared, DataType::Duration32(_) | DataType::Duration64(_))
+        || (matches!(shared, DataType::Duration(_))
             && matches!(operator, Operator::Add | Operator::Sub))
     {
         return Some(shared);
@@ -708,12 +717,12 @@ fn function_field(
         Function::Size => {
             if !matches!(
                 unwrap_dictionary(&first),
-                DataType::List(_)
-                    | DataType::ListView(_)
-                    | DataType::FixedSizeList(..)
-                    | DataType::LargeList(_)
-                    | DataType::LargeListView(_)
-                    | DataType::Map(_)
+                DataType::Sequence(SequenceType::List(_))
+                    | DataType::Sequence(SequenceType::ListView(_))
+                    | DataType::Sequence(SequenceType::FixedSizeList(..))
+                    | DataType::Sequence(SequenceType::LargeList(_))
+                    | DataType::Sequence(SequenceType::LargeListView(_))
+                    | DataType::Mapping(_)
             ) {
                 return Err(typing_error(format_smolstr!(
                     "expected a list or a map for size, got {first}"

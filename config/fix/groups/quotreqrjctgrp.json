@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "quotreqrjct"
+        "FIX:component": "quotreqrjct"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "quotreqrjct",
+    "FIX:counter": "146",
+    "FIX:tag": "322791",
     "description": "Number of related symbols (instruments) in Request",
-    "display": "QuotReqRjctGrp",
-    "fix:component": "quotreqrjct",
-    "fix:counter": "146",
-    "fix:tag": "322791"
+    "display": "QuotReqRjctGrp"
   }
 }

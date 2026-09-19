@@ -1511,12 +1511,12 @@ test('a catalog and a namespace carry properties, transactionally', (t) => {
   assert.deepEqual(catalog.properties(), { region: 'eu' })
 
   // The reserved prefix is refused with the core's own message.
-  assert.throws(() => catalog.updateProperties({ 'iceberg:x': '1' }), /reserved "iceberg:"/)
+  assert.throws(() => catalog.updateProperties({ 'ICEBERG:x': '1' }), /reserved "ICEBERG:"/)
 
   const sales = catalog.namespaces.create('sales')
   assert.deepEqual(sales.properties(), {})
   sales.updateProperties({ team: 'emea' })
   assert.deepEqual(sales.properties(), { team: 'emea' })
   assert.deepEqual(catalog.namespaces.get('sales').properties(), { team: 'emea' })
-  assert.throws(() => sales.updateProperties({ 'iceberg:x': '1' }), /reserved "iceberg:"/)
+  assert.throws(() => sales.updateProperties({ 'ICEBERG:x': '1' }), /reserved "ICEBERG:"/)
 })

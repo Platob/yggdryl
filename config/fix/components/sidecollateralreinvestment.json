@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralreinvestmenttype",
-          "fix:tag": "2867"
+          "FIX:field": "sidecollateralreinvestmenttype",
+          "FIX:tag": "2867"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralreinvestmentamount",
-          "fix:tag": "2865"
+          "FIX:field": "sidecollateralreinvestmentamount",
+          "FIX:tag": "2865"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralreinvestmentcurrency",
-          "fix:tag": "2866"
+          "FIX:field": "sidecollateralreinvestmentcurrency",
+          "FIX:tag": "2866"
         }
       },
       {
@@ -43,15 +43,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralreinvestmentcurrencycodesource",
-          "fix:tag": "2932"
+          "FIX:field": "sidecollateralreinvestmentcurrencycodesource",
+          "FIX:tag": "2932"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SideCollateralReinvestment",
-    "fix:tag": "966980"
+    "FIX:tag": "966980",
+    "display": "SideCollateralReinvestment"
   }
 }

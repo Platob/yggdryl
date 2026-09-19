@@ -6,7 +6,7 @@ Variant, geometry, and geography datatypes plus the dependency-free WKB reader b
 
 | | |
 | --- | --- |
-| Owns | `variant`, `geometry(crs)`, `geography(crs, algorithm)`, `Scalar::Geometry`, `Scalar::Geography`, `types::geospatial::wkb` |
+| Owns | `variant`, `geometry(crs)`, `geography(crs, algorithm)`, `Scalar::Geometry`, `Scalar::Geography`, `wkb` |
 | Defaults | CRS `OGC:CRS84`; edges `spherical`; display omits defaults |
 | Algorithms | `spherical`, `vincenty`, `thomas`, `andoyer`, `karney`; case-insensitive ([`EdgeAlgorithm`](scalar.md)) |
 | Arrow | variant: struct of non-nullable `metadata`, `value` binaries under `arrow.parquet.variant`; pair: WKB binary under `geoarrow.wkb`, CRS and algorithm in GeoArrow JSON; both ride `ARROW:extension:name`/`ARROW:extension:metadata` |
@@ -141,7 +141,7 @@ Rust only. Display, the [text cast](cast.md), and Parquet and Iceberg statistics
 `Geometry::from_slice` reads the seven simple-feature shapes in either byte order, with ISO (Z, M, ZM add 1000, 2000, 3000) or EWKB type codes. `bounding_box` folds min/max in one pass; `into_wkt` prints the shortest round-trip decimal.
 
 ```rust
-use yggdryl::types::geospatial::wkb::{self, Geometry};
+use yggdryl::wkb::{self, Geometry};
 
 // A little-endian XY point: order byte, type code 1, then x and y.
 let mut point = vec![1, 1, 0, 0, 0];
@@ -184,8 +184,7 @@ assert!(error.to_string().contains("byte 5"), "{error}");
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::geospatial types::tests::semi_structured_and_geospatial
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- field::arrow::geospatial field::comparison::geospatial
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- geospatial:: field::arrow::geospatial field::comparison::geospatial
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^geospatial/'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/geospatial_'
     ```

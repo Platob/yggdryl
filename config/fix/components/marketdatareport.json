@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdreportid",
-          "fix:tag": "963"
+          "FIX:field": "mdreportid",
+          "FIX:tag": "963"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdreportevent",
-          "fix:tag": "2535"
+          "FIX:field": "mdreportevent",
+          "FIX:tag": "2535"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdreportcount",
-          "fix:tag": "2536"
+          "FIX:field": "mdreportcount",
+          "FIX:tag": "2536"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnumreports",
-          "fix:tag": "911"
+          "FIX:field": "totnumreports",
+          "FIX:tag": "911"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnomarketsegmentreports",
-          "fix:tag": "2537"
+          "FIX:field": "totnomarketsegmentreports",
+          "FIX:tag": "2537"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnoinstrumentreports",
-          "fix:tag": "2538"
+          "FIX:field": "totnoinstrumentreports",
+          "FIX:tag": "2538"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnopartydetailreports",
-          "fix:tag": "2539"
+          "FIX:field": "totnopartydetailreports",
+          "FIX:tag": "2539"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnoentitlementreports",
-          "fix:tag": "2540"
+          "FIX:field": "totnoentitlementreports",
+          "FIX:tag": "2540"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnorisklimitreports",
-          "fix:tag": "2541"
+          "FIX:field": "totnorisklimitreports",
+          "FIX:tag": "2541"
         }
       },
       {
@@ -140,16 +140,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "DR",
+    "FIX:tag": "460809",
     "description": "MsgType = DR",
-    "display": "MarketDataReport",
-    "fix:msgtype": "DR",
-    "fix:tag": "460809"
+    "display": "MarketDataReport"
   }
 }

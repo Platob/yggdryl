@@ -15,7 +15,8 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from yggdryl import Field, Scalar
+from yggdryl import DataType, Field, Scalar
+from yggdryl.arrow import ArrowScalar
 from yggdryl.text import json
 
 
@@ -77,10 +78,16 @@ def test_native_field_and_datatype_wrappers_cross_structurally() -> None:
     assert field_value.as_py()["name"] == "items"  # type: ignore[index]
 
 
-def test_family_factories_select_width_and_keep_scale_unit_and_zone() -> None:
-    assert Scalar.float(1.5, 16).kind == "f16"
-    assert Scalar.float(1.5, 32).kind == "f32"
-    assert Scalar.float(1.5).kind == "f64"
+def test_the_type_side_names_the_width_unit_scale_and_zone() -> None:
+    # The width is named on the type, not chosen by a family factory: the six
+    # `Scalar.float`/`date`/`time`/`datetime` factories are gone, and every
+    # value they made is reachable here - plus `decimal32`/`decimal64`, which
+    # no factory could ever produce.
+    assert DataType("float16").scalar(1.5).kind == "f16"
+    assert DataType("float32").scalar(1.5).kind == "f32"
+    assert DataType("float64").scalar(1.5).kind == "f64"
+    assert DataType("decimal32(9,2)").scalar(Decimal("1.50")).kind == "d32"
+    assert DataType("decimal64(18,2)").scalar(Decimal("1.50")).kind == "d64"
     assert Scalar.decimal(150, 2).as_py() == Decimal("1.50")
 
     wide = "12345678901234567890123456789012345678901234567890"
@@ -94,13 +101,15 @@ def test_family_factories_select_width_and_keep_scale_unit_and_zone() -> None:
     assert d256.as_py() == Decimal(f"{wide}E-4")
     assert Scalar.from_(Decimal(wide)).kind == "d256"
 
-    assert Scalar.date(1).kind == "date32"
-    assert Scalar.date(86_400_000, "ms").kind == "date64"
-    assert Scalar.time(1, "s").kind == "time32"
-    assert Scalar.time(1, "us").as_py() == dt.time(microsecond=1)
-    with pytest.raises(ValueError, match="timezone"):
-        Scalar.time(1, "us", "UTC")
-    instant = Scalar.datetime(0, "us", "UTC")
+    assert DataType("date32").scalar(1).kind == "date32"
+    assert DataType("date64").scalar(86_400_000).kind == "date64"
+    assert DataType("time32(s)").scalar(1).kind == "time32"
+    assert DataType("time64(us)").scalar(1).as_py() == dt.time(microsecond=1)
+    # A time of day has no zone at all, so the type has nowhere to spell one -
+    # the parser refuses a second parameter rather than a value refusing a zone.
+    with pytest.raises(ValueError, match="expected"):
+        DataType('time64(us,"UTC")')
+    instant = DataType('datetime64(us,"UTC")').scalar(0)
     assert instant.count == 0
     assert instant.unit == "us"
     assert instant.zone == "UTC"
@@ -110,10 +119,13 @@ def test_family_factories_select_width_and_keep_scale_unit_and_zone() -> None:
     assert Scalar.duration(1, "ms").kind == "duration32"
     assert Scalar.duration(1, "us").as_py() == dt.timedelta(microseconds=1)
     assert Scalar.duration(2**31, "us").kind == "duration64"
-    with pytest.raises(ValueError, match="NAIVE"):
-        Scalar.duration(1, "us", "UTC")
-    with pytest.raises(ValueError, match="16, 32, or 64"):
-        Scalar.float(1.5, 8)
+    # An elapsed duration has no zone, so there is no parameter to pass one
+    # that could only be refused - the type has nowhere to spell one either.
+    with pytest.raises(ValueError, match="expected"):
+        DataType('duration32(us,"UTC")')
+    # A width that does not exist is refused by the type, where widths live.
+    with pytest.raises(ValueError):
+        DataType("float8")
 
 
 def test_scalar_identity_accessors_name_the_exact_leaf_and_family() -> None:
@@ -121,10 +133,10 @@ def test_scalar_identity_accessors_name_the_exact_leaf_and_family() -> None:
         (Scalar.from_(None), "null", "null"),
         (Scalar.from_(True), "boolean", "boolean"),
         (Scalar.from_(1), "int64", "integer"),
-        (Scalar.float(1.5, 32), "float32", "floating"),
+        (DataType("float32").scalar(1.5), "float32", "floating"),
         (Scalar.decimal(150, 2), "decimal128", "decimal"),
-        (Scalar.date(1), "date32", "temporal"),
-        (Scalar.from_("AAPL"), "string", "text"),
+        (DataType("date32").scalar(1), "date32", "temporal"),
+        (Scalar.from_("AAPL"), "utf8", "text"),
         (
             json.loads(
                 '"USD"', field=Field("value", "currency", False), cls=Scalar
@@ -187,31 +199,32 @@ def test_exact_width_factories_are_private_reconstruction_details() -> None:
         assert not hasattr(Scalar, name)
 
 
-def test_enumeration_preserves_identity_and_compact_ordinal() -> None:
-    value = Scalar.from_enum("io_mode", "append")
+def test_enumeration_reads_a_member_as_the_text_a_column_holds() -> None:
+    # An enum member's datatype is `string`, so the value is its canonical
+    # name and the vocabulary is what `from_enum` validates against, not
+    # something the value carries.
+    value = Scalar.from_enum("IOMode", "append")
 
-    assert value.kind == "enum"
-    assert value.enum_kind == "io_mode"
-    assert value.enum_value == "append"
-    assert value.enum_ordinal == 1
+    assert value.kind == "string"
     assert value.as_py() == "append"
     assert value.as_str() == "append"
+    assert value == Scalar.from_("append")
     assert hash(value) == hash(copy.copy(value))
     assert pickle.loads(pickle.dumps(value)) == value
     with pytest.raises(ValueError, match="unknown"):
-        Scalar.from_enum("io_mode", "missing")
+        Scalar.from_enum("IOMode", "missing")
 
 
 def test_value_is_hashable_and_has_typed_byte_accessors() -> None:
-    assert Scalar.float(1.0, 32) == Scalar.float(1.0)
-    assert hash(Scalar.float(1.0, 32)) == hash(Scalar.float(1.0))
+    assert DataType("float32").scalar(1.0) == DataType("float64").scalar(1.0)
+    assert hash(DataType("float32").scalar(1.0)) == hash(DataType("float64").scalar(1.0))
     assert Scalar.from_("text").as_str() == "text"
     assert Scalar.from_("text").as_bytes() is None
     assert Scalar.from_(b"bytes").as_bytes() == b"bytes"
     assert Scalar.from_(b"bytes").as_str() is None
     value = Scalar.from_({"answer": 42})
-    assert value.as_json_bytes() == b'{"answer":42}'
-    assert value.as_json_utf8() == '{"answer":42}'
+    assert value.into_json_bytes() == b'{"answer":42}'
+    assert value.into_json() == '{"answer":42}'
 
 
 def test_unsigned_stable_hash_maps_to_python_hash_without_overflow() -> None:
@@ -256,15 +269,26 @@ def test_checked_arithmetic_accepts_native_scalars_and_python_operands() -> None
     assert (-value).as_py() == -8
     assert abs(Scalar.from_(-8)).as_py() == 8
 
-    assert (Scalar.float(1.5, 16) + Scalar.float(0.5, 32)).kind == "f32"
+    assert (DataType("float16").scalar(1.5) + DataType("float32").scalar(0.5)).kind == "f32"
     assert (Scalar.decimal(105, 2) + Decimal("0.20")).as_py() == Decimal("1.25")
     assert Scalar.decimal(1).divide(Scalar.decimal(2)) == Scalar.decimal(5, 1)
     assert Scalar.decimal(1).divide(Scalar.decimal(128)) == Scalar.decimal(78_125, 7)
 
 
+def test_addition_joins_text_bytes_and_sequences() -> None:
+    # Text, bytes and sequences have no sum, so `+` joins them - through the
+    # Python operator too, not just the named method.
+    assert (Scalar.from_("AA") + "PL").as_py() == "AAPL"
+    assert (Scalar.from_(b"\x01") + b"\x02").as_py() == b"\x01\x02"
+    assert (Scalar.from_([1]) + [2]).as_py() == [1, 2]
+
+
 def test_checked_arithmetic_preserves_python_error_categories() -> None:
+    # Two repertoires still do not join, and only `+` joins at all.
     with pytest.raises(TypeError, match="invalid addition"):
-        _ = Scalar.from_("a") + "b"
+        _ = Scalar.from_("a") + 1
+    with pytest.raises(TypeError, match="invalid subtraction"):
+        _ = Scalar.from_("a") - "b"
     with pytest.raises(OverflowError, match="overflows"):
         _ = Scalar.from_(2**63 - 1) + 1
     with pytest.raises(ZeroDivisionError, match="by zero"):
@@ -274,9 +298,9 @@ def test_checked_arithmetic_preserves_python_error_categories() -> None:
 
 
 def test_native_scalar_traversal_keeps_exact_children() -> None:
-    instant = Scalar.datetime(1, "ns", "UTC")
+    instant = DataType('datetime64(ns,"UTC")').scalar(1)
     tree = Scalar.from_(
-        {"instant": instant, "legs": [{"price": Scalar.float(12.5, 32)}, None]}
+        {"instant": instant, "legs": [{"price": DataType("float32").scalar(12.5)}, None]}
     )
 
     assert len(tree) == 2
@@ -304,7 +328,7 @@ def test_native_scalar_traversal_keeps_exact_children() -> None:
 
 def test_native_scalar_mapping_and_record_updates_are_persistent() -> None:
     mapping = Scalar.from_({"symbol": "AAPL", "venue": None})
-    updated = mapping.set("venue", "XNAS").set("price", Scalar.float(12.5, 32))
+    updated = mapping.set("venue", "XNAS").set("price", DataType("float32").scalar(12.5))
     removed = updated.remove("symbol")
 
     assert mapping["venue"].kind == "null"
@@ -339,11 +363,14 @@ def test_native_scalar_mapping_and_record_updates_are_persistent() -> None:
 def test_repr_remains_total_when_python_temporal_projection_would_be_lossy() -> None:
     # `as_py` floors to the microsecond `datetime` holds, so the projection is
     # lossy; `repr` is what stays exact, and round-trips the whole value.
-    nanosecond = Scalar.datetime(1, "ns", "UTC")
+    nanosecond = DataType('datetime64(ns,"UTC")').scalar(1)
     assert nanosecond.as_py() == dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
     assert eval(repr(nanosecond), {"Scalar": Scalar}) == nanosecond
 
-    outside_python_date = Scalar.date(2**63 - 1, "ms")
+    # The largest whole-day millisecond an i64 holds. `Scalar.date` took any
+    # count and only failed when projected; the type checks the value is a
+    # whole day up front, so the subject has to be a legal one.
+    outside_python_date = DataType("date64").scalar(((2**63 - 1) // 86_400_000) * 86_400_000)
     with pytest.raises((OverflowError, ValueError)):
         outside_python_date.as_py()
     assert "date64" in repr(outside_python_date)
@@ -375,10 +402,11 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
             ),
         ),
         ("string", "naïve"),
-        # A layout, a charset, or a fixed width pickles the whole declaration;
-        # a maximum is the column's rule and never the value's.
-        ("string", ("fixed_string", "us-ascii", 4, "USD")),
-        ("string", ("large_string_view", "windows-1252", None, "café")),
+        # Any leaf but plain `utf8` pickles its name beside the text, and a
+        # fixed leaf its width; the name says the charset, and a maximum is
+        # the column's rule and never the value's.
+        ("string", ("fixed_ascii", 4, "USD")),
+        ("string", ("large_cp1252_view", None, "café")),
         ("currency", "USD"),
         ("side", "BUY"),
         ("version", "5.0.1"),
@@ -466,7 +494,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
 def test_arrow_scalar_round_trip_keeps_physical_type(
     scalar: pa.Scalar, kind: str
 ) -> None:
-    value = Scalar.from_arrow_scalar(scalar)
+    value = ArrowScalar.from_(scalar).into_scalar()
     restored = value.into_arrow_scalar()
     assert value.kind == kind
     assert restored.type == scalar.type
@@ -478,7 +506,7 @@ def test_arrow_decimal256_scalar_round_trip() -> None:
         Decimal("1234567890123456789012345678901234567890.12"),
         pa.decimal256(50, 2),
     )
-    value = Scalar.from_arrow_scalar(scalar)
+    value = ArrowScalar.from_(scalar).into_scalar()
     assert value.kind == "d256"
     # A Scalar retains the decimal width, coefficient, and scale, while a
     # declared Field retains spare precision that is not part of a value.
@@ -490,12 +518,12 @@ def test_arrow_decimal256_scalar_round_trip() -> None:
 
 def test_arrow_array_uses_c_data_and_requires_a_field_only_when_ambiguous() -> None:
     array = pa.array([1, None, 3], type=pa.int16())
-    value = Scalar.from_arrow_array(array)
+    value = ArrowScalar.from_(array).into_scalar()
     restored = value.into_arrow_array()
     assert restored.type == array.type
     assert restored.to_pylist() == array.to_pylist()
 
-    empty = Scalar.from_arrow_array(pa.array([], type=pa.int16()))
+    empty = ArrowScalar.from_(pa.array([], type=pa.int16())).into_scalar()
     with pytest.raises(ValueError, match="empty Sequence"):
         empty.into_arrow_array()
     restored_empty = empty.into_arrow_array(Field("item", "int16"))
@@ -508,13 +536,13 @@ def test_record_batch_and_table_round_trip_through_native_rows() -> None:
         names=["id", "symbol"],
     )
     field = Field.from_arrow_schema(batch.schema)
-    rows = Scalar.from_arrow_batch(batch)
+    rows = ArrowScalar.from_(batch).into_scalar()
     assert rows.as_py() == [[1, "A"], [2, "B"]]
     restored_batch = rows.into_arrow_batch(field)
     assert restored_batch.equals(batch)
 
     table = pa.Table.from_batches([batch, batch])
-    table_rows = Scalar.from_arrow_table(table)
+    table_rows = ArrowScalar.from_(table).into_scalar()
     restored_table = table_rows.into_arrow_table(field)
     assert restored_table.equals(table.combine_chunks())
 
@@ -560,7 +588,27 @@ def test_value_field_accessors_redirect_to_core_inference() -> None:
 
 def test_empty_rows_require_the_known_arrow_root_on_output() -> None:
     batch = pa.record_batch([pa.array([], type=pa.int32())], names=["id"])
-    rows = Scalar.from_arrow_batch(batch)
+    rows = ArrowScalar.from_(batch).into_scalar()
     with pytest.raises(ValueError, match="empty rows"):
         rows.into_arrow_batch()
     assert rows.into_arrow_batch(Field.from_arrow_schema(batch.schema)).equals(batch)
+
+
+def test_truthiness_reads_absence_zero_and_emptiness_as_false() -> None:
+    # Before `__bool__` existed, `bool(scalar)` fell through to `__len__`,
+    # which counts entries and answers zero for everything that is not a
+    # container - so all four of these read False. They are the reversal.
+    assert bool(Scalar.from_(5)) is True
+    assert bool(Scalar.from_("abc")) is True
+    assert bool(Scalar.from_(b"ab")) is True
+    assert bool(Scalar.from_(True)) is True
+
+    assert bool(Scalar.from_(0)) is False
+    assert bool(Scalar.from_(False)) is False
+    assert bool(Scalar.from_("")) is False
+    assert bool(Scalar.from_([])) is False
+
+    # Text a column spells false with, and the "struct all empty" case.
+    assert bool(Scalar.from_("off")) is False
+    assert bool(Scalar.from_({"a": None, "b": ""})) is False
+    assert bool(Scalar.from_({"a": None, "b": 1})) is True

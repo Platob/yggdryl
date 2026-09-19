@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingphysicalsettldeliverableobligations",
-          "fix:tag": "42065"
+          "FIX:field": "nounderlyingphysicalsettldeliverableobligations",
+          "FIX:tag": "42065"
         }
       },
       {
@@ -21,7 +21,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingphysicalsettldeliverableobligationgrp"
+          "FIX:group": "underlyingphysicalsettldeliverableobligationgrp"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingphysicalsettlcurrency",
-          "fix:tag": "42061"
+          "FIX:field": "underlyingphysicalsettlcurrency",
+          "FIX:tag": "42061"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingphysicalsettlbusinessdays",
-          "fix:tag": "42062"
+          "FIX:field": "underlyingphysicalsettlbusinessdays",
+          "FIX:tag": "42062"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingphysicalsettlmaximumbusinessdays",
-          "fix:tag": "42063"
+          "FIX:field": "underlyingphysicalsettlmaximumbusinessdays",
+          "FIX:tag": "42063"
         }
       },
       {
@@ -64,15 +64,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingphysicalsettltermxid",
-          "fix:tag": "42064"
+          "FIX:field": "underlyingphysicalsettltermxid",
+          "FIX:tag": "42064"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPhysicalSettlTerm",
-    "fix:tag": "105479"
+    "FIX:tag": "105479",
+    "display": "UnderlyingPhysicalSettlTerm"
   }
 }

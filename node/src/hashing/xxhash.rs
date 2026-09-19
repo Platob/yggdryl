@@ -13,7 +13,7 @@
 use napi::bindgen_prelude::{BigInt, Buffer, Either, Result, Uint8Array};
 use napi_derive::napi;
 
-use yggdryl::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
+use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{Digest, DigestAlgorithm};
 
 use crate::napi_error;
@@ -100,7 +100,7 @@ pub(crate) fn seed_from_bigint(value: Option<BigInt>) -> Result<u64> {
 /// Digest a complete value with XXH32.
 #[napi(js_name = "_xxh32Native", skip_typescript)]
 pub fn xxh32_native(data: Either<Buffer, Either<Uint8Array, String>>, seed: Option<u32>) -> u32 {
-    yggdryl::hashing::xxhash::xxh32_with_seed(content_bytes(&data), seed.unwrap_or(0))
+    yggdryl::xxhash::xxh32_with_seed(content_bytes(&data), seed.unwrap_or(0))
 }
 
 /// Digest a complete value with XXH64.
@@ -110,7 +110,7 @@ pub fn xxh64_native(
     seed: Option<BigInt>,
 ) -> Result<BigInt> {
     let seed = seed_from_bigint(seed)?;
-    Ok(BigInt::from(yggdryl::hashing::xxhash::xxh64_with_seed(
+    Ok(BigInt::from(yggdryl::xxhash::xxh64_with_seed(
         content_bytes(&data),
         seed,
     )))
@@ -125,13 +125,11 @@ pub fn xxh3_native(
 ) -> Result<BigInt> {
     let seed = seed_from_bigint(seed)?;
     let value = match secret {
-        Some(secret) => yggdryl::hashing::xxhash::xxh3_with_seed_and_secret(
-            content_bytes(&data),
-            seed,
-            secret.as_ref(),
-        )
-        .map_err(napi_error)?,
-        None => yggdryl::hashing::xxhash::xxh3_with_seed(content_bytes(&data), seed),
+        Some(secret) => {
+            yggdryl::xxhash::xxh3_with_seed_and_secret(content_bytes(&data), seed, secret.as_ref())
+                .map_err(napi_error)?
+        }
+        None => yggdryl::xxhash::xxh3_with_seed(content_bytes(&data), seed),
     };
     Ok(BigInt::from(value))
 }
@@ -145,13 +143,13 @@ pub fn xxh128_native(
 ) -> Result<BigInt> {
     let seed = seed_from_bigint(seed)?;
     let value = match secret {
-        Some(secret) => yggdryl::hashing::xxhash::xxh128_with_seed_and_secret(
+        Some(secret) => yggdryl::xxhash::xxh128_with_seed_and_secret(
             content_bytes(&data),
             seed,
             secret.as_ref(),
         )
         .map_err(napi_error)?,
-        None => yggdryl::hashing::xxhash::xxh128_with_seed(content_bytes(&data), seed),
+        None => yggdryl::xxhash::xxh128_with_seed(content_bytes(&data), seed),
     };
     Ok(bigint_from_u128(value))
 }
@@ -169,7 +167,7 @@ pub fn xxhash_digest_native(
 /// The shortest custom secret XXH3 accepts, in bytes.
 #[napi(js_name = "_xxhashSecretMinimumLengthNative", skip_typescript)]
 pub fn xxhash_secret_minimum_length_native() -> u32 {
-    u32::try_from(yggdryl::hashing::xxhash::SECRET_MINIMUM_LENGTH)
+    u32::try_from(yggdryl::xxhash::SECRET_MINIMUM_LENGTH)
         .unwrap_or_else(|_| unreachable!("the reference minimum is 136 bytes"))
 }
 

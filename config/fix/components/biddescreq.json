@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "biddescriptortype",
-          "fix:tag": "399"
+          "FIX:field": "biddescriptortype",
+          "FIX:tag": "399"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "biddescriptor",
-          "fix:tag": "400"
+          "FIX:field": "biddescriptor",
+          "FIX:tag": "400"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidevalueind",
-          "fix:tag": "401"
+          "FIX:field": "sidevalueind",
+          "FIX:tag": "401"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "liquidityvalue",
-          "fix:tag": "404"
+          "FIX:field": "liquidityvalue",
+          "FIX:tag": "404"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "liquiditynumsecurities",
-          "fix:tag": "441"
+          "FIX:field": "liquiditynumsecurities",
+          "FIX:tag": "441"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "liquiditypctlow",
-          "fix:tag": "402"
+          "FIX:field": "liquiditypctlow",
+          "FIX:tag": "402"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "liquiditypcthigh",
-          "fix:tag": "403"
+          "FIX:field": "liquiditypcthigh",
+          "FIX:tag": "403"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "efptrackingerror",
-          "fix:tag": "405"
+          "FIX:field": "efptrackingerror",
+          "FIX:tag": "405"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fairvalue",
-          "fix:tag": "406"
+          "FIX:field": "fairvalue",
+          "FIX:tag": "406"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "outsideindexpct",
-          "fix:tag": "407"
+          "FIX:field": "outsideindexpct",
+          "FIX:tag": "407"
         }
       },
       {
@@ -120,15 +120,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "valueoffutures",
-          "fix:tag": "408"
+          "FIX:field": "valueoffutures",
+          "FIX:tag": "408"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "BidDescReq",
-    "fix:tag": "859396"
+    "FIX:tag": "859396",
+    "display": "BidDescReq"
   }
 }

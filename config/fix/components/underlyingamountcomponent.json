@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpayamount",
-          "fix:tag": "985"
+          "FIX:field": "underlyingpayamount",
+          "FIX:tag": "985"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcollectamount",
-          "fix:tag": "986"
+          "FIX:field": "underlyingcollectamount",
+          "FIX:tag": "986"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlementdate",
-          "fix:tag": "987"
+          "FIX:field": "underlyingsettlementdate",
+          "FIX:tag": "987"
         }
       },
       {
@@ -43,15 +43,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlementstatus",
-          "fix:tag": "988"
+          "FIX:field": "underlyingsettlementstatus",
+          "FIX:tag": "988"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingAmount",
-    "fix:tag": "434026"
+    "FIX:tag": "434026",
+    "display": "UnderlyingAmount"
   }
 }

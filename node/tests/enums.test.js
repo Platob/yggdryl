@@ -5,25 +5,43 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { DataType, enums } = require('yggdryl')
+const { DataType, Field, enums } = require('yggdryl')
+
+// Walking the export rather than a list written beside it: a vocabulary added
+// to the core reaches this test by being exported, which is the only way it
+// could reach a caller either.
+const vocabularies = Object.entries(enums).filter(([name]) => name !== 'levels')
 
 test('every vocabulary is a frozen non-empty array of strings', () => {
-  for (const listing of [
-    enums.dataTypeIds,
-    enums.dataTypeKinds,
-    enums.timeUnits,
-    enums.unionModes,
-    enums.ioModes,
-    enums.codecs,
-    enums.charsets,
-    enums.ioKinds,
-    enums.compatibilitySchemes,
-  ]) {
-    assert.ok(Array.isArray(listing) && listing.length > 0)
-    assert.ok(Object.isFrozen(listing))
-    assert.ok(listing.every((value) => typeof value === 'string' && value.length > 0))
+  assert.ok(vocabularies.length > 0)
+  for (const [name, listing] of vocabularies) {
+    assert.ok(Array.isArray(listing) && listing.length > 0, name)
+    assert.ok(Object.isFrozen(listing), name)
+    assert.ok(
+      listing.every((value) => typeof value === 'string' && value.length > 0),
+      name,
+    )
   }
   assert.ok(Object.isFrozen(enums))
+})
+
+test('the vocabularies the core lists are the ones exported', () => {
+  assert.deepEqual(
+    vocabularies.map(([name]) => name).sort(),
+    [
+      'charsets',
+      'codecs',
+      'compatibilitySchemes',
+      'dataTypeIds',
+      'dataTypeKinds',
+      'digestAlgorithms',
+      'ioKinds',
+      'ioModes',
+      'pythonKinds',
+      'timeUnits',
+      'unionModes',
+    ],
+  )
 })
 
 test('the spellings are the ones the parsers accept', () => {
@@ -36,7 +54,15 @@ test('the spellings are the ones the parsers accept', () => {
   assert.ok(enums.codecs.includes('gzip'))
   assert.ok(enums.charsets.includes('windows-1252'))
   assert.ok(enums.ioKinds.includes('file'))
+  assert.ok(enums.digestAlgorithms.includes('xxh3-128'))
   assert.ok(enums.compatibilitySchemes.includes('arrow'))
+  // The typed `PYTHON:` vocabulary is Rust and Python only, so this listing is
+  // the whole of what JavaScript knows about the spellings `PYTHON:kind` takes.
+  assert.ok(enums.pythonKinds.includes('dataclass'))
+  assert.throws(
+    () => new Field('Quote', 'int64', false).set('PYTHON:kind', 'record'),
+    /PYTHON:kind/,
+  )
 })
 
 test('the level scale names its points', () => {

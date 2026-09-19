@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventperioddate",
-          "fix:tag": "41727"
+          "FIX:field": "underlyingcomplexeventperioddate",
+          "FIX:tag": "41727"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventperiodtime",
-          "fix:tag": "41728"
+          "FIX:field": "underlyingcomplexeventperiodtime",
+          "FIX:tag": "41728"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEventPeriodDate",
-    "fix:tag": "175162"
+    "FIX:tag": "175162",
+    "display": "UnderlyingComplexEventPeriodDate"
   }
 }

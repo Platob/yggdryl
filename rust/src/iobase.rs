@@ -12,7 +12,7 @@
 //! naming what they are.
 //!
 //! The core ships [`Buffer`](crate::holder::Buffer), an auto-scaling in-memory implementation, and
-//! [`crate::holder::local`], whose [`File`](crate::holder::local::File) is an auto-resizing
+//! [`crate::local`], whose [`File`](crate::local::File) is an auto-resizing
 //! memory-mapped local file. Two wrapping handles sit over any of them and are
 //! handles themselves: [`Coding`](crate::coding::Coding) presents the decoded bytes of a compressed
 //! resource, and [`crate::holder::buffered::Buffered`] serves reads from a page cache
@@ -64,7 +64,6 @@ const TRANSFER_CHUNK: usize = DEFAULT_STREAM_BATCH_SIZE;
 mod bytes;
 pub(crate) mod hierarchy;
 mod lifecycle;
-#[cfg(feature = "arrow")]
 mod transfer;
 
 pub(crate) use bytes::rest_of;
@@ -75,9 +74,7 @@ pub(crate) use lifecycle::{coding_mime, oversized};
 pub use lifecycle::{not_empty, skip_absent};
 #[cfg(feature = "iceberg")]
 pub(crate) use transfer::prepare_arrow_write_onto;
-#[cfg(feature = "arrow")]
 pub use transfer::{ArrowWriteSession, overwrite_arrow_reader_default};
-#[cfg(feature = "arrow")]
 pub(crate) use transfer::{
     append_arrow_reader_default, leaf_field, leaf_reader, leaf_row_size, leaf_writer,
     merge_arrow_reader_default, non_empty_arrow_reader, overwrite_arrow_reader_default_with_field,
@@ -173,7 +170,7 @@ pub trait IOBase: Send + IOMedia {
     fn url(&self) -> Option<&Url>;
 
     /// Return the filesystem/path binding when this handle has one.
-    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+    fn bound_location(&self) -> Option<&crate::fs::BoundLocation> {
         None
     }
 
@@ -307,7 +304,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```no_run
     /// use yggdryl::IOBase;
-    /// use yggdryl::holder::local::Folder;
+    /// use yggdryl::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
@@ -334,7 +331,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```no_run
     /// use yggdryl::IOBase;
-    /// use yggdryl::holder::local::Folder;
+    /// use yggdryl::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
@@ -416,7 +413,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```no_run
     /// use yggdryl::IOBase;
-    /// use yggdryl::holder::local::Folder;
+    /// use yggdryl::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
@@ -446,7 +443,9 @@ pub trait IOBase: Send + IOMedia {
                 .into_iter()
                 .filter(|conjunct| conjunct.columns().is_empty()),
         );
-        let bound = answerable.bind(&crate::DataType::from_fields([])?.required_field("holder"))?;
+        let bound = answerable.bind(
+            &crate::DataType::from(crate::StructureType::from_fields([])?).required_field("holder"),
+        )?;
         // The predicate is asked of each entry as it arrives, so a losing entry
         // is dropped before the next one is fetched and nothing accumulates.
         Ok(Listing::new(
@@ -483,7 +482,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```no_run
     /// use yggdryl::IOBase;
-    /// use yggdryl::holder::local::Folder;
+    /// use yggdryl::local::Folder;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let lake = Folder::new(Folder::temporary()?.path()?.join("lake"))?;
@@ -742,7 +741,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```
     /// use yggdryl::{IOBase, holder::Buffer};
-    /// use yggdryl::{DigestAlgorithm, hashing::xxhash};
+    /// use yggdryl::{DigestAlgorithm, xxhash};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut handle = Buffer::new();
@@ -768,7 +767,7 @@ pub trait IOBase: Send + IOMedia {
     /// bytes of its own, and which files a folder digest would cover in what
     /// order is a convention no format states.
     fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest> {
-        crate::hashing::xxhash::stream::read_digest(self, algorithm)
+        crate::xxhash::stream::read_digest(self, algorithm)
     }
 
     /// Digest `length` bytes starting at `offset`, streaming the window.
@@ -787,7 +786,7 @@ pub trait IOBase: Send + IOMedia {
         length: usize,
         algorithm: crate::DigestAlgorithm,
     ) -> Result<crate::Digest> {
-        crate::hashing::xxhash::stream::read_range_digest(self, offset, length, algorithm)
+        crate::xxhash::stream::read_range_digest(self, offset, length, algorithm)
     }
 
     /// Write every byte at `offset`.
@@ -834,7 +833,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// A whole-value write is a *complete* operation, so it ends with
     /// [`Self::flush`]: a handle that over-allocates - the memory-mapped
-    /// [`local::File`](crate::holder::local::File) grows geometrically so appending
+    /// [`local::File`](crate::local::File) grows geometrically so appending
     /// does not remap on every write - must not leave that slack visible to a
     /// second handle on the same location, which would read the padding as
     /// content. Positional [`Self::pwrite`] deliberately does not publish;
@@ -927,10 +926,10 @@ pub trait IOBase: Send + IOMedia {
     /// is a second round trip on the hot path, and a recursive delete over a
     /// large tree turns into a flood of them. Where a backend needs a different
     /// call for a leaf than for a container, the handle's own static role
-    /// answers which - [`local::File`](crate::holder::local::File) is a file,
-    /// [`local::Folder`](crate::holder::local::Folder) is a directory - so the dispatch
+    /// answers which - [`local::File`](crate::local::File) is a file,
+    /// [`local::Folder`](crate::local::Folder) is a directory - so the dispatch
     /// is on the type, not on a probe. The one documented exception is a
-    /// generic path handle such as [`local::Path`](crate::holder::local::Path), whose
+    /// generic path handle such as [`local::Path`](crate::local::Path), whose
     /// whole job is to report [`IOKind`] from what is actually there: it routes
     /// on the kind it *already* resolves, and adds no second probe for the
     /// delete.
@@ -991,16 +990,16 @@ pub trait IOBase: Send + IOMedia {
         if let (Some(source), Some(target_location)) =
             (self.bound_location(), target.bound_location())
         {
-            return crate::holder::fs::copy_bound(source, target_location);
+            return crate::fs::copy_bound(source, target_location);
         }
 
         // The generic positional contract has no atomic publish primitive.
         // Fully consume the source into the existing memory-filesystem
         // implementation before touching the target. Filesystem-to-filesystem
         // copies take the bounded native path above and never use this stage.
-        let staging: std::sync::Arc<dyn crate::holder::fs::FileSystem> =
-            std::sync::Arc::new(crate::holder::fs::MemoryFileSystem::new());
-        let staged = crate::holder::fs::BoundLocation::new(
+        let staging: std::sync::Arc<dyn crate::fs::FileSystem> =
+            std::sync::Arc::new(crate::fs::MemoryFileSystem::new());
+        let staged = crate::fs::BoundLocation::new(
             std::sync::Arc::clone(&staging),
             "copy-stage",
             None::<String>,
@@ -1050,7 +1049,7 @@ pub trait IOBase: Send + IOMedia {
         let media_type = self.media_type().clone();
 
         if let Some(target_location) = target.bound_location() {
-            crate::holder::fs::copy_bound(&staged, target_location)?;
+            crate::fs::copy_bound(&staged, target_location)?;
             target.set_media_type(media_type);
             return Ok(copied);
         }
@@ -1110,7 +1109,7 @@ pub trait IOBase: Send + IOMedia {
         let target_location = target
             .bound_location()
             .ok_or_else(|| Error::unsupported("move_into to an unbound handle", "memory"))?;
-        let size = crate::holder::fs::move_bound(source, target_location)?;
+        let size = crate::fs::move_bound(source, target_location)?;
         Ok(size)
     }
 
@@ -1277,24 +1276,21 @@ pub trait IOBase: Send + IOMedia {
     /// Consume this handle into plain-text record media.
     ///
     /// The wrapper is lazy and adds no line-only API. Its retained
-    /// [`TextOptions`](crate::media::text::TextOptions) become the defaults for the
+    /// [`TextOptions`](crate::text::TextOptions) become the defaults for the
     /// ordinary [`IOMedia`] record methods.
-    fn into_text(self) -> crate::media::text::Text<Self>
+    fn into_text(self) -> crate::text::Text<Self>
     where
         Self: Sized,
     {
-        crate::media::text::Text::new(self)
+        crate::text::Text::new(self)
     }
 
     /// Consume this handle into plain-text record media with explicit options.
-    fn into_text_with(
-        self,
-        options: crate::media::text::TextOptions,
-    ) -> crate::media::text::Text<Self>
+    fn into_text_with(self, options: crate::text::TextOptions) -> crate::text::Text<Self>
     where
         Self: Sized,
     {
-        crate::media::text::Text::new(self).with_options(options)
+        crate::text::Text::new(self).with_options(options)
     }
 
     /// Borrow a streaming writer positioned at `offset`.

@@ -6,7 +6,7 @@ A file system that lives inside one file: the archive is the container, its memb
 
 | | |
 | --- | --- |
-| Owns | Rust `holder::zip::{Archive, Entry, Node, Path, Leaf}`, `zip::mount`, `zip::from_url`; Rust-only |
+| Owns | Rust `yggdryl::zip::{Archive, Entry, Node, Path, Leaf}`, `zip::mount`, `zip::from_url`; Rust-only |
 | Roles | `Node` is the archive root or any member prefix, `Leaf` is one member, `Path` resolves to whichever is there. A ZIP has no directories and no files - it has one flat index of names - so the roles are named for what they walk |
 | Nesting | An archive mounted over a member is a resource of its own: `day.zip#inner.zip//trades/eu.csv`. The marker with nothing after it is the mounted archive, the same fragment without it is the member holding its bytes |
 | Mounting | `zip::mount(handle)` or `Holder::zip(handle)` over any handle; a `.zip` leaf stays a leaf until it is mounted |
@@ -36,7 +36,7 @@ A file system that lives inside one file: the archive is the container, its memb
 === "Rust"
 
     ```rust
-    use yggdryl::holder::{Buffer, Holder, zip};
+    use yggdryl::{holder::{Buffer, Holder}, zip};
     use yggdryl::IOBase;
 
     let root = zip::mount(Holder::buffer(Buffer::new()));
@@ -65,7 +65,7 @@ A file system that lives inside one file: the archive is the container, its memb
 A ZIP has no directory tree. It has a flat list of members whose names contain separators, and a directory record is optional metadata beside them. The tree is derived from both: a prefix is a directory when a record names it or when some member continues it.
 
 ```rust
-use yggdryl::holder::{Buffer, Holder, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
 use yggdryl::{IOBase, IOKind};
 
 let root = Archive::new(Holder::buffer(Buffer::new())).mount();
@@ -90,7 +90,7 @@ Listing reads no member byte: the archive's directory is already the index, so o
 The member path is the URL fragment, so one location carries both facts - which archive, and which member of it - and the archive's own name never becomes a directory that happens to end in `.zip`. Hive partitions read from both halves, so a lake can partition the archives and partition again inside one.
 
 ```rust
-use yggdryl::holder::{Holder, zip};
+use yggdryl::{holder::Holder, zip};
 use yggdryl::{IOBase, Url};
 
 let root = zip::mount(Holder::file("/lake/day.zip")?);
@@ -119,7 +119,7 @@ assert_eq!(
 Because one URL carries both the archive and the member, the location is a round trip: what a member reports is what reopens it.
 
 ```rust
-use yggdryl::holder::{Holder, zip};
+use yggdryl::{holder::Holder, zip};
 use yggdryl::IOBase;
 
 let path = std::env::temp_dir().join(format!("yggdryl-doc-zip-{}.zip", std::process::id()));
@@ -142,7 +142,7 @@ let _ = std::fs::remove_file(&path);
 A **stored** member is the archive's own bytes over a range, so a positional read is one positional read of the archive. Nothing is decompressed, nothing is copied beyond the caller's buffer, and nothing is retained between calls.
 
 ```rust
-use yggdryl::holder::{Buffer, Holder, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
 use yggdryl::{Codec, IOBase};
 
 let payload: Vec<u8> = (0..=255_u8).cycle().take(4_096).collect();
@@ -163,7 +163,7 @@ A **compressed** member has no decoded seek. What it has instead is a map: a com
 A member **another writer** compressed carries no map, which reads honestly as an empty one: every positional read of it decodes from the member's first byte. A stride of zero writes such a solid member, which is what the second archive below holds.
 
 ```rust
-use yggdryl::holder::{Buffer, Holder, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
 use yggdryl::{Codec, IOBase};
 
 let payload: Vec<u8> = b"symbol,price\nAAPL,187.23\n".repeat(2_048);
@@ -215,7 +215,7 @@ The sizes and the digest are only known when the last byte is encoded, so a memb
 A ZIP member is still one compressed unit, so a *positional* write materializes the decoded member, applies the write, and republishes it whole on `flush` - the same shape a [content coding](../../coding/index.md) has. A whole write does not: it never decodes the member it replaces.
 
 ```rust
-use yggdryl::holder::{Buffer, Holder, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
 use yggdryl::{Codec, IOBase};
 
 let root = Archive::new(Holder::buffer(Buffer::new())).mount();
@@ -247,7 +247,7 @@ assert_eq!(root.archive().read_member("sparse.bin")?, b"\0\0\0\0tail");
 The coding a write uses is the member's own if it has one, then `Identity` for a representation that already carries a content coding, then the archive's default.
 
 ```rust
-use yggdryl::holder::{Buffer, Holder, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
 use yggdryl::{Codec, IOBase, Level};
 
 let root = Archive::new(Holder::buffer(Buffer::new()))
@@ -259,7 +259,7 @@ root.as_leaf("blob.bin")?.write_all_bytes(&vec![1_u8; 512])?;
 assert_eq!(root.archive().get_entry("blob.bin")?.expect("the member").codec()?, Codec::Zstd);
 
 // A `.gz` member is already compressed, so it is stored rather than recoded.
-root.as_leaf("app.log.gz")?.write_all_bytes(&yggdryl::coding::gzip::dump(b"symbol")?)?;
+root.as_leaf("app.log.gz")?.write_all_bytes(&yggdryl::gzip::dump(b"symbol")?)?;
 assert_eq!(root.archive().get_entry("app.log.gz")?.expect("the member").codec()?, Codec::Identity);
 
 // And an explicit coding on the member handle wins over both.
@@ -272,7 +272,7 @@ assert_eq!(member.name(), "forced.bin");
 A member is an ordinary handle, so mounting one is an ordinary mount. The inner archive is a resource of its own: it keeps the location of the member it was mounted over, and its members continue that fragment one level down past a `//` marker.
 
 ```rust
-use yggdryl::holder::{Buffer, Holder, zip};
+use yggdryl::{holder::{Buffer, Holder}, zip};
 use yggdryl::IOBase;
 
 // Stage an archive, then hold it as one member of another.
@@ -307,7 +307,7 @@ Writing into an inner archive republishes the outer member that holds it, on tha
 A member write appends its record after the last member and updates the in-memory index; `flush` writes the central directory after it. Until that flush the stored archive still reads as its previous state, because the directory an unfinished write has not reached is still the one that indexes it.
 
 ```rust
-use yggdryl::holder::{Buffer, Holder, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
 use yggdryl::{Codec, IOBase};
 
 let root = Archive::new(Holder::buffer(Buffer::new())).mount();
@@ -332,7 +332,7 @@ Replacing a member leaves its previous bytes behind as dead space, which is what
 `Entry` is what the central directory says about one member. Reading one costs no member byte, which is what lets an archive answer a listing, a size, or a digest check without decompressing anything.
 
 ```rust
-use yggdryl::holder::{Buffer, Holder, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
 use yggdryl::IOBase;
 
 let root = Archive::new(Holder::buffer(Buffer::new())).mount();
@@ -360,7 +360,7 @@ backend's cost is its call count rather than its byte count.
 model below is asserted rather than asserted-to.
 
 ```rust
-use yggdryl::holder::{Buffer, Holder, zip::Archive};
+use yggdryl::{holder::{Buffer, Holder}, zip::Archive};
 use yggdryl::{Codec, IOBase};
 
 let root = Archive::new(Holder::buffer(Buffer::new())).mount();
@@ -419,10 +419,10 @@ use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch};
 
-use yggdryl::holder::{Buffer, Holder, zip};
-use yggdryl::{DataType, IOBase, IOMedia};
+use yggdryl::{holder::{Buffer, Holder}, zip};
+use yggdryl::{DataType, IOBase, IOMedia, StructureType};
 
-let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
     .required_field("row");
 let arrow_schema = schema.clone().into_arrow_schema()?;
 let batch = RecordBatch::try_new(
@@ -467,7 +467,7 @@ assert!(root.is_tabular());
 === "Rust"
 
     ```bash
-    cargo test -p yggdryl --lib holder::zip::
+    cargo test -p yggdryl --lib zip::
     cargo test -p yggdryl --test iobase_calls zip::
     cargo test -p yggdryl --test interop zip::
     python3 scripts/check_zip_interop.py

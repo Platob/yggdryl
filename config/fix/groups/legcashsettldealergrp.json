@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legcashsettldealercomponent"
+        "FIX:component": "legcashsettldealercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legcashsettldealercomponent",
+    "FIX:counter": "41342",
+    "FIX:tag": "363613",
     "description": "Required if NoLegCashSettlDealers(41342) > 0.",
-    "display": "LegCashSettlDealerGrp",
-    "fix:component": "legcashsettldealercomponent",
-    "fix:counter": "41342",
-    "fix:tag": "363613"
+    "display": "LegCashSettlDealerGrp"
   }
 }

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use yggdryl::fix::{MsgDirection, RECEIVE_PATTERNS, SEND_PATTERNS};
 use yggdryl::{
     DataType, Field, FixCode, FixCodec, FixDirection, FixRegistry, MSGDIRECTION_TAG_NAME,
+    StructureType,
 };
 
 fn reading() -> MsgDirection {
@@ -139,7 +140,7 @@ fn ruled_field(directions: &[FixDirection]) -> Field {
 
 #[test]
 fn a_dictionary_without_the_property_reads_by_the_defaults_as_data_and_as_readings() {
-    // The committed dictionary carries no `fix:directions`: the rules in
+    // The committed dictionary carries no `FIX:directions`: the rules in
     // force are the crate's defaults, keyed by the set's two halves, and
     // they are data a caller can read.
     let committed = reading();
@@ -440,15 +441,15 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
         warnings,
         [
             format!(
-                "tag 385 fix:directions: {}",
+                "tag 385 FIX:directions: {}",
                 door(&[FixDirection::new("S", ["("])])
             ),
             format!(
-                "tag 385 fix:directions: {}",
+                "tag 385 FIX:directions: {}",
                 door(&[FixDirection::new("Q", ["^QX "])])
             ),
             format!(
-                "tag 385 fix:directions: {}",
+                "tag 385 FIX:directions: {}",
                 door(&[
                     FixDirection::new("S", ["^TX "]),
                     FixDirection::new("Send", ["<<<"])
@@ -490,7 +491,7 @@ fn the_rules_round_trip_through_the_field_escapes_included() {
     ];
     let mut field = ruled_field(&rules);
     assert_eq!(
-        field.get_metadata("fix:directions"),
+        field.get_metadata("FIX:directions"),
         Some(concat!(
             r#"[{"code":"S","patterns":["(?i)(?:^|\\s)tx\\s","say \"out\""]},"#,
             r#"{"code":"R","patterns":["(?i)(?:^|\\s)rx\\s"]}]"#,
@@ -526,27 +527,27 @@ fn the_rules_round_trip_through_the_field_escapes_included() {
         Some(rules.to_vec())
     );
     assert_eq!(field.as_fix_mut().remove_directions().unwrap(), None);
-    assert_eq!(field.get_metadata("fix:directions"), None);
+    assert_eq!(field.get_metadata("FIX:directions"), None);
 }
 
 #[test]
 fn a_merge_lets_the_incoming_table_win_whole() {
     let stored = ruled_field(&[FixDirection::new("S", ["^TX "])]);
-    let stored_text = stored.get_metadata("fix:directions").unwrap().to_owned();
+    let stored_text = stored.get_metadata("FIX:directions").unwrap().to_owned();
     // Two tables have no order between them, so the incoming one is not
     // folded entry by entry: it replaces the stored one.
     let mut incoming = ruled_field(&[FixDirection::new("R", ["^RX "])]);
-    let incoming_text = incoming.get_metadata("fix:directions").unwrap().to_owned();
+    let incoming_text = incoming.get_metadata("FIX:directions").unwrap().to_owned();
     incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
     assert_eq!(
-        incoming.get_metadata("fix:directions"),
+        incoming.get_metadata("FIX:directions"),
         Some(incoming_text.as_str())
     );
     // The stored one keeps what only it has.
     let mut bare = ruled_field(&[]);
     bare.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
     assert_eq!(
-        bare.get_metadata("fix:directions"),
+        bare.get_metadata("FIX:directions"),
         Some(stored_text.as_str())
     );
 }
@@ -637,7 +638,8 @@ fn every_door_fills_tag_385_from_the_reading_and_the_pin_is_the_batch_doors() {
     );
 
     // The pin fills silence on the batch door and never overrides a verb.
-    let field = DataType::from_fields([DataType::binary().required_field("body")])
+    let field = StructureType::from_fields([DataType::binary().required_field("body")])
+        .map(DataType::from)
         .unwrap()
         .required_field("capture");
     let rows = yggdryl::Scalar::from_sequence([

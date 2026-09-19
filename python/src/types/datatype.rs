@@ -12,11 +12,12 @@ use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple, PyType};
-use yggdryl::ArrowCast;
 use yggdryl::{
-    DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme,
-    StringEnum as CoreStringEnum, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
+    DataType as CoreDataType, DateTimeType, EdgeAlgorithm as CoreEdgeAlgorithm,
+    Scheme as CoreScheme, StringEnum as CoreStringEnum, StructureType, TimeUnit as CoreTimeUnit,
+    UnionMode as CoreUnionMode,
 };
+use yggdryl::{DataTypeValue as _, FieldValue as _, SequenceType};
 
 use crate::types::field::PyField;
 use crate::types::parameters::{
@@ -43,7 +44,10 @@ pub(crate) fn core_dtype_to_pyarrow<'py>(
     py: Python<'py>,
     dtype: &CoreDataType,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let schema = dtype.clone().into_arrow_ffi().map_err(value_error)?;
+    let schema = dtype
+        .clone()
+        .into_arrow_datatype_ffi()
+        .map_err(value_error)?;
     import_ffi_schema(py, "DataType", &schema)
 }
 
@@ -51,7 +55,7 @@ pub(crate) fn core_field_to_pyarrow<'py>(
     py: Python<'py>,
     field: &yggdryl::Field,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let schema = field.clone().into_arrow_ffi().map_err(value_error)?;
+    let schema = field.clone().into_arrow_field_ffi().map_err(value_error)?;
     import_ffi_schema(py, "Field", &schema)
 }
 
@@ -80,9 +84,9 @@ pub(crate) fn arrow_array_to_pyarrow<'py>(
     field: Option<&yggdryl::Field>,
 ) -> PyResult<Bound<'py, PyAny>> {
     let schema = match field {
-        Some(field) => field.clone().into_arrow_ffi().map_err(value_error)?,
-        None => CoreDataType::from_arrow(array.data_type())
-            .and_then(CoreDataType::into_arrow_ffi)
+        Some(field) => field.clone().into_arrow_field_ffi().map_err(value_error)?,
+        None => CoreDataType::from_arrow_datatype(array.data_type())
+            .and_then(CoreDataType::into_arrow_datatype_ffi)
             .map_err(value_error)?,
     };
     let schema_address = (std::ptr::from_ref(&schema) as usize).into_pyobject(py)?;
@@ -136,7 +140,7 @@ pub(crate) fn is_parsed_text(dtype: &CoreDataType) -> bool {
         dtype,
         CoreDataType::Uuid
             | CoreDataType::Version
-            | CoreDataType::Url
+            | CoreDataType::Uri(_)
             | CoreDataType::Timezone
             | CoreDataType::MimeType
             | CoreDataType::MediaType
@@ -444,15 +448,24 @@ impl PyDataType {
             "float16" => CoreDataType::Float16,
             "float32" => CoreDataType::Float32,
             "float64" => CoreDataType::Float64,
-            "date32" => CoreDataType::Date32,
-            "date64" => CoreDataType::Date64,
+            "date32" => CoreDataType::date32(),
+            "date64" => CoreDataType::date64(),
             "binary" => CoreDataType::binary(),
             "large_binary" => CoreDataType::large_binary(),
             "binary_view" => CoreDataType::binary_view(),
+            "large_binary_view" => CoreDataType::large_binary_view(),
             "utf8" => CoreDataType::utf8(),
             "large_utf8" => CoreDataType::large_utf8(),
             "utf8_view" => CoreDataType::utf8_view(),
+            "large_utf8_view" => CoreDataType::large_utf8_view(),
             "ascii" => CoreDataType::ascii(),
+            "large_ascii" => CoreDataType::large_ascii(),
+            "ascii_view" => CoreDataType::ascii_view(),
+            "large_ascii_view" => CoreDataType::large_ascii_view(),
+            "cp1252" => CoreDataType::cp1252(),
+            "large_cp1252" => CoreDataType::large_cp1252(),
+            "cp1252_view" => CoreDataType::cp1252_view(),
+            "large_cp1252_view" => CoreDataType::large_cp1252_view(),
             "country" => CoreDataType::Country,
             "currency" => CoreDataType::Currency,
             "mic" => CoreDataType::Mic,
@@ -464,9 +477,10 @@ impl PyDataType {
             "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,
-            "uuid" => CoreDataType::Uuid,
+            "uuid" => CoreDataType::uuid(),
             "version" => CoreDataType::Version,
-            "url" => CoreDataType::Url,
+            "url" => CoreDataType::url(),
+            "urn" => CoreDataType::urn(),
             "timezone" => CoreDataType::Timezone,
             "mimetype" => CoreDataType::MimeType,
             "mediatype" => CoreDataType::MediaType,
@@ -524,7 +538,7 @@ impl PyDataType {
                         "interval requires an interval layout unit",
                     ));
                 }
-                CoreDataType::Interval(unit)
+                CoreDataType::interval(unit).map_err(value_error)?
             }
             _ => {
                 return Err(PyValueError::new_err(format!(
@@ -650,22 +664,24 @@ impl PyDataType {
         Self::from_validated(inner)
     }
 
-    /// Creates a string datatype: one layout, one charset, one bound.
+    /// Creates a string datatype: one of the eighteen leaves.
     ///
-    /// ``layout`` takes any of a layout's three spellings (``string``,
-    /// ``utf8``, ``ascii``; ``fixed_string``; ``string_view``;
-    /// ``large_string``; ``large_string_view``) and ``charset`` any
-    /// documented charset alias. ``bound`` is the exact width on the fixed
-    /// layout and the maximum stored bytes everywhere else.
+    /// ``layout`` takes any spelling of a leaf - its canonical name
+    /// (``utf8``, ``fixed_ascii``, ``sized_cp1252``, ...) or a charset-free
+    /// one (``string``, ``fixed_string``, ``string_view``, ``large_string``,
+    /// ``large_string_view``, ``varchar``, ...). Only a charset-free spelling
+    /// takes a ``charset``, which restates the leaf in that charset's family.
+    /// ``bound`` is the exact width on a fixed leaf and the maximum on a
+    /// sized one; a plain leaf with a bound is the sized leaf written short.
     #[classmethod]
     #[pyo3(
-        signature = (layout="string", charset="utf-8", bound=None),
-        text_signature = "(layout='string', charset='utf-8', bound=None)"
+        signature = (layout="string", charset=None, bound=None),
+        text_signature = "(layout='string', charset=None, bound=None)"
     )]
     fn string(
         _cls: &Bound<'_, PyType>,
         layout: &str,
-        charset: &str,
+        charset: Option<&str>,
         bound: Option<u32>,
     ) -> PyResult<Self> {
         let inner = CoreDataType::string(core_string_parameters(layout, charset, bound)?)
@@ -749,7 +765,7 @@ impl PyDataType {
     /// Exactly ``width`` bytes per value - Arrow's ``fixed_size_binary``.
     #[staticmethod]
     fn fixed_size_binary(width: u32) -> PyResult<Self> {
-        let inner = CoreDataType::fixed_size_binary(width).map_err(value_error)?;
+        let inner = CoreDataType::fixed_binary(width).map_err(value_error)?;
         Self::from_validated(inner)
     }
 
@@ -793,7 +809,7 @@ impl PyDataType {
     /// Internal allocation-free dictionary value view for annotation inference.
     fn _dictionary_value_type(&self) -> PyResult<Self> {
         match &self.inner {
-            CoreDataType::Dictionary(dictionary) => Ok(Self {
+            CoreDataType::Enum(dictionary) => Ok(Self {
                 inner: dictionary.value().clone(),
                 hash_locked: false,
                 borrowed_from_field: false,
@@ -894,7 +910,8 @@ impl PyDataType {
     /// Builds a native Struct directly from native child fields.
     #[staticmethod]
     fn from_fields(fields: &Bound<'_, PyAny>) -> PyResult<Self> {
-        CoreDataType::from_fields(core_fields_from_iterable(fields)?)
+        StructureType::from_fields(core_fields_from_iterable(fields)?)
+            .map(CoreDataType::from)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -1454,11 +1471,9 @@ impl PyDataType {
     /// the native value avoids projecting a `PyArrow` datatype for every cell.
     fn _time_unit(&self) -> Option<&'static str> {
         match &self.inner {
-            CoreDataType::DateTime64 { unit, .. }
-            | CoreDataType::Time32(unit)
-            | CoreDataType::Time64(unit)
-            | CoreDataType::Duration32(unit)
-            | CoreDataType::Duration64(unit) => Some(unit.as_str()),
+            CoreDataType::DateTime(leaf) => Some(leaf.unit().as_str()),
+            CoreDataType::Time(leaf) => Some(leaf.unit().as_str()),
+            CoreDataType::Duration(leaf) => Some(leaf.unit().as_str()),
             _ => None,
         }
     }
@@ -1466,7 +1481,9 @@ impl PyDataType {
     /// Internal field-class conversion view of a `DateTime64` timezone.
     fn _timezone(&self) -> Option<&str> {
         match &self.inner {
-            CoreDataType::DateTime64 { timezone, .. } => Some(timezone.as_str()),
+            CoreDataType::DateTime(DateTimeType::DateTime64 { timezone, .. }) => {
+                Some(timezone.as_str())
+            }
             _ => None,
         }
     }
@@ -1474,19 +1491,16 @@ impl PyDataType {
     /// The explicit time zone of a `DateTime64`, including `NAIVE`.
     #[getter]
     fn timezone(&self) -> Option<crate::types::timezone::PyTimezone> {
-        match &self.inner {
-            CoreDataType::DateTime64 { timezone, .. } => {
-                Some(crate::types::timezone::PyTimezone::from_core(*timezone))
-            }
-            _ => None,
-        }
+        self.inner
+            .datetime_type()
+            .map(|leaf| crate::types::timezone::PyTimezone::from_core(leaf.timezone()))
     }
 
     /// Whether a `map` declares its keys sorted, `None` for every other.
     #[getter]
     fn keys_sorted(&self) -> Option<bool> {
         match &self.inner {
-            CoreDataType::Map(map) => Some(map.keys_sorted()),
+            CoreDataType::Mapping(mapping) => Some(mapping.keys_sorted()),
             _ => None,
         }
     }
@@ -1495,9 +1509,7 @@ impl PyDataType {
     #[getter]
     fn dictionary_key(&self) -> Option<Self> {
         match &self.inner {
-            CoreDataType::Dictionary(dictionary) => {
-                Some(Self::from_inner(dictionary.key().clone()))
-            }
+            CoreDataType::Enum(dictionary) => Some(Self::from_inner(dictionary.key().clone())),
             _ => None,
         }
     }
@@ -1506,9 +1518,7 @@ impl PyDataType {
     #[getter]
     fn dictionary_value(&self) -> Option<Self> {
         match &self.inner {
-            CoreDataType::Dictionary(dictionary) => {
-                Some(Self::from_inner(dictionary.value().clone()))
-            }
+            CoreDataType::Enum(dictionary) => Some(Self::from_inner(dictionary.value().clone())),
             _ => None,
         }
     }
@@ -1573,7 +1583,7 @@ impl PyDataType {
     /// Internal field-class conversion view of fixed-size-list arity.
     fn _fixed_size_list_length(&self) -> Option<i32> {
         match &self.inner {
-            CoreDataType::FixedSizeList(_, length) => Some(*length),
+            CoreDataType::Sequence(SequenceType::FixedSizeList(_, length)) => Some(*length),
             _ => None,
         }
     }
@@ -1928,7 +1938,7 @@ impl PyDataType {
 ///
 /// A dictionary is a vocabulary and derives its member names; this is the
 /// vocabulary a declaration named itself, and it is what a ``Field`` stores
-/// under ``field:enum`` so the enum crosses Arrow, a file, and another runtime
+/// under ``FIELD:enum`` so the enum crosses Arrow, a file, and another runtime
 /// intact. The width lives in the field's datatype - a fixed US-ASCII string
 /// of at most sixteen bytes, or a code - so a member's code is its packed
 /// value under that width and never a position.
@@ -1987,7 +1997,7 @@ impl PyStringEnum {
             .map_err(value_error)
     }
 
-    /// Parses the ``field:enum`` document.
+    /// Parses the ``FIELD:enum`` document.
     #[staticmethod]
     fn from_json(document: &str) -> PyResult<Self> {
         CoreStringEnum::from_json(document)
@@ -1995,7 +2005,7 @@ impl PyStringEnum {
             .map_err(value_error)
     }
 
-    /// Renders the ``field:enum`` document, which is one text per enum.
+    /// Renders the ``FIELD:enum`` document, which is one text per enum.
     #[allow(clippy::wrong_self_convention)]
     fn into_json(&self) -> String {
         self.inner.into_json()

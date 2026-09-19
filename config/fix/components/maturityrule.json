@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "maturityruleid",
-          "fix:tag": "1222"
+          "FIX:field": "maturityruleid",
+          "FIX:tag": "1222"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "maturitymonthyearformat",
-          "fix:tag": "1303"
+          "FIX:field": "maturitymonthyearformat",
+          "FIX:tag": "1303"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "maturitymonthyearincrementunits",
-          "fix:tag": "1302"
+          "FIX:field": "maturitymonthyearincrementunits",
+          "FIX:tag": "1302"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "startmaturitymonthyear",
-          "fix:tag": "1241"
+          "FIX:field": "startmaturitymonthyear",
+          "FIX:tag": "1241"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "endmaturitymonthyear",
-          "fix:tag": "1226"
+          "FIX:field": "endmaturitymonthyear",
+          "FIX:tag": "1226"
         }
       },
       {
@@ -65,15 +65,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "maturitymonthyearincrement",
-          "fix:tag": "1229"
+          "FIX:field": "maturitymonthyearincrement",
+          "FIX:tag": "1229"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MaturityRule",
-    "fix:tag": "761022"
+    "FIX:tag": "761022",
+    "display": "MaturityRule"
   }
 }

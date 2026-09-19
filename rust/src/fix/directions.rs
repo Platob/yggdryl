@@ -4,7 +4,7 @@
 //! A transport writes which way a message moved in front of it -
 //! `sending >>`, `recv <<`, `[OUT]`, a Jolokia `Response:` - and which words
 //! mean which code is a fact about the code set, so it travels on the field
-//! that declares the set. `fix:directions` is that document: one
+//! that declares the set. `FIX:directions` is that document: one
 //! [canonical document](super::document) with an entry per code, in the
 //! order the dictionary lists them, each holding the `regex::bytes` patterns
 //! applied to the prefix. A code matches where any of its patterns matches;
@@ -312,7 +312,7 @@ pub struct FixDirections<'field> {
 }
 
 impl<'field> FixDirections<'field> {
-    /// Walks one stored `fix:directions` value, or nothing for an absent one.
+    /// Walks one stored `FIX:directions` value, or nothing for an absent one.
     pub(super) fn over(stored: Option<&'field str>) -> Self {
         Self {
             cursor: Cursor::new(stored.unwrap_or_default()),
@@ -398,7 +398,7 @@ impl<'field> FixDirections<'field> {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut field = DataType::utf8().nullable_field("msgdirection");
-    /// field.set_metadata([("fix:directions", r#"[{"code":"S"}]"#)])?;
+    /// field.set_metadata([("FIX:directions", r#"[{"code":"S"}]"#)])?;
     /// // The entry states no `patterns`, which the grammar requires.
     /// assert!(field.as_fix().directions().next_ok().is_none());
     /// assert!(field.as_fix().directions().next().expect("a refusal").is_err());

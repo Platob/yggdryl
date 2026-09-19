@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "confirmid",
-          "fix:tag": "664"
+          "FIX:field": "confirmid",
+          "FIX:tag": "664"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocid",
-          "fix:tag": "70"
+          "FIX:field": "allocid",
+          "FIX:tag": "70"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "individualallocid",
-          "fix:tag": "467"
+          "FIX:field": "individualallocid",
+          "FIX:tag": "467"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryallocid",
-          "fix:tag": "793"
+          "FIX:field": "secondaryallocid",
+          "FIX:tag": "793"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocaccount",
-          "fix:tag": "79"
+          "FIX:field": "allocaccount",
+          "FIX:tag": "79"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradedate",
-          "fix:tag": "75"
+          "FIX:field": "tradedate",
+          "FIX:tag": "75"
         }
       },
       {
@@ -76,7 +76,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocqty",
-          "fix:tag": "80"
+          "FIX:field": "allocqty",
+          "FIX:tag": "80"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "side",
-          "fix:tag": "54"
+          "FIX:field": "side",
+          "FIX:tag": "54"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "avgpx",
-          "fix:tag": "6"
+          "FIX:field": "avgpx",
+          "FIX:tag": "6"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricetype",
-          "fix:tag": "423"
+          "FIX:field": "pricetype",
+          "FIX:tag": "423"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "avgparpx",
-          "fix:tag": "860"
+          "FIX:field": "avgparpx",
+          "FIX:tag": "860"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "grosstradeamt",
-          "fix:tag": "381"
+          "FIX:field": "grosstradeamt",
+          "FIX:tag": "381"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "netmoney",
-          "fix:tag": "118"
+          "FIX:field": "netmoney",
+          "FIX:tag": "118"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency",
-          "fix:tag": "15"
+          "FIX:field": "currency",
+          "FIX:tag": "15"
         }
       },
       {
@@ -174,8 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource",
-          "fix:tag": "2897"
+          "FIX:field": "currencycodesource",
+          "FIX:tag": "2897"
         }
       },
       {
@@ -185,8 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "qtytype",
-          "fix:tag": "854"
+          "FIX:field": "qtytype",
+          "FIX:tag": "854"
         }
       },
       {
@@ -196,8 +196,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedpartyids",
-          "fix:tag": "539"
+          "FIX:field": "nonestedpartyids",
+          "FIX:tag": "539"
         }
       },
       {
@@ -207,7 +207,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "nestedparties"
+          "FIX:group": "nestedparties"
         }
       },
       {
@@ -217,8 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settldate",
-          "fix:tag": "64"
+          "FIX:field": "settldate",
+          "FIX:tag": "64"
         }
       },
       {
@@ -228,8 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlcurramt",
-          "fix:tag": "119"
+          "FIX:field": "settlcurramt",
+          "FIX:tag": "119"
         }
       },
       {
@@ -239,8 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlcurrency",
-          "fix:tag": "120"
+          "FIX:field": "settlcurrency",
+          "FIX:tag": "120"
         }
       },
       {
@@ -250,8 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlcurrencycodesource",
-          "fix:tag": "2899"
+          "FIX:field": "settlcurrencycodesource",
+          "FIX:tag": "2899"
         }
       },
       {
@@ -261,16 +261,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "settlinstructionsdata"
+          "FIX:component": "settlinstructionsdata"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "allocid,individualallocid,secondaryallocid",
+    "FIX:tag": "1036155",
     "description": "May be used to identify the trade via the known Confirmation(35=AK) message.",
-    "display": "SettlTradeDetails",
-    "fix:identifiers": "allocid,individualallocid,secondaryallocid",
-    "fix:tag": "1036155"
+    "display": "SettlTradeDetails"
   }
 }

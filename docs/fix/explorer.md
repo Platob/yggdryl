@@ -1,14 +1,14 @@
 # Explorer
 
-Search the native FIX catalog and inspect the fields, components and groups it stores; a message is a component carrying `fix:msgtype`.
+Search the native FIX catalog and inspect the fields, components and groups it stores; a message is a component carrying `FIX:msgtype`.
 
 ## Contract
 
 | Surface | Contract |
 | --- | --- |
 | Source | `scripts/build_docs_fix.js` runs the native package over `config/fix`, retaining compact stored documents and adding the crate's own definitions, which the shipped seed does not state. |
-| Catalog | Three categories of native `Field` documents: `fields`, `components`, `groups`; messages are components carrying `fix:msgtype`, and enum codes stay inline on fields. |
-| Search | Filters names, tags, `fix:names`, `fix:identifiers` and descriptions; it does not invoke registry lookup or parse FIX input. |
+| Catalog | Three categories of native `Field` documents: `fields`, `components`, `groups`; messages are components carrying `FIX:msgtype`, and enum codes stay inline on fields. |
+| Search | Filters names, tags, `FIX:names`, `FIX:identifiers` and descriptions; it does not invoke registry lookup or parse FIX input. |
 | References | A member button selects a search in its target category. The browser does not resolve or merge schemas. |
 | Samples | [Decode](decode.md) and [Encode](encode.md) display recorded native codec results and emitted bytes. |
 
@@ -18,7 +18,7 @@ A List group and its scalar count have separate definitions: `NoPartyIDs` is the
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
-| Scalar fields | 6,241 | 6,259 |
+| Scalar fields | 6,241 | 6,258 |
 | Groups | 580 | 582 |
 | Components, including messages | 928 | 928 |
 | Messages, a subset of components | 181 | 181 |
@@ -29,15 +29,15 @@ The live additions are the crate's 18 fields - `parentuuids` among them, a list 
 
     ```rust
     use yggdryl::{DataType, FixId, FixRegistry, CURRUNIX_TAG_NAME};
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
     // Every category is in the one length: the fields, the components and
     // the groups.
-    assert_eq!(registry.len(), 7_769);
+    assert_eq!(registry.len(), 7_768);
     // The walk is the same listing: the fields, then the definitions.
-    assert_eq!(registry.iter().count(), 7_769);
+    assert_eq!(registry.iter().count(), 7_768);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.field_by_name("parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
@@ -45,7 +45,7 @@ The live additions are the crate's 18 fields - `parentuuids` among them, a list 
     let identifiers = registry.field_by_counter(65_020)?;
     assert_eq!(identifiers.name(), "identifiers");
     assert_eq!(identifiers.as_fix().tag()?, Some(65_020));
-    assert!(matches!(identifiers.dtype(), DataType::Map(map) if map.keys_sorted()));
+    assert!(matches!(identifiers.dtype(), DataType::Mapping(mapping) if mapping.keys_sorted()));
     assert!(registry.get_field_by_tag(65_020).is_none());
     assert_eq!(registry.msgtype("D")?.as_str(), "D");
     // The crate's own columns are fields from tag 65003, held by every registry;
@@ -66,8 +66,8 @@ The live additions are the crate's 18 fields - `parentuuids` among them, a list 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     # Every category is in the one length: the fields, the components and the
     # groups; iterating a Python registry walks the fields alone.
-    assert len(registry) == 7_769
-    assert sum(1 for _ in registry) == 6_259
+    assert len(registry) == 7_768
+    assert sum(1 for _ in registry) == 6_258
     assert str(registry.field_by_tag(453).dtype) == "int32"
     parties = registry.field_by_name("parties")
     assert parties.fix.counter == 453
@@ -95,7 +95,7 @@ The live additions are the crate's 18 fields - `parentuuids` among them, a list 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     // Every category is in the one size: the fields, the components and the
     // groups, which is what a Node registry iterates too.
-    assert.equal(registry.size, 7769)
+    assert.equal(registry.size, 7768)
     assert.equal([...registry].length, registry.size)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
     const parties = registry.fieldByName('parties')
@@ -129,7 +129,7 @@ Search `453` to see the scalar counter and group definitions that reference it. 
 This section searches the generated native catalog and needs JavaScript.
 </div>
 
-Codes and `fix:identifiers` appear inside their owning field's detail panel. List groups carry a name-derived `fix:tag` beside their scalar `fix:counter`; the built-in `identifiers` and `metadata` Maps use their own reserved tag as their counter, and their entries Field is displayed directly from the native document. Search `identifiers` for that group, or `clordid` for declarations selecting that direct identifier; no browser-side reference expansion is involved.
+Codes and `FIX:identifiers` appear inside their owning field's detail panel. List groups carry a name-derived `FIX:tag` beside their scalar `FIX:counter`; the built-in `identifiers` and `metadata` Maps use their own reserved tag as their counter, and their entries Field is displayed directly from the native document. Search `identifiers` for that group, or `clordid` for declarations selecting that direct identifier; no browser-side reference expansion is involved.
 
 ## The capture row
 

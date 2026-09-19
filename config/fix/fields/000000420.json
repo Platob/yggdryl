@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42000",
       "description": "The start time for commodity settlement where delivery occurs over time. The time format is specified by the settlement time type.",
-      "display": "UnderlyingStreamCommoditySettlStart",
-      "fix:tag": "42000"
+      "display": "UnderlyingStreamCommoditySettlStart"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42001",
       "description": "The end time for commodity settlement where delivery occurs over time. The time format is specified by the settlement time type.",
-      "display": "UnderlyingStreamCommoditySettlEnd",
-      "fix:tag": "42001"
+      "display": "UnderlyingStreamCommoditySettlEnd"
     }
   },
   {
@@ -30,9 +30,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42002",
       "description": "Number of commodity settlement periods in the repeating group.",
-      "display": "NoUnderlyingStreamCommoditySettlPeriods",
-      "fix:tag": "42002"
+      "display": "NoUnderlyingStreamCommoditySettlPeriods"
     }
   },
   {
@@ -42,9 +42,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42003",
       "description": "Specifies the country where delivery takes place. Uses ISO 3166 2-character country code.",
-      "display": "UnderlyingStreamCommoditySettlCountry",
-      "fix:tag": "42003"
+      "display": "UnderlyingStreamCommoditySettlCountry"
     }
   },
   {
@@ -54,9 +54,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42004",
       "description": "Commodity delivery timezone specified as \"prevailing\" rather than \"standard\" or \"daylight\". See https://fixtrading.org/packages/prevailing-timezones for code list of applicable prevailing timezones.",
-      "display": "UnderlyingStreamCommoditySettlTimeZone",
-      "fix:tag": "42004"
+      "display": "UnderlyingStreamCommoditySettlTimeZone"
     }
   },
   {
@@ -66,9 +66,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the commodity delivery flow type.",
-      "display": "UnderlyingStreamCommoditySettlFlowType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "AllTimes",
@@ -100,7 +98,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "42005"
+      "FIX:tag": "42005",
+      "description": "Specifies the commodity delivery flow type.",
+      "display": "UnderlyingStreamCommoditySettlFlowType"
     }
   },
   {
@@ -112,9 +112,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42006",
       "description": "Specifies the delivery quantity associated with this settlement period.",
-      "display": "UnderlyingStreamCommoditySettlPeriodNotional",
-      "fix:tag": "42006"
+      "display": "UnderlyingStreamCommoditySettlPeriodNotional"
     }
   },
   {
@@ -124,9 +124,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the unit of measure (UOM) of the delivery quantity associated with this settlement period.",
-      "display": "UnderlyingStreamCommoditySettlPeriodNotionalUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -608,7 +606,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "42007"
+      "FIX:tag": "42007",
+      "description": "Specifies the unit of measure (UOM) of the delivery quantity associated with this settlement period.",
+      "display": "UnderlyingStreamCommoditySettlPeriodNotionalUnitOfMeasure"
     }
   },
   {
@@ -618,9 +618,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42008",
       "description": "Time unit multiplier for the settlement period frequency.",
-      "display": "UnderlyingStreamCommoditySettlPeriodFrequencyPeriod",
-      "fix:tag": "42008"
+      "display": "UnderlyingStreamCommoditySettlPeriodFrequencyPeriod"
     }
   },
   {
@@ -630,9 +630,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the settlement period frequency.",
-      "display": "UnderlyingStreamCommoditySettlPeriodFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -654,7 +652,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42009"
+      "FIX:tag": "42009",
+      "description": "Time unit associated with the settlement period frequency.",
+      "display": "UnderlyingStreamCommoditySettlPeriodFrequencyUnit"
     }
   },
   {
@@ -666,9 +666,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42010",
       "description": "The settlement period price.",
-      "display": "UnderlyingStreamCommoditySettlPeriodPrice",
-      "fix:tag": "42010"
+      "display": "UnderlyingStreamCommoditySettlPeriodPrice"
     }
   },
   {
@@ -678,9 +678,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the settlement period price unit of measure (UOM).",
-      "display": "UnderlyingStreamCommoditySettlPeriodPriceUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -1162,7 +1160,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "42011"
+      "FIX:tag": "42011",
+      "description": "Specifies the settlement period price unit of measure (UOM).",
+      "display": "UnderlyingStreamCommoditySettlPeriodPriceUnitOfMeasure"
     }
   },
   {
@@ -1172,9 +1172,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42012",
       "description": "The currency of the settlement period price. Uses ISO 4217 currency codes.",
-      "display": "UnderlyingStreamCommoditySettlPeriodPriceCurrency",
-      "fix:tag": "42012"
+      "display": "UnderlyingStreamCommoditySettlPeriodPriceCurrency"
     }
   },
   {
@@ -1184,9 +1184,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether holidays are included in the settlement periods. Required for electricity contracts.",
-      "display": "UnderlyingStreamCommoditySettlHolidaysProcessingInstruction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "DoNotIncludeHolidays",
@@ -1198,7 +1196,9 @@
           "doc": "Include holidays"
         }
       ],
-      "fix:tag": "42013"
+      "FIX:tag": "42013",
+      "description": "Indicates whether holidays are included in the settlement periods. Required for electricity contracts.",
+      "display": "UnderlyingStreamCommoditySettlHolidaysProcessingInstruction"
     }
   },
   {
@@ -1208,9 +1208,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42014",
       "description": "Identifier of this settlement period for cross referencing elsewhere in the message.",
-      "display": "UnderlyingStreamCommoditySettlPeriodXID",
-      "fix:tag": "42014"
+      "display": "UnderlyingStreamCommoditySettlPeriodXID"
     }
   },
   {
@@ -1220,9 +1220,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42015",
       "description": "Cross reference to another settlement period for duplicating its properties.",
-      "display": "UnderlyingStreamCommoditySettlPeriodXIDRef",
-      "fix:tag": "42015"
+      "display": "UnderlyingStreamCommoditySettlPeriodXIDRef"
     }
   },
   {
@@ -1232,9 +1232,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42016",
       "description": "Identifier of this UnderlyingStream for cross referencing elsewhere in the message.",
-      "display": "UnderlyingStreamXID",
-      "fix:tag": "42016"
+      "display": "UnderlyingStreamXID"
     }
   },
   {
@@ -1244,9 +1244,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42017",
       "description": "Issuer of the bond.",
-      "display": "UnderlyingAdditionalTermBondIssuer",
-      "fix:tag": "42017"
+      "display": "UnderlyingAdditionalTermBondIssuer"
     }
   },
   {
@@ -1256,9 +1256,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42018",
       "description": "Cross reference to another UnderlyingStream notional for duplicating its properties.",
-      "display": "UnderlyingStreamNotionalXIDRef",
-      "fix:tag": "42018"
+      "display": "UnderlyingStreamNotionalXIDRef"
     }
   },
   {
@@ -1268,9 +1268,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42019",
       "description": "Time unit multiplier for the swap stream's notional frequency.",
-      "display": "UnderlyingStreamNotionalFrequencyPeriod",
-      "fix:tag": "42019"
+      "display": "UnderlyingStreamNotionalFrequencyPeriod"
     }
   },
   {
@@ -1280,9 +1280,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the swap stream's notional frequency.",
-      "display": "UnderlyingStreamNotionalFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "H",
           "name": "Hour",
@@ -1334,7 +1332,9 @@
           "doc": "Flexible"
         }
       ],
-      "fix:tag": "42020"
+      "FIX:tag": "42020",
+      "description": "Time unit associated with the swap stream's notional frequency.",
+      "display": "UnderlyingStreamNotionalFrequencyUnit"
     }
   },
   {
@@ -1344,9 +1344,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The commodity's notional or quantity delivery frequency.",
-      "display": "UnderlyingStreamNotionalCommodityFrequency",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Term",
@@ -1383,7 +1381,9 @@
           "doc": "Per month"
         }
       ],
-      "fix:tag": "42021"
+      "FIX:tag": "42021",
+      "description": "The commodity's notional or quantity delivery frequency.",
+      "display": "UnderlyingStreamNotionalCommodityFrequency"
     }
   },
   {
@@ -1393,9 +1393,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the delivery quantity unit of measure (UOM).",
-      "display": "UnderlyingStreamNotionalUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -1877,7 +1875,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "42022"
+      "FIX:tag": "42022",
+      "description": "Specifies the delivery quantity unit of measure (UOM).",
+      "display": "UnderlyingStreamNotionalUnitOfMeasure"
     }
   },
   {
@@ -1889,9 +1889,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42023",
       "description": "Specifies the total notional or delivery quantity over the term of the contract.",
-      "display": "UnderlyingStreamTotalNotional",
-      "fix:tag": "42023"
+      "display": "UnderlyingStreamTotalNotional"
     }
   },
   {
@@ -1901,9 +1901,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the unit of measure (UOM) for the total notional or delivery quantity over the term of the contract.",
-      "display": "UnderlyingStreamTotalNotionalUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -2385,7 +2383,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "42024"
+      "FIX:tag": "42024",
+      "description": "Specifies the unit of measure (UOM) for the total notional or delivery quantity over the term of the contract.",
+      "display": "UnderlyingStreamTotalNotionalUnitOfMeasure"
     }
   },
   {
@@ -2395,9 +2395,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42025",
       "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingAdditionalTermBondIssuer(42026) field.",
-      "display": "EncodedUnderlyingAdditionalTermBondIssuerLen",
-      "fix:tag": "42025"
+      "display": "EncodedUnderlyingAdditionalTermBondIssuerLen"
     }
   },
   {
@@ -2407,9 +2407,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42026",
       "description": "Encoded (non-ASCII characters) representation of the UnderlyingAdditionalTermBondIssuer(42017) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingAdditionalTermBondIssuer(42017) field.",
-      "display": "EncodedUnderlyingAdditionalTermBondIssuer",
-      "fix:tag": "42026"
+      "display": "EncodedUnderlyingAdditionalTermBondIssuer"
     }
   },
   {
@@ -2419,9 +2419,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the bond's payment priority in the event of a default.",
-      "display": "UnderlyingAdditionalTermBondSeniority",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "SD",
           "name": "SeniorSecured",
@@ -2453,7 +2451,9 @@
           "doc": "Senior Non-Preferred"
         }
       ],
-      "fix:tag": "42027"
+      "FIX:tag": "42027",
+      "description": "Specifies the bond's payment priority in the event of a default.",
+      "display": "UnderlyingAdditionalTermBondSeniority"
     }
   },
   {
@@ -2463,9 +2463,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Coupon type of the bond.",
-      "display": "UnderlyingAdditionalTermBondCouponType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Zero",
@@ -2487,7 +2485,9 @@
           "doc": "Structured"
         }
       ],
-      "fix:tag": "42028"
+      "FIX:tag": "42028",
+      "description": "Coupon type of the bond.",
+      "display": "UnderlyingAdditionalTermBondCouponType"
     }
   },
   {
@@ -2497,9 +2497,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42029",
       "description": "Coupon rate of the bond. See also CouponRate(223).",
-      "display": "UnderlyingAdditionalTermBondCouponRate",
-      "fix:tag": "42029"
+      "display": "UnderlyingAdditionalTermBondCouponRate"
     }
   },
   {
@@ -2510,9 +2510,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42030",
       "description": "The maturity date of the bond.",
-      "display": "UnderlyingAdditionalTermBondMaturityDate",
-      "fix:tag": "42030"
+      "display": "UnderlyingAdditionalTermBondMaturityDate"
     }
   },
   {
@@ -2524,9 +2524,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42031",
       "description": "The par value of the bond.",
-      "display": "UnderlyingAdditionalTermBondParValue",
-      "fix:tag": "42031"
+      "display": "UnderlyingAdditionalTermBondParValue"
     }
   },
   {
@@ -2538,9 +2538,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42032",
       "description": "Total issued amount of the bond.",
-      "display": "UnderlyingAdditionalTermBondCurrentTotalIssuedAmount",
-      "fix:tag": "42032"
+      "display": "UnderlyingAdditionalTermBondCurrentTotalIssuedAmount"
     }
   },
   {
@@ -2550,9 +2550,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42033",
       "description": "Time unit multiplier for the frequency of the bond's coupon payment.",
-      "display": "UnderlyingAdditionalTermBondCouponFrequencyPeriod",
-      "fix:tag": "42033"
+      "display": "UnderlyingAdditionalTermBondCouponFrequencyPeriod"
     }
   },
   {
@@ -2562,9 +2562,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the frequency of the bond's coupon payment.",
-      "display": "UnderlyingAdditionalTermBondCouponFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -2606,7 +2604,9 @@
           "doc": "Term"
         }
       ],
-      "fix:tag": "42034"
+      "FIX:tag": "42034",
+      "description": "Time unit associated with the frequency of the bond's coupon payment.",
+      "display": "UnderlyingAdditionalTermBondCouponFrequencyUnit"
     }
   },
   {
@@ -2616,9 +2616,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
-      "display": "UnderlyingAdditionalTermBondDayCount",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OneOne",
@@ -2740,7 +2738,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "42035"
+      "FIX:tag": "42035",
+      "description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
+      "display": "UnderlyingAdditionalTermBondDayCount"
     }
   },
   {
@@ -2750,9 +2750,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42036",
       "description": "Number of additional terms in the repeating group.",
-      "display": "NoUnderlyingAdditionalTerms",
-      "fix:tag": "42036"
+      "display": "NoUnderlyingAdditionalTerms"
     }
   },
   {
@@ -2762,9 +2762,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42037",
       "description": "Indicates whether the condition precedent bond is applicable. The swap contract is only valid if the bond is issued and if there is any dispute over the terms of fixed stream then the bond terms would be used.",
-      "display": "UnderlyingAdditionalTermConditionPrecedentBondIndicator",
-      "fix:tag": "42037"
+      "display": "UnderlyingAdditionalTermConditionPrecedentBondIndicator"
     }
   },
   {
@@ -2774,9 +2774,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42038",
       "description": "Indicates whether the discrepancy clause is applicable.",
-      "display": "UnderlyingAdditionalTermDiscrepancyClauseIndicator",
-      "fix:tag": "42038"
+      "display": "UnderlyingAdditionalTermDiscrepancyClauseIndicator"
     }
   },
   {
@@ -2786,9 +2786,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42039",
       "description": "Number of dealers in the repeating group.",
-      "display": "NoUnderlyingCashSettlDealers",
-      "fix:tag": "42039"
+      "display": "NoUnderlyingCashSettlDealers"
     }
   },
   {
@@ -2798,9 +2798,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42040",
       "description": "Identifies the dealer from whom price quotations for the reference obligation are obtained for the purpose of cash settlement valuation calculation.",
-      "display": "UnderlyingCashSettlDealer",
-      "fix:tag": "42040"
+      "display": "UnderlyingCashSettlDealer"
     }
   },
   {
@@ -2810,9 +2810,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42041",
       "description": "Number of elements in the repeating group.",
-      "display": "NoUnderlyingCashSettlTerms",
-      "fix:tag": "42041"
+      "display": "NoUnderlyingCashSettlTerms"
     }
   },
   {
@@ -2822,9 +2822,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42042",
       "description": "Specifies the currency the UnderlyingCashSettlAmount(42054) is denominated in. Uses ISO 4217 currency codes.",
-      "display": "UnderlyingCashSettlCurrency",
-      "fix:tag": "42042"
+      "display": "UnderlyingCashSettlCurrency"
     }
   },
   {
@@ -2834,9 +2834,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42043",
       "description": "The number of business days after settlement conditions have been satisfied, when the calculation agent is to obtain a price quotation on the reference obligation for purposes of cash settlement.",
-      "display": "UnderlyingCashSettlValuationFirstBusinessDayOffset",
-      "fix:tag": "42043"
+      "display": "UnderlyingCashSettlValuationFirstBusinessDayOffset"
     }
   },
   {
@@ -2846,9 +2846,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42044",
       "description": "The number of business days between successive valuation dates when multiple valuation dates are applicable for cash settlement.",
-      "display": "UnderlyingCashSettlValuationSubsequentBusinessDaysOffset",
-      "fix:tag": "42044"
+      "display": "UnderlyingCashSettlValuationSubsequentBusinessDaysOffset"
     }
   },
   {
@@ -2858,9 +2858,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42045",
       "description": "Where multiple valuation dates are specified as being applicable for cash settlement, this element specifies the number of applicable valuation dates.",
-      "display": "UnderlyingCashSettlNumOfValuationDates",
-      "fix:tag": "42045"
+      "display": "UnderlyingCashSettlNumOfValuationDates"
     }
   },
   {
@@ -2871,9 +2871,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42046",
       "description": "Time of valuation.",
-      "display": "UnderlyingCashSettlValuationTime",
-      "fix:tag": "42046"
+      "display": "UnderlyingCashSettlValuationTime"
     }
   },
   {
@@ -2883,9 +2883,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42047",
       "description": "Identifies the business center calendar used at valuation time for cash settlement purposes e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "UnderlyingCashSettlBusinessCenter",
-      "fix:tag": "42047"
+      "display": "UnderlyingCashSettlBusinessCenter"
     }
   },
   {
@@ -2895,9 +2895,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The type of quote used to determine the cash settlement price.",
-      "display": "UnderlyingCashSettlQuoteMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bid",
@@ -2914,7 +2912,9 @@
           "doc": "Offer"
         }
       ],
-      "fix:tag": "42048"
+      "FIX:tag": "42048",
+      "description": "The type of quote used to determine the cash settlement price.",
+      "display": "UnderlyingCashSettlQuoteMethod"
     }
   },
   {
@@ -2926,9 +2926,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42049",
       "description": "When determining the cash settlement amount, if weighted average price quotes are to be obtained for the reference obligation, this is the upper limit to the outstanding principal balance of the reference obligation for which the quote should be obtained. If not specified, the ISDA definitions provide for a fallback amount equal to floating rate payer calculation amount.",
-      "display": "UnderlyingCashSettlQuoteAmount",
-      "fix:tag": "42049"
+      "display": "UnderlyingCashSettlQuoteAmount"
     }
   },
   {
@@ -2938,9 +2938,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42050",
       "description": "Specifies the currency the UnderlyingCashSettlQuoteAmount(42049) is denominated in. Uses ISO 4217 currency codes.",
-      "display": "UnderlyingCashSettlQuoteCurrency",
-      "fix:tag": "42050"
+      "display": "UnderlyingCashSettlQuoteCurrency"
     }
   },
   {
@@ -2952,9 +2952,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42051",
       "description": "When determining the cash settlement amount, if weighted average price quotes are to be obtained for the reference obligation, this is the minimum intended threshold amount of outstanding principal balance of the reference obligation for which the quote should be obtained. If not specified, the ISDA definitions provide for a fallback amount of the lower of either USD1,000,000 (or its equivalent in the relevant obligation currency) or the (minimum) quoted amount.",
-      "display": "UnderlyingCashSettlMinimumQuoteAmount",
-      "fix:tag": "42051"
+      "display": "UnderlyingCashSettlMinimumQuoteAmount"
     }
   },
   {
@@ -2964,9 +2964,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42052",
       "description": "Specifies the currency the UnderlyingCashSettlQuoteAmount(42049) is denominated in. Uses ISO 4217 currency codes.",
-      "display": "UnderlyingCashSettlMinimumQuoteCurrency",
-      "fix:tag": "42052"
+      "display": "UnderlyingCashSettlMinimumQuoteCurrency"
     }
   },
   {
@@ -2976,9 +2976,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42053",
       "description": "The number of business days used in the determination of the cash settlement payment date.",
-      "display": "UnderlyingCashSettlBusinessDays",
-      "fix:tag": "42053"
+      "display": "UnderlyingCashSettlBusinessDays"
     }
   },
   {
@@ -2990,9 +2990,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42054",
       "description": "The amount paid between the trade parties, seller to the buyer, for cash settlement on the cash settlement date.",
-      "display": "UnderlyingCashSettlAmount",
-      "fix:tag": "42054"
+      "display": "UnderlyingCashSettlAmount"
     }
   },
   {
@@ -3002,9 +3002,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42055",
       "description": "Used for fixed recovery, this specifies the recovery level as determined at contract inception, to be applied in the event of a default. The factor is used to calculate the amount paid by the seller to the buyer for cash settlement on the cash settlement date. The amount is calculated is (1 - UnderlyingCashSettlRecoveryFactor(42055)) x floating rate payer calculation amount. The currency is derived from the floating rate payer calculation amount.",
-      "display": "UnderlyingCashSettlRecoveryFactor",
-      "fix:tag": "42055"
+      "display": "UnderlyingCashSettlRecoveryFactor"
     }
   },
   {
@@ -3014,9 +3014,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42056",
       "description": "Indicates whether fixed settlement is applicable or not applicable in a recovery lock.",
-      "display": "UnderlyingCashSettlFixedTermIndicator",
-      "fix:tag": "42056"
+      "display": "UnderlyingCashSettlFixedTermIndicator"
     }
   },
   {
@@ -3026,9 +3026,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42057",
       "description": "Indicates whether accrued interest is included or not in the value provided in UnderlyingCashSettlAmount(42054).",
-      "display": "UnderlyingCashSettlAccruedInterestIndicator",
-      "fix:tag": "42057"
+      "display": "UnderlyingCashSettlAccruedInterestIndicator"
     }
   },
   {
@@ -3038,9 +3038,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The ISDA defined methodology for determining the final price of the reference obligation for purposes of cash settlement.",
-      "display": "UnderlyingCashSettlValuationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Market",
@@ -3082,7 +3080,9 @@
           "doc": "Average blended highest"
         }
       ],
-      "fix:tag": "42058"
+      "FIX:tag": "42058",
+      "description": "The ISDA defined methodology for determining the final price of the reference obligation for purposes of cash settlement.",
+      "display": "UnderlyingCashSettlValuationMethod"
     }
   },
   {
@@ -3092,9 +3092,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42059",
       "description": "Name referenced from UnderlyingSettlementTermXIDRef(41315).",
-      "display": "UnderlyingCashSettlTermXID",
-      "fix:tag": "42059"
+      "display": "UnderlyingCashSettlTermXID"
     }
   },
   {
@@ -3104,9 +3104,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42060",
       "description": "Number of entries in the repeating group.",
-      "display": "NoUnderlyingPhysicalSettlTerms",
-      "fix:tag": "42060"
+      "display": "NoUnderlyingPhysicalSettlTerms"
     }
   },
   {
@@ -3116,9 +3116,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42061",
       "description": "Currency of physical settlement. Uses ISO 4217 currency codes.",
-      "display": "UnderlyingPhysicalSettlCurrency",
-      "fix:tag": "42061"
+      "display": "UnderlyingPhysicalSettlCurrency"
     }
   },
   {
@@ -3128,9 +3128,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42062",
       "description": "A number of business days. Its precise meaning is dependent on the context in which this element is used.",
-      "display": "UnderlyingPhysicalSettlBusinessDays",
-      "fix:tag": "42062"
+      "display": "UnderlyingPhysicalSettlBusinessDays"
     }
   },
   {
@@ -3140,9 +3140,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42063",
       "description": "A maximum number of business days. Its precise meaning is dependent on the context in which this element is used. Intended to be used to limit a particular ISDA fallback provision.",
-      "display": "UnderlyingPhysicalSettlMaximumBusinessDays",
-      "fix:tag": "42063"
+      "display": "UnderlyingPhysicalSettlMaximumBusinessDays"
     }
   },
   {
@@ -3152,9 +3152,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42064",
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
-      "display": "UnderlyingPhysicalSettlTermXID",
-      "fix:tag": "42064"
+      "display": "UnderlyingPhysicalSettlTermXID"
     }
   },
   {
@@ -3164,9 +3164,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42065",
       "description": "Number of entries in the repeating group.",
-      "display": "NoUnderlyingPhysicalSettlDeliverableObligations",
-      "fix:tag": "42065"
+      "display": "NoUnderlyingPhysicalSettlDeliverableObligations"
     }
   },
   {
@@ -3176,9 +3176,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42066",
       "description": "Specifies the type of delivery obligation applicable for physical settlement. See https://fixtrading.org/packages/deliverable-obligation-type for code list for applicable deliverable obligation types.",
-      "display": "UnderlyingPhysicalSettlDeliverableObligationType",
-      "fix:tag": "42066"
+      "display": "UnderlyingPhysicalSettlDeliverableObligationType"
     }
   },
   {
@@ -3188,9 +3188,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42067",
       "description": "Physical settlement delivery obligation value appropriate to UnderlyingPhysicalSettlDeliverableObligationType(42066). See https://fixtrading.org/packages/deliverable-obligation-type for applicable obligation type values.",
-      "display": "UnderlyingPhysicalSettlDeliverableObligationValue",
-      "fix:tag": "42067"
+      "display": "UnderlyingPhysicalSettlDeliverableObligationValue"
     }
   },
   {
@@ -3200,9 +3200,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42068",
       "description": "Number of protection terms in the repeating group.",
-      "display": "NoUnderlyingProtectionTerms",
-      "fix:tag": "42068"
+      "display": "NoUnderlyingProtectionTerms"
     }
   },
   {
@@ -3214,9 +3214,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42069",
       "description": "The notional amount of protection coverage for a floating rate.",
-      "display": "UnderlyingProtectionTermNotional",
-      "fix:tag": "42069"
+      "display": "UnderlyingProtectionTermNotional"
     }
   },
   {
@@ -3226,9 +3226,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42070",
       "description": "The currency of UnderlyingProtectionTermNotional(42069). Uses ISO 4217 currency codes.",
-      "display": "UnderlyingProtectionTermCurrency",
-      "fix:tag": "42070"
+      "display": "UnderlyingProtectionTermCurrency"
     }
   },
   {
@@ -3238,9 +3238,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42071",
       "description": "The notifying party is the party that notifies the other party when a credit event has occurred by means of a credit event notice. If more than one party is referenced as being the notifying party then either party may notify the other of a credit event occurring.",
-      "display": "UnderlyingProtectionTermSellerNotifies",
-      "fix:tag": "42071"
+      "display": "UnderlyingProtectionTermSellerNotifies"
     }
   },
   {
@@ -3250,9 +3250,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42072",
       "description": "The notifying party is the party that notifies the other party when a credit event has occurred by means of a credit event notice. If more than one party is referenced as being the notifying party then either party may notify the other of a credit event occurring.",
-      "display": "UnderlyingProtectionTermBuyerNotifies",
-      "fix:tag": "42072"
+      "display": "UnderlyingProtectionTermBuyerNotifies"
     }
   },
   {
@@ -3262,9 +3262,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42073",
       "description": "When used, the business center indicates the local time of the business center that replaces the Greenwich Mean Time in Section 3.3 of the 2003 ISDA Credit Derivatives Definitions. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "UnderlyingProtectionTermEventBusinessCenter",
-      "fix:tag": "42073"
+      "display": "UnderlyingProtectionTermEventBusinessCenter"
     }
   },
   {
@@ -3274,9 +3274,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42074",
       "description": "Indicates whether ISDA defined Standard Public Sources are applicable (UnderlyingProtectionTermStandardSources(42074)=Y) or not.",
-      "display": "UnderlyingProtectionTermStandardSources",
-      "fix:tag": "42074"
+      "display": "UnderlyingProtectionTermStandardSources"
     }
   },
   {
@@ -3286,9 +3286,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42075",
       "description": "The minimum number of the specified public information sources that must publish information that reasonably confirms that a credit event has occurred. The market convention is two.",
-      "display": "UnderlyingProtectionTermEventMinimumSources",
-      "fix:tag": "42075"
+      "display": "UnderlyingProtectionTermEventMinimumSources"
     }
   },
   {
@@ -3298,9 +3298,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42076",
       "description": "A named string value referenced by UnderlyingProtectionTermXIDRef(41314).",
-      "display": "UnderlyingProtectionTermXID",
-      "fix:tag": "42076"
+      "display": "UnderlyingProtectionTermXID"
     }
   },
   {
@@ -3310,9 +3310,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42077",
       "description": "Number of protection term events in the repeating group.",
-      "display": "NoUnderlyingProtectionTermEvents",
-      "fix:tag": "42077"
+      "display": "NoUnderlyingProtectionTermEvents"
     }
   },
   {
@@ -3322,9 +3322,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42078",
       "description": "Specifies the type of credit event applicable to the protection terms. See https://fixtrading.org/packages/protection-term-event-type for code list of applicable event types.",
-      "display": "UnderlyingProtectionTermEventType",
-      "fix:tag": "42078"
+      "display": "UnderlyingProtectionTermEventType"
     }
   },
   {
@@ -3334,9 +3334,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42079",
       "description": "Protection term event value appropriate to UnderlyingProtectionTermEventType(42078). See https://fixtrading.org/packages/protection-term-event-type for applicable event type values.",
-      "display": "UnderlyingProtectionTermEventValue",
-      "fix:tag": "42079"
+      "display": "UnderlyingProtectionTermEventValue"
     }
   },
   {
@@ -3346,9 +3346,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42080",
       "description": "Applicable currency if UnderlyingProtectionTermEventValue(42079) is an amount. Uses ISO 4217 currency codes.",
-      "display": "UnderlyingProtectionTermEventCurrency",
-      "fix:tag": "42080"
+      "display": "UnderlyingProtectionTermEventCurrency"
     }
   },
   {
@@ -3358,9 +3358,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42081",
       "description": "Time unit multiplier for protection term events.",
-      "display": "UnderlyingProtectionTermEventPeriod",
-      "fix:tag": "42081"
+      "display": "UnderlyingProtectionTermEventPeriod"
     }
   },
   {
@@ -3370,9 +3370,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with protection term events.",
-      "display": "UnderlyingProtectionTermEventUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -3394,7 +3392,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42082"
+      "FIX:tag": "42082",
+      "description": "Time unit associated with protection term events.",
+      "display": "UnderlyingProtectionTermEventUnit"
     }
   },
   {
@@ -3404,9 +3404,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Day type for events that specify a period and unit.",
-      "display": "UnderlyingProtectionTermEventDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -3438,7 +3436,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42083"
+      "FIX:tag": "42083",
+      "description": "Day type for events that specify a period and unit.",
+      "display": "UnderlyingProtectionTermEventDayType"
     }
   },
   {
@@ -3448,9 +3448,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42084",
       "description": "Rate source for events that specify a rate source, e.g. Floating rate interest shortfall.",
-      "display": "UnderlyingProtectionTermEventRateSource",
-      "fix:tag": "42084"
+      "display": "UnderlyingProtectionTermEventRateSource"
     }
   },
   {
@@ -3460,9 +3460,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42085",
       "description": "Number of qualifiers in the repeating group.",
-      "display": "NoUnderlyingProtectionTermEventQualifiers",
-      "fix:tag": "42085"
+      "display": "NoUnderlyingProtectionTermEventQualifiers"
     }
   },
   {
@@ -3472,9 +3472,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Protection term event qualifier. Used to further qualify UnderlyingProtectionTermEventType(43078).",
-      "display": "UnderlyingProtectionTermEventQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "H",
           "name": "RestructuringMultipleHoldingObligations",
@@ -3491,7 +3489,9 @@
           "doc": "Floating rate interest shortfall"
         }
       ],
-      "fix:tag": "42086"
+      "FIX:tag": "42086",
+      "description": "Protection term event qualifier. Used to further qualify UnderlyingProtectionTermEventType(43078).",
+      "display": "UnderlyingProtectionTermEventQualifier"
     }
   },
   {
@@ -3501,9 +3501,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42087",
       "description": "Number of obligations in the repeating group.",
-      "display": "NoUnderlyingProtectionTermObligations",
-      "fix:tag": "42087"
+      "display": "NoUnderlyingProtectionTermObligations"
     }
   },
   {
@@ -3513,9 +3513,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42088",
       "description": "Specifies the type of obligation applicable to the protection terms. See https://fixtrading.org/packages/protection-term-obligation-type for code list of applicable obligation types.",
-      "display": "UnderlyingProtectionTermObligationType",
-      "fix:tag": "42088"
+      "display": "UnderlyingProtectionTermObligationType"
     }
   },
   {
@@ -3525,9 +3525,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42089",
       "description": "Protection term obligation value appropriate to UnderlyingProtectionTermObligationType(42088). See https://fixtrading.org/packages/protection-term-obligation-type for applicable obligation type values.",
-      "display": "UnderlyingProtectionTermObligationValue",
-      "fix:tag": "42089"
+      "display": "UnderlyingProtectionTermObligationValue"
     }
   },
   {
@@ -3537,9 +3537,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42090",
       "description": "Number of event news sources in the repeating group.",
-      "display": "NoUnderlyingProtectionTermEventNewsSources",
-      "fix:tag": "42090"
+      "display": "NoUnderlyingProtectionTermEventNewsSources"
     }
   },
   {
@@ -3549,9 +3549,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42091",
       "description": "Newspaper or electronic news service or source that may publish relevant information used in the determination of whether or not a credit event has occurred.",
-      "display": "UnderlyingProtectionTermEventNewsSource",
-      "fix:tag": "42091"
+      "display": "UnderlyingProtectionTermEventNewsSource"
     }
   },
   {
@@ -3561,9 +3561,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the provisional cash settlement payment's termination, or relative termination, date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
-      "display": "UnderlyingProvisionCashSettlPaymentDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -3605,7 +3603,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "42092"
+      "FIX:tag": "42092",
+      "description": "The business day convention used to adjust the provisional cash settlement payment's termination, or relative termination, date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
+      "display": "UnderlyingProvisionCashSettlPaymentDateBusinessDayConvention"
     }
   },
   {
@@ -3615,9 +3615,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42093",
       "description": "Specifies the anchor date when the cash settlement payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "UnderlyingProvisionCashSettlPaymentDateRelativeTo",
-      "fix:tag": "42093"
+      "display": "UnderlyingProvisionCashSettlPaymentDateRelativeTo"
     }
   },
   {
@@ -3627,9 +3627,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42094",
       "description": "Time unit multiplier for the relative cash settlement payment date offset.",
-      "display": "UnderlyingProvisionCashSettlPaymentDateOffsetPeriod",
-      "fix:tag": "42094"
+      "display": "UnderlyingProvisionCashSettlPaymentDateOffsetPeriod"
     }
   },
   {
@@ -3639,9 +3639,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative cash settlement payment date offset.",
-      "display": "UnderlyingProvisionCashSettlPaymentDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -3663,7 +3661,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42095"
+      "FIX:tag": "42095",
+      "description": "Time unit associated with the relative cash settlement payment date offset.",
+      "display": "UnderlyingProvisionCashSettlPaymentDateOffsetUnit"
     }
   },
   {
@@ -3673,9 +3673,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the provision's relative cash settlement payment date offset.",
-      "display": "UnderlyingProvisionCashSettlPaymentDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -3707,7 +3705,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42096"
+      "FIX:tag": "42096",
+      "description": "Specifies the day type of the provision's relative cash settlement payment date offset.",
+      "display": "UnderlyingProvisionCashSettlPaymentDateOffsetDayType"
     }
   },
   {
@@ -3718,9 +3718,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42097",
       "description": "First date in range when a settlement date range is provided.",
-      "display": "UnderlyingProvisionCashSettlPaymentDateRangeFirst",
-      "fix:tag": "42097"
+      "display": "UnderlyingProvisionCashSettlPaymentDateRangeFirst"
     }
   },
   {
@@ -3731,9 +3731,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42098",
       "description": "Last date in range when a settlement date range is provided.",
-      "display": "UnderlyingProvisionCashSettlPaymentDateRangeLast",
-      "fix:tag": "42098"
+      "display": "UnderlyingProvisionCashSettlPaymentDateRangeLast"
     }
   },
   {
@@ -3743,9 +3743,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42099",
       "description": "Number of UnderlyingProvision cash settlement payment dates in the repeating group.",
-      "display": "NoUnderlyingProvisionCashSettlPaymentDates",
-      "fix:tag": "42099"
+      "display": "NoUnderlyingProvisionCashSettlPaymentDates"
     }
   }
 ]

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingprovisionoptionexercisefixeddatecomponent"
+        "FIX:component": "underlyingprovisionoptionexercisefixeddatecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingprovisionoptionexercisefixeddatecomponent",
+    "FIX:counter": "42112",
+    "FIX:tag": "1090526",
     "description": "Required if NoUnderlyingProvisionOptionExerciseFixedDates(42112) > 0.",
-    "display": "UnderlyingProvisionOptionExerciseFixedDateGrp",
-    "fix:component": "underlyingprovisionoptionexercisefixeddatecomponent",
-    "fix:counter": "42112",
-    "fix:tag": "1090526"
+    "display": "UnderlyingProvisionOptionExerciseFixedDateGrp"
   }
 }

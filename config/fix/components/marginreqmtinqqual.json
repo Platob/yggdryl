@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginreqmtinqqualifier",
-          "fix:tag": "1637"
+          "FIX:field": "marginreqmtinqqualifier",
+          "FIX:tag": "1637"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MarginReqmtInqQual",
-    "fix:tag": "326788"
+    "FIX:tag": "326788",
+    "display": "MarginReqmtInqQual"
   }
 }

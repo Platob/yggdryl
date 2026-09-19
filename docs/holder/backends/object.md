@@ -8,7 +8,7 @@ container, `File` one object.
 
 | | |
 | --- | --- |
-| Owns | `holder::object::{Path, Folder, File}`, the `IOPath`, `IOFolder`, `IOFile` roles of [Holder](../index.md) |
+| Owns | `yggdryl::object::{Path, Folder, File}`, the `IOPath`, `IOFolder`, `IOFile` roles of [Holder](../index.md) |
 | Feature | `object`, not default: the signed client and its TLS stack are a cost a local consumer never pays |
 | Stores | Amazon S3 and every store answering its API, Google Cloud Storage, Azure Blob Storage and Data Lake Storage Gen2 |
 | Bindings | An `s3:`, `s3a:`, `s3n:`, `gs:`, `gcs:`, `az:`, `abfs:`, `abfss:`, `wasb:`, or `wasbs:` [`Url`](../../uri/index.md) selects this backend; Rust and Python also take the knobs |
@@ -80,7 +80,7 @@ An [Iceberg table](../../media/iceberg/index.md) over a store touches only the
 files its metadata names - never a listing of `data/`, never a `HEAD` for a
 size the manifest already states, never a listing to learn the role of a
 handle the table already knows - so every commit and scan is a number the
-accounting suite (`holder::object::tests::accounting::iceberg`) holds exactly.
+accounting suite (`object::tests::accounting::iceberg`) holds exactly.
 Before local staging and the leaf handles, the same sequence cost 9, 25, 40,
 40, 5, 21, 9 and 29 requests.
 
@@ -130,7 +130,7 @@ three role classes, in whichever vocabulary the caller already has.
 
     ```{ .rust .no_run }
     use yggdryl::IOBase;
-    use yggdryl::holder::object;
+    use yggdryl::object;
 
     // Credentials, tokens, region, and endpoint resolve the way each store's
     // own tools resolve them, and nothing is read until the first request.
@@ -187,7 +187,7 @@ A raw name also does not say which store holds it, where a location's scheme
 does, so `file_at` takes the store as its first argument.
 
 ```rust
-use yggdryl::holder::object::{self, Provider};
+use yggdryl::object::{self, Provider};
 
 let handle = object::file_at(Provider::Aws, "trades", "lake/a b/part.parquet")?;
 assert_eq!(handle.key(), "lake/a b/part.parquet");
@@ -215,7 +215,7 @@ with none is refused rather than sent somewhere - and the Hadoop form attaches
 the container to the account's own host, which says both at once.
 
 ```rust
-use yggdryl::holder::object;
+use yggdryl::object;
 use yggdryl::IOBase;
 
 let hadoop = object::file("s3a://trades/lake/part.parquet")?;
@@ -247,7 +247,7 @@ port, an IP literal, or `localhost` in the URL names an endpoint rather than a
 container, so a local store reads the way the published one does.
 
 ```rust
-use yggdryl::holder::object::{Credentials, ObjectOptions};
+use yggdryl::object::{Credentials, ObjectOptions};
 
 let options = ObjectOptions::default()
     .with_endpoint("http://localhost:9000")
@@ -281,7 +281,7 @@ property map accepts is also an environment variable, under any prefix the
 caller names:
 
 ```rust
-use yggdryl::holder::object::ObjectOptions;
+use yggdryl::object::ObjectOptions;
 
 // The defaults: one prefix per store, plus this crate's own.
 assert_eq!(
@@ -358,7 +358,7 @@ A name two stores both have - `storage_class`, `client_id` - is applied to
 nothing is ambiguous by the time it matters.
 
 ```rust
-use yggdryl::holder::object::ObjectOptions;
+use yggdryl::object::ObjectOptions;
 
 // Hand it the catalog's properties whole; what is not about a store is
 // ignored, because most of a catalog's properties are not.
@@ -446,7 +446,7 @@ bucket - refreshed shortly before it lapses rather than asked for per request.
 ```rust
 use std::time::Duration;
 
-use yggdryl::holder::object::{AssumedRole, AwsOptions, GoogleOptions, ObjectOptions};
+use yggdryl::object::{AssumedRole, AwsOptions, GoogleOptions, ObjectOptions};
 
 let role = AssumedRole::new("arn:aws:iam::123456789012:role/lake-reader")
     .with_session_name("power-desk")
@@ -485,7 +485,7 @@ would be a round trip and an audit-log entry.
 
 ```rust
 use yggdryl::IOBase;
-use yggdryl::holder::object::ObjectOptions;
+use yggdryl::object::ObjectOptions;
 
 let options = ObjectOptions::default()
     .with_container_creation(false)
@@ -531,7 +531,7 @@ A combination a store does not have is refused once, when the client is built,
 rather than silently dropped or discovered from the store on the first write.
 
 ```rust
-use yggdryl::holder::object::{CustomerKey, Encryption, KmsKey, ObjectOptions, Provider};
+use yggdryl::object::{CustomerKey, Encryption, KmsKey, ObjectOptions, Provider};
 
 // The bucket's own default, which is what an unset value means.
 assert!(ObjectOptions::default().encryption().is_default());
@@ -586,7 +586,7 @@ over an object is the same reader that runs over a mapped file.
 ```{ .rust .no_run }
 use yggdryl::IOBase;
 use yggdryl::holder::buffered::BufferedOptions;
-use yggdryl::holder::object;
+use yggdryl::object;
 
 let mut part = object::file("s3://trades/lake/part.parquet")?;
 // Opening caches the object's metadata - never its bytes - so the questions a

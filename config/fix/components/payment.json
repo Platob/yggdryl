@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymenttype",
-          "fix:tag": "40213"
+          "FIX:field": "paymenttype",
+          "FIX:tag": "40213"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsubtype",
-          "fix:tag": "40993"
+          "FIX:field": "paymentsubtype",
+          "FIX:tag": "40993"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentpayside",
-          "fix:tag": "40214"
+          "FIX:field": "paymentpayside",
+          "FIX:tag": "40214"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentreceiveside",
-          "fix:tag": "40215"
+          "FIX:field": "paymentreceiveside",
+          "FIX:tag": "40215"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentdesc",
-          "fix:tag": "43087"
+          "FIX:field": "paymentdesc",
+          "FIX:tag": "43087"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentcurrency",
-          "fix:tag": "40216"
+          "FIX:field": "paymentcurrency",
+          "FIX:tag": "40216"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentamount",
-          "fix:tag": "40217"
+          "FIX:field": "paymentamount",
+          "FIX:tag": "40217"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentamountrelativeto",
-          "fix:tag": "42598"
+          "FIX:field": "paymentamountrelativeto",
+          "FIX:tag": "42598"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentamountdeterminationmethod",
-          "fix:tag": "42599"
+          "FIX:field": "paymentamountdeterminationmethod",
+          "FIX:tag": "42599"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentfixedrate",
-          "fix:tag": "43097"
+          "FIX:field": "paymentfixedrate",
+          "FIX:tag": "43097"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentfloatingrateindex",
-          "fix:tag": "43098"
+          "FIX:field": "paymentfloatingrateindex",
+          "FIX:tag": "43098"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentfloatingrateindexcurveunit",
-          "fix:tag": "43100"
+          "FIX:field": "paymentfloatingrateindexcurveunit",
+          "FIX:tag": "43100"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentfloatingrateindexcurveperiod",
-          "fix:tag": "43099"
+          "FIX:field": "paymentfloatingrateindexcurveperiod",
+          "FIX:tag": "43099"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentfloatingratespread",
-          "fix:tag": "43101"
+          "FIX:field": "paymentfloatingratespread",
+          "FIX:tag": "43101"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentrateresetfrequencyunit",
-          "fix:tag": "43105"
+          "FIX:field": "paymentrateresetfrequencyunit",
+          "FIX:tag": "43105"
         }
       },
       {
@@ -175,8 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentrateresetfrequencyperiod",
-          "fix:tag": "43104"
+          "FIX:field": "paymentrateresetfrequencyperiod",
+          "FIX:tag": "43104"
         }
       },
       {
@@ -186,8 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentfrequencyunit",
-          "fix:tag": "43103"
+          "FIX:field": "paymentfrequencyunit",
+          "FIX:tag": "43103"
         }
       },
       {
@@ -197,8 +197,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentfrequencyperiod",
-          "fix:tag": "43102"
+          "FIX:field": "paymentfrequencyperiod",
+          "FIX:tag": "43102"
         }
       },
       {
@@ -208,8 +208,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentprice",
-          "fix:tag": "40218"
+          "FIX:field": "paymentprice",
+          "FIX:tag": "40218"
         }
       },
       {
@@ -219,8 +219,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentpricetype",
-          "fix:tag": "40919"
+          "FIX:field": "paymentpricetype",
+          "FIX:tag": "40919"
         }
       },
       {
@@ -230,8 +230,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentunitofmeasure",
-          "fix:tag": "41155"
+          "FIX:field": "paymentunitofmeasure",
+          "FIX:tag": "41155"
         }
       },
       {
@@ -241,8 +241,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentdateunadjusted",
-          "fix:tag": "40219"
+          "FIX:field": "paymentdateunadjusted",
+          "FIX:tag": "40219"
         }
       },
       {
@@ -252,8 +252,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentbusinessdayconvention",
-          "fix:tag": "40220"
+          "FIX:field": "paymentbusinessdayconvention",
+          "FIX:tag": "40220"
         }
       },
       {
@@ -263,8 +263,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentbusinesscenters",
-          "fix:tag": "40944"
+          "FIX:field": "nopaymentbusinesscenters",
+          "FIX:tag": "40944"
         }
       },
       {
@@ -274,7 +274,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "paymentbusinesscentergrp"
+          "FIX:group": "paymentbusinesscentergrp"
         }
       },
       {
@@ -284,8 +284,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentdaterelativeto",
-          "fix:tag": "41156"
+          "FIX:field": "paymentdaterelativeto",
+          "FIX:tag": "41156"
         }
       },
       {
@@ -295,8 +295,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentdateoffsetperiod",
-          "fix:tag": "41157"
+          "FIX:field": "paymentdateoffsetperiod",
+          "FIX:tag": "41157"
         }
       },
       {
@@ -306,8 +306,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentdateoffsetunit",
-          "fix:tag": "41158"
+          "FIX:field": "paymentdateoffsetunit",
+          "FIX:tag": "41158"
         }
       },
       {
@@ -317,8 +317,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentdateoffsetdaytype",
-          "fix:tag": "41159"
+          "FIX:field": "paymentdateoffsetdaytype",
+          "FIX:tag": "41159"
         }
       },
       {
@@ -328,8 +328,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentdateadjusted",
-          "fix:tag": "40222"
+          "FIX:field": "paymentdateadjusted",
+          "FIX:tag": "40222"
         }
       },
       {
@@ -339,8 +339,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentforwardstarttype",
-          "fix:tag": "41160"
+          "FIX:field": "paymentforwardstarttype",
+          "FIX:tag": "41160"
         }
       },
       {
@@ -350,8 +350,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentdiscountfactor",
-          "fix:tag": "40224"
+          "FIX:field": "paymentdiscountfactor",
+          "FIX:tag": "40224"
         }
       },
       {
@@ -361,8 +361,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentpresentvalueamount",
-          "fix:tag": "40225"
+          "FIX:field": "paymentpresentvalueamount",
+          "FIX:tag": "40225"
         }
       },
       {
@@ -372,8 +372,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentpresentvaluecurrency",
-          "fix:tag": "40226"
+          "FIX:field": "paymentpresentvaluecurrency",
+          "FIX:tag": "40226"
         }
       },
       {
@@ -383,8 +383,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsettlstyle",
-          "fix:tag": "40227"
+          "FIX:field": "paymentsettlstyle",
+          "FIX:tag": "40227"
         }
       },
       {
@@ -394,8 +394,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentmethod",
-          "fix:tag": "492"
+          "FIX:field": "paymentmethod",
+          "FIX:tag": "492"
         }
       },
       {
@@ -405,8 +405,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentsettls",
-          "fix:tag": "40230"
+          "FIX:field": "nopaymentsettls",
+          "FIX:tag": "40230"
         }
       },
       {
@@ -416,7 +416,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "paymentsettlgrp"
+          "FIX:group": "paymentsettlgrp"
         }
       },
       {
@@ -426,8 +426,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentlegrefid",
-          "fix:tag": "41304"
+          "FIX:field": "paymentlegrefid",
+          "FIX:tag": "41304"
         }
       },
       {
@@ -437,8 +437,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymenttext",
-          "fix:tag": "40229"
+          "FIX:field": "paymenttext",
+          "FIX:tag": "40229"
         }
       },
       {
@@ -448,8 +448,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedpaymenttextlen",
-          "fix:tag": "40984"
+          "FIX:field": "encodedpaymenttextlen",
+          "FIX:tag": "40984"
         }
       },
       {
@@ -459,15 +459,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedpaymenttext",
-          "fix:tag": "40985"
+          "FIX:field": "encodedpaymenttext",
+          "FIX:tag": "40985"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "Payment",
-    "fix:tag": "445397"
+    "FIX:tag": "445397",
+    "display": "Payment"
   }
 }

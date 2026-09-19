@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legprovisionoptionexercisebusinesscentercomponent"
+        "FIX:component": "legprovisionoptionexercisebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legprovisionoptionexercisebusinesscentercomponent",
+    "FIX:counter": "40936",
+    "FIX:tag": "335113",
     "description": "Required if NoLegProvisionOptionExerciseBusinessCenters(40936) > 0.",
-    "display": "LegProvisionOptionExerciseBusinessCenterGrp",
-    "fix:component": "legprovisionoptionexercisebusinesscentercomponent",
-    "fix:counter": "40936",
-    "fix:tag": "335113"
+    "display": "LegProvisionOptionExerciseBusinessCenterGrp"
   }
 }

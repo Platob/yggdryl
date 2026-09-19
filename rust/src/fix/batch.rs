@@ -22,7 +22,7 @@
 //!
 //! | group | columns |
 //! | --- | --- |
-//! | identity | `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `snapunix`, `sendingtime` |
+//! | identity | `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `snapunix`, `sendingtime` |
 //! | meaning | one per lifted facet, typed as that facet's field is typed |
 //! | arrival | `entries`, a list of `tag`/`branch`/`key`/`value` |
 //!
@@ -67,6 +67,7 @@ use super::build::{Fill, RowExtras};
 use super::codec::{FixCodec, SOH};
 use super::msg::FixMsg;
 use super::{FIXENTRIES_COLUMN, FixEntry, FixMessages, FixRegistry};
+use crate::enums::EnumType;
 
 /// The name the fixed row's root takes: what the schema is asked for, and
 /// what a batch of FIX rows is read back under.
@@ -96,19 +97,19 @@ impl FixCodec {
     /// the `beginstring` column as
     /// [`Self::parse_text_line`] reads the captures of those names, the
     /// `msgdirection` column as the direction the row states, and every
-    /// other column named after a field the dictionary knows - `pluginid`
+    /// other column named after a field the dictionary knows - `msgpluginid`
     /// among them - filling that field where the line left it unsaid. Where each
     /// column sits and which field it fills is decided once from the schema,
     /// so no row copies the codec or asks the dictionary a question the row
     /// before it asked.
     ///
     /// [The capture's own columns](FixMsg::from_row) fill nothing: the
-    /// carried ones, and the two the crate tags - a `sourceurl` column and a
-    /// `recordedat` one - are read off the source row and written straight
-    /// into the row this answers, each at its own column, because where a
-    /// line was read from is this reader's statement and never the message's.
-    /// This is the one door that can state them, and it is why they survive
-    /// a parse without a message holding one.
+    /// carried ones, and the one the crate tags - a `sourceurl` column - are
+    /// read off the source row and written straight into the row this
+    /// answers, each at its own column, because where a line was read from
+    /// is this reader's statement and never the message's. This is the one
+    /// door that can state them, and it is why they survive a parse without
+    /// a message holding one.
     ///
     /// A line the reader
     /// cannot classify yields no message; malformed-body recovery still obeys
@@ -401,7 +402,7 @@ impl FixCodec {
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
-    /// # use yggdryl::holder::local::Folder;
+    /// # use yggdryl::local::Folder;
     /// # use yggdryl::{FixCodec, FixRegistry, fix_schema};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
@@ -575,10 +576,10 @@ fn wire_size(entries: &[FixEntry]) -> u64 {
 
 /// Where a row schema's own capture columns sit.
 ///
-/// [The capture's own columns](FixMsg::from_row): the two the crate tags,
-/// `sourceurl` and `recordedat`, and every column no tag and no counter
-/// names - the body a line was cut from, its place in the object, its media
-/// type, what a bound dropped. A namespaced key is not one of them: that is
+/// [The capture's own columns](FixMsg::from_row): the one the crate tags,
+/// `sourceurl`, and every column no tag and no counter names - the body a
+/// line was cut from, its place in the object, its media type, when the
+/// reader read it, what a bound dropped. A namespaced key is not one of them: that is
 /// a bridge's own statement, which the message keeps in its metadata.
 fn capture_columns(schema: &Field, plan: &super::schema::Columns) -> Vec<usize> {
     schema
@@ -625,7 +626,7 @@ fn capture_restating(
             None => target
                 .fields()
                 .iter()
-                .position(|held| crate::types::folds_equal(held.name(), column.name())),
+                .position(|held| crate::folds_equal(held.name(), column.name())),
         };
         if let Some(placed) = placed {
             restating.push((at, placed));
@@ -641,7 +642,7 @@ fn capture_restating(
 /// bytes in any layout, a dictionary or run-end encoding of one included.
 fn carries_payload(dtype: &DataType) -> bool {
     match dtype {
-        DataType::Dictionary(held) => carries_payload(&held.value),
+        DataType::Enum(EnumType::Dictionary(held)) => carries_payload(&held.value),
         DataType::RunEndEncoded(held) => carries_payload(held.values.dtype()),
         other => matches!(
             other.kind(),
@@ -803,7 +804,7 @@ fn payload_bytes<'batch>(
 fn is_parameter(name: &str, payload: &str) -> bool {
     [payload, BEGINSTRING_COLUMN, DIRECTION_COLUMN]
         .iter()
-        .any(|held| crate::types::folds_equal(held, name))
+        .any(|held| crate::folds_equal(held, name))
 }
 
 struct Columns {
@@ -822,10 +823,9 @@ struct Columns {
     /// beside the target column it is stated at, in ascending target order.
     ///
     /// Both kinds at once: the carried columns, which lead the row in the
-    /// order they were kept, and the two the crate tags - `sourceurl`,
-    /// `recordedat` - wherever the fixed columns put them. No message holds
-    /// any of them, so this is the whole of what says where a row's line
-    /// came from and when it was written down.
+    /// order they were kept, and the one the crate tags - `sourceurl` -
+    /// wherever the fixed columns put it. No message holds any of them, so
+    /// this is the whole of what says where a row's line came from.
     restated: Vec<(usize, usize)>,
     /// Each source column's datatype, so a cell is read under its own.
     dtypes: Vec<DataType>,
@@ -847,7 +847,7 @@ impl Columns {
         let named = |wanted: &str| {
             fields
                 .iter()
-                .position(|held| crate::types::folds_equal(held.name(), wanted))
+                .position(|held| crate::folds_equal(held.name(), wanted))
         };
         let payload_at = payload_column_of(carrier, payload, named(payload))?;
         let reached = |held: &Field| codec.fill_target(held.name()).map(|(_, tag)| tag);
@@ -886,7 +886,7 @@ impl Columns {
             }
         }
         // One column is stated once, by the leftmost source that reaches it:
-        // `mtime` and `recordedat` both answer tag 65028, and a row cannot
+        // two captures folding to one name answer one tag, and a row cannot
         // hold one column twice. Stably, so which one wins is the schema's
         // order and never the sort's.
         restated.sort_by_key(|(_, at)| *at);

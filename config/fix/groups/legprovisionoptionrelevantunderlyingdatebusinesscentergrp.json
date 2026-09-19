@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legprovisionoptionrelevantunderlyingdatebusinesscentercomponent"
+        "FIX:component": "legprovisionoptionrelevantunderlyingdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legprovisionoptionrelevantunderlyingdatebusinesscentercomponent",
+    "FIX:counter": "40938",
+    "FIX:tag": "751706",
     "description": "Required if NoLegProvisionOptionRelevantUnderlyingDateBusinessCenters(40938) > 0.",
-    "display": "LegProvisionOptionRelevantUnderlyingDateBusinessCenterGrp",
-    "fix:component": "legprovisionoptionrelevantunderlyingdatebusinesscentercomponent",
-    "fix:counter": "40938",
-    "fix:tag": "751706"
+    "display": "LegProvisionOptionRelevantUnderlyingDateBusinessCenterGrp"
   }
 }

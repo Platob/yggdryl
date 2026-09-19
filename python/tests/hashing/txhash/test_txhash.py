@@ -124,7 +124,7 @@ class TestValues:
         value = txhash.txh3(b"AAPL", INSTANT)
         instant = value.into_datetime()
         assert instant.as_py() == dt.datetime(2023, 11, 14, 22, 13, 20, tzinfo=UTC)
-        assert instant == Scalar.datetime(INSTANT, "us", "UTC")
+        assert instant == DataType('datetime64(us,"UTC")').scalar(INSTANT)
         cell = value.into_scalar()
         assert cell.as_bytes() == bytes(value)
         assert cell.dtype == DataType("fixed_size_binary[16]")
@@ -383,9 +383,9 @@ class TestHolders:
         assert holder.digest.time is None and holder.digest.unit is None
         holder.digest.time = "event"
         assert holder.digest.is_coupled()
-        assert holder.digest.time == "event" and holder.metadata["digest:time"] == "event"
+        assert holder.digest.time == "event" and holder.metadata["DIGEST:time"] == "event"
         holder.digest.unit = "seconds"
-        assert holder.digest.unit == "s" and holder.metadata["digest:unit"] == "s"
+        assert holder.digest.unit == "s" and holder.metadata["DIGEST:unit"] == "s"
         with pytest.raises(ValueError):
             holder.digest.remove_time()
         assert holder.digest.remove_unit() == "s"

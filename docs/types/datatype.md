@@ -6,16 +6,16 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 56 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, URL, the [string and byte families](text.md), the ten [codes](codes.md) |
+| Owns | 56 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text.md), the ten [codes](codes.md) |
 | Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly |
-| Identity | `id()`, `kind()`: 60 ids, 12 kinds, parameter-free; a string's id is its layout, a byte column's its layout |
+| Identity | `id()`, `kind()`: 86 ids, 12 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
 | Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`; layout rewrites only |
 | Rust only | the enum itself |
 | JavaScript | the model as JSON only: no YAML, TOML or `pretty` |
-| Serializes strings, bytes | one `string` tag and one `binary` tag with `layout`, `charset`, `fixed` or `max` ([Strings & bytes](text.md#serialized-shape)) |
+| Serializes strings, bytes | one `string` tag and one `binary` tag with `layout` naming the leaf and `fixed` or `max` beside it ([Strings & bytes](text.md#serialized-shape)) |
 
 ## Use
 
@@ -86,7 +86,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     );
     assert_eq!(
         row.get_field_by_path("at").map(|field| field.dtype().clone()),
-        Some(DataType::DateTime64 { unit: TimeUnit::Nanosecond, timezone: Timezone::UTC })
+        Some(DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?)
     );
 
     // Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
@@ -94,7 +94,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     // than to a day a consumer would have to cast before comparing it.
     assert_eq!(
         DataType::from_str("utc_date_only")?,
-        DataType::DateTime64 { unit: TimeUnit::Nanosecond, timezone: Timezone::UTC },
+        DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?,
     );
     assert_eq!(DataType::LOGICAL_NAMES[0], ("currency", DataType::Currency));
 
@@ -291,18 +291,20 @@ to the outer node and Arrow's values are a bare datatype.
 === "Rust"
 
     ```rust
+    use yggdryl::TimeType;
     use yggdryl::{DataType, TimeUnit};
 
     let value = DataType::from_str("map<string,array<decimal(38,18)>>")?;
-    let arrow = value.clone().into_arrow()?;
+    let arrow = value.clone().into_arrow_datatype()?;
 
-    assert_eq!(DataType::from_arrow(&arrow)?, value);
-    assert_eq!(value.clone().into_arrow()?, arrow);
+    assert_eq!(DataType::from_arrow_datatype(&arrow)?, value);
+    assert_eq!(value.clone().into_arrow_datatype()?, arrow);
     assert_eq!(DataType::try_from(arrow)?, value);
 
-    // Projection re-checks parameters, so a directly built enum value cannot escape.
-    assert!(DataType::Time32(TimeUnit::Nanosecond).into_arrow().is_err());
-    assert!(DataType::Time32(TimeUnit::Nanosecond).into_arrow_ffi().is_err());
+    // Projection re-checks parameters, so a directly built leaf cannot escape.
+    let broken = DataType::Time(TimeType::Time32(TimeUnit::Nanosecond));
+    assert!(broken.clone().into_arrow_datatype().is_err());
+    assert!(broken.into_arrow_datatype_ffi().is_err());
     ```
 
 === "Python"
@@ -347,12 +349,12 @@ The core computes one default; each binding projects it.
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Scalar};
+    use yggdryl::{DataType, Field, Scalar, StructureType};
 
-    let value = DataType::from_fields([
+    let value = DataType::from(StructureType::from_fields([
         Field::new("id", DataType::Int32, false),
         Field::new("note", DataType::utf8(), true),
-    ])?;
+    ])?);
 
     // One positional slot per child, each honoring its own nullability.
     assert_eq!(
@@ -363,7 +365,7 @@ The core computes one default; each binding projects it.
     assert_eq!(DataType::utf8().default_value()?, Scalar::from(""));
 
     // A default is bounded: a layout too large to materialize is an error, not a null.
-    assert!(DataType::fixed_size_binary(64 * 1024 * 1024 + 1)?.default_value().is_err());
+    assert!(DataType::fixed_binary(64 * 1024 * 1024 + 1)?.default_value().is_err());
     ```
 
 === "Python"
@@ -414,7 +416,7 @@ Nesting is carried, not flattened, so every format round-trips it.
 
     ```rust
     use yggdryl::DataType;
-    use yggdryl::types::Scalar;
+    use yggdryl::Scalar;
 
     let dtype = DataType::decimal(9, 2)?;
 
@@ -463,17 +465,17 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 === "Rust"
 
     ```rust
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
     let rows = DataType::list(
-        DataType::from_fields([DataType::utf8().nullable_field("venue")])?.nullable_field("item"),
+        DataType::from(StructureType::from_fields([DataType::utf8().nullable_field("venue")])?).nullable_field("item"),
     );
 
     // Compact still round-trips.
     assert_eq!(DataType::from_str(&rows.to_string())?, rows);
 
     // Readable is the alternate, or the named adapter - one implementation.
-    assert_eq!(format!("{rows:#}"), rows.pretty().to_string());
+    assert_eq!(format!("{rows:#}"), rows.into_pretty_str().to_string());
     assert_eq!(
         format!("{rows:#}"),
         "list\n  item: struct[1], nullable\n    venue: utf8, nullable",
@@ -506,9 +508,9 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Scheme, TimeUnit, Timezone};
+    use yggdryl::{DataType, Field, Scheme, StructureType, TimeUnit, Timezone};
 
-    let source = DataType::from_fields([
+    let source = DataType::from(StructureType::from_fields([
         Field::new("small", DataType::UInt8, false),
         Field::new("wide", DataType::UInt64, true),
         Field::new(
@@ -516,7 +518,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
             DataType::large_list(DataType::utf8_view().nullable_field("item")),
             false,
         ),
-    ])?;
+    ])?);
 
     let spark = source.clone().into_scheme_compat(&Scheme::SPARK)?;
     let rewritten = spark.as_fields().unwrap();
@@ -532,11 +534,11 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
     assert_eq!(DataType::UInt32.into_scheme_compat(&Scheme::POLARS)?, DataType::UInt32);
 
     // A rewrite that would reinterpret values is refused, and the path is named.
-    let error = DataType::from_fields([Field::new(
+    let error = DataType::from(StructureType::from_fields([Field::new(
         "created",
-        DataType::DateTime64 { unit: TimeUnit::Nanosecond, timezone: Timezone::NAIVE },
+        DataType::datetime64(TimeUnit::Nanosecond, Timezone::NAIVE)?,
         false,
-    )])?
+    )])?)
     .into_scheme_compat(&Scheme::SPARK)
     .unwrap_err()
     .to_string();
@@ -608,20 +610,21 @@ On a [Field](field.md) the call keeps name, nullability, and metadata, and rebui
 Building the enum by hand is Rust only; `validate` is in Python too. It catches states the public enum admits but no constructor produces.
 
 ```rust
+use yggdryl::TimeType;
 use yggdryl::{DataType, Field, TimeUnit};
 
-let broken = DataType::Time32(TimeUnit::Nanosecond);
+let broken = DataType::Time(TimeType::Time32(TimeUnit::Nanosecond));
 assert!(broken.validate().is_err());
 assert!(DataType::time32(TimeUnit::Nanosecond).is_err());
 
 // A valid value validates without allocating, recursing through every child.
 let value = DataType::list(Field::new(
     "item",
-    DataType::Decimal128 { precision: 18, scale: 4 },
+    DataType::decimal128(18, 4)?,
     true,
 ));
 value.validate()?;
-assert!(DataType::Decimal128 { precision: 0, scale: 0 }.validate().is_err());
+assert!(DataType::decimal128(0, 0).is_err());
 
 assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 ```
@@ -655,8 +658,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::parser datatype::serde datatype::logical datatype::default datatype::compatibility datatype::arrow datatype::scalar default_scalar:: value_bounds::
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::tests::logical types::tests::vocabulary types::tests::datatype_ types::arrow::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::parser datatype::serde datatype::logical datatype::default datatype::compatibility datatype::arrow datatype::scalar default_scalar:: value_bounds:: logical:: vocabulary:: enums::datatype_id enums::datatype_kind
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/(scalar_sql|nested_sql_hive|near_limit_nested|logical_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^datatype_(default|compatibility)/'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^arrow/datatype_'

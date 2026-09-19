@@ -121,7 +121,7 @@ fn composing_never_resolves_the_location() {
 fn every_wrapper_keeps_the_filesystem_location_it_stands_on() {
     use std::sync::Arc;
 
-    use yggdryl::holder::fs::{BoundLocation, FileSystem, MemoryFileSystem};
+    use yggdryl::fs::{BoundLocation, FileSystem, MemoryFileSystem};
 
     let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
     let stored = Codec::Gzip.dump(PLAIN).unwrap();
@@ -139,7 +139,7 @@ fn every_wrapper_keeps_the_filesystem_location_it_stands_on() {
     // A wrapper answers where the bytes live, or every filesystem accessor -
     // the raw path, the URI, the info call - goes blank the moment a handle is
     // composed.
-    let composed = yggdryl::holder::fs::located(location.clone()).into_declared_media();
+    let composed = yggdryl::fs::located(location.clone()).into_declared_media();
     assert!(matches!(composed, Holder::Text(_)), "{composed:?}");
     assert_eq!(
         composed.bound_location().map(BoundLocation::path),
@@ -147,7 +147,7 @@ fn every_wrapper_keeps_the_filesystem_location_it_stands_on() {
     );
     assert_eq!(composed.read_all_bytes().unwrap(), PLAIN);
 
-    let cached = yggdryl::holder::fs::located(location).buffered(BufferedOptions::default());
+    let cached = yggdryl::fs::located(location).buffered(BufferedOptions::default());
     assert_eq!(
         cached.bound_location().map(BoundLocation::path),
         Some("trades.txt.gz")
@@ -218,7 +218,7 @@ fn a_composed_whole_read_decodes_once() {
     // Text over a coding answers the whole read through the coding rather than
     // through the trait's `size`-then-read default, which would decode the
     // value once to measure it and again to read it.
-    let text = yggdryl::media::text::Text::new(yggdryl::coding::Coding::new(source, Codec::Gzip));
+    let text = yggdryl::text::Text::new(yggdryl::coding::Coding::new(source, Codec::Gzip));
     assert_eq!(text.read_all_bytes().unwrap(), PLAIN);
     assert_eq!(streams.load(Ordering::Relaxed), 1);
 }

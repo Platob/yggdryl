@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
-use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, i256};
+use yggdryl::DateTimeType;
+use yggdryl::{DataType, Field, Scalar, StructureType, TimeUnit, Timezone, i256};
 
 pub(crate) fn nested(depth: usize) -> Scalar {
     (0..depth).fold(Scalar::from(0), |value, _| Scalar::from_sequence([value]))
@@ -35,18 +36,19 @@ pub(crate) fn typed() -> (Scalar, Field) {
     .unwrap();
     let field = Field::new(
         "row",
-        DataType::from_fields([
+        StructureType::from_fields([
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Second,
                     timezone: Timezone::UTC,
-                },
+                }),
                 false,
             ),
             Field::new("payload", DataType::binary(), false),
         ])
+        .map(DataType::from)
         .unwrap(),
         false,
     );

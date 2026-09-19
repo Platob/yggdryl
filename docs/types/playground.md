@@ -37,7 +37,7 @@ This section renders `assets/playground.json` and needs JavaScript.
 This section renders `assets/playground.json` and needs JavaScript.
 </div>
 
-A member is the integer its US-ASCII value packs into (its bytes padded to the declared width, big-endian), so the code is the same in every process whatever a column stores its values as. The `StringEnum` declaration rides on the field under `field:enum`, so it crosses Arrow, a file, and another runtime. The encode and decode casts are recorded with `{ safe: false }`, so a refusal is the message the package answered rather than a null.
+A member is the integer its US-ASCII value packs into (its bytes padded to the declared width, big-endian), so the code is the same in every process whatever a column stores its values as. The `StringEnum` declaration rides on the field under `FIELD:enum`, so it crosses Arrow, a file, and another runtime. The encode and decode casts are recorded with `{ safe: false }`, so a refusal is the message the package answered rather than a null.
 
 ## Look up a value
 

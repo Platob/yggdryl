@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseexpirationdatebusinesscenter",
-          "fix:tag": "41516"
+          "FIX:field": "legoptionexerciseexpirationdatebusinesscenter",
+          "FIX:tag": "41516"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegOptionExerciseExpirationDateBusinessCenter",
-    "fix:tag": "144290"
+    "FIX:tag": "144290",
+    "display": "LegOptionExerciseExpirationDateBusinessCenter"
   }
 }

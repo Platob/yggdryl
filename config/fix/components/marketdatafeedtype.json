@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdfeedtype",
-          "fix:tag": "1022"
+          "FIX:field": "mdfeedtype",
+          "FIX:tag": "1022"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdsubfeedtype",
-          "fix:tag": "1683"
+          "FIX:field": "mdsubfeedtype",
+          "FIX:tag": "1683"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdepth",
-          "fix:tag": "264"
+          "FIX:field": "marketdepth",
+          "FIX:tag": "264"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdepthtimeinterval",
-          "fix:tag": "2563"
+          "FIX:field": "marketdepthtimeinterval",
+          "FIX:tag": "2563"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdepthtimeintervalunit",
-          "fix:tag": "2564"
+          "FIX:field": "marketdepthtimeintervalunit",
+          "FIX:tag": "2564"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdrecoverytimeinterval",
-          "fix:tag": "2565"
+          "FIX:field": "mdrecoverytimeinterval",
+          "FIX:tag": "2565"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdrecoverytimeintervalunit",
-          "fix:tag": "2566"
+          "FIX:field": "mdrecoverytimeintervalunit",
+          "FIX:tag": "2566"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdbooktype",
-          "fix:tag": "1021"
+          "FIX:field": "mdbooktype",
+          "FIX:tag": "1021"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdsubbooktype",
-          "fix:tag": "1173"
+          "FIX:field": "mdsubbooktype",
+          "FIX:tag": "1173"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "primaryservicelocationid",
-          "fix:tag": "2567"
+          "FIX:field": "primaryservicelocationid",
+          "FIX:tag": "2567"
         }
       },
       {
@@ -120,15 +120,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryservicelocationid",
-          "fix:tag": "2568"
+          "FIX:field": "secondaryservicelocationid",
+          "FIX:tag": "2568"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MarketDataFeedType",
-    "fix:tag": "129212"
+    "FIX:tag": "129212",
+    "display": "MarketDataFeedType"
   }
 }

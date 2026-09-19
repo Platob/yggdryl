@@ -6,7 +6,7 @@ use yggdryl::expression::{
     Filter, FunctionSignature, Selector, Term, UserFunction, UserRef, lookup_function,
     register_function, registered_functions, unregister_function,
 };
-use yggdryl::{DataType, Field, Result, Scalar};
+use yggdryl::{DataType, Field, Result, Scalar, StructureType};
 
 /// `rs.double(value)`: twice an integer.
 struct Double(FunctionSignature);
@@ -60,10 +60,11 @@ fn registered() {
 }
 
 fn rows() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64.nullable_field("size"),
         DataType::utf8().nullable_field("ccy"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("rows")
 }
@@ -146,9 +147,9 @@ fn a_signature_is_a_struct_field_both_ways() {
     let field = signature.as_field().unwrap();
     assert_eq!(field.name(), "rs.add");
     assert_eq!(field.fields().len(), 2);
-    assert_eq!(field.get_metadata("function:returns"), Some("int64 null"));
+    assert_eq!(field.get_metadata("FUNCTION:returns"), Some("int64 null"));
     assert_eq!(
-        field.fields()[1].get_metadata("function:default"),
+        field.fields()[1].get_metadata("FUNCTION:default"),
         Some("1")
     );
     assert_eq!(FunctionSignature::from_field(&field).unwrap(), signature);
@@ -176,14 +177,14 @@ fn a_call_over_columns_is_stored_as_the_function_and_its_sources() {
     let stored = selector.into_field(&rows()).unwrap();
     let doubled = &stored.fields()[1];
     assert_eq!(
-        doubled.get_metadata("transform:function"),
+        doubled.get_metadata("TRANSFORM:function"),
         Some("rs.double")
     );
     assert_eq!(
-        doubled.get_metadata("transform:sources"),
+        doubled.get_metadata("TRANSFORM:sources"),
         Some(r#"["size"]"#)
     );
-    assert_eq!(doubled.get_metadata("transform:expression"), None);
+    assert_eq!(doubled.get_metadata("TRANSFORM:expression"), None);
     assert_eq!(
         doubled.as_transform().term().unwrap().unwrap().to_string(),
         "rs.double(size)"
@@ -198,14 +199,14 @@ fn a_call_over_columns_is_stored_as_the_function_and_its_sources() {
     year.as_transform_mut()
         .set_term(&"year(event)".parse().unwrap())
         .unwrap();
-    assert_eq!(year.get_metadata("transform:function"), Some("year"));
+    assert_eq!(year.get_metadata("TRANSFORM:function"), Some("year"));
     let mut twice = DataType::Int64.nullable_field("twice");
     twice
         .as_transform_mut()
         .set_term(&"size * 2".parse().unwrap())
         .unwrap();
-    assert_eq!(twice.get_metadata("transform:expression"), Some("size * 2"));
-    assert_eq!(twice.get_metadata("transform:function"), None);
+    assert_eq!(twice.get_metadata("TRANSFORM:expression"), Some("size * 2"));
+    assert_eq!(twice.get_metadata("TRANSFORM:function"), None);
     assert!(
         unregister_function(&UserRef::parse("rs.double").unwrap())
             || registered_functions().is_empty()

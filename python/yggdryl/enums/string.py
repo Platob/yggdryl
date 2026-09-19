@@ -23,7 +23,7 @@ member under its own packed code, registered once and announced once on the
 `yggdryl.enums.string` logger.
 
 A class declares itself onto a field with `into_field()`, which stores the
-members under `field:enum` as a `StringEnum`, so the enum crosses Arrow, a
+members under `FIELD:enum` as a `StringEnum`, so the enum crosses Arrow, a
 file, and another runtime as ordinary field metadata; `from_field()` reads
 that declaration back as a class.
 
@@ -57,7 +57,7 @@ _LOGGER = logging.getLogger(__name__)
 #: enum member takes the name it is spelled with, so a member named for one of
 #: these replaces the method it names. The call that needed it then fails far
 #: from the declaration, and the shadow travels: a declaration read back through
-#: `field:enum` rebuilds the same broken class in every process.
+#: `FIELD:enum` rebuilds the same broken class in every process.
 _RESERVED_MEMBER_NAMES = frozenset(
     {
         "as_enum",
@@ -354,13 +354,13 @@ def _base_for(dtype: DataType) -> type[AsciiCode] | None:
     code = _CODES.get(dtype.id)
     if code is not None:
         return code
-    # A fixed US-ASCII width names a vocabulary; a variable shape has no
-    # packed integer and another charset holds bytes the packing does not
-    # read, so neither names one.
-    parameters = dtype.string_parameters
-    if parameters is None or parameters.charset != "us-ascii" or parameters.fixed is None:
+    # Only the fixed US-ASCII leaf names a vocabulary: a variable shape has
+    # no packed integer and another charset holds bytes the packing does not
+    # read, so no other leaf names one.
+    width = dtype.fixed_byte_width if dtype.id == "fixed_ascii" else None
+    if width is None:
         return None
-    return fixed_ascii(parameters.fixed)
+    return fixed_ascii(width)
 
 
 __all__ = [

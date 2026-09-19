@@ -5,17 +5,17 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
+use crate::Decimal18;
 use crate::graph::{Element, Event, MarketEventData};
-use crate::types::Decimal;
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone};
 
 use super::schema::CLOCK_DATATYPE;
 use super::{
-    CREATUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME,
+    CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME,
     CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME, CURRUUID_TAG_NAME, FixRegistry, IDENTIFIERS_TAG_NAME,
-    MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGSESSIONID_TAG_NAME, PARENTUUIDS_TAG_NAME,
-    PLUGINID_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, RECORDEDAT_TAG_NAME, SEQNUM_TAG_NAME,
-    SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME,
+    MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSIONID_TAG_NAME,
+    PARENTUUIDS_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME,
+    SOURCEURL_TAG_NAME,
 };
 
 /// The standard header and trailer facts every message holds typed, beside
@@ -218,15 +218,15 @@ impl FixHeader {
 /// message digests to or the wire it re-emits.
 ///
 /// What the *reader* says about the line is not here and is held nowhere on
-/// a message: the object the line was read from, when the capture wrote it
-/// down, the body it was cut from, its place in that object. Those are
+/// a message: the object the line was read from, the body it was cut from,
+/// its place in that object. Those are
 /// [the capture's own columns](super::FixMsg::from_row), stated by whoever
 /// read the line and restated by whoever writes the row back, because the
 /// same message read out of a second copy of one day's log is the same
 /// message.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FixCapture {
-    pluginid: Option<SmolStr>,
+    msgpluginid: Option<SmolStr>,
     msgctxid: Option<SmolStr>,
     msgsessionid: Option<SmolStr>,
 }
@@ -235,8 +235,8 @@ impl FixCapture {
     /// The plugin that logged the line inside a bridge, as the bridge names
     /// it.
     #[must_use]
-    pub fn pluginid(&self) -> Option<&str> {
-        self.pluginid.as_deref()
+    pub fn msgpluginid(&self) -> Option<&str> {
+        self.msgpluginid.as_deref()
     }
 
     /// The message context a bridge handled the line in.
@@ -254,8 +254,8 @@ impl FixCapture {
     fn fact(&self, tag: i32) -> Option<Scalar> {
         let text = |held: &Option<SmolStr>| held.as_deref().map(Scalar::from);
         let is = |held: (i32, &str)| held.0 == tag;
-        if is(PLUGINID_TAG_NAME) {
-            text(&self.pluginid)
+        if is(MSGPLUGINID_TAG_NAME) {
+            text(&self.msgpluginid)
         } else if is(MSGCTXID_TAG_NAME) {
             text(&self.msgctxid)
         } else if is(MSGSESSIONID_TAG_NAME) {
@@ -273,8 +273,8 @@ impl FixCapture {
                 .filter(|held| !held.is_empty())
         };
         let is = |held: (i32, &str)| held.0 == tag;
-        if is(PLUGINID_TAG_NAME) {
-            self.pluginid = text();
+        if is(MSGPLUGINID_TAG_NAME) {
+            self.msgpluginid = text();
         } else if is(MSGCTXID_TAG_NAME) {
             self.msgctxid = text();
         } else if is(MSGSESSIONID_TAG_NAME) {
@@ -344,14 +344,14 @@ pub(super) const TIMEINFORCE_TAG: i32 = 59;
 /// needs, because nothing writes here but a tag.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FixLifted {
-    price: Option<Decimal>,
-    orderqty: Option<Decimal>,
-    quantity: Option<Decimal>,
-    lastpx: Option<Decimal>,
-    lastqty: Option<Decimal>,
-    avgpx: Option<Decimal>,
-    cumqty: Option<Decimal>,
-    leavesqty: Option<Decimal>,
+    price: Option<Decimal18>,
+    orderqty: Option<Decimal18>,
+    quantity: Option<Decimal18>,
+    lastpx: Option<Decimal18>,
+    lastqty: Option<Decimal18>,
+    avgpx: Option<Decimal18>,
+    cumqty: Option<Decimal18>,
+    leavesqty: Option<Decimal18>,
     clordid: Option<SmolStr>,
     origclordid: Option<SmolStr>,
     orderid: Option<SmolStr>,
@@ -366,13 +366,13 @@ pub struct FixLifted {
 impl FixLifted {
     /// `Price(44)`, where the message stated one.
     #[must_use]
-    pub const fn price(&self) -> Option<Decimal> {
+    pub const fn price(&self) -> Option<Decimal18> {
         self.price
     }
 
     /// `OrderQty(38)`, where the message stated one.
     #[must_use]
-    pub const fn orderqty(&self) -> Option<Decimal> {
+    pub const fn orderqty(&self) -> Option<Decimal18> {
         self.orderqty
     }
 
@@ -381,37 +381,37 @@ impl FixLifted {
     /// Its own slot rather than a second name for `OrderQty`: a line that
     /// said `53=` re-emits `53=`, and a row keeps one column per tag.
     #[must_use]
-    pub const fn quantity(&self) -> Option<Decimal> {
+    pub const fn quantity(&self) -> Option<Decimal18> {
         self.quantity
     }
 
     /// `LastPx(31)`, where the message stated one.
     #[must_use]
-    pub const fn lastpx(&self) -> Option<Decimal> {
+    pub const fn lastpx(&self) -> Option<Decimal18> {
         self.lastpx
     }
 
     /// `LastQty(32)`, where the message stated one.
     #[must_use]
-    pub const fn lastqty(&self) -> Option<Decimal> {
+    pub const fn lastqty(&self) -> Option<Decimal18> {
         self.lastqty
     }
 
     /// `AvgPx(6)`, where the message stated one.
     #[must_use]
-    pub const fn avgpx(&self) -> Option<Decimal> {
+    pub const fn avgpx(&self) -> Option<Decimal18> {
         self.avgpx
     }
 
     /// `CumQty(14)`, where the message stated one.
     #[must_use]
-    pub const fn cumqty(&self) -> Option<Decimal> {
+    pub const fn cumqty(&self) -> Option<Decimal18> {
         self.cumqty
     }
 
     /// `LeavesQty(151)`, where the message stated one.
     #[must_use]
-    pub const fn leavesqty(&self) -> Option<Decimal> {
+    pub const fn leavesqty(&self) -> Option<Decimal18> {
         self.leavesqty
     }
 
@@ -497,7 +497,7 @@ impl FixLifted {
     /// Records what one lifted tag states; a null clears it. Whether the
     /// tag is a lifted tag at all.
     fn record(&mut self, tag: i32, value: &Scalar) -> bool {
-        let number = || Decimal::from_scalar(value);
+        let number = || Decimal18::from_scalar(value);
         let text = || {
             value
                 .as_str()
@@ -568,8 +568,8 @@ pub(super) const TEXT_TAG: i32 = 58;
 ///
 /// The crate's own tags are not here. They are a contiguous block a caller
 /// walks with [`CRATE_TAG_MIN`](crate::CRATE_TAG_MIN) and
-/// [`CRATE_TAG_MAX`](crate::CRATE_TAG_MAX), and `sourceurl` and
-/// `recordedat` are the two of them no message holds.
+/// [`CRATE_TAG_MAX`](crate::CRATE_TAG_MAX), and `sourceurl` is the one of
+/// them no message holds.
 pub const FIX_TYPED_TAGS: [i32; 29] = [
     WIRE_HEADER_TAGS[0],
     WIRE_HEADER_TAGS[1],
@@ -602,25 +602,24 @@ pub const FIX_TYPED_TAGS: [i32; 29] = [
     TEXT_TAG,
 ];
 
-/// The crate's own columns that state what the *reader* said about a line
-/// rather than what the line said: the object it was read from, and when
-/// the capture wrote it down.
+/// The crate's own column that states what the *reader* said about a line
+/// rather than what the line said: the object it was read from.
 ///
-/// No message holds either. They are columns of the row all the same - a
-/// monitor orders, joins and prunes on where a row came out of and when it
-/// was recorded - so whoever read the line states them and whoever writes
-/// the row back restates them, beside the columns a capture carries under
-/// no tag at all: the body the line was cut from, its place in the object,
-/// its media type, what a bound dropped.
-pub(super) const CAPTURE_TAGS: [i32; 2] = [SOURCEURL_TAG_NAME.0, RECORDEDAT_TAG_NAME.0];
+/// No message holds it. It is a column of the row all the same - a monitor
+/// orders, joins and prunes on where a row came out of - so whoever read the
+/// line states it and whoever writes the row back restates it, beside the
+/// columns a capture carries under no tag at all: the body the line was cut
+/// from, its place in the object, its media type, when the reader read it,
+/// what a bound dropped.
+pub(super) const CAPTURE_TAG: i32 = SOURCEURL_TAG_NAME.0;
 
-/// Whether a tag names one of the capture's own columns.
+/// Whether a tag names the capture's own column.
 ///
 /// Read wherever a message meets a row: such a column is read past on the
 /// way in, answers the reader's cell rather than a fact on the way out, and
 /// is never a fill, an entry, a digest input or a byte on the wire.
 pub(super) fn is_capture_tag(tag: i32) -> bool {
-    CAPTURE_TAGS.contains(&tag)
+    tag == CAPTURE_TAG
 }
 
 /// Whether a tag names a fact the message holds typed rather than in its
@@ -692,8 +691,8 @@ pub(super) fn record_event(event: &mut MarketEventData, tag: i32, value: &Scalar
         if let Some(unix) = instant() {
             event.set_currunix(unix);
         }
-    } else if is(CREATUNIX_TAG_NAME) {
-        event.set_creatunix(instant());
+    } else if is(CREAUNIX_TAG_NAME) {
+        event.set_creaunix(instant());
     } else if is(PREVUNIX_TAG_NAME) {
         event.set_prevunix(instant());
     } else if is(SNAPUNIX_TAG_NAME) {
@@ -768,8 +767,8 @@ pub(super) fn event_fact(event: &MarketEventData, tag: i32) -> Option<Scalar> {
     let is = |held: (i32, &str)| held.0 == tag;
     if is(CURRUNIX_TAG_NAME) {
         instant(event.get_currunix())
-    } else if is(CREATUNIX_TAG_NAME) {
-        stated(event.get_creatunix())
+    } else if is(CREAUNIX_TAG_NAME) {
+        stated(event.get_creaunix())
     } else if is(PREVUNIX_TAG_NAME) {
         stated(event.get_prevunix())
     } else if is(SNAPUNIX_TAG_NAME) {
@@ -862,6 +861,6 @@ pub(super) fn validate_value(name: &str, dtype: &DataType, value: &Scalar) -> Re
 
 /// The instant now, as the clock a row types.
 pub(super) fn now() -> Result<Scalar> {
-    let nanos = crate::hashing::txhash::unix_now(TimeUnit::Nanosecond)?;
+    let nanos = crate::txhash::unix_now(TimeUnit::Nanosecond)?;
     Scalar::datetime64(nanos, TimeUnit::Nanosecond, Timezone::UTC)
 }

@@ -14,7 +14,7 @@ fn unique_arrow_projection_moves_string_allocations() {
     let key_pointer = stored_key.as_ptr();
     let value_pointer = stored_value.as_ptr();
 
-    let arrow = metadata.into_arrow();
+    let arrow = metadata.into_arrow_metadata();
     let (arrow_key, arrow_scalar) = arrow.iter().next().unwrap();
     assert_eq!(arrow_key.as_ptr(), key_pointer);
     assert_eq!(arrow_scalar.as_ptr(), value_pointer);
@@ -26,11 +26,11 @@ fn protocol_iteration_is_exact_sorted_double_ended_and_cursor_compatible() {
         ("postgre", "before"),
         ("postgres", "plain"),
         ("postgres-prefix", "before-colon"),
-        ("postgres:alpha", "a"),
-        ("postgres:middle", "m"),
-        ("postgres:omega", "z"),
+        ("POSTGRES:alpha", "a"),
+        ("POSTGRES:middle", "m"),
+        ("POSTGRES:omega", "z"),
         ("postgres0", "before-colon"),
-        ("postgresql:alpha", "different-scheme"),
+        ("POSTGRESQL:alpha", "different-scheme"),
         ("z:last", "after"),
     ])
     .unwrap();
@@ -57,7 +57,7 @@ fn protocol_iteration_is_exact_sorted_double_ended_and_cursor_compatible() {
 #[test]
 fn protocol_cursor_visits_every_wide_property_once() {
     let metadata = Metadata::from_entries(
-        (0..1_024).map(|index| (format!("postgres:key-{index:04}"), index.to_string())),
+        (0..1_024).map(|index| (format!("POSTGRES:key-{index:04}"), index.to_string())),
     )
     .unwrap();
     let mut after = None;
@@ -79,9 +79,9 @@ fn protocol_views_order_and_hash_the_properties_they_expose() {
         hasher.finish()
     }
 
-    let first = Metadata::from_entries([("postgres:a", "1")]).unwrap();
-    let equal = Metadata::from_entries([("postgres:a", "1"), ("s3:bucket", "ignored")]).unwrap();
-    let later = Metadata::from_entries([("postgres:b", "1")]).unwrap();
+    let first = Metadata::from_entries([("POSTGRES:a", "1")]).unwrap();
+    let equal = Metadata::from_entries([("POSTGRES:a", "1"), ("s3:bucket", "ignored")]).unwrap();
+    let later = Metadata::from_entries([("POSTGRES:b", "1")]).unwrap();
     assert_eq!(first.as_postgres(), equal.as_postgres());
     assert_eq!(hash(&first.as_postgres()), hash(&equal.as_postgres()));
     assert!(first.as_postgres() < later.as_postgres());
@@ -99,9 +99,9 @@ fn http_keys_are_canonical_case_insensitive_and_collision_safe() {
     assert_eq!(
         metadata.iter().collect::<Vec<_>>(),
         [
-            ("http:content-length", "42"),
-            ("http:content-type", "text/plain; charset=utf-8"),
-            ("http:x-custom", "preserved"),
+            ("HTTP:content-length", "42"),
+            ("HTTP:content-type", "text/plain; charset=utf-8"),
+            ("HTTP:x-custom", "preserved"),
         ]
     );
     assert_eq!(
@@ -124,14 +124,14 @@ fn http_keys_are_canonical_case_insensitive_and_collision_safe() {
             ("x-custom", "preserved"),
         ]
     );
-    assert_eq!(metadata.get("http:content-length"), Some("42"));
+    assert_eq!(metadata.get("HTTP:content-length"), Some("42"));
     // A protocol key folds on the way in, so every spelling of it reads the
     // one stored entry.
     assert_eq!(
         metadata.get("HTTPS:CONTENT-TYPE"),
         Some("text/plain; charset=utf-8")
     );
-    assert!(metadata.contains_key("http:content-type"));
+    assert!(metadata.contains_key("HTTP:content-type"));
 
     assert!(
         Metadata::from_entries([
@@ -145,7 +145,7 @@ fn http_keys_are_canonical_case_insensitive_and_collision_safe() {
 #[test]
 fn http_values_reject_injection_but_allow_horizontal_tab() {
     let metadata = Metadata::from_entries([("HTTPS:X-Trace", "one\ttwo")]).unwrap();
-    assert_eq!(metadata.get("http:x-trace"), Some("one\ttwo"));
+    assert_eq!(metadata.get("HTTP:x-trace"), Some("one\ttwo"));
 
     for value in ["a\0b", "a\nb", "a\rb", "a\u{1f}b", "a\u{7f}b"] {
         assert!(
@@ -153,7 +153,7 @@ fn http_values_reject_injection_but_allow_horizontal_tab() {
             "accepted HTTP control value {value:?}"
         );
     }
-    for key in ["http:", "http:bad name", "HTTP:bad:name", "http:café"] {
+    for key in ["HTTP:", "HTTP:bad name", "HTTP:bad:name", "HTTP:café"] {
         assert!(
             Metadata::from_entries([(key, "value")]).is_err(),
             "accepted invalid HTTP field name {key:?}"
@@ -164,14 +164,14 @@ fn http_values_reject_injection_but_allow_horizontal_tab() {
 #[test]
 fn content_length_requires_ascii_digits_and_u64_range() {
     assert_eq!(
-        Metadata::from_entries([("http:content-length", u64::MAX.to_string())])
+        Metadata::from_entries([("HTTP:content-length", u64::MAX.to_string())])
             .unwrap()
-            .get("http:content-length"),
+            .get("HTTP:content-length"),
         Some("18446744073709551615")
     );
     for value in ["", "+1", "-1", " 1", "1 ", "١", "18446744073709551616"] {
         assert!(
-            Metadata::from_entries([("http:content-length", value)]).is_err(),
+            Metadata::from_entries([("HTTP:content-length", value)]).is_err(),
             "accepted invalid Content-Length {value:?}"
         );
     }

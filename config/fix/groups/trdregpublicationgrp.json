@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "trdregpublication"
+        "FIX:component": "trdregpublication"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "trdregpublication",
+    "FIX:counter": "2668",
+    "FIX:tag": "703468",
     "description": "Required if NoTrdRegPublications(2668) > 0.",
-    "display": "TrdRegPublicationGrp",
-    "fix:component": "trdregpublication",
-    "fix:counter": "2668",
-    "fix:tag": "703468"
+    "display": "TrdRegPublicationGrp"
   }
 }

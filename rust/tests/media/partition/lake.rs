@@ -7,15 +7,13 @@ use arrow_schema::ArrowError;
 
 use yggdryl::DataType;
 use yggdryl::IOMedia;
+use yggdryl::StructureType;
 use yggdryl::holder::Holder;
 use yggdryl::media::IORecordOptions;
 
 /// Build an empty `lake/` under the temp directory and hold it as a folder.
 fn lake(label: &str) -> (PathBuf, Holder) {
-    let mut root = yggdryl::holder::local::Folder::temporary()
-        .unwrap()
-        .path()
-        .unwrap();
+    let mut root = yggdryl::local::Folder::temporary().unwrap().path().unwrap();
     root.push(format!("yggdryl-lake-{label}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
@@ -161,10 +159,11 @@ fn a_folder_write_routes_each_row_to_the_partition_it_belongs_to() {
 #[test]
 fn an_ascii_partition_column_is_spelled_as_text_in_the_path() {
     let (root, mut handle) = lake("ascii");
-    let field = DataType::from_fields([
+    let field = StructureType::from_fields([
         DataType::fixed_ascii(4).unwrap().required_field("ccy"),
         DataType::Int64.required_field("qty"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
     .with_partition_fields(&["ccy"])
@@ -219,10 +218,11 @@ fn an_ascii_partition_column_is_spelled_as_text_in_the_path() {
 #[test]
 fn a_code_partition_column_keeps_its_identity_through_the_path() {
     let (root, mut handle) = lake("code");
-    let field = DataType::from_fields([
+    let field = StructureType::from_fields([
         DataType::Currency.required_field("ccy"),
         DataType::Int64.required_field("qty"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
     .with_partition_fields(&["ccy"])
@@ -256,7 +256,7 @@ fn a_code_partition_column_keeps_its_identity_through_the_path() {
         let batch = batch.unwrap();
         // A code stores as the text it is, so the restored column holds the
         // path's own spelling and reads back a currency.
-        let restored = yggdryl::Field::from_arrow(batch.schema().field(0)).unwrap();
+        let restored = yggdryl::Field::from_arrow_field(batch.schema().field(0)).unwrap();
         assert_eq!(restored.dtype(), &DataType::Currency);
         let ccy = batch
             .column_by_name("ccy")
@@ -619,12 +619,13 @@ fn a_declared_layout_that_contradicts_the_stored_one_is_refused_by_name() {
     // write cannot mean both, so it says so instead of choosing.
     let field = schema()
         .try_with_dtype(
-            DataType::from_fields([
+            StructureType::from_fields([
                 DataType::Int64.required_field("price"),
                 DataType::Int32.required_field("year"),
                 DataType::utf8().required_field("month"),
                 DataType::utf8().required_field("venue"),
             ])
+            .map(DataType::from)
             .unwrap(),
         )
         .unwrap()
@@ -670,11 +671,12 @@ fn a_null_partition_value_is_spelled_out_in_the_path() {
     let (root, mut handle) = lake("null-partition");
     seed(&root, "year=2024/month=01", &prices());
 
-    let field = yggdryl::DataType::from_fields([
+    let field = yggdryl::StructureType::from_fields([
         yggdryl::DataType::Int64.required_field("price"),
         yggdryl::DataType::Int32.nullable_field("year"),
         yggdryl::DataType::utf8().nullable_field("month"),
     ])
+    .map(yggdryl::DataType::from)
     .unwrap()
     .required_field("row");
     let batch = RecordBatch::try_new(

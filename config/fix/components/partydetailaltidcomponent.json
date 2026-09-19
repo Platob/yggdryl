@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partydetailaltid",
-          "fix:tag": "1517"
+          "FIX:field": "partydetailaltid",
+          "FIX:tag": "1517"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partydetailaltidsource",
-          "fix:tag": "1518"
+          "FIX:field": "partydetailaltidsource",
+          "FIX:tag": "1518"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartydetailaltsubids",
-          "fix:tag": "1519"
+          "FIX:field": "nopartydetailaltsubids",
+          "FIX:tag": "1519"
         }
       },
       {
@@ -43,14 +43,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "partydetailaltsubgrp"
+          "FIX:group": "partydetailaltsubgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyDetailAltID",
-    "fix:tag": "1088906"
+    "FIX:tag": "1088906",
+    "display": "PartyDetailAltID"
   }
 }

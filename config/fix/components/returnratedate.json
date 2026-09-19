@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratedatemode",
-          "fix:tag": "42710"
+          "FIX:field": "returnratedatemode",
+          "FIX:tag": "42710"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noreturnratevaluationdates",
-          "fix:tag": "42772"
+          "FIX:field": "noreturnratevaluationdates",
+          "FIX:tag": "42772"
         }
       },
       {
@@ -32,7 +32,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "returnratevaluationdategrp"
+          "FIX:group": "returnratevaluationdategrp"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdaterelativeto",
-          "fix:tag": "42711"
+          "FIX:field": "returnratevaluationdaterelativeto",
+          "FIX:tag": "42711"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdateoffsetperiod",
-          "fix:tag": "42712"
+          "FIX:field": "returnratevaluationdateoffsetperiod",
+          "FIX:tag": "42712"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdateoffsetunit",
-          "fix:tag": "42713"
+          "FIX:field": "returnratevaluationdateoffsetunit",
+          "FIX:tag": "42713"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdateoffsetdaytype",
-          "fix:tag": "42714"
+          "FIX:field": "returnratevaluationdateoffsetdaytype",
+          "FIX:tag": "42714"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationstartdateunadjusted",
-          "fix:tag": "42715"
+          "FIX:field": "returnratevaluationstartdateunadjusted",
+          "FIX:tag": "42715"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationstartdaterelativeto",
-          "fix:tag": "42716"
+          "FIX:field": "returnratevaluationstartdaterelativeto",
+          "FIX:tag": "42716"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationstartdateoffsetperiod",
-          "fix:tag": "42717"
+          "FIX:field": "returnratevaluationstartdateoffsetperiod",
+          "FIX:tag": "42717"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationstartdateoffsetunit",
-          "fix:tag": "42718"
+          "FIX:field": "returnratevaluationstartdateoffsetunit",
+          "FIX:tag": "42718"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationstartdateoffsetdaytype",
-          "fix:tag": "42719"
+          "FIX:field": "returnratevaluationstartdateoffsetdaytype",
+          "FIX:tag": "42719"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationstartdateadjusted",
-          "fix:tag": "42720"
+          "FIX:field": "returnratevaluationstartdateadjusted",
+          "FIX:tag": "42720"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationenddateunadjusted",
-          "fix:tag": "42721"
+          "FIX:field": "returnratevaluationenddateunadjusted",
+          "FIX:tag": "42721"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationenddaterelativeto",
-          "fix:tag": "42722"
+          "FIX:field": "returnratevaluationenddaterelativeto",
+          "FIX:tag": "42722"
         }
       },
       {
@@ -174,8 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationenddateoffsetperiod",
-          "fix:tag": "42723"
+          "FIX:field": "returnratevaluationenddateoffsetperiod",
+          "FIX:tag": "42723"
         }
       },
       {
@@ -185,8 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationenddateoffsetunit",
-          "fix:tag": "42724"
+          "FIX:field": "returnratevaluationenddateoffsetunit",
+          "FIX:tag": "42724"
         }
       },
       {
@@ -196,8 +196,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationenddateoffsetdaytype",
-          "fix:tag": "42725"
+          "FIX:field": "returnratevaluationenddateoffsetdaytype",
+          "FIX:tag": "42725"
         }
       },
       {
@@ -207,8 +207,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationenddateadjusted",
-          "fix:tag": "42726"
+          "FIX:field": "returnratevaluationenddateadjusted",
+          "FIX:tag": "42726"
         }
       },
       {
@@ -218,8 +218,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationfrequencyperiod",
-          "fix:tag": "42727"
+          "FIX:field": "returnratevaluationfrequencyperiod",
+          "FIX:tag": "42727"
         }
       },
       {
@@ -229,8 +229,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationfrequencyunit",
-          "fix:tag": "42728"
+          "FIX:field": "returnratevaluationfrequencyunit",
+          "FIX:tag": "42728"
         }
       },
       {
@@ -240,8 +240,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationfrequencyrollconvention",
-          "fix:tag": "42729"
+          "FIX:field": "returnratevaluationfrequencyrollconvention",
+          "FIX:tag": "42729"
         }
       },
       {
@@ -251,8 +251,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdatebusinessdayconvention",
-          "fix:tag": "42730"
+          "FIX:field": "returnratevaluationdatebusinessdayconvention",
+          "FIX:tag": "42730"
         }
       },
       {
@@ -262,8 +262,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noreturnratevaluationdatebusinesscenters",
-          "fix:tag": "42770"
+          "FIX:field": "noreturnratevaluationdatebusinesscenters",
+          "FIX:tag": "42770"
         }
       },
       {
@@ -273,14 +273,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "returnratevaluationdatebusinesscentergrp"
+          "FIX:group": "returnratevaluationdatebusinesscentergrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ReturnRateDate",
-    "fix:tag": "276487"
+    "FIX:tag": "276487",
+    "display": "ReturnRateDate"
   }
 }

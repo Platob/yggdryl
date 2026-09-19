@@ -1,6 +1,6 @@
 use std::hash::{BuildHasher as _, Hasher as _};
 
-use yggdryl::hashing::xxhash::{
+use yggdryl::xxhash::{
     SECRET_MINIMUM_LENGTH, Xxh3, Xxh32, Xxh64, Xxh128, xxh3, xxh3_with_secret, xxh3_with_seed,
     xxh3_with_seed_and_secret, xxh32, xxh32_with_seed, xxh64, xxh64_with_seed, xxh128,
     xxh128_with_secret, xxh128_with_seed, xxh128_with_seed_and_secret,
@@ -412,7 +412,7 @@ fn debug_shows_the_seed_and_secret_length_rather_than_the_accumulator() {
 fn the_module_digest_helper_dispatches_like_the_algorithm() {
     for algorithm in DigestAlgorithm::ALL {
         assert_eq!(
-            yggdryl::hashing::xxhash::digest(b"AAPL", algorithm),
+            yggdryl::xxhash::digest(b"AAPL", algorithm),
             algorithm.digest(b"AAPL")
         );
     }
@@ -422,13 +422,13 @@ mod handles {
     use std::io::{Read as _, Write as _};
 
     use yggdryl::IOBase;
-    use yggdryl::hashing::xxhash::{reader, writer, xxh3};
     use yggdryl::holder::Buffer;
+    use yggdryl::xxhash::{reader, writer, xxh3};
     use yggdryl::{DigestAlgorithm, Error};
 
     /// A temporary root, named so parallel tests never share one.
     fn root(label: &str) -> std::path::PathBuf {
-        let path = yggdryl::holder::local::Folder::temporary()
+        let path = yggdryl::local::Folder::temporary()
             .unwrap()
             .path()
             .unwrap()
@@ -472,17 +472,14 @@ mod handles {
     fn a_memory_mapped_local_file_streams_the_same_digest_as_its_bytes() {
         let path = root("local").join("trades.csv");
         std::fs::write(&path, payload()).unwrap();
-        agrees(
-            "local file",
-            &yggdryl::holder::local::File::new(&path).unwrap(),
-        );
+        agrees("local file", &yggdryl::local::File::new(&path).unwrap());
     }
 
     #[test]
     fn an_arrow_filesystem_handle_streams_the_same_digest_as_its_bytes() {
         use std::sync::Arc;
 
-        use yggdryl::holder::fs::{FileSystem, Folder, MemoryFileSystem};
+        use yggdryl::fs::{FileSystem, Folder, MemoryFileSystem};
 
         let filesystem = Arc::new(MemoryFileSystem::new());
         filesystem.create_dir("lake", false).unwrap();
@@ -520,7 +517,7 @@ mod handles {
 
     #[test]
     fn a_coding_wrapper_digests_the_decoded_payload_and_its_handle_the_compressed_form() {
-        use yggdryl::coding::gzip::Gzip;
+        use yggdryl::gzip::Gzip;
 
         let plain = payload();
         let mut handle = Gzip::new(Buffer::new());
@@ -555,7 +552,7 @@ mod handles {
 
             let missing = root("missing").join("never-written.csv");
             assert_eq!(
-                yggdryl::holder::local::File::new(&missing)
+                yggdryl::local::File::new(&missing)
                     .unwrap()
                     .read_digest(algorithm)
                     .unwrap(),
@@ -566,7 +563,7 @@ mod handles {
 
     #[test]
     fn a_container_is_refused_by_kind() {
-        let folder = yggdryl::holder::local::Folder::new(root("container")).unwrap();
+        let folder = yggdryl::local::Folder::new(root("container")).unwrap();
         let error = folder.read_digest(DigestAlgorithm::Xxh3).unwrap_err();
         assert!(
             matches!(
@@ -702,8 +699,8 @@ mod handles {
 
 mod hashed {
     use yggdryl::IOBase;
-    use yggdryl::hashing::xxhash::{Hashed, xxh3, xxh3_with_seed};
     use yggdryl::holder::Buffer;
+    use yggdryl::xxhash::{Hashed, xxh3, xxh3_with_seed};
     use yggdryl::{DigestAlgorithm, Error};
 
     /// A handle that counts the reads reaching the one it wraps, so "answered
@@ -847,7 +844,7 @@ mod hashed {
     fn filesystem_stream_writes_are_visible_without_staging() {
         use std::sync::Arc;
 
-        use yggdryl::holder::fs::{FileSystem, Folder, MemoryFileSystem};
+        use yggdryl::fs::{FileSystem, Folder, MemoryFileSystem};
 
         // An Arrow filesystem file forwards a completed positional write
         // through one output stream rather than retaining a second payload.
@@ -930,7 +927,7 @@ mod hashed {
 
     #[test]
     fn a_container_is_still_refused_by_kind() {
-        let root = yggdryl::holder::local::Folder::temporary()
+        let root = yggdryl::local::Folder::temporary()
             .unwrap()
             .path()
             .unwrap()
@@ -942,7 +939,7 @@ mod hashed {
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         let handle = Hashed::new(
-            yggdryl::holder::local::Folder::new(&root).unwrap(),
+            yggdryl::local::Folder::new(&root).unwrap(),
             DigestAlgorithm::Xxh3,
         );
         // The running state starts live and empty and a folder's size is
@@ -963,14 +960,14 @@ mod values {
     use std::hash::Hasher as _;
     use std::sync::Arc;
 
-    use yggdryl::hashing::xxhash::{Xxh3, xxh3};
-    use yggdryl::types::{
-        Bytes, BytesLayout, BytesParameters, Code, Currency, Decimal32, Decimal64, Geography,
-        Interval, Side, Str, StringLayout, StringParameters, TimeInForce,
+    use yggdryl::xxhash::{Xxh3, xxh3};
+    use yggdryl::{
+        Bytes, BytesType, Currency, Decimal32, Decimal64, Geography, Interval, Side, Str,
+        StringType, TimeInForce,
     };
     use yggdryl::{
-        Codec, DataTypeId, DigestAlgorithm, Enum, Float16, Float32, Float64, Scalar, TimeUnit,
-        Timezone, i256,
+        Codec, DataTypeId, DigestAlgorithm, Float16, Float32, Float64, Scalar, TimeUnit, Timezone,
+        i256,
     };
 
     const POINT_WKB: [u8; 21] = [
@@ -978,7 +975,7 @@ mod values {
     ];
 
     fn geometry() -> Scalar {
-        Scalar::Geometry(yggdryl::types::Geometry::new(POINT_WKB).unwrap())
+        Scalar::Geometry(yggdryl::Geometry::new(POINT_WKB).unwrap())
     }
 
     fn geography() -> Scalar {
@@ -1000,24 +997,13 @@ mod values {
     }
 
     /// The text, restated under the parameters a column stores it in.
-    fn stored(text: &str, parameters: StringParameters) -> Str {
+    fn stored(text: &str, parameters: StringType) -> Str {
         Str::new(text).try_with_parameters(parameters).unwrap()
     }
 
-    /// A fixed US-ASCII slot of `width` bytes.
-    fn fixed_ascii(width: u32) -> StringParameters {
-        StringParameters::ascii(StringLayout::FixedString)
-            .try_with_bound(width)
-            .unwrap()
-    }
-
-    /// `AAPL` as a byte value stored under one layout.
-    fn stored_bytes(layout: BytesLayout) -> Scalar {
-        let parameters = match layout.is_fixed() {
-            true => BytesParameters::new(layout).try_with_bound(4).unwrap(),
-            false => BytesParameters::new(layout),
-        };
-        Scalar::Bytes(Bytes::new(b"AAPL").try_with_parameters(parameters).unwrap())
+    /// `AAPL` as a byte value stored under one leaf.
+    fn stored_bytes(leaf: BytesType) -> Scalar {
+        Scalar::Bytes(Bytes::new(b"AAPL").try_with_parameters(leaf).unwrap())
     }
 
     /// Return one value's canonical feed.
@@ -1059,28 +1045,22 @@ mod values {
             Scalar::from(""),
             Scalar::from("1"),
             Scalar::from("AAPL"),
-            Scalar::String(stored(
-                "AAPL",
-                StringParameters::utf8(StringLayout::LargeString),
-            )),
-            Scalar::String(stored(
-                "AAPL",
-                StringParameters::utf8(StringLayout::StringView),
-            )),
-            Scalar::String(stored("USD", StringParameters::ascii(StringLayout::String))),
-            Scalar::String(stored("USD", fixed_ascii(4))),
-            Scalar::Code(Code::Currency(Currency::new("USD").unwrap())),
-            Scalar::Code(Code::Side(Side::new("BUY").unwrap())),
-            Scalar::Code(Code::TimeInForce(TimeInForce::new("1").unwrap())),
-            Scalar::Enum(Enum::Codec(Codec::Gzip)),
-            Scalar::Enum(Enum::Codec(Codec::Zstd)),
-            Scalar::Enum(Enum::DataTypeId(DataTypeId::Int128)),
+            Scalar::String(stored("AAPL", StringType::LargeUtf8String)),
+            Scalar::String(stored("AAPL", StringType::Utf8StringView)),
+            Scalar::String(stored("USD", StringType::AsciiString)),
+            Scalar::String(stored("USD", StringType::FixedAsciiString(4))),
+            Scalar::Currency(Currency::new("USD").unwrap()),
+            Scalar::Side(Side::new("BUY").unwrap()),
+            Scalar::TimeInForce(TimeInForce::new("1").unwrap()),
+            Scalar::from(Codec::Gzip),
+            Scalar::from(Codec::Zstd),
+            Scalar::from(DataTypeId::Int128),
             Scalar::from(Arc::from(b"".as_slice())),
             Scalar::from(Arc::from(b"1".as_slice())),
             Scalar::from(Arc::from(b"AAPL".as_slice())),
-            stored_bytes(BytesLayout::FixedSizeBinary),
-            stored_bytes(BytesLayout::LargeBinary),
-            stored_bytes(BytesLayout::BinaryView),
+            stored_bytes(BytesType::FixedBinary(4)),
+            stored_bytes(BytesType::LargeBinary),
+            stored_bytes(BytesType::BinaryView),
             geometry(),
             geography(),
             Scalar::date32_in(1, TimeUnit::Day, Timezone::NAIVE).unwrap(),
@@ -1129,34 +1109,28 @@ mod values {
                 Scalar::d256(i256::from_i128(1), 0),
             ),
             (
-                Scalar::String(stored(
-                    "AAPL",
-                    StringParameters::utf8(StringLayout::LargeString),
-                )),
+                Scalar::String(stored("AAPL", StringType::LargeUtf8String)),
                 Scalar::from("AAPL"),
             ),
             (
-                Scalar::String(stored(
-                    "AAPL",
-                    StringParameters::utf8(StringLayout::StringView),
-                )),
+                Scalar::String(stored("AAPL", StringType::Utf8StringView)),
                 Scalar::from("AAPL"),
             ),
             (
-                stored_bytes(BytesLayout::FixedSizeBinary),
+                stored_bytes(BytesType::FixedBinary(4)),
                 Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
             ),
             (
-                stored_bytes(BytesLayout::LargeBinary),
+                stored_bytes(BytesType::LargeBinary),
                 Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
             ),
             (
-                stored_bytes(BytesLayout::BinaryView),
+                stored_bytes(BytesType::BinaryView),
                 Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
             ),
             (
-                Scalar::String(stored("USD", fixed_ascii(4))),
-                Scalar::String(stored("USD", StringParameters::ascii(StringLayout::String))),
+                Scalar::String(stored("USD", StringType::FixedAsciiString(4))),
+                Scalar::String(stored("USD", StringType::AsciiString)),
             ),
             (geometry(), geography()),
             (
@@ -1232,18 +1206,14 @@ mod values {
     fn the_feed_starts_with_the_pinned_datatype_id_byte() {
         // The wire contract: a variant inserted into `DataTypeId` anywhere but
         // the end moves these numbers and changes every stored digest.
-        let cases: [(Scalar, DataTypeId); 16] = [
+        let cases: [(Scalar, DataTypeId); 15] = [
             (Scalar::Null, DataTypeId::Null),
             (Scalar::from(true), DataTypeId::Boolean),
             (Scalar::from(1), DataTypeId::UInt128),
             (Scalar::from(-1), DataTypeId::Int128),
             (Scalar::from(Float32::from_f32(1.5)), DataTypeId::Float64),
             (Scalar::d128(1, 0), DataTypeId::Decimal256),
-            (Scalar::from("AAPL"), DataTypeId::String),
-            (
-                Scalar::Enum(Enum::Codec(Codec::Gzip)),
-                DataTypeId::Dictionary,
-            ),
+            (Scalar::from("AAPL"), DataTypeId::Utf8String),
             (
                 Scalar::from(Arc::from(b"AAPL".as_slice())),
                 DataTypeId::Binary,
@@ -1286,22 +1256,25 @@ mod values {
             feed(&Scalar::from(true)),
             vec![DataTypeId::Boolean.as_u8(), 1]
         );
-        let mut expected = vec![DataTypeId::String.as_u8()];
+        let mut expected = vec![DataTypeId::Utf8String.as_u8()];
         expected.extend_from_slice(&4_u64.to_le_bytes());
         expected.extend_from_slice(b"AAPL");
         assert_eq!(feed(&Scalar::from("AAPL")), expected);
 
-        // A string feeds one tag whatever layout or charset stores it, and a
-        // code feeds its own: the identity is part of the value.
+        // A string feeds one tag whatever leaf stores it, and a code feeds
+        // its own: the identity is part of the value.
         assert_eq!(
-            feed(&Scalar::String(stored("AAPL", fixed_ascii(8)))),
+            feed(&Scalar::String(stored(
+                "AAPL",
+                StringType::FixedAsciiString(8)
+            ))),
             expected
         );
         let mut expected = vec![DataTypeId::Currency.as_u8()];
         expected.extend_from_slice(&3_u64.to_le_bytes());
         expected.extend_from_slice(b"USD");
         assert_eq!(
-            feed(&Scalar::Code(Code::Currency(Currency::new("USD").unwrap()))),
+            feed(&Scalar::Currency(Currency::new("USD").unwrap())),
             expected
         );
     }
@@ -1353,7 +1326,7 @@ mod values {
 
     #[test]
     fn a_field_record_digests_as_the_sequence_it_canonicalizes_to() {
-        let row = yggdryl::DataType::from_fields([
+        let row = yggdryl::StructureType::from_fields([
             yggdryl::Field::new("id", yggdryl::DataType::Int64, false),
             yggdryl::Field::new("symbol", yggdryl::DataType::utf8(), true),
             yggdryl::Field::new(
@@ -1366,6 +1339,7 @@ mod values {
                 true,
             ),
         ])
+        .map(yggdryl::DataType::from)
         .unwrap()
         .required_field("row");
         let nested = Scalar::from_sequence([Scalar::from(1_i32), Scalar::Null]);
@@ -1381,7 +1355,8 @@ mod values {
             record.stable_hash()
         );
         // The empty row frames as the empty sequence, exactly as a row digest does.
-        let empty = yggdryl::DataType::from_fields([])
+        let empty = yggdryl::StructureType::from_fields([])
+            .map(yggdryl::DataType::from)
             .unwrap()
             .required_field("row");
         let record = yggdryl::FieldRecord::new(&empty, Scalar::from_sequence([])).unwrap();
@@ -1446,9 +1421,7 @@ mod values {
             32
         );
         assert_eq!(
-            &*Scalar::Enum(Enum::Codec(Codec::Gzip))
-                .as_value_bytes()
-                .unwrap(),
+            &*Scalar::from(Codec::Gzip).as_value_bytes().unwrap(),
             b"gzip"
         );
         assert_eq!(

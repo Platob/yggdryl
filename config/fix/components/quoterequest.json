@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "quotereqid",
-          "fix:tag": "131"
+          "FIX:field": "quotereqid",
+          "FIX:tag": "131"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rfqreqid",
-          "fix:tag": "644"
+          "FIX:field": "rfqreqid",
+          "FIX:tag": "644"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clordid",
-          "fix:tag": "11"
+          "FIX:field": "clordid",
+          "FIX:tag": "11"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bookingtype",
-          "fix:tag": "775"
+          "FIX:field": "bookingtype",
+          "FIX:tag": "775"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordercapacity",
-          "fix:tag": "528"
+          "FIX:field": "ordercapacity",
+          "FIX:tag": "528"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderrestrictions",
-          "fix:tag": "529"
+          "FIX:field": "orderrestrictions",
+          "FIX:tag": "529"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "privatequote",
-          "fix:tag": "1171"
+          "FIX:field": "privatequote",
+          "FIX:tag": "1171"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "respondenttype",
-          "fix:tag": "1172"
+          "FIX:field": "respondenttype",
+          "FIX:tag": "1172"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pretradeanonymity",
-          "fix:tag": "1091"
+          "FIX:field": "pretradeanonymity",
+          "FIX:tag": "1091"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norootpartyids",
-          "fix:tag": "1116"
+          "FIX:field": "norootpartyids",
+          "FIX:tag": "1116"
         }
       },
       {
@@ -130,7 +130,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "rootparties"
+          "FIX:group": "rootparties"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "norelatedsym",
-          "fix:tag": "146"
+          "FIX:field": "norelatedsym",
+          "FIX:tag": "146"
         }
       },
       {
@@ -151,7 +151,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "quotreqgrp"
+          "FIX:group": "quotreqgrp"
         }
       },
       {
@@ -161,8 +161,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complianceid",
-          "fix:tag": "376"
+          "FIX:field": "complianceid",
+          "FIX:tag": "376"
         }
       },
       {
@@ -172,8 +172,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "compliancetext",
-          "fix:tag": "2404"
+          "FIX:field": "compliancetext",
+          "FIX:tag": "2404"
         }
       },
       {
@@ -183,8 +183,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedcompliancetextlen",
-          "fix:tag": "2351"
+          "FIX:field": "encodedcompliancetextlen",
+          "FIX:tag": "2351"
         }
       },
       {
@@ -194,8 +194,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedcompliancetext",
-          "fix:tag": "2352"
+          "FIX:field": "encodedcompliancetext",
+          "FIX:tag": "2352"
         }
       },
       {
@@ -205,8 +205,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -216,8 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -227,8 +227,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -238,17 +238,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "quotereqid,clordid",
+    "FIX:msgtype": "R",
+    "FIX:tag": "231968",
     "description": "MsgType = R",
-    "display": "QuoteRequest",
-    "fix:identifiers": "quotereqid,clordid",
-    "fix:msgtype": "R",
-    "fix:tag": "231968"
+    "display": "QuoteRequest"
   }
 }

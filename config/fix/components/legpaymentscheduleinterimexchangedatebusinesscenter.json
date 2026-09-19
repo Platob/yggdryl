@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleinterimexchangedatesbusinesscenter",
-          "fix:tag": "40409"
+          "FIX:field": "legpaymentscheduleinterimexchangedatesbusinesscenter",
+          "FIX:tag": "40409"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPaymentScheduleInterimExchangeDateBusinessCenter",
-    "fix:tag": "1094349"
+    "FIX:tag": "1094349",
+    "display": "LegPaymentScheduleInterimExchangeDateBusinessCenter"
   }
 }

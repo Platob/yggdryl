@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "registid",
-          "fix:tag": "513"
+          "FIX:field": "registid",
+          "FIX:tag": "513"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "registtranstype",
-          "fix:tag": "514"
+          "FIX:field": "registtranstype",
+          "FIX:tag": "514"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "registrefid",
-          "fix:tag": "508"
+          "FIX:field": "registrefid",
+          "FIX:tag": "508"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clordid",
-          "fix:tag": "11"
+          "FIX:field": "clordid",
+          "FIX:tag": "11"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -75,7 +75,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "account",
-          "fix:tag": "1"
+          "FIX:field": "account",
+          "FIX:tag": "1"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "acctidsource",
-          "fix:tag": "660"
+          "FIX:field": "acctidsource",
+          "FIX:tag": "660"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "registstatus",
-          "fix:tag": "506"
+          "FIX:field": "registstatus",
+          "FIX:tag": "506"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "registrejreasoncode",
-          "fix:tag": "507"
+          "FIX:field": "registrejreasoncode",
+          "FIX:tag": "507"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "registrejreasontext",
-          "fix:tag": "496"
+          "FIX:field": "registrejreasontext",
+          "FIX:tag": "496"
         }
       },
       {
@@ -140,17 +140,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "clordid",
+    "FIX:msgtype": "p",
+    "FIX:tag": "849606",
     "description": "MsgType = p (lowercase P)",
-    "display": "RegistrationInstructionsResponse",
-    "fix:identifiers": "clordid",
-    "fix:msgtype": "p",
-    "fix:tag": "849606"
+    "display": "RegistrationInstructionsResponse"
   }
 }

@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41100",
       "description": "Specifies the description of the underlying security.",
-      "display": "MarketDisruptionFallbackUnderlierSecurityDesc",
-      "fix:tag": "41100"
+      "display": "MarketDisruptionFallbackUnderlierSecurityDesc"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41101",
       "description": "Byte length of encoded (non-ASCII characters) EncodedMarketDisruptionFallbackUnderlierSecurityDesc(41102) field.",
-      "display": "EncodedMarketDisruptionFallbackUnderlierSecurityDescLen",
-      "fix:tag": "41101"
+      "display": "EncodedMarketDisruptionFallbackUnderlierSecurityDescLen"
     }
   },
   {
@@ -30,9 +30,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41102",
       "description": "Encoded (non-ASCII characters) representation of the MarketDisruptionFallbackUnderlierSecurityDesc(41100) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the MarketDisruptionFallbackUnderlierSecurityDesc(41100) field.",
-      "display": "EncodedMarketDisruptionFallbackUnderlierSecurityDesc",
-      "fix:tag": "41102"
+      "display": "EncodedMarketDisruptionFallbackUnderlierSecurityDesc"
     }
   },
   {
@@ -44,9 +44,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41103",
       "description": "If there are multiple underlying assets, this specifies the number of units (index or securities) that constitute the underlier of the swap. In the case of a basket swap, this is used to reference both the number of basket units, and the number of each asset components of the basket when these are expressed in absolute terms.",
-      "display": "MarketDisruptionFallbackOpenUnits",
-      "fix:tag": "41103"
+      "display": "MarketDisruptionFallbackOpenUnits"
     }
   },
   {
@@ -56,9 +56,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41104",
       "description": "Specifies the currency if the underlier is a basket. Uses ISO 4217 currency codes.",
-      "display": "MarketDisruptionFallbackBasketCurrency",
-      "fix:tag": "41104"
+      "display": "MarketDisruptionFallbackBasketCurrency"
     }
   },
   {
@@ -68,9 +68,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41105",
       "description": "Specifies the basket divisor amount. This value is normally used to adjust the constituent weight for pricing or to adjust for dividends, or other corporate actions.",
-      "display": "MarketDisruptionFallbackBasketDivisor",
-      "fix:tag": "41105"
+      "display": "MarketDisruptionFallbackBasketDivisor"
     }
   },
   {
@@ -80,9 +80,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41106",
       "description": "A description of the option exercise.",
-      "display": "ExerciseDesc",
-      "fix:tag": "41106"
+      "display": "ExerciseDesc"
     }
   },
   {
@@ -92,9 +92,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41107",
       "description": "Byte length of encoded (non-ASCII characters) EncodedExerciseDesc(41102) field.",
-      "display": "EncodedExerciseDescLen",
-      "fix:tag": "41107"
+      "display": "EncodedExerciseDescLen"
     }
   },
   {
@@ -104,9 +104,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41108",
       "description": "Encoded (non-ASCII characters) representation of the ExerciseDesc(41106) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the ExerciseDesc(41106) field.",
-      "display": "EncodedExerciseDesc",
-      "fix:tag": "41108"
+      "display": "EncodedExerciseDesc"
     }
   },
   {
@@ -116,9 +116,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41109",
       "description": "Indicates (when 'Y') that exercise is automatic when the strike price is crossed or the underlying trade is in the money.",
-      "display": "AutomaticExerciseIndicator",
-      "fix:tag": "41109"
+      "display": "AutomaticExerciseIndicator"
     }
   },
   {
@@ -128,9 +128,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41110",
       "description": "The threshold rate for triggering automatic exercise.",
-      "display": "AutomaticExerciseThresholdRate",
-      "fix:tag": "41110"
+      "display": "AutomaticExerciseThresholdRate"
     }
   },
   {
@@ -140,9 +140,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether follow-up confirmation of exercise (written or electronic) is required following telephonic notice by the buyer to the seller or seller's agent.",
-      "display": "ExerciseConfirmationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotRequired",
@@ -164,7 +162,9 @@
           "doc": "Unknown at time of report"
         }
       ],
-      "fix:tag": "41111"
+      "FIX:tag": "41111",
+      "description": "Indicates whether follow-up confirmation of exercise (written or electronic) is required following telephonic notice by the buyer to the seller or seller's agent.",
+      "display": "ExerciseConfirmationMethod"
     }
   },
   {
@@ -174,9 +174,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41112",
       "description": "Identifies the business center used for adjusting the time for manual exercise notice. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "ManualNoticeBusinessCenter",
-      "fix:tag": "41112"
+      "display": "ManualNoticeBusinessCenter"
     }
   },
   {
@@ -186,9 +186,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41113",
       "description": "Indicates whether the notional amount of the underlying swap, not previously exercised under the option, will be automatically exercised at the expiration time on the expiration date if at such time the buyer is in-the-money, provided that the difference between the settlement rate and the fixed rate under the relevant underlying swap is not less than one tenth of a percentage point (0.10% or 0.001).",
-      "display": "FallbackExerciseIndicator",
-      "fix:tag": "41113"
+      "display": "FallbackExerciseIndicator"
     }
   },
   {
@@ -198,9 +198,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41114",
       "description": "Indicates whether the Seller may request the Buyer to confirm its intent to exercise if not done on or before the expiration time on the expiration date. If true (\"Y\") specific rules will apply in relation to the settlement mode.",
-      "display": "LimitedRightToConfirmIndicator",
-      "fix:tag": "41114"
+      "display": "LimitedRightToConfirmIndicator"
     }
   },
   {
@@ -210,9 +210,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41115",
       "description": "Indicates in physical settlement of bond and convertible bond options whether the party required to deliver the bonds will divide those to be delivered as notifying party desires to facilitate delivery obligations.",
-      "display": "ExerciseSplitTicketIndicator",
-      "fix:tag": "41115"
+      "display": "ExerciseSplitTicketIndicator"
     }
   },
   {
@@ -222,9 +222,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41116",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoOptionExerciseBusinessCenters",
-      "fix:tag": "41116"
+      "display": "NoOptionExerciseBusinessCenters"
     }
   },
   {
@@ -234,9 +234,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41117",
       "description": "The business center calendar used to adjust the option exercise dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "OptionExerciseBusinessCenter",
-      "fix:tag": "41117"
+      "display": "OptionExerciseBusinessCenter"
     }
   },
   {
@@ -246,9 +246,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the option exercise dates. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "OptionExerciseBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -290,7 +288,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "41118"
+      "FIX:tag": "41118",
+      "description": "The business day convention used to adjust the option exercise dates. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "OptionExerciseBusinessDayConvention"
     }
   },
   {
@@ -300,9 +300,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative earliest option exercise date offset.",
-      "display": "OptionExerciseEarliestDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -334,7 +332,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "41119"
+      "FIX:tag": "41119",
+      "description": "Specifies the day type of the relative earliest option exercise date offset.",
+      "display": "OptionExerciseEarliestDateOffsetDayType"
     }
   },
   {
@@ -344,9 +344,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41120",
       "description": "Time unit multiplier for the relative earliest exercise date offset.",
-      "display": "OptionExerciseEarliestDateOffsetPeriod",
-      "fix:tag": "41120"
+      "display": "OptionExerciseEarliestDateOffsetPeriod"
     }
   },
   {
@@ -356,9 +356,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative earliest exercise date offset.",
-      "display": "OptionExerciseEarliestDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -380,7 +378,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41121"
+      "FIX:tag": "41121",
+      "description": "Time unit associated with the relative earliest exercise date offset.",
+      "display": "OptionExerciseEarliestDateOffsetUnit"
     }
   },
   {
@@ -390,9 +390,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41122",
       "description": "Time unit multiplier for the frequency of exercise dates.",
-      "display": "OptionExerciseFrequencyPeriod",
-      "fix:tag": "41122"
+      "display": "OptionExerciseFrequencyPeriod"
     }
   },
   {
@@ -402,9 +402,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the frequency of exercise dates.",
-      "display": "OptionExerciseFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -426,7 +424,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41123"
+      "FIX:tag": "41123",
+      "description": "Time unit associated with the frequency of exercise dates.",
+      "display": "OptionExerciseFrequencyUnit"
     }
   },
   {
@@ -437,9 +437,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41124",
       "description": "The unadjusted start date for calculating periodic exercise dates.",
-      "display": "OptionExerciseStartDateUnadjusted",
-      "fix:tag": "41124"
+      "display": "OptionExerciseStartDateUnadjusted"
     }
   },
   {
@@ -449,9 +449,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41125",
       "description": "Specifies the anchor date when the option exercise start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "OptionExerciseStartDateRelativeTo",
-      "fix:tag": "41125"
+      "display": "OptionExerciseStartDateRelativeTo"
     }
   },
   {
@@ -461,9 +461,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41126",
       "description": "Time unit multiplier for the relative exercise start date offset.",
-      "display": "OptionExerciseStartDateOffsetPeriod",
-      "fix:tag": "41126"
+      "display": "OptionExerciseStartDateOffsetPeriod"
     }
   },
   {
@@ -473,9 +473,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative exercise start date offset.",
-      "display": "OptionExerciseStartDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -497,7 +495,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41127"
+      "FIX:tag": "41127",
+      "description": "Time unit associated with the relative exercise start date offset.",
+      "display": "OptionExerciseStartDateOffsetUnit"
     }
   },
   {
@@ -507,9 +507,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative option exercise start date offset.",
-      "display": "OptionExerciseStartDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -541,7 +539,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "41128"
+      "FIX:tag": "41128",
+      "description": "Specifies the day type of the relative option exercise start date offset.",
+      "display": "OptionExerciseStartDateOffsetDayType"
     }
   },
   {
@@ -552,9 +552,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41129",
       "description": "The adjusted start date for calculating periodic exercise dates.",
-      "display": "OptionExerciseStartDateAdjusted",
-      "fix:tag": "41129"
+      "display": "OptionExerciseStartDateAdjusted"
     }
   },
   {
@@ -564,9 +564,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41130",
       "description": "The number of periods in the referenced date schedule that are between each date in the relative date schedule. Thus a skip of 2 would mean that dates are relative to every second date in the referenced schedule. If present this should have a value greater than 1.",
-      "display": "OptionExerciseSkip",
-      "fix:tag": "41130"
+      "display": "OptionExerciseSkip"
     }
   },
   {
@@ -577,9 +577,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41131",
       "description": "Last date (adjusted) for establishing the option exercise terms.",
-      "display": "OptionExerciseNominationDeadline",
-      "fix:tag": "41131"
+      "display": "OptionExerciseNominationDeadline"
     }
   },
   {
@@ -590,9 +590,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41132",
       "description": "The unadjusted first exercise date.",
-      "display": "OptionExerciseFirstDateUnadjusted",
-      "fix:tag": "41132"
+      "display": "OptionExerciseFirstDateUnadjusted"
     }
   },
   {
@@ -603,9 +603,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41133",
       "description": "The unadjusted last exercise date.",
-      "display": "OptionExerciseLastDateUnadjusted",
-      "fix:tag": "41133"
+      "display": "OptionExerciseLastDateUnadjusted"
     }
   },
   {
@@ -616,9 +616,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41134",
       "description": "The earliest time at which notice of exercise can be given by the buyer to the seller (or seller's agent) (i) on the expriation date, in the case of a European style option, (ii) on each Bermuda option exercise date and the expiration date, in the case of a Bermuda style option, (iii) the commencement date to, and including, the expiration date, in the case of an American option.",
-      "display": "OptionExerciseEarliestTime",
-      "fix:tag": "41134"
+      "display": "OptionExerciseEarliestTime"
     }
   },
   {
@@ -629,9 +629,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41135",
       "description": "The latest exercise time. See also OptionExerciseEarliestTime(41134).",
-      "display": "OptionExerciseLatestTime",
-      "fix:tag": "41135"
+      "display": "OptionExerciseLatestTime"
     }
   },
   {
@@ -641,9 +641,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41136",
       "description": "The business center used to determine the locale for option exercise time, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values",
-      "display": "OptionExerciseTimeBusinessCenter",
-      "fix:tag": "41136"
+      "display": "OptionExerciseTimeBusinessCenter"
     }
   },
   {
@@ -653,9 +653,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41137",
       "description": "Number of dates in the repeating group.",
-      "display": "NoOptionExerciseDates",
-      "fix:tag": "41137"
+      "display": "NoOptionExerciseDates"
     }
   },
   {
@@ -666,9 +666,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41138",
       "description": "The option exercise fixed date, unadjusted or adjusted depending on OptionExerciseDateType(41139).",
-      "display": "OptionExerciseDate",
-      "fix:tag": "41138"
+      "display": "OptionExerciseDate"
     }
   },
   {
@@ -678,9 +678,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
-      "display": "OptionExerciseDateType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Unadjusted",
@@ -692,7 +690,9 @@
           "doc": "Adjusted"
         }
       ],
-      "fix:tag": "41139"
+      "FIX:tag": "41139",
+      "description": "Specifies the type of date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
+      "display": "OptionExerciseDateType"
     }
   },
   {
@@ -702,9 +702,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41140",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoOptionExerciseExpirationDateBusinessCenters",
-      "fix:tag": "41140"
+      "display": "NoOptionExerciseExpirationDateBusinessCenters"
     }
   },
   {
@@ -714,9 +714,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41141",
       "description": "The business center calendar used to adjust the option exercise expiration dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "OptionExerciseExpirationDateBusinessCenter",
-      "fix:tag": "41141"
+      "display": "OptionExerciseExpirationDateBusinessCenter"
     }
   },
   {
@@ -726,9 +726,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the option exercise expiration dates. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "OptionExerciseExpirationDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -770,7 +768,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "41142"
+      "FIX:tag": "41142",
+      "description": "The business day convention used to adjust the option exercise expiration dates. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "OptionExerciseExpirationDateBusinessDayConvention"
     }
   },
   {
@@ -780,9 +780,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41143",
       "description": "Specifies the anchor date when the option exercise expiration date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "OptionExerciseExpirationDateRelativeTo",
-      "fix:tag": "41143"
+      "display": "OptionExerciseExpirationDateRelativeTo"
     }
   },
   {
@@ -792,9 +792,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41144",
       "description": "Time unit multiplier for the relative exercise expiration date offset.",
-      "display": "OptionExerciseExpirationDateOffsetPeriod",
-      "fix:tag": "41144"
+      "display": "OptionExerciseExpirationDateOffsetPeriod"
     }
   },
   {
@@ -804,9 +804,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative exercise expiration date offset.",
-      "display": "OptionExerciseExpirationDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -828,7 +826,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41145"
+      "FIX:tag": "41145",
+      "description": "Time unit associated with the relative exercise expiration date offset.",
+      "display": "OptionExerciseExpirationDateOffsetUnit"
     }
   },
   {
@@ -838,9 +838,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41146",
       "description": "Time unit multiplier for the frequency of exercise expiration dates.",
-      "display": "OptionExerciseExpirationFrequencyPeriod",
-      "fix:tag": "41146"
+      "display": "OptionExerciseExpirationFrequencyPeriod"
     }
   },
   {
@@ -850,9 +850,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the frequency of exercise expiration dates.",
-      "display": "OptionExerciseExpirationFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -874,7 +872,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41147"
+      "FIX:tag": "41147",
+      "description": "Time unit associated with the frequency of exercise expiration dates.",
+      "display": "OptionExerciseExpirationFrequencyUnit"
     }
   },
   {
@@ -884,9 +884,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The convention for determining the sequence of exercise expiration dates. It is used in conjunction with a specified frequency. Used only to override the roll convention defined in the DateAdjustment component in Instrument.",
-      "display": "OptionExerciseExpirationRollConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FirstDay",
@@ -1118,7 +1116,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "41148"
+      "FIX:tag": "41148",
+      "description": "The convention for determining the sequence of exercise expiration dates. It is used in conjunction with a specified frequency. Used only to override the roll convention defined in the DateAdjustment component in Instrument.",
+      "display": "OptionExerciseExpirationRollConvention"
     }
   },
   {
@@ -1128,9 +1128,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative option exercise expiration date offset.",
-      "display": "OptionExerciseExpirationDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -1162,7 +1160,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "41149"
+      "FIX:tag": "41149",
+      "description": "Specifies the day type of the relative option exercise expiration date offset.",
+      "display": "OptionExerciseExpirationDateOffsetDayType"
     }
   },
   {
@@ -1173,9 +1173,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41150",
       "description": "The option exercise expiration time.",
-      "display": "OptionExerciseExpirationTime",
-      "fix:tag": "41150"
+      "display": "OptionExerciseExpirationTime"
     }
   },
   {
@@ -1185,9 +1185,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41151",
       "description": "The business center used to determine the locale for option exercise expiration time, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "OptionExerciseExpirationTimeBusinessCenter",
-      "fix:tag": "41151"
+      "display": "OptionExerciseExpirationTimeBusinessCenter"
     }
   },
   {
@@ -1197,9 +1197,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41152",
       "description": "Number of fixed exercise expiration dates in the repeating group.",
-      "display": "NoOptionExerciseExpirationDates",
-      "fix:tag": "41152"
+      "display": "NoOptionExerciseExpirationDates"
     }
   },
   {
@@ -1210,9 +1210,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41153",
       "description": "An adjusted or unadjusted fixed option exercise expiration date.",
-      "display": "OptionExerciseExpirationDate",
-      "fix:tag": "41153"
+      "display": "OptionExerciseExpirationDate"
     }
   },
   {
@@ -1222,9 +1222,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of option exercise expiration date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
-      "display": "OptionExerciseExpirationDateType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Unadjusted",
@@ -1236,7 +1234,9 @@
           "doc": "Adjusted"
         }
       ],
-      "fix:tag": "41154"
+      "FIX:tag": "41154",
+      "description": "Specifies the type of option exercise expiration date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
+      "display": "OptionExerciseExpirationDateType"
     }
   },
   {
@@ -1246,9 +1246,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to express the unit of measure (UOM) of the payment amount if not in the currency of the trade.",
-      "display": "PaymentUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -1730,7 +1728,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41155"
+      "FIX:tag": "41155",
+      "description": "Used to express the unit of measure (UOM) of the payment amount if not in the currency of the trade.",
+      "display": "PaymentUnitOfMeasure"
     }
   },
   {
@@ -1740,9 +1740,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41156",
       "description": "Specifies the anchor date when the payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "PaymentDateRelativeTo",
-      "fix:tag": "41156"
+      "display": "PaymentDateRelativeTo"
     }
   },
   {
@@ -1752,9 +1752,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41157",
       "description": "Time unit multiplier for the relative payment date offset.",
-      "display": "PaymentDateOffsetPeriod",
-      "fix:tag": "41157"
+      "display": "PaymentDateOffsetPeriod"
     }
   },
   {
@@ -1764,9 +1764,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative payment date offset.",
-      "display": "PaymentDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1788,7 +1786,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41158"
+      "FIX:tag": "41158",
+      "description": "Time unit associated with the relative payment date offset.",
+      "display": "PaymentDateOffsetUnit"
     }
   },
   {
@@ -1798,9 +1798,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative payment date offset.",
-      "display": "PaymentDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -1832,7 +1830,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "41159"
+      "FIX:tag": "41159",
+      "description": "Specifies the day type of the relative payment date offset.",
+      "display": "PaymentDateOffsetDayType"
     }
   },
   {
@@ -1842,9 +1842,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Forward start premium type.",
-      "display": "PaymentForwardStartType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Prepaid",
@@ -1866,7 +1864,9 @@
           "doc": "Fixed"
         }
       ],
-      "fix:tag": "41160"
+      "FIX:tag": "41160",
+      "description": "Forward start premium type.",
+      "display": "PaymentForwardStartType"
     }
   },
   {
@@ -1876,9 +1876,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41161",
       "description": "Number of fixing days in the repeating group.",
-      "display": "NoPaymentScheduleFixingDays",
-      "fix:tag": "41161"
+      "display": "NoPaymentScheduleFixingDays"
     }
   },
   {
@@ -1888,9 +1888,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The day of the week on which fixing will take place.",
-      "display": "PaymentScheduleFixingDayOfWeek",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "EveryDay",
@@ -1932,7 +1930,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "41162"
+      "FIX:tag": "41162",
+      "description": "The day of the week on which fixing will take place.",
+      "display": "PaymentScheduleFixingDayOfWeek"
     }
   },
   {
@@ -1942,9 +1942,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41163",
       "description": "The occurrence of the day of week on which fixing takes place.",
-      "display": "PaymentScheduleFixingDayNumber",
-      "fix:tag": "41163"
+      "display": "PaymentScheduleFixingDayNumber"
     }
   },
   {
@@ -1954,9 +1954,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41164",
       "description": "Identifier of this PaymentSchedule for cross referencing elsewhere in the message.",
-      "display": "PaymentScheduleXID",
-      "fix:tag": "41164"
+      "display": "PaymentScheduleXID"
     }
   },
   {
@@ -1966,9 +1966,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41165",
       "description": "Reference to payment schedule elsewhere in the message.",
-      "display": "PaymentScheduleXIDRef",
-      "fix:tag": "41165"
+      "display": "PaymentScheduleXIDRef"
     }
   },
   {
@@ -1978,9 +1978,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41166",
       "description": "The currency of the schedule rate. Uses ISO 4217 currency codes.",
-      "display": "PaymentScheduleRateCurrency",
-      "fix:tag": "41166"
+      "display": "PaymentScheduleRateCurrency"
     }
   },
   {
@@ -1990,9 +1990,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The schedule rate unit of measure (UOM).",
-      "display": "PaymentScheduleRateUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -2474,7 +2472,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41167"
+      "FIX:tag": "41167",
+      "description": "The schedule rate unit of measure (UOM).",
+      "display": "PaymentScheduleRateUnitOfMeasure"
     }
   },
   {
@@ -2484,9 +2484,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41168",
       "description": "The number to be multiplied by the derived floating rate of the payment schedule in order to arrive at the payment rate. If omitted, the schedule rate conversion factor is 1.",
-      "display": "PaymentScheduleRateConversionFactor",
-      "fix:tag": "41168"
+      "display": "PaymentScheduleRateConversionFactor"
     }
   },
   {
@@ -2496,9 +2496,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies whether the rate spread is an absolute value to be added to the index rate or a percentage of the index rate.",
-      "display": "PaymentScheduleRateSpreadType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Absolute",
@@ -2510,7 +2508,9 @@
           "doc": "Percentage"
         }
       ],
-      "fix:tag": "41169"
+      "FIX:tag": "41169",
+      "description": "Identifies whether the rate spread is an absolute value to be added to the index rate or a percentage of the index rate.",
+      "display": "PaymentScheduleRateSpreadType"
     }
   },
   {
@@ -2522,9 +2522,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41170",
       "description": "The schedule settlement period price.",
-      "display": "PaymentScheduleSettlPeriodPrice",
-      "fix:tag": "41170"
+      "display": "PaymentScheduleSettlPeriodPrice"
     }
   },
   {
@@ -2534,9 +2534,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41171",
       "description": "Specifies the currency of the schedule settlement period price. Uses ISO 4217 currency codes.",
-      "display": "PaymentScheduleSettlPeriodPriceCurrency",
-      "fix:tag": "41171"
+      "display": "PaymentScheduleSettlPeriodPriceCurrency"
     }
   },
   {
@@ -2546,9 +2546,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The settlement period price unit of measure (UOM).",
-      "display": "PaymentScheduleSettlPeriodPriceUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -3030,7 +3028,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41172"
+      "FIX:tag": "41172",
+      "description": "The settlement period price unit of measure (UOM).",
+      "display": "PaymentScheduleSettlPeriodPriceUnitOfMeasure"
     }
   },
   {
@@ -3040,9 +3040,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The schedule step unit of measure (UOM).",
-      "display": "PaymentScheduleStepUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -3524,7 +3522,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41173"
+      "FIX:tag": "41173",
+      "description": "The schedule step unit of measure (UOM).",
+      "display": "PaymentScheduleStepUnitOfMeasure"
     }
   },
   {
@@ -3534,9 +3534,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The distribution of fixing days.",
-      "display": "PaymentScheduleFixingDayDistribution",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "All",
@@ -3558,7 +3556,9 @@
           "doc": "Penultimate"
         }
       ],
-      "fix:tag": "41174"
+      "FIX:tag": "41174",
+      "description": "The distribution of fixing days.",
+      "display": "PaymentScheduleFixingDayDistribution"
     }
   },
   {
@@ -3568,9 +3568,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41175",
       "description": "The number of days over which fixing should take place.",
-      "display": "PaymentScheduleFixingDayCount",
-      "fix:tag": "41175"
+      "display": "PaymentScheduleFixingDayCount"
     }
   },
   {
@@ -3580,9 +3580,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41176",
       "description": "Time unit multiplier for the fixing lag duration.",
-      "display": "PaymentScheduleFixingLagPeriod",
-      "fix:tag": "41176"
+      "display": "PaymentScheduleFixingLagPeriod"
     }
   },
   {
@@ -3592,9 +3592,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the fixing lag duration.",
-      "display": "PaymentScheduleFixingLagUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -3616,7 +3614,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41177"
+      "FIX:tag": "41177",
+      "description": "Time unit associated with the fixing lag duration.",
+      "display": "PaymentScheduleFixingLagUnit"
     }
   },
   {
@@ -3626,9 +3626,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41178",
       "description": "Time unit multiplier for the relative first observation date offset.",
-      "display": "PaymentScheduleFixingFirstObservationDateOffsetPeriod",
-      "fix:tag": "41178"
+      "display": "PaymentScheduleFixingFirstObservationDateOffsetPeriod"
     }
   },
   {
@@ -3638,9 +3638,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative first observation date offset.",
-      "display": "PaymentScheduleFixingFirstObservationDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -3662,7 +3660,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41179"
+      "FIX:tag": "41179",
+      "description": "Time unit associated with the relative first observation date offset.",
+      "display": "PaymentScheduleFixingFirstObservationDateOffsetUnit"
     }
   },
   {
@@ -3672,9 +3672,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41180",
       "description": "When this element is specified and set to 'Y', the Flat Rate is the New Worldwide Tanker Nominal Freight Scale for the Freight Index Route taken at the Trade Date of the transaction \"Fixed\". If 'N' it is taken on each Pricing Date \"Floating\".",
-      "display": "PaymentStreamFlatRateIndicator",
-      "fix:tag": "41180"
+      "display": "PaymentStreamFlatRateIndicator"
     }
   },
   {
@@ -3686,9 +3686,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41181",
       "description": "Specifies the actual monetary value of the flat rate when PaymentStreamFlatRateIndicator(41180) = 'Y'.",
-      "display": "PaymentStreamFlatRateAmount",
-      "fix:tag": "41181"
+      "display": "PaymentStreamFlatRateAmount"
     }
   },
   {
@@ -3698,9 +3698,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41182",
       "description": "Specifies the currency of the actual flat rate. Uses ISO 4217 currency codes.",
-      "display": "PaymentStreamFlatRateCurrency",
-      "fix:tag": "41182"
+      "display": "PaymentStreamFlatRateCurrency"
     }
   },
   {
@@ -3712,9 +3712,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41183",
       "description": "Specifies the limit on the total payment amount.",
-      "display": "PaymentStreamMaximumPaymentAmount",
-      "fix:tag": "41183"
+      "display": "PaymentStreamMaximumPaymentAmount"
     }
   },
   {
@@ -3724,9 +3724,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41184",
       "description": "Specifies the currency of total payment amount limit. Uses ISO 4217 currency codes.",
-      "display": "PaymentStreamMaximumPaymentCurrency",
-      "fix:tag": "41184"
+      "display": "PaymentStreamMaximumPaymentCurrency"
     }
   },
   {
@@ -3738,9 +3738,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41185",
       "description": "Specifies the limit on the payment amount that goes out in any particular calculation period.",
-      "display": "PaymentStreamMaximumTransactionAmount",
-      "fix:tag": "41185"
+      "display": "PaymentStreamMaximumTransactionAmount"
     }
   },
   {
@@ -3750,9 +3750,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41186",
       "description": "Specifies the currency of the period payment amount limit. Uses ISO 4217 currency codes.",
-      "display": "PaymentStreamMaximumTransactionCurrency",
-      "fix:tag": "41186"
+      "display": "PaymentStreamMaximumTransactionCurrency"
     }
   },
   {
@@ -3762,9 +3762,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the fixed payment amount unit of measure (UOM).",
-      "display": "PaymentStreamFixedAmountUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -4246,7 +4244,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41187"
+      "FIX:tag": "41187",
+      "description": "Specifies the fixed payment amount unit of measure (UOM).",
+      "display": "PaymentStreamFixedAmountUnitOfMeasure"
     }
   },
   {
@@ -4258,9 +4258,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41188",
       "description": "Specifies the total fixed payment amount.",
-      "display": "PaymentStreamTotalFixedAmount",
-      "fix:tag": "41188"
+      "display": "PaymentStreamTotalFixedAmount"
     }
   },
   {
@@ -4270,9 +4270,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41189",
       "description": "The number of Worldscale points for purposes of the calculation of a fixed amount for a wet voyage charter commodity swap.",
-      "display": "PaymentStreamWorldScaleRate",
-      "fix:tag": "41189"
+      "display": "PaymentStreamWorldScaleRate"
     }
   },
   {
@@ -4284,9 +4284,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41190",
       "description": "The price per relevant unit for purposes of the calculation of a fixed amount for a dry voyage charter or time charter commodity swap.",
-      "display": "PaymentStreamContractPrice",
-      "fix:tag": "41190"
+      "display": "PaymentStreamContractPrice"
     }
   },
   {
@@ -4296,9 +4296,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41191",
       "description": "Specifies the currency of PaymentStreamContractPrice(41190). Uses ISO 4217 currency codes.",
-      "display": "PaymentStreamContractPriceCurrency",
-      "fix:tag": "41191"
+      "display": "PaymentStreamContractPriceCurrency"
     }
   },
   {
@@ -4308,9 +4308,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41192",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoPaymentStreamPricingBusinessCenters",
-      "fix:tag": "41192"
+      "display": "NoPaymentStreamPricingBusinessCenters"
     }
   },
   {
@@ -4320,9 +4320,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41193",
       "description": "The business center calendar used to adjust the payment stream's pricing dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "PaymentStreamPricingBusinessCenter",
-      "fix:tag": "41193"
+      "display": "PaymentStreamPricingBusinessCenter"
     }
   },
   {
@@ -4332,9 +4332,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41194",
       "description": "Secondary time unit multiplier for the payment stream's floating rate index curve.",
-      "display": "PaymentStreamRateIndex2CurvePeriod",
-      "fix:tag": "41194"
+      "display": "PaymentStreamRateIndex2CurvePeriod"
     }
   },
   {
@@ -4344,9 +4344,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Secondary time unit associated with the payment stream's floating rate index curve.",
-      "display": "PaymentStreamRateIndex2CurveUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -4368,7 +4366,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41195"
+      "FIX:tag": "41195",
+      "description": "Secondary time unit associated with the payment stream's floating rate index curve.",
+      "display": "PaymentStreamRateIndex2CurveUnit"
     }
   },
   {
@@ -4378,9 +4378,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41196",
       "description": "Specifies the location of the floating rate index.",
-      "display": "PaymentStreamRateIndexLocation",
-      "fix:tag": "41196"
+      "display": "PaymentStreamRateIndexLocation"
     }
   },
   {
@@ -4392,9 +4392,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41197",
       "description": "This is the weather Cooling Degree Days (CDD), Heating Degree Days (HDD) or HDD index level specified as the number of (amount of) weather index units specified by the parties in the related confirmation.",
-      "display": "PaymentStreamRateIndexLevel",
-      "fix:tag": "41197"
+      "display": "PaymentStreamRateIndexLevel"
     }
   },
   {
@@ -4404,9 +4404,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The unit of measure (UOM) of the rate index level.",
-      "display": "PaymentStreamRateIndexUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -4888,7 +4886,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41198"
+      "FIX:tag": "41198",
+      "description": "The unit of measure (UOM) of the rate index level.",
+      "display": "PaymentStreamRateIndexUnitOfMeasure"
     }
   },
   {
@@ -4898,9 +4898,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies how weather index units are to be calculated.",
-      "display": "PaymentStreamSettlLevel",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Average",
@@ -4922,7 +4920,9 @@
           "doc": "Cumulative"
         }
       ],
-      "fix:tag": "41199"
+      "FIX:tag": "41199",
+      "description": "Specifies how weather index units are to be calculated.",
+      "display": "PaymentStreamSettlLevel"
     }
   }
 ]

@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyinglegsecurityaltidcomponent"
+        "FIX:component": "underlyinglegsecurityaltidcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingLegSecurityAltIDGrp",
-    "fix:component": "underlyinglegsecurityaltidcomponent",
-    "fix:counter": "1334",
-    "fix:tag": "846450"
+    "FIX:component": "underlyinglegsecurityaltidcomponent",
+    "FIX:counter": "1334",
+    "FIX:tag": "846450",
+    "display": "UnderlyingLegSecurityAltIDGrp"
   }
 }

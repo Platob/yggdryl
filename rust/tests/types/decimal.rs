@@ -138,75 +138,78 @@ mod restating {
 }
 
 mod fixed {
-    use yggdryl::types::Decimal;
+    use yggdryl::Decimal18;
     use yggdryl::{DataType, Scalar};
 
     #[test]
     fn a_fixed_decimal_is_decimal128_at_eighteen_digits_already_applied() {
-        let px: Decimal = "82.5".parse().unwrap();
+        let px: Decimal18 = "82.5".parse().unwrap();
         assert_eq!(px.units(), 82_500_000_000_000_000_000);
-        assert_eq!(Decimal::from_units(px.units()), Some(px));
+        assert_eq!(Decimal18::from_units(px.units()), Some(px));
         assert_eq!(px.to_string(), "82.5");
-        assert_eq!(Decimal::from_int(100).to_string(), "100");
-        assert_eq!(Decimal::ZERO.to_string(), "0");
+        assert_eq!(Decimal18::from_int(100).to_string(), "100");
+        assert_eq!(Decimal18::ZERO.to_string(), "0");
         assert_eq!(
-            "-0.000000000000000001".parse::<Decimal>().unwrap().units(),
+            "-0.000000000000000001"
+                .parse::<Decimal18>()
+                .unwrap()
+                .units(),
             -1
         );
-        assert_eq!(Decimal::dtype(), DataType::decimal128(38, 18).unwrap());
+        assert_eq!(Decimal18::dtype(), DataType::decimal128(38, 18).unwrap());
         assert_eq!(DataType::DECIMAL, DataType::decimal128(38, 18).unwrap());
         // The scalar is the column's value, and reads back.
         let scalar = Scalar::from(px);
         assert_eq!(scalar.as_d128(), Some((px.units(), 18)));
-        assert_eq!(Decimal::from_scalar(&scalar), Some(px));
-        assert_eq!(Decimal::from_scalar(&Scalar::d128(825, 1)), Some(px));
-        assert_eq!(Decimal::from_scalar(&Scalar::from(82.5_f64)), Some(px));
+        assert_eq!(Decimal18::from_scalar(&scalar), Some(px));
+        assert_eq!(Decimal18::from_scalar(&Scalar::d128(825, 1)), Some(px));
+        assert_eq!(Decimal18::from_scalar(&Scalar::from(82.5_f64)), Some(px));
         assert_eq!(
-            Decimal::from_scalar(&Scalar::from(100_i64)),
-            Some(Decimal::from_int(100))
+            Decimal18::from_scalar(&Scalar::from(100_i64)),
+            Some(Decimal18::from_int(100))
         );
-        assert_eq!(Decimal::from_scalar(&Scalar::from("82.5")), Some(px));
+        assert_eq!(Decimal18::from_scalar(&Scalar::from("82.5")), Some(px));
         assert_eq!(px.to_f64(), 82.5);
-        assert_eq!(Decimal::from_f64(82.5), Some(px));
-        assert_eq!(Decimal::from_f64(f64::NAN), None);
+        assert_eq!(Decimal18::from_f64(82.5), Some(px));
+        assert_eq!(Decimal18::from_f64(f64::NAN), None);
     }
 
     #[test]
     fn fixed_arithmetic_is_exact_bounded_and_truncates_toward_zero() {
-        let px: Decimal = "82.5".parse().unwrap();
-        let qty = Decimal::from_int(1_000);
+        let px: Decimal18 = "82.5".parse().unwrap();
+        let qty = Decimal18::from_int(1_000);
         assert_eq!((px * qty).to_string(), "82500");
-        assert_eq!((px + Decimal::from_int(1)).to_string(), "83.5");
-        assert_eq!((px - Decimal::from_int(100)).to_string(), "-17.5");
-        assert_eq!((px / Decimal::from_int(4)).to_string(), "20.625");
+        assert_eq!((px + Decimal18::from_int(1)).to_string(), "83.5");
+        assert_eq!((px - Decimal18::from_int(100)).to_string(), "-17.5");
+        assert_eq!((px / Decimal18::from_int(4)).to_string(), "20.625");
         assert_eq!((-px).abs(), px);
-        assert!(px.is_positive() && (-px).is_negative() && Decimal::ZERO.is_zero());
+        assert!(px.is_positive() && (-px).is_negative() && Decimal18::ZERO.is_zero());
         // A third is truncated at the eighteenth digit, never rounded up.
         assert_eq!(
-            (Decimal::ONE / Decimal::from_int(3)).to_string(),
+            (Decimal18::ONE / Decimal18::from_int(3)).to_string(),
             "0.333333333333333333"
         );
         assert_eq!(
-            Decimal::parse("1.123456789")
+            Decimal18::parse("1.123456789")
                 .unwrap()
                 .truncated(4)
                 .to_string(),
             "1.1234"
         );
         // Past thirty-eight digits there is no value.
-        assert_eq!(Decimal::MAX.checked_add(Decimal::ONE), None);
-        assert_eq!(Decimal::MAX.checked_mul(Decimal::from_int(2)), None);
-        assert_eq!(Decimal::ONE.checked_div(Decimal::ZERO), None);
-        assert_eq!(Decimal::MIN.checked_sub(Decimal::ONE), None);
-        assert_eq!(Decimal::from_units(i128::MAX), None);
+        assert_eq!(Decimal18::MAX.checked_add(Decimal18::ONE), None);
+        assert_eq!(Decimal18::MAX.checked_mul(Decimal18::from_int(2)), None);
+        assert_eq!(Decimal18::ONE.checked_div(Decimal18::ZERO), None);
+        assert_eq!(Decimal18::MIN.checked_sub(Decimal18::ONE), None);
+        assert_eq!(Decimal18::from_units(i128::MAX), None);
         // Sums fold as integers do.
         assert_eq!(
-            [px, px, px].into_iter().sum::<Decimal>().to_string(),
+            [px, px, px].into_iter().sum::<Decimal18>().to_string(),
             "247.5"
         );
         let mut held = px;
-        held += Decimal::from_int(1);
-        held *= Decimal::from_int(2);
+        held += Decimal18::from_int(1);
+        held *= Decimal18::from_int(2);
         assert_eq!(held.to_string(), "167");
     }
 
@@ -237,7 +240,7 @@ mod fixed {
             ),
         ] {
             assert_eq!(
-                Decimal::parse(text).unwrap().to_string(),
+                Decimal18::parse(text).unwrap().to_string(),
                 expected,
                 "{text:?}"
             );
@@ -259,15 +262,51 @@ mod fixed {
             "1e21",
             "1e400",
         ] {
-            assert!(Decimal::parse(refused).is_err(), "{refused:?}");
+            assert!(Decimal18::parse(refused).is_err(), "{refused:?}");
         }
         // Text held as a scalar reads the same way.
         assert_eq!(
-            Decimal::from_scalar(&Scalar::from("1,250.5"))
+            Decimal18::from_scalar(&Scalar::from("1,250.5"))
                 .unwrap()
                 .to_string(),
             "1250.5"
         );
-        assert_eq!(Decimal::from_scalar(&Scalar::from("x")), None);
+        assert_eq!(Decimal18::from_scalar(&Scalar::from("x")), None);
+    }
+}
+
+mod family {
+    use yggdryl::{DataType, DataTypeKind, FamilyValue, Scalar, i256};
+    use yggdryl::{Decimal, Decimal18, Decimal32, Decimal64, Decimal128, Decimal256};
+
+    #[test]
+    fn the_decimal_family_stands_for_every_width() {
+        crate::scalar::assert_family_round_trip(
+            vec![
+                crate::family_leaf!(Decimal::Decimal32, Decimal32::new(1_250, 2)),
+                crate::family_leaf!(Decimal::Decimal64, Decimal64::new(-7, 1)),
+                crate::family_leaf!(Decimal::Decimal128, Decimal128::new(125, 1)),
+                crate::family_leaf!(
+                    Decimal::Decimal256,
+                    Decimal256::new(i256::from_i128(-125), 3)
+                ),
+            ],
+            DataTypeKind::Decimal,
+            &Scalar::from(3_i64),
+        );
+
+        // The fixed-scale money value is one decimal128 leaf of the family,
+        // and `as_decimal` stays the coefficient-and-scale reader beside it.
+        // The value's own datatype holds the digits it has at scale 18; the
+        // column a `Decimal18` declares, `DataType::DECIMAL`, is the wider
+        // decimal128 it is stored in.
+        let money = Scalar::from(Decimal18::from_int(3));
+        let held = Decimal::from_scalar(&money).unwrap();
+        assert!(matches!(held, Decimal::Decimal128(_)), "{held:?}");
+        assert_eq!(held.dtype().unwrap(), DataType::decimal128(19, 18).unwrap());
+        assert_eq!(
+            money.as_decimal(),
+            Some((i256::from_i128(3_000_000_000_000_000_000), 18))
+        );
     }
 }

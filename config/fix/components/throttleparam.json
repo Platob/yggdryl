@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "throttleaction",
-          "fix:tag": "1611"
+          "FIX:field": "throttleaction",
+          "FIX:tag": "1611"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "throttletype",
-          "fix:tag": "1612"
+          "FIX:field": "throttletype",
+          "FIX:tag": "1612"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "throttlenomsgs",
-          "fix:tag": "1613"
+          "FIX:field": "throttlenomsgs",
+          "FIX:tag": "1613"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "throttletimeinterval",
-          "fix:tag": "1614"
+          "FIX:field": "throttletimeinterval",
+          "FIX:tag": "1614"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "throttletimeunit",
-          "fix:tag": "1615"
+          "FIX:field": "throttletimeunit",
+          "FIX:tag": "1615"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nothrottlemsgtype",
-          "fix:tag": "1618"
+          "FIX:field": "nothrottlemsgtype",
+          "FIX:tag": "1618"
         }
       },
       {
@@ -76,14 +76,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "throttlemsgtypegrp"
+          "FIX:group": "throttlemsgtypegrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ThrottleParam",
-    "fix:tag": "680696"
+    "FIX:tag": "680696",
+    "display": "ThrottleParam"
   }
 }

@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "beginseqno",
-          "fix:tag": "7"
+          "FIX:field": "beginseqno",
+          "FIX:tag": "7"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "endseqno",
-          "fix:tag": "16"
+          "FIX:field": "endseqno",
+          "FIX:tag": "16"
         }
       },
       {
@@ -42,16 +42,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "2",
+    "FIX:tag": "438212",
     "description": "MsgType = 2",
-    "display": "ResendRequest",
-    "fix:msgtype": "2",
-    "fix:tag": "438212"
+    "display": "ResendRequest"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondateunadjusted",
-          "fix:tag": "42574"
+          "FIX:field": "legsettlmethodelectiondateunadjusted",
+          "FIX:tag": "42574"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondatebusinessdayconvention",
-          "fix:tag": "42575"
+          "FIX:field": "legsettlmethodelectiondatebusinessdayconvention",
+          "FIX:tag": "42575"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegsettlmethodelectiondatebusinesscenters",
-          "fix:tag": "42581"
+          "FIX:field": "nolegsettlmethodelectiondatebusinesscenters",
+          "FIX:tag": "42581"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legsettlmethodelectiondatebusinesscentergrp"
+          "FIX:group": "legsettlmethodelectiondatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondaterelativeto",
-          "fix:tag": "42576"
+          "FIX:field": "legsettlmethodelectiondaterelativeto",
+          "FIX:tag": "42576"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondateoffsetperiod",
-          "fix:tag": "42577"
+          "FIX:field": "legsettlmethodelectiondateoffsetperiod",
+          "FIX:tag": "42577"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondateoffsetunit",
-          "fix:tag": "42578"
+          "FIX:field": "legsettlmethodelectiondateoffsetunit",
+          "FIX:tag": "42578"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondateoffsetdaytype",
-          "fix:tag": "42579"
+          "FIX:field": "legsettlmethodelectiondateoffsetdaytype",
+          "FIX:tag": "42579"
         }
       },
       {
@@ -97,16 +97,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectiondateadjusted",
-          "fix:tag": "42580"
+          "FIX:field": "legsettlmethodelectiondateadjusted",
+          "FIX:tag": "42580"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "417030",
     "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to LegOptionExercise.",
-    "display": "LegSettlMethodElectionDate",
-    "fix:tag": "417030"
+    "display": "LegSettlMethodElectionDate"
   }
 }

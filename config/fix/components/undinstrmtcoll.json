@@ -10,7 +10,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyinginstrument"
+          "FIX:component": "underlyinginstrument"
         }
       },
       {
@@ -20,15 +20,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collaction",
-          "fix:tag": "944"
+          "FIX:field": "collaction",
+          "FIX:tag": "944"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UndInstrmtColl",
-    "fix:tag": "989282"
+    "FIX:tag": "989282",
+    "display": "UndInstrmtColl"
   }
 }

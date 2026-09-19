@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43000",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingPaymentStubStartDateBusinessCenters",
-      "fix:tag": "43000"
+      "display": "NoUnderlyingPaymentStubStartDateBusinessCenters"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43001",
       "description": "The business center calendar used for date adjustment of the payment stub start date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "UnderlyingPaymentStubStartDateBusinessCenter",
-      "fix:tag": "43001"
+      "display": "UnderlyingPaymentStubStartDateBusinessCenter"
     }
   },
   {
@@ -30,9 +30,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of fee elected for the break provision.",
-      "display": "UnderlyingProvisionBreakFeeElection",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "FlatFee",
@@ -59,7 +57,9 @@
           "doc": "Amortized fee and funding fee"
         }
       ],
-      "fix:tag": "43002"
+      "FIX:tag": "43002",
+      "description": "Type of fee elected for the break provision.",
+      "display": "UnderlyingProvisionBreakFeeElection"
     }
   },
   {
@@ -69,9 +69,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43003",
       "description": "Break fee election rate when the break fee is proportional to the notional. A fee rate of 5% would be represented as \"0.05\".",
-      "display": "UnderlyingProvisionBreakFeeRate",
-      "fix:tag": "43003"
+      "display": "UnderlyingProvisionBreakFeeRate"
     }
   },
   {
@@ -81,9 +81,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43004",
       "description": "Specifies the initial rate spread for a basket underlier.",
-      "display": "UnderlyingRateSpreadInitialValue",
-      "fix:tag": "43004"
+      "display": "UnderlyingRateSpreadInitialValue"
     }
   },
   {
@@ -93,9 +93,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43005",
       "description": "Number of entries in the repeating group.",
-      "display": "NoUnderlyingRateSpreadSteps",
-      "fix:tag": "43005"
+      "display": "NoUnderlyingRateSpreadSteps"
     }
   },
   {
@@ -106,9 +106,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43006",
       "description": "The date that the rate spread step takes affect.",
-      "display": "UnderlyingRateSpreadStepDate",
-      "fix:tag": "43006"
+      "display": "UnderlyingRateSpreadStepDate"
     }
   },
   {
@@ -118,9 +118,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43007",
       "description": "The the value of the new rate spread as of the UnderlyingRateSpreadStepDate(43006).",
-      "display": "UnderlyingRateSpreadStepValue",
-      "fix:tag": "43007"
+      "display": "UnderlyingRateSpreadStepValue"
     }
   },
   {
@@ -130,9 +130,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43008",
       "description": "Number of iterations in the return rate date repeating group.",
-      "display": "NoUnderlyingReturnRateDates",
-      "fix:tag": "43008"
+      "display": "NoUnderlyingReturnRateDates"
     }
   },
   {
@@ -142,9 +142,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the valuation type applicable to the return rate date.",
-      "display": "UnderlyingReturnRateDateMode",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "PriceValuation",
@@ -156,7 +154,9 @@
           "doc": "Dividend valuation"
         }
       ],
-      "fix:tag": "43009"
+      "FIX:tag": "43009",
+      "description": "Specifies the valuation type applicable to the return rate date.",
+      "display": "UnderlyingReturnRateDateMode"
     }
   },
   {
@@ -166,9 +166,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43010",
       "description": "Specifies the anchor date when the return rate valuation dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "UnderlyingReturnRateValuationDateRelativeTo",
-      "fix:tag": "43010"
+      "display": "UnderlyingReturnRateValuationDateRelativeTo"
     }
   },
   {
@@ -178,9 +178,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43011",
       "description": "Time unit multiplier for the relative return rate valuation date offset.",
-      "display": "UnderlyingReturnRateValuationDateOffsetPeriod",
-      "fix:tag": "43011"
+      "display": "UnderlyingReturnRateValuationDateOffsetPeriod"
     }
   },
   {
@@ -190,9 +190,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative return rate valuation date offset.",
-      "display": "UnderlyingReturnRateValuationDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -214,7 +212,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "43012"
+      "FIX:tag": "43012",
+      "description": "Time unit associated with the relative return rate valuation date offset.",
+      "display": "UnderlyingReturnRateValuationDateOffsetUnit"
     }
   },
   {
@@ -224,9 +224,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative return rate valuation date offset.",
-      "display": "UnderlyingReturnRateValuationDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -258,7 +256,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "43013"
+      "FIX:tag": "43013",
+      "description": "Specifies the day type of the relative return rate valuation date offset.",
+      "display": "UnderlyingReturnRateValuationDateOffsetDayType"
     }
   },
   {
@@ -269,9 +269,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43014",
       "description": "The unadjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
-      "display": "UnderlyingReturnRateValuationStartDateUnadjusted",
-      "fix:tag": "43014"
+      "display": "UnderlyingReturnRateValuationStartDateUnadjusted"
     }
   },
   {
@@ -281,9 +281,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43015",
       "description": "Specifies the anchor date when the return rate valuation start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "UnderlyingReturnRateValuationStartDateRelativeTo",
-      "fix:tag": "43015"
+      "display": "UnderlyingReturnRateValuationStartDateRelativeTo"
     }
   },
   {
@@ -293,9 +293,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43016",
       "description": "Time unit multiplier for the relative return rate valuation start date offset.",
-      "display": "UnderlyingReturnRateValuationStartDateOffsetPeriod",
-      "fix:tag": "43016"
+      "display": "UnderlyingReturnRateValuationStartDateOffsetPeriod"
     }
   },
   {
@@ -305,9 +305,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative return rate valuation start date offset.",
-      "display": "UnderlyingReturnRateValuationStartDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -329,7 +327,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "43017"
+      "FIX:tag": "43017",
+      "description": "Time unit associated with the relative return rate valuation start date offset.",
+      "display": "UnderlyingReturnRateValuationStartDateOffsetUnit"
     }
   },
   {
@@ -339,9 +339,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative return rate valuation start date offset.",
-      "display": "UnderlyingReturnRateValuationStartDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -373,7 +371,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "43018"
+      "FIX:tag": "43018",
+      "description": "Specifies the day type of the relative return rate valuation start date offset.",
+      "display": "UnderlyingReturnRateValuationStartDateOffsetDayType"
     }
   },
   {
@@ -384,9 +384,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43019",
       "description": "The adjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
-      "display": "UnderlyingReturnRateValuationStartDateAdjusted",
-      "fix:tag": "43019"
+      "display": "UnderlyingReturnRateValuationStartDateAdjusted"
     }
   },
   {
@@ -397,9 +397,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43020",
       "description": "The unadjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
-      "display": "UnderlyingReturnRateValuationEndDateUnadjusted",
-      "fix:tag": "43020"
+      "display": "UnderlyingReturnRateValuationEndDateUnadjusted"
     }
   },
   {
@@ -409,9 +409,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43021",
       "description": "Specifies the anchor date when the return rate valuation end date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "UnderlyingReturnRateValuationEndDateRelativeTo",
-      "fix:tag": "43021"
+      "display": "UnderlyingReturnRateValuationEndDateRelativeTo"
     }
   },
   {
@@ -421,9 +421,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43022",
       "description": "Time unit multiplier for the relative return rate valuation end date offset.",
-      "display": "UnderlyingReturnRateValuationEndDateOffsetPeriod",
-      "fix:tag": "43022"
+      "display": "UnderlyingReturnRateValuationEndDateOffsetPeriod"
     }
   },
   {
@@ -433,9 +433,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative return rate valuation end date offset.",
-      "display": "UnderlyingReturnRateValuationEndDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -457,7 +455,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "43023"
+      "FIX:tag": "43023",
+      "description": "Time unit associated with the relative return rate valuation end date offset.",
+      "display": "UnderlyingReturnRateValuationEndDateOffsetUnit"
     }
   },
   {
@@ -467,9 +467,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative return rate valuation end date offset.",
-      "display": "UnderlyingReturnRateValuationEndDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -501,7 +499,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "43024"
+      "FIX:tag": "43024",
+      "description": "Specifies the day type of the relative return rate valuation end date offset.",
+      "display": "UnderlyingReturnRateValuationEndDateOffsetDayType"
     }
   },
   {
@@ -512,9 +512,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43025",
       "description": "The adjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
-      "display": "UnderlyingReturnRateValuationEndDateAdjusted",
-      "fix:tag": "43025"
+      "display": "UnderlyingReturnRateValuationEndDateAdjusted"
     }
   },
   {
@@ -524,9 +524,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43026",
       "description": "Time unit multiplier for the frequency at which return rate valuation dates occur.",
-      "display": "UnderlyingReturnRateValuationFrequencyPeriod",
-      "fix:tag": "43026"
+      "display": "UnderlyingReturnRateValuationFrequencyPeriod"
     }
   },
   {
@@ -536,9 +536,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the frequency at which return rate valuation dates occur.",
-      "display": "UnderlyingReturnRateValuationFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -580,7 +578,9 @@
           "doc": "Term"
         }
       ],
-      "fix:tag": "43027"
+      "FIX:tag": "43027",
+      "description": "Time unit associated with the frequency at which return rate valuation dates occur.",
+      "display": "UnderlyingReturnRateValuationFrequencyUnit"
     }
   },
   {
@@ -590,9 +590,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The convention for determining the sequence of return rate valuation dates. It is used in conjunction with a specified frequency.",
-      "display": "UnderlyingReturnRateValuationFrequencyRollConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FirstDay",
@@ -824,7 +822,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "43028"
+      "FIX:tag": "43028",
+      "description": "The convention for determining the sequence of return rate valuation dates. It is used in conjunction with a specified frequency.",
+      "display": "UnderlyingReturnRateValuationFrequencyRollConvention"
     }
   },
   {
@@ -834,9 +834,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The return rate valuation dates business day convention.",
-      "display": "UnderlyingReturnRateValuationDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -878,7 +876,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "43029"
+      "FIX:tag": "43029",
+      "description": "The return rate valuation dates business day convention.",
+      "display": "UnderlyingReturnRateValuationDateBusinessDayConvention"
     }
   },
   {
@@ -888,9 +888,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43030",
       "description": "Number of iterations in the return rate FX conversion repeating group.",
-      "display": "NoUnderlyingReturnRateFXConversions",
-      "fix:tag": "43030"
+      "display": "NoUnderlyingReturnRateFXConversions"
     }
   },
   {
@@ -900,9 +900,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43031",
       "description": "Specifies the currency pair for the FX conversion expressed using the CCY1/CCY2 convention. Uses ISO 4217 currency codes.",
-      "display": "UnderlyingReturnRateFXCurrencySymbol",
-      "fix:tag": "43031"
+      "display": "UnderlyingReturnRateFXCurrencySymbol"
     }
   },
   {
@@ -912,9 +912,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43032",
       "description": "The rate of exchange between the two currencies specified in UnderlyingReturnRateFXCurrencySymbol(43031).",
-      "display": "UnderlyingReturnRateFXRate",
-      "fix:tag": "43032"
+      "display": "UnderlyingReturnRateFXRate"
     }
   },
   {
@@ -924,9 +924,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies whether UnderlyingReturnRateFXRate(43032) should be multiplied or divided.",
-      "display": "UnderlyingReturnRateFXRateCalc",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "M",
           "name": "Multiply",
@@ -938,7 +936,9 @@
           "doc": "Divide"
         }
       ],
-      "fix:tag": "43033"
+      "FIX:tag": "43033",
+      "description": "Specifies whether UnderlyingReturnRateFXRate(43032) should be multiplied or divided.",
+      "display": "UnderlyingReturnRateFXRateCalc"
     }
   },
   {
@@ -948,9 +948,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43034",
       "description": "Number of iterations in the return rate repeating group.",
-      "display": "NoUnderlyingReturnRates",
-      "fix:tag": "43034"
+      "display": "NoUnderlyingReturnRates"
     }
   },
   {
@@ -960,9 +960,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of price sequence of the return rate.",
-      "display": "UnderlyingReturnRatePriceSequence",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Initial",
@@ -979,7 +977,9 @@
           "doc": "Final"
         }
       ],
-      "fix:tag": "43035"
+      "FIX:tag": "43035",
+      "description": "Specifies the type of price sequence of the return rate.",
+      "display": "UnderlyingReturnRatePriceSequence"
     }
   },
   {
@@ -989,9 +989,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the basis or unit used to calculate the commission.",
-      "display": "UnderlyingReturnRateCommissionBasis",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "PerUnit",
@@ -1033,7 +1031,9 @@
           "doc": "Amount per contract"
         }
       ],
-      "fix:tag": "43036"
+      "FIX:tag": "43036",
+      "description": "Specifies the basis or unit used to calculate the commission.",
+      "display": "UnderlyingReturnRateCommissionBasis"
     }
   },
   {
@@ -1045,9 +1045,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43037",
       "description": "The commission amount.",
-      "display": "UnderlyingReturnRateCommissionAmount",
-      "fix:tag": "43037"
+      "display": "UnderlyingReturnRateCommissionAmount"
     }
   },
   {
@@ -1057,9 +1057,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43038",
       "description": "Specifies the currency the commission amount is denominated in. Uses ISO 4217 currency codes.",
-      "display": "UnderlyingReturnRateCommissionCurrency",
-      "fix:tag": "43038"
+      "display": "UnderlyingReturnRateCommissionCurrency"
     }
   },
   {
@@ -1071,9 +1071,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43039",
       "description": "The total commission per trade.",
-      "display": "UnderlyingReturnRateTotalCommissionPerTrade",
-      "fix:tag": "43039"
+      "display": "UnderlyingReturnRateTotalCommissionPerTrade"
     }
   },
   {
@@ -1083,9 +1083,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43040",
       "description": "Specifies the method by which the underlier prices are determined. See https://fpml.org/coding-scheme/determination-method for values.",
-      "display": "UnderlyingReturnRateDeterminationMethod",
-      "fix:tag": "43040"
+      "display": "UnderlyingReturnRateDeterminationMethod"
     }
   },
   {
@@ -1095,9 +1095,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43041",
       "description": "Specifies the reference amount when the return rate amount is relative to another amount in the trade. See https://fixtrading.org/packages/payment-amount-relative-to for code list of relative amounts.",
-      "display": "UnderlyingReturnRateAmountRelativeTo",
-      "fix:tag": "43041"
+      "display": "UnderlyingReturnRateAmountRelativeTo"
     }
   },
   {
@@ -1107,9 +1107,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43042",
       "description": "Specifies the type of the measure applied to the return rate's asset, e.g. valuation, sensitivity risk. This could be an NPV, a cash flow, a clean price, etc. See https://fpml.org/coding-scheme/asset-measure for values.",
-      "display": "UnderlyingReturnRateQuoteMeasureType",
-      "fix:tag": "43042"
+      "display": "UnderlyingReturnRateQuoteMeasureType"
     }
   },
   {
@@ -1119,9 +1119,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43043",
       "description": "Specifies the units that the measure is expressed in. If not specified, the default is a price/value in currency units. See https://fpml.org/coding-scheme/price-quote-units for values.",
-      "display": "UnderlyingReturnRateQuoteUnits",
-      "fix:tag": "43043"
+      "display": "UnderlyingReturnRateQuoteUnits"
     }
   },
   {
@@ -1131,9 +1131,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of quote used to determine the return rate of the swap.",
-      "display": "UnderlyingReturnRateQuoteMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bid",
@@ -1150,7 +1148,9 @@
           "doc": "Offer"
         }
       ],
-      "fix:tag": "43044"
+      "FIX:tag": "43044",
+      "description": "Specifies the type of quote used to determine the return rate of the swap.",
+      "display": "UnderlyingReturnRateQuoteMethod"
     }
   },
   {
@@ -1160,9 +1160,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43045",
       "description": "Specifies the currency the return rate quote is denominated in. Uses ISO 4217 Currency Code.",
-      "display": "UnderlyingReturnRateQuoteCurrency",
-      "fix:tag": "43045"
+      "display": "UnderlyingReturnRateQuoteCurrency"
     }
   },
   {
@@ -1172,9 +1172,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43046",
       "description": "Specifies the type of currency, e.g. settlement currency, base currency, etc., that the quote is reported in. See https://fpml.org/coding-scheme/reporting-currency-type for values.",
-      "display": "UnderlyingReturnRateQuoteCurrencyType",
-      "fix:tag": "43046"
+      "display": "UnderlyingReturnRateQuoteCurrencyType"
     }
   },
   {
@@ -1184,9 +1184,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies how or the timing when the quote is to be obtained.",
-      "display": "UnderlyingReturnRateQuoteTimeType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Open",
@@ -1228,7 +1226,9 @@
           "doc": "As specified in the master confirmation"
         }
       ],
-      "fix:tag": "43047"
+      "FIX:tag": "43047",
+      "description": "Specifies how or the timing when the quote is to be obtained.",
+      "display": "UnderlyingReturnRateQuoteTimeType"
     }
   },
   {
@@ -1239,9 +1239,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43048",
       "description": "The time when the quote is to be generated.",
-      "display": "UnderlyingReturnRateQuoteTime",
-      "fix:tag": "43048"
+      "display": "UnderlyingReturnRateQuoteTime"
     }
   },
   {
@@ -1252,9 +1252,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43049",
       "description": "The date when the quote is to be generated.",
-      "display": "UnderlyingReturnRateQuoteDate",
-      "fix:tag": "43049"
+      "display": "UnderlyingReturnRateQuoteDate"
     }
   },
   {
@@ -1265,9 +1265,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43050",
       "description": "The time when the quote ceases to be valid.",
-      "display": "UnderlyingReturnRateQuoteExpirationTime",
-      "fix:tag": "43050"
+      "display": "UnderlyingReturnRateQuoteExpirationTime"
     }
   },
   {
@@ -1277,9 +1277,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43051",
       "description": "The business center calendar used for adjustments associated with UnderlyingReturnRateQuoteTimeType(43047) or UnderlyingReturnRateQuoteTime(43048) and UnderlyingReturnRateQuoteDate(43049), e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "UnderlyingReturnRateQuoteBusinessCenter",
-      "fix:tag": "43051"
+      "display": "UnderlyingReturnRateQuoteBusinessCenter"
     }
   },
   {
@@ -1289,9 +1289,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43052",
       "description": "Specifies the exchange (e.g. stock or listed futures/options exchange) from which the quote is obtained.",
-      "display": "UnderlyingReturnRateQuoteExchange",
-      "fix:tag": "43052"
+      "display": "UnderlyingReturnRateQuoteExchange"
     }
   },
   {
@@ -1301,9 +1301,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43053",
       "description": "Specifies the pricing model used to evaluate the underlying asset price. See https://fpml.org/coding-scheme/pricing-model for values.",
-      "display": "UnderlyingReturnRateQuotePricingModel",
-      "fix:tag": "43053"
+      "display": "UnderlyingReturnRateQuotePricingModel"
     }
   },
   {
@@ -1313,9 +1313,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43054",
       "description": "Specifies the type of cash flows, e.g. coupon payment, premium fee, settlement fee, etc. See https://fpml.org/coding-scheme/cashflow-type for values.",
-      "display": "UnderlyingReturnRateCashFlowType",
-      "fix:tag": "43054"
+      "display": "UnderlyingReturnRateCashFlowType"
     }
   },
   {
@@ -1325,9 +1325,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the timing at which the calculation agent values the underlying.",
-      "display": "UnderlyingReturnRateValuationTimeType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Open",
@@ -1369,7 +1367,9 @@
           "doc": "As specified in the master confirmation"
         }
       ],
-      "fix:tag": "43055"
+      "FIX:tag": "43055",
+      "description": "Specifies the timing at which the calculation agent values the underlying.",
+      "display": "UnderlyingReturnRateValuationTimeType"
     }
   },
   {
@@ -1380,9 +1380,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43056",
       "description": "The time at which the calculation agent values the underlying asset.",
-      "display": "UnderlyingReturnRateValuationTime",
-      "fix:tag": "43056"
+      "display": "UnderlyingReturnRateValuationTime"
     }
   },
   {
@@ -1392,9 +1392,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43057",
       "description": "The business center calendar used for adjustments associated with UnderlyingReturnRateValuationTimeType(43055) or UnderlyingReturnRateValuationTime(43056) , e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "UnderlyingReturnRateValuationTimeBusinessCenter",
-      "fix:tag": "43057"
+      "display": "UnderlyingReturnRateValuationTimeBusinessCenter"
     }
   },
   {
@@ -1404,9 +1404,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether an ISDA price option applies, and if applicable which type of price.",
-      "display": "UnderlyingReturnRateValuationPriceOption",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "None",
@@ -1423,7 +1421,9 @@
           "doc": "Options price"
         }
       ],
-      "fix:tag": "43058"
+      "FIX:tag": "43058",
+      "description": "Indicates whether an ISDA price option applies, and if applicable which type of price.",
+      "display": "UnderlyingReturnRateValuationPriceOption"
     }
   },
   {
@@ -1433,9 +1433,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the fallback provision for the hedging party in the determination of the final price.",
-      "display": "UnderlyingReturnRateFinalPriceFallback",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Close",
@@ -1447,7 +1445,9 @@
           "doc": "Hedge election"
         }
       ],
-      "fix:tag": "43059"
+      "FIX:tag": "43059",
+      "description": "Specifies the fallback provision for the hedging party in the determination of the final price.",
+      "display": "UnderlyingReturnRateFinalPriceFallback"
     }
   },
   {
@@ -1457,9 +1457,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43060",
       "description": "Number of iterations in the return rate information source repeating group.",
-      "display": "NoUnderlyingReturnRateInformationSources",
-      "fix:tag": "43060"
+      "display": "NoUnderlyingReturnRateInformationSources"
     }
   },
   {
@@ -1469,9 +1469,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source of rate information. For FX the references source to be used for the FX spot rate.",
-      "display": "UnderlyingReturnRateInformationSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bloomberg",
@@ -1498,7 +1496,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "43061"
+      "FIX:tag": "43061",
+      "description": "Identifies the source of rate information. For FX the references source to be used for the FX spot rate.",
+      "display": "UnderlyingReturnRateInformationSource"
     }
   },
   {
@@ -1508,9 +1508,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43062",
       "description": "Identifies the reference \"page\" from the rate source. For FX, the reference page to the spot rate to be used for the reference FX spot rate. When UnderlyingReturnRateInformationSource(43061) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
-      "display": "UnderlyingReturnRateReferencePage",
-      "fix:tag": "43062"
+      "display": "UnderlyingReturnRateReferencePage"
     }
   },
   {
@@ -1520,9 +1520,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43063",
       "description": "Identifies the page heading from the rate source.",
-      "display": "UnderlyingReturnRateReferencePageHeading",
-      "fix:tag": "43063"
+      "display": "UnderlyingReturnRateReferencePageHeading"
     }
   },
   {
@@ -1532,9 +1532,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43064",
       "description": "Number of iterations in the return rate price repeating group.",
-      "display": "NoUnderlyingReturnRatePrices",
-      "fix:tag": "43064"
+      "display": "NoUnderlyingReturnRatePrices"
     }
   },
   {
@@ -1544,9 +1544,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The basis of the return price.",
-      "display": "UnderlyingReturnRatePriceBasis",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Gross",
@@ -1568,7 +1566,9 @@
           "doc": "Clean net"
         }
       ],
-      "fix:tag": "43065"
+      "FIX:tag": "43065",
+      "description": "The basis of the return price.",
+      "display": "UnderlyingReturnRatePriceBasis"
     }
   },
   {
@@ -1580,9 +1580,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43066",
       "description": "Specifies the price of the underlying swap asset.",
-      "display": "UnderlyingReturnRatePrice",
-      "fix:tag": "43066"
+      "display": "UnderlyingReturnRatePrice"
     }
   },
   {
@@ -1592,9 +1592,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43067",
       "description": "Specifies the currency of the price of the underlying swap asset. Uses ISO 4217 currency codes.",
-      "display": "UnderlyingReturnRatePriceCurrency",
-      "fix:tag": "43067"
+      "display": "UnderlyingReturnRatePriceCurrency"
     }
   },
   {
@@ -1604,9 +1604,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies whether the UnderlyingReturnRatePrice(43066) is expressed in absolute or relative terms.",
-      "display": "UnderlyingReturnRatePriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "AbsoluteTerms",
@@ -1618,7 +1616,9 @@
           "doc": "Percentage of notional"
         }
       ],
-      "fix:tag": "43068"
+      "FIX:tag": "43068",
+      "description": "Specifies whether the UnderlyingReturnRatePrice(43066) is expressed in absolute or relative terms.",
+      "display": "UnderlyingReturnRatePriceType"
     }
   },
   {
@@ -1628,9 +1628,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43069",
       "description": "Number of iterations in the return rate valuation date business center repeating group.",
-      "display": "NoUnderlyingReturnRateValuationDateBusinessCenters",
-      "fix:tag": "43069"
+      "display": "NoUnderlyingReturnRateValuationDateBusinessCenters"
     }
   },
   {
@@ -1640,9 +1640,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43070",
       "description": "The business center calendar used for date adjustment of the return rate valuation unadjusted or relative dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "UnderlyingReturnRateValuationDateBusinessCenter",
-      "fix:tag": "43070"
+      "display": "UnderlyingReturnRateValuationDateBusinessCenter"
     }
   },
   {
@@ -1652,9 +1652,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43071",
       "description": "Number of iterations in the return rate valuation date repeating group.",
-      "display": "NoUnderlyingReturnRateValuationDates",
-      "fix:tag": "43071"
+      "display": "NoUnderlyingReturnRateValuationDates"
     }
   },
   {
@@ -1665,9 +1665,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43072",
       "description": "The return rate valuation date. Type of date is specified in UnderlyingReturnRateValuationDateType(43073).",
-      "display": "UnderlyingReturnRateValuationDate",
-      "fix:tag": "43072"
+      "display": "UnderlyingReturnRateValuationDate"
     }
   },
   {
@@ -1677,9 +1677,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of return rate valuation date (e.g. adjusted for holidays).",
-      "display": "UnderlyingReturnRateValuationDateType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Unadjusted",
@@ -1691,7 +1689,9 @@
           "doc": "Adjusted"
         }
       ],
-      "fix:tag": "43073"
+      "FIX:tag": "43073",
+      "description": "Specifies the type of return rate valuation date (e.g. adjusted for holidays).",
+      "display": "UnderlyingReturnRateValuationDateType"
     }
   },
   {
@@ -1701,9 +1701,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43074",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingSettlMethodElectionDateBusinessCenters",
-      "fix:tag": "43074"
+      "display": "NoUnderlyingSettlMethodElectionDateBusinessCenters"
     }
   },
   {
@@ -1713,9 +1713,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43075",
       "description": "The business center calendar used for date adjustment of the settlement method election unadjusted or relative date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "UnderlyingSettlMethodElectionDateBusinessCenter",
-      "fix:tag": "43075"
+      "display": "UnderlyingSettlMethodElectionDateBusinessCenter"
     }
   },
   {
@@ -1726,9 +1726,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43076",
       "description": "The unadjusted settlement method election date.",
-      "display": "UnderlyingSettlMethodElectionDateUnadjusted",
-      "fix:tag": "43076"
+      "display": "UnderlyingSettlMethodElectionDateUnadjusted"
     }
   },
   {
@@ -1738,9 +1738,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The settlement method election date adjustment business day convention.",
-      "display": "UnderlyingSettlMethodElectionDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1782,7 +1780,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "43077"
+      "FIX:tag": "43077",
+      "description": "The settlement method election date adjustment business day convention.",
+      "display": "UnderlyingSettlMethodElectionDateBusinessDayConvention"
     }
   },
   {
@@ -1792,9 +1792,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43078",
       "description": "Specifies the anchor date when the settlement method election date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "UnderlyingSettlMethodElectionDateRelativeTo",
-      "fix:tag": "43078"
+      "display": "UnderlyingSettlMethodElectionDateRelativeTo"
     }
   },
   {
@@ -1804,9 +1804,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43079",
       "description": "Time unit multiplier for the relative settlement method election date offset.",
-      "display": "UnderlyingSettlMethodElectionDateOffsetPeriod",
-      "fix:tag": "43079"
+      "display": "UnderlyingSettlMethodElectionDateOffsetPeriod"
     }
   },
   {
@@ -1816,9 +1816,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative settlement method election date offset.",
-      "display": "UnderlyingSettlMethodElectionDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1840,7 +1838,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "43080"
+      "FIX:tag": "43080",
+      "description": "Time unit associated with the relative settlement method election date offset.",
+      "display": "UnderlyingSettlMethodElectionDateOffsetUnit"
     }
   },
   {
@@ -1850,9 +1850,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative settlement method election date offset.",
-      "display": "UnderlyingSettlMethodElectionDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -1884,7 +1882,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "43081"
+      "FIX:tag": "43081",
+      "description": "Specifies the day type of the relative settlement method election date offset.",
+      "display": "UnderlyingSettlMethodElectionDateOffsetDayType"
     }
   },
   {
@@ -1895,9 +1895,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43082",
       "description": "The adjusted settlement method election date.",
-      "display": "UnderlyingSettlMethodElectionDateAdjusted",
-      "fix:tag": "43082"
+      "display": "UnderlyingSettlMethodElectionDateAdjusted"
     }
   },
   {
@@ -1907,9 +1907,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43083",
       "description": "The stream version identifier when there have been modifications to the contract over time. Helps signal when there are embedded changes.",
-      "display": "UnderlyingStreamVersion",
-      "fix:tag": "43083"
+      "display": "UnderlyingStreamVersion"
     }
   },
   {
@@ -1920,9 +1920,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43084",
       "description": "The effective date of the UnderlyingStreamVersion(43083).",
-      "display": "UnderlyingStreamVersionEffectiveDate",
-      "fix:tag": "43084"
+      "display": "UnderlyingStreamVersionEffectiveDate"
     }
   },
   {
@@ -1932,9 +1932,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43085",
       "description": "Specifies the method for determining the floating notional value for equity swaps. See https://fpml.org/coding-scheme/determination-method for values.",
-      "display": "UnderlyingStreamNotionalDeterminationMethod",
-      "fix:tag": "43085"
+      "display": "UnderlyingStreamNotionalDeterminationMethod"
     }
   },
   {
@@ -1944,9 +1944,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "For equity swaps this specifies the conditions that govern the adjustment to the number of units of the swap.",
-      "display": "UnderlyingStreamNotionalAdjustments",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Execution",
@@ -1963,7 +1961,9 @@
           "doc": "Standard"
         }
       ],
-      "fix:tag": "43086"
+      "FIX:tag": "43086",
+      "description": "For equity swaps this specifies the conditions that govern the adjustment to the number of units of the swap.",
+      "display": "UnderlyingStreamNotionalAdjustments"
     }
   },
   {
@@ -1973,9 +1973,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43087",
       "description": "A short descriptive name given to the payment, e.g. Premium, Upfront, etc. The description has no intrinsic meaning but should be arbitrarily chosen by the remitter as reference.",
-      "display": "PaymentDesc",
-      "fix:tag": "43087"
+      "display": "PaymentDesc"
     }
   },
   {
@@ -1985,9 +1985,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43088",
       "description": "Security identifier of the floating rate index.",
-      "display": "LegPaymentStreamRateIndexID",
-      "fix:tag": "43088"
+      "display": "LegPaymentStreamRateIndexID"
     }
   },
   {
@@ -1997,9 +1997,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Source for the floating rate index identified in LegPaymentStreamRateIndexID(43088).",
-      "display": "LegPaymentStreamRateIndexIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -2166,7 +2164,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "43089"
+      "FIX:tag": "43089",
+      "description": "Source for the floating rate index identified in LegPaymentStreamRateIndexID(43088).",
+      "display": "LegPaymentStreamRateIndexIDSource"
     }
   },
   {
@@ -2176,9 +2176,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43090",
       "description": "Security identifier of the floating rate index.",
-      "display": "PaymentStreamRateIndexID",
-      "fix:tag": "43090"
+      "display": "PaymentStreamRateIndexID"
     }
   },
   {
@@ -2188,9 +2188,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Source for the floating rate index identified in PaymentStreamRateIndexID(43090).",
-      "display": "PaymentStreamRateIndexIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -2357,7 +2355,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "43091"
+      "FIX:tag": "43091",
+      "description": "Source for the floating rate index identified in PaymentStreamRateIndexID(43090).",
+      "display": "PaymentStreamRateIndexIDSource"
     }
   },
   {
@@ -2367,9 +2367,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43092",
       "description": "Security identifier of the floating rate index.",
-      "display": "UnderlyingPaymentStreamRateIndexID",
-      "fix:tag": "43092"
+      "display": "UnderlyingPaymentStreamRateIndexID"
     }
   },
   {
@@ -2379,9 +2379,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Source for the floating rate index identified in UnderlyingPaymentStreamRateIndexID(43092).",
-      "display": "UnderlyingPaymentStreamRateIndexIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -2548,7 +2546,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "43093"
+      "FIX:tag": "43093",
+      "description": "Source for the floating rate index identified in UnderlyingPaymentStreamRateIndexID(43092).",
+      "display": "UnderlyingPaymentStreamRateIndexIDSource"
     }
   },
   {
@@ -2558,9 +2558,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43094",
       "description": "Specific delivery route or time charter average. Applicable to commodity freight swaps.",
-      "display": "DeliveryStreamRouteOrCharter",
-      "fix:tag": "43094"
+      "display": "DeliveryStreamRouteOrCharter"
     }
   },
   {
@@ -2570,9 +2570,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43095",
       "description": "Specific delivery route or time charter average. Applicable to commodity freight swaps.",
-      "display": "LegDeliveryStreamRouteOrCharter",
-      "fix:tag": "43095"
+      "display": "LegDeliveryStreamRouteOrCharter"
     }
   },
   {
@@ -2582,9 +2582,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43096",
       "description": "Specific delivery route or time charter average. Applicable to commodity freight swaps.",
-      "display": "UnderlyingDeliveryStreamRouteOrCharter",
-      "fix:tag": "43096"
+      "display": "UnderlyingDeliveryStreamRouteOrCharter"
     }
   },
   {
@@ -2594,9 +2594,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43097",
       "description": "The rate applicable to the fixed rate payment.",
-      "display": "PaymentFixedRate",
-      "fix:tag": "43097"
+      "display": "PaymentFixedRate"
     }
   },
   {
@@ -2606,9 +2606,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43098",
       "description": "The payment floating rate index. See SpreadOrBenchmarkCurveData(221) for suggested values.",
-      "display": "PaymentFloatingRateIndex",
-      "fix:tag": "43098"
+      "display": "PaymentFloatingRateIndex"
     }
   },
   {
@@ -2618,9 +2618,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43099",
       "description": "Time unit multiplier for the floating rate index.",
-      "display": "PaymentFloatingRateIndexCurvePeriod",
-      "fix:tag": "43099"
+      "display": "PaymentFloatingRateIndexCurvePeriod"
     }
   }
 ]

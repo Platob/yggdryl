@@ -22,7 +22,7 @@
 //!
 //! # The rules are the registry's, not this module's
 //!
-//! Each of those tables is one field's `fix:derivation`: one
+//! Each of those tables is one field's `FIX:derivation`: one
 //! term in the crate's expression grammar over the message's fields, spelled
 //! by their canonical folded names, carried by the field it fills and read
 //! with [`FixField::derivation`](crate::FixField::derivation). Nothing here
@@ -88,7 +88,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::expression::{Bound, Term};
 use crate::graph::{Element, EventIterator};
-use crate::{DataType, Error, Field, FixCategory, Result, Scalar};
+use crate::{DataType, Error, Field, FixCategory, Result, Scalar, StructureType};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
@@ -125,7 +125,7 @@ impl Derivation {
         // column, an integer, text - as the exact decimal it restates, which
         // is what every crate price and quantity is.
         let value = if self.field.dtype() == &DataType::DECIMAL {
-            Scalar::from(crate::types::Decimal::from_scalar(&value)?)
+            Scalar::from(crate::Decimal18::from_scalar(&value)?)
         } else {
             value
         };
@@ -164,7 +164,7 @@ impl Input {
         if let Some(group) = registry.get_definition(FixCategory::Groups, name) {
             let Some(counter) = group.as_fix().counter().ok().flatten() else {
                 return Err(format_smolstr!(
-                    "fix:derivation reads `{name}`, a group declaring no counter"
+                    "FIX:derivation reads `{name}`, a group declaring no counter"
                 ));
             };
             return Ok(Some(Self {
@@ -209,7 +209,7 @@ impl Input {
     }
 }
 
-/// Every `fix:derivation` a registry carries, compiled once.
+/// Every `FIX:derivation` a registry carries, compiled once.
 ///
 /// Built by [`FixRegistry::derivations`] and kept on the registry until a
 /// field changes; every codec and every message reading that registry
@@ -229,7 +229,7 @@ pub(super) struct Derivations {
 }
 
 impl Derivations {
-    /// Reads every field's `fix:derivation` and proves it against the
+    /// Reads every field's `FIX:derivation` and proves it against the
     /// registry.
     ///
     /// Every column a term reads must be a field or a group the registry
@@ -276,7 +276,7 @@ impl Derivations {
                         return Err(Refused::new(
                             field.name(),
                             &format_smolstr!(
-                                "fix:derivation reads `{name}`, which names no field or group \
+                                "FIX:derivation reads `{name}`, which names no field or group \
                                  of the registry"
                             ),
                         ));
@@ -290,7 +290,7 @@ impl Derivations {
                 Some(_) => {
                     return Err(Refused::new(
                         field.name(),
-                        &"fix:derivation fills a name the registry also gives a group",
+                        &"FIX:derivation fills a name the registry also gives a group",
                     ));
                 }
                 None => inputs.push(Input {
@@ -300,8 +300,9 @@ impl Derivations {
             }
             carried.push((tag, field.clone(), term));
         }
-        let schema = DataType::from_fields(inputs.iter().map(|input| input.field.clone()))
-            .map_err(|error| Refused::new("fix:derivation", &error))?
+        let schema = StructureType::from_fields(inputs.iter().map(|input| input.field.clone()))
+            .map(DataType::from)
+            .map_err(|error| Refused::new("FIX:derivation", &error))?
             .required_field("derived");
         let mut list: Vec<Derivation> = Vec::with_capacity(carried.len());
         for (tag, field, term) in carried {

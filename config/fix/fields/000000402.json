@@ -6,9 +6,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Protection term event qualifier. Used to further qualify ProtectionTermEventType(40192).",
-      "display": "ProtectionTermEventQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "H",
           "name": "RestructuringMultipleHoldingObligations",
@@ -25,7 +23,9 @@
           "doc": "Floating rate interest shortfall"
         }
       ],
-      "fix:tag": "40200"
+      "FIX:tag": "40200",
+      "description": "Protection term event qualifier. Used to further qualify ProtectionTermEventType(40192).",
+      "display": "ProtectionTermEventQualifier"
     }
   },
   {
@@ -35,9 +35,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40201",
       "description": "Number of obligations in the repeating group.",
-      "display": "NoProtectionTermObligations",
-      "fix:tag": "40201"
+      "display": "NoProtectionTermObligations"
     }
   },
   {
@@ -47,9 +47,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40202",
       "description": "Specifies the type of obligation applicable to the protection terms. See https://fixtrading.org/packages/protection-term-obligation-type for code list of applicable obligation types.",
-      "display": "ProtectionTermObligationType",
-      "fix:tag": "40202"
+      "display": "ProtectionTermObligationType"
     }
   },
   {
@@ -59,9 +59,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40203",
       "description": "Protection term obligation value appropriate to ProtectionTermObligationType(40202). See https://fixtrading.org/packages/protection-term-obligation-type for applicable obligation type values.",
-      "display": "ProtectionTermObligationValue",
-      "fix:tag": "40203"
+      "display": "ProtectionTermObligationValue"
     }
   },
   {
@@ -71,9 +71,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40204",
       "description": "Number of entries in the repeating group.",
-      "display": "NoPhysicalSettlTerms",
-      "fix:tag": "40204"
+      "display": "NoPhysicalSettlTerms"
     }
   },
   {
@@ -83,9 +83,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40205",
       "description": "Specifies the currency of physical settlement. Uses ISO 4217 currency codes.",
-      "display": "PhysicalSettlCurrency",
-      "fix:tag": "40205"
+      "display": "PhysicalSettlCurrency"
     }
   },
   {
@@ -95,9 +95,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40206",
       "description": "The number of business days used in the determination of physical settlement. Its precise meaning depends on the context in which this element is used.",
-      "display": "PhysicalSettlBusinessDays",
-      "fix:tag": "40206"
+      "display": "PhysicalSettlBusinessDays"
     }
   },
   {
@@ -107,9 +107,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40207",
       "description": "A maximum number of business days. Its precise meaning depends on the context in which this element is used. Intended to be used to limit a particular ISDA fallback provision.",
-      "display": "PhysicalSettlMaximumBusinessDays",
-      "fix:tag": "40207"
+      "display": "PhysicalSettlMaximumBusinessDays"
     }
   },
   {
@@ -119,9 +119,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40208",
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
-      "display": "PhysicalSettlTermXID",
-      "fix:tag": "40208"
+      "display": "PhysicalSettlTermXID"
     }
   },
   {
@@ -131,9 +131,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40209",
       "description": "Number of entries in the repeating group.",
-      "display": "NoPhysicalSettlDeliverableObligations",
-      "fix:tag": "40209"
+      "display": "NoPhysicalSettlDeliverableObligations"
     }
   },
   {
@@ -143,9 +143,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40210",
       "description": "Specifies the type of deliverable obligation applicable for physical settlement. See https://fixtrading.org/packages/deliverable-obligation-type for code list for applicable deliverable obligation types.",
-      "display": "PhysicalSettlDeliverableObligationType",
-      "fix:tag": "40210"
+      "display": "PhysicalSettlDeliverableObligationType"
     }
   },
   {
@@ -155,9 +155,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40211",
       "description": "Physical settlement deliverable obligation value appropriate to PhysicalSettlDeliverableObligationType(40210). See https://fixtrading.org/packages/deliverable-obligation-type for applicable obligation type values.",
-      "display": "PhysicalSettlDeliverableObligationValue",
-      "fix:tag": "40211"
+      "display": "PhysicalSettlDeliverableObligationValue"
     }
   },
   {
@@ -167,9 +167,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40212",
       "description": "Number of additional settlement or bullet payments.",
-      "display": "NoPayments",
-      "fix:tag": "40212"
+      "display": "NoPayments"
     }
   },
   {
@@ -179,9 +179,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of payment.",
-      "display": "PaymentType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Brokerage",
@@ -263,7 +261,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "40213"
+      "FIX:tag": "40213",
+      "description": "Type of payment.",
+      "display": "PaymentType"
     }
   },
   {
@@ -273,9 +273,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The side of the party paying the payment.",
-      "display": "PaymentPaySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buy",
@@ -287,7 +285,9 @@
           "doc": "Sell"
         }
       ],
-      "fix:tag": "40214"
+      "FIX:tag": "40214",
+      "description": "The side of the party paying the payment.",
+      "display": "PaymentPaySide"
     }
   },
   {
@@ -297,9 +297,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The side of the party receiving the payment.",
-      "display": "PaymentReceiveSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buy",
@@ -311,7 +309,9 @@
           "doc": "Sell"
         }
       ],
-      "fix:tag": "40215"
+      "FIX:tag": "40215",
+      "description": "The side of the party receiving the payment.",
+      "display": "PaymentReceiveSide"
     }
   },
   {
@@ -321,9 +321,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40216",
       "description": "Specifies the currency in which PaymentAmount(40217) is denominated. Uses ISO 4271 currency codes.",
-      "display": "PaymentCurrency",
-      "fix:tag": "40216"
+      "display": "PaymentCurrency"
     }
   },
   {
@@ -335,9 +335,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40217",
       "description": "The total payment amount.",
-      "display": "PaymentAmount",
-      "fix:tag": "40217"
+      "display": "PaymentAmount"
     }
   },
   {
@@ -349,9 +349,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40218",
       "description": "The price determining the payment amount expressed in terms specified in PaymentPriceType(40919) and expressed in market format.",
-      "display": "PaymentPrice",
-      "fix:tag": "40218"
+      "display": "PaymentPrice"
     }
   },
   {
@@ -362,9 +362,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40219",
       "description": "The unadjusted payment date.",
-      "display": "PaymentDateUnadjusted",
-      "fix:tag": "40219"
+      "display": "PaymentDateUnadjusted"
     }
   },
   {
@@ -374,9 +374,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the payment date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "PaymentBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -418,7 +416,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40220"
+      "FIX:tag": "40220",
+      "description": "The business day convention used to adjust the payment date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "PaymentBusinessDayConvention"
     }
   },
   {
@@ -428,9 +428,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40221",
       "description": "The business center calendar used to adjust the payment date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "PaymentBusinessCenter",
-      "fix:tag": "40221"
+      "display": "PaymentBusinessCenter"
     }
   },
   {
@@ -441,9 +441,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40222",
       "description": "The adjusted payment date.",
-      "display": "PaymentDateAdjusted",
-      "fix:tag": "40222"
+      "display": "PaymentDateAdjusted"
     }
   },
   {
@@ -453,9 +453,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40223",
       "description": "Applicable value for LegMarketDisruptionEvent(41468).",
-      "display": "LegMarketDisruptionValue",
-      "fix:tag": "40223"
+      "display": "LegMarketDisruptionValue"
     }
   },
   {
@@ -465,9 +465,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40224",
       "description": "The value representing the discount factor used to calculate the present value of the cash flow.",
-      "display": "PaymentDiscountFactor",
-      "fix:tag": "40224"
+      "display": "PaymentDiscountFactor"
     }
   },
   {
@@ -479,9 +479,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40225",
       "description": "The amount representing the present value of the forecast payment.",
-      "display": "PaymentPresentValueAmount",
-      "fix:tag": "40225"
+      "display": "PaymentPresentValueAmount"
     }
   },
   {
@@ -491,9 +491,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40226",
       "description": "Specifies the currency the PaymentPresentValueAmount(40225) is denominated in. Uses ISO 4217 currency codes.",
-      "display": "PaymentPresentValueCurrency",
-      "fix:tag": "40226"
+      "display": "PaymentPresentValueCurrency"
     }
   },
   {
@@ -503,9 +503,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Payment settlement style.",
-      "display": "PaymentSettlStyle",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Standard",
@@ -522,7 +520,9 @@
           "doc": "Standard and net"
         }
       ],
-      "fix:tag": "40227"
+      "FIX:tag": "40227",
+      "description": "Payment settlement style.",
+      "display": "PaymentSettlStyle"
     }
   },
   {
@@ -532,9 +532,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40228",
       "description": "Identifies the reference \"page\" from the rate source. When LegPaymentStreamNonDeliverableSettlRateSource(40087) = 3 (ISDA Settlement Rate Option) this contains a value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
-      "display": "LegPaymentStreamNonDeliverableSettlReferencePage",
-      "fix:tag": "40228"
+      "display": "LegPaymentStreamNonDeliverableSettlReferencePage"
     }
   },
   {
@@ -544,9 +544,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40229",
       "description": "Free form text to specify additional information or enumeration description when a sdtandard value does not apply. Identifies the payment type when PaymentType(40213) = 99 (Other).",
-      "display": "PaymentText",
-      "fix:tag": "40229"
+      "display": "PaymentText"
     }
   },
   {
@@ -556,9 +556,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40230",
       "description": "Number of additional settlements or bullet payments.",
-      "display": "NoPaymentSettls",
-      "fix:tag": "40230"
+      "display": "NoPaymentSettls"
     }
   },
   {
@@ -570,9 +570,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40231",
       "description": "The payment settlement amount.",
-      "display": "PaymentSettlAmount",
-      "fix:tag": "40231"
+      "display": "PaymentSettlAmount"
     }
   },
   {
@@ -582,9 +582,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40232",
       "description": "Specifies the currency the PaymentSettlAmount(40231) is denominated in. Uses ISO 4217 currency codes.",
-      "display": "PaymentSettlCurrency",
-      "fix:tag": "40232"
+      "display": "PaymentSettlCurrency"
     }
   },
   {
@@ -594,9 +594,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40233",
       "description": "Number of parties identified in the additional settlement or bullet payment.",
-      "display": "NoPaymentSettlPartyIDs",
-      "fix:tag": "40233"
+      "display": "NoPaymentSettlPartyIDs"
     }
   },
   {
@@ -606,9 +606,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40234",
       "description": "The payment settlement party identifier.",
-      "display": "PaymentSettlPartyID",
-      "fix:tag": "40234"
+      "display": "PaymentSettlPartyID"
     }
   },
   {
@@ -618,9 +618,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the class or source of PaymentSettlPartyID(40234) value (e.g. BIC).",
-      "display": "PaymentSettlPartyIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "KoreanInvestorID",
@@ -808,7 +806,9 @@
           "doc": "Korea Short Selling Registration Number"
         }
       ],
-      "fix:tag": "40235"
+      "FIX:tag": "40235",
+      "description": "Identifies the class or source of PaymentSettlPartyID(40234) value (e.g. BIC).",
+      "display": "PaymentSettlPartyIDSource"
     }
   },
   {
@@ -818,9 +818,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the role of PaymentSettlPartyID(40234) (e.g. the beneficiary's bank or depository institution).",
-      "display": "PaymentSettlPartyRole",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ExecutingFirm",
@@ -1467,7 +1465,9 @@
           "doc": "Algorithm"
         }
       ],
-      "fix:tag": "40236"
+      "FIX:tag": "40236",
+      "description": "Identifies the role of PaymentSettlPartyID(40234) (e.g. the beneficiary's bank or depository institution).",
+      "display": "PaymentSettlPartyRole"
     }
   },
   {
@@ -1477,9 +1477,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Qualifies the value of PaymentSettlPartyRole(40236).",
-      "display": "PaymentSettlPartyRoleQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Agency",
@@ -1667,7 +1665,9 @@
           "doc": "Lender"
         }
       ],
-      "fix:tag": "40237"
+      "FIX:tag": "40237",
+      "description": "Qualifies the value of PaymentSettlPartyRole(40236).",
+      "display": "PaymentSettlPartyRoleQualifier"
     }
   },
   {
@@ -1677,9 +1677,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40238",
       "description": "Number of sub-party IDs to be reported for the party.",
-      "display": "NoPaymentSettlPartySubIDs",
-      "fix:tag": "40238"
+      "display": "NoPaymentSettlPartySubIDs"
     }
   },
   {
@@ -1689,9 +1689,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40239",
       "description": "Party sub-identifier, if applicable, for PaymentSettlPartyRole(40236).",
-      "display": "PaymentSettlPartySubID",
-      "fix:tag": "40239"
+      "display": "PaymentSettlPartySubID"
     }
   },
   {
@@ -1701,9 +1701,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The type of PaymentSettlPartySubID(40239) value.",
-      "display": "PaymentSettlPartySubIDType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Firm",
@@ -2150,7 +2148,9 @@
           "doc": "Certificate registration status"
         }
       ],
-      "fix:tag": "40240"
+      "FIX:tag": "40240",
+      "description": "The type of PaymentSettlPartySubID(40239) value.",
+      "display": "PaymentSettlPartySubIDType"
     }
   },
   {
@@ -2160,9 +2160,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40241",
       "description": "Number of swap streams in the repeating group.",
-      "display": "NoLegStreams",
-      "fix:tag": "40241"
+      "display": "NoLegStreams"
     }
   },
   {
@@ -2172,9 +2172,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of swap stream.",
-      "display": "LegStreamType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "PaymentCashSettlement",
@@ -2186,7 +2184,9 @@
           "doc": "Physical delivery"
         }
       ],
-      "fix:tag": "40242"
+      "FIX:tag": "40242",
+      "description": "Type of swap stream.",
+      "display": "LegStreamType"
     }
   },
   {
@@ -2196,9 +2196,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40243",
       "description": "A short descriptive name given to the payment stream, e.g. CDS, Fixed, Float, Float2, GBP. The description has no intrinsic meaning but should be arbitrarily chosen by the remitter as a reference.",
-      "display": "LegStreamDesc",
-      "fix:tag": "40243"
+      "display": "LegStreamDesc"
     }
   },
   {
@@ -2208,9 +2208,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The side of the party paying the stream.",
-      "display": "LegStreamPaySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buy",
@@ -2222,7 +2220,9 @@
           "doc": "Sell"
         }
       ],
-      "fix:tag": "40244"
+      "FIX:tag": "40244",
+      "description": "The side of the party paying the stream.",
+      "display": "LegStreamPaySide"
     }
   },
   {
@@ -2232,9 +2232,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The side of the party receiving the stream.",
-      "display": "LegStreamReceiveSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buy",
@@ -2246,7 +2244,9 @@
           "doc": "Sell"
         }
       ],
-      "fix:tag": "40245"
+      "FIX:tag": "40245",
+      "description": "The side of the party receiving the stream.",
+      "display": "LegStreamReceiveSide"
     }
   },
   {
@@ -2258,9 +2258,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40246",
       "description": "Notional, or initial notional value for the payment stream. The LegPaymentSchedule component should be used for specifying the steps.",
-      "display": "LegStreamNotional",
-      "fix:tag": "40246"
+      "display": "LegStreamNotional"
     }
   },
   {
@@ -2270,9 +2270,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40247",
       "description": "Specifies the currency the LegStreamNotional(40246) is denominated in. Uses ISO 4217 currency codes.",
-      "display": "LegStreamCurrency",
-      "fix:tag": "40247"
+      "display": "LegStreamCurrency"
     }
   },
   {
@@ -2282,9 +2282,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40248",
       "description": "Free form text to specify additional information or enumeration description when a standard value does not apply.",
-      "display": "LegStreamText",
-      "fix:tag": "40248"
+      "display": "LegStreamText"
     }
   },
   {
@@ -2295,9 +2295,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40249",
       "description": "The unadjusted effective date.",
-      "display": "LegStreamEffectiveDateUnadjusted",
-      "fix:tag": "40249"
+      "display": "LegStreamEffectiveDateUnadjusted"
     }
   },
   {
@@ -2307,9 +2307,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the instrument leg's stream's effective date or relative effective date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
-      "display": "LegStreamEffectiveDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -2351,7 +2349,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40250"
+      "FIX:tag": "40250",
+      "description": "The business day convention used to adjust the instrument leg's stream's effective date or relative effective date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
+      "display": "LegStreamEffectiveDateBusinessDayConvention"
     }
   },
   {
@@ -2361,9 +2361,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40251",
       "description": "The business center calendar used to adjust the instrument leg's stream's effective date or relative effective date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegStreamEffectiveDateBusinessCenter",
-      "fix:tag": "40251"
+      "display": "LegStreamEffectiveDateBusinessCenter"
     }
   },
   {
@@ -2373,9 +2373,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40252",
       "description": "Specifies the anchor date when the effective date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values",
-      "display": "LegStreamEffectiveDateRelativeTo",
-      "fix:tag": "40252"
+      "display": "LegStreamEffectiveDateRelativeTo"
     }
   },
   {
@@ -2385,9 +2385,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40253",
       "description": "Time unit multiplier for the relative effective date offset.",
-      "display": "LegStreamEffectiveDateOffsetPeriod",
-      "fix:tag": "40253"
+      "display": "LegStreamEffectiveDateOffsetPeriod"
     }
   },
   {
@@ -2397,9 +2397,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative effective date offset.",
-      "display": "LegStreamEffectiveDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -2421,7 +2419,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40254"
+      "FIX:tag": "40254",
+      "description": "Time unit associated with the relative effective date offset.",
+      "display": "LegStreamEffectiveDateOffsetUnit"
     }
   },
   {
@@ -2431,9 +2431,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative effective date offset.",
-      "display": "LegStreamEffectiveDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -2465,7 +2463,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "40255"
+      "FIX:tag": "40255",
+      "description": "Specifies the day type of the relative effective date offset.",
+      "display": "LegStreamEffectiveDateOffsetDayType"
     }
   },
   {
@@ -2476,9 +2476,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40256",
       "description": "The adjusted effective date.",
-      "display": "LegStreamEffectiveDateAdjusted",
-      "fix:tag": "40256"
+      "display": "LegStreamEffectiveDateAdjusted"
     }
   },
   {
@@ -2489,9 +2489,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40257",
       "description": "The unadjusted termination date.",
-      "display": "LegStreamTerminationDateUnadjusted",
-      "fix:tag": "40257"
+      "display": "LegStreamTerminationDateUnadjusted"
     }
   },
   {
@@ -2501,9 +2501,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the instrument leg's stream's termination, or relative termination, date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
-      "display": "LegStreamTerminationDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -2545,7 +2543,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40258"
+      "FIX:tag": "40258",
+      "description": "The business day convention used to adjust the instrument leg's stream's termination, or relative termination, date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
+      "display": "LegStreamTerminationDateBusinessDayConvention"
     }
   },
   {
@@ -2555,9 +2555,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40259",
       "description": "The business center calendar used to adjust the instrument leg's stream's termination, or relative termination, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegStreamTerminationDateBusinessCenter",
-      "fix:tag": "40259"
+      "display": "LegStreamTerminationDateBusinessCenter"
     }
   },
   {
@@ -2567,9 +2567,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40260",
       "description": "Specifies the anchor date when the termination date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "LegStreamTerminationDateRelativeTo",
-      "fix:tag": "40260"
+      "display": "LegStreamTerminationDateRelativeTo"
     }
   },
   {
@@ -2579,9 +2579,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40261",
       "description": "Time unit multiplier for the relative termination date offset.",
-      "display": "LegStreamTerminationDateOffsetPeriod",
-      "fix:tag": "40261"
+      "display": "LegStreamTerminationDateOffsetPeriod"
     }
   },
   {
@@ -2591,9 +2591,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative termination date offset.",
-      "display": "LegStreamTerminationDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -2615,7 +2613,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40262"
+      "FIX:tag": "40262",
+      "description": "Time unit associated with the relative termination date offset.",
+      "display": "LegStreamTerminationDateOffsetUnit"
     }
   },
   {
@@ -2625,9 +2625,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative termination date offset.",
-      "display": "LegStreamTerminationDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -2659,7 +2657,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "40263"
+      "FIX:tag": "40263",
+      "description": "Specifies the day type of the relative termination date offset.",
+      "display": "LegStreamTerminationDateOffsetDayType"
     }
   },
   {
@@ -2670,9 +2670,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40264",
       "description": "The adjusted termination date.",
-      "display": "LegStreamTerminationDateAdjusted",
-      "fix:tag": "40264"
+      "display": "LegStreamTerminationDateAdjusted"
     }
   },
   {
@@ -2682,9 +2682,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust calculation periods. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
-      "display": "LegStreamCalculationPeriodBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -2726,7 +2724,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40265"
+      "FIX:tag": "40265",
+      "description": "The business day convention used to adjust calculation periods. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
+      "display": "LegStreamCalculationPeriodBusinessDayConvention"
     }
   },
   {
@@ -2736,9 +2736,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40266",
       "description": "The business center calendar used to adjust calculation periods, e.g. \"GLBO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegStreamCalculationPeriodBusinessCenter",
-      "fix:tag": "40266"
+      "display": "LegStreamCalculationPeriodBusinessCenter"
     }
   },
   {
@@ -2749,9 +2749,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40267",
       "description": "The unadjusted first calculation period start date if before the effective date.",
-      "display": "LegStreamFirstPeriodStartDateUnadjusted",
-      "fix:tag": "40267"
+      "display": "LegStreamFirstPeriodStartDateUnadjusted"
     }
   },
   {
@@ -2761,9 +2761,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the instrument leg's stream's first calculation period start date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
-      "display": "LegStreamFirstPeriodStartDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -2805,7 +2803,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40268"
+      "FIX:tag": "40268",
+      "description": "The business day convention used to adjust the instrument leg's stream's first calculation period start date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
+      "display": "LegStreamFirstPeriodStartDateBusinessDayConvention"
     }
   },
   {
@@ -2815,9 +2815,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40269",
       "description": "The business center calendar used to adjust the instrument leg's stream's first calculation period start date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegStreamFirstPeriodStartDateBusinessCenter",
-      "fix:tag": "40269"
+      "display": "LegStreamFirstPeriodStartDateBusinessCenter"
     }
   },
   {
@@ -2828,9 +2828,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40270",
       "description": "The adjusted first calculation period start date, if it is before the effective date.",
-      "display": "LegStreamFirstPeriodStartDateAdjusted",
-      "fix:tag": "40270"
+      "display": "LegStreamFirstPeriodStartDateAdjusted"
     }
   },
   {
@@ -2841,9 +2841,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40271",
       "description": "The unadjusted first start date of the regular calculation period, if there is an initial stub period.",
-      "display": "LegStreamFirstRegularPeriodStartDateUnadjusted",
-      "fix:tag": "40271"
+      "display": "LegStreamFirstRegularPeriodStartDateUnadjusted"
     }
   },
   {
@@ -2854,9 +2854,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40272",
       "description": "The unadjusted end date of the initial compounding period.",
-      "display": "LegStreamFirstCompoundingPeriodEndDateUnadjusted",
-      "fix:tag": "40272"
+      "display": "LegStreamFirstCompoundingPeriodEndDateUnadjusted"
     }
   },
   {
@@ -2867,9 +2867,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40273",
       "description": "The unadjusted last regular period end date if there is a final stub period.",
-      "display": "LegStreamLastRegularPeriodEndDateUnadjusted",
-      "fix:tag": "40273"
+      "display": "LegStreamLastRegularPeriodEndDateUnadjusted"
     }
   },
   {
@@ -2879,9 +2879,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40274",
       "description": "Time unit multiplier for the frequency at which calculation period end dates occur.",
-      "display": "LegStreamCalculationFrequencyPeriod",
-      "fix:tag": "40274"
+      "display": "LegStreamCalculationFrequencyPeriod"
     }
   },
   {
@@ -2891,9 +2891,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the frequency at which calculation period end dates occur.",
-      "display": "LegStreamCalculationFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -2935,7 +2933,9 @@
           "doc": "Term"
         }
       ],
-      "fix:tag": "40275"
+      "FIX:tag": "40275",
+      "description": "Time unit associated with the frequency at which calculation period end dates occur.",
+      "display": "LegStreamCalculationFrequencyUnit"
     }
   },
   {
@@ -2945,9 +2945,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
-      "display": "LegStreamCalculationRollConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FirstDay",
@@ -3179,7 +3177,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "40276"
+      "FIX:tag": "40276",
+      "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
+      "display": "LegStreamCalculationRollConvention"
     }
   },
   {
@@ -3189,9 +3189,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40277",
       "description": "Number of dealers in the repeating group.",
-      "display": "NoCashSettlDealers",
-      "fix:tag": "40277"
+      "display": "NoCashSettlDealers"
     }
   },
   {
@@ -3201,9 +3201,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40278",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoBusinessCenters",
-      "fix:tag": "40278"
+      "display": "NoBusinessCenters"
     }
   },
   {
@@ -3213,9 +3213,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of payment stream applicable to the swap stream associated with the instrument leg.",
-      "display": "LegPaymentStreamType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Periodic",
@@ -3267,7 +3265,9 @@
           "doc": "Correlation"
         }
       ],
-      "fix:tag": "40279"
+      "FIX:tag": "40279",
+      "description": "Identifies the type of payment stream applicable to the swap stream associated with the instrument leg.",
+      "display": "LegPaymentStreamType"
     }
   },
   {
@@ -3277,9 +3277,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40280",
       "description": "Used only for credit index trade. This contains the credit spread (\"fair value\") at which the trade was executed. The market rate varies over the life of the index depending on market conditions. This is the price of the index as quoted by trading desks.",
-      "display": "LegPaymentStreamMarketRate",
-      "fix:tag": "40280"
+      "display": "LegPaymentStreamMarketRate"
     }
   },
   {
@@ -3289,9 +3289,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40281",
       "description": "Applicable to credit default swaps on mortgage backed securities to specify whether payment delays are applicable to the fixed amount.",
-      "display": "LegPaymentStreamDelayIndicator",
-      "fix:tag": "40281"
+      "display": "LegPaymentStreamDelayIndicator"
     }
   },
   {
@@ -3301,9 +3301,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40282",
       "description": "Specifies the currency that the stream settles in (to support swaps that settle in a currency different from the notional currency). Uses ISO 4217 currency codes.",
-      "display": "LegPaymentStreamSettlCurrency",
-      "fix:tag": "40282"
+      "display": "LegPaymentStreamSettlCurrency"
     }
   },
   {
@@ -3313,9 +3313,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The day count convention used in the payment stream calculations.",
-      "display": "LegPaymentStreamDayCount",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OneOne",
@@ -3437,7 +3435,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "40283"
+      "FIX:tag": "40283",
+      "description": "The day count convention used in the payment stream calculations.",
+      "display": "LegPaymentStreamDayCount"
     }
   },
   {
@@ -3447,9 +3447,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40284",
       "description": "The number of days from the adjusted calculation period start date to the adjusted value date, calculated in accordance with the applicable day count fraction.",
-      "display": "LegPaymentStreamAccrualDays",
-      "fix:tag": "40284"
+      "display": "LegPaymentStreamAccrualDays"
     }
   },
   {
@@ -3459,9 +3459,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The method of calculating discounted payment amounts.",
-      "display": "LegPaymentStreamDiscountType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Standard",
@@ -3473,7 +3471,9 @@
           "doc": "Forward Rate Agreement (FRA)"
         }
       ],
-      "fix:tag": "40285"
+      "FIX:tag": "40285",
+      "description": "The method of calculating discounted payment amounts.",
+      "display": "LegPaymentStreamDiscountType"
     }
   },
   {
@@ -3483,9 +3483,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40286",
       "description": "Discount rate. The rate is expressed in decimal, e.g. 5% is expressed as 0.05.",
-      "display": "LegPaymentStreamDiscountRate",
-      "fix:tag": "40286"
+      "display": "LegPaymentStreamDiscountRate"
     }
   },
   {
@@ -3495,9 +3495,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The day count convention applied to the LegPaymentStreamDiscountRate(40286).",
-      "display": "LegPaymentStreamDiscountRateDayCount",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OneOne",
@@ -3619,7 +3617,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "40287"
+      "FIX:tag": "40287",
+      "description": "The day count convention applied to the LegPaymentStreamDiscountRate(40286).",
+      "display": "LegPaymentStreamDiscountRateDayCount"
     }
   },
   {
@@ -3629,9 +3629,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Compounding method.",
-      "display": "LegPaymentStreamCompoundingMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "None",
@@ -3653,7 +3651,9 @@
           "doc": "Spread exclusive"
         }
       ],
-      "fix:tag": "40288"
+      "FIX:tag": "40288",
+      "description": "Compounding method.",
+      "display": "LegPaymentStreamCompoundingMethod"
     }
   },
   {
@@ -3663,9 +3663,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40289",
       "description": "Indicates whether there is an initial exchange of principal on the effective date.",
-      "display": "LegPaymentStreamInitialPrincipalExchangeIndicator",
-      "fix:tag": "40289"
+      "display": "LegPaymentStreamInitialPrincipalExchangeIndicator"
     }
   },
   {
@@ -3675,9 +3675,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40290",
       "description": "Indicates whether there are intermediate or interim exchanges of principal during the term of the swap.",
-      "display": "LegPaymentStreamInterimPrincipalExchangeIndicator",
-      "fix:tag": "40290"
+      "display": "LegPaymentStreamInterimPrincipalExchangeIndicator"
     }
   },
   {
@@ -3687,9 +3687,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40291",
       "description": "Indicates whether there is a final exchange of principal on the termination date.",
-      "display": "LegPaymentStreamFinalPrincipalExchangeIndicator",
-      "fix:tag": "40291"
+      "display": "LegPaymentStreamFinalPrincipalExchangeIndicator"
     }
   },
   {
@@ -3699,9 +3699,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the payment stream's payment date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
-      "display": "LegPaymentStreamPaymentDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -3743,7 +3741,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40292"
+      "FIX:tag": "40292",
+      "description": "The business day convention used to adjust the payment stream's payment date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
+      "display": "LegPaymentStreamPaymentDateBusinessDayConvention"
     }
   },
   {
@@ -3753,9 +3753,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40293",
       "description": "The business center calendar used to adjust the payment stream's payment date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegPaymentStreamPaymentDateBusinessCenter",
-      "fix:tag": "40293"
+      "display": "LegPaymentStreamPaymentDateBusinessCenter"
     }
   },
   {
@@ -3765,9 +3765,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40294",
       "description": "Time unit multiplier for the frequency of payments.",
-      "display": "LegPaymentStreamPaymentFrequencyPeriod",
-      "fix:tag": "40294"
+      "display": "LegPaymentStreamPaymentFrequencyPeriod"
     }
   },
   {
@@ -3777,9 +3777,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the frequency of payments.",
-      "display": "LegPaymentStreamPaymentFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -3806,7 +3804,9 @@
           "doc": "Term"
         }
       ],
-      "fix:tag": "40295"
+      "FIX:tag": "40295",
+      "description": "Time unit associated with the frequency of payments.",
+      "display": "LegPaymentStreamPaymentFrequencyUnit"
     }
   },
   {
@@ -3816,9 +3816,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
-      "display": "LegPaymentStreamPaymentRollConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FirstDay",
@@ -4050,7 +4048,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "40296"
+      "FIX:tag": "40296",
+      "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
+      "display": "LegPaymentStreamPaymentRollConvention"
     }
   },
   {
@@ -4061,9 +4061,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40297",
       "description": "The unadjusted first payment date.",
-      "display": "LegPaymentStreamFirstPaymentDateUnadjusted",
-      "fix:tag": "40297"
+      "display": "LegPaymentStreamFirstPaymentDateUnadjusted"
     }
   },
   {
@@ -4074,9 +4074,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40298",
       "description": "The unadjusted last regular payment date.",
-      "display": "LegPaymentStreamLastRegularPaymentDateUnadjusted",
-      "fix:tag": "40298"
+      "display": "LegPaymentStreamLastRegularPaymentDateUnadjusted"
     }
   },
   {
@@ -4086,9 +4086,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40299",
       "description": "Specifies the anchor date when payment dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "LegPaymentStreamPaymentDateRelativeTo",
-      "fix:tag": "40299"
+      "display": "LegPaymentStreamPaymentDateRelativeTo"
     }
   }
 ]

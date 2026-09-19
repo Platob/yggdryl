@@ -135,7 +135,7 @@ fn committed_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
         std::sync::OnceLock::new();
     std::sync::Arc::clone(REGISTRY.get_or_init(|| {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-        let folder = yggdryl::holder::local::Folder::new(root).expect("the local seed path");
+        let folder = yggdryl::local::Folder::new(root).expect("the local seed path");
         std::sync::Arc::new(
             yggdryl::FixRegistry::from_handle(&folder).expect("the committed dictionary loads"),
         )
@@ -167,7 +167,7 @@ fn dated_line(
     body: &[u8],
     version: &str,
 ) -> yggdryl::Result<yggdryl::FixMsg> {
-    use yggdryl::media::text::{TextBytes, TextLine};
+    use yggdryl::text::{TextBytes, TextLine};
 
     let codec = codec.clone().with_capture_names(["beginstring"]);
     let line = TextLine::from_bytes(0, TextBytes::from_bytes(body)?)?
@@ -238,7 +238,7 @@ fn crated_components() -> usize {
     yggdryl::fix_crate_fields()
         .expect("the crate's own fields")
         .iter()
-        .filter(|field| matches!(field.dtype(), yggdryl::DataType::Struct(_)))
+        .filter(|field| matches!(field.dtype(), yggdryl::DataType::Structure(_)))
         .count()
 }
 
@@ -270,8 +270,9 @@ fn sequence(value: yggdryl::Scalar) -> Vec<yggdryl::Scalar> {
 /// members a wire states one tag at a time.
 fn category_of(field: &yggdryl::Field) -> yggdryl::FixCategory {
     match field.dtype() {
-        yggdryl::DataType::Struct(_) => yggdryl::FixCategory::Components,
-        yggdryl::DataType::List(item) | yggdryl::DataType::LargeList(item)
+        yggdryl::DataType::Structure(_) => yggdryl::FixCategory::Components,
+        yggdryl::DataType::Sequence(yggdryl::SequenceType::List(item))
+        | yggdryl::DataType::Sequence(yggdryl::SequenceType::LargeList(item))
             if !item.is_nullable() && !item.dtype().is_nested() =>
         {
             yggdryl::FixCategory::Fields
@@ -329,5 +330,5 @@ fn format_target(registry: &yggdryl::FixRegistry) -> yggdryl::Field {
 /// `decimal128(38, 18)`, so a pin states the number in text and never as a
 /// float: `41.25` is a value a `f64` cannot hold and a decimal can.
 fn decimal(text: &str) -> yggdryl::Scalar {
-    yggdryl::Scalar::from(yggdryl::Decimal::parse(text).expect("an exact number"))
+    yggdryl::Scalar::from(yggdryl::Decimal18::parse(text).expect("an exact number"))
 }

@@ -2,8 +2,8 @@
 //!
 //! [`Coding`] wraps any [`IOBase`] and presents the *decoded* bytes: reads
 //! decompress, writes compress, and the wrapped handle only ever holds the
-//! encoded form. The per-format aliases - [`crate::coding::gzip::Gzip`],
-//! [`crate::coding::zlib::Zlib`], [`crate::coding::zstd::Zstd`] - are this type with the codec
+//! encoded form. The per-format aliases - [`crate::gzip::Gzip`],
+//! [`crate::zlib::Zlib`], [`crate::zstd::Zstd`] - are this type with the codec
 //! already chosen.
 //!
 //! A coding is not seekable, so positional mutation and an explicitly opened
@@ -12,9 +12,6 @@
 //! writes are published on [`IOBase::flush`] rather than on every `pwrite`.
 
 mod coded;
-pub mod gzip;
-pub mod zlib;
-pub mod zstd;
 
 pub use coded::Coded;
 
@@ -199,7 +196,6 @@ impl<H: IOBase> Coding<H> {
     /// unlocated source snapshots only the encoded bytes it already holds.
     /// Opened or dirty state must snapshot `plain`, because it is the stable
     /// presented value and may be newer than the resource underneath it.
-    #[cfg(feature = "arrow")]
     fn owned_presented_handle(&self) -> Result<Holder> {
         if let Some(plain) = self.materialized() {
             return Ok(Holder::buffer(
@@ -244,7 +240,6 @@ impl<H: IOBase> Coding<H> {
     }
 
     /// Apply the generic read shaping after an owning encoding seam.
-    #[cfg(feature = "arrow")]
     fn shape_owned_arrow_reader(
         reader: crate::arrow::BatchReader,
         options: &crate::media::RecordOptions,
@@ -317,7 +312,6 @@ impl<H: IOBase> crate::IOMedia for Coding<H> {
     /// restored in the owned handle's media type, so decoding remains lazy.
     /// Only an opened or dirty view snapshots the decoded value it already
     /// owns.
-    #[cfg(feature = "arrow")]
     fn read_arrow_reader(
         &self,
         options: &crate::media::RecordOptions,
@@ -330,10 +324,10 @@ impl<H: IOBase> crate::IOMedia for Coding<H> {
         }
         let reader = match options {
             crate::media::RecordOptions::Ipc(ipc) => {
-                crate::media::ipc::read_owned_batch_reader(owned, options.field().as_ref(), ipc)?
+                crate::ipc::read_owned_batch_reader(owned, options.field().as_ref(), ipc)?
             }
             crate::media::RecordOptions::Text(text) => {
-                crate::media::text::arrow::read_owned_arrow_reader(owned, text)?
+                crate::text::arrow::read_owned_arrow_reader(owned, text)?
             }
             _ => return crate::IOMedia::read_arrow_reader(&owned, options),
         };
@@ -474,7 +468,7 @@ impl<H: IOBase> IOBase for Coding<H> {
         self.handle.url()
     }
 
-    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+    fn bound_location(&self) -> Option<&crate::fs::BoundLocation> {
         self.handle.bound_location()
     }
 

@@ -1,5 +1,5 @@
 //! The specification's tables read as implications: each carried by the
-//! field it fills as a `fix:derivation`, answered once from a hand-written
+//! field it fills as a `FIX:derivation`, answered once from a hand-written
 //! line, refused where the answer is not certain, and settled in one pass.
 
 use super::SoleMessage;
@@ -10,12 +10,13 @@ use std::sync::Arc;
 use yggdryl::expression::Term;
 use yggdryl::graph::{Event, MarketElement};
 use yggdryl::holder::Buffer;
-use yggdryl::holder::local::Folder;
-use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
-use yggdryl::types::{Isin, State};
+use yggdryl::local::Folder;
+use yggdryl::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::{
-    DataType, FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, Timezone, Url, fix_schema,
+    DataType, FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, StructureType, Timezone, Url,
+    fix_schema,
 };
+use yggdryl::{Isin, State};
 
 fn reader() -> FixCodec {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -516,7 +517,7 @@ fn a_derivation_edited_on_a_registry_field_is_what_the_reader_fills_by() {
     assert_eq!(held.by_tag(151).unwrap(), super::decimal("8"));
 
     // Removing it silences the fill. `update` merges, and a stored key the
-    // incoming field omits is kept as every `fix:` key is, so the removal
+    // incoming field omits is kept as every `FIX:` key is, so the removal
     // lands through `update_definition`, which replaces the definition
     // whole; a reader built over the registry as it stands then fills by
     // the registry as it stands then.
@@ -564,12 +565,12 @@ fn a_malformed_derivation_refuses_at_insert_and_update_naming_the_field() {
     let mut registry = committed();
     let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
     gross
-        .insert_metadata("fix:derivation", "lastqty *")
+        .insert_metadata("FIX:derivation", "lastqty *")
         .expect("any text can be stored on a field");
     let refused = registry.update(gross).expect_err("a malformed derivation");
     let rendered = refused.to_string();
     assert!(rendered.contains("grosstradeamt"), "{rendered}");
-    assert!(rendered.contains("fix:derivation"), "{rendered}");
+    assert!(rendered.contains("FIX:derivation"), "{rendered}");
     assert!(
         registry
             .field_by_tag(381)
@@ -584,7 +585,7 @@ fn a_malformed_derivation_refuses_at_insert_and_update_naming_the_field() {
     let mut fresh = DataType::Float64.nullable_field("notional");
     fresh.as_fix_mut().set_tag(9_381).expect("a tag");
     fresh
-        .insert_metadata("fix:derivation", "case when")
+        .insert_metadata("FIX:derivation", "case when")
         .expect("stored");
     let refused = registry.insert(fresh).expect_err("refused at insert");
     assert!(refused.to_string().contains("notional"), "{refused}");
@@ -594,10 +595,10 @@ fn a_malformed_derivation_refuses_at_insert_and_update_naming_the_field() {
     let mut broken = DataType::Float64.nullable_field("notional");
     broken.as_fix_mut().set_tag(9_381).expect("a tag");
     broken
-        .insert_metadata("fix:derivation", "lastqty *")
+        .insert_metadata("FIX:derivation", "lastqty *")
         .expect("stored");
     let refused = broken.as_fix().derivation().expect_err("not a term");
-    assert!(refused.to_string().contains("fix:derivation"), "{refused}");
+    assert!(refused.to_string().contains("FIX:derivation"), "{refused}");
 }
 
 #[test]
@@ -708,7 +709,7 @@ fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads()
         };
         carried += 1;
         assert_eq!(
-            field.get_metadata("fix:derivation"),
+            field.get_metadata("FIX:derivation"),
             Some(term.to_string().as_str()),
             "{} stores the canonical text",
             field.name()
@@ -726,7 +727,8 @@ fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads()
                     .clone()
             })
             .collect();
-        let schema = DataType::from_fields(inputs)
+        let schema = StructureType::from_fields(inputs)
+            .map(DataType::from)
             .expect("distinct columns")
             .required_field("row");
         term.bind(&schema).unwrap_or_else(|error| {
@@ -786,7 +788,7 @@ fn refusal(error: &yggdryl::Error) -> String {
 #[test]
 fn a_malformed_derivation_in_a_store_or_a_snapshot_refuses_the_load_naming_the_field() {
     // The two load doors - a store on disk and a JSON snapshot - validate
-    // the text as insert and update do: a stored `fix:derivation` that is
+    // the text as insert and update do: a stored `FIX:derivation` that is
     // not a term refuses the whole load, naming the field that carries it.
     let mut registry = FixRegistry::new();
     let mut gross = DataType::Float64.nullable_field("grosstradeamt");
@@ -809,7 +811,7 @@ fn a_malformed_derivation_in_a_store_or_a_snapshot_refuses_the_load_naming_the_f
     let refused = FixRegistry::from_json(&corrupted).expect_err("refused at load");
     let rendered = refusal(&refused);
     assert!(rendered.contains("grosstradeamt"), "{rendered}");
-    assert!(rendered.contains("fix:derivation"), "{rendered}");
+    assert!(rendered.contains("FIX:derivation"), "{rendered}");
 
     let root = Folder::temporary()
         .expect("a temporary folder")
@@ -840,7 +842,7 @@ fn a_malformed_derivation_in_a_store_or_a_snapshot_refuses_the_load_naming_the_f
     let refused = FixRegistry::from_handle(&folder).expect_err("refused at load");
     let rendered = refusal(&refused);
     assert!(rendered.contains("grosstradeamt"), "{rendered}");
-    assert!(rendered.contains("fix:derivation"), "{rendered}");
+    assert!(rendered.contains("FIX:derivation"), "{rendered}");
     std::fs::remove_dir_all(root).expect("cleaned up");
 }
 
@@ -861,10 +863,11 @@ fn a_registry_whose_derivations_do_not_compile_refuses_on_every_door() {
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|";
     // A parse is one of the doors that refuses, so the message the row and
     // the batch doors are handed is built rather than read.
-    let root = DataType::from_fields([
+    let root = StructureType::from_fields([
         reader.registry().field_by_tag(37).expect("OrderID").clone(),
         reader.registry().field_by_tag(32).expect("LastQty").clone(),
     ])
+    .map(DataType::from)
     .expect("a struct root")
     .required_field("8");
     let value = Scalar::from_record([

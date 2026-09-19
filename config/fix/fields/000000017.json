@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1700",
       "description": "Number of settlement amount entries.",
-      "display": "NoSettlementAmounts",
-      "fix:tag": "1700"
+      "display": "NoSettlementAmounts"
     }
   },
   {
@@ -20,9 +20,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1701",
       "description": "The amount of settlement.",
-      "display": "SettlementAmount",
-      "fix:tag": "1701"
+      "display": "SettlementAmount"
     }
   },
   {
@@ -32,9 +32,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1702",
       "description": "The currency of the reported settlement amount.",
-      "display": "SettlementAmountCurrency",
-      "fix:tag": "1702"
+      "display": "SettlementAmountCurrency"
     }
   },
   {
@@ -44,9 +44,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1703",
       "description": "Number of collateral amount entries.",
-      "display": "NoCollateralAmounts",
-      "fix:tag": "1703"
+      "display": "NoCollateralAmounts"
     }
   },
   {
@@ -58,9 +58,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1704",
       "description": "Currency value currently attributed to the collateral.",
-      "display": "CurrentCollateralAmount",
-      "fix:tag": "1704"
+      "display": "CurrentCollateralAmount"
     }
   },
   {
@@ -70,9 +70,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1705",
       "description": "Currency of the collateral; optional, defaults to the Settlement Currency if not specified.",
-      "display": "CollateralCurrency",
-      "fix:tag": "1705"
+      "display": "CollateralCurrency"
     }
   },
   {
@@ -82,9 +82,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1706",
       "description": "Type of collateral on deposit being reported.",
-      "display": "CollateralType",
-      "fix:tag": "1706"
+      "display": "CollateralType"
     }
   },
   {
@@ -94,9 +94,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1707",
       "description": "Number of pay collect entries.",
-      "display": "NoPayCollects",
-      "fix:tag": "1707"
+      "display": "NoPayCollects"
     }
   },
   {
@@ -106,9 +106,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1708",
       "description": "Category describing the reason for funds paid to, or the funds collected from the clearing firm.",
-      "display": "PayCollectType",
-      "fix:tag": "1708"
+      "display": "PayCollectType"
     }
   },
   {
@@ -118,9 +118,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1709",
       "description": "Currency denomination of value in PayAmount(1710) and CollectAmount(1711). If not specified, default to currency specified in SettlementAmountCurrency(1702).",
-      "display": "PayCollectCurrency",
-      "fix:tag": "1709"
+      "display": "PayCollectCurrency"
     }
   },
   {
@@ -132,9 +132,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1710",
       "description": "Amount to be paid by the clearinghouse to the clearing firm.",
-      "display": "PayAmount",
-      "fix:tag": "1710"
+      "display": "PayAmount"
     }
   },
   {
@@ -146,9 +146,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1711",
       "description": "Amount to be collected by the clearinghouse from the clearing firm.",
-      "display": "CollectAmount",
-      "fix:tag": "1711"
+      "display": "CollectAmount"
     }
   },
   {
@@ -158,9 +158,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1712",
       "description": "Market segment associated with the pay collect amount.",
-      "display": "PayCollectMarketSegmentID",
-      "fix:tag": "1712"
+      "display": "PayCollectMarketSegmentID"
     }
   },
   {
@@ -170,9 +170,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1713",
       "description": "Market associated with the pay collect amount.",
-      "display": "PayCollectMarketID",
-      "fix:tag": "1713"
+      "display": "PayCollectMarketID"
     }
   },
   {
@@ -182,9 +182,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1714",
       "description": "Market segment associated with the margin amount.",
-      "display": "MarginAmountMarketSegmentID",
-      "fix:tag": "1714"
+      "display": "MarginAmountMarketSegmentID"
     }
   },
   {
@@ -194,9 +194,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1715",
       "description": "Market associated with the margin amount",
-      "display": "MarginAmountMarketID",
-      "fix:tag": "1715"
+      "display": "MarginAmountMarketID"
     }
   },
   {
@@ -206,9 +206,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1716",
       "description": "Indicates the currency of the unit of measure. Conditionally required when UnitOfMeasure(996) = Ccy",
-      "display": "UnitOfMeasureCurrency",
-      "fix:tag": "1716"
+      "display": "UnitOfMeasureCurrency"
     }
   },
   {
@@ -218,9 +218,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1717",
       "description": "Indicates the currency of the price unit of measure. Conditionally required when PriceUnitOfMeasure(1191) = Ccy",
-      "display": "PriceUnitOfMeasureCurrency",
-      "fix:tag": "1717"
+      "display": "PriceUnitOfMeasureCurrency"
     }
   },
   {
@@ -230,9 +230,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1718",
       "description": "Indicates the currency of the underlying unit of measure. Conditionally required when UnderlyingUnitOfMeasure(998) = Ccy",
-      "display": "UnderlyingUnitOfMeasureCurrency",
-      "fix:tag": "1718"
+      "display": "UnderlyingUnitOfMeasureCurrency"
     }
   },
   {
@@ -242,9 +242,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1719",
       "description": "Indicates the currency of the underlying price unit of measure. Conditionally required when UnderlyingPriceUnitOfMeasure(1424) = Ccy",
-      "display": "UnderlyingPriceUnitOfMeasureCurrency",
-      "fix:tag": "1719"
+      "display": "UnderlyingPriceUnitOfMeasureCurrency"
     }
   },
   {
@@ -254,9 +254,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1720",
       "description": "Indicates the currency of the unit of measure. Conditionally required when LegUnitOfMeasure(999) = Ccy",
-      "display": "LegUnitOfMeasureCurrency",
-      "fix:tag": "1720"
+      "display": "LegUnitOfMeasureCurrency"
     }
   },
   {
@@ -266,9 +266,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1721",
       "description": "Indicates the currency of the price unit of measure. Conditionally required when LegPriceUnitOfMeasure(1421) = Ccy",
-      "display": "LegPriceUnitOfMeasureCurrency",
-      "fix:tag": "1721"
+      "display": "LegPriceUnitOfMeasureCurrency"
     }
   },
   {
@@ -278,9 +278,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1722",
       "description": "Indicates the currency of the unit of measure.",
-      "display": "DerivativeUnitOfMeasureCurrency",
-      "fix:tag": "1722"
+      "display": "DerivativeUnitOfMeasureCurrency"
     }
   },
   {
@@ -290,9 +290,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1723",
       "description": "Indicates the currency of the price unit of measure.",
-      "display": "DerivativePriceUnitOfMeasureCurrency",
-      "fix:tag": "1723"
+      "display": "DerivativePriceUnitOfMeasureCurrency"
     }
   },
   {
@@ -302,9 +302,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the origin of the order.",
-      "display": "OrderOrigination",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "OrderReceivedFromCustomer",
@@ -341,7 +339,9 @@
           "doc": "Order received from an execution-only service"
         }
       ],
-      "fix:tag": "1724"
+      "FIX:tag": "1724",
+      "description": "Identifies the origin of the order.",
+      "display": "OrderOrigination"
     }
   },
   {
@@ -351,9 +351,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1725",
       "description": "An identifier representing the department or desk within the firm that originated the order.",
-      "display": "OriginatingDeptID",
-      "fix:tag": "1725"
+      "display": "OriginatingDeptID"
     }
   },
   {
@@ -363,9 +363,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1726",
       "description": "An identifier representing the department or desk within the firm that received the order.",
-      "display": "ReceivingDeptID",
-      "fix:tag": "1726"
+      "display": "ReceivingDeptID"
     }
   },
   {
@@ -375,9 +375,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1727",
       "description": "The identifier of the information barrier in place for a trading unit that will meet the criteria of the \"no-knowledge\" exception in FINRA Rule 5320.02.",
-      "display": "InformationBarrierID",
-      "fix:tag": "1727"
+      "display": "InformationBarrierID"
     }
   },
   {
@@ -387,9 +387,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1728",
       "description": "Firm assigned group allocation entity identifier.",
-      "display": "FirmGroupID",
-      "fix:tag": "1728"
+      "display": "FirmGroupID"
     }
   },
   {
@@ -399,9 +399,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1729",
       "description": "Allocation identifier assigned by the Firm submitting the allocation for an individual allocation instruction (as opposed to the overall message level identifier).",
-      "display": "FirmMnemonic",
-      "fix:tag": "1729"
+      "display": "FirmMnemonic"
     }
   },
   {
@@ -411,9 +411,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1730",
       "description": "Intended to be used by a central counterparty to assign an identifier to allocations of trades for the same instrument traded at the same price.",
-      "display": "AllocGroupID",
-      "fix:tag": "1730"
+      "display": "AllocGroupID"
     }
   },
   {
@@ -423,9 +423,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1731",
       "description": "Used by submitting firm to group trades being allocated into an average price group. The trades in average price group will be used to calculate an average price for the group.",
-      "display": "AvgPxGroupID",
-      "fix:tag": "1731"
+      "display": "AvgPxGroupID"
     }
   },
   {
@@ -435,9 +435,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1732",
       "description": "Firm reference information, usually internal information, that is part of the initial message. The information would not be carried forward (e.g to Take-up Firm) and preserved with the transaction.",
-      "display": "FirmAllocText",
-      "fix:tag": "1732"
+      "display": "FirmAllocText"
     }
   },
   {
@@ -447,9 +447,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1733",
       "description": "Byte length of encoded (non-ASCII characters) EncodedFirmAllocText(1734) field.",
-      "display": "EncodedFirmAllocTextLen",
-      "fix:tag": "1733"
+      "display": "EncodedFirmAllocTextLen"
     }
   },
   {
@@ -459,9 +459,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1734",
       "description": "Encoded (non-ASCII characters) representation of the FirmAllocText(1732) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) represention should also be specified in FirmAllocText(1732) field.",
-      "display": "EncodedFirmAllocText",
-      "fix:tag": "1734"
+      "display": "EncodedFirmAllocText"
     }
   },
   {
@@ -471,9 +471,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "An indicator to override the normal procedure to roll up allocations for the same take-up firm.",
-      "display": "AllocationRollupInstruction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Rollup",
@@ -485,7 +483,9 @@
           "doc": "Do not roll up"
         }
       ],
-      "fix:tag": "1735"
+      "FIX:tag": "1735",
+      "description": "An indicator to override the normal procedure to roll up allocations for the same take-up firm.",
+      "display": "AllocationRollupInstruction"
     }
   },
   {
@@ -497,9 +497,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1736",
       "description": "Indicates the total quantity of an allocation group. Includes any allocated quantity.",
-      "display": "AllocGroupQuantity",
-      "fix:tag": "1736"
+      "display": "AllocGroupQuantity"
     }
   },
   {
@@ -511,9 +511,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1737",
       "description": "Indicates the remaining quantity of an allocation group that has not yet been allocated.",
-      "display": "AllocGroupRemainingQuantity",
-      "fix:tag": "1737"
+      "display": "AllocGroupRemainingQuantity"
     }
   },
   {
@@ -523,9 +523,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the status of a reversal transaction.",
-      "display": "AllocReversalStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Completed",
@@ -542,7 +540,9 @@
           "doc": "Cancelled"
         }
       ],
-      "fix:tag": "1738"
+      "FIX:tag": "1738",
+      "description": "Identifies the status of a reversal transaction.",
+      "display": "AllocReversalStatus"
     }
   },
   {
@@ -552,9 +552,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of reference obligation for credit derivatives contracts.",
-      "display": "ObligationType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bond",
@@ -576,7 +574,9 @@
           "doc": "Loan"
         }
       ],
-      "fix:tag": "1739"
+      "FIX:tag": "1739",
+      "description": "Type of reference obligation for credit derivatives contracts.",
+      "display": "ObligationType"
     }
   },
   {
@@ -586,9 +586,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Method used for negotiation of contract price.",
-      "display": "TradePriceNegotiationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "PercentPar",
@@ -625,7 +623,9 @@
           "doc": "Upfront points and upfront amount"
         }
       ],
-      "fix:tag": "1740"
+      "FIX:tag": "1740",
+      "description": "Method used for negotiation of contract price.",
+      "display": "TradePriceNegotiationMethod"
     }
   },
   {
@@ -635,9 +635,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of price used to determine upfront payment for swaps contracts.",
-      "display": "UpfrontPriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Percentage",
@@ -649,7 +647,9 @@
           "doc": "Fixed amount (absolute value)"
         }
       ],
-      "fix:tag": "1741"
+      "FIX:tag": "1741",
+      "description": "Type of price used to determine upfront payment for swaps contracts.",
+      "display": "UpfrontPriceType"
     }
   },
   {
@@ -661,9 +661,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1742",
       "description": "Price used to determine upfront payment for swaps contracts.",
-      "display": "UpfrontPrice",
-      "fix:tag": "1742"
+      "display": "UpfrontPrice"
     }
   },
   {
@@ -675,9 +675,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1743",
       "description": "Price used to determine upfront payment for swaps contracts reported for a deal (trade).",
-      "display": "LastUpfrontPrice",
-      "fix:tag": "1743"
+      "display": "LastUpfrontPrice"
     }
   },
   {
@@ -687,9 +687,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether application level recovery is needed.",
-      "display": "ApplLevelRecoveryIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NoApplRecoveryNeeded",
@@ -701,7 +699,9 @@
           "doc": "Application level recovery is needed"
         }
       ],
-      "fix:tag": "1744"
+      "FIX:tag": "1744",
+      "description": "Indicates whether application level recovery is needed.",
+      "display": "ApplLevelRecoveryIndicator"
     }
   },
   {
@@ -711,9 +711,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1745",
       "description": "The market data entry identifier of the bid side of a quote",
-      "display": "BidMDEntryID",
-      "fix:tag": "1745"
+      "display": "BidMDEntryID"
     }
   },
   {
@@ -723,9 +723,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1746",
       "description": "The market data entry identifier of the offer side of a quote.",
-      "display": "OfferMDEntryID",
-      "fix:tag": "1746"
+      "display": "OfferMDEntryID"
     }
   },
   {
@@ -735,9 +735,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1747",
       "description": "Marketplace assigned quote identifier for the bid side. Can be used to indicate priority.",
-      "display": "BidQuoteID",
-      "fix:tag": "1747"
+      "display": "BidQuoteID"
     }
   },
   {
@@ -747,9 +747,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1748",
       "description": "Marketplace assigned quote identifier for the offer side. Can be used to indicate priority.",
-      "display": "OfferQuoteID",
-      "fix:tag": "1748"
+      "display": "OfferQuoteID"
     }
   },
   {
@@ -761,9 +761,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1749",
       "description": "Specifies the total bid size.",
-      "display": "TotalBidSize",
-      "fix:tag": "1749"
+      "display": "TotalBidSize"
     }
   },
   {
@@ -775,9 +775,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1750",
       "description": "Specifies the total offer size.",
-      "display": "TotalOfferSize",
-      "fix:tag": "1750"
+      "display": "TotalOfferSize"
     }
   },
   {
@@ -787,9 +787,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1751",
       "description": "Assigned by the party which accepts the quote. Can be used to provide the quote identifier assigned by an exchange, marketplace or executing system.",
-      "display": "SecondaryQuoteID",
-      "fix:tag": "1751"
+      "display": "SecondaryQuoteID"
     }
   },
   {
@@ -799,9 +799,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1752",
       "description": "An opaque identifier used to communicate the custodian’s identifier for the lot. It is expected that this information would be provided by the custodian as part of a reconciliation process that occurs before trading.",
-      "display": "CustodialLotID",
-      "fix:tag": "1752"
+      "display": "CustodialLotID"
     }
   },
   {
@@ -812,9 +812,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1753",
       "description": "The effective acquisition date of the lot that would be used for gain-loss trade lot reporting. The versus purchase date used to identify the lot in situations where a custodial lot identifier is not available.",
-      "display": "VersusPurchaseDate",
-      "fix:tag": "1753"
+      "display": "VersusPurchaseDate"
     }
   },
   {
@@ -826,9 +826,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1754",
       "description": "The versus purchase price used to identify the lot in situations where a custodial lot identifier is not available. The value should be calculated based on current cost basis / quantity held.",
-      "display": "VersusPurchasePrice",
-      "fix:tag": "1754"
+      "display": "VersusPurchasePrice"
     }
   },
   {
@@ -840,9 +840,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1755",
       "description": "The amount that the current shares are worth. If this lot was liquidated, the total gain/loss for a trade is equal to the trade amount minus the current cost basis.",
-      "display": "CurrentCostBasis",
-      "fix:tag": "1755"
+      "display": "CurrentCostBasis"
     }
   },
   {
@@ -852,9 +852,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1756",
       "description": "An opaque identifier used to communicate the custodian’s identifier for the lot. It is expected that this information would be provided by the custodian as part of a reconciliation process that occurs before trading.",
-      "display": "LegCustodialLotID",
-      "fix:tag": "1756"
+      "display": "LegCustodialLotID"
     }
   },
   {
@@ -865,9 +865,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1757",
       "description": "The effective acquisition date of the lot that would be used for gain-loss trade lot reporting. The versus purchase date used to identify the lot in situations where a custodial lot identifier is not available.",
-      "display": "LegVersusPurchaseDate",
-      "fix:tag": "1757"
+      "display": "LegVersusPurchaseDate"
     }
   },
   {
@@ -879,9 +879,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1758",
       "description": "The versus purchase price used to identify the lot in situations where a custodial lot identifier is not available.The value should be calculated based on current cost basis / quantity held.",
-      "display": "LegVersusPurchasePrice",
-      "fix:tag": "1758"
+      "display": "LegVersusPurchasePrice"
     }
   },
   {
@@ -893,9 +893,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1759",
       "description": "The amount that the current shares are worth. If this lot was liquidated, the total gain/loss for a trade is equal to the trade amount minus the current cost basis.",
-      "display": "LegCurrentCostBasis",
-      "fix:tag": "1759"
+      "display": "LegCurrentCostBasis"
     }
   },
   {
@@ -905,9 +905,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of risk limit information.",
-      "display": "RiskLimitRequestType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Definitions",
@@ -924,7 +922,9 @@
           "doc": "Definitions and utilization"
         }
       ],
-      "fix:tag": "1760"
+      "FIX:tag": "1760",
+      "description": "Type of risk limit information.",
+      "display": "RiskLimitRequestType"
     }
   },
   {
@@ -934,9 +934,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Result of risk limit definition request.",
-      "display": "RiskLimitRequestResult",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Successful",
@@ -1023,7 +1021,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "1761"
+      "FIX:tag": "1761",
+      "description": "Result of risk limit definition request.",
+      "display": "RiskLimitRequestResult"
     }
   },
   {
@@ -1033,9 +1033,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of risk limit definition request.",
-      "display": "RiskLimitRequestStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Accepted",
@@ -1057,7 +1055,9 @@
           "doc": "Acceptance pending"
         }
       ],
-      "fix:tag": "1762"
+      "FIX:tag": "1762",
+      "description": "Status of risk limit definition request.",
+      "display": "RiskLimitRequestStatus"
     }
   },
   {
@@ -1067,9 +1067,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of risk limit definition for one party.",
-      "display": "RiskLimitStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Accepted",
@@ -1086,7 +1084,9 @@
           "doc": "Rejected"
         }
       ],
-      "fix:tag": "1763"
+      "FIX:tag": "1763",
+      "description": "Status of risk limit definition for one party.",
+      "display": "RiskLimitStatus"
     }
   },
   {
@@ -1096,9 +1096,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Result of risk limit definition for one party.",
-      "display": "RiskLimitResult",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Successful",
@@ -1185,7 +1183,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "1764"
+      "FIX:tag": "1764",
+      "description": "Result of risk limit definition for one party.",
+      "display": "RiskLimitResult"
     }
   },
   {
@@ -1195,9 +1195,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1765",
       "description": "Percentage of utilization of a party's set risk limit.",
-      "display": "RiskLimitUtilizationPercent",
-      "fix:tag": "1765"
+      "display": "RiskLimitUtilizationPercent"
     }
   },
   {
@@ -1209,9 +1209,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1766",
       "description": "Absolute amount of utilization of a party's set risk limit.",
-      "display": "RiskLimitUtilizationAmount",
-      "fix:tag": "1766"
+      "display": "RiskLimitUtilizationAmount"
     }
   },
   {
@@ -1221,9 +1221,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the action to take or risk model to assume should risk limit be exceeded or breached for the specified party.",
-      "display": "RiskLimitAction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "QueueInbound",
@@ -1280,7 +1278,9 @@
           "doc": "Halt trading"
         }
       ],
-      "fix:tag": "1767"
+      "FIX:tag": "1767",
+      "description": "Identifies the action to take or risk model to assume should risk limit be exceeded or breached for the specified party.",
+      "display": "RiskLimitAction"
     }
   },
   {
@@ -1290,9 +1290,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1768",
       "description": "Amount at which a warning is issued.",
-      "display": "RiskWarningLevelAmount",
-      "fix:tag": "1768"
+      "display": "RiskWarningLevelAmount"
     }
   },
   {
@@ -1302,9 +1302,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Action to take should warning level be exceeded.",
-      "display": "RiskWarningLevelAction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "QueueInbound",
@@ -1361,7 +1359,9 @@
           "doc": "Halt trading"
         }
       ],
-      "fix:tag": "1769"
+      "FIX:tag": "1769",
+      "description": "Action to take should warning level be exceeded.",
+      "display": "RiskWarningLevelAction"
     }
   },
   {
@@ -1371,9 +1371,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1770",
       "description": "Unique identifier for PartyEntitlementsRequest(35=CU).",
-      "display": "EntitlementRequestID",
-      "fix:tag": "1770"
+      "display": "EntitlementRequestID"
     }
   },
   {
@@ -1383,9 +1383,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1771",
       "description": "Identifier for the PartyEntitlementsReport(35=CV).",
-      "display": "EntitlementReportID",
-      "fix:tag": "1771"
+      "display": "EntitlementReportID"
     }
   },
   {
@@ -1395,9 +1395,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1772",
       "description": "Number of party entitlement values.",
-      "display": "NoPartyEntitlements",
-      "fix:tag": "1772"
+      "display": "NoPartyEntitlements"
     }
   },
   {
@@ -1407,9 +1407,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1773",
       "description": "Number of entitlement values.",
-      "display": "NoEntitlements",
-      "fix:tag": "1773"
+      "display": "NoEntitlements"
     }
   },
   {
@@ -1419,9 +1419,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1774",
       "description": "Used to indicate if a party is entitled to an entitlement type specified in the EntitlementType(1775) field.",
-      "display": "EntitlementIndicator",
-      "fix:tag": "1774"
+      "display": "EntitlementIndicator"
     }
   },
   {
@@ -1431,9 +1431,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of entitlement.",
-      "display": "EntitlementType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Trade",
@@ -1480,7 +1478,9 @@
           "doc": "Respond to quote requests"
         }
       ],
-      "fix:tag": "1775"
+      "FIX:tag": "1775",
+      "description": "Type of entitlement.",
+      "display": "EntitlementType"
     }
   },
   {
@@ -1490,9 +1490,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1776",
       "description": "Unique identifier for a specific NoEntitlements(1773) repeating group instance.",
-      "display": "EntitlementID",
-      "fix:tag": "1776"
+      "display": "EntitlementID"
     }
   },
   {
@@ -1502,9 +1502,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1777",
       "description": "Number of entitlement attributes.",
-      "display": "NoEntitlementAttrib",
-      "fix:tag": "1777"
+      "display": "NoEntitlementAttrib"
     }
   },
   {
@@ -1514,9 +1514,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1778",
       "description": "Name of the entitlement attribute type. A code list of allowed values will be maintained on the FIX Protocol website.",
-      "display": "EntitlementAttribType",
-      "fix:tag": "1778"
+      "display": "EntitlementAttribType"
     }
   },
   {
@@ -1526,9 +1526,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Datatype of the entitlement attribute.",
-      "display": "EntitlementAttribDatatype",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Int",
@@ -1740,7 +1738,9 @@
           "doc": "Reserved4000Plus"
         }
       ],
-      "fix:tag": "1779"
+      "FIX:tag": "1779",
+      "description": "Datatype of the entitlement attribute.",
+      "display": "EntitlementAttribDatatype"
     }
   },
   {
@@ -1750,9 +1750,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1780",
       "description": "Value of the entitlement attribute.",
-      "display": "EntitlementAttribValue",
-      "fix:tag": "1780"
+      "display": "EntitlementAttribValue"
     }
   },
   {
@@ -1762,9 +1762,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1781",
       "description": "Currency for EntitlementAttribValue(1780). Can be used if these fields represent a price, price offset, or amount.",
-      "display": "EntitlementAttribCurrency",
-      "fix:tag": "1781"
+      "display": "EntitlementAttribCurrency"
     }
   },
   {
@@ -1775,9 +1775,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1782",
       "description": "Indicates the starting date of the entitlement.",
-      "display": "EntitlementStartDate",
-      "fix:tag": "1782"
+      "display": "EntitlementStartDate"
     }
   },
   {
@@ -1788,9 +1788,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1783",
       "description": "Indicates the ending date of the entitlement.",
-      "display": "EntitlementEndDate",
-      "fix:tag": "1783"
+      "display": "EntitlementEndDate"
     }
   },
   {
@@ -1800,9 +1800,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1784",
       "description": "The area to which the entitlement is applicable. This can be a trading platform or an offering.",
-      "display": "EntitlementPlatform",
-      "fix:tag": "1784"
+      "display": "EntitlementPlatform"
     }
   },
   {
@@ -1812,9 +1812,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates how control of trading session and subsession transitions are performed.",
-      "display": "TradSesControl",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Automatic",
@@ -1826,7 +1824,9 @@
           "doc": "Manual"
         }
       ],
-      "fix:tag": "1785"
+      "FIX:tag": "1785",
+      "description": "Indicates how control of trading session and subsession transitions are performed.",
+      "display": "TradSesControl"
     }
   },
   {
@@ -1836,9 +1836,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Define the type of trade volume applicable for the MinTradeVol(562) and MaxTradeVol(1140)",
-      "display": "TradeVolType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NumberOfUnits",
@@ -1850,7 +1848,9 @@
           "doc": "Number of round lots"
         }
       ],
-      "fix:tag": "1786"
+      "FIX:tag": "1786",
+      "description": "Define the type of trade volume applicable for the MinTradeVol(562) and MaxTradeVol(1140)",
+      "display": "TradeVolType"
     }
   },
   {
@@ -1860,9 +1860,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1787",
       "description": "Spread table code referred by the security or symbol.",
-      "display": "RefTickTableID",
-      "fix:tag": "1787"
+      "display": "RefTickTableID"
     }
   },
   {
@@ -1872,9 +1872,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1788",
       "description": "Unique identifier for the leg within the context of a message (the scope of uniqueness to be defined by counterparty agreement). The LegID(1788) can be referenced using LegRefID(654).",
-      "display": "LegID",
-      "fix:tag": "1788"
+      "display": "LegID"
     }
   },
   {
@@ -1884,9 +1884,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1789",
       "description": "Number of market segments upon which a mass action is to be taken.",
-      "display": "NoTargetMarketSegments",
-      "fix:tag": "1789"
+      "display": "NoTargetMarketSegments"
     }
   },
   {
@@ -1896,9 +1896,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1790",
       "description": "Market segment within a target market segment repeating group.",
-      "display": "TargetMarketSegmentID",
-      "fix:tag": "1790"
+      "display": "TargetMarketSegmentID"
     }
   },
   {
@@ -1908,9 +1908,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1791",
       "description": "Number of market segments affected by a mass action.",
-      "display": "NoAffectedMarketSegments",
-      "fix:tag": "1791"
+      "display": "NoAffectedMarketSegments"
     }
   },
   {
@@ -1920,9 +1920,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1792",
       "description": "Market segment within an affected market repeating segment group.",
-      "display": "AffectedMarketSegmentID",
-      "fix:tag": "1792"
+      "display": "AffectedMarketSegmentID"
     }
   },
   {
@@ -1932,9 +1932,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1793",
       "description": "Number of market segments left unaffected by a mass action.",
-      "display": "NoNotAffectedMarketSegments",
-      "fix:tag": "1793"
+      "display": "NoNotAffectedMarketSegments"
     }
   },
   {
@@ -1944,9 +1944,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1794",
       "description": "Market segment within an unaffected market repeating segment group.",
-      "display": "NotAffectedMarketSegmentID",
-      "fix:tag": "1794"
+      "display": "NotAffectedMarketSegmentID"
     }
   },
   {
@@ -1956,9 +1956,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1795",
       "description": "Number of order events.",
-      "display": "NoOrderEvents",
-      "fix:tag": "1795"
+      "display": "NoOrderEvents"
     }
   },
   {
@@ -1968,9 +1968,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The type of event affecting an order. The last event type within the OrderEventGrp component indicates the ExecType(150) value resulting from the series of events (ExecType(150) values are shown in brackets).",
-      "display": "OrderEventType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Added",
@@ -2027,7 +2025,9 @@
           "doc": "Activated (L=Triggered or Activated by System)"
         }
       ],
-      "fix:tag": "1796"
+      "FIX:tag": "1796",
+      "description": "The type of event affecting an order. The last event type within the OrderEventGrp component indicates the ExecType(150) value resulting from the series of events (ExecType(150) values are shown in brackets).",
+      "display": "OrderEventType"
     }
   },
   {
@@ -2037,9 +2037,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1797",
       "description": "Refer to ExecID(17). Used when multiple different events are reported in single Execution Report. ExecID(17) and OrderEventExecID(1797) values should not overlap.",
-      "display": "OrderEventExecID",
-      "fix:tag": "1797"
+      "display": "OrderEventExecID"
     }
   },
   {
@@ -2049,9 +2049,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Action that caused the event to occur.",
-      "display": "OrderEventReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "AddOrderRequest",
@@ -2118,7 +2116,9 @@
           "doc": "End of day"
         }
       ],
-      "fix:tag": "1798"
+      "FIX:tag": "1798",
+      "description": "Action that caused the event to occur.",
+      "display": "OrderEventReason"
     }
   },
   {
@@ -2130,9 +2130,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1799",
       "description": "Price associated with the event.",
-      "display": "OrderEventPx",
-      "fix:tag": "1799"
+      "display": "OrderEventPx"
     }
   }
 ]

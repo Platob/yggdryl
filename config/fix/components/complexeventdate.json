@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventstartdate",
-          "fix:tag": "1492"
+          "FIX:field": "complexeventstartdate",
+          "FIX:tag": "1492"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventenddate",
-          "fix:tag": "1493"
+          "FIX:field": "complexeventenddate",
+          "FIX:tag": "1493"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocomplexeventtimes",
-          "fix:tag": "1494"
+          "FIX:field": "nocomplexeventtimes",
+          "FIX:tag": "1494"
         }
       },
       {
@@ -43,14 +43,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "complexeventtimes"
+          "FIX:group": "complexeventtimes"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ComplexEventDate",
-    "fix:tag": "202379"
+    "FIX:tag": "202379",
+    "display": "ComplexEventDate"
   }
 }

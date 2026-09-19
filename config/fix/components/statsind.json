@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "statstype",
-          "fix:tag": "1176"
+          "FIX:field": "statstype",
+          "FIX:tag": "1176"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "StatsInd",
-    "fix:tag": "816239"
+    "FIX:tag": "816239",
+    "display": "StatsInd"
   }
 }

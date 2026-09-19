@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leginstrumentpartysubid",
-          "fix:tag": "2259"
+          "FIX:field": "leginstrumentpartysubid",
+          "FIX:tag": "2259"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leginstrumentpartysubidtype",
-          "fix:tag": "2260"
+          "FIX:field": "leginstrumentpartysubidtype",
+          "FIX:tag": "2260"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegInstrumentPtysSub",
-    "fix:tag": "699091"
+    "FIX:tag": "699091",
+    "display": "LegInstrumentPtysSub"
   }
 }

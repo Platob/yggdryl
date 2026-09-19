@@ -10,8 +10,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "posttradepaymenttype",
-          "fix:tag": "2824"
+          "FIX:field": "posttradepaymenttype",
+          "FIX:tag": "2824"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "posttradepaymentamount",
-          "fix:tag": "2817"
+          "FIX:field": "posttradepaymentamount",
+          "FIX:tag": "2817"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentcurrency",
-          "fix:tag": "2818"
+          "FIX:field": "posttradepaymentcurrency",
+          "FIX:tag": "2818"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentcurrencycodesource",
-          "fix:tag": "2956"
+          "FIX:field": "posttradepaymentcurrencycodesource",
+          "FIX:tag": "2956"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "posttradepaymentcalculationdate",
-          "fix:tag": "2825"
+          "FIX:field": "posttradepaymentcalculationdate",
+          "FIX:tag": "2825"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "posttradepaymentvaluedate",
-          "fix:tag": "2826"
+          "FIX:field": "posttradepaymentvaluedate",
+          "FIX:tag": "2826"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentfinalvaluedate",
-          "fix:tag": "2827"
+          "FIX:field": "posttradepaymentfinalvaluedate",
+          "FIX:tag": "2827"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "posttradepaymentdebitorcredit",
-          "fix:tag": "2819"
+          "FIX:field": "posttradepaymentdebitorcredit",
+          "FIX:tag": "2819"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "posttradepaymentaccount",
-          "fix:tag": "2816"
+          "FIX:field": "posttradepaymentaccount",
+          "FIX:tag": "2816"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentid",
-          "fix:tag": "2821"
+          "FIX:field": "posttradepaymentid",
+          "FIX:tag": "2821"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentdesc",
-          "fix:tag": "2820"
+          "FIX:field": "posttradepaymentdesc",
+          "FIX:tag": "2820"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedposttradepaymentdesclen",
-          "fix:tag": "2815"
+          "FIX:field": "encodedposttradepaymentdesclen",
+          "FIX:tag": "2815"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedposttradepaymentdesc",
-          "fix:tag": "2814"
+          "FIX:field": "encodedposttradepaymentdesc",
+          "FIX:tag": "2814"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentlinkid",
-          "fix:tag": "2822"
+          "FIX:field": "posttradepaymentlinkid",
+          "FIX:tag": "2822"
         }
       },
       {
@@ -164,16 +164,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posttradepaymentstatus",
-          "fix:tag": "2823"
+          "FIX:field": "posttradepaymentstatus",
+          "FIX:tag": "2823"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "650745",
     "description": "The date payment calculations are made. This may be earlier than the date in ClearingBusinessDate(715).",
-    "display": "PostTradePayment",
-    "fix:tag": "650745"
+    "display": "PostTradePayment"
   }
 }

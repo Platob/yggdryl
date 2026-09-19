@@ -8,9 +8,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "800",
       "description": "Quantity of the order that is being booked out as part of an Allocation Instruction or Allocation Report message",
-      "display": "OrderBookingQty",
-      "fix:tag": "800"
+      "display": "OrderBookingQty"
     }
   },
   {
@@ -20,9 +20,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "801",
       "description": "Number of SettlPartySubID (785) and SettlPartySubIDType (786) entries",
-      "display": "NoSettlPartySubIDs",
-      "fix:tag": "801"
+      "display": "NoSettlPartySubIDs"
     }
   },
   {
@@ -32,9 +32,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "802",
       "description": "Number of PartySubID (523)and PartySubIDType (803) entries",
-      "display": "NoPartySubIDs",
-      "fix:tag": "802"
+      "display": "NoPartySubIDs"
     }
   },
   {
@@ -44,9 +44,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of PartySubID(523) value.",
-      "display": "PartySubIDType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Firm",
@@ -493,7 +491,9 @@
           "doc": "Certificate registration status"
         }
       ],
-      "fix:tag": "803"
+      "FIX:tag": "803",
+      "description": "Type of PartySubID(523) value.",
+      "display": "PartySubIDType"
     }
   },
   {
@@ -503,9 +503,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "804",
       "description": "Number of NestedPartySubID (545) and NestedPartySubIDType (805) entries",
-      "display": "NoNestedPartySubIDs",
-      "fix:tag": "804"
+      "display": "NoNestedPartySubIDs"
     }
   },
   {
@@ -515,9 +515,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of NestedPartySubID (545) value.",
-      "display": "NestedPartySubIDType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Firm",
@@ -964,7 +962,9 @@
           "doc": "Certificate registration status"
         }
       ],
-      "fix:tag": "805"
+      "FIX:tag": "805",
+      "description": "Type of NestedPartySubID (545) value.",
+      "display": "NestedPartySubIDType"
     }
   },
   {
@@ -974,9 +974,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "806",
       "description": "Number of Nested2PartySubID (760) and Nested2PartySubIDType (807) entries. Second instance of <NestedParties>.",
-      "display": "NoNested2PartySubIDs",
-      "fix:tag": "806"
+      "display": "NoNested2PartySubIDs"
     }
   },
   {
@@ -986,9 +986,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of Nested2PartySubID (760) value. Second instance of <NestedParties>.",
-      "display": "Nested2PartySubIDType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Firm",
@@ -1435,7 +1433,9 @@
           "doc": "Certificate registration status"
         }
       ],
-      "fix:tag": "807"
+      "FIX:tag": "807",
+      "description": "Type of Nested2PartySubID (760) value. Second instance of <NestedParties>.",
+      "display": "Nested2PartySubIDType"
     }
   },
   {
@@ -1445,9 +1445,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Response to allocation to be communicated to a counterparty through an intermediary, i.e. clearing house. Used in conjunction with AllocType = \"Request to Intermediary\" and AllocReportType = \"Request to Intermediary\"",
-      "display": "AllocIntermedReqType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "PendingAccept",
@@ -1479,7 +1477,9 @@
           "doc": "Account Level Reject"
         }
       ],
-      "fix:tag": "808"
+      "FIX:tag": "808",
+      "description": "Response to allocation to be communicated to a counterparty through an intermediary, i.e. clearing house. Used in conjunction with AllocType = \"Request to Intermediary\" and AllocReportType = \"Request to Intermediary\"",
+      "display": "AllocIntermedReqType"
     }
   },
   {
@@ -1489,9 +1489,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "809",
       "description": "Number of Usernames to which this this response is directed",
-      "display": "NoUsernames",
-      "fix:tag": "809"
+      "display": "NoUsernames"
     }
   },
   {
@@ -1503,9 +1503,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "810",
       "description": "Underlying price associate with a derivative instrument.",
-      "display": "UnderlyingPx",
-      "fix:tag": "810"
+      "display": "UnderlyingPx"
     }
   },
   {
@@ -1515,9 +1515,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "811",
       "description": "The rate of change in the price of a derivative with respect to the movement in the price of the underlying instrument(s) upon which the derivative instrument price is based.",
-      "display": "PriceDelta",
-      "fix:tag": "811"
+      "display": "PriceDelta"
     }
   },
   {
@@ -1527,9 +1527,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "812",
       "description": "Used to specify the maximum number of application messages that can be queued bedore a corrective action needs to take place to resolve the queuing issue.",
-      "display": "ApplQueueMax",
-      "fix:tag": "812"
+      "display": "ApplQueueMax"
     }
   },
   {
@@ -1539,9 +1539,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "813",
       "description": "Current number of application messages that were queued at the time that the message was created by the counterparty.",
-      "display": "ApplQueueDepth",
-      "fix:tag": "813"
+      "display": "ApplQueueDepth"
     }
   },
   {
@@ -1551,9 +1551,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Resolution taken when ApplQueueDepth (813) exceeds ApplQueueMax (812) or system specified maximum queue size.",
-      "display": "ApplQueueResolution",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NoActionTaken",
@@ -1575,7 +1573,9 @@
           "doc": "End Session"
         }
       ],
-      "fix:tag": "814"
+      "FIX:tag": "814",
+      "description": "Resolution taken when ApplQueueDepth (813) exceeds ApplQueueMax (812) or system specified maximum queue size.",
+      "display": "ApplQueueResolution"
     }
   },
   {
@@ -1585,9 +1585,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Action to take to resolve an application message queue (backlog).",
-      "display": "ApplQueueAction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NoActionTaken",
@@ -1609,7 +1607,9 @@
           "doc": "End Session"
         }
       ],
-      "fix:tag": "815"
+      "FIX:tag": "815",
+      "description": "Action to take to resolve an application message queue (backlog).",
+      "display": "ApplQueueAction"
     }
   },
   {
@@ -1619,9 +1619,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "816",
       "description": "Number of alternative market data sources",
-      "display": "NoAltMDSource",
-      "fix:tag": "816"
+      "display": "NoAltMDSource"
     }
   },
   {
@@ -1631,9 +1631,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "817",
       "description": "Session layer source for market data",
-      "display": "AltMDSourceID",
-      "fix:tag": "817"
+      "display": "AltMDSourceID"
     }
   },
   {
@@ -1643,10 +1643,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "5.0",
+      "FIX:tag": "818",
       "description": "Secondary trade report identifier - can be used to associate an additional identifier with a trade.",
-      "display": "SecondaryTradeReportID",
-      "fix:deprecated": "5.0",
-      "fix:tag": "818"
+      "display": "SecondaryTradeReportID"
     }
   },
   {
@@ -1656,9 +1656,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Average pricing indicator.",
-      "display": "AvgPxIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NoAveragePricing",
@@ -1685,7 +1683,9 @@
           "doc": "Trade is average priced"
         }
       ],
-      "fix:tag": "819"
+      "FIX:tag": "819",
+      "description": "Average pricing indicator.",
+      "display": "AvgPxIndicator"
     }
   },
   {
@@ -1695,9 +1695,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "820",
       "description": "Used to link a group of trades together.",
-      "display": "TradeLinkID",
-      "fix:tag": "820"
+      "display": "TradeLinkID"
     }
   },
   {
@@ -1707,9 +1707,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "821",
       "description": "Specific device number, terminal number or station where order was entered",
-      "display": "OrderInputDevice",
-      "fix:tag": "821"
+      "display": "OrderInputDevice"
     }
   },
   {
@@ -1719,9 +1719,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "822",
       "description": "Trading Session in which the underlying instrument trades",
-      "display": "UnderlyingTradingSessionID",
-      "fix:tag": "822"
+      "display": "UnderlyingTradingSessionID"
     }
   },
   {
@@ -1731,9 +1731,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "823",
       "description": "Trading Session sub identifier in which the underlying instrument trades",
-      "display": "UnderlyingTradingSessionSubID",
-      "fix:tag": "823"
+      "display": "UnderlyingTradingSessionSubID"
     }
   },
   {
@@ -1743,9 +1743,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "824",
       "description": "Reference to the leg of a multileg instrument to which this trade refers",
-      "display": "TradeLegRefID",
-      "fix:tag": "824"
+      "display": "TradeLegRefID"
     }
   },
   {
@@ -1755,9 +1755,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "825",
       "description": "Used to report any exchange rules that apply to this trade.",
-      "display": "ExchangeRule",
-      "fix:tag": "825"
+      "display": "ExchangeRule"
     }
   },
   {
@@ -1767,9 +1767,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies if, and how, the trade is to be allocated or split.",
-      "display": "TradeAllocIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "AllocationNotRequired",
@@ -1806,7 +1804,9 @@
           "doc": "Trade split"
         }
       ],
-      "fix:tag": "826"
+      "FIX:tag": "826",
+      "description": "Identifies if, and how, the trade is to be allocated or split.",
+      "display": "TradeAllocIndicator"
     }
   },
   {
@@ -1816,9 +1816,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Part of trading cycle when an instrument expires. Field is applicable for derivatives.",
-      "display": "ExpirationCycle",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ExpireOnTradingSessionClose",
@@ -1835,7 +1833,9 @@
           "doc": "Trading eligibility expiration specified in the date and time fields [EventDate(866) and EventTime(1145)] associated with EventType(865)=7(Last Eligible Trade Date)"
         }
       ],
-      "fix:tag": "827"
+      "FIX:tag": "827",
+      "description": "Part of trading cycle when an instrument expires. Field is applicable for derivatives.",
+      "display": "ExpirationCycle"
     }
   },
   {
@@ -1845,9 +1845,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of trade assigned to a trade. SecondaryTrdType(855) and TertiaryTrdType(2896) may be used in addition to TrdType(828) to assign up to three different trade types to a single trade.",
-      "display": "TrdType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "RegularTrade",
@@ -2218,7 +2216,9 @@
           "doc": "Net asset value calculated trade"
         }
       ],
-      "fix:tag": "828"
+      "FIX:tag": "828",
+      "description": "Type of trade assigned to a trade. SecondaryTrdType(855) and TertiaryTrdType(2896) may be used in addition to TrdType(828) to assign up to three different trade types to a single trade.",
+      "display": "TrdType"
     }
   },
   {
@@ -2228,9 +2228,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Further qualification to the trade type defined in TrdType(828).",
-      "display": "TrdSubType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "CMTA",
@@ -2514,7 +2512,9 @@
           "doc": "Bilateral compression"
         }
       ],
-      "fix:tag": "829"
+      "FIX:tag": "829",
+      "description": "Further qualification to the trade type defined in TrdType(828).",
+      "display": "TrdSubType"
     }
   },
   {
@@ -2524,9 +2524,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "830",
       "description": "Reason trade is being transferred",
-      "display": "TransferReason",
-      "fix:tag": "830"
+      "display": "TransferReason"
     }
   },
   {
@@ -2536,9 +2536,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "832",
       "description": "Total Number of Assignment Reports being returned to a firm",
-      "display": "TotNumAssignmentReports",
-      "fix:tag": "832"
+      "display": "TotNumAssignmentReports"
     }
   },
   {
@@ -2548,9 +2548,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "833",
       "description": "Unique identifier for the Assignment Report",
-      "display": "AsgnRptID",
-      "fix:tag": "833"
+      "display": "AsgnRptID"
     }
   },
   {
@@ -2562,9 +2562,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "834",
       "description": "Amount that a position has to be in the money before it is exercised.",
-      "display": "ThresholdAmount",
-      "fix:tag": "834"
+      "display": "ThresholdAmount"
     }
   },
   {
@@ -2574,9 +2574,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Describes whether peg is static or floats",
-      "display": "PegMoveType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Floating",
@@ -2588,7 +2586,9 @@
           "doc": "Fixed"
         }
       ],
-      "fix:tag": "835"
+      "FIX:tag": "835",
+      "description": "Describes whether peg is static or floats",
+      "display": "PegMoveType"
     }
   },
   {
@@ -2598,9 +2598,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of Peg Offset value",
-      "display": "PegOffsetType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Price",
@@ -2627,7 +2625,9 @@
           "doc": "Percentage"
         }
       ],
-      "fix:tag": "836"
+      "FIX:tag": "836",
+      "description": "Type of Peg Offset value",
+      "display": "PegOffsetType"
     }
   },
   {
@@ -2637,9 +2637,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of Peg Limit",
-      "display": "PegLimitType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OrBetter",
@@ -2656,7 +2654,9 @@
           "doc": "Or worse - for a buy the peg limit is a minimum and for a sell the peg limit is a maximum (for use for orders which have a price range)"
         }
       ],
-      "fix:tag": "837"
+      "FIX:tag": "837",
+      "description": "Type of Peg Limit",
+      "display": "PegLimitType"
     }
   },
   {
@@ -2666,9 +2666,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "If the calculated peg price is not a valid tick price, specifies whether to round the price to be more or less aggressive",
-      "display": "PegRoundDirection",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "MoreAggressive",
@@ -2680,7 +2678,9 @@
           "doc": "More passive - on a buy order round down to the nearest tick; on a sell order round up to the nearest tick"
         }
       ],
-      "fix:tag": "838"
+      "FIX:tag": "838",
+      "description": "If the calculated peg price is not a valid tick price, specifies whether to round the price to be more or less aggressive",
+      "display": "PegRoundDirection"
     }
   },
   {
@@ -2692,10 +2692,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:derivation": "peggedrefprice + try_cast(pegoffsetvalue as decimal128(38,18))",
+      "FIX:tag": "839",
       "description": "The price the order is currently pegged at",
-      "display": "PeggedPrice",
-      "fix:derivation": "peggedrefprice + try_cast(pegoffsetvalue as decimal128(38,18))",
-      "fix:tag": "839"
+      "display": "PeggedPrice"
     }
   },
   {
@@ -2705,9 +2705,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The scope of the peg",
-      "display": "PegScope",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Local",
@@ -2729,7 +2727,9 @@
           "doc": "National excluding local"
         }
       ],
-      "fix:tag": "840"
+      "FIX:tag": "840",
+      "description": "The scope of the peg",
+      "display": "PegScope"
     }
   },
   {
@@ -2739,9 +2739,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Describes whether discretionay price is static or floats",
-      "display": "DiscretionMoveType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Floating",
@@ -2753,7 +2751,9 @@
           "doc": "Fixed"
         }
       ],
-      "fix:tag": "841"
+      "FIX:tag": "841",
+      "description": "Describes whether discretionay price is static or floats",
+      "display": "DiscretionMoveType"
     }
   },
   {
@@ -2763,9 +2763,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of Discretion Offset value",
-      "display": "DiscretionOffsetType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Price",
@@ -2787,7 +2785,9 @@
           "doc": "Price Tier / Level"
         }
       ],
-      "fix:tag": "842"
+      "FIX:tag": "842",
+      "description": "Type of Discretion Offset value",
+      "display": "DiscretionOffsetType"
     }
   },
   {
@@ -2797,9 +2797,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of Discretion Limit",
-      "display": "DiscretionLimitType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OrBetter",
@@ -2816,7 +2814,9 @@
           "doc": "Or worse - for a buy the discretion price is a minimum and for a sell the discretion price is a maximum (for use for orders which have a price range)"
         }
       ],
-      "fix:tag": "843"
+      "FIX:tag": "843",
+      "description": "Type of Discretion Limit",
+      "display": "DiscretionLimitType"
     }
   },
   {
@@ -2826,9 +2826,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "If the calculated discretionary price is not a valid tick price, specifies whether to round the price to be more or less aggressive",
-      "display": "DiscretionRoundDirection",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "MoreAggressive",
@@ -2840,7 +2838,9 @@
           "doc": "More passive - on a buy order round down to the nearest tick; on a sell order round up to the nearest tick"
         }
       ],
-      "fix:tag": "844"
+      "FIX:tag": "844",
+      "description": "If the calculated discretionary price is not a valid tick price, specifies whether to round the price to be more or less aggressive",
+      "display": "DiscretionRoundDirection"
     }
   },
   {
@@ -2852,9 +2852,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "845",
       "description": "The current discretionary price of the order",
-      "display": "DiscretionPrice",
-      "fix:tag": "845"
+      "display": "DiscretionPrice"
     }
   },
   {
@@ -2864,9 +2864,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The scope of the discretion",
-      "display": "DiscretionScope",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Local",
@@ -2888,7 +2886,9 @@
           "doc": "National excluding local"
         }
       ],
-      "fix:tag": "846"
+      "FIX:tag": "846",
+      "description": "The scope of the discretion",
+      "display": "DiscretionScope"
     }
   },
   {
@@ -2898,9 +2898,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The target strategy of the order",
-      "display": "TargetStrategy",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "VWAP",
@@ -2917,7 +2915,9 @@
           "doc": "Mininize market impact"
         }
       ],
-      "fix:tag": "847"
+      "FIX:tag": "847",
+      "description": "The target strategy of the order",
+      "display": "TargetStrategy"
     }
   },
   {
@@ -2927,10 +2927,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "5.0",
+      "FIX:tag": "848",
       "description": "Field to allow further specification of the TargetStrategy - usage to be agreed between counterparties",
-      "display": "TargetStrategyParameters",
-      "fix:deprecated": "5.0",
-      "fix:tag": "848"
+      "display": "TargetStrategyParameters"
     }
   },
   {
@@ -2940,10 +2940,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "5.0",
+      "FIX:tag": "849",
       "description": "For a TargetStrategy=Participate order specifies the target particpation rate. For other order types this is a volume limit (i.e. do not be more than this percent of the market volume)",
-      "display": "ParticipationRate",
-      "fix:deprecated": "5.0",
-      "fix:tag": "849"
+      "display": "ParticipationRate"
     }
   },
   {
@@ -2953,9 +2953,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "850",
       "description": "For communication of the performance of the order versus the target strategy",
-      "display": "TargetStrategyPerformance",
-      "fix:tag": "850"
+      "display": "TargetStrategyPerformance"
     }
   },
   {
@@ -2965,9 +2965,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicator to identify whether this fill was a result of a liquidity provider providing or liquidity taker taking the liquidity.",
-      "display": "LastLiquidityInd",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NeitherAddedNorRemovedLiquidity",
@@ -3029,7 +3027,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "851"
+      "FIX:tag": "851",
+      "description": "Indicator to identify whether this fill was a result of a liquidity provider providing or liquidity taker taking the liquidity.",
+      "display": "LastLiquidityInd"
     }
   },
   {
@@ -3039,9 +3039,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates if a trade should be reported via a market reporting service.",
-      "display": "PublishTrdIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "DoNotReportTrade",
@@ -3059,8 +3057,8 @@
           "doc": "Report Trade"
         }
       ],
-      "fix:deprecated": "5.0",
-      "fix:replacements": [
+      "FIX:deprecated": "5.0",
+      "FIX:replacements": [
         {
           "plan": "select '1' as tradepublishindicator where publishtrdindicator = 'Y'",
           "doc": "PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)"
@@ -3070,7 +3068,9 @@
           "doc": "PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)"
         }
       ],
-      "fix:tag": "852"
+      "FIX:tag": "852",
+      "description": "Indicates if a trade should be reported via a market reporting service.",
+      "display": "PublishTrdIndicator"
     }
   },
   {
@@ -3080,9 +3080,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason for short sale.",
-      "display": "ShortSaleReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "DealerSoldShort",
@@ -3114,7 +3112,9 @@
           "doc": "QSR or AGU Contra Side Sold Short Exempt"
         }
       ],
-      "fix:tag": "853"
+      "FIX:tag": "853",
+      "description": "Reason for short sale.",
+      "display": "ShortSaleReason"
     }
   },
   {
@@ -3124,9 +3124,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of quantity specified in quantity field. ContractMultiplier (tag 231) is required when QtyType = 1 (Contracts). UnitOfMeasure (tag 996) and TimeUnit (tag 997) are required when QtyType = 2 (Units of Measure per Time Unit).",
-      "display": "QtyType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Units",
@@ -3143,7 +3141,9 @@
           "doc": "Unit of Measure per Time Unit"
         }
       ],
-      "fix:tag": "854"
+      "FIX:tag": "854",
+      "description": "Type of quantity specified in quantity field. ContractMultiplier (tag 231) is required when QtyType = 1 (Contracts). UnitOfMeasure (tag 996) and TimeUnit (tag 997) are required when QtyType = 2 (Units of Measure per Time Unit).",
+      "display": "QtyType"
     }
   },
   {
@@ -3153,9 +3153,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of trade assigned to a trade. Used in addition to TrdType(828). Must not be used when only one trade type needs to be assigned.",
-      "display": "SecondaryTrdType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "RegularTrade",
@@ -3526,7 +3524,9 @@
           "doc": "Net asset value calculated trade"
         }
       ],
-      "fix:tag": "855"
+      "FIX:tag": "855",
+      "description": "Type of trade assigned to a trade. Used in addition to TrdType(828). Must not be used when only one trade type needs to be assigned.",
+      "display": "SecondaryTrdType"
     }
   },
   {
@@ -3536,9 +3536,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of Trade Report",
-      "display": "TradeReportType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Submit",
@@ -3635,7 +3633,9 @@
           "doc": "Non-material Update"
         }
       ],
-      "fix:tag": "856"
+      "FIX:tag": "856",
+      "description": "Type of Trade Report",
+      "display": "TradeReportType"
     }
   },
   {
@@ -3645,9 +3645,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates how the orders being booked and allocated by an AllocationInstruction or AllocationReport message are identified, e.g. by explicit definition in the OrdAllocGrp or ExecAllocGrp components, or not identified explicitly.",
-      "display": "AllocNoOrdersType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotSpecified",
@@ -3659,7 +3657,9 @@
           "doc": "Explicit list provided"
         }
       ],
-      "fix:tag": "857"
+      "FIX:tag": "857",
+      "description": "Indicates how the orders being booked and allocated by an AllocationInstruction or AllocationReport message are identified, e.g. by explicit definition in the OrdAllocGrp or ExecAllocGrp components, or not identified explicitly.",
+      "display": "AllocNoOrdersType"
     }
   },
   {
@@ -3671,9 +3671,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "858",
       "description": "Commission to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement.",
-      "display": "SharedCommission",
-      "fix:tag": "858"
+      "display": "SharedCommission"
     }
   },
   {
@@ -3683,9 +3683,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "859",
       "description": "Unique identifier for a Confirmation Request message",
-      "display": "ConfirmReqID",
-      "fix:tag": "859"
+      "display": "ConfirmReqID"
     }
   },
   {
@@ -3697,9 +3697,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "860",
       "description": "Used to express average price as percent of par (used where AvgPx field is expressed in some other way)",
-      "display": "AvgParPx",
-      "fix:tag": "860"
+      "display": "AvgParPx"
     }
   },
   {
@@ -3711,9 +3711,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "861",
       "description": "Reported price (used to differentiate from AvgPx on a confirmation of a marked-up or marked-down principal trade)",
-      "display": "ReportedPx",
-      "fix:tag": "861"
+      "display": "ReportedPx"
     }
   },
   {
@@ -3723,9 +3723,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "862",
       "description": "Number of repeating OrderCapacity entries.",
-      "display": "NoCapacities",
-      "fix:tag": "862"
+      "display": "NoCapacities"
     }
   },
   {
@@ -3737,9 +3737,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "863",
       "description": "Quantity executed under a specific OrderCapacity (e.g. quantity executed as agent, quantity executed as principal)",
-      "display": "OrderCapacityQty",
-      "fix:tag": "863"
+      "display": "OrderCapacityQty"
     }
   },
   {
@@ -3749,9 +3749,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "864",
       "description": "Number of repeating EventType entries.",
-      "display": "NoEvents",
-      "fix:tag": "864"
+      "display": "NoEvents"
     }
   },
   {
@@ -3761,9 +3761,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to represent the type of event",
-      "display": "EventType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Put",
@@ -3915,7 +3913,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "865"
+      "FIX:tag": "865",
+      "description": "Code to represent the type of event",
+      "display": "EventType"
     }
   },
   {
@@ -3926,9 +3926,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "866",
       "description": "Date of event",
-      "display": "EventDate",
-      "fix:tag": "866"
+      "display": "EventDate"
     }
   },
   {
@@ -3940,9 +3940,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "867",
       "description": "Predetermined price of issue at event, if applicable",
-      "display": "EventPx",
-      "fix:tag": "867"
+      "display": "EventPx"
     }
   },
   {
@@ -3952,9 +3952,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "868",
       "description": "Comments related to the event.",
-      "display": "EventText",
-      "fix:tag": "868"
+      "display": "EventText"
     }
   },
   {
@@ -3964,9 +3964,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "869",
       "description": "Percent at risk due to lowest possible call.",
-      "display": "PctAtRisk",
-      "fix:tag": "869"
+      "display": "PctAtRisk"
     }
   },
   {
@@ -3976,9 +3976,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "870",
       "description": "Number of repeating InstrAttribType entries.",
-      "display": "NoInstrAttrib",
-      "fix:tag": "870"
+      "display": "NoInstrAttrib"
     }
   },
   {
@@ -3988,9 +3988,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to represent the type of instrument attribute",
-      "display": "InstrAttribType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Flat",
@@ -4212,7 +4210,9 @@
           "doc": "Text"
         }
       ],
-      "fix:tag": "871"
+      "FIX:tag": "871",
+      "description": "Code to represent the type of instrument attribute",
+      "display": "InstrAttribType"
     }
   },
   {
@@ -4222,9 +4222,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "872",
       "description": "Attribute value appropriate to the InstrAttribType (871) field.",
-      "display": "InstrAttribValue",
-      "fix:tag": "872"
+      "display": "InstrAttribValue"
     }
   },
   {
@@ -4235,9 +4235,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "873",
       "description": "The effective date of a new securities issue determined by its underwriters. Often but not always the same as the Issue Date and the Interest Accrual Date",
-      "display": "DatedDate",
-      "fix:tag": "873"
+      "display": "DatedDate"
     }
   },
   {
@@ -4248,9 +4248,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "874",
       "description": "The start date used for calculating accrued interest on debt instruments which are being sold between interest payment dates. Often but not always the same as the Issue Date and the Dated Date",
-      "display": "InterestAccrualDate",
-      "fix:tag": "874"
+      "display": "InterestAccrualDate"
     }
   },
   {
@@ -4260,9 +4260,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The program under which a commercial paper offering is exempt from SEC registration identified by the paragraph number(s) within the US Securities Act of 1933 or as identified below.",
-      "display": "CPProgram",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Program3a3",
@@ -4309,7 +4307,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "875"
+      "FIX:tag": "875",
+      "description": "The program under which a commercial paper offering is exempt from SEC registration identified by the paragraph number(s) within the US Securities Act of 1933 or as identified below.",
+      "display": "CPProgram"
     }
   },
   {
@@ -4319,9 +4319,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "876",
       "description": "The description of commercial paper registration or rule under which exempt commercial paper is offered. For example \"144a\", \"Tax Exempt\" or \"REG. S\".",
-      "display": "CPRegType",
-      "fix:tag": "876"
+      "display": "CPRegType"
     }
   },
   {
@@ -4331,9 +4331,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The program under which the underlying commercial paper is issued",
-      "display": "UnderlyingCPProgram",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Program3a3",
@@ -4380,7 +4378,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "877"
+      "FIX:tag": "877",
+      "description": "The program under which the underlying commercial paper is issued",
+      "display": "UnderlyingCPProgram"
     }
   },
   {
@@ -4390,9 +4390,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "878",
       "description": "The registration type of the underlying commercial paper issuance",
-      "display": "UnderlyingCPRegType",
-      "fix:tag": "878"
+      "display": "UnderlyingCPRegType"
     }
   },
   {
@@ -4404,9 +4404,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "879",
       "description": "Unit amount of the underlying security (par, shares, currency, etc.)",
-      "display": "UnderlyingQty",
-      "fix:tag": "879"
+      "display": "UnderlyingQty"
     }
   },
   {
@@ -4416,9 +4416,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "880",
       "description": "Identifier assigned by a matching system to a match event that results in multiple executions or trades.",
-      "display": "TrdMatchID",
-      "fix:tag": "880"
+      "display": "TrdMatchID"
     }
   },
   {
@@ -4428,10 +4428,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "5.0",
+      "FIX:tag": "881",
       "description": "Used to refer to a previous SecondaryTradeReportRefID when amending the transaction (cancel, replace, release, or reversal).",
-      "display": "SecondaryTradeReportRefID",
-      "fix:deprecated": "5.0",
-      "fix:tag": "881"
+      "display": "SecondaryTradeReportRefID"
     }
   },
   {
@@ -4443,9 +4443,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "882",
       "description": "Price (percent-of-par or per unit) of the underlying security or basket. \"Dirty\" means it includes accrued interest",
-      "display": "UnderlyingDirtyPrice",
-      "fix:tag": "882"
+      "display": "UnderlyingDirtyPrice"
     }
   },
   {
@@ -4457,9 +4457,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "883",
       "description": "Price (percent-of-par or per unit) of the underlying security or basket at the end of the agreement.",
-      "display": "UnderlyingEndPrice",
-      "fix:tag": "883"
+      "display": "UnderlyingEndPrice"
     }
   },
   {
@@ -4471,9 +4471,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "884",
       "description": "Currency value attributed to this collateral at the start of the agreement",
-      "display": "UnderlyingStartValue",
-      "fix:tag": "884"
+      "display": "UnderlyingStartValue"
     }
   },
   {
@@ -4485,9 +4485,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "885",
       "description": "Currency value currently attributed to this collateral",
-      "display": "UnderlyingCurrentValue",
-      "fix:tag": "885"
+      "display": "UnderlyingCurrentValue"
     }
   },
   {
@@ -4499,9 +4499,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "886",
       "description": "Currency value attributed to this collateral at the end of the agreement",
-      "display": "UnderlyingEndValue",
-      "fix:tag": "886"
+      "display": "UnderlyingEndValue"
     }
   },
   {
@@ -4511,9 +4511,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "887",
       "description": "Number of underlying stipulation entries",
-      "display": "NoUnderlyingStips",
-      "fix:tag": "887"
+      "display": "NoUnderlyingStips"
     }
   },
   {
@@ -4523,9 +4523,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of stipulation.",
-      "display": "UnderlyingStipType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "ABS",
           "name": "AbsolutePrepaymentSpeed",
@@ -5062,7 +5060,9 @@
           "doc": "Interest payoff of rolling or amending trade"
         }
       ],
-      "fix:tag": "888"
+      "FIX:tag": "888",
+      "description": "Type of stipulation.",
+      "display": "UnderlyingStipType"
     }
   },
   {
@@ -5072,9 +5072,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "889",
       "description": "Value of stipulation.",
-      "display": "UnderlyingStipValue",
-      "fix:tag": "889"
+      "display": "UnderlyingStipValue"
     }
   },
   {
@@ -5086,9 +5086,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "890",
       "description": "Net Money at maturity if Zero Coupon and maturity value is different from par value",
-      "display": "MaturityNetMoney",
-      "fix:tag": "890"
+      "display": "MaturityNetMoney"
     }
   },
   {
@@ -5098,9 +5098,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Defines the unit for a miscellaneous fee.",
-      "display": "MiscFeeBasis",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Absolute",
@@ -5117,7 +5115,9 @@
           "doc": "Percentage"
         }
       ],
-      "fix:tag": "891"
+      "FIX:tag": "891",
+      "description": "Defines the unit for a miscellaneous fee.",
+      "display": "MiscFeeBasis"
     }
   },
   {
@@ -5127,9 +5127,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "892",
       "description": "Total number of NoAlloc entries across all messages. Should be the sum of all NoAllocs in each message that has repeating NoAlloc entries related to the same AllocID or AllocReportID. Used to support fragmentation.",
-      "display": "TotNoAllocs",
-      "fix:tag": "892"
+      "display": "TotNoAllocs"
     }
   },
   {
@@ -5139,9 +5139,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether this message is the last in a sequence of messages for those messages that support fragmentation, such as Allocation Instruction, Mass Quote, Security List, Derivative Security List",
-      "display": "LastFragment",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "NotLastMessage",
@@ -5159,7 +5157,9 @@
           "doc": "Last Message"
         }
       ],
-      "fix:tag": "893"
+      "FIX:tag": "893",
+      "description": "Indicates whether this message is the last in a sequence of messages for those messages that support fragmentation, such as Allocation Instruction, Mass Quote, Security List, Derivative Security List",
+      "display": "LastFragment"
     }
   },
   {
@@ -5169,9 +5169,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "894",
       "description": "Collateral Request Identifier",
-      "display": "CollReqID",
-      "fix:tag": "894"
+      "display": "CollReqID"
     }
   },
   {
@@ -5181,9 +5181,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason for Collateral Assignment",
-      "display": "CollAsgnReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Initial",
@@ -5240,7 +5238,9 @@
           "doc": "Pledge"
         }
       ],
-      "fix:tag": "895"
+      "FIX:tag": "895",
+      "description": "Reason for Collateral Assignment",
+      "display": "CollAsgnReason"
     }
   },
   {
@@ -5250,9 +5250,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Collateral inquiry qualifiers:",
-      "display": "CollInquiryQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "TradeDate",
@@ -5294,7 +5292,9 @@
           "doc": "Outstanding Trades (Today < end date)"
         }
       ],
-      "fix:tag": "896"
+      "FIX:tag": "896",
+      "description": "Collateral inquiry qualifiers:",
+      "display": "CollInquiryQualifier"
     }
   },
   {
@@ -5304,9 +5304,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "897",
       "description": "Number of trades in repeating group.",
-      "display": "NoTrades",
-      "fix:tag": "897"
+      "display": "NoTrades"
     }
   },
   {
@@ -5316,9 +5316,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "898",
       "description": "The fraction of the cash consideration that must be collateralized, expressed as a percent. A MarginRatio of 02% indicates that the value of the collateral (after deducting for \"haircut\") must exceed the cash consideration by 2%.",
-      "display": "MarginRatio",
-      "fix:tag": "898"
+      "display": "MarginRatio"
     }
   },
   {
@@ -5330,9 +5330,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "899",
       "description": "Excess margin amount (deficit if value is negative)",
-      "display": "MarginExcess",
-      "fix:tag": "899"
+      "display": "MarginExcess"
     }
   }
 ]

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legpaymentstubenddatebusinesscentercomponent"
+        "FIX:component": "legpaymentstubenddatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legpaymentstubenddatebusinesscentercomponent",
+    "FIX:counter": "42495",
+    "FIX:tag": "1018955",
     "description": "Required if NoLegPaymentStubEndDateBusinessCenters(42495) > 0.",
-    "display": "LegPaymentStubEndDateBusinessCenterGrp",
-    "fix:component": "legpaymentstubenddatebusinesscentercomponent",
-    "fix:counter": "42495",
-    "fix:tag": "1018955"
+    "display": "LegPaymentStubEndDateBusinessCenterGrp"
   }
 }

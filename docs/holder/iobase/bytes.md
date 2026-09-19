@@ -171,7 +171,7 @@ assert buffered.read_text() == '{"symbol": "AAPL"}'
 === "Rust"
 
     ```rust
-    use yggdryl::holder::{local, Buffer};
+    use yggdryl::{holder::Buffer, local};
     use yggdryl::{IOBase, IOKind};
 
     // Kinds that need no probe: bytes with no location, and a directory.
@@ -289,7 +289,7 @@ Callers ask `is_container`, `is_leaf`, `is_known`; the bindings expose `exists`,
     use yggdryl::IOBase;
     use yggdryl::holder::Buffer;
     use yggdryl::{MimeType};
-    use yggdryl::holder::local;
+    use yggdryl::local;
 
     // A leaf answers from its representation, and the two are complements.
     let mut notes = Buffer::new();
@@ -785,7 +785,7 @@ A wrapping handle removes what it wraps, cached schema or footer included.
     ```rust
     use yggdryl::IOBase;
     use yggdryl::holder::Buffer;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
 
     let root = Folder::temporary()?.path()?.join(format!("yggdryl-docs-lifecycle-{}", std::process::id()));
     let mut folder = Folder::new(&root)?;
@@ -810,7 +810,7 @@ A wrapping handle removes what it wraps, cached schema or footer included.
     folder.remove(false)?;
 
     // A wrapping handle removes what it wraps, cache included.
-    let mut coded = yggdryl::coding::gzip::Gzip::new(Buffer::new());
+    let mut coded = yggdryl::gzip::Gzip::new(Buffer::new());
     coded.write_all_bytes(b"symbol,price\n")?;
     coded.remove(false)?;
     assert_eq!(coded.size(), 0);

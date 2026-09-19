@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legadditionaltermbondref"
+        "FIX:component": "legadditionaltermbondref"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legadditionaltermbondref",
+    "FIX:counter": "41316",
+    "FIX:tag": "284713",
     "description": "Required if NoLegAdditionalTermBondRefs(41316) > 0.",
-    "display": "LegAdditionalTermBondRefGrp",
-    "fix:component": "legadditionaltermbondref",
-    "fix:counter": "41316",
-    "fix:tag": "284713"
+    "display": "LegAdditionalTermBondRefGrp"
   }
 }

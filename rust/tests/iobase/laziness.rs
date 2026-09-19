@@ -160,12 +160,12 @@ fn a_failing_entry_ends_the_listing_without_discarding_what_came_before() {
 
 #[test]
 fn the_same_listing_over_the_same_state_yields_the_same_order_twice() {
-    let root = yggdryl::holder::local::Folder::temporary()
+    let root = yggdryl::local::Folder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path")
         .join(format!("yggdryl-order-{}", std::process::id()));
-    let mut folder = yggdryl::holder::local::Folder::new(&root).expect("a local folder");
+    let mut folder = yggdryl::local::Folder::new(&root).expect("a local folder");
     folder.remove(true).ok();
     for name in ["c.bin", "a.bin", "b.bin"] {
         let mut leaf = folder.child_by_path(name).expect("a child");
@@ -193,12 +193,12 @@ fn the_same_listing_over_the_same_state_yields_the_same_order_twice() {
 
 #[test]
 fn a_glob_whose_fixed_prefix_loses_lists_nothing_beneath_it() {
-    let root = yggdryl::holder::local::Folder::temporary()
+    let root = yggdryl::local::Folder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path")
         .join(format!("yggdryl-prefix-{}", std::process::id()));
-    let mut folder = yggdryl::holder::local::Folder::new(&root).expect("a local folder");
+    let mut folder = yggdryl::local::Folder::new(&root).expect("a local folder");
     folder.remove(true).ok();
     let mut leaf = folder
         .child_by_path("year=2024/month=01/part-0.parquet")
@@ -237,12 +237,12 @@ fn a_recursive_walk_descends_one_level_at_a_time() {
     // one leaf. The walk yields an entry before the subtree under it, and
     // what it retains is one level's cursor per *open* level - the
     // frontier - never the thirty-two entries it will eventually yield.
-    let root = yggdryl::holder::local::Folder::temporary()
+    let root = yggdryl::local::Folder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path")
         .join(format!("yggdryl-deep-{}", std::process::id()));
-    let mut folder = yggdryl::holder::local::Folder::new(&root).expect("a local folder");
+    let mut folder = yggdryl::local::Folder::new(&root).expect("a local folder");
     folder.remove(true).ok();
     let mut path = String::new();
     for level in 0..16 {

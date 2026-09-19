@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legprovision"
+        "FIX:component": "legprovision"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legprovision",
+    "FIX:counter": "40448",
+    "FIX:tag": "1009372",
     "description": "Required if NoLegProvisions(40448) > 0.",
-    "display": "LegProvisionGrp",
-    "fix:component": "legprovision",
-    "fix:counter": "40448",
-    "fix:tag": "1009372"
+    "display": "LegProvisionGrp"
   }
 }

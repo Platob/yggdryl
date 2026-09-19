@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "attachmentkeywordcomponent"
+        "FIX:component": "attachmentkeywordcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "attachmentkeywordcomponent",
+    "FIX:counter": "2113",
+    "FIX:tag": "133990",
     "description": "Required if NoAttachmentKeywords(2113) > 0.",
-    "display": "AttachmentKeywordGrp",
-    "fix:component": "attachmentkeywordcomponent",
-    "fix:counter": "2113",
-    "fix:tag": "133990"
+    "display": "AttachmentKeywordGrp"
   }
 }

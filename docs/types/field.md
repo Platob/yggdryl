@@ -78,12 +78,12 @@ A table's columns are the children of a struct field with `nullable` false, the 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field};
+    use yggdryl::{DataType, Field, StructureType};
 
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
-    ])?
+    ])?)
     .required_field("trade");
 
     schema.validate_struct_root()?;
@@ -157,7 +157,7 @@ Each lookup exists by position, by path, or either:
 | replacing | `set_field_at` | `set_field_by_path` | `set_field` |
 | removing | `remove_field_at` | `remove_field_by_path` | `remove_field` |
 
-`DataType` answers the same calls, plus `fields`, `field_len`, `index_of`, and `named_field`. The [`field:`](protocol.md) view is `as_field_properties`, `field_properties`, or `fieldProperties`.
+`DataType` answers the same calls, plus `fields`, `field_len`, `index_of`, and `named_field`. The [`FIELD:`](protocol.md) view is `as_field_properties`, `field_properties`, or `fieldProperties`.
 
 ## Flattening and expanding
 
@@ -166,14 +166,14 @@ Each lookup exists by position, by path, or either:
 === "Rust"
 
     ```rust
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
-    let row = DataType::from_fields([
+    let row = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::from_fields([DataType::Float64.required_field("px")])?
+        DataType::from(StructureType::from_fields([DataType::Float64.required_field("px")])?)
             .nullable_field("line"),
         DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
-    ])?;
+    ])?);
 
     // Structs flatten to leaves; the list stays one column.
     let leaves = row.unnest_fields();
@@ -233,7 +233,7 @@ Each lookup exists by position, by path, or either:
 2. `null` yields to the defined side;
 3. same-family nesting recurses; a struct takes the union of its fields;
 4. bytes win; two byte types meet parameter by parameter - the wider offsets, the variable layout over a fixed one, no bound over a bound when widening, and the mirror when narrowing. A type storing a fixed width beside fixed bytes of that same width - a fixed string, `uuid` - keeps the storage both have: the plain bytes when widening, the side constraining them when narrowing. A numeric width never shares fixed bytes, and neither does a code, whose width bounds variable text: `int32` beside `fixed_size_binary(4)`, and `currency` beside `fixed_size_binary(3)`, are variable bytes;
-5. text wins next; two strings meet parameter by parameter - the wider offsets, the variable layout over a fixed one, UTF-8 over two different charsets, no bound over a bound when widening, and the narrower layout, repertoire and bound when narrowing. A registered code is the `ascii(n)` it stores when widening and the code itself when narrowing; text absorbing a non-text side is at least `utf8`;
+5. text wins next; two strings meet leaf by leaf - the wider offsets, the variable shape over a fixed one, UTF-8 over two different charsets, no maximum over a maximum when widening, and the narrower shape, repertoire and bound when narrowing. A registered code is the `sized_ascii(n)` it stores when widening and the code itself when narrowing; text absorbing a non-text side is at least `utf8`;
 6. numbers meet by width, temporals by unit; widening keeps the widest decimal backing either side declared.
 
 Anything left is refused. Every rule answers in Python and JavaScript too; the parameter-by-parameter cases are shown once, in Rust.
@@ -241,16 +241,16 @@ Anything left is refused. Every rule answers in Python and JavaScript too; the p
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field};
+    use yggdryl::{DataType, Field, StructureType};
 
-    let left = DataType::from_fields([
+    let left = DataType::from(StructureType::from_fields([
         DataType::Int32.required_field("id"),
         DataType::utf8().required_field("venue"),
-    ])?;
-    let right = DataType::from_fields([
+    ])?);
+    let right = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float64.required_field("price"),
-    ])?;
+    ])?);
 
     let merged = left.merge_with(&right, true)?;
 
@@ -271,8 +271,12 @@ Anything left is refused. Every rule answers in Python and JavaScript too; the p
 
     // Two strings, and two byte types, meet parameter by parameter.
     assert_eq!(
-        DataType::from_str("utf8(8)")?.merge_with(&DataType::from_str("large_ascii(32)")?, true)?,
-        DataType::from_str("large_utf8(32)")?,
+        DataType::from_str("utf8(8)")?.merge_with(&DataType::from_str("sized_ascii(32)")?, true)?,
+        DataType::sized_utf8(32)?,
+    );
+    assert_eq!(
+        DataType::from_str("utf8(8)")?.merge_with(&DataType::large_ascii(), true)?,
+        DataType::large_utf8(),
     );
     assert_eq!(
         DataType::fixed_ascii(4)?.merge_with(&DataType::fixed_ascii(8)?, false)?,
@@ -285,15 +289,15 @@ Anything left is refused. Every rule answers in Python and JavaScript too; the p
     // A fixed string and fixed bytes of one width keep that storage; a
     // number's width is its own encoding and never bytes it shares.
     assert_eq!(
-        DataType::fixed_ascii(4)?.merge_with(&DataType::fixed_size_binary(4)?, true)?,
-        DataType::fixed_size_binary(4)?,
+        DataType::fixed_ascii(4)?.merge_with(&DataType::fixed_binary(4)?, true)?,
+        DataType::fixed_binary(4)?,
     );
     assert_eq!(
-        DataType::fixed_ascii(4)?.merge_with(&DataType::fixed_size_binary(4)?, false)?,
+        DataType::fixed_ascii(4)?.merge_with(&DataType::fixed_binary(4)?, false)?,
         DataType::fixed_ascii(4)?,
     );
     assert_eq!(
-        DataType::Int32.merge_with(&DataType::fixed_size_binary(4)?, true)?,
+        DataType::Int32.merge_with(&DataType::fixed_binary(4)?, true)?,
         DataType::binary(),
     );
 
@@ -374,13 +378,13 @@ Subscripting a `Field` or a `DataType` reaches a child: a `str` is a name, an `i
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field};
+    use yggdryl::{DataType, Field, StructureType};
 
-    let mut order = DataType::from_fields([
+    let mut order = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::from_fields([DataType::Float64.required_field("price")])?
+        DataType::from(StructureType::from_fields([DataType::Float64.required_field("price")])?)
             .required_field("line"),
-    ])?
+    ])?)
     .required_field("order");
     order.insert_metadata("owner", "trading")?;
 
@@ -556,30 +560,33 @@ Subscripting a `Field` or a `DataType` reaches a child: a `str` is a name, an `i
 
 Keys and values are strings in lexical key order, so equal entries compare and hash identically. Every write validates the whole batch first; a bad entry leaves the field as it was.
 
-## Typed field aliases
+## The field leaves
 
 === "Rust"
 
     ```rust
-    use yggdryl::types::{Int64Field, DateTime64Field, StringField, integer};
+    use yggdryl::{DateTimeField, DateTimeType, FieldValue as _, Int64Field, StringField, StringType};
     use yggdryl::{DataType, Field, TimeUnit, Timezone};
 
-    let id = Int64Field::new("id", false);
-    let symbol = StringField::try_new("symbol", DataType::utf8(), true)?;
-    let at = DateTime64Field::try_new("at", DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE }, false)?;
+    let id = Int64Field::unit("id", false);
+    let symbol = StringField::new("symbol", StringType::default(), true);
+    let at = DateTimeField::new(
+        "at",
+        DateTimeType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE },
+        false,
+    );
 
-    // A typed field derefs to the field it wraps.
+    // A leaf answers its own datatype, already narrowed.
     assert_eq!(id.name(), "id");
     assert_eq!(symbol.dtype(), &DataType::utf8());
     assert_eq!(at.dtype().to_string(), "datetime64(us)");
 
-    // The marker is checked, never assumed.
-    assert!(
-        Field::new("id", DataType::utf8(), false)
-            .try_into_typed::<integer::Int64Type>()
-            .is_err()
-    );
-    assert_eq!(id.into_field().dtype(), &DataType::Int64);
+    // The root enum is the leaves, so narrowing is a match and never a check
+    // that could have been skipped: a field of another datatype is another
+    // variant, and there is nothing to assume.
+    let root: Field = id.into_field();
+    assert_eq!(root.dtype(), &DataType::Int64);
+    assert!(Int64Field::from_field(&Field::new("id", DataType::utf8(), false)).is_none());
     ```
 
 === "Python"
@@ -613,13 +620,13 @@ Keys and values are strings in lexical key order, so equal entries compare and h
     assert.equal(at.dtype.toString(), 'datetime64(us)')
     ```
 
-`Int64Field` and its siblings are `TypedField<K>`: one `Field` plus a zero-sized sealed marker, `repr(transparent)`. The marker constrains the variant only; every parameter stays in the wrapped field.
+`Int64Field` and its siblings are `FieldOf<D>`: one field carrying its family's own datatype. There is no marker to check, because `Field` is an enum over exactly these leaves - the variant *is* the proof, and the payload holds whatever parameters the family declares. `FieldValue` and `DataTypeValue` are the contracts a leaf and its payload answer - `Field` and `DataType` answer them too - declared beside the value contracts `Value` and `FamilyValue` in `rust/src/value/` and re-exported at the crate root.
 
 | alias | constructors |
 | --- | --- |
-| static datatype (`Int64Field`, `VariantField`, `UuidField`, `VersionField`, `UrlField`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`, `IsinField`, `SideField`, `StateField`, `TimeInForceField`) | `new(name, nullable)`, infallible; `from_parts(name, nullable, metadata)` |
-| parameterized (`StringField`, `BytesField`, `DateTime64Field`, `GeometryField`, `GeographyField`) | `try_new(name, dtype, nullable)`; `StringField` is every layout, charset and bound, `BytesField` every byte layout |
-| from a `Field` | `try_as_typed` borrows; `try_into_typed` consumes |
+| a datatype that carries no parameters (`Int64Field`, `VariantField`, `VersionField`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`, `IsinField`, `SideField`, `StateField`, `TimeInForceField`) | `unit(name, nullable)`: there is nothing to pass, so naming the datatype again would say it twice |
+| a family with leaves or parameters (`StringField`, `BytesField`, `UuidField`, `DecimalField`, `UriField`, `DateField`, `TimeField`, `DateTimeField`, `DurationField`, `IntervalField`, `SequenceField`, `GeometryField`, `GeographyField`) | `new(name, dtype, nullable)`, taking that family's own payload |
+| from a `Field` | `FieldValue::from_field` borrows the leaf, `None` for another variant; `into_field` widens back to the root |
 | bindings | `types.int64` / `fields.int64` return the native `Field`, typed for a checker only; `types.string(name, layout=, charset=, fixed=, max=)` / `fields.string(name, { layout, charset, fixed, max })`, `types.bytes` / `fields.bytes`, `types.fixed_ascii(name, width)` / `fields.fixedAscii(name, width)`, `types.version` / `fields.version` |
 
 [Geospatial](geospatial.md), [Strings & bytes](text.md), [Codes](codes.md), [UUID](uuid.md), and [Version](text.md#versions) aliases follow this pattern; a registered code builds its own datatype, not a fixed string.
@@ -639,8 +646,8 @@ Python spells the class accessor `into_field` because a `@scalar` class converts
 ## Applying a schema's declarations
 
 A `Field` states more about a batch than its shape. A
-[`partition:`](../holder/iobase/partitions.md#derived-partition-columns) declaration says a
-column is *derived* from another; a [`digest:`](../hashing.md) role says a column *holds*
+[`PARTITION:`](../holder/iobase/partitions.md#derived-partition-columns) declaration says a
+column is *derived* from another; a [`DIGEST:`](../hashing.md) role says a column *holds*
 the row's hash. `apply_arrow_batch` is the one entry point that asks every declaring protocol,
 in the order their answers depend on: `cast` reconciles the batch to this root, `partition`
 computes the derived columns, and `digest` fills the holders last, over the rows as they
@@ -668,18 +675,18 @@ protocol is done, so a required column its protocol did not write is still refus
 
     use arrow_array::{ArrayRef, Date32Array, RecordBatch};
     use yggdryl::expression::Function;
-    use yggdryl::{ArrowCastOptions, DataType};
+    use yggdryl::{ArrowCastOptions, DataType, StructureType};
 
     let mut year = DataType::Int32.nullable_field("year");
     year.as_partition_mut().set_sources(["event"])?;
     year.as_partition_mut().set_transform(Function::Year)?;
     let mut row_digest = DataType::UInt64.nullable_field("row_digest");
     row_digest.as_digest_mut().set_holder()?;
-    let root = DataType::from_fields([
-        DataType::Date32.required_field("event"),
+    let root = DataType::from(StructureType::from_fields([
+        DataType::date32().required_field("event"),
         year,
         row_digest,
-    ])?
+    ])?)
     .required_field("row");
 
     let batch = RecordBatch::try_from_iter([(
@@ -785,7 +792,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 
     ```rust
     use yggdryl::{DataType, Field};
-    use yggdryl::types::Scalar;
+    use yggdryl::Scalar;
 
     let field = Field::from_parts("price", DataType::Float64, false, [("venue", "XPAR")])?;
 
@@ -833,20 +840,20 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field};
+    use yggdryl::{DataType, Field, StructureType};
 
-    let order = DataType::from_fields([
+    let order = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::from_fields([DataType::Float64.required_field("price")])?
+        DataType::from(StructureType::from_fields([DataType::Float64.required_field("price")])?)
             .nullable_field("line"),
-    ])?
+    ])?)
     .required_field("order");
 
     // Compact still round-trips.
     assert_eq!(Field::from_str(&order.to_string())?, order);
 
     // Readable is the alternate, or the named adapter - one implementation.
-    assert_eq!(format!("{order:#}"), order.pretty().to_string());
+    assert_eq!(format!("{order:#}"), order.into_pretty_str().to_string());
     assert_eq!(
         format!("{order:#}"),
         concat!(
@@ -960,7 +967,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - `unnest_fields` names -> each one resolves through `field_by_path`.
 - `explode_fields` -> a list gives its item, a map its entries, a dictionary or run-end its values.
 - `explode_fields` -> one level per call; the column keeps its name and place; nullable when the collection or its element is.
-- both projections -> a list of fields, not a node; `DataType::from_fields` rebuilds one.
+- both projections -> a list of fields, not a node; `DataType::from(StructureType::from_fields(..)?)` rebuilds one.
 - `merge_with(other, upscale)` -> `upscale` widens by default and loses nothing; `false` meets at the tightest type naming both, keeping a code, a `uuid`, or a fixed string over the plainer shape storing it.
 - widening a decimal -> the widest backing either side declared, never a re-encoding down to what the merged precision needs.
 - `Field::merge_with` -> receiver's name; nullable when either side is; dictionary options only where both encode; metadata unioned, receiver winning.
@@ -993,8 +1000,8 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 
     ```bash
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- field::generic field::nested field::serde field::comparison field::typed field::arrow field::integer field::floating field::decimal field::temporal field::binary field::scalar
-    cargo test --manifest-path rust/Cargo.toml -p yggdryl --doc types::arrow
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::field types::typed types::diff types::merge
+    cargo test --manifest-path rust/Cargo.toml -p yggdryl --doc -- Field::apply_arrow
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- field:: typed:: diff:: merge::
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^parse/field_'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(nested_field_clone|field_stable_hash|metadata_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^typed/'

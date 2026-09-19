@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contamttype",
-          "fix:tag": "519"
+          "FIX:field": "contamttype",
+          "FIX:tag": "519"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contamtvalue",
-          "fix:tag": "520"
+          "FIX:field": "contamtvalue",
+          "FIX:tag": "520"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contamtcurr",
-          "fix:tag": "521"
+          "FIX:field": "contamtcurr",
+          "FIX:tag": "521"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ContAmt",
-    "fix:tag": "868666"
+    "FIX:tag": "868666",
+    "display": "ContAmt"
   }
 }

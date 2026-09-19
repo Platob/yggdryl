@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradepricecondition",
-          "fix:tag": "1839"
+          "FIX:field": "tradepricecondition",
+          "FIX:tag": "1839"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TradePriceCondition",
-    "fix:tag": "371435"
+    "FIX:tag": "371435",
+    "display": "TradePriceCondition"
   }
 }

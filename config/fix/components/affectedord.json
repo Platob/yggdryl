@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "affectedorigclordid",
-          "fix:tag": "1824"
+          "FIX:field": "affectedorigclordid",
+          "FIX:tag": "1824"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "affectedorderid",
-          "fix:tag": "535"
+          "FIX:field": "affectedorderid",
+          "FIX:tag": "535"
         }
       },
       {
@@ -32,16 +32,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "affectedsecondaryorderid",
-          "fix:tag": "536"
+          "FIX:field": "affectedsecondaryorderid",
+          "FIX:tag": "536"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "AffectedOrd",
-    "fix:identifiers": "affectedorigclordid,affectedorderid,affectedsecondaryorderid",
-    "fix:tag": "463320"
+    "FIX:identifiers": "affectedorigclordid,affectedorderid,affectedsecondaryorderid",
+    "FIX:tag": "463320",
+    "display": "AffectedOrd"
   }
 }

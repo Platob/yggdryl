@@ -3,7 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::{DataType, Error, Field, Result, Scalar};
+use crate::sequence::SequenceType;
+use crate::{DataType, Error, Field, Result, Scalar, StructureType};
 
 const MAX_DEPTH: usize = 64;
 
@@ -85,7 +86,7 @@ impl GroupPlan {
         check_depth(field, depth)?;
         for (index, child) in field.fields().iter().enumerate() {
             path.push(index);
-            if matches!(child.dtype(), DataType::Struct(_)) {
+            if matches!(child.dtype(), DataType::Structure(_)) {
                 Self::columns(child, path, columns, paths, depth + 1)?;
             } else {
                 columns.push(child.clone());
@@ -141,14 +142,18 @@ fn nullable_layout(field: &Field, nullable: bool, depth: usize) -> Result<Field>
     check_depth(field, depth)?;
     let mut held = field.clone();
     let dtype = match field.dtype() {
-        DataType::Struct(fields) => DataType::from_fields(
+        DataType::Structure(fields) => DataType::from(StructureType::from_fields(
             fields
                 .iter()
                 .map(|child| nullable_layout(child, true, depth + 1))
                 .collect::<Result<Vec<_>>>()?,
-        )?,
-        DataType::List(item) => DataType::list(nullable_layout(item, false, depth + 1)?),
-        DataType::LargeList(item) => DataType::large_list(nullable_layout(item, false, depth + 1)?),
+        )?),
+        DataType::Sequence(SequenceType::List(item)) => {
+            DataType::list(nullable_layout(item, false, depth + 1)?)
+        }
+        DataType::Sequence(SequenceType::LargeList(item)) => {
+            DataType::large_list(nullable_layout(item, false, depth + 1)?)
+        }
         // Native maps are already complete values, not sparse wire groups:
         // their entry and key nullability must remain exactly as declared.
         _ => field.dtype().clone(),
@@ -163,7 +168,7 @@ fn component_value(field: &Field, values: &mut std::vec::IntoIter<Scalar>, root:
         .fields()
         .iter()
         .map(|child| {
-            if matches!(child.dtype(), DataType::Struct(_)) {
+            if matches!(child.dtype(), DataType::Structure(_)) {
                 component_value(child, values, false)
             } else {
                 values
@@ -191,20 +196,23 @@ mod tests {
     }
 
     fn parties() -> Field {
-        let subparty = DataType::from_fields([tagged("PartySubID", 523, DataType::utf8())])
+        let subparty = StructureType::from_fields([tagged("PartySubID", 523, DataType::utf8())])
+            .map(DataType::from)
             .unwrap()
             .required_field("SubParty");
         let mut nested = DataType::large_list(subparty).required_field("SubParties");
         nested.as_fix_mut().set_counter(802).unwrap();
-        let attribution = DataType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
+        let attribution = StructureType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
+            .map(DataType::from)
             .unwrap()
             .required_field("Attribution");
-        let item = DataType::from_fields([
+        let item = StructureType::from_fields([
             tagged("PartyID", 448, DataType::utf8()),
             attribution,
             tagged("NoPartySubIDs", 802, DataType::Int32),
             nested,
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("Party");
         let mut group = DataType::list(item).required_field("Parties");
@@ -223,7 +231,10 @@ mod tests {
         assert!(plan.column(1).is_nullable());
         let (column, nested) = plan.nested(802).unwrap();
         assert_eq!(column, 3);
-        assert!(matches!(nested.field().dtype(), DataType::LargeList(_)));
+        assert!(matches!(
+            nested.field().dtype(),
+            DataType::Sequence(SequenceType::LargeList(_))
+        ));
         assert_eq!(nested.tag_index(523), Some(0));
         let row = plan.row(vec![
             Scalar::from("broker"),
@@ -240,7 +251,7 @@ mod tests {
                 Scalar::Null,
             ])
         );
-        let DataType::List(item) = source.dtype() else {
+        let DataType::Sequence(SequenceType::List(item)) = source.dtype() else {
             panic!("list")
         };
         assert!(!item.fields()[0].is_nullable());
@@ -248,7 +259,8 @@ mod tests {
 
     #[test]
     fn message_and_nested_scope_borrow_one_precompiled_plan() {
-        let mut field = DataType::from_fields([parties()])
+        let mut field = StructureType::from_fields([parties()])
+            .map(DataType::from)
             .unwrap()
             .required_field("Report");
         field.as_fix_mut().set_msgtype("R").unwrap();
@@ -280,7 +292,8 @@ mod tests {
             original,
             registry.get_group_plan_by_tag(453).unwrap()
         ));
-        let item = DataType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
+        let item = StructureType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
+            .map(DataType::from)
             .unwrap()
             .required_field("Party");
         let mut replacement = DataType::list(item).required_field("Parties");
@@ -302,7 +315,7 @@ mod tests {
         field.as_fix_mut().set_tag(65_090).unwrap();
         field.as_fix_mut().set_counter(65_090).unwrap();
         let plan = GroupPlan::from_field(&field).unwrap();
-        let DataType::Map(map) = plan.field().dtype() else {
+        let DataType::Mapping(map) = plan.field().dtype() else {
             panic!("the native Map layout is preserved")
         };
         assert!(map.keys_sorted());

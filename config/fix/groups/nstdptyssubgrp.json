@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "nstdptyssub"
+        "FIX:component": "nstdptyssub"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "NstdPtysSubGrp",
-    "fix:component": "nstdptyssub",
-    "fix:counter": "804",
-    "fix:tag": "808086"
+    "FIX:component": "nstdptyssub",
+    "FIX:counter": "804",
+    "FIX:tag": "808086",
+    "display": "NstdPtysSubGrp"
   }
 }

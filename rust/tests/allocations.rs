@@ -26,12 +26,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
+use yggdryl::FieldValue as _;
 use yggdryl::graph::{Element, Event};
 use yggdryl::holder::Buffer;
-use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
-use yggdryl::types::{
-    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringParameters,
-    UncheckedFieldScalar, Uuid,
+use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
+use yggdryl::{
+    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, StructureType, UncheckedFieldScalar,
+    Uuid,
 };
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
@@ -231,7 +232,7 @@ fn uuid_version_7_and_8_construction_allocate_nothing() {
 
 #[test]
 fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
-    use yggdryl::hashing::txhash::TxHash;
+    use yggdryl::txhash::TxHash;
     use yggdryl::{Digest, DigestAlgorithm};
 
     let values: Vec<_> = [DigestAlgorithm::Xxh64, DigestAlgorithm::Xxh3]
@@ -273,7 +274,7 @@ fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
 
 /// A field carrying HTTP headers plus `extra` unrelated metadata keys.
 ///
-/// The extra keys sort after every `http:` one, so they are what a read walks
+/// The extra keys sort after every `HTTP:` one, so they are what a read walks
 /// past rather than something it stops at.
 fn http_field(extra: usize) -> Field {
     let mut field = Field::from_parts(
@@ -281,10 +282,10 @@ fn http_field(extra: usize) -> Field {
         DataType::binary(),
         false,
         [
-            ("http:content-type", "application/json"),
-            ("http:content-encoding", "gzip, br, zstd"),
-            ("http:content-length", "4096"),
-            ("http:etag", "\"revision-1\""),
+            ("HTTP:content-type", "application/json"),
+            ("HTTP:content-encoding", "gzip, br, zstd"),
+            ("HTTP:content-length", "4096"),
+            ("HTTP:etag", "\"revision-1\""),
         ],
     )
     .expect("the static HTTP metadata is valid");
@@ -315,7 +316,7 @@ fn python_field(module: &str, extra: usize) -> Field {
 /// A field carrying Iceberg's whole column vocabulary plus `extra` keys.
 #[cfg(feature = "iceberg")]
 fn iceberg_field(extra: usize) -> Field {
-    use yggdryl::media::iceberg::Transform;
+    use yggdryl::iceberg::Transform;
 
     let mut field = DataType::Int64.required_field("id");
     let mut view = field.as_iceberg_mut();
@@ -353,7 +354,8 @@ const VENUE: &str = "venue";
 /// instead of leaving it among the entries, which is a different cost from
 /// what a pair adds, and the probes below measure the latter.
 fn fix_registry(extra: usize) -> FixRegistry {
-    let item = DataType::from_fields([DataType::utf8().nullable_field("PartyID")])
+    let item = StructureType::from_fields([DataType::utf8().nullable_field("PartyID")])
+        .map(DataType::from)
         .expect("a struct item")
         .required_field("item");
     let mut parties = DataType::list(item).nullable_field("Parties");
@@ -526,7 +528,8 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
         .as_fix_mut()
         .set_branches([VENUE])
         .expect("a static membership");
-    let root = DataType::from_fields([symbol, trade, DataType::utf8().nullable_field("9999")])
+    let root = StructureType::from_fields([symbol, trade, DataType::utf8().nullable_field("9999")])
+        .map(DataType::from)
         .expect("three children")
         .required_field("row");
     let value = Scalar::from_sequence([
@@ -580,9 +583,10 @@ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
     // The header, the capture and the event are held beside the row rather
     // than in it, so reading one is a borrow whatever the row carries.
     for width in [0, 64, 1_024] {
-        let field = DataType::from_fields(
+        let field = StructureType::from_fields(
             (0..width).map(|index| DataType::Int64.required_field(format!("datum{index}"))),
         )
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
         let value = Scalar::from_sequence((0..width).map(Scalar::from));
@@ -593,7 +597,7 @@ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
                 held.header().msgtype(),
                 held.header().beginstring(),
                 held.header().sendingtime(),
-                held.capture().pluginid(),
+                held.capture().msgpluginid(),
                 held.text(),
                 held.metadata().len(),
             ));
@@ -735,7 +739,7 @@ fn a_read_allocates_only_what_it_hands_back() {
         "payload",
         DataType::binary(),
         false,
-        [("http:content-type", "application/json")],
+        [("HTTP:content-type", "application/json")],
     )
     .expect("the static content type is valid");
     free("media_type without codings", || {
@@ -749,7 +753,7 @@ fn an_iceberg_read_costs_only_a_key_the_inline_buffer_cannot_hold() {
     let field = iceberg_field(256);
 
     // A lookup key is assembled into a `SmolStr`, which holds 23 bytes inline.
-    // `iceberg:schema-id` and `iceberg:spec-id` fit, so those reads are free.
+    // `ICEBERG:schema-id` and `ICEBERG:spec-id` fit, so those reads are free.
     free("doc", || {
         let _ = black_box(field.as_iceberg().doc());
     });
@@ -763,7 +767,7 @@ fn an_iceberg_read_costs_only_a_key_the_inline_buffer_cannot_hold() {
         let _ = black_box(field.as_iceberg().transform());
     });
 
-    // `iceberg:partition-source-id` is 27 bytes and does not, so the assembled
+    // `ICEBERG:partition-source-id` is 27 bytes and does not, so the assembled
     // key goes to the heap. This is the boundary, pinned: it is a property of
     // how long the name is, not of the value being parsed.
     costs("partition_source_id", 2, || {
@@ -789,8 +793,8 @@ fn an_iceberg_read_costs_only_a_key_the_inline_buffer_cannot_hold() {
 fn a_python_read_costs_only_the_declaration_it_hands_back() {
     let field = python_field("trading.book", 256);
 
-    // Every `python:` key is shorter than `SmolStr`'s 23-byte inline buffer -
-    // `python:qualname` is the longest at 15 - so no assembled lookup key ever
+    // Every `PYTHON:` key is shorter than `SmolStr`'s 23-byte inline buffer -
+    // `PYTHON:qualname` is the longest at 15 - so no assembled lookup key ever
     // reaches the heap, whatever the declaration says.
     free("module", || {
         black_box(field.as_python().module());
@@ -980,7 +984,7 @@ fn the_canonical_value_feed_allocates_nothing() {
     // state is built outside the counted section: XXH3 keeps its secret on the
     // heap, and that is the algorithm's cost rather than the feed's.
     for (label, value) in feed_corpus() {
-        let mut sink = yggdryl::hashing::xxhash::Xxh3::new();
+        let mut sink = yggdryl::xxhash::Xxh3::new();
         free(&format!("feeding {label}"), || {
             value.write_bytes(black_box(&mut sink));
         });
@@ -1014,12 +1018,13 @@ fn borrowed_value_bytes_allocate_nothing() {
 /// it exactly. These are the columns whose canonical form used to be built and
 /// thrown away once per row: the payload is unbounded, so the copy was too.
 fn payload_row() -> (Field, Scalar) {
-    let root = DataType::from_fields([
+    let root = StructureType::from_fields([
         Field::new("symbol", DataType::utf8(), false),
         Field::new("payload", DataType::binary(), false),
         Field::new("ccy", DataType::Currency, false),
         Field::new("venue", DataType::ascii(), false),
     ])
+    .map(DataType::from)
     .expect("the row schema is valid")
     .required_field("row");
     let long = "a symbol far longer than any inline string buffer can hold";
@@ -1103,18 +1108,15 @@ fn a_string_value_is_inline_to_its_capacity_and_one_handle_past_it() {
         black_box(value);
     });
     let source = Str::new(&shared);
-    let large = StringParameters::utf8(StringLayout::LargeString);
-    free(
-        "restating a shared string value under another layout",
-        || {
-            let restated = black_box(&source)
-                .clone()
-                .try_with_parameters(large)
-                .expect("the layout holds it");
-            assert!(std::ptr::eq(source.as_str(), restated.as_str()));
-            black_box(restated);
-        },
-    );
+    let large = StringType::LargeUtf8String;
+    free("restating a shared string value under another leaf", || {
+        let restated = black_box(&source)
+            .clone()
+            .try_with_parameters(large)
+            .expect("the leaf holds it");
+        assert!(std::ptr::eq(source.as_str(), restated.as_str()));
+        black_box(restated);
+    });
 }
 
 #[test]
@@ -1159,7 +1161,6 @@ fn building_a_sequence_costs_one_allocation() {
 ///
 /// The batches differ only in their values, so anything that varies between
 /// casting one and casting the other is per-batch work rather than schema work.
-#[cfg(feature = "arrow")]
 fn cast_corpus() -> (
     arrow_schema::SchemaRef,
     [arrow_array::RecordBatch; 2],
@@ -1184,11 +1185,12 @@ fn cast_corpus() -> (
     };
     let root = Field::new(
         "row",
-        DataType::from_fields([
+        StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
             DataType::utf8().required_field("venue"),
         ])
+        .map(DataType::from)
         .expect("the root fields are valid"),
         false,
     );
@@ -1196,7 +1198,6 @@ fn cast_corpus() -> (
 }
 
 #[test]
-#[cfg(feature = "arrow")]
 fn a_compiled_cast_costs_the_same_for_every_batch_it_answers() {
     use yggdryl::{ArrowCastOptions, ArrowCastPlan};
 
@@ -1222,9 +1223,8 @@ fn a_compiled_cast_costs_the_same_for_every_batch_it_answers() {
 }
 
 #[test]
-#[cfg(feature = "arrow")]
 fn planning_once_is_what_a_reused_plan_saves_per_batch() {
-    use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan};
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan};
 
     let (schema, batches, root) = cast_corpus();
     let plan = ArrowCastPlan::compile(&schema, &root, ArrowCastOptions::new())
@@ -1259,7 +1259,7 @@ fn coupled_value_bytes_allocate_nothing() {
     // the two out, reading them back, and restating the resolution copies
     // nothing to the heap. The one-shot XXH32 answer is inline too; XXH3
     // keeps its secret on the heap, which is the algorithm's cost.
-    use yggdryl::hashing::txhash::{self, TxHash};
+    use yggdryl::txhash::{self, TxHash};
     use yggdryl::{DigestAlgorithm, TimeUnit};
 
     let value = txhash::txh128(b"AAPL", 1_700_000_000_000_000);
@@ -1291,7 +1291,7 @@ fn coupled_value_bytes_allocate_nothing() {
 
 #[test]
 fn reading_an_instant_out_of_a_value_allocates_nothing() {
-    use yggdryl::hashing::txhash;
+    use yggdryl::txhash;
     use yggdryl::{Scalar, TimeUnit, Timezone};
 
     let integer = Scalar::from(1_700_000_000_000_000_i64);
@@ -1329,7 +1329,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
     // builds nothing; a column at another unit is one fresh buffer and the
     // handle that shares it, however many rows it holds.
     use arrow_array::{TimestampMicrosecondArray, TimestampSecondArray};
-    use yggdryl::{TimeUnit, hashing::txhash};
+    use yggdryl::{TimeUnit, txhash};
 
     for rows in [16_i64, 4_096] {
         let micros = TimestampMicrosecondArray::from_iter_values(0..rows).with_timezone("UTC");
@@ -1376,9 +1376,9 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Binary, Scalar::from(&b"ABC"[..])),
         (DataTypeId::LargeBinary, Scalar::from(&b"ABC"[..])),
         (DataTypeId::BinaryView, Scalar::from(&b"ABC"[..])),
-        (DataTypeId::String, Scalar::from("AAPL")),
-        (DataTypeId::LargeString, Scalar::from("AAPL")),
-        (DataTypeId::StringView, Scalar::from("AAPL")),
+        (DataTypeId::Utf8String, Scalar::from("AAPL")),
+        (DataTypeId::LargeUtf8String, Scalar::from("AAPL")),
+        (DataTypeId::Utf8StringView, Scalar::from("AAPL")),
         (DataTypeId::Country, Scalar::from("US")),
         (DataTypeId::Currency, Scalar::from("USD")),
         (DataTypeId::Mic, Scalar::from("XNAS")),
@@ -1408,12 +1408,17 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
             (id, value)
         })
         .collect();
-    let url = DataType::Url
+    let url = DataType::url()
         .scalar("https://example.com/a")
         .expect("the text is a URL");
     values.push((DataTypeId::Url, url));
+    let urn = DataType::urn()
+        .scalar("URN:ISBN:0451450523")
+        .expect("the text is a URN");
+    values.push((DataTypeId::Urn, urn));
     // A MIME type and a media type are pinned outside the seed loop for the
-    // same reason a URL is: their canonical text is not what was written.
+    // same reason a URL and a URN are: their canonical text is not what was
+    // written.
     let mime = DataType::MimeType
         .scalar("application/json")
         .expect("the text is a MIME type");
@@ -1422,12 +1427,14 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         .scalar("application/json; charset=utf-8")
         .expect("the text is a media type");
     values.push((DataTypeId::MediaType, media));
-    // Every prebuilt id is either pinned here or the one that nothing names.
+    // Every prebuilt id is either pinned here or one no value ever names:
+    // a variant is the one datatype with no value of its own.
+    let unnamed = [DataTypeId::Variant];
     let pinned: std::collections::HashSet<DataTypeId> = values.iter().map(|(id, _)| *id).collect();
     for id in DataTypeId::ALL {
         let prebuilt = !id.is_parameterized()
             && DataType::from_str(id.as_str()).is_ok_and(|dtype| dtype.id() == id);
-        if prebuilt && id != DataTypeId::Variant {
+        if prebuilt && !unnamed.contains(&id) {
             assert!(pinned.contains(&id), "{id:?} has a shared field and no pin");
         }
     }
@@ -1499,9 +1506,10 @@ fn typing_a_value_a_field_already_holds_allocates_nothing() {
 
 /// A canonical row of `width` integer columns under its Struct root.
 fn wide_row(width: usize) -> (Field, Scalar) {
-    let root = DataType::from_fields(
+    let root = StructureType::from_fields(
         (0..width).map(|index| DataType::Int64.required_field(format!("column_{index}"))),
     )
+    .map(DataType::from)
     .expect("the row schema is valid")
     .required_field("row");
     let row = root
@@ -1679,7 +1687,8 @@ fn fix_group_registry(members: usize) -> FixRegistry {
         field.as_fix_mut().set_tag(tag).expect("a generated tag");
         field
     });
-    let item = DataType::from_fields(declared)
+    let item = StructureType::from_fields(declared)
+        .map(DataType::from)
         .expect("a struct item")
         .required_field("item");
     let mut parties = DataType::list(item).nullable_field("Parties");
@@ -1793,7 +1802,7 @@ fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
 #[test]
 fn first_text_line_from_arrow_does_not_decode_the_rest_of_its_batch() {
     use arrow_array::RecordBatchIterator;
-    use yggdryl::media::text::{from_arrow_reader, into_arrow_batch};
+    use yggdryl::text::{from_arrow_reader, into_arrow_batch};
 
     let options = TextOptions::new();
     let mut first_cost = None;
@@ -2117,8 +2126,8 @@ fn a_string_column_is_built_into_one_buffer_whatever_its_charset() {
     // own `Vec<u8>` - even for an all-ASCII cell, where the encode borrows -
     // and the count grew with the row count.
     for dtype in [
-        DataType::from_str("string(windows-1252)").expect("a charset string"),
-        DataType::from_str("large_string(windows-1252)").expect("a charset string"),
+        DataType::cp1252(),
+        DataType::large_cp1252(),
         DataType::utf8(),
     ] {
         let field = dtype.clone().nullable_field("value");
@@ -2184,7 +2193,7 @@ fn a_long_transcoded_cell_costs_its_buffer_and_its_handle() {
 #[test]
 fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let folder = yggdryl::holder::local::Folder::new(root).expect("the local seed path");
+    let folder = yggdryl::local::Folder::new(root).expect("the local seed path");
     let mut registry = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
     let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
     gross

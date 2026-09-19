@@ -131,7 +131,7 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, RecordBatch, StringArray};
 use yggdryl::arrow::batch_reader;
-use yggdryl::media::text::{
+use yggdryl::text::{
     TextBytes, TextLine, TextOptions, from_arrow_batch, from_arrow_reader, into_arrow_batch,
 };
 

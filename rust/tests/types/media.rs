@@ -8,11 +8,12 @@ use std::sync::Arc;
 use arrow_array::{Array, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 
+use yggdryl::DataType;
+use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::types::DataType;
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, Charset, DataTypeId, DataTypeKind, Field, FieldScalar, MediaType,
-    MediaTypeField, MimeType, MimeTypeField, Scalar,
+    ArrowCastOptions, Charset, DataTypeId, DataTypeKind, Field, FieldScalar, MediaType,
+    MediaTypeField, MimeType, MimeTypeField, Scalar, StructureType,
 };
 
 fn mime(text: &str) -> Scalar {
@@ -24,7 +25,8 @@ fn media(text: &str) -> Scalar {
 }
 
 fn root(field: Field) -> Field {
-    DataType::from_fields([field])
+    StructureType::from_fields([field])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
 }
@@ -100,12 +102,15 @@ fn a_value_is_canonicalized_and_refuses_what_is_not_a_type() {
     let once = media("application/json;charset=utf-8");
     assert_eq!(media(&media_text(&once)), once);
 
-    assert!(DataType::MimeType.scalar("").is_err());
+    // An empty text cell entering a non-text column is no value.
+    assert_eq!(DataType::MimeType.scalar("").unwrap(), Scalar::Null);
     assert!(DataType::MimeType.scalar("not a type").is_err());
     // A media type's intake is total by construction - it is also the
     // filename and content-negotiation reader - so text naming no base is the
-    // default base rather than a refusal. The column holds what that answers.
-    assert_eq!(media_text(&media("")), "application/octet-stream",);
+    // default base rather than a refusal. The column holds what that answers;
+    // only the empty text is no value, as it is for every non-text column.
+    assert_eq!(media_text(&media("README")), "application/octet-stream",);
+    assert_eq!(DataType::MediaType.scalar("").unwrap(), Scalar::Null);
     assert_eq!(
         media_text(&media("part.tgz")),
         "application/x-tar;encodings=application/gzip"
@@ -176,7 +181,7 @@ fn arrow_stores_canonical_utf8_under_extension_names_that_survive_a_round_trip()
         ),
     ] {
         let field = Field::new("held", dtype.clone(), true);
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
         assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
         assert_eq!(
             arrow
@@ -185,7 +190,7 @@ fn arrow_stores_canonical_utf8_under_extension_names_that_survive_a_round_trip()
                 .map(String::as_str),
             Some(extension)
         );
-        assert_eq!(Field::from_arrow(&arrow).unwrap().dtype(), &dtype);
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap().dtype(), &dtype);
 
         let array = scalar_array(&field, &value).unwrap();
         assert_eq!(array.data_type(), &ArrowDataType::Utf8);
@@ -272,12 +277,13 @@ fn defaults_merges_and_typed_fields_do_not_fall_through() {
         DataType::MimeType
     );
 
-    let typed = MimeTypeField::new("held", true);
+    let typed = MimeTypeField::unit("held", true);
     assert_eq!(typed.dtype(), &DataType::MimeType);
-    assert!(FieldScalar::new(typed.as_field(), 7_i64).is_err());
-    let typed = MediaTypeField::new("held", true);
+    assert!(FieldScalar::new(&typed.to_field(), 7_i64).is_err());
+    let typed = MediaTypeField::unit("held", true);
     assert_eq!(typed.dtype(), &DataType::MediaType);
-    let scalar = FieldScalar::new(typed.as_field(), media("text/csv")).unwrap();
+    let typed_field = typed.to_field();
+    let scalar = FieldScalar::new(&typed_field, media("text/csv")).unwrap();
     assert_eq!(scalar.dtype(), &DataType::MediaType);
 }
 

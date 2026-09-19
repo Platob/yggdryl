@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "algocertificaterequestid",
-          "fix:tag": "3014"
+          "FIX:field": "algocertificaterequestid",
+          "FIX:tag": "3014"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "algocertificaterequesttype",
-          "fix:tag": "3077"
+          "FIX:field": "algocertificaterequesttype",
+          "FIX:tag": "3077"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "algocertificaterequeststatus",
-          "fix:tag": "3017"
+          "FIX:field": "algocertificaterequeststatus",
+          "FIX:tag": "3017"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext",
-          "fix:tag": "1328"
+          "FIX:field": "rejecttext",
+          "FIX:tag": "1328"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen",
-          "fix:tag": "1664"
+          "FIX:field": "encodedrejecttextlen",
+          "FIX:tag": "1664"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext",
-          "fix:tag": "1665"
+          "FIX:field": "encodedrejecttext",
+          "FIX:tag": "1665"
         }
       },
       {
@@ -86,16 +86,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "EI",
+    "FIX:tag": "428962",
     "description": "MsgType = EI",
-    "display": "AlgoCertificateRequestAck",
-    "fix:msgtype": "EI",
-    "fix:tag": "428962"
+    "display": "AlgoCertificateRequestAck"
   }
 }

@@ -1,28 +1,22 @@
 //! Coupled columns beside the digest columns they wrap, and coupled holders.
 
-#[cfg(feature = "arrow")]
 use std::hint::black_box;
-#[cfg(feature = "arrow")]
 use std::sync::Arc;
 
 use criterion::Criterion;
 
-#[cfg(feature = "arrow")]
 use arrow_array::{
     ArrayRef, Float64Array, Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray,
     TimestampNanosecondArray,
 };
-#[cfg(feature = "arrow")]
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-#[cfg(feature = "arrow")]
-use yggdryl::{DataType, DigestAlgorithm, Field, TimeUnit, Timezone};
+use yggdryl::DateTimeType;
+use yggdryl::{DataType, DigestAlgorithm, Field, StructureType, TimeUnit, Timezone};
 
 /// Rows per fixture, enough that the per-row cost dominates the setup.
-#[cfg(feature = "arrow")]
 const ROWS: usize = crate::bench_profile::corpus(65_536, 4_096);
 
 /// The instant column every case couples, one microsecond apart.
-#[cfg(feature = "arrow")]
 fn instants() -> ArrayRef {
     Arc::new(
         TimestampMicrosecondArray::from_iter_values(
@@ -33,7 +27,6 @@ fn instants() -> ArrayRef {
 }
 
 /// The same instants at nanoseconds, so the coupling has to floor each one.
-#[cfg(feature = "arrow")]
 fn nano_instants() -> ArrayRef {
     Arc::new(TimestampNanosecondArray::from_iter_values(
         (0..ROWS as i64).map(|index| (super::INSTANT + index) * 1_000 + 7),
@@ -41,7 +34,6 @@ fn nano_instants() -> ArrayRef {
 }
 
 /// A four-column batch whose columns all take the buffer path.
-#[cfg(feature = "arrow")]
 fn buffered_batch() -> RecordBatch {
     let ids: Int64Array = (0..ROWS as i64).collect::<Vec<_>>().into();
     let symbols: StringArray = (0..ROWS)
@@ -70,16 +62,15 @@ fn buffered_batch() -> RecordBatch {
 }
 
 /// Coupled columns against the digest column and instant column they join.
-#[cfg(feature = "arrow")]
 pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     use criterion::Throughput;
 
     let batch = buffered_batch();
     let instants = instants();
     let nanos = nano_instants();
-    let digests = yggdryl::hashing::xxhash::arrow::row_digests(&batch, DigestAlgorithm::Xxh3)
+    let digests = yggdryl::xxhash::arrow::row_digests(&batch, DigestAlgorithm::Xxh3)
         .expect("the batch digests");
-    let coupled = yggdryl::hashing::txhash::arrow::row_txhashes(
+    let coupled = yggdryl::txhash::arrow::row_txhashes(
         &batch,
         instants.as_ref(),
         TimeUnit::Microsecond,
@@ -91,13 +82,13 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     group.throughput(Throughput::Elements(ROWS as u64));
     group.bench_function("row_digests", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::xxhash::arrow::row_digests(black_box(&batch), DigestAlgorithm::Xxh3)
+            yggdryl::xxhash::arrow::row_digests(black_box(&batch), DigestAlgorithm::Xxh3)
                 .expect("the batch digests")
         });
     });
     group.bench_function("row_txhashes", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::row_txhashes(
+            yggdryl::txhash::arrow::row_txhashes(
                 black_box(&batch),
                 black_box(instants.as_ref()),
                 TimeUnit::Microsecond,
@@ -108,7 +99,7 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("row_txhashes_128", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::row_txhashes(
+            yggdryl::txhash::arrow::row_txhashes(
                 black_box(&batch),
                 black_box(instants.as_ref()),
                 TimeUnit::Microsecond,
@@ -121,7 +112,7 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     let symbols = Arc::clone(batch.column(1));
     group.bench_function("column_digests", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::xxhash::arrow::column_digests(
+            yggdryl::xxhash::arrow::column_digests(
                 black_box(Arc::clone(&symbols)),
                 &symbol,
                 DigestAlgorithm::Xxh3,
@@ -131,7 +122,7 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("column_txhashes", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::column_txhashes(
+            yggdryl::txhash::arrow::column_txhashes(
                 black_box(instants.as_ref()),
                 black_box(Arc::clone(&symbols)),
                 &symbol,
@@ -143,25 +134,19 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("unix_array/same_unit", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::unix_array(
-                black_box(instants.as_ref()),
-                TimeUnit::Microsecond,
-            )
-            .expect("an instant column")
+            yggdryl::txhash::arrow::unix_array(black_box(instants.as_ref()), TimeUnit::Microsecond)
+                .expect("an instant column")
         });
     });
     group.bench_function("unix_array/floored", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::unix_array(
-                black_box(nanos.as_ref()),
-                TimeUnit::Microsecond,
-            )
-            .expect("an instant column")
+            yggdryl::txhash::arrow::unix_array(black_box(nanos.as_ref()), TimeUnit::Microsecond)
+                .expect("an instant column")
         });
     });
     group.bench_function("compose", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::compose(
+            yggdryl::txhash::arrow::compose(
                 black_box(instants.as_ref()),
                 black_box(digests.as_ref()),
                 TimeUnit::Microsecond,
@@ -172,7 +157,7 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("decompose", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::txhash::arrow::decompose(
+            yggdryl::txhash::arrow::decompose(
                 black_box(coupled.as_ref()),
                 TimeUnit::Microsecond,
                 DigestAlgorithm::Xxh3,
@@ -184,14 +169,13 @@ pub(crate) fn column_benchmarks(criterion: &mut Criterion) {
 }
 
 /// One root with a coupled holder beside one with a plain holder.
-#[cfg(feature = "arrow")]
 fn holder_fixtures() -> (Field, Field, RecordBatch) {
     let event = Field::new(
         "event",
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        },
+        }),
         false,
     );
     let symbol = Field::new("symbol", DataType::utf8(), false);
@@ -202,7 +186,7 @@ fn holder_fixtures() -> (Field, Field, RecordBatch) {
         .expect("a valid holder role");
     let mut coupled = Field::new(
         "key",
-        DataType::fixed_size_binary(16).expect("sixteen bytes is a width"),
+        DataType::fixed_binary(16).expect("sixteen bytes is a width"),
         false,
     );
     coupled
@@ -213,10 +197,12 @@ fn holder_fixtures() -> (Field, Field, RecordBatch) {
         .as_digest_mut()
         .set_time("event")
         .expect("a valid instant path");
-    let plain_root = DataType::from_fields([event.clone(), symbol.clone(), plain])
+    let plain_root = StructureType::from_fields([event.clone(), symbol.clone(), plain])
+        .map(DataType::from)
         .expect("a valid Struct")
         .required_field("row");
-    let coupled_root = DataType::from_fields([event.clone(), symbol.clone(), coupled])
+    let coupled_root = StructureType::from_fields([event.clone(), symbol.clone(), coupled])
+        .map(DataType::from)
         .expect("a valid Struct")
         .required_field("row");
     let symbols: ArrayRef = Arc::new(
@@ -226,8 +212,8 @@ fn holder_fixtures() -> (Field, Field, RecordBatch) {
     );
     let batch = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
-            event.into_arrow().expect("Arrow field"),
-            symbol.into_arrow().expect("Arrow field"),
+            event.into_arrow_field().expect("Arrow field"),
+            symbol.into_arrow_field().expect("Arrow field"),
         ])),
         vec![instants(), symbols],
     )
@@ -236,7 +222,6 @@ fn holder_fixtures() -> (Field, Field, RecordBatch) {
 }
 
 /// Filling a coupled holder beside filling a plain one over the same rows.
-#[cfg(feature = "arrow")]
 pub(crate) fn holder_fill_benchmarks(criterion: &mut Criterion) {
     use criterion::Throughput;
 
@@ -261,9 +246,3 @@ pub(crate) fn holder_fill_benchmarks(criterion: &mut Criterion) {
     });
     group.finish();
 }
-
-#[cfg(not(feature = "arrow"))]
-pub(crate) fn column_benchmarks(_criterion: &mut Criterion) {}
-
-#[cfg(not(feature = "arrow"))]
-pub(crate) fn holder_fill_benchmarks(_criterion: &mut Criterion) {}

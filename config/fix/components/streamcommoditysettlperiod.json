@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlcountry",
-          "fix:tag": "41290"
+          "FIX:field": "streamcommoditysettlcountry",
+          "FIX:tag": "41290"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettltimezone",
-          "fix:tag": "41291"
+          "FIX:field": "streamcommoditysettltimezone",
+          "FIX:tag": "41291"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlflowtype",
-          "fix:tag": "41292"
+          "FIX:field": "streamcommoditysettlflowtype",
+          "FIX:tag": "41292"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlperiodnotional",
-          "fix:tag": "41293"
+          "FIX:field": "streamcommoditysettlperiodnotional",
+          "FIX:tag": "41293"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlperiodnotionalunitofmeasure",
-          "fix:tag": "41294"
+          "FIX:field": "streamcommoditysettlperiodnotionalunitofmeasure",
+          "FIX:tag": "41294"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlperiodfrequencyperiod",
-          "fix:tag": "41295"
+          "FIX:field": "streamcommoditysettlperiodfrequencyperiod",
+          "FIX:tag": "41295"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlperiodfrequencyunit",
-          "fix:tag": "41296"
+          "FIX:field": "streamcommoditysettlperiodfrequencyunit",
+          "FIX:tag": "41296"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlperiodprice",
-          "fix:tag": "41297"
+          "FIX:field": "streamcommoditysettlperiodprice",
+          "FIX:tag": "41297"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlperiodpriceunitofmeasure",
-          "fix:tag": "41298"
+          "FIX:field": "streamcommoditysettlperiodpriceunitofmeasure",
+          "FIX:tag": "41298"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlperiodpricecurrency",
-          "fix:tag": "41299"
+          "FIX:field": "streamcommoditysettlperiodpricecurrency",
+          "FIX:tag": "41299"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlholidaysprocessinginstruction",
-          "fix:tag": "41300"
+          "FIX:field": "streamcommoditysettlholidaysprocessinginstruction",
+          "FIX:tag": "41300"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostreamcommoditysettldays",
-          "fix:tag": "41283"
+          "FIX:field": "nostreamcommoditysettldays",
+          "FIX:tag": "41283"
         }
       },
       {
@@ -142,7 +142,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "streamcommoditysettldaygrp"
+          "FIX:group": "streamcommoditysettldaygrp"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlperiodxid",
-          "fix:tag": "41301"
+          "FIX:field": "streamcommoditysettlperiodxid",
+          "FIX:tag": "41301"
         }
       },
       {
@@ -163,15 +163,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlperiodxidref",
-          "fix:tag": "41302"
+          "FIX:field": "streamcommoditysettlperiodxidref",
+          "FIX:tag": "41302"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "StreamCommoditySettlPeriod",
-    "fix:tag": "714545"
+    "FIX:tag": "714545",
+    "display": "StreamCommoditySettlPeriod"
   }
 }

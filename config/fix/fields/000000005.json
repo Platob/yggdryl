@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "500",
       "description": "Account number at agent bank for distributions.",
-      "display": "CashDistribAgentAcctNumber",
-      "fix:tag": "500"
+      "display": "CashDistribAgentAcctNumber"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "501",
       "description": "Free format Payment reference to assist with reconciliation of distributions.",
-      "display": "CashDistribPayRef",
-      "fix:tag": "501"
+      "display": "CashDistribPayRef"
     }
   },
   {
@@ -30,9 +30,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "502",
       "description": "Name of account at agent bank for distributions.",
-      "display": "CashDistribAgentAcctName",
-      "fix:tag": "502"
+      "display": "CashDistribAgentAcctName"
     }
   },
   {
@@ -43,9 +43,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "503",
       "description": "The start date of the card as specified on the card being used for payment.",
-      "display": "CardStartDate",
-      "fix:tag": "503"
+      "display": "CardStartDate"
     }
   },
   {
@@ -56,9 +56,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "504",
       "description": "The date written on a cheque or date payment should be submitted to the relevant clearing system.",
-      "display": "PaymentDate",
-      "fix:tag": "504"
+      "display": "PaymentDate"
     }
   },
   {
@@ -68,9 +68,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "505",
       "description": "Identifies sender of a payment, e.g. the payment remitter or a customer reference number.",
-      "display": "PaymentRemitterID",
-      "fix:tag": "505"
+      "display": "PaymentRemitterID"
     }
   },
   {
@@ -80,9 +80,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Registration status as returned by the broker or (for CIV) the fund manager:",
-      "display": "RegistStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "A",
           "name": "Accepted",
@@ -104,7 +102,9 @@
           "doc": "Reminder - i.e. Registration Instructions are still outstanding"
         }
       ],
-      "fix:tag": "506"
+      "FIX:tag": "506",
+      "description": "Registration status as returned by the broker or (for CIV) the fund manager:",
+      "display": "RegistStatus"
     }
   },
   {
@@ -114,9 +114,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason(s) why Registration Instructions has been rejected.",
-      "display": "RegistRejReasonCode",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "InvalidAccountType",
@@ -213,7 +211,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "507"
+      "FIX:tag": "507",
+      "description": "Reason(s) why Registration Instructions has been rejected.",
+      "display": "RegistRejReasonCode"
     }
   },
   {
@@ -223,9 +223,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "508",
       "description": "Reference identifier for the RegistID(513) with Cancel and Replace RegistTransType(514) transaction types.",
-      "display": "RegistRefID",
-      "fix:tag": "508"
+      "display": "RegistRefID"
     }
   },
   {
@@ -235,12 +235,12 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Set of Registration name and address details, possibly including phone, fax etc.",
-      "display": "RegistDtls",
-      "fix:names": [
+      "FIX:names": [
         "registdetls"
       ],
-      "fix:tag": "509"
+      "FIX:tag": "509",
+      "description": "Set of Registration name and address details, possibly including phone, fax etc.",
+      "display": "RegistDtls"
     }
   },
   {
@@ -250,9 +250,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "510",
       "description": "The number of Distribution Instructions on a Registration Instructions message",
-      "display": "NoDistribInsts",
-      "fix:tag": "510"
+      "display": "NoDistribInsts"
     }
   },
   {
@@ -262,9 +262,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "511",
       "description": "Email address relating to Registration name and address details",
-      "display": "RegistEmail",
-      "fix:tag": "511"
+      "display": "RegistEmail"
     }
   },
   {
@@ -274,9 +274,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "512",
       "description": "The amount of each distribution to go to this beneficiary, expressed as a percentage",
-      "display": "DistribPercentage",
-      "fix:tag": "512"
+      "display": "DistribPercentage"
     }
   },
   {
@@ -286,9 +286,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "513",
       "description": "Unique identifier of the registration details as assigned by institution or intermediary.",
-      "display": "RegistID",
-      "fix:tag": "513"
+      "display": "RegistID"
     }
   },
   {
@@ -298,9 +298,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies Registration Instructions transaction type",
-      "display": "RegistTransType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "New",
@@ -317,7 +315,9 @@
           "doc": "Replace"
         }
       ],
-      "fix:tag": "514"
+      "FIX:tag": "514",
+      "description": "Identifies Registration Instructions transaction type",
+      "display": "RegistTransType"
     }
   },
   {
@@ -329,9 +329,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "515",
       "description": "For CIV - a date and time stamp to indicate the fund valuation point with respect to which a order was priced by the fund manager.",
-      "display": "ExecValuationPoint",
-      "fix:tag": "515"
+      "display": "ExecValuationPoint"
     }
   },
   {
@@ -341,9 +341,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "516",
       "description": "For CIV specifies the approximate order quantity desired. For a CIV Sale it specifies percentage of investor's total holding to be sold. For a CIV switch/exchange it specifies percentage of investor's cash realised from sales to be re-invested. The executing broker, intermediary or fund manager is responsible for converting and calculating OrderQty (38) in shares/units for subsequent messages.",
-      "display": "OrderPercent",
-      "fix:tag": "516"
+      "display": "OrderPercent"
     }
   },
   {
@@ -353,9 +353,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The relationship between Registration parties.",
-      "display": "OwnershipType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "J",
           "name": "JointInvestors",
@@ -372,7 +370,9 @@
           "doc": "Joint Trustees"
         }
       ],
-      "fix:tag": "517"
+      "FIX:tag": "517",
+      "description": "The relationship between Registration parties.",
+      "display": "OwnershipType"
     }
   },
   {
@@ -382,9 +382,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "518",
       "description": "The number of Contract Amount details on an Execution Report message",
-      "display": "NoContAmts",
-      "fix:tag": "518"
+      "display": "NoContAmts"
     }
   },
   {
@@ -394,9 +394,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of ContAmtValue (520).",
-      "display": "ContAmtType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CommissionAmount",
@@ -473,7 +471,9 @@
           "doc": "Net Settlement Amount"
         }
       ],
-      "fix:tag": "519"
+      "FIX:tag": "519",
+      "description": "Type of ContAmtValue (520).",
+      "display": "ContAmtType"
     }
   },
   {
@@ -483,9 +483,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "520",
       "description": "Value of Contract Amount, e.g. a financial amount or percentage as indicated by ContAmtType (519).",
-      "display": "ContAmtValue",
-      "fix:tag": "520"
+      "display": "ContAmtValue"
     }
   },
   {
@@ -495,9 +495,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "521",
       "description": "Specifies currency for the Contract amount if different from the Deal Currency - see \"Appendix 6-A; Valid Currency Codes\".",
-      "display": "ContAmtCurr",
-      "fix:tag": "521"
+      "display": "ContAmtCurr"
     }
   },
   {
@@ -507,9 +507,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of owner.",
-      "display": "OwnerType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "IndividualInvestor",
@@ -621,7 +619,9 @@
           "doc": "Firm agency average price account"
         }
       ],
-      "fix:tag": "522"
+      "FIX:tag": "522",
+      "description": "Identifies the type of owner.",
+      "display": "OwnerType"
     }
   },
   {
@@ -631,9 +631,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "523",
       "description": "Sub-identifier (e.g. Clearing Account for PartyRole (452)=Clearing Firm, Locate ID # for PartyRole=Locate/Lending Firm, etc). Not required when using PartyID (448), PartyIDSource (447), and PartyRole.",
-      "display": "PartySubID",
-      "fix:tag": "523"
+      "display": "PartySubID"
     }
   },
   {
@@ -643,9 +643,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "524",
       "description": "PartyID value within a nested repeating group.",
-      "display": "NestedPartyID",
-      "fix:tag": "524"
+      "display": "NestedPartyID"
     }
   },
   {
@@ -655,9 +655,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "PartyIDSource value within a nested repeating group.",
-      "display": "NestedPartyIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "KoreanInvestorID",
@@ -845,7 +843,9 @@
           "doc": "Korea Short Selling Registration Number"
         }
       ],
-      "fix:tag": "525"
+      "FIX:tag": "525",
+      "description": "PartyIDSource value within a nested repeating group.",
+      "display": "NestedPartyIDSource"
     }
   },
   {
@@ -855,9 +855,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "526",
       "description": "Assigned by the party which originates the order. Can be used to provide the ClOrdID (11) used by an exchange or executing system.",
-      "display": "SecondaryClOrdID",
-      "fix:tag": "526"
+      "display": "SecondaryClOrdID"
     }
   },
   {
@@ -867,9 +867,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "527",
       "description": "Assigned by the party which accepts the order. Can be used to provide the ExecID (17) used by an exchange or executing system.",
-      "display": "SecondaryExecID",
-      "fix:tag": "527"
+      "display": "SecondaryExecID"
     }
   },
   {
@@ -879,9 +879,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Designates the capacity of the firm placing the order.",
-      "display": "OrderCapacity",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "A",
           "name": "Agency",
@@ -918,7 +916,9 @@
           "doc": "Mixed capacity"
         }
       ],
-      "fix:tag": "528"
+      "FIX:tag": "528",
+      "description": "Designates the capacity of the firm placing the order.",
+      "display": "OrderCapacity"
     }
   },
   {
@@ -928,9 +928,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Restrictions associated with an order. If more than one restriction is applicable to an order, this field can contain multiple instructions separated by space.",
-      "display": "OrderRestrictions",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ProgramTrade",
@@ -1022,7 +1020,9 @@
           "doc": "Normal Course Issuer Bid (NCIB)"
         }
       ],
-      "fix:tag": "529"
+      "FIX:tag": "529",
+      "description": "Restrictions associated with an order. If more than one restriction is applicable to an order, this field can contain multiple instructions separated by space.",
+      "display": "OrderRestrictions"
     }
   },
   {
@@ -1032,9 +1032,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies scope of Order Mass Cancel Request.",
-      "display": "MassCancelRequestType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CancelOrdersForASecurity",
@@ -1096,7 +1094,9 @@
           "doc": "Cancel orders for an issuer of underlying security"
         }
       ],
-      "fix:tag": "530"
+      "FIX:tag": "530",
+      "description": "Specifies scope of Order Mass Cancel Request.",
+      "display": "MassCancelRequestType"
     }
   },
   {
@@ -1106,9 +1106,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the action taken by counterparty order handling system as a result of the Order Mass Cancel Request",
-      "display": "MassCancelResponse",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "CancelRequestRejected",
@@ -1175,7 +1173,9 @@
           "doc": "Cancel orders for an issuer of underlying security"
         }
       ],
-      "fix:tag": "531"
+      "FIX:tag": "531",
+      "description": "Specifies the action taken by counterparty order handling system as a result of the Order Mass Cancel Request",
+      "display": "MassCancelResponse"
     }
   },
   {
@@ -1185,9 +1185,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason Order Mass Cancel Request was rejected",
-      "display": "MassCancelRejectReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "MassCancelNotSupported",
@@ -1257,7 +1255,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "532"
+      "FIX:tag": "532",
+      "description": "Reason Order Mass Cancel Request was rejected",
+      "display": "MassCancelRejectReason"
     }
   },
   {
@@ -1267,9 +1267,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "533",
       "description": "Total number of orders affected by either the OrderMassActionRequest(MsgType=CA) or OrderMassCancelRequest(MsgType=Q).",
-      "display": "TotalAffectedOrders",
-      "fix:tag": "533"
+      "display": "TotalAffectedOrders"
     }
   },
   {
@@ -1279,9 +1279,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "534",
       "description": "Number of affected orders in the repeating group of order ids.",
-      "display": "NoAffectedOrders",
-      "fix:tag": "534"
+      "display": "NoAffectedOrders"
     }
   },
   {
@@ -1291,9 +1291,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "535",
       "description": "OrderID(37) of an order affected by a mass cancel or mass action request.",
-      "display": "AffectedOrderID",
-      "fix:tag": "535"
+      "display": "AffectedOrderID"
     }
   },
   {
@@ -1303,9 +1303,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "536",
       "description": "SecondaryOrderID(198) of an order affected by a mass cancel or mass action request.",
-      "display": "AffectedSecondaryOrderID",
-      "fix:tag": "536"
+      "display": "AffectedSecondaryOrderID"
     }
   },
   {
@@ -1315,9 +1315,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of quote.",
-      "display": "QuoteType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Indicative",
@@ -1344,7 +1342,9 @@
           "doc": "Initially tradeable"
         }
       ],
-      "fix:tag": "537"
+      "FIX:tag": "537",
+      "description": "Identifies the type of quote.",
+      "display": "QuoteType"
     }
   },
   {
@@ -1354,9 +1354,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "PartyRole value within a nested repeating group.",
-      "display": "NestedPartyRole",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ExecutingFirm",
@@ -2003,7 +2001,9 @@
           "doc": "Algorithm"
         }
       ],
-      "fix:tag": "538"
+      "FIX:tag": "538",
+      "description": "PartyRole value within a nested repeating group.",
+      "display": "NestedPartyRole"
     }
   },
   {
@@ -2013,9 +2013,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "539",
       "description": "Number of NestedPartyID (524), NestedPartyIDSource (525), and NestedPartyRole (538) entries",
-      "display": "NoNestedPartyIDs",
-      "fix:tag": "539"
+      "display": "NoNestedPartyIDs"
     }
   },
   {
@@ -2027,15 +2027,15 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Total Amount of Accrued Interest for convertible bonds and fixed income",
-      "display": "TotalAccruedInterestAmt",
-      "fix:deprecated": "4.4",
-      "fix:replacements": [
+      "FIX:deprecated": "4.4",
+      "FIX:replacements": [
         {
           "plan": "select totalaccruedinterestamt as accruedinterestamt"
         }
       ],
-      "fix:tag": "540"
+      "FIX:tag": "540",
+      "description": "Total Amount of Accrued Interest for convertible bonds and fixed income",
+      "display": "TotalAccruedInterestAmt"
     }
   },
   {
@@ -2046,9 +2046,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "541",
       "description": "Date of maturity.",
-      "display": "MaturityDate",
-      "fix:tag": "541"
+      "display": "MaturityDate"
     }
   },
   {
@@ -2059,9 +2059,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "542",
       "description": "Underlying security's maturity date.",
-      "display": "UnderlyingMaturityDate",
-      "fix:tag": "542"
+      "display": "UnderlyingMaturityDate"
     }
   },
   {
@@ -2071,9 +2071,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "543",
       "description": "Values may include BIC for the depository or custodian who maintain ownership records, the ISO country code for the location of the record, or the value \"ZZ\" to specify physical ownership of the security (e.g. stock certificate).",
-      "display": "InstrRegistry",
-      "fix:tag": "543"
+      "display": "InstrRegistry"
     }
   },
   {
@@ -2083,9 +2083,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies whether an order is a margin order or a non-margin order. This is primarily used when sending orders to Japanese exchanges to indicate sell margin or buy to cover. The same tag could be assigned also by buy-side to indicate the intent to sell or buy margin and the sell-side to accept or reject (base on some validation criteria) the margin request.",
-      "display": "CashMargin",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Cash",
@@ -2102,7 +2100,9 @@
           "doc": "Margin Close"
         }
       ],
-      "fix:tag": "544"
+      "FIX:tag": "544",
+      "description": "Identifies whether an order is a margin order or a non-margin order. This is primarily used when sending orders to Japanese exchanges to indicate sell margin or buy to cover. The same tag could be assigned also by buy-side to indicate the intent to sell or buy margin and the sell-side to accept or reject (base on some validation criteria) the margin request.",
+      "display": "CashMargin"
     }
   },
   {
@@ -2112,9 +2112,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "545",
       "description": "PartySubID value within a nested repeating group.",
-      "display": "NestedPartySubID",
-      "fix:tag": "545"
+      "display": "NestedPartySubID"
     }
   },
   {
@@ -2124,9 +2124,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the market scope of the market data.",
-      "display": "Scope",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "LocalMarket",
@@ -2143,7 +2141,9 @@
           "doc": "Global"
         }
       ],
-      "fix:tag": "546"
+      "FIX:tag": "546",
+      "description": "Specifies the market scope of the market data.",
+      "display": "Scope"
     }
   },
   {
@@ -2153,9 +2153,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Defines how a server handles distribution of a truncated book. Defaults to broker option.",
-      "display": "MDImplicitDelete",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "No",
@@ -2167,7 +2165,9 @@
           "doc": "Client has responsibility for implicitly deleting bids or offers falling outside the MarketDepth of the request"
         }
       ],
-      "fix:tag": "547"
+      "FIX:tag": "547",
+      "description": "Defines how a server handles distribution of a truncated book. Defaults to broker option.",
+      "display": "MDImplicitDelete"
     }
   },
   {
@@ -2177,9 +2177,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "548",
       "description": "Identifier for a cross order. Must be unique during a given trading day. Recommend that firms use the order date as part of the CrossID for Good Till Cancel (GT) orders.",
-      "display": "CrossID",
-      "fix:tag": "548"
+      "display": "CrossID"
     }
   },
   {
@@ -2189,9 +2189,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of cross being submitted to a market",
-      "display": "CrossType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CrossAON",
@@ -2238,7 +2236,9 @@
           "doc": "Customer to customer cross"
         }
       ],
-      "fix:tag": "549"
+      "FIX:tag": "549",
+      "description": "Type of cross being submitted to a market",
+      "display": "CrossType"
     }
   },
   {
@@ -2248,9 +2248,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates if one side or the other of a cross order should be prioritized.",
-      "display": "CrossPrioritization",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "None",
@@ -2267,7 +2265,9 @@
           "doc": "Sell side is prioritized"
         }
       ],
-      "fix:tag": "550"
+      "FIX:tag": "550",
+      "description": "Indicates if one side or the other of a cross order should be prioritized.",
+      "display": "CrossPrioritization"
     }
   },
   {
@@ -2277,9 +2277,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "551",
       "description": "CrossID of the previous cross order (NOT the initial cross order of the day) as assigned by the institution, used to identify the previous cross order in Cross Cancel and Cross Cancel/Replace Requests.",
-      "display": "OrigCrossID",
-      "fix:tag": "551"
+      "display": "OrigCrossID"
     }
   },
   {
@@ -2289,9 +2289,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Number of Side repeating group instances.",
-      "display": "NoSides",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "OneSide",
@@ -2303,7 +2301,9 @@
           "doc": "Both Sides"
         }
       ],
-      "fix:tag": "552"
+      "FIX:tag": "552",
+      "description": "Number of Side repeating group instances.",
+      "display": "NoSides"
     }
   },
   {
@@ -2313,9 +2313,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "553",
       "description": "Userid or username.",
-      "display": "Username",
-      "fix:tag": "553"
+      "display": "Username"
     }
   },
   {
@@ -2325,9 +2325,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "554",
       "description": "Password or passphrase.",
-      "display": "Password",
-      "fix:tag": "554"
+      "display": "Password"
     }
   },
   {
@@ -2337,9 +2337,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "555",
       "description": "Number of InstrumentLeg repeating group instances.",
-      "display": "NoLegs",
-      "fix:tag": "555"
+      "display": "NoLegs"
     }
   },
   {
@@ -2349,9 +2349,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "556",
       "description": "Currency associated with a particular Leg's quantity",
-      "display": "LegCurrency",
-      "fix:tag": "556"
+      "display": "LegCurrency"
     }
   },
   {
@@ -2361,12 +2361,12 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to support fragmentation. Indicates total number of security types when multiple Security Type messages are used to return results.",
-      "display": "TotNoSecurityTypes",
-      "fix:names": [
+      "FIX:names": [
         "totalnumsecuritytypes"
       ],
-      "fix:tag": "557"
+      "FIX:tag": "557",
+      "description": "Used to support fragmentation. Indicates total number of security types when multiple Security Type messages are used to return results.",
+      "display": "TotNoSecurityTypes"
     }
   },
   {
@@ -2376,9 +2376,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "558",
       "description": "Number of Security Type repeating group instances.",
-      "display": "NoSecurityTypes",
-      "fix:tag": "558"
+      "display": "NoSecurityTypes"
     }
   },
   {
@@ -2388,9 +2388,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type/criteria of Security List Request",
-      "display": "SecurityListRequestType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Symbol",
@@ -2422,7 +2420,9 @@
           "doc": "MarketID or MarketID + MarketSegmentID"
         }
       ],
-      "fix:tag": "559"
+      "FIX:tag": "559",
+      "description": "Identifies the type/criteria of Security List Request",
+      "display": "SecurityListRequestType"
     }
   },
   {
@@ -2432,9 +2432,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The results returned to a Security Request message",
-      "display": "SecurityRequestResult",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ValidRequest",
@@ -2466,7 +2464,9 @@
           "doc": "Request for instrument data not supported"
         }
       ],
-      "fix:tag": "560"
+      "FIX:tag": "560",
+      "description": "The results returned to a Security Request message",
+      "display": "SecurityRequestResult"
     }
   },
   {
@@ -2478,9 +2478,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "561",
       "description": "The trading lot size of a security",
-      "display": "RoundLot",
-      "fix:tag": "561"
+      "display": "RoundLot"
     }
   },
   {
@@ -2492,9 +2492,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "562",
       "description": "The minimum order quantity (as expressed by TradeVolType(1786)) that can be submitted for a security.",
-      "display": "MinTradeVol",
-      "fix:tag": "562"
+      "display": "MinTradeVol"
     }
   },
   {
@@ -2504,9 +2504,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the method of execution reporting requested by issuer of the order.",
-      "display": "MultiLegRptTypeReq",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ReportByMulitlegSecurityOnly",
@@ -2523,7 +2521,9 @@
           "doc": "Report by instrument legs belonging to the multileg security only (do not report status of multileg security)"
         }
       ],
-      "fix:tag": "563"
+      "FIX:tag": "563",
+      "description": "Indicates the method of execution reporting requested by issuer of the order.",
+      "display": "MultiLegRptTypeReq"
     }
   },
   {
@@ -2533,9 +2533,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "PositionEffect for leg of a multileg",
-      "display": "LegPositionEffect",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "C",
           "name": "Close",
@@ -2567,7 +2565,9 @@
           "doc": "Default"
         }
       ],
-      "fix:tag": "564"
+      "FIX:tag": "564",
+      "description": "PositionEffect for leg of a multileg",
+      "display": "LegPositionEffect"
     }
   },
   {
@@ -2577,9 +2577,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "CoveredOrUncovered for leg of a multileg",
-      "display": "LegCoveredOrUncovered",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Covered",
@@ -2591,7 +2589,9 @@
           "doc": "Uncovered"
         }
       ],
-      "fix:tag": "565"
+      "FIX:tag": "565",
+      "description": "CoveredOrUncovered for leg of a multileg",
+      "display": "LegCoveredOrUncovered"
     }
   },
   {
@@ -2603,9 +2603,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "566",
       "description": "Price for leg of a multileg",
-      "display": "LegPrice",
-      "fix:tag": "566"
+      "display": "LegPrice"
     }
   },
   {
@@ -2615,9 +2615,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the reason a Trading Session Status Request was rejected.",
-      "display": "TradSesStatusRejReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "UnknownOrInvalidTradingSessionID",
@@ -2629,7 +2627,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "567"
+      "FIX:tag": "567",
+      "description": "Indicates the reason a Trading Session Status Request was rejected.",
+      "display": "TradSesStatusRejReason"
     }
   },
   {
@@ -2639,9 +2639,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "568",
       "description": "Trade Capture Report Request ID",
-      "display": "TradeRequestID",
-      "fix:tag": "568"
+      "display": "TradeRequestID"
     }
   },
   {
@@ -2651,9 +2651,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of Trade Capture Report.",
-      "display": "TradeRequestType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "AllTrades",
@@ -2680,7 +2678,9 @@
           "doc": "Advisories that match criteria"
         }
       ],
-      "fix:tag": "569"
+      "FIX:tag": "569",
+      "description": "Type of Trade Capture Report.",
+      "display": "TradeRequestType"
     }
   },
   {
@@ -2690,9 +2690,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates if the transaction was previously reported to the counterparty or market.",
-      "display": "PreviouslyReported",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "NotReportedToCounterparty",
@@ -2710,7 +2708,9 @@
           "doc": "Previously reported to counterparty or market"
         }
       ],
-      "fix:tag": "570"
+      "FIX:tag": "570",
+      "description": "Indicates if the transaction was previously reported to the counterparty or market.",
+      "display": "PreviouslyReported"
     }
   },
   {
@@ -2720,9 +2720,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "571",
       "description": "Unique identifier of trade capture report",
-      "display": "TradeReportID",
-      "fix:tag": "571"
+      "display": "TradeReportID"
     }
   },
   {
@@ -2732,9 +2732,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "572",
       "description": "Reference identifier used with CANCEL and REPLACE transaction types.",
-      "display": "TradeReportRefID",
-      "fix:tag": "572"
+      "display": "TradeReportRefID"
     }
   },
   {
@@ -2744,9 +2744,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The status of this trade with respect to matching or comparison.",
-      "display": "MatchStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Compared",
@@ -2768,7 +2766,9 @@
           "doc": "Mismatched"
         }
       ],
-      "fix:tag": "573"
+      "FIX:tag": "573",
+      "description": "The status of this trade with respect to matching or comparison.",
+      "display": "MatchStatus"
     }
   },
   {
@@ -2778,9 +2778,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The point in the matching process at which this trade was matched.",
-      "display": "MatchType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "A1",
           "name": "ExactMatchPlus4BadgesExecTime",
@@ -2980,7 +2978,9 @@
           "name": "CallAuctionLegacy"
         }
       ],
-      "fix:tag": "574"
+      "FIX:tag": "574",
+      "description": "The point in the matching process at which this trade was matched.",
+      "display": "MatchType"
     }
   },
   {
@@ -2990,9 +2990,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "This trade is to be treated as an odd lot",
-      "display": "OddLot",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "TreatAsRoundLot",
@@ -3010,14 +3008,16 @@
           "doc": "Treat as odd lot"
         }
       ],
-      "fix:deprecated": "5.0",
-      "fix:replacements": [
+      "FIX:deprecated": "5.0",
+      "FIX:replacements": [
         {
           "plan": "select '1' as lottype where oddlot = 'Y'",
           "doc": "An OddLot is LotType OddLot (FIX 5.0 Appendix 6-E)"
         }
       ],
-      "fix:tag": "575"
+      "FIX:tag": "575",
+      "description": "This trade is to be treated as an odd lot",
+      "display": "OddLot"
     }
   },
   {
@@ -3027,9 +3027,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "576",
       "description": "Number of clearing instructions",
-      "display": "NoClearingInstructions",
-      "fix:tag": "576"
+      "display": "NoClearingInstructions"
     }
   },
   {
@@ -3039,9 +3039,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Eligibility of this trade for clearing and central counterparty processing.",
-      "display": "ClearingInstruction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ProcessNormally",
@@ -3118,7 +3116,9 @@
           "doc": "Buy-in"
         }
       ],
-      "fix:tag": "577"
+      "FIX:tag": "577",
+      "description": "Eligibility of this trade for clearing and central counterparty processing.",
+      "display": "ClearingInstruction"
     }
   },
   {
@@ -3128,9 +3128,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "578",
       "description": "Type of input device or system from which the trade was entered.",
-      "display": "TradeInputSource",
-      "fix:tag": "578"
+      "display": "TradeInputSource"
     }
   },
   {
@@ -3140,9 +3140,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "579",
       "description": "Specific device number, terminal number or station where trade was entered",
-      "display": "TradeInputDevice",
-      "fix:tag": "579"
+      "display": "TradeInputDevice"
     }
   },
   {
@@ -3152,9 +3152,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "580",
       "description": "Number of Date fields provided in date range",
-      "display": "NoDates",
-      "fix:tag": "580"
+      "display": "NoDates"
     }
   },
   {
@@ -3164,9 +3164,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of account associated with an order",
-      "display": "AccountType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CarriedCustomerSide",
@@ -3228,7 +3226,9 @@
           "doc": "Account for orders from multiple customers"
         }
       ],
-      "fix:tag": "581"
+      "FIX:tag": "581",
+      "description": "Type of account associated with an order",
+      "display": "AccountType"
     }
   },
   {
@@ -3238,9 +3238,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Capacity of customer placing the order.",
-      "display": "CustOrderCapacity",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "MemberTradingForTheirOwnAccount",
@@ -3267,7 +3265,9 @@
           "doc": "Retail customer"
         }
       ],
-      "fix:tag": "582"
+      "FIX:tag": "582",
+      "description": "Capacity of customer placing the order.",
+      "display": "CustOrderCapacity"
     }
   },
   {
@@ -3277,9 +3277,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "583",
       "description": "Permits order originators to tie together groups of orders in which trades resulting from orders are associated for a specific purpose, for example the calculation of average execution price for a customer or to associate lists submitted to a broker as waves of a larger program trade.",
-      "display": "ClOrdLinkID",
-      "fix:tag": "583"
+      "display": "ClOrdLinkID"
     }
   },
   {
@@ -3289,9 +3289,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "584",
       "description": "Value assigned by issuer of Mass Status Request to uniquely identify the request",
-      "display": "MassStatusReqID",
-      "fix:tag": "584"
+      "display": "MassStatusReqID"
     }
   },
   {
@@ -3301,9 +3301,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type or scope of the mass order status request.",
-      "display": "MassStatusReqType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "StatusForOrdersForASecurity",
@@ -3355,7 +3353,9 @@
           "doc": "Status for orders for an issuer of underlying security"
         }
       ],
-      "fix:tag": "585"
+      "FIX:tag": "585",
+      "description": "Specifies the type or scope of the mass order status request.",
+      "display": "MassStatusReqType"
     }
   },
   {
@@ -3367,9 +3367,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "586",
       "description": "The most recent (or current) modification TransactTime (tag 60) reported on an Execution Report for the order. The OrigOrdModTime is provided as an optional field on Order Cancel Request and Order Cancel Replace Requests to identify that the state of the order has not changed since the request was issued. The use of this approach is not recommended.",
-      "display": "OrigOrdModTime",
-      "fix:tag": "586"
+      "display": "OrigOrdModTime"
     }
   },
   {
@@ -3379,9 +3379,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates order settlement period. If present, LegSettlDate (588) overrides this field. If both LegSettlType (587) and LegSettDate (588) are omitted, the default for LegSettlType (587) is 0 (Regular)",
-      "display": "LegSettlType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Regular",
@@ -3443,10 +3441,12 @@
           "doc": "FX Spot Next settlement (Spot+1, aka next day)"
         }
       ],
-      "fix:names": [
+      "FIX:names": [
         "legsettlmnttyp"
       ],
-      "fix:tag": "587"
+      "FIX:tag": "587",
+      "description": "Indicates order settlement period. If present, LegSettlDate (588) overrides this field. If both LegSettlType (587) and LegSettDate (588) are omitted, the default for LegSettlType (587) is 0 (Regular)",
+      "display": "LegSettlType"
     }
   },
   {
@@ -3457,12 +3457,12 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Refer to description for SettlDate[64]",
-      "display": "LegSettlDate",
-      "fix:names": [
+      "FIX:names": [
         "legfutsettdate"
       ],
-      "fix:tag": "588"
+      "FIX:tag": "588",
+      "description": "Refer to description for SettlDate[64]",
+      "display": "LegSettlDate"
     }
   },
   {
@@ -3472,9 +3472,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether or not automatic booking can occur.",
-      "display": "DayBookingInst",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Auto",
@@ -3491,7 +3489,9 @@
           "doc": "Accumulate"
         }
       ],
-      "fix:tag": "589"
+      "FIX:tag": "589",
+      "description": "Indicates whether or not automatic booking can occur.",
+      "display": "DayBookingInst"
     }
   },
   {
@@ -3501,9 +3501,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates what constitutes a bookable unit.",
-      "display": "BookingUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "EachPartialExecutionIsABookableUnit",
@@ -3520,7 +3518,9 @@
           "doc": "Aggregate executions for this symbol, side, and settlement date"
         }
       ],
-      "fix:tag": "590"
+      "FIX:tag": "590",
+      "description": "Indicates what constitutes a bookable unit.",
+      "display": "BookingUnit"
     }
   },
   {
@@ -3530,9 +3530,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the method of preallocation.",
-      "display": "PreallocMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ProRata",
@@ -3544,7 +3542,9 @@
           "doc": "Do not pro-rata - discuss first"
         }
       ],
-      "fix:tag": "591"
+      "FIX:tag": "591",
+      "description": "Indicates the method of preallocation.",
+      "display": "PreallocMethod"
     }
   },
   {
@@ -3554,9 +3554,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "592",
       "description": "Underlying security's CountryOfIssue.",
-      "display": "UnderlyingCountryOfIssue",
-      "fix:tag": "592"
+      "display": "UnderlyingCountryOfIssue"
     }
   },
   {
@@ -3566,9 +3566,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "593",
       "description": "Underlying security's StateOrProvinceOfIssue.",
-      "display": "UnderlyingStateOrProvinceOfIssue",
-      "fix:tag": "593"
+      "display": "UnderlyingStateOrProvinceOfIssue"
     }
   },
   {
@@ -3578,9 +3578,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "594",
       "description": "Underlying security's LocaleOfIssue.",
-      "display": "UnderlyingLocaleOfIssue",
-      "fix:tag": "594"
+      "display": "UnderlyingLocaleOfIssue"
     }
   },
   {
@@ -3590,9 +3590,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "595",
       "description": "Underlying security's InstrRegistry.",
-      "display": "UnderlyingInstrRegistry",
-      "fix:tag": "595"
+      "display": "UnderlyingInstrRegistry"
     }
   },
   {
@@ -3602,9 +3602,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "596",
       "description": "Multileg instrument's individual leg security's CountryOfIssue.",
-      "display": "LegCountryOfIssue",
-      "fix:tag": "596"
+      "display": "LegCountryOfIssue"
     }
   },
   {
@@ -3614,9 +3614,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "597",
       "description": "Multileg instrument's individual leg security's StateOrProvinceOfIssue.",
-      "display": "LegStateOrProvinceOfIssue",
-      "fix:tag": "597"
+      "display": "LegStateOrProvinceOfIssue"
     }
   },
   {
@@ -3626,9 +3626,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "598",
       "description": "Multileg instrument's individual leg security's LocaleOfIssue.",
-      "display": "LegLocaleOfIssue",
-      "fix:tag": "598"
+      "display": "LegLocaleOfIssue"
     }
   },
   {
@@ -3638,9 +3638,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "599",
       "description": "Multileg instrument's individual leg security's InstrRegistry.",
-      "display": "LegInstrRegistry",
-      "fix:tag": "599"
+      "display": "LegInstrRegistry"
     }
   }
 ]

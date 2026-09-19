@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlinstsource",
-          "fix:tag": "165"
+          "FIX:field": "settlinstsource",
+          "FIX:tag": "165"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dlvyinsttype",
-          "fix:tag": "787"
+          "FIX:field": "dlvyinsttype",
+          "FIX:tag": "787"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosettlpartyids",
-          "fix:tag": "781"
+          "FIX:field": "nosettlpartyids",
+          "FIX:tag": "781"
         }
       },
       {
@@ -43,14 +43,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "settlparties"
+          "FIX:group": "settlparties"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "DlvyInst",
-    "fix:tag": "279445"
+    "FIX:tag": "279445",
+    "display": "DlvyInst"
   }
 }

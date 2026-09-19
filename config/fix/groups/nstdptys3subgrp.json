@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "nstdptys3sub"
+        "FIX:component": "nstdptys3sub"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "NstdPtys3SubGrp",
-    "fix:component": "nstdptys3sub",
-    "fix:counter": "952",
-    "fix:tag": "109509"
+    "FIX:component": "nstdptys3sub",
+    "FIX:counter": "952",
+    "FIX:tag": "109509",
+    "display": "NstdPtys3SubGrp"
   }
 }

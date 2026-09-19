@@ -75,7 +75,6 @@ assert_eq!(encoded, wire);
 ## Commands
 
 ```bash
-cargo test --features "parquet iceberg" -p yggdryl --lib charset::tests::a_chunked
-cargo test --features "parquet iceberg" -p yggdryl --lib charset::tests::a_writer
+cargo test --features "parquet iceberg" -p yggdryl --test charset -- a_chunked a_writer
 cargo bench -p yggdryl --bench charset -- charset_streaming
 ```

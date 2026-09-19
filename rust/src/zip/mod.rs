@@ -1,0 +1,181 @@
+//! ZIP archives as [`IOBase`](crate::IOBase) resources.
+//!
+//! An archive is a file system that happens to live inside one file, so it is
+//! a storage backend like any other and supplies the same three roles:
+//!
+//! - [`Node`] is the container: the archive root, or any prefix its members
+//!   share. It lists and resolves members out of the archive's own directory,
+//!   reading no member byte to do it.
+//! - [`Leaf`] is one member, addressed positionally. A stored member reads
+//!   straight out of the archive at an offset; a compressed one decodes from
+//!   the nearest restart point through one bounded window.
+//! - [`Path`] is the generic location, which resolves to whichever of the two
+//!   is actually there.
+//!
+//! A member is neither a directory nor a file of the host: it is a name in one
+//! archive's index. The roles are named for what they are - a node of that
+//! index and a leaf of it - so nothing here reads as a promise the format does
+//! not make.
+//!
+//! [`Archive`] is what the three share: one byte handle plus the central
+//! directory that indexes it. [`Entry`] is what that directory says about one
+//! member.
+//!
+//! All three follow the shared [`IOBase`](crate::IOBase) laziness contract:
+//! constructing one touches nothing, reading something that is not there
+//! yields nothing, and writing creates it - including the archive itself.
+//!
+//! # Codings
+//!
+//! A member is stored, raw DEFLATE, or Zstandard, which are exactly
+//! [`Codec::Identity`](crate::Codec::Identity),
+//! [`Codec::Deflate`](crate::Codec::Deflate), and
+//! [`Codec::Zstd`](crate::Codec::Zstd): the archive adds no second coding
+//! dispatcher. Any other compression method is reported by number rather than
+//! guessed at, and an encrypted member is refused.
+//!
+//! ```
+//! use yggdryl::{holder::{Buffer, Holder}, zip};
+//! use yggdryl::IOBase;
+//!
+//! # fn main() -> yggdryl::Result<()> {
+//! let root = zip::mount(Holder::buffer(Buffer::new()));
+//!
+//! let mut trades = root.child_by_path("2024/06/trades.csv")?;
+//! trades.write_all_bytes(b"symbol,price\nAAPL,187.23\n")?;
+//!
+//! // Members are children, so the ordinary walk reaches them.
+//! assert_eq!(root.glob("**/*.csv", false)?.count(), 1);
+//! assert_eq!(
+//!     root.child_by_path("2024/06/trades.csv")?.read_range_bytes(7, 5)?,
+//!     b"price",
+//! );
+//! # Ok(())
+//! # }
+//! ```
+
+mod archive;
+mod entry;
+mod format;
+mod leaf;
+mod name;
+mod node;
+mod path;
+
+pub use archive::Archive;
+pub use entry::Entry;
+pub use leaf::Leaf;
+pub use node::Node;
+pub use path::Path;
+
+use crate::holder::Holder;
+
+/// Hold the archive `handle` addresses, without touching it.
+///
+/// The answer is the archive root: a container whose children are the members.
+/// Nothing is read until an operation needs the index, and an archive that
+/// does not exist yet is an empty one that the first write creates.
+#[must_use]
+pub fn mount(handle: Holder) -> Holder {
+    Holder::ZipNode(Archive::new(handle).mount())
+}
+
+/// Resolve the archive and member a location names, without touching either.
+///
+/// A member's location is the archive's URL with the member path in its
+/// fragment, so this is the exact inverse of what a member handle reports:
+/// `file:///lake/day.zip#trades/eu.csv` opens that member, and the same URL
+/// without a fragment opens the archive root.
+///
+/// A fragment that spells more than one level - `#inner.zip//trades/eu.csv` -
+/// descends one archive per level, mounting each member it names as the
+/// archive the next level is a member of.
+///
+/// ```
+/// use yggdryl::{IOBase, local::Folder, zip};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let name = format!("yggdryl-zip-from-url-{}.zip", std::process::id());
+/// let archive = Folder::temporary()?.child_by_path(&name)?;
+/// let mut root = zip::mount(archive);
+/// root.child_by_path("trades/eu.csv")?.write_all_bytes(b"symbol")?;
+///
+/// // A member reports where it is, and that is enough to open it again.
+/// let member = root.child_by_path("trades/eu.csv")?;
+/// let located = zip::from_url(member.url().expect("a member url"))?;
+/// assert_eq!(located.read_all_bytes()?, b"symbol");
+///
+/// // Release the independently opened mapping before removing the archive.
+/// drop(located);
+/// drop(member);
+/// root.remove(true)?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns [`Error::Unsupported`](crate::Error::Unsupported) naming the scheme
+/// when the archive is not a local file - mount any other handle with
+/// [`mount`] - or the fragment's decode failure.
+pub fn from_url(url: &crate::Url) -> crate::Result<Holder> {
+    use crate::IOBase as _;
+
+    let member = url.fragment(true)?.map(std::borrow::Cow::into_owned);
+    let mut base = url.clone();
+    base.set_fragment(None)?;
+    if !base.is_local() {
+        return Err(crate::Error::unsupported(
+            "mounting a zip archive from a location this backend cannot hold",
+            base.scheme().as_str(),
+        ));
+    }
+    let mut held =
+        Holder::ZipNode(Archive::new(Holder::Path(crate::local::Path::from_url(base)?)).mount());
+    let member = member.unwrap_or_default();
+    let mut levels = member.split(archive::NESTED).peekable();
+    while let Some(level) = levels.next() {
+        // A level with nothing in it is the marker at the end, which names the
+        // archive mounted over the member the level before it resolved.
+        if level.is_empty() {
+            continue;
+        }
+        let child = held.child_by_path(level)?;
+        // Every level but the last names the archive the next one is inside.
+        held = if levels.peek().is_some() {
+            mount(child)
+        } else {
+            child
+        };
+    }
+    Ok(held)
+}
+
+/// The member name a holder inside an archive addresses.
+fn member_name(holder: &Holder) -> Option<&str> {
+    match holder {
+        Holder::ZipNode(node) => Some(node.name()),
+        Holder::ZipPath(path) => Some(path.name()),
+        Holder::ZipLeaf(leaf) => Some(leaf.name()),
+        _ => None,
+    }
+}
+
+/// The Hive partitions an archive's location and a member name spell out.
+///
+/// Both halves count: a lake can partition the archives themselves and
+/// partition again inside one, and a member carries whichever it is under.
+fn member_partitions(archive: &Archive, member: &str) -> Vec<(String, String)> {
+    let mut pairs = archive.url().hive_partitions();
+    // An archive inside an archive spells its own chain in the fragment, and
+    // every link of it can partition too; the empty segment a level marker
+    // leaves behind is not a pair, so the split needs no special case.
+    if let Ok(Some(chain)) = archive.url().fragment(true) {
+        pairs.extend(crate::uri::hive_partitions_of(chain.split('/')));
+    }
+    pairs.extend(crate::uri::hive_partitions_of(member.split('/')));
+    pairs
+}
+
+#[cfg(test)]
+mod tests;

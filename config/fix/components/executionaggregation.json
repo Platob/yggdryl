@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastqty",
-          "fix:tag": "32"
+          "FIX:field": "lastqty",
+          "FIX:tag": "32"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "execid",
-          "fix:tag": "17"
+          "FIX:field": "execid",
+          "FIX:tag": "17"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeid",
-          "fix:tag": "1003"
+          "FIX:field": "tradeid",
+          "FIX:tag": "1003"
         }
       },
       {
@@ -43,16 +43,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastpx",
-          "fix:tag": "31"
+          "FIX:field": "lastpx",
+          "FIX:tag": "31"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ExecutionAggregation",
-    "fix:identifiers": "execid,tradeid",
-    "fix:tag": "596879"
+    "FIX:identifiers": "execid,tradeid",
+    "FIX:tag": "596879",
+    "display": "ExecutionAggregation"
   }
 }

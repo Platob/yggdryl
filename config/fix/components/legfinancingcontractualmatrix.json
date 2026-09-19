@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcontractualmatrixsource",
-          "fix:tag": "42204"
+          "FIX:field": "legcontractualmatrixsource",
+          "FIX:tag": "42204"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcontractualmatrixdate",
-          "fix:tag": "42205"
+          "FIX:field": "legcontractualmatrixdate",
+          "FIX:tag": "42205"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcontractualmatrixterm",
-          "fix:tag": "42206"
+          "FIX:field": "legcontractualmatrixterm",
+          "FIX:tag": "42206"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegFinancingContractualMatrix",
-    "fix:tag": "891654"
+    "FIX:tag": "891654",
+    "display": "LegFinancingContractualMatrix"
   }
 }

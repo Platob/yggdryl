@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "miscfeessub"
+        "FIX:component": "miscfeessub"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "miscfeessub",
+    "FIX:counter": "2633",
+    "FIX:tag": "294849",
     "description": "Required if NoMiscFeeSubTypes(2633) > 0.",
-    "display": "MiscFeesSubGrp",
-    "fix:component": "miscfeessub",
-    "fix:counter": "2633",
-    "fix:tag": "294849"
+    "display": "MiscFeesSubGrp"
   }
 }

@@ -6,7 +6,7 @@
 //! message may spell that `1`, `Buy`, `buy` or `BUY`, and a JSON or human
 //! caller routinely spells it the long way. One field answers all of them.
 //!
-//! `fix:codes` is that vocabulary: one [canonical document](super::document)
+//! `FIX:codes` is that vocabulary: one [canonical document](super::document)
 //! ordered by wire value, read borrowed. It is a second key beside
 //! [`StringEnum`](crate::StringEnum) rather than a second copy of it - that
 //! type is name to ASCII value packed through the field's own width, so it
@@ -36,7 +36,7 @@ use std::iter::FusedIterator;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::document::{Cursor, Refusal, Scan, Words, Writer, decode_text};
-use crate::types::folds_equal;
+use crate::folds_equal;
 use crate::{Error, Result};
 
 /// What the document is called for every refusal it raises.
@@ -321,7 +321,7 @@ pub struct FixCodes<'field> {
 }
 
 impl<'field> FixCodes<'field> {
-    /// Walks one stored `fix:codes` value, or nothing for an absent one.
+    /// Walks one stored `FIX:codes` value, or nothing for an absent one.
     pub(super) fn over(stored: Option<&'field str>) -> Self {
         Self {
             cursor: Cursor::new(stored.unwrap_or_default()),

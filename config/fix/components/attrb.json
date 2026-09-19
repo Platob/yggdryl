@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrattribtype",
-          "fix:tag": "871"
+          "FIX:field": "instrattribtype",
+          "FIX:tag": "871"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrattribvalue",
-          "fix:tag": "872"
+          "FIX:field": "instrattribvalue",
+          "FIX:tag": "872"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "Attrb",
-    "fix:tag": "321297"
+    "FIX:tag": "321297",
+    "display": "Attrb"
   }
 }

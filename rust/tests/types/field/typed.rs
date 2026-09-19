@@ -1,164 +1,99 @@
-use yggdryl::types::{
-    DateTime64Field, FieldType, Int32Field, StructField, TypedField, TypedFieldRef, decimal,
-    integer,
-};
-use yggdryl::{DataType, Field, TimeUnit, Timezone};
+//! A field is an enum over its leaves, and each leaf carries its own datatype.
 
-fn stable_hash<T: std::hash::Hash>(value: &T) -> u64 {
-    use std::hash::Hasher;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+use yggdryl::{DataType, Field};
+use yggdryl::{DataTypeValue, FieldValue, Int64Field, Int64Type, StringField, StringType};
+
+fn stable_hash<T: Hash>(value: &T) -> u64 {
+    let mut hasher = DefaultHasher::new();
     value.hash(&mut hasher);
     hasher.finish()
 }
 
-pub(crate) fn assert_typed_marker<K: FieldType>(dtype: DataType) {
-    let field = Field::new("value", dtype.clone(), false);
-    let borrowed = field
-        .try_as_typed::<K>()
-        .expect("the marker must accept its datatype variant");
-    assert_eq!(borrowed.dtype(), &dtype);
-    let typed = field
-        .try_into_typed::<K>()
-        .expect("the owned marker must accept its datatype variant");
-    assert_eq!(typed.into_field().dtype(), &dtype);
+#[test]
+fn a_field_takes_the_leaf_its_datatype_names() {
+    // The variant is not a caller's claim: it follows the datatype, and the
+    // leaf then holds that datatype in its own type rather than a `DataType`
+    // that something else has to agree with.
+    let field = Field::new("id", DataType::Int64, false);
+    assert!(matches!(field, Field::Int64(_)));
+    assert_eq!(field.dtype(), &DataType::Int64);
+
+    let leaf = Int64Field::from_field(&field).expect("the field is the Int64 leaf");
+    assert_eq!(leaf.typed_dtype_ref(), &Int64Type);
+    assert_eq!(leaf.name(), "id");
+
+    // A leaf of another family narrows to nothing, which is the whole of what
+    // the old marker proved.
+    assert!(StringField::from_field(&field).is_none());
 }
 
 #[test]
-fn typed_fields_are_zero_overhead_checked_and_lossless() {
-    assert_eq!(
-        std::mem::size_of::<TypedField<integer_marker::Int32Type>>(),
-        std::mem::size_of::<Field>()
-    );
-    assert_eq!(
-        std::mem::size_of::<TypedFieldRef<'_, integer_marker::Int32Type>>(),
-        std::mem::size_of::<&Field>()
-    );
+fn a_leaf_and_the_field_it_widens_to_are_the_same_field() {
+    let leaf = Int64Field::new("id", Int64Type, true);
+    let field = Field::from(leaf.clone());
 
-    let mut typed = Int32Field::from_parts("id", false, [("source", "orders")]).unwrap();
-    assert_eq!(typed.get_metadata("source"), Some("orders"));
-    typed.insert_metadata("version", "1").unwrap();
-    typed.set_nullable(true);
-    typed.set_name("order_id");
-    let generic = typed.into_field();
-    assert_eq!(generic.name(), "order_id");
-    assert!(generic.is_nullable());
-    assert_eq!(generic.dtype(), &DataType::Int32);
-    assert_eq!(generic.get_metadata("version"), Some("1"));
+    assert_eq!(field.name(), leaf.name());
+    assert_eq!(field.dtype(), leaf.dtype());
+    assert_eq!(field.is_nullable(), leaf.is_nullable());
 
-    assert!(generic.try_as_typed::<integer::Int64Type>().is_err());
-    assert!(
-        Field::new(
-            "invalid",
-            DataType::Decimal128 {
-                precision: 0,
-                scale: 0,
-            },
-            false,
-        )
-        .try_as_typed::<decimal::Decimal128Type>()
-        .is_err()
-    );
+    // Round-tripping through the root changes nothing, and the leaf reads the
+    // same datatype in either spelling.
+    let narrowed = Int64Field::from_field(&field).expect("the leaf is still the Int64 one");
+    assert_eq!(narrowed.typed_dtype_ref(), leaf.typed_dtype_ref());
+    assert_eq!(stable_hash(&field), stable_hash(&Field::from(leaf)));
 }
 
 #[test]
-fn borrowed_typed_fields_inherit_value_traits_from_the_field() {
-    let first = Field::new("a", DataType::Int32, false);
-    let equal = first.clone();
-    let later = Field::new("b", DataType::Int32, false);
-    let first = first.try_as_typed::<integer_marker::Int32Type>().unwrap();
-    let equal = equal.try_as_typed::<integer_marker::Int32Type>().unwrap();
-    let later = later.try_as_typed::<integer_marker::Int32Type>().unwrap();
+fn replacing_the_datatype_moves_the_field_to_the_matching_leaf() {
+    let mut field = Field::new("value", DataType::Int64, false);
+    assert!(matches!(field, Field::Int64(_)));
 
-    assert_eq!(first, equal);
-    assert!(first < later);
-    assert_eq!(stable_hash(&first), stable_hash(&equal));
-}
-
-#[test]
-fn struct_fields_have_the_return_typed_conversion_name() {
-    let root = StructField::try_new(
-        "row",
-        DataType::from_fields([DataType::Int64.required_field("id")]).unwrap(),
-        false,
-    )
-    .unwrap()
-    .into_struct_field();
-
-    assert_eq!(root.name(), "row");
-    assert!(matches!(root.dtype(), DataType::Struct(_)));
-}
-
-mod integer_marker {
-    pub use yggdryl::types::integer::Int32Type;
-}
-
-#[test]
-fn typed_datatype_replacement_is_transactional_and_same_variant_only() {
-    let mut field = DateTime64Field::try_new(
-        "created_at",
-        DataType::DateTime64 {
-            unit: TimeUnit::Millisecond,
-            timezone: Timezone::NAIVE,
-        },
-        false,
-    )
-    .unwrap();
-    let original = field.clone();
-    assert!(field.set_dtype(DataType::Int64).is_err());
-    assert_eq!(field, original);
     field
-        .set_dtype(DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            timezone: Timezone::UTC,
-        })
-        .unwrap();
+        .set_dtype(DataType::utf8())
+        .expect("utf8 is a valid datatype");
+    assert!(matches!(field, Field::String(_)));
+    assert_eq!(field.dtype(), &DataType::utf8());
+    assert_eq!(field.name(), "value", "the name survives the move");
+
+    // The leaf follows the datatype, so the two can never disagree.
+    let leaf = StringField::from_field(&field).expect("the field is the String leaf now");
     assert_eq!(
-        field.dtype(),
-        &DataType::DateTime64 {
-            unit: TimeUnit::Nanosecond,
-            timezone: Timezone::UTC
-        }
+        leaf.typed_dtype_ref(),
+        &StringType::from_dtype(&DataType::utf8()).expect("utf8 is a string datatype")
     );
 }
 
 #[test]
-fn typed_serde_rejects_a_wrong_or_invalid_datatype() {
-    let int64_json = Field::new("id", DataType::Int64, false)
-        .into_json()
-        .unwrap();
-    assert!(serde_json::from_str::<Int32Field>(&int64_json).is_err());
-
-    let invalid_decimal = r#"{"name":"amount","dtype":{"decimal128":{"precision":0,"scale":0}},"nullable":false,"metadata":{}}"#;
-    assert!(serde_json::from_str::<TypedField<decimal::Decimal128Type>>(invalid_decimal).is_err());
+fn a_datatype_payload_reads_back_the_datatype_it_came_from() {
+    // Every payload is a DataTypeValue, and widening then narrowing is the
+    // identity - that is what lets a leaf store the payload and nothing else.
+    for dtype in [DataType::Int64, DataType::utf8(), DataType::Boolean] {
+        let field = Field::new("column", dtype.clone(), false);
+        assert_eq!(field.dtype(), &dtype);
+        assert_eq!(field.id(), dtype.id());
+    }
 }
 
-#[test]
-fn the_extension_typed_markers_narrow_their_exact_variants() {
-    assert_typed_marker::<yggdryl::types::nested::VariantType>(DataType::variant());
-    assert_typed_marker::<yggdryl::types::geospatial::GeometryType>(
-        DataType::geometry(None).unwrap(),
+/// Asserts that a datatype's payload reads back the datatype it came from.
+///
+/// The check the old compile-time markers used to make, on the type that
+/// replaced them: a payload narrows out of the datatype it belongs to, refuses
+/// every other one, and widens back to exactly what it came from.
+pub fn assert_typed_marker<D: DataTypeValue>(dtype: DataType) {
+    let payload =
+        D::from_dtype(&dtype).unwrap_or_else(|| panic!("{dtype} should narrow to {}", D::FAMILY));
+    assert_eq!(
+        payload.clone().into_dtype(),
+        dtype,
+        "{} should widen back to the datatype it came from",
+        D::FAMILY
     );
-    assert_typed_marker::<yggdryl::types::geospatial::GeographyType>(
-        DataType::geography(None, None).unwrap(),
-    );
+    assert_eq!(payload.id(), dtype.id());
 
-    // The static variant constructor exists because the datatype carries no
-    // parameters; the geospatial pair always goes through validation.
-    let variant = yggdryl::types::VariantField::new("payload", true);
-    assert_eq!(variant.dtype(), &DataType::Variant);
-
-    // A marker refuses the storage type and its geospatial sibling alike.
-    assert!(yggdryl::types::GeometryField::try_new("bad", DataType::binary(), true).is_err());
-    assert!(
-        yggdryl::types::GeographyField::try_new("bad", DataType::geometry(None).unwrap(), true)
-            .is_err()
-    );
-    let geography = yggdryl::types::GeographyField::try_new(
-        "region",
-        DataType::geography(None, None).unwrap(),
-        false,
-    )
-    .unwrap();
-    assert_eq!(geography.dtype().name(), "geography");
+    // A field of that datatype carries the payload and nothing else.
+    let field = Field::new("column", dtype.clone(), false);
+    assert_eq!(field.dtype(), &dtype);
 }

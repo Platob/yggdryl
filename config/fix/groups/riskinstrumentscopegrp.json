@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "riskinstrumentscope"
+        "FIX:component": "riskinstrumentscope"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "riskinstrumentscope",
+    "FIX:counter": "1534",
+    "FIX:tag": "916336",
     "description": "Required when NoRiskInstrumentScopes > 0.",
-    "display": "RiskInstrumentScopeGrp",
-    "fix:component": "riskinstrumentscope",
-    "fix:counter": "1534",
-    "fix:tag": "916336"
+    "display": "RiskInstrumentScopeGrp"
   }
 }

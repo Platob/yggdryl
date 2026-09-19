@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamtype",
-          "fix:tag": "41429"
+          "FIX:field": "legdeliverystreamtype",
+          "FIX:tag": "41429"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegdeliverystreamcommoditysources",
-          "fix:tag": "41460"
+          "FIX:field": "nolegdeliverystreamcommoditysources",
+          "FIX:tag": "41460"
         }
       },
       {
@@ -32,7 +32,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legdeliverystreamcommoditysourcegrp"
+          "FIX:group": "legdeliverystreamcommoditysourcegrp"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreampipeline",
-          "fix:tag": "41430"
+          "FIX:field": "legdeliverystreampipeline",
+          "FIX:tag": "41430"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamentrypoint",
-          "fix:tag": "41431"
+          "FIX:field": "legdeliverystreamentrypoint",
+          "FIX:tag": "41431"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamwithdrawalpoint",
-          "fix:tag": "41432"
+          "FIX:field": "legdeliverystreamwithdrawalpoint",
+          "FIX:tag": "41432"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamdeliverypoint",
-          "fix:tag": "41433"
+          "FIX:field": "legdeliverystreamdeliverypoint",
+          "FIX:tag": "41433"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamdeliverypointsource",
-          "fix:tag": "42194"
+          "FIX:field": "legdeliverystreamdeliverypointsource",
+          "FIX:tag": "42194"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamdeliverypointdesc",
-          "fix:tag": "42195"
+          "FIX:field": "legdeliverystreamdeliverypointdesc",
+          "FIX:tag": "42195"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamdeliveryrestriction",
-          "fix:tag": "41434"
+          "FIX:field": "legdeliverystreamdeliveryrestriction",
+          "FIX:tag": "41434"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamdeliverycontingency",
-          "fix:tag": "41435"
+          "FIX:field": "legdeliverystreamdeliverycontingency",
+          "FIX:tag": "41435"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamdeliverycontingentpartyside",
-          "fix:tag": "41436"
+          "FIX:field": "legdeliverystreamdeliverycontingentpartyside",
+          "FIX:tag": "41436"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamdeliveratsourceindicator",
-          "fix:tag": "41437"
+          "FIX:field": "legdeliverystreamdeliveratsourceindicator",
+          "FIX:tag": "41437"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamriskapportionment",
-          "fix:tag": "41438"
+          "FIX:field": "legdeliverystreamriskapportionment",
+          "FIX:tag": "41438"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamriskapportionmentsource",
-          "fix:tag": "41219"
+          "FIX:field": "legdeliverystreamriskapportionmentsource",
+          "FIX:tag": "41219"
         }
       },
       {
@@ -174,8 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegdeliverystreamcycles",
-          "fix:tag": "41456"
+          "FIX:field": "nolegdeliverystreamcycles",
+          "FIX:tag": "41456"
         }
       },
       {
@@ -185,7 +185,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legdeliverystreamcyclegrp"
+          "FIX:group": "legdeliverystreamcyclegrp"
         }
       },
       {
@@ -195,8 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamtitletransferlocation",
-          "fix:tag": "41439"
+          "FIX:field": "legdeliverystreamtitletransferlocation",
+          "FIX:tag": "41439"
         }
       },
       {
@@ -206,8 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamtitletransfercondition",
-          "fix:tag": "41440"
+          "FIX:field": "legdeliverystreamtitletransfercondition",
+          "FIX:tag": "41440"
         }
       },
       {
@@ -217,8 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamimporterofrecord",
-          "fix:tag": "41441"
+          "FIX:field": "legdeliverystreamimporterofrecord",
+          "FIX:tag": "41441"
         }
       },
       {
@@ -228,8 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamnegativetolerance",
-          "fix:tag": "41442"
+          "FIX:field": "legdeliverystreamnegativetolerance",
+          "FIX:tag": "41442"
         }
       },
       {
@@ -239,8 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreampositivetolerance",
-          "fix:tag": "41443"
+          "FIX:field": "legdeliverystreampositivetolerance",
+          "FIX:tag": "41443"
         }
       },
       {
@@ -250,8 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamtoleranceunitofmeasure",
-          "fix:tag": "41444"
+          "FIX:field": "legdeliverystreamtoleranceunitofmeasure",
+          "FIX:tag": "41444"
         }
       },
       {
@@ -261,8 +261,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamtolerancetype",
-          "fix:tag": "41445"
+          "FIX:field": "legdeliverystreamtolerancetype",
+          "FIX:tag": "41445"
         }
       },
       {
@@ -272,8 +272,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamtoleranceoptionside",
-          "fix:tag": "41446"
+          "FIX:field": "legdeliverystreamtoleranceoptionside",
+          "FIX:tag": "41446"
         }
       },
       {
@@ -283,8 +283,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamtotalpositivetolerance",
-          "fix:tag": "41447"
+          "FIX:field": "legdeliverystreamtotalpositivetolerance",
+          "FIX:tag": "41447"
         }
       },
       {
@@ -294,8 +294,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamtotalnegativetolerance",
-          "fix:tag": "41448"
+          "FIX:field": "legdeliverystreamtotalnegativetolerance",
+          "FIX:tag": "41448"
         }
       },
       {
@@ -305,8 +305,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamnotionalconversionfactor",
-          "fix:tag": "41449"
+          "FIX:field": "legdeliverystreamnotionalconversionfactor",
+          "FIX:tag": "41449"
         }
       },
       {
@@ -316,8 +316,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamtransportequipment",
-          "fix:tag": "41450"
+          "FIX:field": "legdeliverystreamtransportequipment",
+          "FIX:tag": "41450"
         }
       },
       {
@@ -327,8 +327,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamelectingpartyside",
-          "fix:tag": "41451"
+          "FIX:field": "legdeliverystreamelectingpartyside",
+          "FIX:tag": "41451"
         }
       },
       {
@@ -338,16 +338,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamrouteorcharter",
-          "fix:tag": "43095"
+          "FIX:field": "legdeliverystreamrouteorcharter",
+          "FIX:tag": "43095"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "439498",
     "description": "The LegDeliveryStream component is a subcomponent of the LegStream used to detail the attributes of a physical delivery stream in a swap.",
-    "display": "LegDeliveryStream",
-    "fix:tag": "439498"
+    "display": "LegDeliveryStream"
   }
 }

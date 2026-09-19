@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "assetattributetype",
-          "fix:tag": "2305"
+          "FIX:field": "assetattributetype",
+          "FIX:tag": "2305"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "assetattributevalue",
-          "fix:tag": "2306"
+          "FIX:field": "assetattributevalue",
+          "FIX:tag": "2306"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "assetattributelimit",
-          "fix:tag": "2307"
+          "FIX:field": "assetattributelimit",
+          "FIX:tag": "2307"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "AssetAttribute",
-    "fix:tag": "604662"
+    "FIX:tag": "604662",
+    "display": "AssetAttribute"
   }
 }

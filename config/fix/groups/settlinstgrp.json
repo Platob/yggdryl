@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "settlinst"
+        "FIX:component": "settlinst"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "settlinst",
+    "FIX:counter": "778",
+    "FIX:tag": "1017008",
     "description": "Required except where SettlInstMode is 5=Reject SSI request",
-    "display": "SettlInstGrp",
-    "fix:component": "settlinst",
-    "fix:counter": "778",
-    "fix:tag": "1017008"
+    "display": "SettlInstGrp"
   }
 }

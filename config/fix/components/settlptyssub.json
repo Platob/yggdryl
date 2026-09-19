@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpartysubid",
-          "fix:tag": "785"
+          "FIX:field": "settlpartysubid",
+          "FIX:tag": "785"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpartysubidtype",
-          "fix:tag": "786"
+          "FIX:field": "settlpartysubidtype",
+          "FIX:tag": "786"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SettlPtysSub",
-    "fix:tag": "647506"
+    "FIX:tag": "647506",
+    "display": "SettlPtysSub"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingmarketdisruptionfallbackreferenceprice"
+        "FIX:component": "underlyingmarketdisruptionfallbackreferenceprice"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingmarketdisruptionfallbackreferenceprice",
+    "FIX:counter": "41868",
+    "FIX:tag": "420284",
     "description": "Required if NoUnderlyingMarketDisruptionFallbackReferencePrices (41868) > 0.",
-    "display": "UnderlyingMarketDisruptionFallbackReferencePriceGrp",
-    "fix:component": "underlyingmarketdisruptionfallbackreferenceprice",
-    "fix:counter": "41868",
-    "fix:tag": "420284"
+    "display": "UnderlyingMarketDisruptionFallbackReferencePriceGrp"
   }
 }

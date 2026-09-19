@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsecurityxmllen",
-          "fix:tag": "1874"
+          "FIX:field": "underlyingsecurityxmllen",
+          "FIX:tag": "1874"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsecurityxml",
-          "fix:tag": "1875"
+          "FIX:field": "underlyingsecurityxml",
+          "FIX:tag": "1875"
         }
       },
       {
@@ -32,16 +32,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsecurityxmlschema",
-          "fix:tag": "1876"
+          "FIX:field": "underlyingsecurityxmlschema",
+          "FIX:tag": "1876"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "569749",
     "description": "Must be provided if UnderlyingSecurityXML(1875) field is specified and must immediately precede it.",
-    "display": "UnderlyingSecurityXML",
-    "fix:tag": "569749"
+    "display": "UnderlyingSecurityXML"
   }
 }

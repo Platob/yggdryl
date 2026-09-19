@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingrateindex",
-          "fix:tag": "42923"
+          "FIX:field": "underlyingpaymentstreamcompoundingrateindex",
+          "FIX:tag": "42923"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingrateindexcurveperiod",
-          "fix:tag": "42924"
+          "FIX:field": "underlyingpaymentstreamcompoundingrateindexcurveperiod",
+          "FIX:tag": "42924"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingrateindexcurveunit",
-          "fix:tag": "42925"
+          "FIX:field": "underlyingpaymentstreamcompoundingrateindexcurveunit",
+          "FIX:tag": "42925"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingratemultiplier",
-          "fix:tag": "42926"
+          "FIX:field": "underlyingpaymentstreamcompoundingratemultiplier",
+          "FIX:tag": "42926"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingratespread",
-          "fix:tag": "42927"
+          "FIX:field": "underlyingpaymentstreamcompoundingratespread",
+          "FIX:tag": "42927"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingratespreadpositiontype",
-          "fix:tag": "42928"
+          "FIX:field": "underlyingpaymentstreamcompoundingratespreadpositiontype",
+          "FIX:tag": "42928"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingratetreatment",
-          "fix:tag": "42929"
+          "FIX:field": "underlyingpaymentstreamcompoundingratetreatment",
+          "FIX:tag": "42929"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingcaprate",
-          "fix:tag": "42930"
+          "FIX:field": "underlyingpaymentstreamcompoundingcaprate",
+          "FIX:tag": "42930"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingcapratebuyside",
-          "fix:tag": "42931"
+          "FIX:field": "underlyingpaymentstreamcompoundingcapratebuyside",
+          "FIX:tag": "42931"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingcapratesellside",
-          "fix:tag": "42932"
+          "FIX:field": "underlyingpaymentstreamcompoundingcapratesellside",
+          "FIX:tag": "42932"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingfloorrate",
-          "fix:tag": "42933"
+          "FIX:field": "underlyingpaymentstreamcompoundingfloorrate",
+          "FIX:tag": "42933"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingfloorratebuyside",
-          "fix:tag": "42934"
+          "FIX:field": "underlyingpaymentstreamcompoundingfloorratebuyside",
+          "FIX:tag": "42934"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingfloorratesellside",
-          "fix:tag": "42935"
+          "FIX:field": "underlyingpaymentstreamcompoundingfloorratesellside",
+          "FIX:tag": "42935"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundinginitialrate",
-          "fix:tag": "42936"
+          "FIX:field": "underlyingpaymentstreamcompoundinginitialrate",
+          "FIX:tag": "42936"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingfinalrateroundingdirection",
-          "fix:tag": "42937"
+          "FIX:field": "underlyingpaymentstreamcompoundingfinalrateroundingdirection",
+          "FIX:tag": "42937"
         }
       },
       {
@@ -175,8 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingfinalrateprecision",
-          "fix:tag": "42938"
+          "FIX:field": "underlyingpaymentstreamcompoundingfinalrateprecision",
+          "FIX:tag": "42938"
         }
       },
       {
@@ -186,8 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingaveragingmethod",
-          "fix:tag": "42939"
+          "FIX:field": "underlyingpaymentstreamcompoundingaveragingmethod",
+          "FIX:tag": "42939"
         }
       },
       {
@@ -197,16 +197,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingnegativeratetreatment",
-          "fix:tag": "42940"
+          "FIX:field": "underlyingpaymentstreamcompoundingnegativeratetreatment",
+          "FIX:tag": "42940"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "669093",
     "description": "Conditionally required if UnderlyingPaymentStreamCompoundingRateIndexCurveUnit(42925) is specified.",
-    "display": "UnderlyingPaymentStreamCompoundingFloatingRate",
-    "fix:tag": "669093"
+    "display": "UnderlyingPaymentStreamCompoundingFloatingRate"
   }
 }

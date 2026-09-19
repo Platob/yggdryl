@@ -20,7 +20,7 @@ Python `load_all` and JavaScript `loadAll` keep readable streams lazy.
 === "Rust"
 
     ```rust
-    use yggdryl::text::yaml;
+    use yggdryl::yaml;
 
     let documents = yaml::from_utf8_all("id: 1\n---\nid: 2\n")?;
     let mut destination = Vec::new();

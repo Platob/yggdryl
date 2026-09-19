@@ -4,14 +4,14 @@
 //! against the native [`Buffer`](yggdryl::holder::Buffer) - both hold their bytes
 //! in memory, so the difference is purely the vtable plus stream dispatch. The
 //! local legs compare an `fs` handle over [`LocalFileSystem`] against
-//! [`local::File`](yggdryl::holder::local::File), the memory-mapped local backend, on
+//! [`local::File`](yggdryl::local::File), the memory-mapped local backend, on
 //! the same payload.
 
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::IOBase;
-use yggdryl::holder::fs::File as FsFile;
+use yggdryl::fs::File as FsFile;
 
 use super::{PAYLOAD, buffer, local, local_location, memory, payload};
 
@@ -128,7 +128,7 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
 
     group.bench_function("read_all/local_file", |bencher| {
         let path = root.join("read-mapped.bin");
-        let mut handle = yggdryl::holder::local::File::create(&path).expect("a valid path");
+        let mut handle = yggdryl::local::File::create(&path).expect("a valid path");
         handle.write_all_bytes(&bytes).expect("the fixture writes");
         handle.flush().expect("the fixture publishes");
         // The whole value is black-boxed rather than its length: observing
@@ -158,7 +158,7 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
     group.bench_function("write_all/local_file", |bencher| {
         let path = root.join("write-mapped.bin");
         bencher.iter(|| {
-            let mut handle = yggdryl::holder::local::File::create(&path).expect("a valid path");
+            let mut handle = yggdryl::local::File::create(&path).expect("a valid path");
             handle
                 .write_all_bytes(black_box(&bytes))
                 .expect("a writable value");

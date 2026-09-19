@@ -3,8 +3,11 @@
 use super::path as fpath;
 
 use std::path::PathBuf;
-use yggdryl::holder::local::Folder;
-use yggdryl::{DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar};
+use yggdryl::SequenceType;
+use yggdryl::local::Folder;
+use yggdryl::{
+    DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar, StructureType,
+};
 
 fn scratch(label: &str) -> PathBuf {
     let path = Folder::temporary().unwrap().path().unwrap().join(format!(
@@ -87,7 +90,8 @@ fn catalog() -> FixRegistry {
     let mut registry = FixRegistry::from_fields([counter, partyid]).unwrap();
     let mut member = registry.field(448).unwrap().clone();
     member.as_fix_mut().set_field_ref("PartyID").unwrap();
-    let component = DataType::from_fields([member])
+    let component = StructureType::from_fields([member])
+        .map(DataType::from)
         .unwrap()
         .required_field("Party");
     registry.insert(component).unwrap();
@@ -103,7 +107,8 @@ fn catalog() -> FixRegistry {
     group.as_fix_mut().set_group("Parties").unwrap();
     let mut counter = registry.field(453).unwrap().clone();
     counter.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
-    let mut message = DataType::from_fields([counter, group])
+    let mut message = StructureType::from_fields([counter, group])
+        .map(DataType::from)
         .unwrap()
         .required_field("NewOrderSingle");
     message.as_fix_mut().set_msgtype("D").unwrap();
@@ -154,7 +159,8 @@ fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips(
     let mut registry = FixRegistry::new();
     let mut map = registry.get_field_by_counter(65_020).unwrap().clone();
     map.as_fix_mut().set_group("identifiers").unwrap();
-    let component = DataType::from_fields([map])
+    let component = StructureType::from_fields([map])
+        .map(DataType::from)
         .unwrap()
         .required_field("identified");
     registry.insert(component).unwrap();
@@ -180,13 +186,15 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
         key.as_fix_mut().set_field_ref("lookupkey").unwrap();
         let mut value = value;
         value.as_fix_mut().set_field_ref("lookupvalue").unwrap();
-        let entries = DataType::from_fields([key, value])
+        let entries = StructureType::from_fields([key, value])
+            .map(DataType::from)
             .unwrap()
             .required_field("entries");
         let mapping = DataType::map(entries, sorted)
             .unwrap()
             .nullable_field("pairs");
-        let component = DataType::from_fields([mapping])
+        let component = StructureType::from_fields([mapping])
+            .map(DataType::from)
             .unwrap()
             .required_field("lookup");
         registry.insert(component).unwrap();
@@ -201,7 +209,7 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
                 .clone(),
         )
         .unwrap();
-        let DataType::Map(map) = component.fields()[0].dtype() else {
+        let DataType::Mapping(map) = component.fields()[0].dtype() else {
             panic!("compacting references preserves the Map")
         };
         assert_eq!(map.keys_sorted(), sorted);
@@ -225,7 +233,7 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
             registry.update(changed).unwrap();
         }
         let component = registry.field_by_name("lookup").unwrap();
-        let DataType::Map(map) = component.fields()[0].dtype() else {
+        let DataType::Mapping(map) = component.fields()[0].dtype() else {
             panic!("reference refresh preserves the Map")
         };
         assert_eq!(map.keys_sorted(), sorted);
@@ -258,10 +266,11 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
 #[test]
 fn map_entries_component_references_refresh_without_losing_the_storage_contract() {
     for sorted in [false, true] {
-        let mut component = DataType::from_fields([
+        let mut component = StructureType::from_fields([
             DataType::utf8().required_field("key"),
             DataType::utf8().nullable_field("value"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("lookupentry");
         component.set_comment("Original entries").unwrap();
@@ -272,7 +281,8 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
         let mapping = DataType::map(entries, sorted)
             .unwrap()
             .nullable_field("nativepairs");
-        let containing = DataType::from_fields([mapping])
+        let containing = StructureType::from_fields([mapping])
+            .map(DataType::from)
             .unwrap()
             .required_field("mappedlookup");
         registry.insert(containing).unwrap();
@@ -288,7 +298,7 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
         )
         .unwrap();
         assert_eq!(stored.name(), "mappedlookup");
-        let DataType::Map(map) = stored.fields()[0].dtype() else {
+        let DataType::Mapping(map) = stored.fields()[0].dtype() else {
             panic!("a persisted Map keeps its entries Struct")
         };
         assert_eq!(map.keys_sorted(), sorted);
@@ -307,7 +317,9 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
             .set_dtype(DataType::map(overridden, sorted).unwrap())
             .unwrap();
         stored
-            .set_dtype(DataType::from_fields([mapping]).unwrap())
+            .set_dtype(DataType::from(
+                StructureType::from_fields([mapping]).unwrap(),
+            ))
             .unwrap();
         let refused =
             Scalar::from_record(document.as_record().unwrap().iter().map(|(key, value)| {
@@ -345,7 +357,7 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
         registry.update(changed).unwrap();
         let containing = registry.field_by_name("mappedlookup").unwrap();
         let mapping = &containing.fields()[0];
-        let DataType::Map(map) = mapping.dtype() else {
+        let DataType::Mapping(map) = mapping.dtype() else {
             panic!("reference refresh preserves Map")
         };
         assert!(mapping.is_nullable());
@@ -365,13 +377,14 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
         let mut extended = registry.field_by_name("lookupentry").unwrap().clone();
         extended
             .set_dtype(
-                DataType::from_fields(
+                StructureType::from_fields(
                     extended
                         .fields()
                         .iter()
                         .cloned()
                         .chain([DataType::utf8().nullable_field("extra")]),
                 )
+                .map(DataType::from)
                 .unwrap(),
             )
             .unwrap();
@@ -393,12 +406,14 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
 
 #[test]
 fn ordinary_stored_component_references_still_require_null_placeholders() {
-    let component = DataType::from_fields([DataType::utf8().nullable_field("value")])
+    let component = StructureType::from_fields([DataType::utf8().nullable_field("value")])
+        .map(DataType::from)
         .unwrap()
         .required_field("ordinary");
     let mut occurrence = component.clone();
     occurrence.as_fix_mut().set_component("ordinary").unwrap();
-    let containing = DataType::from_fields([occurrence])
+    let containing = StructureType::from_fields([occurrence])
+        .map(DataType::from)
         .unwrap()
         .required_field("containing");
     let document = Scalar::from_record([
@@ -469,7 +484,7 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
         assert!(record[category.as_str()].as_sequence().is_some());
     }
     let group = Field::from_value(record["groups"].get(0).unwrap().clone()).unwrap();
-    let DataType::List(item) = group.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("the native group list")
     };
     assert_eq!(item.dtype(), &DataType::Null);
@@ -730,7 +745,7 @@ fn categories_round_trip_compact_references_and_counter_fields() {
     assert!(!root.join("messages").exists());
     let document =
         Field::from_json_bytes(&std::fs::read(root.join("groups/Parties.json")).unwrap()).unwrap();
-    let DataType::List(item) = document.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = document.dtype() else {
         panic!("a group list")
     };
     assert_eq!(item.dtype(), &DataType::Null);
@@ -805,7 +820,9 @@ fn catalog_mutations_refuse_dangling_or_stale_resolved_references_atomically() {
     assert_eq!(registry, before);
     assert!(
         registry
-            .update(DataType::from_fields([]).unwrap().required_field("Missing"))
+            .update(
+                DataType::from(StructureType::from_fields([]).unwrap()).required_field("Missing")
+            )
             .is_err()
     );
     assert_eq!(registry, before);
@@ -1019,7 +1036,8 @@ fn unresolved_and_cyclic_compact_references_name_the_failure() {
         let folder = Folder::new(&root).unwrap();
         let mut child = DataType::Null.nullable_field("child");
         child.as_fix_mut().set_component(reference).unwrap();
-        let field = DataType::from_fields([child])
+        let field = StructureType::from_fields([child])
+            .map(DataType::from)
             .unwrap()
             .required_field("Cycle");
         folder
@@ -1046,7 +1064,7 @@ fn malformed_shards_are_located_and_nested_folders_are_passed_over() {
     for bytes in [
         b"not json".to_vec(),
         b"{}".to_vec(),
-        yggdryl::text::json::into_bytes(&Scalar::from_sequence([tagged(
+        yggdryl::json::into_bytes(&Scalar::from_sequence([tagged(
             "Misplaced",
             150,
             DataType::utf8(),
@@ -1071,8 +1089,7 @@ fn malformed_shards_are_located_and_nested_folders_are_passed_over() {
     // its own name.
     let field = tagged("Misplaced", 5001, DataType::utf8());
     let bytes =
-        yggdryl::text::json::into_bytes(&Scalar::from_sequence([field.clone().into_value()]))
-            .unwrap();
+        yggdryl::json::into_bytes(&Scalar::from_sequence([field.clone().into_value()])).unwrap();
     folder
         .child_by_path("fields/000000049.json")
         .unwrap()
@@ -1131,7 +1148,7 @@ fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     );
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
     let group = registry.field_by_name("Parties").unwrap();
-    let DataType::List(item) = group.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("parties list")
     };
     assert_eq!(item.name(), "party");
@@ -1268,7 +1285,7 @@ fn merging_catalogs_resolves_imported_references_against_the_inline_code_union()
         assert_eq!(field.as_fix().code_name("C"), Some("Client"), "{path}");
     }
     let group = target.msgtype("I").unwrap().get_group_by_tag(453).unwrap();
-    let DataType::List(item) = group.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("the resolved group list")
     };
     assert_eq!(
@@ -1297,7 +1314,8 @@ fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_
     let mut source = FixRegistry::from_fields([coded]).unwrap();
     let mut member = source.field(448).unwrap().clone();
     member.as_fix_mut().set_field_ref("PartyID").unwrap();
-    let extended = DataType::from_fields([member, DataType::Int32.nullable_field("Extra")])
+    let extended = StructureType::from_fields([member, DataType::Int32.nullable_field("Extra")])
+        .map(DataType::from)
         .unwrap()
         .required_field("Party");
     source.insert(extended).unwrap();
@@ -1346,7 +1364,8 @@ fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_
     let before = target.clone();
     let mut member = source.field(448).unwrap().clone();
     member.as_fix_mut().set_field_ref("PartyID").unwrap();
-    let changed = DataType::from_fields([member, DataType::Int64.nullable_field("Extra")])
+    let changed = StructureType::from_fields([member, DataType::Int64.nullable_field("Extra")])
+        .map(DataType::from)
         .unwrap()
         .required_field("Party");
     source.insert(changed).unwrap();
@@ -1365,7 +1384,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .set_description("A changed description")
         .unwrap();
     registry.update(component).unwrap();
-    let DataType::List(item) = registry
+    let DataType::Sequence(SequenceType::List(item)) = registry
         .field_by_path(&fpath("NewOrderSingle.Parties"))
         .unwrap()
         .dtype()
@@ -1413,7 +1432,8 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .as_fix_mut()
         .set_description("An occurrence override")
         .unwrap();
-    let component = DataType::from_fields([child])
+    let component = StructureType::from_fields([child])
+        .map(DataType::from)
         .unwrap()
         .required_field("OverriddenParty");
     assert!(registry.insert(component).is_err());
@@ -1456,7 +1476,7 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
         .unwrap();
     assert_eq!(group.name(), "Parties");
     assert_eq!(group.as_fix().description(), Some("Replaced metadata"));
-    let DataType::List(item) = group.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
         panic!("a group list")
     };
     assert_eq!(item.name(), "Party");
@@ -1509,7 +1529,7 @@ fn duplicate_persisted_field_declarations_are_refused() {
     let root = scratch("duplicates");
     let folder = Folder::new(&root).unwrap();
     let field = tagged("Symbol", 55, DataType::utf8());
-    let bytes = yggdryl::text::json::into_bytes(&Scalar::from_sequence([
+    let bytes = yggdryl::json::into_bytes(&Scalar::from_sequence([
         field.clone().into_value(),
         field.into_value(),
     ]))
@@ -1537,10 +1557,12 @@ fn mixed_inline_and_reference_depth_has_one_bound() {
                 .set_component(&format!("Chain{:02}", index + 1))
                 .unwrap();
         }
-        let inline = DataType::from_fields([child])
+        let inline = StructureType::from_fields([child])
+            .map(DataType::from)
             .unwrap()
             .required_field("inline");
-        let field = DataType::from_fields([inline])
+        let field = StructureType::from_fields([inline])
+            .map(DataType::from)
             .unwrap()
             .required_field(format!("Chain{index:02}"));
         folder
@@ -1562,7 +1584,8 @@ fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
     let mut registry = catalog();
     // A code re-declared under another name is a second message: the bare
     // code keeps answering the first holder, the newcomer is reached by name.
-    let mut other = DataType::from_fields([])
+    let mut other = StructureType::from_fields([])
+        .map(DataType::from)
         .unwrap()
         .required_field("OtherOrder");
     other.as_fix_mut().set_msgtype("D").unwrap();
@@ -1581,7 +1604,8 @@ fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
     // re-declared under the folded name it folds into the stored message,
     // under its own name it stands beside it, carrying its membership.
     let mut registry = catalog();
-    let mut restated = DataType::from_fields([])
+    let mut restated = StructureType::from_fields([])
+        .map(DataType::from)
         .unwrap()
         .required_field("new_order_single");
     restated.as_fix_mut().set_msgtype("D").unwrap();
@@ -1592,7 +1616,8 @@ fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
     assert_eq!(folded.name(), "NewOrderSingle");
     assert!(folded.as_field().as_fix().has_branch("venue"));
     assert_eq!(folded.get_group_by_tag(453).unwrap().name(), "Parties");
-    let mut message = DataType::from_fields([])
+    let mut message = StructureType::from_fields([])
+        .map(DataType::from)
         .unwrap()
         .required_field("VenueOrder");
     message.as_fix_mut().set_msgtype("D").unwrap();
@@ -1638,12 +1663,14 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
         .unwrap();
     let mut member = registry.field(35).unwrap().clone();
     member.as_fix_mut().set_field_ref("MsgType").unwrap();
-    let mut header = DataType::from_fields([member])
+    let mut header = StructureType::from_fields([member])
+        .map(DataType::from)
         .unwrap()
         .required_field("Header");
     registry.insert(header.clone()).unwrap();
     header.as_fix_mut().set_component("Header").unwrap();
-    let mut message = DataType::from_fields([header])
+    let mut message = StructureType::from_fields([header])
+        .map(DataType::from)
         .unwrap()
         .required_field("EnumReport");
     message.as_fix_mut().set_msgtype("R").unwrap();
@@ -1667,7 +1694,7 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
 
     let before = registry.clone();
     let mut malformed = registry.field(35).unwrap().clone();
-    malformed.update_metadata([("fix:codes", "[")]).unwrap();
+    malformed.update_metadata([("FIX:codes", "[")]).unwrap();
     assert!(registry.insert(malformed).is_err());
     assert_eq!(registry, before);
     let mut changed = registry.field(35).unwrap().clone();
@@ -1715,10 +1742,12 @@ fn message_context_resolves_a_group_whose_global_counter_is_ambiguous() {
         "Parties"
     );
     group.as_fix_mut().set_group("TradeParties").unwrap();
-    let outer = DataType::from_fields([group])
+    let outer = StructureType::from_fields([group])
+        .map(DataType::from)
         .unwrap()
         .required_field("Outer");
-    let mut message = DataType::from_fields([outer])
+    let mut message = StructureType::from_fields([outer])
+        .map(DataType::from)
         .unwrap()
         .required_field("Trade");
     message.as_fix_mut().set_msgtype("T").unwrap();
@@ -1742,7 +1771,8 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
         .unwrap();
     let mut parties = registry.field_by_name("Parties").unwrap().clone();
     parties.as_fix_mut().set_group("Parties").unwrap();
-    let hop = DataType::from_fields([parties.clone()])
+    let hop = StructureType::from_fields([parties.clone()])
+        .map(DataType::from)
         .unwrap()
         .required_field("Hop");
     registry.insert(hop.clone()).unwrap();
@@ -1752,7 +1782,8 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
     registry.insert(hops).unwrap();
     let mut hops = registry.field_by_name("Hops").unwrap().clone();
     hops.as_fix_mut().set_group("Hops").unwrap();
-    let mut message = DataType::from_fields([hops])
+    let mut message = StructureType::from_fields([hops])
+        .map(DataType::from)
         .unwrap()
         .required_field("HopReport");
     message.as_fix_mut().set_msgtype("H").unwrap();
@@ -1760,14 +1791,17 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
     let message = registry.msgtype("H").unwrap();
     assert_eq!(message.get_group_by_tag(627).unwrap().name(), "Hops");
     assert_eq!(message.get_group_by_tag(453).unwrap().name(), "Parties");
-    let mut duplicate = DataType::from_fields([
-        DataType::from_fields([parties.clone()])
+    let mut duplicate = StructureType::from_fields([
+        StructureType::from_fields([parties.clone()])
+            .map(DataType::from)
             .unwrap()
             .required_field("Left"),
-        DataType::from_fields([parties])
+        StructureType::from_fields([parties])
+            .map(DataType::from)
             .unwrap()
             .required_field("Right"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("DuplicateContexts");
     duplicate.as_fix_mut().set_msgtype("R").unwrap();
@@ -1786,16 +1820,18 @@ fn message_types_require_non_null_structs_and_complete_non_control_codes() {
     let mut registry = FixRegistry::new();
     // A Struct stating no message type is a plain component:
     // it is accepted, and no code reaches it.
-    let missing = DataType::from_fields([]).unwrap().required_field("Missing");
+    let missing = DataType::from(StructureType::from_fields([]).unwrap()).required_field("Missing");
     registry.insert(missing).unwrap();
     assert!(registry.get_msgtype("Missing").is_none());
     assert_eq!(super::msgtypes(&registry).count(), 0);
-    let mut nullable = DataType::from_fields([])
+    let mut nullable = StructureType::from_fields([])
+        .map(DataType::from)
         .unwrap()
         .nullable_field("Nullable");
     nullable.as_fix_mut().set_msgtype("X").unwrap();
     assert!(registry.insert(nullable).is_err());
-    let mut composite = DataType::from_fields([]).unwrap().required_field("Report");
+    let mut composite =
+        DataType::from(StructureType::from_fields([]).unwrap()).required_field("Report");
     composite
         .as_fix_mut()
         .set_msgtype("P Report Acknowledgement")
@@ -1808,7 +1844,8 @@ fn message_types_require_non_null_structs_and_complete_non_control_codes() {
             .as_str(),
         "P Report Acknowledgement"
     );
-    let mut refused = DataType::from_fields([]).unwrap().required_field("Refused");
+    let mut refused =
+        DataType::from(StructureType::from_fields([]).unwrap()).required_field("Refused");
     assert!(refused.as_fix_mut().set_msgtype("A\nB").is_err());
 }
 
@@ -1821,7 +1858,7 @@ fn a_document_property_is_stored_as_the_json_it_is_and_read_back_as_its_text() {
             FixCode::new("Sell", "2"),
         ])
         .unwrap();
-    let canonical = side.get_metadata("fix:codes").unwrap().to_owned();
+    let canonical = side.get_metadata("FIX:codes").unwrap().to_owned();
     assert!(canonical.starts_with("[{"), "{canonical}");
 
     // The store writes the document rather than one escaped line, so the
@@ -1829,7 +1866,7 @@ fn a_document_property_is_stored_as_the_json_it_is_and_read_back_as_its_text() {
     let document = yggdryl::into_fix_document(side.clone()).unwrap();
     let codes = document
         .get_key_str("metadata")
-        .and_then(|metadata| metadata.get_key_str("fix:codes"))
+        .and_then(|metadata| metadata.get_key_str("FIX:codes"))
         .expect("the code set");
     assert_eq!(codes.len(), 2);
     assert_eq!(
@@ -1851,15 +1888,15 @@ fn a_document_property_is_stored_as_the_json_it_is_and_read_back_as_its_text() {
     assert_eq!(yggdryl::from_fix_document(document).unwrap(), side);
     let reordered = yggdryl::from_json_scalar(
         r#"{"name":"Side","dtype":{"type":"string"},"nullable":true,"metadata":{
-            "fix:tag":"54",
-            "fix:codes":[{"doc":"Buy side","name":"Buy","value":"1"},{"name":"Sell","value":"2"}]
+            "FIX:tag":"54",
+            "FIX:codes":[{"doc":"Buy side","name":"Buy","value":"1"},{"name":"Sell","value":"2"}]
         }}"#,
     )
     .unwrap();
     assert_eq!(
         yggdryl::from_fix_document(reordered)
             .unwrap()
-            .get_metadata("fix:codes"),
+            .get_metadata("FIX:codes"),
         Some(canonical.as_str()),
     );
 }
@@ -1870,17 +1907,17 @@ fn a_document_property_the_store_cannot_read_is_refused_by_name() {
     // text, because the store writes the document itself.
     let text = yggdryl::from_json_scalar(
         r#"{"name":"Side","dtype":{"type":"string"},"nullable":true,
-            "metadata":{"fix:tag":"54","fix:codes":"[{\"value\":\"1\",\"name\":\"Buy\"}]"}}"#,
+            "metadata":{"FIX:tag":"54","FIX:codes":"[{\"value\":\"1\",\"name\":\"Buy\"}]"}}"#,
     )
     .unwrap();
     let error = yggdryl::from_fix_document(text).expect_err("the escaped shape is not the shape");
-    assert!(error.to_string().contains("fix:codes"), "{error}");
+    assert!(error.to_string().contains("FIX:codes"), "{error}");
 
     // An entry stating a key the document does not declare is refused the
     // same way rather than dropped.
     let unknown = yggdryl::from_json_scalar(
         r#"{"name":"Side","dtype":{"type":"string"},"nullable":true,
-            "metadata":{"fix:tag":"54","fix:codes":[{"value":"1","name":"Buy","note":"x"}]}}"#,
+            "metadata":{"FIX:tag":"54","FIX:codes":[{"value":"1","name":"Buy","note":"x"}]}}"#,
     )
     .unwrap();
     let error = yggdryl::from_fix_document(unknown).expect_err("an undeclared key");
@@ -1890,10 +1927,10 @@ fn a_document_property_the_store_cannot_read_is_refused_by_name() {
     // written rather than copied out for a reader to refuse later.
     let mut broken = tagged("Side", 54, DataType::utf8());
     broken
-        .set_metadata([("fix:codes", "not a document")])
+        .set_metadata([("FIX:codes", "not a document")])
         .unwrap();
     let error = yggdryl::into_fix_document(broken).expect_err("a malformed document");
-    assert!(error.to_string().contains("fix:codes"), "{error}");
+    assert!(error.to_string().contains("FIX:codes"), "{error}");
 }
 
 #[test]
@@ -1904,19 +1941,19 @@ fn the_names_and_tags_cross_a_store_as_the_arrays_they_are() {
     let mut qty = tagged("OrderQty", 38, DataType::Float64);
     qty.as_fix_mut().set_names(["Qty", "Quantity"]).unwrap();
     qty.as_fix_mut().set_tags(&[1088, 152]).unwrap();
-    assert_eq!(qty.get_metadata("fix:names"), Some(r#"["Qty","Quantity"]"#));
-    assert_eq!(qty.get_metadata("fix:tags"), Some("[1088,152]"));
+    assert_eq!(qty.get_metadata("FIX:names"), Some(r#"["Qty","Quantity"]"#));
+    assert_eq!(qty.get_metadata("FIX:tags"), Some("[1088,152]"));
 
     let document = yggdryl::into_fix_document(qty.clone()).unwrap();
     let metadata = document.get_key_str("metadata").expect("the metadata");
-    let names = metadata.get_key_str("fix:names").expect("the names");
+    let names = metadata.get_key_str("FIX:names").expect("the names");
     assert_eq!(
         names
             .as_sequence()
             .map(|held| held.iter().filter_map(Scalar::as_str).collect::<Vec<_>>()),
         Some(vec!["Qty", "Quantity"]),
     );
-    let tags = metadata.get_key_str("fix:tags").expect("the tags");
+    let tags = metadata.get_key_str("FIX:tags").expect("the tags");
     assert_eq!(
         tags.as_sequence()
             .map(|held| held.iter().filter_map(Scalar::as_i64).collect::<Vec<_>>()),
@@ -1927,9 +1964,9 @@ fn the_names_and_tags_cross_a_store_as_the_arrays_they_are() {
     // A file may space the arrays however it likes; the field holds one text.
     let spaced = yggdryl::from_json_scalar(
         r#"{"name":"OrderQty","dtype":{"type":"float64"},"nullable":true,"metadata":{
-            "fix:tag":"38",
-            "fix:names":[ "Qty" ,  "Quantity" ],
-            "fix:tags":[ 1088 , 152 ]
+            "FIX:tag":"38",
+            "FIX:names":[ "Qty" ,  "Quantity" ],
+            "FIX:tags":[ 1088 , 152 ]
         }}"#,
     )
     .unwrap();
@@ -1939,23 +1976,23 @@ fn the_names_and_tags_cross_a_store_as_the_arrays_they_are() {
     // element that is not what the list holds - an empty or escaped name, a
     // tag that is not a positive integer.
     for (key, spelled) in [
-        ("fix:names", r#""Qty,Quantity""#),
-        ("fix:names", r#"["Qty",""]"#),
-        ("fix:names", r#"["Qty","Qu\"antity"]"#),
-        ("fix:names", r#"["Qty",152]"#),
-        ("fix:names", r#"["Qty","qty"]"#),
-        ("fix:names", r#"{"Qty":true}"#),
-        ("fix:tags", r#""1088,152""#),
-        ("fix:tags", r#"[1088,1088]"#),
-        ("fix:tags", r#"[1088,0]"#),
-        ("fix:tags", r#"[1088,-152]"#),
-        ("fix:tags", r#"[1088,2147483648]"#),
-        ("fix:tags", r#"[1088,"152"]"#),
-        ("fix:tags", r#"[1088,1.5]"#),
+        ("FIX:names", r#""Qty,Quantity""#),
+        ("FIX:names", r#"["Qty",""]"#),
+        ("FIX:names", r#"["Qty","Qu\"antity"]"#),
+        ("FIX:names", r#"["Qty",152]"#),
+        ("FIX:names", r#"["Qty","qty"]"#),
+        ("FIX:names", r#"{"Qty":true}"#),
+        ("FIX:tags", r#""1088,152""#),
+        ("FIX:tags", r#"[1088,1088]"#),
+        ("FIX:tags", r#"[1088,0]"#),
+        ("FIX:tags", r#"[1088,-152]"#),
+        ("FIX:tags", r#"[1088,2147483648]"#),
+        ("FIX:tags", r#"[1088,"152"]"#),
+        ("FIX:tags", r#"[1088,1.5]"#),
     ] {
         let document = yggdryl::from_json_scalar(format!(
             r#"{{"name":"OrderQty","dtype":{{"type":"float64"}},"nullable":true,
-                "metadata":{{"fix:tag":"38","{key}":{spelled}}}}}"#
+                "metadata":{{"FIX:tag":"38","{key}":{spelled}}}}}"#
         ))
         .unwrap();
         let error = yggdryl::from_fix_document(document).expect_err(&format!("{key}: {spelled}"));
@@ -1964,7 +2001,7 @@ fn the_names_and_tags_cross_a_store_as_the_arrays_they_are() {
 
     // And a field holding text no reader can parse under either key is named
     // where it is written.
-    for (key, stored) in [("fix:names", "Qty,Quantity"), ("fix:tags", "1088,152")] {
+    for (key, stored) in [("FIX:names", "Qty,Quantity"), ("FIX:tags", "1088,152")] {
         let mut broken = tagged("OrderQty", 38, DataType::Float64);
         broken.set_metadata([(key, stored)]).unwrap();
         let error = yggdryl::into_fix_document(broken).expect_err("the comma text");
@@ -1983,7 +2020,7 @@ fn every_committed_field_document_round_trips_through_the_store_shape() {
         let document = yggdryl::into_fix_document(field.clone()).unwrap();
         if document
             .get_key_str("metadata")
-            .is_some_and(|metadata| metadata.get_key_str("fix:codes").is_some())
+            .is_some_and(|metadata| metadata.get_key_str("FIX:codes").is_some())
         {
             carried += 1;
         }
@@ -2012,7 +2049,7 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
     std::fs::write(&path, source.into_json().unwrap()).unwrap();
 
     let mut registry = FixRegistry::new();
-    let file = yggdryl::holder::local::File::new(&path).unwrap();
+    let file = yggdryl::local::File::new(&path).unwrap();
     let (added, merged) = registry.add_json_file(&file).unwrap();
     assert_eq!((added, merged), (1, 2), "one field, the two clock seeds");
     assert_eq!(registry.field_by_tag(9001).unwrap().name(), "VenueRef");
@@ -2028,7 +2065,7 @@ fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
     let before = registry.stable_hash();
     std::fs::write(&path, br#"{"fields":[],"components":[],"groups":"no"}"#).unwrap();
     let error = registry
-        .add_json_file(&yggdryl::holder::local::File::new(&path).unwrap())
+        .add_json_file(&yggdryl::local::File::new(&path).unwrap())
         .expect_err("a category that is not an array");
     assert!(error.to_string().contains("venue.json"), "{error}");
     assert_eq!(registry.stable_hash(), before);

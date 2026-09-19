@@ -10,16 +10,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "execid",
-          "fix:tag": "17"
+          "FIX:field": "execid",
+          "FIX:tag": "17"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ExecColl",
-    "fix:identifiers": "execid",
-    "fix:tag": "542962"
+    "FIX:identifiers": "execid",
+    "FIX:tag": "542962",
+    "display": "ExecColl"
   }
 }

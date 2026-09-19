@@ -46,7 +46,8 @@ def uuid(
     """Create a field of one 128-bit universally unique identifier.
 
     Storage is the sixteen bytes; every value reads back as the 36-character
-    lowercase hyphenated spelling.
+    lowercase hyphenated spelling. Every RFC 9562 version stands in the one
+    column, and the value answers which.
     """
 
     return new_field(UuidField, name, _UUID, nullable, metadata)
@@ -82,8 +83,10 @@ def geography(
 __all__ = [
     "GeographyField",
     "GeometryField",
+    "UuidField",
     "VariantField",
     "geography",
     "geometry",
+    "uuid",
     "variant",
 ]

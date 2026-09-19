@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisedate",
-          "fix:tag": "41138"
+          "FIX:field": "optionexercisedate",
+          "FIX:tag": "41138"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisedatetype",
-          "fix:tag": "41139"
+          "FIX:field": "optionexercisedatetype",
+          "FIX:tag": "41139"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "OptionExerciseDate",
-    "fix:tag": "353285"
+    "FIX:tag": "353285",
+    "display": "OptionExerciseDate"
   }
 }

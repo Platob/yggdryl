@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratevaluationdatebusinesscenter",
-          "fix:tag": "42570"
+          "FIX:field": "legreturnratevaluationdatebusinesscenter",
+          "FIX:tag": "42570"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegReturnRateValuationDateBusinessCenter",
-    "fix:tag": "407817"
+    "FIX:tag": "407817",
+    "display": "LegReturnRateValuationDateBusinessCenter"
   }
 }

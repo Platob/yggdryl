@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "600",
       "description": "Multileg instrument's individual security's Symbol.",
-      "display": "LegSymbol",
-      "fix:tag": "600"
+      "display": "LegSymbol"
     }
   },
   {
@@ -18,9 +18,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Multileg instrument's individual security's SymbolSfx.",
-      "display": "LegSymbolSfx",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "CD",
           "name": "EUCPWithLumpSumInterest",
@@ -34,7 +32,9 @@
           "doc": "\"When Issued\" for a security to be reissued under an old CUSIP or ISIN"
         }
       ],
-      "fix:tag": "601"
+      "FIX:tag": "601",
+      "description": "Multileg instrument's individual security's SymbolSfx.",
+      "display": "LegSymbolSfx"
     }
   },
   {
@@ -44,9 +44,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "602",
       "description": "Multileg instrument's individual security's SecurityID.",
-      "display": "LegSecurityID",
-      "fix:tag": "602"
+      "display": "LegSecurityID"
     }
   },
   {
@@ -56,9 +56,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Multileg instrument's individual security's SecurityIDSource.",
-      "display": "LegSecurityIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -225,7 +223,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "603"
+      "FIX:tag": "603",
+      "description": "Multileg instrument's individual security's SecurityIDSource.",
+      "display": "LegSecurityIDSource"
     }
   },
   {
@@ -235,9 +235,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "604",
       "description": "Multileg instrument's individual security's NoSecurityAltID.",
-      "display": "NoLegSecurityAltID",
-      "fix:tag": "604"
+      "display": "NoLegSecurityAltID"
     }
   },
   {
@@ -247,9 +247,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "605",
       "description": "Multileg instrument's individual security's SecurityAltID.",
-      "display": "LegSecurityAltID",
-      "fix:tag": "605"
+      "display": "LegSecurityAltID"
     }
   },
   {
@@ -259,9 +259,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Alternate identifier for individual leg security of a multileg instrument.",
-      "display": "LegSecurityAltIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -428,7 +426,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "606"
+      "FIX:tag": "606",
+      "description": "Alternate identifier for individual leg security of a multileg instrument.",
+      "display": "LegSecurityAltIDSource"
     }
   },
   {
@@ -438,9 +438,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Multileg instrument's individual security's Product.",
-      "display": "LegProduct",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "AGENCY",
@@ -507,7 +505,9 @@
           "doc": "FINANCING"
         }
       ],
-      "fix:tag": "607"
+      "FIX:tag": "607",
+      "description": "Multileg instrument's individual security's Product.",
+      "display": "LegProduct"
     }
   },
   {
@@ -517,9 +517,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "608",
       "description": "Multileg instrument's individual security's CFICode.",
-      "display": "LegCFICode",
-      "fix:tag": "608"
+      "display": "LegCFICode"
     }
   },
   {
@@ -529,9 +529,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Refer to definition of SecurityType(167)",
-      "display": "LegSecurityType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "ABS",
           "name": "AssetBackedSecurities",
@@ -1623,7 +1621,7 @@
           "doc": "Term Deposit Receipt"
         }
       ],
-      "fix:replacements": [
+      "FIX:replacements": [
         {
           "plan": "select 'TNOTE' as legsecuritytype where legsecuritytype = 'UST'",
           "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
@@ -1633,22 +1631,23 @@
           "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
         }
       ],
-      "fix:tag": "609"
+      "FIX:tag": "609",
+      "description": "Refer to definition of SecurityType(167)",
+      "display": "LegSecurityType"
     }
   },
   {
     "name": "legmaturitymonthyear",
     "dtype": {
       "type": "string",
-      "layout": "fixed_string",
-      "charset": "us-ascii",
+      "layout": "fixed_ascii",
       "fixed": 8
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "610",
       "description": "Multileg instrument's individual security's MaturityMonthYear.",
-      "display": "LegMaturityMonthYear",
-      "fix:tag": "610"
+      "display": "LegMaturityMonthYear"
     }
   },
   {
@@ -1659,9 +1658,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "611",
       "description": "Multileg instrument's individual security's MaturityDate.",
-      "display": "LegMaturityDate",
-      "fix:tag": "611"
+      "display": "LegMaturityDate"
     }
   },
   {
@@ -1673,9 +1672,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "612",
       "description": "Multileg instrument's individual security's StrikePrice.",
-      "display": "LegStrikePrice",
-      "fix:tag": "612"
+      "display": "LegStrikePrice"
     }
   },
   {
@@ -1685,9 +1684,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "613",
       "description": "Multileg instrument's individual security's OptAttribute.",
-      "display": "LegOptAttribute",
-      "fix:tag": "613"
+      "display": "LegOptAttribute"
     }
   },
   {
@@ -1697,9 +1696,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "614",
       "description": "Multileg instrument's individual security's ContractMultiplier.",
-      "display": "LegContractMultiplier",
-      "fix:tag": "614"
+      "display": "LegContractMultiplier"
     }
   },
   {
@@ -1709,9 +1708,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "615",
       "description": "Multileg instrument's individual security's CouponRate.",
-      "display": "LegCouponRate",
-      "fix:tag": "615"
+      "display": "LegCouponRate"
     }
   },
   {
@@ -1721,9 +1720,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "616",
       "description": "Multileg instrument's individual security's SecurityExchange.",
-      "display": "LegSecurityExchange",
-      "fix:tag": "616"
+      "display": "LegSecurityExchange"
     }
   },
   {
@@ -1733,9 +1732,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "617",
       "description": "Multileg instrument's individual security's Issuer.",
-      "display": "LegIssuer",
-      "fix:tag": "617"
+      "display": "LegIssuer"
     }
   },
   {
@@ -1745,9 +1744,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "618",
       "description": "Multileg instrument's individual security's EncodedIssuerLen.",
-      "display": "EncodedLegIssuerLen",
-      "fix:tag": "618"
+      "display": "EncodedLegIssuerLen"
     }
   },
   {
@@ -1757,9 +1756,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "619",
       "description": "Multileg instrument's individual security's EncodedIssuer.",
-      "display": "EncodedLegIssuer",
-      "fix:tag": "619"
+      "display": "EncodedLegIssuer"
     }
   },
   {
@@ -1769,9 +1768,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "620",
       "description": "Description of a multileg instrument.",
-      "display": "LegSecurityDesc",
-      "fix:tag": "620"
+      "display": "LegSecurityDesc"
     }
   },
   {
@@ -1781,9 +1780,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "621",
       "description": "Multileg instrument's individual security's EncodedSecurityDescLen.",
-      "display": "EncodedLegSecurityDescLen",
-      "fix:tag": "621"
+      "display": "EncodedLegSecurityDescLen"
     }
   },
   {
@@ -1793,9 +1792,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "622",
       "description": "Multileg instrument's individual security's EncodedSecurityDesc.",
-      "display": "EncodedLegSecurityDesc",
-      "fix:tag": "622"
+      "display": "EncodedLegSecurityDesc"
     }
   },
   {
@@ -1805,9 +1804,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "623",
       "description": "The ratio of quantity for this individual leg relative to the entire multileg security.",
-      "display": "LegRatioQty",
-      "fix:tag": "623"
+      "display": "LegRatioQty"
     }
   },
   {
@@ -1817,9 +1816,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The side of this individual leg (multileg security).",
-      "display": "LegSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buy",
@@ -1906,7 +1903,9 @@
           "doc": "Sell undisclosed"
         }
       ],
-      "fix:tag": "624"
+      "FIX:tag": "624",
+      "description": "The side of this individual leg (multileg security).",
+      "display": "LegSide"
     }
   },
   {
@@ -1916,9 +1915,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Optional market assigned sub identifier for a trading phase within a trading session. Usage is determined by market or counterparties. Used by US based futures markets to identify exchange specific execution time bracket codes as required by US market regulations. Bilaterally agreed values of data type \"String\" that start with a character can be used for backward compatibility",
-      "display": "TradingSessionSubID",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "PreTrading",
@@ -1998,7 +1995,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "625"
+      "FIX:tag": "625",
+      "description": "Optional market assigned sub identifier for a trading phase within a trading session. Usage is determined by market or counterparties. Used by US based futures markets to identify exchange specific execution time bracket codes as required by US market regulations. Bilaterally agreed values of data type \"String\" that start with a character can be used for backward compatibility",
+      "display": "TradingSessionSubID"
     }
   },
   {
@@ -2008,9 +2007,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Describes the specific type or purpose of an Allocation message (i.e. \"Buyside Calculated\")",
-      "display": "AllocType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Calculated",
@@ -2139,7 +2136,9 @@
           "name": "BuysideReadyToBook"
         }
       ],
-      "fix:tag": "626"
+      "FIX:tag": "626",
+      "description": "Describes the specific type or purpose of an Allocation message (i.e. \"Buyside Calculated\")",
+      "display": "AllocType"
     }
   },
   {
@@ -2149,9 +2148,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "627",
       "description": "Number of HopCompID entries in repeating group.",
-      "display": "NoHops",
-      "fix:tag": "627"
+      "display": "NoHops"
     }
   },
   {
@@ -2161,9 +2160,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "628",
       "description": "Assigned value used to identify the third party firm which delivered a specific message either from the firm which originated the message or from another third party (if multiple \"hops\" are performed). It is recommended that this value be the SenderCompID (49) of the third party.",
-      "display": "HopCompID",
-      "fix:tag": "628"
+      "display": "HopCompID"
     }
   },
   {
@@ -2175,9 +2174,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "629",
       "description": "Time that HopCompID (628) sent the message. It is recommended that this value be the SendingTime (52) of the message sent by the third party.",
-      "display": "HopSendingTime",
-      "fix:tag": "629"
+      "display": "HopSendingTime"
     }
   },
   {
@@ -2187,9 +2186,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "630",
       "description": "Reference identifier assigned by HopCompID (628) associated with the message sent. It is recommended that this value be the MsgSeqNum (34) of the message sent by the third party.",
-      "display": "HopRefID",
-      "fix:tag": "630"
+      "display": "HopRefID"
     }
   },
   {
@@ -2201,9 +2200,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "631",
       "description": "Mid price/rate.",
-      "display": "MidPx",
-      "fix:tag": "631"
+      "display": "MidPx"
     }
   },
   {
@@ -2213,9 +2212,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "632",
       "description": "Bid yield",
-      "display": "BidYield",
-      "fix:tag": "632"
+      "display": "BidYield"
     }
   },
   {
@@ -2225,9 +2224,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "633",
       "description": "Mid yield",
-      "display": "MidYield",
-      "fix:tag": "633"
+      "display": "MidYield"
     }
   },
   {
@@ -2237,9 +2236,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "634",
       "description": "Offer yield",
-      "display": "OfferYield",
-      "fix:tag": "634"
+      "display": "OfferYield"
     }
   },
   {
@@ -2249,9 +2248,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates type of fee being assessed of the customer for trade executions at an exchange. Applicable for futures markets only at this time.",
-      "display": "ClearingFeeIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FirstYearDelegate",
@@ -2323,7 +2320,9 @@
           "doc": "All other ownership types"
         }
       ],
-      "fix:tag": "635"
+      "FIX:tag": "635",
+      "description": "Indicates type of fee being assessed of the customer for trade executions at an exchange. Applicable for futures markets only at this time.",
+      "display": "ClearingFeeIndicator"
     }
   },
   {
@@ -2333,9 +2332,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates if the order is currently being worked. Applicable only for OrdStatus = \"New\". For open outcry markets this indicates that the order is being worked in the crowd. For electronic markets it indicates that the order has transitioned from a contingent order to a market order.",
-      "display": "WorkingIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "NotWorking",
@@ -2353,7 +2350,9 @@
           "doc": "Order is currently being worked"
         }
       ],
-      "fix:tag": "636"
+      "FIX:tag": "636",
+      "description": "Indicates if the order is currently being worked. Applicable only for OrdStatus = \"New\". For open outcry markets this indicates that the order is being worked in the crowd. For electronic markets it indicates that the order has transitioned from a contingent order to a market order.",
+      "display": "WorkingIndicator"
     }
   },
   {
@@ -2365,9 +2364,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "637",
       "description": "Execution price assigned to a leg of a multileg instrument.",
-      "display": "LegLastPx",
-      "fix:tag": "637"
+      "display": "LegLastPx"
     }
   },
   {
@@ -2377,9 +2376,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates if a Cancel/Replace has caused an order to lose book priority.",
-      "display": "PriorityIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "PriorityUnchanged",
@@ -2391,7 +2388,9 @@
           "doc": "Lost Priority as result of order change"
         }
       ],
-      "fix:tag": "638"
+      "FIX:tag": "638",
+      "description": "Indicates if a Cancel/Replace has caused an order to lose book priority.",
+      "display": "PriorityIndicator"
     }
   },
   {
@@ -2403,9 +2402,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "639",
       "description": "Amount of price improvement.",
-      "display": "PriceImprovement",
-      "fix:tag": "639"
+      "display": "PriceImprovement"
     }
   },
   {
@@ -2417,10 +2416,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "5.0",
+      "FIX:tag": "640",
       "description": "Price of the future part of a F/X swap order.",
-      "display": "Price2",
-      "fix:deprecated": "5.0",
-      "fix:tag": "640"
+      "display": "Price2"
     }
   },
   {
@@ -2432,10 +2431,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "5.0",
+      "FIX:tag": "641",
       "description": "F/X forward points of the future part of a F/X swap order added to LastSpotRate(194). May be a negative value.",
-      "display": "LastForwardPoints2",
-      "fix:deprecated": "5.0",
-      "fix:tag": "641"
+      "display": "LastForwardPoints2"
     }
   },
   {
@@ -2447,10 +2446,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "5.0",
+      "FIX:tag": "642",
       "description": "Bid F/X forward points of the future portion of a F/X swap quote added to spot rate. May be a negative value.",
-      "display": "BidForwardPoints2",
-      "fix:deprecated": "5.0",
-      "fix:tag": "642"
+      "display": "BidForwardPoints2"
     }
   },
   {
@@ -2462,10 +2461,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "5.0",
+      "FIX:tag": "643",
       "description": "Offer F/X forward points of the future portion of a F/X swap quote added to spot rate. May be a negative value.",
-      "display": "OfferForwardPoints2",
-      "fix:deprecated": "5.0",
-      "fix:tag": "643"
+      "display": "OfferForwardPoints2"
     }
   },
   {
@@ -2475,9 +2474,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "644",
       "description": "RFQ Request ID - used to identify an RFQ Request.",
-      "display": "RFQReqID",
-      "fix:tag": "644"
+      "display": "RFQReqID"
     }
   },
   {
@@ -2489,9 +2488,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "645",
       "description": "Used to indicate the best bid in a market",
-      "display": "MktBidPx",
-      "fix:tag": "645"
+      "display": "MktBidPx"
     }
   },
   {
@@ -2503,9 +2502,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "646",
       "description": "Used to indicate the best offer in a market",
-      "display": "MktOfferPx",
-      "fix:tag": "646"
+      "display": "MktOfferPx"
     }
   },
   {
@@ -2517,9 +2516,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "647",
       "description": "Used to indicate a minimum quantity for a bid.",
-      "display": "MinBidSize",
-      "fix:tag": "647"
+      "display": "MinBidSize"
     }
   },
   {
@@ -2531,9 +2530,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "648",
       "description": "Used to indicate a minimum quantity for an offer. If this field is used the OfferSize (135) field is interpreted as the maximum offer size.",
-      "display": "MinOfferSize",
-      "fix:tag": "648"
+      "display": "MinOfferSize"
     }
   },
   {
@@ -2543,9 +2542,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "649",
       "description": "Unique identifier for Quote Status Request.",
-      "display": "QuoteStatusReqID",
-      "fix:tag": "649"
+      "display": "QuoteStatusReqID"
     }
   },
   {
@@ -2555,9 +2554,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates that this message is to serve as the final and legal confirmation.",
-      "display": "LegalConfirm",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "DoesNotConsituteALegalConfirm",
@@ -2575,7 +2572,9 @@
           "doc": "Legal Confirm"
         }
       ],
-      "fix:tag": "650"
+      "FIX:tag": "650",
+      "description": "Indicates that this message is to serve as the final and legal confirmation.",
+      "display": "LegalConfirm"
     }
   },
   {
@@ -2587,9 +2586,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "651",
       "description": "The calculated or traded price for the underlying instrument that corresponds to a derivative. Used for transactions that include the cash instrument and the derivative.",
-      "display": "UnderlyingLastPx",
-      "fix:tag": "651"
+      "display": "UnderlyingLastPx"
     }
   },
   {
@@ -2601,9 +2600,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "652",
       "description": "The calculated or traded quantity for the underlying instrument that corresponds to a derivative. Used for transactions that include the cash instrument and the derivative.",
-      "display": "UnderlyingLastQty",
-      "fix:tag": "652"
+      "display": "UnderlyingLastQty"
     }
   },
   {
@@ -2613,9 +2612,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "654",
       "description": "Unique identifier for a specific leg (uniqueness not defined as part of the FIX specification). LegRefID(654) be used to reference the value from LegID(1788).",
-      "display": "LegRefID",
-      "fix:tag": "654"
+      "display": "LegRefID"
     }
   },
   {
@@ -2625,9 +2624,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "655",
       "description": "Unique indicator for a specific leg for the ContraBroker (375).",
-      "display": "ContraLegRefID",
-      "fix:tag": "655"
+      "display": "ContraLegRefID"
     }
   },
   {
@@ -2637,9 +2636,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "656",
       "description": "Foreign exchange rate used to compute the bid \"SettlCurrAmt\" (119) from Currency (15) to SettlCurrency (120)",
-      "display": "SettlCurrBidFxRate",
-      "fix:tag": "656"
+      "display": "SettlCurrBidFxRate"
     }
   },
   {
@@ -2649,9 +2648,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "657",
       "description": "Foreign exchange rate used to compute the offer \"SettlCurrAmt\" (119) from Currency (15) to SettlCurrency (120)",
-      "display": "SettlCurrOfferFxRate",
-      "fix:tag": "657"
+      "display": "SettlCurrOfferFxRate"
     }
   },
   {
@@ -2661,9 +2660,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason quote request was rejected.",
-      "display": "QuoteRequestRejectReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "UnknownSymbol",
@@ -2765,7 +2762,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "658"
+      "FIX:tag": "658",
+      "description": "Reason quote request was rejected.",
+      "display": "QuoteRequestRejectReason"
     }
   },
   {
@@ -2775,9 +2774,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "659",
       "description": "ID within repeating group of sides which is used to represent this transaction for compliance purposes (e.g. OATS reporting).",
-      "display": "SideComplianceID",
-      "fix:tag": "659"
+      "display": "SideComplianceID"
     }
   },
   {
@@ -2787,9 +2786,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to identify the source of the Account (1) code. This is especially useful if the account is a new account that the Respondent may not have setup yet in their system.",
-      "display": "AcctIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "BIC",
@@ -2826,7 +2823,9 @@
           "doc": "Other (custom or proprietary)"
         }
       ],
-      "fix:tag": "660"
+      "FIX:tag": "660",
+      "description": "Used to identify the source of the Account (1) code. This is especially useful if the account is a new account that the Respondent may not have setup yet in their system.",
+      "display": "AcctIDSource"
     }
   },
   {
@@ -2836,9 +2835,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to identify the source of the AllocAccount (79) code.",
-      "display": "AllocAcctIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "BIC",
@@ -2875,7 +2872,9 @@
           "doc": "Other (custom or proprietary)"
         }
       ],
-      "fix:tag": "661"
+      "FIX:tag": "661",
+      "description": "Used to identify the source of the AllocAccount (79) code.",
+      "display": "AllocAcctIDSource"
     }
   },
   {
@@ -2887,9 +2886,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "662",
       "description": "Specifies the price of the benchmark.",
-      "display": "BenchmarkPrice",
-      "fix:tag": "662"
+      "display": "BenchmarkPrice"
     }
   },
   {
@@ -2899,9 +2898,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies type of BenchmarkPrice (662).",
-      "display": "BenchmarkPriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Percentage",
@@ -3028,7 +3025,9 @@
           "doc": "Percentage of notional"
         }
       ],
-      "fix:tag": "663"
+      "FIX:tag": "663",
+      "description": "Identifies type of BenchmarkPrice (662).",
+      "display": "BenchmarkPriceType"
     }
   },
   {
@@ -3038,9 +3037,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "664",
       "description": "Message reference for Confirmation",
-      "display": "ConfirmID",
-      "fix:tag": "664"
+      "display": "ConfirmID"
     }
   },
   {
@@ -3050,9 +3049,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the status of the Confirmation.",
-      "display": "ConfirmStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Received",
@@ -3079,7 +3076,9 @@
           "doc": "Request Rejected"
         }
       ],
-      "fix:tag": "665"
+      "FIX:tag": "665",
+      "description": "Identifies the status of the Confirmation.",
+      "display": "ConfirmStatus"
     }
   },
   {
@@ -3089,9 +3088,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the Confirmation transaction type.",
-      "display": "ConfirmTransType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "New",
@@ -3108,22 +3105,23 @@
           "doc": "Cancel"
         }
       ],
-      "fix:tag": "666"
+      "FIX:tag": "666",
+      "description": "Identifies the Confirmation transaction type.",
+      "display": "ConfirmTransType"
     }
   },
   {
     "name": "contractsettlmonth",
     "dtype": {
       "type": "string",
-      "layout": "fixed_string",
-      "charset": "us-ascii",
+      "layout": "fixed_ascii",
       "fixed": 8
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "667",
       "description": "Specifies when the contract (i.e. MBS/TBA) will settle.",
-      "display": "ContractSettlMonth",
-      "fix:tag": "667"
+      "display": "ContractSettlMonth"
     }
   },
   {
@@ -3133,9 +3131,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the form of delivery.",
-      "display": "DeliveryForm",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "BookEntry",
@@ -3147,7 +3143,9 @@
           "doc": "Bearer"
         }
       ],
-      "fix:tag": "668"
+      "FIX:tag": "668",
+      "description": "Identifies the form of delivery.",
+      "display": "DeliveryForm"
     }
   },
   {
@@ -3159,9 +3157,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "669",
       "description": "Last price expressed in percent-of-par. Conditionally required for Fixed Income trades when LastPx (31) is expressed in Yield, Spread, Discount or any other type.",
-      "display": "LastParPx",
-      "fix:tag": "669"
+      "display": "LastParPx"
     }
   },
   {
@@ -3171,9 +3169,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "670",
       "description": "Number of Allocations for the leg",
-      "display": "NoLegAllocs",
-      "fix:tag": "670"
+      "display": "NoLegAllocs"
     }
   },
   {
@@ -3183,9 +3181,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "671",
       "description": "Allocation Account for the leg",
-      "display": "LegAllocAccount",
-      "fix:tag": "671"
+      "display": "LegAllocAccount"
     }
   },
   {
@@ -3195,9 +3193,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "672",
       "description": "Reference for the individual allocation ticket",
-      "display": "LegIndividualAllocID",
-      "fix:tag": "672"
+      "display": "LegIndividualAllocID"
     }
   },
   {
@@ -3209,9 +3207,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "673",
       "description": "Leg allocation quantity.",
-      "display": "LegAllocQty",
-      "fix:tag": "673"
+      "display": "LegAllocQty"
     }
   },
   {
@@ -3221,9 +3219,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source of the LegAllocAccount(671).",
-      "display": "LegAllocAcctIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "BIC",
@@ -3260,7 +3256,9 @@
           "doc": "Other (custom or proprietary)"
         }
       ],
-      "fix:tag": "674"
+      "FIX:tag": "674",
+      "description": "Identifies the source of the LegAllocAccount(671).",
+      "display": "LegAllocAcctIDSource"
     }
   },
   {
@@ -3270,9 +3268,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "675",
       "description": "Identifies settlement currency for the Leg.",
-      "display": "LegSettlCurrency",
-      "fix:tag": "675"
+      "display": "LegSettlCurrency"
     }
   },
   {
@@ -3282,9 +3280,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "676",
       "description": "LegBenchmarkPrice (679) currency",
-      "display": "LegBenchmarkCurveCurrency",
-      "fix:tag": "676"
+      "display": "LegBenchmarkCurveCurrency"
     }
   },
   {
@@ -3294,9 +3292,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Name of the Leg Benchmark Curve.",
-      "display": "LegBenchmarkCurveName",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "EONIA",
           "name": "EONIA",
@@ -3583,7 +3579,9 @@
           "doc": "Overnight Bank Funding Rate"
         }
       ],
-      "fix:tag": "677"
+      "FIX:tag": "677",
+      "description": "Name of the Leg Benchmark Curve.",
+      "display": "LegBenchmarkCurveName"
     }
   },
   {
@@ -3593,9 +3591,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "678",
       "description": "Identifies the point on the Leg Benchmark Curve.",
-      "display": "LegBenchmarkCurvePoint",
-      "fix:tag": "678"
+      "display": "LegBenchmarkCurvePoint"
     }
   },
   {
@@ -3607,9 +3605,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "679",
       "description": "Used to identify the price of the benchmark security.",
-      "display": "LegBenchmarkPrice",
-      "fix:tag": "679"
+      "display": "LegBenchmarkPrice"
     }
   },
   {
@@ -3619,9 +3617,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The price type of the LegBenchmarkPrice(679).",
-      "display": "LegBenchmarkPriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Percentage",
@@ -3748,7 +3744,9 @@
           "doc": "Percentage of notional"
         }
       ],
-      "fix:tag": "680"
+      "FIX:tag": "680",
+      "description": "The price type of the LegBenchmarkPrice(679).",
+      "display": "LegBenchmarkPriceType"
     }
   },
   {
@@ -3760,9 +3758,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "681",
       "description": "Bid price of this leg.",
-      "display": "LegBidPx",
-      "fix:tag": "681"
+      "display": "LegBidPx"
     }
   },
   {
@@ -3772,9 +3770,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Leg-specific IOI quantity.",
-      "display": "LegIOIQty",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "S",
           "name": "Small",
@@ -3796,7 +3792,9 @@
           "doc": "Undisclosed Quantity"
         }
       ],
-      "fix:tag": "682"
+      "FIX:tag": "682",
+      "description": "Leg-specific IOI quantity.",
+      "display": "LegIOIQty"
     }
   },
   {
@@ -3806,9 +3804,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "683",
       "description": "Number of leg stipulation entries",
-      "display": "NoLegStipulations",
-      "fix:tag": "683"
+      "display": "NoLegStipulations"
     }
   },
   {
@@ -3820,9 +3818,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "684",
       "description": "Offer price of this leg.",
-      "display": "LegOfferPx",
-      "fix:tag": "684"
+      "display": "LegOfferPx"
     }
   },
   {
@@ -3834,9 +3832,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "685",
       "description": "Quantity ordered of this leg.",
-      "display": "LegOrderQty",
-      "fix:tag": "685"
+      "display": "LegOrderQty"
     }
   },
   {
@@ -3846,9 +3844,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The price type of the LegBidPx (681) and/or LegOfferPx (684).",
-      "display": "LegPriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Percentage",
@@ -3975,7 +3971,9 @@
           "doc": "Percentage of notional"
         }
       ],
-      "fix:tag": "686"
+      "FIX:tag": "686",
+      "description": "The price type of the LegBidPx (681) and/or LegOfferPx (684).",
+      "display": "LegPriceType"
     }
   },
   {
@@ -3987,10 +3985,8 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "This field is deprecated and has been replaced by LegOrderQty(685). This field will likely be removed from the FIX standard in a future version.",
-      "display": "LegQty",
-      "fix:deprecated": "5.0.1",
-      "fix:replacements": [
+      "FIX:deprecated": "5.0.1",
+      "FIX:replacements": [
         {
           "plan": "select legqty as legorderqty where :msgtype in ('R', 'AJ', 'AG', 'S', 'AI', 'AB', '8')"
         },
@@ -3998,7 +3994,9 @@
           "plan": "select legqty as leglastqty where :msgtype in ('AE', 'AR')"
         }
       ],
-      "fix:tag": "687"
+      "FIX:tag": "687",
+      "description": "This field is deprecated and has been replaced by LegOrderQty(685). This field will likely be removed from the FIX standard in a future version.",
+      "display": "LegQty"
     }
   },
   {
@@ -4008,9 +4006,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "For Fixed Income, type of Stipulation for this leg.",
-      "display": "LegStipulationType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "ABS",
           "name": "AbsolutePrepaymentSpeed",
@@ -4547,7 +4543,9 @@
           "doc": "Interest payoff of rolling or amending trade"
         }
       ],
-      "fix:tag": "688"
+      "FIX:tag": "688",
+      "description": "For Fixed Income, type of Stipulation for this leg.",
+      "display": "LegStipulationType"
     }
   },
   {
@@ -4557,9 +4555,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "689",
       "description": "For Fixed Income, value of stipulation.",
-      "display": "LegStipulationValue",
-      "fix:tag": "689"
+      "display": "LegStipulationValue"
     }
   },
   {
@@ -4569,9 +4567,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "For Fixed Income, used instead of LegOrderQty(685) to requests the respondent to calculate the quantity based on the quantity on the opposite side of the swap.",
-      "display": "LegSwapType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ParForPar",
@@ -4593,7 +4589,9 @@
           "doc": "Proceeds"
         }
       ],
-      "fix:tag": "690"
+      "FIX:tag": "690",
+      "description": "For Fixed Income, used instead of LegOrderQty(685) to requests the respondent to calculate the quantity based on the quantity on the opposite side of the swap.",
+      "display": "LegSwapType"
     }
   },
   {
@@ -4603,9 +4601,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "691",
       "description": "For Fixed Income, identifies MBS / ABS pool.",
-      "display": "Pool",
-      "fix:tag": "691"
+      "display": "Pool"
     }
   },
   {
@@ -4615,9 +4613,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to represent price type requested in Quote.",
-      "display": "QuotePriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Percent",
@@ -4739,7 +4735,9 @@
           "doc": "Percentage of notional"
         }
       ],
-      "fix:tag": "692"
+      "FIX:tag": "692",
+      "description": "Code to represent price type requested in Quote.",
+      "display": "QuotePriceType"
     }
   },
   {
@@ -4749,9 +4747,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "693",
       "description": "Message reference for Quote Response",
-      "display": "QuoteRespID",
-      "fix:tag": "693"
+      "display": "QuoteRespID"
     }
   },
   {
@@ -4761,9 +4759,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of Quote Response.",
-      "display": "QuoteRespType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Hit",
@@ -4825,7 +4821,9 @@
           "doc": "Terminate contract"
         }
       ],
-      "fix:tag": "694"
+      "FIX:tag": "694",
+      "description": "Identifies the type of Quote Response.",
+      "display": "QuoteRespType"
     }
   },
   {
@@ -4835,9 +4833,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to qualify Quote use and other aspects of price negotiation.",
-      "display": "QuoteQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "A",
           "name": "AllOrNone",
@@ -5014,7 +5010,9 @@
           "doc": "Negotiated spot"
         }
       ],
-      "fix:tag": "695"
+      "FIX:tag": "695",
+      "description": "Code to qualify Quote use and other aspects of price negotiation.",
+      "display": "QuoteQualifier"
     }
   },
   {
@@ -5025,9 +5023,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "696",
       "description": "Date to which the yield has been calculated (i.e. maturity, par call or current call, pre-refunded date).",
-      "display": "YieldRedemptionDate",
-      "fix:tag": "696"
+      "display": "YieldRedemptionDate"
     }
   },
   {
@@ -5039,9 +5037,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "697",
       "description": "Price to which the yield has been calculated.",
-      "display": "YieldRedemptionPrice",
-      "fix:tag": "697"
+      "display": "YieldRedemptionPrice"
     }
   },
   {
@@ -5051,9 +5049,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The price type of the YieldRedemptionPrice (697)",
-      "display": "YieldRedemptionPriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Percentage",
@@ -5180,7 +5176,9 @@
           "doc": "Percentage of notional"
         }
       ],
-      "fix:tag": "698"
+      "FIX:tag": "698",
+      "description": "The price type of the YieldRedemptionPrice (697)",
+      "display": "YieldRedemptionPriceType"
     }
   },
   {
@@ -5190,9 +5188,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "699",
       "description": "The identifier of the benchmark security, e.g. Treasury against Corporate bond.",
-      "display": "BenchmarkSecurityID",
-      "fix:tag": "699"
+      "display": "BenchmarkSecurityID"
     }
   }
 ]

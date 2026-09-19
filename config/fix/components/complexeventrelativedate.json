@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventdateunadjusted",
-          "fix:tag": "41020"
+          "FIX:field": "complexeventdateunadjusted",
+          "FIX:tag": "41020"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventdaterelativeto",
-          "fix:tag": "41021"
+          "FIX:field": "complexeventdaterelativeto",
+          "FIX:tag": "41021"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventdateoffsetperiod",
-          "fix:tag": "41022"
+          "FIX:field": "complexeventdateoffsetperiod",
+          "FIX:tag": "41022"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventdateoffsetunit",
-          "fix:tag": "41023"
+          "FIX:field": "complexeventdateoffsetunit",
+          "FIX:tag": "41023"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventdateoffsetdaytype",
-          "fix:tag": "41024"
+          "FIX:field": "complexeventdateoffsetdaytype",
+          "FIX:tag": "41024"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventdatebusinessdayconvention",
-          "fix:tag": "41025"
+          "FIX:field": "complexeventdatebusinessdayconvention",
+          "FIX:tag": "41025"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocomplexeventdatebusinesscenters",
-          "fix:tag": "41018"
+          "FIX:field": "nocomplexeventdatebusinesscenters",
+          "FIX:tag": "41018"
         }
       },
       {
@@ -87,7 +87,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "complexeventdatebusinesscentergrp"
+          "FIX:group": "complexeventdatebusinesscentergrp"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventdateadjusted",
-          "fix:tag": "41026"
+          "FIX:field": "complexeventdateadjusted",
+          "FIX:tag": "41026"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventfixingtime",
-          "fix:tag": "41027"
+          "FIX:field": "complexeventfixingtime",
+          "FIX:tag": "41027"
         }
       },
       {
@@ -119,16 +119,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventfixingtimebusinesscenter",
-          "fix:tag": "41028"
+          "FIX:field": "complexeventfixingtimebusinesscenter",
+          "FIX:tag": "41028"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "832268",
     "description": "Conditionally required when ComplexEventDateOffsetUnit(41023) is specified.",
-    "display": "ComplexEventRelativeDate",
-    "fix:tag": "832268"
+    "display": "ComplexEventRelativeDate"
   }
 }

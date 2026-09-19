@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42700",
       "description": "Specifies the anchor date when the stub start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "PaymentStubStartDateRelativeTo",
-      "fix:tag": "42700"
+      "display": "PaymentStubStartDateRelativeTo"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42701",
       "description": "Time unit multiplier for the relative stub start date offset.",
-      "display": "PaymentStubStartDateOffsetPeriod",
-      "fix:tag": "42701"
+      "display": "PaymentStubStartDateOffsetPeriod"
     }
   },
   {
@@ -30,9 +30,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative stub start date offset.",
-      "display": "PaymentStubStartDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -54,7 +52,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42702"
+      "FIX:tag": "42702",
+      "description": "Time unit associated with the relative stub start date offset.",
+      "display": "PaymentStubStartDateOffsetUnit"
     }
   },
   {
@@ -64,9 +64,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative stub start date offset.",
-      "display": "PaymentStubStartDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -98,7 +96,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42703"
+      "FIX:tag": "42703",
+      "description": "Specifies the day type of the relative stub start date offset.",
+      "display": "PaymentStubStartDateOffsetDayType"
     }
   },
   {
@@ -109,9 +109,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42704",
       "description": "The adjusted stub start date.",
-      "display": "PaymentStubStartDateAdjusted",
-      "fix:tag": "42704"
+      "display": "PaymentStubStartDateAdjusted"
     }
   },
   {
@@ -121,9 +121,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42705",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoPaymentStubStartDateBusinessCenters",
-      "fix:tag": "42705"
+      "display": "NoPaymentStubStartDateBusinessCenters"
     }
   },
   {
@@ -133,9 +133,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42706",
       "description": "The business center calendar used for date adjustment of the payment stub start date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "PaymentStubStartDateBusinessCenter",
-      "fix:tag": "42706"
+      "display": "PaymentStubStartDateBusinessCenter"
     }
   },
   {
@@ -145,9 +145,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of fee elected for the break provision.",
-      "display": "ProvisionBreakFeeElection",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "FlatFee",
@@ -174,7 +172,9 @@
           "doc": "Amortized fee and funding fee"
         }
       ],
-      "fix:tag": "42707"
+      "FIX:tag": "42707",
+      "description": "Type of fee elected for the break provision.",
+      "display": "ProvisionBreakFeeElection"
     }
   },
   {
@@ -184,9 +184,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42708",
       "description": "Break fee election rate when the break fee is proportional to the notional. A fee rate of 5% would be represented as \"0.05\".",
-      "display": "ProvisionBreakFeeRate",
-      "fix:tag": "42708"
+      "display": "ProvisionBreakFeeRate"
     }
   },
   {
@@ -196,9 +196,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42709",
       "description": "Number of iterations in the return rate date repeating group.",
-      "display": "NoReturnRateDates",
-      "fix:tag": "42709"
+      "display": "NoReturnRateDates"
     }
   },
   {
@@ -208,9 +208,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the valuation type applicable to the return rate date.",
-      "display": "ReturnRateDateMode",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "PriceValuation",
@@ -222,7 +220,9 @@
           "doc": "Dividend valuation"
         }
       ],
-      "fix:tag": "42710"
+      "FIX:tag": "42710",
+      "description": "Specifies the valuation type applicable to the return rate date.",
+      "display": "ReturnRateDateMode"
     }
   },
   {
@@ -232,9 +232,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42711",
       "description": "Specifies the anchor date when the return rate valuation dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "ReturnRateValuationDateRelativeTo",
-      "fix:tag": "42711"
+      "display": "ReturnRateValuationDateRelativeTo"
     }
   },
   {
@@ -244,9 +244,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42712",
       "description": "Time unit multiplier for the relative return rate valuation date offset.",
-      "display": "ReturnRateValuationDateOffsetPeriod",
-      "fix:tag": "42712"
+      "display": "ReturnRateValuationDateOffsetPeriod"
     }
   },
   {
@@ -256,9 +256,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative return rate valuation date offset.",
-      "display": "ReturnRateValuationDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -280,7 +278,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42713"
+      "FIX:tag": "42713",
+      "description": "Time unit associated with the relative return rate valuation date offset.",
+      "display": "ReturnRateValuationDateOffsetUnit"
     }
   },
   {
@@ -290,9 +290,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative return rate valuation date offset.",
-      "display": "ReturnRateValuationDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -324,7 +322,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42714"
+      "FIX:tag": "42714",
+      "description": "Specifies the day type of the relative return rate valuation date offset.",
+      "display": "ReturnRateValuationDateOffsetDayType"
     }
   },
   {
@@ -335,9 +335,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42715",
       "description": "The unadjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
-      "display": "ReturnRateValuationStartDateUnadjusted",
-      "fix:tag": "42715"
+      "display": "ReturnRateValuationStartDateUnadjusted"
     }
   },
   {
@@ -347,9 +347,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42716",
       "description": "Specifies the anchor date when the return rate valuation start date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "ReturnRateValuationStartDateRelativeTo",
-      "fix:tag": "42716"
+      "display": "ReturnRateValuationStartDateRelativeTo"
     }
   },
   {
@@ -359,9 +359,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42717",
       "description": "Time unit multiplier for the relative return rate valuation start date offset.",
-      "display": "ReturnRateValuationStartDateOffsetPeriod",
-      "fix:tag": "42717"
+      "display": "ReturnRateValuationStartDateOffsetPeriod"
     }
   },
   {
@@ -371,9 +371,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative return rate valuation start date offset.",
-      "display": "ReturnRateValuationStartDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -395,7 +393,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42718"
+      "FIX:tag": "42718",
+      "description": "Time unit associated with the relative return rate valuation start date offset.",
+      "display": "ReturnRateValuationStartDateOffsetUnit"
     }
   },
   {
@@ -405,9 +405,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative return rate valuation start date offset.",
-      "display": "ReturnRateValuationStartDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -439,7 +437,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42719"
+      "FIX:tag": "42719",
+      "description": "Specifies the day type of the relative return rate valuation start date offset.",
+      "display": "ReturnRateValuationStartDateOffsetDayType"
     }
   },
   {
@@ -450,9 +450,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42720",
       "description": "The adjusted start date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
-      "display": "ReturnRateValuationStartDateAdjusted",
-      "fix:tag": "42720"
+      "display": "ReturnRateValuationStartDateAdjusted"
     }
   },
   {
@@ -463,9 +463,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42721",
       "description": "The unadjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
-      "display": "ReturnRateValuationEndDateUnadjusted",
-      "fix:tag": "42721"
+      "display": "ReturnRateValuationEndDateUnadjusted"
     }
   },
   {
@@ -475,9 +475,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42722",
       "description": "Specifies the anchor date when the return rate valuation end date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "ReturnRateValuationEndDateRelativeTo",
-      "fix:tag": "42722"
+      "display": "ReturnRateValuationEndDateRelativeTo"
     }
   },
   {
@@ -487,9 +487,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42723",
       "description": "Time unit multiplier for the relative return rate valuation end date offset.",
-      "display": "ReturnRateValuationEndDateOffsetPeriod",
-      "fix:tag": "42723"
+      "display": "ReturnRateValuationEndDateOffsetPeriod"
     }
   },
   {
@@ -499,9 +499,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative return rate valuation end date offset.",
-      "display": "ReturnRateValuationEndDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -523,7 +521,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42724"
+      "FIX:tag": "42724",
+      "description": "Time unit associated with the relative return rate valuation end date offset.",
+      "display": "ReturnRateValuationEndDateOffsetUnit"
     }
   },
   {
@@ -533,9 +533,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative return rate valuation end date offset.",
-      "display": "ReturnRateValuationEndDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -567,7 +565,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42725"
+      "FIX:tag": "42725",
+      "description": "Specifies the day type of the relative return rate valuation end date offset.",
+      "display": "ReturnRateValuationEndDateOffsetDayType"
     }
   },
   {
@@ -578,9 +578,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42726",
       "description": "The adjusted end date for return rate valuation. This can be used to restrict the range of dates when they are relative.",
-      "display": "ReturnRateValuationEndDateAdjusted",
-      "fix:tag": "42726"
+      "display": "ReturnRateValuationEndDateAdjusted"
     }
   },
   {
@@ -590,9 +590,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42727",
       "description": "Time unit multiplier for the frequency at which return rate valuation dates occur.",
-      "display": "ReturnRateValuationFrequencyPeriod",
-      "fix:tag": "42727"
+      "display": "ReturnRateValuationFrequencyPeriod"
     }
   },
   {
@@ -602,9 +602,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the frequency at which return rate valuation dates occur.",
-      "display": "ReturnRateValuationFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -646,7 +644,9 @@
           "doc": "Term"
         }
       ],
-      "fix:tag": "42728"
+      "FIX:tag": "42728",
+      "description": "Time unit associated with the frequency at which return rate valuation dates occur.",
+      "display": "ReturnRateValuationFrequencyUnit"
     }
   },
   {
@@ -656,9 +656,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The convention for determining the sequence of return rate valuation dates. It is used in conjunction with a specified frequency.",
-      "display": "ReturnRateValuationFrequencyRollConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FirstDay",
@@ -890,7 +888,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "42729"
+      "FIX:tag": "42729",
+      "description": "The convention for determining the sequence of return rate valuation dates. It is used in conjunction with a specified frequency.",
+      "display": "ReturnRateValuationFrequencyRollConvention"
     }
   },
   {
@@ -900,9 +900,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The return rate valuation dates business day convention.",
-      "display": "ReturnRateValuationDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -944,7 +942,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "42730"
+      "FIX:tag": "42730",
+      "description": "The return rate valuation dates business day convention.",
+      "display": "ReturnRateValuationDateBusinessDayConvention"
     }
   },
   {
@@ -954,9 +954,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42731",
       "description": "Number of iterations in the return rate FX conversion repeating group.",
-      "display": "NoReturnRateFXConversions",
-      "fix:tag": "42731"
+      "display": "NoReturnRateFXConversions"
     }
   },
   {
@@ -966,9 +966,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42732",
       "description": "Specifies the currency pair for the FX conversion expressed using the CCY1/CCY2 convention. Uses ISO 4217 currency codes.",
-      "display": "ReturnRateFXCurrencySymbol",
-      "fix:tag": "42732"
+      "display": "ReturnRateFXCurrencySymbol"
     }
   },
   {
@@ -978,9 +978,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42733",
       "description": "The rate of exchange between the two currencies specified in ReturnRateFXCurrencySymbol(42732).",
-      "display": "ReturnRateFXRate",
-      "fix:tag": "42733"
+      "display": "ReturnRateFXRate"
     }
   },
   {
@@ -990,9 +990,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies whether ReturnRateFXRate(42733) should be multiplied or divided.",
-      "display": "ReturnRateFXRateCalc",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "M",
           "name": "Multiply",
@@ -1004,7 +1002,9 @@
           "doc": "Divide"
         }
       ],
-      "fix:tag": "42734"
+      "FIX:tag": "42734",
+      "description": "Specifies whether ReturnRateFXRate(42733) should be multiplied or divided.",
+      "display": "ReturnRateFXRateCalc"
     }
   },
   {
@@ -1014,9 +1014,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42735",
       "description": "Number of iterations in the return rate repeating group.",
-      "display": "NoReturnRates",
-      "fix:tag": "42735"
+      "display": "NoReturnRates"
     }
   },
   {
@@ -1026,9 +1026,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of price sequence of the return rate.",
-      "display": "ReturnRatePriceSequence",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Initial",
@@ -1045,7 +1043,9 @@
           "doc": "Final"
         }
       ],
-      "fix:tag": "42736"
+      "FIX:tag": "42736",
+      "description": "Specifies the type of price sequence of the return rate.",
+      "display": "ReturnRatePriceSequence"
     }
   },
   {
@@ -1055,9 +1055,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the basis or unit used to calculate the commission.",
-      "display": "ReturnRateCommissionBasis",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "PerUnit",
@@ -1099,7 +1097,9 @@
           "doc": "Amount per contract"
         }
       ],
-      "fix:tag": "42737"
+      "FIX:tag": "42737",
+      "description": "Specifies the basis or unit used to calculate the commission.",
+      "display": "ReturnRateCommissionBasis"
     }
   },
   {
@@ -1111,9 +1111,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42738",
       "description": "The commission amount.",
-      "display": "ReturnRateCommissionAmount",
-      "fix:tag": "42738"
+      "display": "ReturnRateCommissionAmount"
     }
   },
   {
@@ -1123,9 +1123,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42739",
       "description": "Specifies the currency the commission amount is denominated in. Uses ISO 4217 currency codes.",
-      "display": "ReturnRateCommissionCurrency",
-      "fix:tag": "42739"
+      "display": "ReturnRateCommissionCurrency"
     }
   },
   {
@@ -1137,9 +1137,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42740",
       "description": "The total commission per trade.",
-      "display": "ReturnRateTotalCommissionPerTrade",
-      "fix:tag": "42740"
+      "display": "ReturnRateTotalCommissionPerTrade"
     }
   },
   {
@@ -1149,9 +1149,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42741",
       "description": "Specifies the method by which the underlier prices are determined. See https://fpml.org/coding-scheme/determination-method for values.",
-      "display": "ReturnRateDeterminationMethod",
-      "fix:tag": "42741"
+      "display": "ReturnRateDeterminationMethod"
     }
   },
   {
@@ -1161,9 +1161,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42742",
       "description": "Specifies the reference amount when the return rate amount is relative to another amount in the trade. See https://fixtrading.org/packages/payment-amount-relative-to for code list of relative amounts.",
-      "display": "ReturnRateAmountRelativeTo",
-      "fix:tag": "42742"
+      "display": "ReturnRateAmountRelativeTo"
     }
   },
   {
@@ -1173,9 +1173,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42743",
       "description": "Specifies the type of the measure applied to the return rate's asset, e.g. valuation, sensitivity risk. This could be an NPV, a cash flow, a clean price, etc. See https://fpml.org/coding-scheme/asset-measure for values.",
-      "display": "ReturnRateQuoteMeasureType",
-      "fix:tag": "42743"
+      "display": "ReturnRateQuoteMeasureType"
     }
   },
   {
@@ -1185,9 +1185,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42744",
       "description": "Specifies the units that the measure is expressed in. If not specified, the default is a price/value in currency units. See https://fpml.org/coding-scheme/price-quote-units for values.",
-      "display": "ReturnRateQuoteUnits",
-      "fix:tag": "42744"
+      "display": "ReturnRateQuoteUnits"
     }
   },
   {
@@ -1197,9 +1197,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of quote used to determine the return rate of the swap.",
-      "display": "ReturnRateQuoteMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bid",
@@ -1216,7 +1214,9 @@
           "doc": "Offer"
         }
       ],
-      "fix:tag": "42745"
+      "FIX:tag": "42745",
+      "description": "Specifies the type of quote used to determine the return rate of the swap.",
+      "display": "ReturnRateQuoteMethod"
     }
   },
   {
@@ -1226,9 +1226,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42746",
       "description": "Specifies the currency the return rate quote is denominated in. Uses ISO 4217 Currency Code.",
-      "display": "ReturnRateQuoteCurrency",
-      "fix:tag": "42746"
+      "display": "ReturnRateQuoteCurrency"
     }
   },
   {
@@ -1238,9 +1238,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42747",
       "description": "Specifies the type of currency, e.g. settlement currency, base currency, etc., that the quote is reported in. See https://fpml.org/coding-scheme/reporting-currency-type for values.",
-      "display": "ReturnRateQuoteCurrencyType",
-      "fix:tag": "42747"
+      "display": "ReturnRateQuoteCurrencyType"
     }
   },
   {
@@ -1250,9 +1250,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies how or the timing when the quote is to be obtained.",
-      "display": "ReturnRateQuoteTimeType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Open",
@@ -1294,7 +1292,9 @@
           "doc": "As specified in the master confirmation"
         }
       ],
-      "fix:tag": "42748"
+      "FIX:tag": "42748",
+      "description": "Specifies how or the timing when the quote is to be obtained.",
+      "display": "ReturnRateQuoteTimeType"
     }
   },
   {
@@ -1305,9 +1305,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42749",
       "description": "The time when the quote is to be generated.",
-      "display": "ReturnRateQuoteTime",
-      "fix:tag": "42749"
+      "display": "ReturnRateQuoteTime"
     }
   },
   {
@@ -1318,9 +1318,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42750",
       "description": "The date when the quote is to be generated.",
-      "display": "ReturnRateQuoteDate",
-      "fix:tag": "42750"
+      "display": "ReturnRateQuoteDate"
     }
   },
   {
@@ -1331,9 +1331,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42751",
       "description": "The time when the quote ceases to be valid.",
-      "display": "ReturnRateQuoteExpirationTime",
-      "fix:tag": "42751"
+      "display": "ReturnRateQuoteExpirationTime"
     }
   },
   {
@@ -1343,9 +1343,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42752",
       "description": "The business center calendar used for adjustments associated with ReturnRateQuoteTimeType(42748) or ReturnRateQuoteTime(42749) and ReturnRateQuoteDate(42750), e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "ReturnRateQuoteBusinessCenter",
-      "fix:tag": "42752"
+      "display": "ReturnRateQuoteBusinessCenter"
     }
   },
   {
@@ -1355,9 +1355,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42753",
       "description": "Specifies the exchange (e.g. stock or listed futures/options exchange) from which the quote is obtained.",
-      "display": "ReturnRateQuoteExchange",
-      "fix:tag": "42753"
+      "display": "ReturnRateQuoteExchange"
     }
   },
   {
@@ -1367,9 +1367,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42754",
       "description": "Specifies the pricing model used to evaluate the underlying asset price. See https://fpml.org/coding-scheme/pricing-model for values.",
-      "display": "ReturnRateQuotePricingModel",
-      "fix:tag": "42754"
+      "display": "ReturnRateQuotePricingModel"
     }
   },
   {
@@ -1379,9 +1379,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42755",
       "description": "Specifies the type of cash flows, e.g. coupon payment, premium fee, settlement fee, etc. See https://fpml.org/coding-scheme/cashflow-type for values.",
-      "display": "ReturnRateCashFlowType",
-      "fix:tag": "42755"
+      "display": "ReturnRateCashFlowType"
     }
   },
   {
@@ -1391,9 +1391,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the timing at which the calculation agent values the underlying.",
-      "display": "ReturnRateValuationTimeType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Open",
@@ -1435,7 +1433,9 @@
           "doc": "As specified in the master confirmation"
         }
       ],
-      "fix:tag": "42756"
+      "FIX:tag": "42756",
+      "description": "Specifies the timing at which the calculation agent values the underlying.",
+      "display": "ReturnRateValuationTimeType"
     }
   },
   {
@@ -1446,9 +1446,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42757",
       "description": "The time at which the calculation agent values the underlying asset.",
-      "display": "ReturnRateValuationTime",
-      "fix:tag": "42757"
+      "display": "ReturnRateValuationTime"
     }
   },
   {
@@ -1458,9 +1458,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42758",
       "description": "The business center calendar used for adjustments associated with ReturnRateValuationTimeType(42756) or ReturnRateValuationTime(42757), e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "ReturnRateValuationTimeBusinessCenter",
-      "fix:tag": "42758"
+      "display": "ReturnRateValuationTimeBusinessCenter"
     }
   },
   {
@@ -1470,9 +1470,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether an ISDA price option applies, and if applicable which type of price.",
-      "display": "ReturnRateValuationPriceOption",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "None",
@@ -1489,7 +1487,9 @@
           "doc": "Options price"
         }
       ],
-      "fix:tag": "42759"
+      "FIX:tag": "42759",
+      "description": "Indicates whether an ISDA price option applies, and if applicable which type of price.",
+      "display": "ReturnRateValuationPriceOption"
     }
   },
   {
@@ -1499,9 +1499,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the fallback provision for the hedging party in the determination of the final price.",
-      "display": "ReturnRateFinalPriceFallback",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Close",
@@ -1513,7 +1511,9 @@
           "doc": "Hedge election"
         }
       ],
-      "fix:tag": "42760"
+      "FIX:tag": "42760",
+      "description": "Specifies the fallback provision for the hedging party in the determination of the final price.",
+      "display": "ReturnRateFinalPriceFallback"
     }
   },
   {
@@ -1523,9 +1523,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42761",
       "description": "Number of iterations in the return rate information source repeating group.",
-      "display": "NoReturnRateInformationSources",
-      "fix:tag": "42761"
+      "display": "NoReturnRateInformationSources"
     }
   },
   {
@@ -1535,9 +1535,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source of rate information. For FX the references source to be used for the FX spot rate.",
-      "display": "ReturnRateInformationSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bloomberg",
@@ -1564,7 +1562,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "42762"
+      "FIX:tag": "42762",
+      "description": "Identifies the source of rate information. For FX the references source to be used for the FX spot rate.",
+      "display": "ReturnRateInformationSource"
     }
   },
   {
@@ -1574,9 +1574,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42763",
       "description": "Identifies the reference \"page\" from the rate source. For FX, the reference page to the spot rate to be used for the reference FX spot rate. When ReturnRateInformationSource(42762) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
-      "display": "ReturnRateReferencePage",
-      "fix:tag": "42763"
+      "display": "ReturnRateReferencePage"
     }
   },
   {
@@ -1586,9 +1586,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42764",
       "description": "Identifies the page heading from the rate source.",
-      "display": "ReturnRateReferencePageHeading",
-      "fix:tag": "42764"
+      "display": "ReturnRateReferencePageHeading"
     }
   },
   {
@@ -1598,9 +1598,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42765",
       "description": "Number of iterations in the return rate price repeating group.",
-      "display": "NoReturnRatePrices",
-      "fix:tag": "42765"
+      "display": "NoReturnRatePrices"
     }
   },
   {
@@ -1610,9 +1610,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The basis of the return price.",
-      "display": "ReturnRatePriceBasis",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Gross",
@@ -1634,7 +1632,9 @@
           "doc": "Clean net"
         }
       ],
-      "fix:tag": "42766"
+      "FIX:tag": "42766",
+      "description": "The basis of the return price.",
+      "display": "ReturnRatePriceBasis"
     }
   },
   {
@@ -1646,9 +1646,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42767",
       "description": "Specifies the price of the underlying swap asset.",
-      "display": "ReturnRatePrice",
-      "fix:tag": "42767"
+      "display": "ReturnRatePrice"
     }
   },
   {
@@ -1658,9 +1658,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42768",
       "description": "Specifies the currency of the price of the underlying swap asset. Uses ISO 4217 currency codes.",
-      "display": "ReturnRatePriceCurrency",
-      "fix:tag": "42768"
+      "display": "ReturnRatePriceCurrency"
     }
   },
   {
@@ -1670,9 +1670,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies whether the ReturnRatePrice(42767) is expressed in absolute or relative terms.",
-      "display": "ReturnRatePriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "AbsoluteTerms",
@@ -1684,7 +1682,9 @@
           "doc": "Percentage of notional"
         }
       ],
-      "fix:tag": "42769"
+      "FIX:tag": "42769",
+      "description": "Specifies whether the ReturnRatePrice(42767) is expressed in absolute or relative terms.",
+      "display": "ReturnRatePriceType"
     }
   },
   {
@@ -1694,9 +1694,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42770",
       "description": "Number of iterations in the return rate valuation date business center repeating group.",
-      "display": "NoReturnRateValuationDateBusinessCenters",
-      "fix:tag": "42770"
+      "display": "NoReturnRateValuationDateBusinessCenters"
     }
   },
   {
@@ -1706,9 +1706,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42771",
       "description": "The business center calendar used for date adjustment of the return rate valuation unadjusted or relative dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "ReturnRateValuationDateBusinessCenter",
-      "fix:tag": "42771"
+      "display": "ReturnRateValuationDateBusinessCenter"
     }
   },
   {
@@ -1718,9 +1718,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42772",
       "description": "Number of iterations in the return rate valuation date repeating group.",
-      "display": "NoReturnRateValuationDates",
-      "fix:tag": "42772"
+      "display": "NoReturnRateValuationDates"
     }
   },
   {
@@ -1731,9 +1731,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42773",
       "description": "The return rate valuation date. Type of date is specified in ReturnRateValuationDateType(42774).",
-      "display": "ReturnRateValuationDate",
-      "fix:tag": "42773"
+      "display": "ReturnRateValuationDate"
     }
   },
   {
@@ -1743,9 +1743,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of return rate valuation date (e.g. adjusted for holidays).",
-      "display": "ReturnRateValuationDateType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Unadjusted",
@@ -1757,7 +1755,9 @@
           "doc": "Adjusted"
         }
       ],
-      "fix:tag": "42774"
+      "FIX:tag": "42774",
+      "description": "Specifies the type of return rate valuation date (e.g. adjusted for holidays).",
+      "display": "ReturnRateValuationDateType"
     }
   },
   {
@@ -1767,9 +1767,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42775",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoSettlMethodElectionDateBusinessCenters",
-      "fix:tag": "42775"
+      "display": "NoSettlMethodElectionDateBusinessCenters"
     }
   },
   {
@@ -1779,9 +1779,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42776",
       "description": "The business center calendar used for date adjustment of the settlement method election unadjusted or relative date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "SettlMethodElectionDateBusinessCenter",
-      "fix:tag": "42776"
+      "display": "SettlMethodElectionDateBusinessCenter"
     }
   },
   {
@@ -1792,9 +1792,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42777",
       "description": "The unadjusted settlement method election date.",
-      "display": "SettlMethodElectionDateUnadjusted",
-      "fix:tag": "42777"
+      "display": "SettlMethodElectionDateUnadjusted"
     }
   },
   {
@@ -1804,9 +1804,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The settlement method election date adjustment business day convention.",
-      "display": "SettlMethodElectionDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1848,7 +1846,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "42778"
+      "FIX:tag": "42778",
+      "description": "The settlement method election date adjustment business day convention.",
+      "display": "SettlMethodElectionDateBusinessDayConvention"
     }
   },
   {
@@ -1858,9 +1858,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42779",
       "description": "Specifies the anchor date when the settlement method election date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "SettlMethodElectionDateRelativeTo",
-      "fix:tag": "42779"
+      "display": "SettlMethodElectionDateRelativeTo"
     }
   },
   {
@@ -1870,9 +1870,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42780",
       "description": "Time unit multiplier for the relative settlement method election date offset.",
-      "display": "SettlMethodElectionDateOffsetPeriod",
-      "fix:tag": "42780"
+      "display": "SettlMethodElectionDateOffsetPeriod"
     }
   },
   {
@@ -1882,9 +1882,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative settlement method election date offset.",
-      "display": "SettlMethodElectionDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1906,7 +1904,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42781"
+      "FIX:tag": "42781",
+      "description": "Time unit associated with the relative settlement method election date offset.",
+      "display": "SettlMethodElectionDateOffsetUnit"
     }
   },
   {
@@ -1916,9 +1916,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative settlement method election date offset.",
-      "display": "SettlMethodElectionDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -1950,7 +1948,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42782"
+      "FIX:tag": "42782",
+      "description": "Specifies the day type of the relative settlement method election date offset.",
+      "display": "SettlMethodElectionDateOffsetDayType"
     }
   },
   {
@@ -1961,9 +1961,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42783",
       "description": "The adjusted settlement method election date.",
-      "display": "SettlMethodElectionDateAdjusted",
-      "fix:tag": "42783"
+      "display": "SettlMethodElectionDateAdjusted"
     }
   },
   {
@@ -1973,9 +1973,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42784",
       "description": "The stream version identifier when there have been modifications to the contract over time. Helps signal when there are embedded changes.",
-      "display": "StreamVersion",
-      "fix:tag": "42784"
+      "display": "StreamVersion"
     }
   },
   {
@@ -1986,9 +1986,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42785",
       "description": "The effective date of the StreamVersion(42784).",
-      "display": "StreamVersionEffectiveDate",
-      "fix:tag": "42785"
+      "display": "StreamVersionEffectiveDate"
     }
   },
   {
@@ -1998,9 +1998,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42786",
       "description": "Specifies the method for determining the floating notional value for equity swaps. See https://fpml.org/coding-scheme/determination-method for values.",
-      "display": "StreamNotionalDeterminationMethod",
-      "fix:tag": "42786"
+      "display": "StreamNotionalDeterminationMethod"
     }
   },
   {
@@ -2010,9 +2010,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "For equity swaps this specifies the conditions that govern the adjustment to the number of units of the swap.",
-      "display": "StreamNotionalAdjustments",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Execution",
@@ -2029,7 +2027,9 @@
           "doc": "Standard"
         }
       ],
-      "fix:tag": "42787"
+      "FIX:tag": "42787",
+      "description": "For equity swaps this specifies the conditions that govern the adjustment to the number of units of the swap.",
+      "display": "StreamNotionalAdjustments"
     }
   },
   {
@@ -2039,9 +2039,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42788",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingCashSettlDateBusinessCenters",
-      "fix:tag": "42788"
+      "display": "NoUnderlyingCashSettlDateBusinessCenters"
     }
   },
   {
@@ -2051,9 +2051,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42789",
       "description": "The business center calendar used for date adjustment of the cash settlement unadjusted or relative date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "UnderlyingCashSettlDateBusinessCenter",
-      "fix:tag": "42789"
+      "display": "UnderlyingCashSettlDateBusinessCenter"
     }
   },
   {
@@ -2064,9 +2064,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42790",
       "description": "The unadjusted cash settlement date.",
-      "display": "UnderlyingCashSettlDateUnadjusted",
-      "fix:tag": "42790"
+      "display": "UnderlyingCashSettlDateUnadjusted"
     }
   },
   {
@@ -2076,9 +2076,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the cash settlement provision's date. Used only to override the business day convention defined in the UnderlyingInstrument component.",
-      "display": "UnderlyingCashSettlDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -2120,7 +2118,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "42791"
+      "FIX:tag": "42791",
+      "description": "The business day convention used to adjust the cash settlement provision's date. Used only to override the business day convention defined in the UnderlyingInstrument component.",
+      "display": "UnderlyingCashSettlDateBusinessDayConvention"
     }
   },
   {
@@ -2130,9 +2130,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42792",
       "description": "Specifies the anchor date when the cash settlement date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "UnderlyingCashSettlDateRelativeTo",
-      "fix:tag": "42792"
+      "display": "UnderlyingCashSettlDateRelativeTo"
     }
   },
   {
@@ -2142,9 +2142,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42793",
       "description": "Time unit multiplier for the relative cash settlement date offset.",
-      "display": "UnderlyingCashSettlDateOffsetPeriod",
-      "fix:tag": "42793"
+      "display": "UnderlyingCashSettlDateOffsetPeriod"
     }
   },
   {
@@ -2154,9 +2154,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative cash settlement date offset.",
-      "display": "UnderlyingCashSettlDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -2178,7 +2176,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42794"
+      "FIX:tag": "42794",
+      "description": "Time unit associated with the relative cash settlement date offset.",
+      "display": "UnderlyingCashSettlDateOffsetUnit"
     }
   },
   {
@@ -2188,9 +2188,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative cash settlement date offset.",
-      "display": "UnderlyingCashSettlDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -2222,7 +2220,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42795"
+      "FIX:tag": "42795",
+      "description": "Specifies the day type of the relative cash settlement date offset.",
+      "display": "UnderlyingCashSettlDateOffsetDayType"
     }
   },
   {
@@ -2233,9 +2233,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42796",
       "description": "The adjusted cash settlement date.",
-      "display": "UnderlyingCashSettlDateAdjusted",
-      "fix:tag": "42796"
+      "display": "UnderlyingCashSettlDateAdjusted"
     }
   },
   {
@@ -2245,9 +2245,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42797",
       "description": "The source from which the settlement price is to be obtained. See https://fpml.org/coding-scheme/settlement-price-source for values.",
-      "display": "UnderlyingCashSettlPriceSource",
-      "fix:tag": "42797"
+      "display": "UnderlyingCashSettlPriceSource"
     }
   },
   {
@@ -2257,9 +2257,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The default election for determining settlement price.",
-      "display": "UnderlyingCashSettlPriceDefault",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Close",
@@ -2271,7 +2269,9 @@
           "doc": "Hedge"
         }
       ],
-      "fix:tag": "42798"
+      "FIX:tag": "42798",
+      "description": "The default election for determining settlement price.",
+      "display": "UnderlyingCashSettlPriceDefault"
     }
   },
   {
@@ -2281,9 +2281,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42799",
       "description": "Number of entries in the UnderlyingDividendAccrualPaymentDateBusinessCenterGrp.",
-      "display": "NoUnderlyingDividendAccrualPaymentDateBusinessCenters",
-      "fix:tag": "42799"
+      "display": "NoUnderlyingDividendAccrualPaymentDateBusinessCenters"
     }
   }
 ]

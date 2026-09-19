@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingenddateunadjusted",
-          "fix:tag": "42622"
+          "FIX:field": "paymentstreamcompoundingenddateunadjusted",
+          "FIX:tag": "42622"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingenddaterelativeto",
-          "fix:tag": "42623"
+          "FIX:field": "paymentstreamcompoundingenddaterelativeto",
+          "FIX:tag": "42623"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingenddateoffsetperiod",
-          "fix:tag": "42624"
+          "FIX:field": "paymentstreamcompoundingenddateoffsetperiod",
+          "FIX:tag": "42624"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingenddateoffsetunit",
-          "fix:tag": "42625"
+          "FIX:field": "paymentstreamcompoundingenddateoffsetunit",
+          "FIX:tag": "42625"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingenddateoffsetdaytype",
-          "fix:tag": "42626"
+          "FIX:field": "paymentstreamcompoundingenddateoffsetdaytype",
+          "FIX:tag": "42626"
         }
       },
       {
@@ -65,16 +65,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingenddateadjusted",
-          "fix:tag": "42627"
+          "FIX:field": "paymentstreamcompoundingenddateadjusted",
+          "FIX:tag": "42627"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "803870",
     "description": "Conditionally required when PaymentStreamCompoundingEndDateOffsetUnit(42625) is specified.",
-    "display": "PaymentStreamCompoundingEndDate",
-    "fix:tag": "803870"
+    "display": "PaymentStreamCompoundingEndDate"
   }
 }

@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "networkstatusresponsetype",
-          "fix:tag": "937"
+          "FIX:field": "networkstatusresponsetype",
+          "FIX:tag": "937"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "networkrequestid",
-          "fix:tag": "933"
+          "FIX:field": "networkrequestid",
+          "FIX:tag": "933"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "networkresponseid",
-          "fix:tag": "932"
+          "FIX:field": "networkresponseid",
+          "FIX:tag": "932"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastnetworkresponseid",
-          "fix:tag": "934"
+          "FIX:field": "lastnetworkresponseid",
+          "FIX:tag": "934"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nocompids",
-          "fix:tag": "936"
+          "FIX:field": "nocompids",
+          "FIX:tag": "936"
         }
       },
       {
@@ -75,7 +75,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "compidstatgrp"
+          "FIX:group": "compidstatgrp"
         }
       },
       {
@@ -85,16 +85,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "BD",
+    "FIX:tag": "1031705",
     "description": "MsgType = BD",
-    "display": "NetworkCounterpartySystemStatusResponse",
-    "fix:msgtype": "BD",
-    "fix:tag": "1031705"
+    "display": "NetworkCounterpartySystemStatusResponse"
   }
 }

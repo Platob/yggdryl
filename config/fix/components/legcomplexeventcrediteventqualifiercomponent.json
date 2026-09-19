@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventqualifier",
-          "fix:tag": "41375"
+          "FIX:field": "legcomplexeventcrediteventqualifier",
+          "FIX:tag": "41375"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEventCreditEventQualifier",
-    "fix:tag": "311304"
+    "FIX:tag": "311304",
+    "display": "LegComplexEventCreditEventQualifier"
   }
 }

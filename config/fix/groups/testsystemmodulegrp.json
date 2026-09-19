@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "testsystemmodule"
+        "FIX:component": "testsystemmodule"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "testsystemmodule",
+    "FIX:counter": "3049",
+    "FIX:tag": "582389",
     "description": "Required if NoTestSystemModules(3049) > 0.",
-    "display": "TestSystemModuleGrp",
-    "fix:component": "testsystemmodule",
-    "fix:counter": "3049",
-    "fix:tag": "582389"
+    "display": "TestSystemModuleGrp"
   }
 }

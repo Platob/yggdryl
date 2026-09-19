@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "relsymderivsec"
+        "FIX:component": "relsymderivsec"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "relsymderivsec",
+    "FIX:counter": "146",
+    "FIX:tag": "209402",
     "description": "Specifies the number of repeating symbols (instruments) specified",
-    "display": "RelSymDerivSecGrp",
-    "fix:component": "relsymderivsec",
-    "fix:counter": "146",
-    "fix:tag": "209402"
+    "display": "RelSymDerivSecGrp"
   }
 }

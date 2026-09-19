@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legprotectiontermeventqualifiercomponent"
+        "FIX:component": "legprotectiontermeventqualifiercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legprotectiontermeventqualifiercomponent",
+    "FIX:counter": "41633",
+    "FIX:tag": "202554",
     "description": "Required if NoLegProtectionTermEventQualifiers(41633) > 0.",
-    "display": "LegProtectionTermEventQualifierGrp",
-    "fix:component": "legprotectiontermeventqualifiercomponent",
-    "fix:counter": "41633",
-    "fix:tag": "202554"
+    "display": "LegProtectionTermEventQualifierGrp"
   }
 }

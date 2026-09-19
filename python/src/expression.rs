@@ -19,7 +19,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString, PyTuple};
 use std::sync::Arc;
 
-use yggdryl::ArrowCast;
+use yggdryl::FieldValue as _;
 use yggdryl::expression::{
     Attribute, Bound as CoreBound, BoundSelector as CoreBoundSelector, Bounds as CoreBounds,
     ColumnBounds as CoreColumnBounds, Comparison as CoreComparison, FieldSegment as CoreSegment,
@@ -1539,7 +1539,7 @@ impl PySelector {
     }
 
     /// The selector a struct root declares: one column per child, with its
-    /// datatype, nullability, metadata, and any `transform:` it carries.
+    /// datatype, nullability, metadata, and any `TRANSFORM:` it carries.
     #[staticmethod]
     fn from_field(field: &Bound<'_, PyAny>) -> PyResult<Self> {
         let field = core_field_from_value(field)?;
@@ -1663,7 +1663,7 @@ impl PySelector {
     }
 
     /// The struct root this selector publishes from `root`, carrying the
-    /// selector itself as each column's `transform:` declaration, so a
+    /// selector itself as each column's `TRANSFORM:` declaration, so a
     /// `Selector.from_field` of the answer is this selector again.
     #[allow(clippy::wrong_self_convention)]
     fn into_field(&self, root: &Bound<'_, PyAny>) -> PyResult<PyField> {

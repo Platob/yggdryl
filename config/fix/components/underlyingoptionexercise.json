@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingexercisedesc",
-          "fix:tag": "41810"
+          "FIX:field": "underlyingexercisedesc",
+          "FIX:tag": "41810"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingexercisedesclen",
-          "fix:tag": "41811"
+          "FIX:field": "encodedunderlyingexercisedesclen",
+          "FIX:tag": "41811"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingexercisedesc",
-          "fix:tag": "41812"
+          "FIX:field": "encodedunderlyingexercisedesc",
+          "FIX:tag": "41812"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingautomaticexerciseindicator",
-          "fix:tag": "41813"
+          "FIX:field": "underlyingautomaticexerciseindicator",
+          "FIX:tag": "41813"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingautomaticexercisethresholdrate",
-          "fix:tag": "41814"
+          "FIX:field": "underlyingautomaticexercisethresholdrate",
+          "FIX:tag": "41814"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingexerciseconfirmationmethod",
-          "fix:tag": "41815"
+          "FIX:field": "underlyingexerciseconfirmationmethod",
+          "FIX:tag": "41815"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmanualnoticebusinesscenter",
-          "fix:tag": "41816"
+          "FIX:field": "underlyingmanualnoticebusinesscenter",
+          "FIX:tag": "41816"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingfallbackexerciseindicator",
-          "fix:tag": "41817"
+          "FIX:field": "underlyingfallbackexerciseindicator",
+          "FIX:tag": "41817"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglimitedrighttoconfirmindicator",
-          "fix:tag": "41818"
+          "FIX:field": "underlyinglimitedrighttoconfirmindicator",
+          "FIX:tag": "41818"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingexercisesplitticketindicator",
-          "fix:tag": "41819"
+          "FIX:field": "underlyingexercisesplitticketindicator",
+          "FIX:tag": "41819"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlmethodelectingpartyside",
-          "fix:tag": "42887"
+          "FIX:field": "underlyingsettlmethodelectingpartyside",
+          "FIX:tag": "42887"
         }
       },
       {
@@ -131,7 +131,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingsettlmethodelectiondate"
+          "FIX:component": "underlyingsettlmethodelectiondate"
         }
       },
       {
@@ -141,7 +141,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingoptionexercisedates"
+          "FIX:component": "underlyingoptionexercisedates"
         }
       },
       {
@@ -151,7 +151,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingoptionexerciseexpiration"
+          "FIX:component": "underlyingoptionexerciseexpiration"
         }
       },
       {
@@ -161,15 +161,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingoptionexercisemakewholeprovision"
+          "FIX:component": "underlyingoptionexercisemakewholeprovision"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "463064",
     "description": "Must be set if EncodedUnderlyingExerciseDesc(41812) field is specified and must immediately precede it.",
-    "display": "UnderlyingOptionExercise",
-    "fix:tag": "463064"
+    "display": "UnderlyingOptionExercise"
   }
 }

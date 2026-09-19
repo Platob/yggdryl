@@ -124,3 +124,48 @@ def test_a_datatype_casts_one_row_the_way_a_field_does() -> None:
     # A scalar cast takes exactly one row.
     with pytest.raises(ValueError):
         DataType("int64").cast_arrow_scalar(pa.array([1, 2], pa.int32()))
+
+
+def test_an_empty_text_cell_is_null_before_safe_is_asked() -> None:
+    empty = pa.array([""], pa.string())
+
+    # A zero-length text cell entering a column that does not hold text is
+    # no value: it is null before any spelling is read, so `safe` never sees
+    # it and both policies answer the same null.
+    nullable = Field("quantity", "int32")
+    assert nullable.cast_arrow_array(empty, safe=False).to_pylist() == [None]
+    assert nullable.cast_arrow_array(empty, safe=True).to_pylist() == [None]
+
+    # A required column then answers its nullability, exactly as it does for
+    # a null the source carried: the default repairs it, strictness refuses
+    # it naming the path and the count.
+    required = Field("quantity", "int32", nullable=False)
+    assert required.cast_arrow_array(empty).to_pylist() == [0]
+    with pytest.raises(
+        ValueError, match=r"required Arrow field \$\.quantity holds 1 null values"
+    ):
+        required.cast_arrow_array(empty, nullability="strict")
+
+    # The same plan compiled between two schemas answers the same way.
+    source = pa.schema([pa.field("quantity", pa.string())])
+    target = Field("row", "struct<quantity:int32 not null>", nullable=False)
+    batch = pa.record_batch({"quantity": empty})
+    assert ArrowCastPlan(source, target, safe=False).apply(batch).column(
+        "quantity"
+    ).to_pylist() == [0]
+    with pytest.raises(
+        ValueError, match=r"required Arrow field \$\.quantity holds 1 null values"
+    ):
+        ArrowCastPlan(source, target, nullability="strict").apply(batch)
+
+    # Text is text: into a string column the empty cell is the value it is.
+    assert Field("symbol", "utf8").cast_arrow_array(empty).to_pylist() == [""]
+    assert Field("symbol", "utf8", nullable=False).cast_arrow_array(
+        empty, nullability="strict"
+    ).to_pylist() == [""]
+
+    # The scalar door reads the same rule.
+    assert DataType("int32").scalar("").is_null()
+    assert DataType("utf8").scalar("").as_py() == ""
+    with pytest.raises(ValueError, match="non-nullable field received null"):
+        Field("quantity", "int32", nullable=False).scalar("")

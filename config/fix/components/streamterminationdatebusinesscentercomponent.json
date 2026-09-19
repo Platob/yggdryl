@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdatebusinesscenter",
-          "fix:tag": "40067"
+          "FIX:field": "streamterminationdatebusinesscenter",
+          "FIX:tag": "40067"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "StreamTerminationDateBusinessCenter",
-    "fix:tag": "704539"
+    "FIX:tag": "704539",
+    "display": "StreamTerminationDateBusinessCenter"
   }
 }

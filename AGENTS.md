@@ -54,19 +54,99 @@ results and exact skipped checks.
 Rust-only is complete work when the core is the requested scope; a missing
 binding is documented as Rust-only.
 
+### Pace
+
+The steps above are what a change is; what makes a wide one fast is how each
+step is run, never which step is skipped.
+
+- **One script per sweep.** A rename, a moved constructor or a changed
+  signature that reaches every caller is one script of exact-string edits,
+  each asserting that its anchor matches once, driven by the compiler's own
+  list: the `it builds` row of the [smoke loop](#smoke-loop) with its two
+  flags names every site the compiler has reached, and the script is re-run
+  from that list until the check is clean. A site edited by hand is the slow
+  way to the same text, and a regex with no exact anchor edits the site it
+  did not mean.
+- **One phase per change, each settled narrowly.** Several changes on one
+  branch are phases in the order of the steps above - each core change, then
+  the bindings, then the docs - and a phase is settled by its build check and
+  the one suite it touched, never by the whole run. The theme is the one
+  whose `src/` subtree the phase changes - `types` for `field.rs`, `fix` for
+  `fix/` - so a change altering two subtrees is two phases; a test in another
+  theme that a sweep only re-spelled is proven compiling by the build check
+  and behaving by the whole run, and a surface with a cost pin adds its
+  filtered `iobase_calls` or `allocations` row. A binding phase's build check
+  is `cargo check --workspace --all-targets --keep-going
+  --message-format=short`, which lists the bindings' broken call sites
+  without building an extension or an addon, and its suite is one area of
+  the §3 or §4 loop, run from the chain step that built what it needs. The
+  docs phase is settled by `mkdocs build --strict`, seconds in the
+  foreground; the example runner has no per-page filter, so it is a chain
+  step per language after the step that built what it runs on.
+- **One whole run, its pins re-pinned once.** The whole run - the
+  `cargo test --all-targets` line of [Before you push](#before-you-push) in
+  the `--all-features` lane, with `--no-fail-fast` so every failure is
+  listed - leads the chain below, launched when the last phase that takes
+  the cargo lock is settled, so every pin that moved surfaces in one pass
+  and is re-pinned in one edit with the sentence that says why. A pin is
+  re-pinned when the change accounts for its move exactly - one retired
+  crate field is one tag fewer in the census, one re-spelled key is one
+  dictionary hash - and a number the change does not account for is a defect
+  found before the pin is touched; a cost pin - `iobase_calls`,
+  `allocations`, a benchmark - is never re-pinned from that pass, because a
+  moved count is a design answer ([Read the cost](#smoke-loop)). A re-pinned
+  test is re-run by its own row of the smoke loop, never by the whole run
+  again.
+- **Disjoint files per worker.** A sweep that spans tests, bindings and docs
+  is split across workers by file set, never by concern: the sets are a
+  partition of the `it builds` list by path, so no two workers touch one
+  file; a worker returns its script and the files it edited rather than a
+  check of its own, and the one `cargo check` after the last worker returns
+  is the next list. While workers edit, nobody runs `cargo fmt --all`,
+  because a reformat moves the anchors their scripts match; the formatter
+  runs once after the last worker returns.
+- **Long runs in the background, one log, read once.** Anything over a minute -
+  the whole run, clippy, a binding build, the example runner - is one chained
+  script writing a log with a marker per step, and the foreground keeps
+  editing: the docs phase, the inventories and the commit message are its
+  work while the chain holds the cargo lock. Steps that take the lock are
+  chained in that one script rather than launched side by side, because the
+  workspace shares one target directory and parallel cargo invocations wait
+  on each other. The chain's order is the layer order, each step reading
+  what the one before wrote: the whole run, clippy, the rustdoc examples,
+  §3's pre-push block, §4's, the two docs manifests, the example runner per
+  language; the whole run leads because its pins are the foreground's next
+  edit, and a clippy warning or a broken example is an edit that moves no
+  pin.
+- **One regeneration each, in dependency order.** The generated files, their
+  tools, their triggers and their order are the table under [Before you
+  push](#before-you-push); one regenerated before its input settles is
+  regenerated twice. The dictionary and the crate dump are regenerated
+  before the whole run, because the hash the run reports is the committed
+  store's, the crate's own documents included.
+- **The model fits the step.** A worker runs on the model its step needs,
+  never the most capable one by default: a review, a verification or a check
+  that reads and reports runs on the tier below the foreground's - `opus`
+  where the foreground is `fable` - and a mechanical sweep on a cheaper one
+  still. The most capable model is the foreground's alone, for the design
+  and the edits no script makes.
+- **One commit.** The phases land as one commit that says what the tree is,
+  its pins and its regenerated files included, never a commit per phase: a
+  phase alone is a tree that does not build.
+
 ### Common changes, in order
 
 | Change | Touch, in this order |
 | --- | --- |
-| datatype variant | `types/` family module, `DataTypeId`/`DataTypeKind`, parser, serde, comparison, Arrow, cast, `scalar` -> tests -> bindings -> `docs/types/` |
+| datatype variant | `<type>.rs` at the root, `DataTypeId`/`DataTypeKind`, parser, serde, comparison, Arrow, cast, `scalar` -> tests -> bindings -> `docs/types/` |
 | logical name | `DataType::LOGICAL_NAMES` only; resolves to an existing datatype, adds no variant |
-| codec | `coding/<name>.rs` (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> `docs/coding/` |
-| string layout | a `StringLayout` variant + `DataTypeId` appended + `types/string/` (parameters, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
-| byte layout | a `BytesLayout` variant + `DataTypeId` appended + `types/bytes/` (parameters, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
-| charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant -> interop both directions -> bench -> bindings -> `docs/charset/` |
-| storage backend | `holder/<name>/` with a location/container/leaf trio over the root traits - `Path`, `Folder`, `File` over a host tree; `Path`, `Node`, `Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
-| media format | `media/<name>/` free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
-| metadata property | a protocol view keyed `<scheme>:<property>`; never a new `Field` accessor |
+| codec | `<name>.rs` at the root (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> `docs/coding/` |
+| string leaf | a `StringType` variant + `DataTypeId` appended + `string.rs` (spellings, the number rule, Arrow storage, grammar, value) + the charset's own root file - `utf8.rs`, `ascii.rs` or `cp1252.rs` - for the leaf's constructor, validation and reading -> tests -> bindings -> `docs/types/` |
+| byte leaf | a `BytesType` variant + `DataTypeId` appended + `bytes.rs` (spellings, the number rule, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
+| charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant; a charset that gets string leaves is a root file of its own beside `utf8.rs`, `ascii.rs` and `cp1252.rs`, holding its codec and those leaves -> interop both directions -> bench -> bindings -> `docs/charset/` |
+| storage backend | `<name>/` at the root with a location/container/leaf trio over the root traits - `Path`, `Folder`, `File` over a host tree; `Path`, `Node`, `Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
+| media format | `<name>/` at the root, free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
+| metadata property | a protocol view keyed `<SCHEME>:<property>`, the scheme upper case; never a new `Field` accessor |
 | binding method | core method first; the binding only infers, coerces, redirects - plus a parity test, a boundary benchmark, a docs entry |
 
 ## Smoke loop
@@ -80,7 +160,7 @@ passes.
 
 | Loop | Command | Answers |
 | --- | --- | --- |
-| it builds | `cargo check -p yggdryl --all-targets` | types and borrows, and every test and benchmark still compiling against the changed signature |
+| it builds | `cargo check -p yggdryl --all-targets`, plus `--keep-going --message-format=short` when a change reaches every caller | types and borrows, and every test and benchmark still compiling against the changed signature; with the two flags, one line per diagnostic across every target rather than a stop at the first failing one, re-run because the compiler reports the errors of the phase it reached |
 | it behaves | `cargo test -p yggdryl --test <theme> <filter>` | the `rust/tests/<theme>.rs` suite mirroring the `src/` subtree touched |
 | a private pin holds | `cargo test -p yggdryl --lib <module>::` | the `#[cfg(test)]` module beside code no integration test can reach |
 | the published example runs | `cargo test -p yggdryl --doc <path::to::item>` | the rustdoc example on the item, which is also what a docs page shows |
@@ -89,6 +169,7 @@ passes.
 | a gated path works | the loop above plus `--features "parquet iceberg"` or `--features object` | only when the change is under that gate |
 | the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<area> -x -q` | the binding against the core it redirects to, with no wheel built |
 | the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<area>/<file>.test.js` | the same, with no package audit |
+| the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file that exists, and every listed name still occurs somewhere in that crate's `src/`; an omitted name is counted, never failed |
 | a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language - there is no per-page filter, so this is a pre-push check, not a loop |
 
 The measured costs that shape the loop: an already-built theme suite is under a
@@ -153,14 +234,16 @@ it skipped a check.
 does what the text asks whenever one reading does it, and refuses only what no
 reading can, naming the column, the value, or the section it could not honour.
 A constant coerces into the operand it meets, operands with no common type
-compare as text, a declared column casts safely unless it is `not null`, a
-missing store reads as the empty stream, a `select *` or a same-type cast costs
-nothing. Never a technical error a caller has to work around by hand when the
-intent is unambiguous; never a silent widening when it is not. DuckDB's SQL and
-Python expression API are the reference for what a spelling should mean when
-engines differ - its column, star-exclude, alias, cast, `isin`, `between`,
-`isnull`, `when`/`otherwise` and ordering vocabulary keep their names here - and
-the crate's own abstractions (`DataType`, `Field`, `Scalar`, `Selector`,
+compare as text, a declared column casts safely unless it is `not null`, an
+empty text cell entering a non-text column is null and the column's
+nullability is what may refuse it, a missing store reads as the empty stream,
+a `select *` or a same-type cast costs nothing. Never a technical error a
+caller has to work around by hand when the intent is unambiguous; never a
+silent widening when it is not. DuckDB's SQL and Python expression API are
+the reference for what a spelling should mean when engines differ - its
+column, star-exclude, alias, cast, `isin`, `between`, `isnull`,
+`when`/`otherwise` and ordering vocabulary keep their names here - and the
+crate's own abstractions (`DataType`, `Field`, `Scalar`, `Selector`,
 `Filter`, `Plan`, `Holder`) carry the behaviour; nothing is a second engine.
 
 **Defaults in the signature, absence skipped.** Every optional argument
@@ -199,39 +282,61 @@ directions against an outside implementation.
 ## Layout
 
 Every member has `src/`, `tests/`, `benchmarks/`; root owns pins and lints with
-`default-members = ["rust"]`; features are `default = ["arrow"]`, `parquet`,
-`iceberg` (implies `parquet`), `object`. Examples live in docs - no `examples/` dir -
-and tests, benchmarks, bindings, and docs mirror these layers. A root file is not
-an implementation layer, a layer is not a facade over root-owned vocabulary, and
-a module owns implementation rather than an empty facade.
+`default-members = ["rust"]`; features are `default = []`, `parquet`,
+`iceberg` (implies `parquet`), `object`. Examples live in docs - no `examples/`
+dir. The crate is flat: every type and every shared trait, enum or value is a
+root file, and `value/` - the contracts a datatype, a field and a value each
+owe the root that holds them - is the one folder among them; every
+implementation - a medium, a codec, a storage backend, a digest, a charset
+with string leaves - is a root file or folder of its own name; a parent
+folder (`media/`, `text/`, `coding/`, `holder/`, `hashing/`, `charset/`)
+holds only what its implementations share. A folder is never a
+facade over root-owned vocabulary, and a module owns implementation rather
+than an empty facade. Tests, benchmarks, bindings and docs are grouped by
+theme - `types`, `holder`, `media` and the rest - which is a caller's
+vocabulary, not a source path.
 
 Paths below are under `rust/src/` unless stated otherwise.
 
 | Path | Owns |
 | --- | --- |
-| `<name>.rs` | one shared trait, enum, or value each, re-exported from the crate root |
-| `iobase.rs` | the single `IOBase` trait and its behavior modules |
-| `types/temporal/` | the calendar and clock datatypes, their units and zones, and `iso.rs` - the ISO 8601 spellings every text codec and the scalar renderer write through |
-| `types/timezone/` | the `Timezone` value, its bundled IANA registry, and the `timezone` datatype a column of zones declares |
-| `types/{mime_type,media_type}/` | the `mimetype` and `mediatype` datatypes over the root values, which stay the media layer's routing vocabulary |
-| `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, field-borrowing values (`FieldScalar`, `FieldRecord`, the prebuilt shared fields), datatype families; `i256.rs` holds the `i256`/`u256` pair the exact decimals compute in |
-| `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder with a location/container/leaf trio - `Path`, `Folder`, `File` in `local/`, `fs/`, `object/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. The root traits do not follow: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every backend |
-| `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
-| `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
-| `coding/` | transparent `Coded` handles; `{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
-| `types/string.rs` + `types/string/` | every string the crate has, one family: the `StringLayout` vocabulary beside `StringParameters`, the one string datatype `DataType::String` and the one string value `Str` in `scalars.rs`, the eight registered codes' values in `code.rs` and their identities and widths in `codes.rs`, the `field:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_ascii(n)` and `string(windows-1252,32)` are all spellings of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::code_width` and `is_code` instead, because it is an identity over a registry rather than a charset, and rides `Utf8` under its own extension name |
-| `charset.rs` + `charset/` | the `Charset` vocabulary beside its implementations: `ascii`/`single_byte`/`unicode` own the codecs, generated `tables.rs` owns the code pages, `Decoder`/`Reader`/`Writer` the chunked doors, `Transcoded` the decoding handle. Fused rather than split like `codec.rs`/`coding/`, because no single code page is a public module of its own |
-| `media/` | record routing and settings; `{ipc,parquet,avro}/` each own free functions over `IOBase` plus a stateful wrapper |
-| `media/text/` | `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering |
-| `media/iceberg/` | separate modules: types, schema, partition, snapshots, metadata, manifests, statistics, scalar rendering, scan, table, options, catalog, evolution, inspection |
-| `text/` | JSON/YAML/TOML over `Scalar` |
-| `uri/` | URI, URL, URN |
+| `<name>.rs` | one shared trait, enum, value or type each, re-exported from the crate root; a type file holds its datatype, its field and its scalar in that order ([One type, one file](#one-type-one-file)) |
+| `iobase.rs` + `iobase/` | the single `IOBase` trait and its behavior modules; `iopath.rs`, `iofolder.rs`, `iofile.rs` the three roles every storage backend implements, `iocursor.rs` the one retained position, `iomedia.rs` the record operations derived from the byte trait, `iokind.rs` and `iomode.rs` their vocabulary |
+| `datatype.rs` | `DataType`, the shared logical datatype enum and its cross-family value contract; `datatype_id.rs` and `datatype_kind.rs` the exact-variant and family enums, `parser.rs` the canonical display and the Arrow, SQL, Hive and Spark parsing, `serde.rs` the structural document, `compatibility.rs` the concrete targets, `vocabulary.rs` the logical names, `default.rs` the canonical defaults, `diff.rs` schema equality and its differences, `merge.rs` the one place two schemas become one |
+| `field.rs` | `Field`, one variant per `DataType` shape, each carrying name, nullability, metadata and the Arrow projection cache; `metadata.rs` + `metadata/` the `<SCHEME>:<property>` map and its validation, `protocol.rs` the borrowed protocol views |
+| `scalar.rs` | `Scalar`, the one value every part of the project speaks; `arithmetic.rs` checked arithmetic over exact natives, `path.rs` the one allocation-free value path every recursive walk uses, `pretty.rs` the indented rendering of a schema |
+| `value/` | what a datatype, a field and a value each owe the root that holds them, and what a family owes its leaves: the `Value` and `FamilyValue` contracts, `DataTypeValue`, `FieldValue`, `FieldSidecar` and the payload datatypes `GeometryType`, `GeographyType`, `UnionType`, `RunEndType`, the family traits `IntegerValue`, `FloatingValue`, `DecimalValue`, `TemporalValue`, `GeospatialValue`, `CodeValue` and `NestedValue` - declared here, implemented beside each leaf - and the `Nested` value enum; the other six family value enums, `Integer`, `Floating`, `Decimal`, `Temporal`, `Code` and `Geospatial`, live in their family files; `canonical.rs` the schema-directed validation and canonicalization of row values. The module is private, and every name is `yggdryl::<Name>` at the crate root |
+| `typed.rs` | the typed markers and the field-borrowing values: `TypedField<K>`, `FieldScalar<'_>`, `UncheckedFieldScalar<'_>`, `FieldRecord<'_>` and the prebuilt shared fields |
+| `cast.rs` | casting an Arrow array into the exact array a typed field describes: `ArrowCastPlan` and the strict rules; `budget.rs` the bounded scratch and output reservations it draws on |
+| `integer.rs`, `floating.rs`, `decimal.rs`, `boolean.rs`, `bytes.rs`, `uuid.rs`, `geospatial.rs`, `enums.rs`, `structure.rs`, `sequence.rs`, `mapping.rs`, `union.rs`, `runend.rs`, `version.rs` | one family per file, each the whole of its datatype, field and scalar; `int256.rs` holds the `i256`/`u256` pair the exact decimals compute in, the one type file not named for its type because a module and a struct share one namespace at the root; `wkb.rs` the Well-Known Binary reader three types need; `regex.rs` the Struct inference from named captures |
+| `code.rs` | the contract every registered code answers - the trait and the two builders; the eleven codes are one file each: `currency.rs`, `country.rs`, `mic.rs`, `cfi.rs`, `isin.rs`, `cusip.rs`, `sedol.rs`, `bloomberg.rs`, `side.rs`, `state.rs`, `timeinforce.rs` |
+| `temporal.rs` | what the five temporal families share and nothing any one of them owns: the `Temporal` value enum over the eight leaves, whose `family()` answers `date`, `time`, `datetime`, `duration` or `interval`, the `temporal_leaf!` macro the family files build their count-unit-zone values with, the unit validators the constructors call, the ISO 8601 spellings every text codec and the scalar renderer write through, the Arrow casts that take any temporal, and the `Scalar` readers that answer across the families (`as_temporal`, `temporal_unit`, `temporal_timezone`, `temporal_count`); `TemporalValue`, the contract every leaf answers, is in `value/`; no datatype, no field and no leaf value live here |
+| `date.rs` | the date family: `DateType` - `Date32`, `Date64`, no parameter, the unit being what the leaf is - `DataType::Date(DateType)` with `date32()`, `date64()` and `date_type()`, the `Date32` and `Date64` values with their `Scalar` constructors, one Arrow projection (`Date32`, `Date64`) |
+| `time.rs` | the time family: `TimeType` - `Time32(unit)`, `Time64(unit)`, the resolution a parameter of the leaf and `for_unit` the one rule `DataType::time` picks a width by - `DataType::Time(TimeType)` with `time`, `time32`, `time64`, `time_of` and `time_type`, SQL's `time(p)` grammar, the `Time32` and `Time64` values, one Arrow projection (`Time32`, `Time64`) |
+| `datetime.rs` | the datetime family: `DateTimeType` - one leaf, `DateTime64 { unit, timezone }` - `DataType::DateTime(DateTimeType)` with `datetime64` and `datetime_type`, every `timestamp` spelling of the grammar, the `DateTime64` value, one Arrow projection (`Timestamp`, carrying the zone only when the datatype states one) |
+| `duration.rs` | the duration family: `DurationType` - `Duration32(unit)`, `Duration64(unit)` - `DataType::Duration(DurationType)` with `duration32`, `duration64`, `duration_of` and `duration_type`, the `Duration32` and `Duration64` values, one Arrow projection (`Duration`, which imports back as `duration64` because Arrow has one width) |
+| `interval.rs` | the interval family: `IntervalType` - one leaf, `Interval(layout)`, the layout a `TimeUnit` interval member - `DataType::Interval(IntervalType)` with the validating `interval(unit)` and `interval_type`, the `interval` grammar with SQL's bare `interval day`, the `Interval` value holding every component of every layout, one Arrow projection (`Interval`) |
+| `timezone.rs` | the `Timezone` value, its bundled IANA registry, and the `timezone` datatype a column of zones declares |
+| `mime_type.rs` + `mime_type/`, `media_type.rs` + `media_type/` | the root `MimeType` and `MediaType` values, which stay the media routing vocabulary, each with a `datatype.rs` beneath it for the `mimetype` and `mediatype` datatypes a column declares; `mime_type/` also holds the extension registry and the line classifier |
+| `string.rs` | every string the crate has, one family: the `StringType` enum of eighteen leaves - six shapes in each of UTF-8, US-ASCII and windows-1252 - the one string datatype `DataType::String(StringType)`, the one string value `Str`, the `FIELD:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. The eleven registered codes are not strings and are not here: each is its own file - `currency.rs`, `country.rs`, `isin.rs` and the eight beside them - over the contract in `code.rs`. `utf8`, `large_utf8`, `sized_ascii(4)`, `fixed_cp1252(8)` and the spelling `string(windows-1252,32)` are all leaves of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::code_width` and `is_code` instead, because it is an identity over a registry rather than a charset, and rides `Utf8` under its own extension name. The per-charset arms - `charset()`, the fixed and sized leaf constructors, `with_charset`, the decode and encode behind `Str::from_bytes` and `encode`, a value's repertoire check - dispatch to `utf8.rs`, `ascii.rs` and `cp1252.rs`; the eighteen-variant enum itself stays here, because a variant is not a type of its own |
+| `utf8.rs`, `ascii.rs`, `cp1252.rs` | one root file per charset that has string leaves, each holding that charset's codec and its six leaves together. `utf8.rs`: the UTF-8 decode, transcribe, pending and fault rules under the `utf-8` name, and `Utf8String` through `SizedUtf8String` with `utf8()`, `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(w)`, `sized_utf8(n)`. `ascii.rs`: the `ascii_len` scan, `decode`/`encode` and their `_into` forms, `text`, the `us-ascii` name, the `ascii_text`/`ascii_bytes`/`ascii_repertoire` helpers, the `ascii_packed`/`ascii_value`/`packed_width` pair the codes and `StringEnum` ride on, and the six ASCII leaves. `cp1252.rs`: a thin codec over `charset::single_byte` with `tables::CP1252` under the `windows-1252` name, and the six windows-1252 leaves. Each owns its leaves' `DataType` constructors, its `LEAVES` list, and the decode and encode that `Str::from_bytes` and `Str::encode` in `string.rs` dispatch to; only `ascii.rs` judges a repertoire (`ascii_repertoire`) and holds the `i128` packing; `Charset` and `StringType` dispatch to them and duplicate nothing |
+| `charset.rs` + `charset/` | the `Charset` vocabulary beside what every code page shares: `single_byte` and the generated `tables.rs` own the code pages, `utf16` owns UTF-16, `bom` the byte-order mark, `Decoder`/`Reader`/`Writer`/`sink` the chunked doors, `Transcoded` the decoding handle. The three charsets with string leaves are root files; every other code page reaches `single_byte` through `Charset` and is not a public module of its own |
+| `holder/` | what every backend shares: `Holder`, the one concrete handle unifying every backend, `Buffer`, `Buffered<H>`, `Counted<H>`. The root traits follow no backend: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every one |
+| `local/`, `fs/`, `zip/`, `object/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `Path`, `Folder`, `File` in `local/`, `fs/` and `object/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `object/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, under the non-default `object` feature |
+| `coding/` | what every codec shares: the transparent `Coded<H>` handle and the `Codec` dispatch helpers |
+| `gzip.rs`, `zlib.rs`, `zstd.rs` | one root file per codec; each owns `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
+| `media/` | what every medium shares: the `Media` value naming every implementation, record options, inference, magic, merge, partition, structured routing |
+| `ipc/`, `parquet/`, `avro/` | one root folder per record medium; each owns free functions over `IOBase` plus a stateful wrapper |
+| `iceberg/` | separate modules: types, schema, partition, snapshots, metadata, manifests, statistics, scalar rendering, scan, table, options, catalog, evolution, inspection |
+| `text/` | the plain-text medium - `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering, `TextBytes`/`TextLine`/`TextEntries` - beside what the structured codecs share: `Format`, `Limits`, `Formatting`, `Loading`, placeholders, `TextCodec`, io, wire, typed |
+| `json/`, `toml/`, `yaml/` | one root folder per structured codec over `Scalar`, each its own parser over the machinery in `text/` |
+| `uri/` | the URI, URL and URN values and, in `datatype.rs`, the `uri` family - `UriType` with its `url` and `urn` leaves - and the fields and scalars over them |
 | `arrow/` | Arrow interop; recursive cast planning stays with `Field` |
-| `expression/` | one term grammar and one plan grammar: `Term`/`Bound`, `Filter`, `Selector`/`BoundSelector`, `Plan` (create, write verbs, `select`, `from`, `where`, `order by`, `limit`, `offset`), `Expression` (clause, plan, or `;` sequence), `Records`, `Attribute`, `Bounds`, `explain`, `FieldPath`/`FieldSegment`, `user` (registered `namespace.name` functions, `FunctionSignature` as a struct field, `Function::User`), `transform` (`transform:function`/`transform:sources`, else `transform:expression`); every application (`apply_datatype` first and `apply_field` derived from it, `apply_scalar`, `apply_arrow_reader` first and `apply_arrow_batch` derived from it, `apply_records`, `from_scalar` readers) lives here and nowhere else |
+| `expression/` | one term grammar and one plan grammar: `Term`/`Bound`, `Filter`, `Selector`/`BoundSelector`, `Plan` (create, write verbs, `select`, `from`, `where`, `order by`, `limit`, `offset`), `Expression` (clause, plan, or `;` sequence), `Records`, `Attribute`, `Bounds`, `explain`, `FieldPath`/`FieldSegment`, `user` (registered `namespace.name` functions, `FunctionSignature` as a struct field, `Function::User`), `transform` (`TRANSFORM:function`/`TRANSFORM:sources`, else `TRANSFORM:expression`); every application (`apply_datatype` first and `apply_field` derived from it, `apply_scalar`, `apply_arrow_reader` first and `apply_arrow_batch` derived from it, `apply_records`, `from_scalar` readers) lives here and nowhere else |
 | `graph/` | the graph vocabulary: `element.rs` holds `Element` - an element's `Uuid` and its parents' UUIDs, read and written - and `TimeElement`, an element with an instant (`currunix`, `i128` nanoseconds since the epoch, UTC) and a `currhashcode`; signatures only, no storage and no walk |
-| `hashing/` | byte/value and time-coupled digests; private structural/display stable-hash adapters; shared dispatch vocabulary remains in `digest.rs` |
-| `hashing/xxhash/` | one-shot digests, four resumable states, `reader`/`writer`, `Hashed<H>`, the canonical `Scalar` byte feed, Arrow row digests |
-| `hashing/txhash/` | raw Unix-count/digest pairs, clock-unit conversion, configured hashing and Arrow coupling; not RFC UUIDs |
+| `hashing/` | the private structural/display stable-hash adapters the digests share; shared dispatch vocabulary is `digest.rs` |
+| `xxhash/` | one-shot digests, four resumable states, `reader`/`writer`, `Hashed<H>`, the canonical `Scalar` byte feed, Arrow row digests |
+| `txhash/` | raw Unix-count/digest pairs, clock-unit conversion, configured hashing and Arrow coupling; not RFC UUIDs |
 | `fix/` | FIX protocol behavior |
 | binding `lib.rs` | boundary helpers, exports, registration - nothing else |
 
@@ -245,9 +350,12 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
 ### Where a test lives
 
 `rust/tests/` is the contract a caller has: one top-level `<theme>.rs` per
-subtree - `types`, `arrow`, `media`, `holder`, `iobase`, `coding`, `charset`,
-`expression`, `graph`, `hashing`, `text`, `uri`, `fix` - declaring `#[path]` modules
-that mirror `src/`. A test there reaches the crate through `yggdryl::` and
+theme - `types`, `arrow`, `media`, `holder`, `iobase`, `coding`, `charset`,
+`expression`, `graph`, `hashing`, `text`, `uri`, `fix` - declaring `#[path]`
+modules under `tests/<theme>/`. A theme is the caller's vocabulary and the docs
+tab, not a source folder: `types` covers every root type file, `media` the
+root media folders, `hashing` the root `xxhash/` and `txhash/`. A test there
+reaches the crate through `yggdryl::` and
 nothing else, so what it proves is what a caller can rely on, and a fixture
 builds its own inputs rather than borrowing the code under test.
 
@@ -269,11 +377,16 @@ would put a test fixture in the crate's API.
   `Scalar::Sequence`; `Scalar::Record` is a sorted name-to-scalar *input* shape.
   No second row/schema class or accessor; `FieldRecord<'_>` is a borrowed view
   of one row under that field, never a class of its own.
-- `Field` alone owns metadata and cache-aware mutation; `DataType` has none.
-  Protocol metadata is inert `<scheme>:<property>` text in one map; a protocol
+- `Field` alone owns metadata, Arrow IPC dictionary identity and cache-aware
+  mutation; `DataType` has none. A `Field` *is* its type: one variant per
+  `DataType` shape, each carrying name, nullability, metadata and the Arrow
+  projection cache, so a datatype is never stored beside a name and
+  `dictionary_id`/`dictionary_is_ordered` exist only on `Field::Dictionary`.
+  Protocol metadata is inert `<SCHEME>:<property>` text in one map, the scheme
+  spelled upper case as `ARROW:extension:name` and `PARQUET:field_id` are; a protocol
   view borrows a whole `Field` and derefs to it, and typed protocol vocabulary
-  (`digest:role`, the `partition:` pair, the `python:` class declaration) lives
-  there, never on `Field`. `Field` owns `field:init`, `field:partition`,
+  (`DIGEST:role`, the `PARTITION:` pair, the `PYTHON:` class declaration) lives
+  there, never on `Field`. `Field` owns `FIELD:init`, `FIELD:partition`,
   `alias`, `comment`, `display`, `location` under any key; `PARQUET:field_id`
   is the reserved typed exception.
 - `holder` is the only digest role: a declaration says what a field holds or
@@ -282,11 +395,11 @@ would put a test fixture in the crate's API.
 - Shared and dispatch enums each live in their named root file, re-exported from
   the crate root: `Charset`, `Codec`, `DataTypeId`, `DataTypeKind`,
   `DigestAlgorithm`, `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`,
-  `MediaType`, `MimeType`, `Scheme`, `TimeUnit`, `UnionMode`. `Timezone` is the
-  exception that moved: it is a datatype of its own, so it lives in
-  `types/timezone/` and is re-exported from the crate root like `Scalar`. No
-  local copies, no `enums` module. `Digest`/`Digester` sit beside `DigestAlgorithm`, `Encoder` beside
-  `Codec`; `Scalar` -> `types`, storage variants -> `holder`, record settings ->
+  `MediaType`, `MimeType`, `Scheme`, `TimeUnit`, `UnionMode`. `Timezone` is a
+  datatype of its own, so `timezone.rs` holds it as a type file and the crate
+  root re-exports it like `Scalar`. No local copies, no `enums` module.
+  `Digest`/`Digester` sit beside `DigestAlgorithm`, `Encoder` beside `Codec`;
+  `Scalar` -> `scalar.rs`, the `Holder` variants -> `holder`, record settings ->
   `media`, `FieldPath`/`FieldSegment` -> `expression`, whose grammar already
   writes their steps.
 - `IOMode` = `ReadOnly`, `Overwrite`, `Append`, `Merge`, `Random`; operations
@@ -298,12 +411,41 @@ would put a test fixture in the crate's API.
 
 ## Patterns
 
+### One type, one file
+
+A type lives in `rust/src/<type>.rs`, and that one file holds the whole
+of it in this order: the **datatype** - the `DataType` constructors and
+predicates naming it - then the **field** - its `FieldType` marker and
+`TypedField` alias - then the **scalar** - its value, its `Value` impl and the
+`Scalar` variant that carries it. Its Arrow reading belongs there too: the
+storage it projects to, the extension name it is recognised by, and the cast
+that reads it back. Nothing about a currency is anywhere but `currency.rs`.
+A type too big for one file keeps the file and adds a folder of its own name
+beside it, never a folder under another type: `mime_type.rs` holds the
+`MimeType` value and `mime_type/` its datatype, its registry and its line
+classifier; `media_type.rs` and `media_type/datatype.rs` the same. There is no
+`types/` folder: a type is a root file, and the root is where a caller finds
+it as `yggdryl::<Type>`.
+
+`<type>` is the vocabulary, not the width. Every integer width is one
+`IntegerValue` over one set of rules, so `integer.rs` holds all ten; every
+registered code is its own standard with its own validity, so `country.rs`,
+`currency.rs`, `isin.rs` and the eight beside them are eight more files.
+
+What is shared by several types is a file of its own beside them, never a
+folder under one of them: `code.rs` carries the contract every registered code
+answers, `wkb.rs` the reader three of them need. A file splits into inline
+modules only where the language forces it - a `#[cfg]` cannot gate a loose
+group of items, and a section reading `crate::arrow::{Error, Result}` cannot
+share a scope with one reading `crate::{Error, Result}`.
+
 ### `DataType`, `Field`, `Scalar`
 
 | Concern | Type | Holds |
 | --- | --- | --- |
 | shape | `DataType` | no name, no nullability, no metadata |
-| schema | `Field` = name + `DataType` + nullable + metadata | a non-null Struct `Field` is the row schema |
+| schema | `Field` = one variant per `DataType` shape, each carrying name + nullable + metadata | a non-null `Field::Struct` is the row schema; `Field::new` takes a `DataType` and `Field::dtype()` answers one |
+| descent | `Field::fields`, `get_field_at`, `field_at`, `get_field_by_path` | borrow children out of the variant; never build a `DataType` to reach a child |
 | value | `Scalar` | one variant per physical width |
 | checked value | `DataType::scalar(v)`, `Field::scalar(v)` | the only way a caller value becomes a stored one |
 | narrowed view | `TypedField<K>`, `TypedFieldRef<'_, K>` | a marker validating the variant; parameters stay in the wrapped `Field` |
@@ -324,7 +466,7 @@ Equivalences a change keeps lossless, in both directions:
   value a declaring protocol's `apply_arrow_batch` leaves alone.
 - widths: a family constructor picks the physical width once, and shared logic
   reads across widths with `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
-  `temporal_family`/`temporal_unit`/`temporal_timezone`/`temporal_count`.
+  `as_temporal`/`temporal_unit`/`temporal_timezone`/`temporal_count`.
 
 ### Stack: holder -> media -> arrow
 
@@ -338,7 +480,7 @@ Equivalences a change keeps lossless, in both directions:
 `IOBase: Send + IOMedia`, so every handle answers records; a media wrapper
 implements `overwrite_arrow_reader` and inherits streamed append and merge.
 Wrappers compose over a handle, never inside it - `Coded` (coding),
-`Transcoded` (charset), `Buffered` (holder), `Hashed` (hashing::xxhash), `Counted`
+`Transcoded` (charset), `Buffered` (holder), `Hashed` (xxhash), `Counted`
 (tests) - each forwarding through
 `delegate_iobase!` and overriding only what it changes. Commit cadence belongs to
 `RecordOptions` and the write session in `iobase/transfer.rs`
@@ -431,7 +573,7 @@ timing alone proves nothing:
   allocate by contract.
 - an exact cast returns the caller's own batch, and `Representation::Bits` shares
   the value buffer between two same-width layouts.
-- `holder/local/` is memory-mapped, `Buffered<H>` pins pages instead of copying
+- `local/` is memory-mapped, `Buffered<H>` pins pages instead of copying
   them forward, and shared nesting clones a reference while empty collections
   hold no backing.
 - Python crosses the C Data Interface and PyArrow holders.
@@ -443,8 +585,8 @@ rendering allocate by contract.
 ## Public vocabulary
 
 Names describe ownership and return type; alternate-verb aliases are forbidden.
-Check a name in `.api-inventory.txt` before writing it; edit that file in the
-change that adds or retires one.
+Check a name in `.api-inventory.txt` before writing it; the change that adds or
+retires one regenerates it ([Before you push](#before-you-push)).
 
 | Verb | Contract |
 | --- | --- |
@@ -457,6 +599,8 @@ change that adds or retires one.
 | `set_*` | validated in-place update; failure leaves self unchanged |
 | `with_*` | consuming update; `try_` only when the paired setter can fail |
 | `clear_*` / `remove_*` | clear a category / remove one item |
+| `*Value` | a trait over values; never a type name |
+| `*Wire` | the private serde shadow of a type, where one is needed |
 
 No project-defined plain `to_*`; foreign protocols (`ToString`, JS `toString`)
 keep their spelling. Implement `From`, `TryFrom`, `FromStr`, `AsRef` where
@@ -480,7 +624,7 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   re-exported beside `Scalar`; it only coerces and redirects, byte-like input and
   strings are content rather than paths, and it parses, renders, validates, and
   bounds nothing.
-- `holder::local::Folder` roots `temporary`, `home`, `config`: `home` reads
+- `local::Folder` roots `temporary`, `home`, `config`: `home` reads
   `HOME`, then `USERPROFILE`, failing and naming both when neither is set;
   `config` = `home` + `.config`; `temporary` wraps the platform temporary
   directory. All three construct a handle and create nothing; nothing else
@@ -496,7 +640,7 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
 
 ## Generic scalar
 
-- `types::Scalar` is the single cross-platform scalar: no parallel value tree, no
+- `yggdryl::Scalar` is the single cross-platform scalar: no parallel value tree, no
   retired alias.
 - Variants are spelled as their datatype is: `Int8`..`Int64`, `UInt8`..`UInt64`,
   `Int128`, `UInt128`; `Float16`, `Float32`, `Float64`; `Decimal32`,
@@ -520,11 +664,14 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   records. Shared nesting uses immutable references, empty collections allocate
   no backing, caller input never reaches `unsafe`, `unwrap`, or panic.
 - Rust keeps exact-width variants and constructors, every width a direct
-  `Scalar` variant with no family enum between, and each geospatial reading
-  likewise; `Code` is the one family enum left; shared logic goes through the
+  `Scalar` variant with no family enum between, each geospatial reading and
+  each registered code likewise - a code is `Scalar::Currency`, the way its
+  type is `DataType::Currency`; shared logic goes through the
   cross-width readers `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
-  `temporal_family`/`temporal_unit`/`temporal_timezone`/`temporal_count`, and a
-  family constructor picks the physical width once.
+  `as_temporal`/`temporal_unit`/`temporal_timezone`/`temporal_count`, or
+  narrows to a family value enum - `as_integer`, `as_floating`,
+  `Decimal::from_scalar`, `as_temporal`, `as_code`, `as_geospatial`,
+  `as_nested` - and a family constructor picks the physical width once.
 - A typed view compares, orders, and hashes over `(dtype, value)` - never the
   field's name, nullability, or metadata - so a value is one value whichever
   column holds it, and its `stable_hash` is the value's own. A borrowing view
@@ -628,7 +775,7 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   per item kind; bindings expose native lazy protocols without collecting;
   benchmarks measure time to first item and full drain.
 
-### ZIP (`holder/zip/`)
+### ZIP (`zip/`)
 
 An archive is a file system inside one file, so it supplies the backend roles
 under the names its own index has: `Node` is a prefix of that index, `Leaf` is
@@ -654,7 +801,7 @@ one entry in it, `Path` resolves to whichever is there.
   handle beneath it; the cost model in `docs/holder/backends/zip.md` is stated
   and asserted in those terms.
 
-### Object stores (`holder/object/`, non-default `object` feature)
+### Object stores (`object/`, non-default `object` feature)
 
 One backend, one location/container/leaf trio, three stores: Amazon S3, Google
 Cloud Storage, Azure Blob Storage. Each REST API is spoken directly - SigV4,
@@ -707,7 +854,7 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   entry points infer or wrap input into that pipeline; nothing streamable takes or
   returns `Vec` batches.
 - Record options are the split sections of one `Plan`, stored apart for
-  isolation: `name` (default `types::DEFAULT_ROOT_NAME`) and the declared
+  isolation: `name` (default `media::DEFAULT_ROOT_NAME`) and the declared
   `field` (undeclared = inferred; the plan's `create` section), `filter` (its
   `where`), `select` (its `select`), `merge_by` (its `upsert by`), and the row
   bounds (its `limit`). `plan()` composes them and `set_plan` splits a plan, a
@@ -760,8 +907,8 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   contradictions are typed errors naming both declarations.
   `media::partition::partition_text` is the only partition renderer: partition
   columns move between paths and rows through one typed implementation.
-- A derived column names its own input: `partition:transform` is an expression
-  grammar function over the field paths in `partition:sources`, both stored on
+- A derived column names its own input: `PARTITION:transform` is an expression
+  grammar function over the field paths in `PARTITION:sources`, both stored on
   the derived column in the one shape every `sources` property has. One source
   per transform today; a longer list is stored and refused on apply.
   `apply_arrow_batch` is the one verb every declaring protocol answers - it walks
@@ -778,7 +925,7 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   signed is a bit-preserving view, normalized to unsigned before feed on nested
   reuse.
 - A row digest reads direct Struct children in declaration order.
-  `digest:sources` is the exact input, resolved against its own Struct; `["*"]`
+  `DIGEST:sources` is the exact input, resolved against its own Struct; `["*"]`
   and an absent list both select every field except a holder; `"*"` may not
   travel beside a named path. A holder never feeds itself back; a selected Struct
   holding exactly one direct holder feeds that holder's value instead of being
@@ -800,7 +947,7 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
 ### Iceberg
 
 `docs/media/iceberg/` documents the format surface and its edges; these bind a
-change to `media/iceberg/`.
+change to `iceberg/`.
 
 - A table is a folder reached only through `IOBase`: metadata = core JSON,
   manifests = core Avro, data = core Parquet, and no Iceberg/Avro/catalog
@@ -824,7 +971,8 @@ change to `media/iceberg/`.
 ## Charsets
 
 `docs/charset/` documents the surface; these bind a change to `charset.rs`,
-`charset/`, and every byte that becomes text anywhere else.
+`charset/`, the three charset files `utf8.rs`, `ascii.rs` and `cp1252.rs`, and
+every byte that becomes text anywhere else.
 
 - **Text crosses the boundary once.** A byte payload is decoded at intake -
   by a `Transcoded` handle, by `text::io::Plan`, by the record reader's
@@ -879,75 +1027,107 @@ change to `media/iceberg/`.
   answers, and every charset here is stateless past one - so a byte offset is
   the whole of what `Transcoded` needs to seek. A shift-state encoding would
   have to carry that state into the resume index before it could be added.
-- There is no charset option on the text record reader: `media/text` reads
-  the charset a handle's media type declares, once, where it builds the
+- There is no charset option on the text record reader: the text medium in
+  `text/` reads the charset a handle's media type declares, once, where it builds the
   transport, and a whole resource in one charset is `Transcoded`,
   not a second option on every reader.
 
 ## Strings
 
-`types/string.rs` + `types/string/` own the family; these bind a change to any
-of the five layouts or to what a string declares.
+`string.rs` owns the family, and `utf8.rs`, `ascii.rs` and `cp1252.rs` each
+hold one charset's six leaves beside that charset's codec; these bind a change
+to any of the eighteen leaves or to what a string declares.
 
-- **One datatype, one value, five layouts, one charset each.** `StringLayout`
-  names the layouts, `StringParameters` is a layout beside its charset and its
-  bound, `DataType::String(StringParameters)` is every string the crate has,
-  `DataType::string` is its one constructor and `utf8()`, `large_utf8()`,
-  `utf8_view()`, `ascii()`, `fixed_utf8(n)`, `fixed_ascii(n)` are that
-  constructor picking a layout once. There is no `Utf8`, `Ascii` or
-  `FixedAscii` variant, no redirect, and no second door: a `DataType::String`
-  built by hand can hold a fixed layout with no width, exactly as every other
+- **One datatype, one value, eighteen leaves.** `StringType` is an enum whose
+  leaves are the columns: six shapes - plain, large, view, large view,
+  `Fixed*(u32)`, `Sized*(u32)` - in each of the three charsets that have a
+  datatype, UTF-8, US-ASCII and windows-1252 (`Utf8String` through
+  `SizedCp1252String`). `DataType::String(StringType)` is every string the
+  crate has, `DataType::string` its one constructor and `utf8()`,
+  `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(n)`,
+  `sized_utf8(n)` and the same six for `ascii` and `cp1252` that constructor
+  picking a leaf once. There is no layout beside a charset beside a bound, no
+  `StringLayout` and no parameter struct: the leaf already says all three, so
+  a reader never asks whether the number it carries is a width or a maximum.
+  A leaf built by hand can state a width of zero, exactly as every other
   parameterized variant can hold what its constructor refuses, and `validate`
-  is what catches it before a boundary. `string_parameters` reads back for
-  every string, which is what makes "which charset is this column in" one
-  question. The eight registered codes are not strings: a currency is an
-  identity over ISO 4217 that stores as the text it is, so it is
-  `DataType::Currency`, kind `Code`, answers `is_code` and `code_width`, and
-  never `string_parameters`. `code_width` is a maximum rather than a layout,
-  so `fixed_byte_width` answers `None` for a code.
-- **Three spellings, one layout.** The `string` name is the general one, the
-  `utf8` name is what the same layout is called when its charset is UTF-8 and
-  the `ascii` name when it is US-ASCII, so `large_string`, `large_utf8` and
-  `large_ascii` parse to one thing and a value renders under whichever name its
-  charset earns; every other charset renders under the general name and states
-  itself: `string(windows-1252,32)`. A charset-named spelling takes only a
-  bound - `utf8(32)`, `fixed_ascii(4)` - and a charset beside it is refused.
-  The grammar's fold drops underscores, so `largeutf8` is that spelling too.
-  One number, one reading per layout: `ascii(4)` is a maximum, `fixed_ascii(4)`
-  the width.
+  is what catches it before a boundary. `Charset` stays the text-decoding
+  vocabulary; a charset with no leaf is refused wherever a leaf is asked for
+  (`with_charset`). `string_parameters` reads back for every string, which is
+  what makes "which charset is this column in" one question. The eleven
+  registered codes are not strings: a currency is an identity over ISO 4217
+  that stores as the text it is, so it is `DataType::Currency`, kind `Code`,
+  answers `is_code` and `code_width`, and never `string_parameters`.
+  `code_width` is a maximum rather than a layout, so `fixed_byte_width`
+  answers `None` for a code.
+- **The leaf is the name.** `DataTypeId::as_str` and `Display` are the leaf's
+  canonical name - `utf8`, `large_utf8`, `utf8_view`, `large_utf8_view`,
+  `fixed_utf8(n)`, `sized_utf8(n)`, and the same six under `ascii` and
+  `cp1252` - and `DataTypeId` has one identifier per leaf: the five UTF-8 ones
+  where the five layouts they replaced sat (27-31), the thirteen others
+  appended (74-86), because `as_u8` is a wire contract. The charset-free
+  spellings `string`, `fixed_string`, `string_view`, `large_string`,
+  `large_string_view`, `sized_string` and SQL's `varchar`, `text`, `char(n)`
+  name the UTF-8 leaf of their shape, and they alone take a `(charset)`
+  argument - `string(windows-1252,32)` is `sized_cp1252(32)` - because a
+  charset-named spelling already answered that question: `utf8(windows-1252)`
+  is refused. The grammar's fold drops case, underscores and hyphens, so
+  `largeutf8` and `LARGE-UTF8` are that spelling too. `StringType::from_spelling`
+  (every alias) and `general_spelling` (the charset-free ones) are the one
+  table the grammar and both bindings read, so a spelling is never accepted in
+  a datatype expression and refused under a `layout=` argument.
+- **One number, one leaf.** A stated number is `with_bound`: the width on a
+  `Fixed*` leaf, the maximum on a `Sized*` one, and a plain leaf takes a
+  maximum and answers the sized leaf of its charset, because plain storage is
+  exactly what a bounded column fills - `utf8(32)` is `sized_utf8(32)`,
+  `ascii(4)` is `sized_ascii(4)`, `fixed_ascii(4)` the width. The large and
+  the viewed leaves refuse a number rather than silently becoming something
+  narrower: `large_utf8(64)` is an error. `with_declared_bound` is the other
+  half - a leaf that *is* its number does not stand without one - and
+  `from_declaration(layout, charset, bound)` is the sequence a binding's three
+  arguments run, so a binding decides nothing. The grammar tracks what was
+  *read*, never the placeholder `1` a numbered leaf carries in `ALL`.
 - **`Str` is the string.** `Scalar::String(Str)` holds the characters in the
   crate's compact string - inline to `INLINE_CAPACITY` bytes, static for free,
-  one `Arc<str>` beyond - beside the layout and charset they are stored under
-  and, on the fixed layout, the width. A maximum is the column's rule and never
-  the value's: a cell read out of `utf8(32)` is a `utf8`. Equality, order and
-  hash read the characters alone, so a value is one value whichever column
-  holds it, and `Borrow<str>` is sound for that reason and no other. `Str` is
-  the holder every string-family API answers with - `ascii_value`,
-  `StringEnum` members, `str_from_value` - and `SmolStr` stays the crate's
-  utility string for names, keys and errors.
-- **The bound counts stored bytes, and one number carries both readings**: the
-  exact width on `FixedString`, the maximum on every other layout. Bytes,
-  because that is what the buffer holds and what Arrow's offsets measure; a
-  scalar count would make a bound a walk of the value. `Charset::encoded_len`
-  counts it without building the bytes. Whether those bytes can be written is
-  the write seam's question, not the value door's: a value read back through
-  `transcribe` carries scalars the charset does not assign - that is what
-  recovering damage means - so refusing it here would make the permissive read
-  useless, and the refusal names the scalar where it is written instead.
+  one `Arc<str>` beyond - beside the leaf they are stored under. A maximum is
+  the column's rule and never the value's: `storage()` is what a value in a
+  sized column carries, the plain leaf of its charset, so a cell read out of
+  `sized_utf8(32)` is a `utf8`. Equality, order and hash read the characters
+  alone, so a value is one value whichever column holds it, and `Borrow<str>`
+  is sound for that reason and no other. `Str` is the holder every
+  string-family API answers with - `ascii_value`, `StringEnum` members,
+  `str_from_value` - and `SmolStr` stays the crate's utility string for names,
+  keys and errors.
+- **The bound counts stored bytes**: the exact width on a `Fixed*` leaf, the
+  maximum on a `Sized*` one. Bytes, because that is what the buffer holds and
+  what Arrow's offsets measure; a scalar count would make a bound a walk of
+  the value. `Charset::encoded_len` counts it without building the bytes.
+  Whether those bytes can be written is the write seam's question, not the
+  value door's: a value read back through `transcribe` carries scalars the
+  charset does not assign - that is what recovering damage means - so refusing
+  it here would make the permissive read useless, and the refusal names the
+  scalar where it is written instead.
 - **A value holds UTF-8 and remembers its charset.** Decoding happens at the
-  seam, as everywhere else; what a `Str` keeps is the charset it is *written*
-  in, so it goes back out the way it came without the column being read twice.
-  `as_str` is therefore infallible on every string value there is.
+  seam, as everywhere else; what a `Str` keeps is the leaf it is *written*
+  under, so it goes back out the way it came without the column being read
+  twice. `as_str` is therefore infallible on every string value there is.
 - **Arrow gets the truth about the bytes.** UTF-8 and US-ASCII ride Arrow's
-  string layouts - ASCII bytes are UTF-8 - and every other charset rides the
-  matching *binary* layout, because the bytes are not UTF-8 and an Arrow
-  reader told otherwise reads mojibake and calls it text; the fixed layout
-  rides `FixedSizeBinary` in every charset. `is_text_storage` is the one owner
-  of that split and every writer, reader, digest and cast asks it. What Arrow
-  cannot say - a charset other than UTF-8, a bound, the large view layout -
-  rides the `yggdryl.string` extension document, and only then: plain `utf8`,
-  `large_utf8` and `utf8_view` cross bare. A document over a storage it does
-  not describe is a foreign field wearing our name and imports as its storage.
+  string layouts - ASCII bytes are UTF-8 - and windows-1252 rides the matching
+  *binary* layout, because the bytes are not UTF-8 and an Arrow reader told
+  otherwise reads mojibake and calls it text; the fixed leaves ride
+  `FixedSizeBinary` in every charset. `is_text_storage` is the one owner of
+  that split and every writer, reader, digest and cast asks it. Plain `utf8`,
+  `large_utf8` and `utf8_view` are Arrow's own datatypes and cross bare; every
+  other leaf states something Arrow cannot - a charset, a number, the second
+  view width - and rides the `yggdryl.string` extension document with the leaf
+  written whole beside its charset, `{"layout":"sized_cp1252","charset":"windows-1252","max":32}`,
+  because that document is what a foreign reader inspects and the charset is
+  the one fact Arrow cannot state. A document over a storage it does not
+  describe is a foreign field wearing our name and imports as its storage. The
+  Arrow document, the schema document (`{"type":"string","layout":"sized_cp1252","max":32}`,
+  the charset never written because the leaf says it) and a value's document
+  all still read the pairing they replaced - a shape name beside a `charset`
+  key, a `max` beside any unbounded shape - as the leaf it names.
 - **A code's identity is its extension name, not its storage.** That split
   governs `DataType::String`; a registered code is outside it. A code is
   US-ASCII text held to one width, so it rides Arrow's `Utf8` whatever else
@@ -963,18 +1143,18 @@ of the five layouts or to what a string declares.
   strict it is.** UTF-8 and US-ASCII are validated repertoires - Arrow
   guarantees the first and the second rides Arrow's text storage - so bytes
   that are not what they claim are refused, and a US-ASCII value holds no NUL
-  and no byte above `0x7F`. Every other charset is a declaration that the
-  column holds legacy bytes, and those are transcribed rather than refused:
+  and no byte above `0x7F`. windows-1252 is a declaration that the column
+  holds legacy bytes, and those are transcribed rather than refused:
   `Charset::transcribe` reads an unassigned byte as its ISO 8859-1 scalar.
   The row door, the Arrow cell reader and the cast all call that one function,
   so a batch and a row cannot read bytes differently; a text-storage cell is
   `Str::from_storage`, checked when it was written and not again.
 - **The value door judges US-ASCII and counts everything else.** A value
-  restated under a legacy charset may hold scalars that charset cannot write -
+  restated under windows-1252 may hold scalars that charset cannot write -
   that is what recovering damage means - and the write seam (the Arrow array
   build, the cast) refuses them naming the scalar. A `StringEnum` packs its
-  members into integers through `ascii_packed`, so it is accepted on a fixed
-  US-ASCII string of at most sixteen bytes or a code and refused by name
+  members into integers through `ascii_packed`, so it is accepted on a
+  `fixed_ascii` leaf of at most sixteen bytes or a code and refused by name
   elsewhere. `ascii_packed` pads a value with trailing NUL to that width and
   reads it big-endian: the padding belongs to the packing, never to a column,
   so a code's integers are the same whatever its storage holds. A fixed
@@ -982,19 +1162,20 @@ of the five layouts or to what a string declares.
 
 ## Bytes
 
-`types/bytes/` owns the family the same way `types/string/` owns strings;
-these bind a change to any of the four layouts or to what a byte column
+`bytes.rs` owns the family the same way `string.rs` owns strings;
+these bind a change to any of the six leaves or to what a byte column
 declares.
 
-- **One datatype, one value, four layouts.** `BytesLayout` names Arrow's
-  four, `BytesParameters` is a layout beside its bound,
-  `DataType::Bytes(BytesParameters)` is every byte column the crate has,
+- **One datatype, one value, six leaves.** `BytesType` is an enum whose
+  leaves are the columns - `Binary`, `LargeBinary`, `BinaryView`,
+  `LargeBinaryView`, `FixedBinary(u32)`, `SizedBinary(u32)` -
+  `DataType::Bytes(BytesType)` is every byte column the crate has,
   `DataType::bytes` is its one constructor and `binary()`, `large_binary()`,
-  `binary_view()`, `fixed_size_binary(n)` are that constructor picking a
-  layout once. There is no `Binary`, `LargeBinary`, `BinaryView` or
-  `FixedSizeBinary` variant. `bytes_parameters` reads back for every byte
-  column. A UUID and a geospatial value are bytes with an identity, so they
-  are their own datatypes and answer no `bytes_parameters`, exactly as a
+  `binary_view()`, `large_binary_view()`, `fixed_binary(n)`, `sized_binary(n)`
+  are that constructor picking a leaf once. There is no `BytesLayout` and no
+  parameter struct beside a bound. `bytes_parameters` reads back for every
+  byte column. A UUID and a geospatial value are bytes with an identity, so
+  they are their own datatypes and answer no `bytes_parameters`, exactly as a
   code answers no `string_parameters`. A UUID stays `FixedSizeBinary(16)`
   where a code moved to text, and the asymmetry is the point: `arrow.uuid` is
   the canonical Arrow extension and its storage is not ours to redefine, the
@@ -1003,20 +1184,26 @@ declares.
   is ours, and a code's value *is* ASCII text. Both read into the other
   family through the one cast tier rather than through a renderer of their
   own.
-- **One number, one reading per layout.** `binary(16)` is a maximum of
-  sixteen bytes and `fixed_size_binary(16)` the exact width; bytes are never
-  padded, so a fixed value is exactly its width. `bytes`, `blob`, `bytea`,
-  `varbinary(n)` and `fixed_binary(n)` are accepted spellings and render as
-  the canonical ones.
+- **One number, one leaf.** `fixed_binary(16)` is the exact width and
+  `sized_binary(16)` a maximum of sixteen bytes; neither stands without its
+  number, and the other four refuse one - `binary(16)` is `sized_binary(16)`
+  written short because plain binary is exactly the storage a bounded column
+  fills, while `large_binary(16)` says so rather than silently narrowing.
+  Bytes are never padded, so a fixed value is exactly its width. `bytes`,
+  `blob`, `bytea`, `varbinary(n)` and `fixed_size_binary(n)` are accepted
+  spellings and render as the canonical ones; `BytesType::from_spelling`,
+  `with_bound` and `with_declared_bound` are the one table and the one rule
+  the grammar and both bindings read.
 - **`Bytes` is the byte string.** `Scalar::Bytes(Bytes)` holds the payload
   inline to `INLINE_BYTES` bytes with no heap behind it, static for free, one
-  `Arc<[u8]>` beyond, beside the layout it is stored under and, on the fixed
-  layout, the width. A maximum is the column's rule and never the value's.
-  Equality, order and hash read the payload alone, and `Borrow<[u8]>` is
-  sound for that reason and no other. `Bytes::from_storage` adopts a cell of
-  a column's own storage; `bytes_from_value` is what a value spells as bytes.
-- **Arrow already says the layout.** The storage is the layout, and only a
-  maximum on a variable layout - which no Arrow type can state - rides the
+  `Arc<[u8]>` beyond, beside the leaf it is stored under. A maximum is the
+  column's rule and never the value's: `storage()` is the plain leaf a value
+  in a sized column carries. Equality, order and hash read the payload alone,
+  and `Borrow<[u8]>` is sound for that reason and no other. `Bytes::from_storage`
+  adopts a cell of a column's own storage; `bytes_from_value` is what a value
+  spells as bytes.
+- **Arrow already says the layout.** The storage is the leaf, and only what
+  no Arrow type can state - a maximum, and the second view width - rides the
   `yggdryl.bytes` document; a fixed width is the storage itself. A document
   over a storage it does not describe imports as its storage. Avro and
   Iceberg have no maximum either, so a bounded column crosses them unbounded
@@ -1025,7 +1212,8 @@ declares.
 ## Structured codecs
 
 `docs/media/structured.md` and the JSON, YAML, and TOML scheme pages document the
-surface; these bind a change to `text/`.
+surface; these bind a change to `json/`, `toml/`, `yaml/` and the codec
+machinery they share in `text/`.
 
 - Parse bytes, slices, readers and emit bytes, writers over `Scalar`; string
   conveniences reuse the same parser with no intermediate serialization.
@@ -1111,9 +1299,20 @@ Then the pre-push block of each layer the change actually touched - §3 for
 Python, §4 for Node, §5 for docs - and nothing at all for a layer it did not.
 
 A file that is generated and was not regenerated is the cheapest CI failure to
-prevent and the most common one: `rust/src/charset/tables.rs`, `node/index.js`,
-`node/index.d.ts`, the manifests under `docs/assets/`, and the hand-maintained
-`.api-inventory.txt` / `.api-bindings.txt`, which nothing checks at all.
+prevent and the most common one. Each is regenerated by its own tool once its
+input has settled, in this order, because some read an earlier one: the dump
+and the hash read the dictionary, and the two manifests read the addon and the
+dictionary:
+
+| Generated | Regenerated by | Once |
+| --- | --- | --- |
+| `rust/src/charset/tables.rs` | `python scripts/generate_charset_tables.py` | a charset row changes |
+| `config/fix/`, `provenance.json` and `rust/src/fix/constants.rs` | `python scripts/generate_fix_dictionary.py`, which fetches the FIX standard | a pinned source commit, `StringEnum::COUNTRIES` in `rust/src/string.rs` or the generator changes, the `FIX:` keys it writes included; never a crate field alone, which the generator neither writes nor checks |
+| the crate's own documents under `config/fix/` - the crate's field shard, the fixed row and its two groups | `YGGDRYL_FIX_DUMP_WRITE=1 cargo test --locked -p yggdryl --test fix the_committed_store_carries_the_crate_dump` | a crate field, the fixed row or one of its two groups changes (`rust/src/fix/crated.rs`), or the dictionary is regenerated |
+| the dictionary hash in `rust/tests/fix/dictionary.rs` | the `left` value `cargo test -p yggdryl --test fix the_committed_dictionary_hashes_to_one_pinned_value` reports, pinned in that test with the reason as the newest `It last moved when` sentence of its rustdoc, every earlier one kept; the census counts beside it move in the same edit | the dump is written |
+| `node/index.js`, `node/index.d.ts` | `npm run --prefix node build:debug` | any Node binding or its doc comments change |
+| `docs/assets/fix.json`, `docs/assets/playground.json` | `node scripts/build_docs_fix.js`, `node scripts/build_docs_playground.js` | the dictionary, the crate dump or the addon changes, the addon rebuilt first: `build_docs_fix.js` runs the addon over `config/fix` |
+| `.api-inventory.txt`, `.api-bindings.txt` | by hand, in the same change; the inventories row of the [smoke loop](#smoke-loop) proves it | a public name is added or retired |
 
 ## What CI proves
 
@@ -1155,9 +1354,10 @@ python python/benchmarks/<name>.py                  # boundary benchmarks, relea
 CI compiles the benchmark targets and executes them at smoke corpus; it never
 measures. A Performance table on a page is regenerated by the release run above,
 on the machine that table names, or it is not changed at all.
-`scripts/generate_fix_dictionary.py --check` needs the upstream dictionaries and
-belongs to a FIX data change. `.api-inventory.txt` and `.api-bindings.txt` are
-hand-maintained.
+`scripts/generate_fix_dictionary.py --check` needs the upstream dictionaries, so
+it runs with a regeneration ([Before you push](#before-you-push)) and never in
+CI; `python -m unittest discover -s scripts/tests`, the generator's own suite,
+runs in the change that edits the generator and has no job either.
 
 ## A red run
 
@@ -1175,8 +1375,16 @@ run that has not been read.
 The core settles first (§1). Rules shared by both extensions:
 
 - Reach every stable core domain; a missing binding is documented as Rust-only.
-- Expose only the `Scalar.float`, `decimal`, `date`, `time`, `datetime`,
-  `duration` family factories; exact widths stay private Arrow/transport identity.
+- The type side owns width, unit, scale and zone. `DataType::scalar` and
+  `Field::scalar` already carry all four and reach strictly more than a family
+  factory can - every decimal width including `decimal32` and `decimal64`, every
+  float width, and a bare count read at the unit the column declares. So a
+  caller who needs a width names it on the type, and `Scalar` keeps only the
+  statics expressing something no other door does. This replaces the former
+  rule, which mandated the `Scalar.float`/`decimal`/`date`/`time`/`datetime`/
+  `duration` family factories and kept exact widths private: `DataType("float16")`
+  and `DataType("time32(s)")` were always public, so the width was never private
+  and the factories were a second door onto one verb.
 - Infer or cast once at the boundary, then redirect to the most specific native
   method; duplicate no parser, schema, suffix, codec, scalar, or record logic. A
   value entering a datatype or field crosses `DataType::scalar` or
@@ -1202,7 +1410,7 @@ Python-only:
   and scalar semantics stay native.
 - Public decorator `@scalar` (beside the Python `Scalar` boundary), pure field
   builder `field(value, name=None)`, typed field factories below
-  `yggdryl/fields/`. `@scalar` forwards every stdlib dataclass option, installs
+  `yggdryl/types/`. `@scalar` forwards every stdlib dataclass option, installs
   one cached argument-free `staticmethod into_field()`, rejects a pre-existing
   `into_field` member, leaves every other member name - `field` included - to the
   caller, and reserves no static metadata constant.
@@ -1314,12 +1522,16 @@ section change together. What binds every page:
 
 - Root `mkdocs.yml` is authoritative - strict build, nav, and links change
   together, README stays a short landing page. A family page lives under
-  `docs/<layer>/` for the layer owning the vocabulary, with
-  `docs/<layer>/index.md` as its overview; extension pages document boundaries
-  only. `docs/media/<scheme>/` is one folder per media type - IPC, Parquet,
+  `docs/<theme>/` for the theme owning the vocabulary, with
+  `docs/<theme>/index.md` as its overview. There is no per-language page: a
+  binding fact is documented on the page owning the vocabulary it belongs to,
+  in that page's Python or JavaScript tab, so one operation is described once
+  and every language spelling of it sits beside the others.
+  `docs/media/<scheme>/` is one folder per media type - IPC, Parquet,
   Avro, plain text, JSON, YAML, TOML - each holding `index.md` for the scheme,
   `scalar.md` for rows as native values, and `arrow.md` for rows as Arrow
-  batches; `text/` documents there too, as three of those schemes.
+  batches; `json/`, `yaml/` and `toml/` document there too, as three of those
+  schemes, and `text/` as the plain-text one.
 - Every supported example uses tabs in Rust, Python, JavaScript order, the same
   operation expressed idiomatically; show Rust-only explicitly, never invent a
   binding. Every block is self-contained with an assertion and runs through
@@ -1361,9 +1573,6 @@ python scripts/check_docs_examples.py --lang javascript   # needs the built addo
 
 - Sweep for dead code, duplicated logic, retired symbols, stale docs, Rust-only
   bindings a stable core no longer justifies.
-- `.api-inventory.txt` and `.api-bindings.txt` are hand-maintained and checked
-  by nothing: a change adding or retiring a public name edits them in the same
-  change.
 - Run the §2 local-only checks the change made stale - charset table drift,
   charset interop, and the benchmark behind any number a page now states.
 - Push, then read the run. A branch whose CI has not been read is not handed

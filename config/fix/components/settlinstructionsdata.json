@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settldeliverytype",
-          "fix:tag": "172"
+          "FIX:field": "settldeliverytype",
+          "FIX:tag": "172"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "standinstdbtype",
-          "fix:tag": "169"
+          "FIX:field": "standinstdbtype",
+          "FIX:tag": "169"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "standinstdbname",
-          "fix:tag": "170"
+          "FIX:field": "standinstdbname",
+          "FIX:tag": "170"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "standinstdbid",
-          "fix:tag": "171"
+          "FIX:field": "standinstdbid",
+          "FIX:tag": "171"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nodlvyinst",
-          "fix:tag": "85"
+          "FIX:field": "nodlvyinst",
+          "FIX:tag": "85"
         }
       },
       {
@@ -65,15 +65,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "dlvyinstgrp"
+          "FIX:group": "dlvyinstgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "663706",
     "description": "Required if AllocSettlInstType = 1 or 2",
-    "display": "SettlInstructionsData",
-    "fix:tag": "663706"
+    "display": "SettlInstructionsData"
   }
 }

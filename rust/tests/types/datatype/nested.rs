@@ -1,4 +1,4 @@
-use yggdryl::{DataType, Field, UnionMode};
+use yggdryl::{DataType, Field, StructureType, UnionMode};
 
 #[test]
 fn variant_builder_canonicalizes_to_a_dense_sequential_union() {
@@ -24,7 +24,7 @@ fn variant_builder_canonicalizes_to_a_dense_sequential_union() {
         union.into_json().unwrap()
     );
     assert_eq!(
-        DataType::from_arrow(&variant.clone().into_arrow().unwrap()).unwrap(),
+        DataType::from_arrow_datatype(&variant.clone().into_arrow_datatype().unwrap()).unwrap(),
         variant
     );
 }
@@ -81,7 +81,7 @@ fn deeply_nested_variants_round_trip_without_a_second_logical_type() {
         value
     );
     assert_eq!(
-        DataType::from_arrow(&value.clone().into_arrow().unwrap()).unwrap(),
+        DataType::from_arrow_datatype(&value.clone().into_arrow_datatype().unwrap()).unwrap(),
         value
     );
 }
@@ -110,15 +110,60 @@ fn wide_struct_validation_accepts_unique_names_and_reports_a_late_duplicate() {
     let fields = (0..1_024)
         .map(|index| Field::new(format!("column_{index:04}"), DataType::Int64, false))
         .collect::<Vec<_>>();
-    let dtype = DataType::from_fields(fields.clone()).unwrap();
+    let dtype = DataType::from(StructureType::from_fields(fields.clone()).unwrap());
     assert_eq!(dtype.field_len(), 1_024);
 
     let mut duplicate = fields;
     duplicate.push(Field::new("column_0001", DataType::utf8(), true));
-    let error = DataType::from_fields(duplicate).unwrap_err();
+    let error = StructureType::from_fields(duplicate)
+        .map(DataType::from)
+        .unwrap_err();
     assert!(
         error
             .to_string()
             .contains("duplicate field name \"column_0001\"")
+    );
+}
+
+#[test]
+fn the_nested_family_stands_for_a_sequence_a_mapping_and_a_record() {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use yggdryl::{DataTypeKind, FamilyValue, Map, Mapping, Nested, Record, Scalar, Sequence};
+
+    let sequence = Sequence::new(Arc::from([Scalar::from(1_i64), Scalar::from(2_i64)]));
+    let mapping = Mapping::Map(Map::new(Arc::from([(
+        Scalar::from("k"),
+        Scalar::from(1_i64),
+    )])));
+    let record = Record::new(Arc::new(BTreeMap::from([(
+        "id".into(),
+        Scalar::from(1_i64),
+    )])));
+
+    crate::scalar::assert_family_round_trip(
+        vec![
+            crate::family_leaf!(Nested::Sequence, sequence.clone()),
+            crate::family_leaf!(Nested::Mapping, mapping.clone()),
+            crate::family_leaf!(Nested::Record, record.clone()),
+        ],
+        DataTypeKind::Nested,
+        &Scalar::from(1_i64),
+    );
+
+    // The family answers the datatype the held leaf's children name: a list
+    // of the items, a map of the keys and values, a struct of the fields.
+    assert_eq!(
+        Nested::from(sequence).dtype().unwrap(),
+        DataType::list(DataType::Int64.required_field("item"))
+    );
+    assert_eq!(
+        Nested::from(mapping).dtype().unwrap(),
+        DataType::map_of(DataType::utf8(), DataType::Int64, false).unwrap()
+    );
+    assert_eq!(
+        Nested::from(record).dtype().unwrap(),
+        DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")]).unwrap())
     );
 }

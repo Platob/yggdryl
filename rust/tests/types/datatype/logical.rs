@@ -1,6 +1,7 @@
 //! A row declared in FIX's datatype names is an ordinary row everywhere else.
 
 use arrow_schema::DataType as ArrowDataType;
+use yggdryl::DateTimeType;
 use yggdryl::{DataType, DataTypeId, Field, Scalar, StringEnum, TimeUnit, Timezone};
 
 /// The declaration a FIX-fed writer would hand the schema, in FIX spellings.
@@ -46,10 +47,10 @@ fn a_fix_declared_row_projects_to_the_arrow_types_the_names_resolved() {
     assert_eq!(Field::from_arrow_schema("row", &schema).unwrap(), row);
     assert_eq!(
         row.dtype().get_field_by_path("at").map(Field::dtype),
-        Some(&DataType::DateTime64 {
+        Some(&DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::UTC
-        })
+        }))
     );
     // A row declared in the resolved spellings is the same row.
     let resolved = Field::new(
@@ -68,7 +69,7 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
     // column typed the string.
     let message = r#"{"ccy":"USD","venue":"XCME","px":"101.25","qty":"7",
         "at":"2026-09-04T10:00:00.000000001Z","day":"2026-09-04T00:00:00","seq":9}"#;
-    let value = yggdryl::text::json::from_utf8_with_field(message, &row).unwrap();
+    let value = yggdryl::json::from_utf8_with_field(message, &row).unwrap();
     let columns = value.as_sequence().expect("a canonical row");
 
     assert_eq!(columns[0].id(), DataTypeId::Currency);
@@ -94,7 +95,7 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
 
     // A value that does not fit the resolved datatype is refused by that
     // datatype, never by the name that spelled it.
-    let refused = yggdryl::text::json::from_utf8_with_field(
+    let refused = yggdryl::json::from_utf8_with_field(
         r#"{"ccy":"EURO!","venue":"XCME","px":"1","qty":"1","at":"2026-09-04T10:00:00Z","day":"2026-09-04T00:00:00","seq":1}"#,
         &row,
     )
@@ -114,7 +115,7 @@ fn a_prebuilt_vocabulary_declares_the_codes_a_venue_column_carries() {
     let venue = Field::new("venue", DataType::Mic, false)
         .try_with_string_enum(&venues)
         .unwrap();
-    let recovered = Field::from_arrow(&venue.clone().into_arrow().unwrap()).unwrap();
+    let recovered = Field::from_arrow_field(&venue.clone().into_arrow_field().unwrap()).unwrap();
     assert_eq!(recovered, venue);
     assert_eq!(recovered.string_enum().unwrap().as_ref(), Some(&venues));
 

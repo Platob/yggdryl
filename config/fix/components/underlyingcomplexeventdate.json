@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventstartdate",
-          "fix:tag": "2054"
+          "FIX:field": "underlyingcomplexeventstartdate",
+          "FIX:tag": "2054"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventenddate",
-          "fix:tag": "2055"
+          "FIX:field": "underlyingcomplexeventenddate",
+          "FIX:tag": "2055"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingcomplexeventtimes",
-          "fix:tag": "2056"
+          "FIX:field": "nounderlyingcomplexeventtimes",
+          "FIX:tag": "2056"
         }
       },
       {
@@ -43,14 +43,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingcomplexeventtimes"
+          "FIX:group": "underlyingcomplexeventtimes"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEventDate",
-    "fix:tag": "1062121"
+    "FIX:tag": "1062121",
+    "display": "UnderlyingComplexEventDate"
   }
 }

@@ -3,7 +3,7 @@
 use std::io::{Read, Write};
 use yggdryl::IOBase;
 use yggdryl::Level;
-use yggdryl::coding::gzip::{Gzip, dump, dump_with_level, load, reader, writer, writer_with_level};
+use yggdryl::gzip::{Gzip, dump, dump_with_level, load, reader, writer, writer_with_level};
 use yggdryl::holder::Buffer;
 
 /// Long enough that framing overhead cannot hide the compression.

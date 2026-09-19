@@ -37,20 +37,20 @@ CI runs the rest on the pushed branch: both feature lanes, the 1.85 and 1.94 MSR
 
 | Source | Tests | Docs tab |
 | --- | --- | --- |
-| `rust/src/types/` | `rust/tests/types/` | [Types](types/index.md) |
-| `rust/src/holder/`, `rust/src/iobase*` | `rust/tests/holder/` | [Holder](holder/index.md) |
-| `rust/src/coding/` | `rust/src/coding/tests.rs` | [Coding](coding/index.md) |
-| `rust/src/charset.rs`, `rust/src/charset/` | `rust/src/charset/tests.rs`, `rust/tests/charset/` | [Charset](charset/index.md) |
-| `rust/src/media/` | `rust/src/media/tests.rs`, `rust/tests/interop/` | [Media](media/index.md) |
-| `rust/src/text/` | `rust/tests/text/` | [Structured documents](media/structured.md) |
-| `rust/src/uri/` | `rust/tests/uri/` | [URI](uri/index.md) |
+| `rust/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one root file per type - `string.rs`, `bytes.rs`, `integer.rs`, `decimal.rs` with `int256.rs`, the five temporal files with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs`, `code.rs` with the eleven codes, `mime_type/datatype.rs`, `media_type/datatype.rs` | `rust/tests/types/`, `rust/src/metadata/tests.rs` | [Types](types/index.md) |
+| `rust/src/iobase.rs`, `rust/src/iobase/`, the `rust/src/io*.rs` roles, `rust/src/holder/`, and one root folder per backend: `rust/src/local/`, `fs/`, `zip/`, `object/` | `rust/tests/holder/`, `rust/tests/iobase/`, `rust/src/holder/buffered/tests.rs`, `rust/src/{local,zip}/tests.rs`, `rust/src/object/tests/` | [Holder](holder/index.md) |
+| `rust/src/codec.rs`, `rust/src/coding/`, `rust/src/gzip.rs`, `zlib.rs`, `zstd.rs` | `rust/tests/coding/` | [Coding](coding/index.md) |
+| `rust/src/charset.rs`, `rust/src/charset/`, `rust/src/utf8.rs`, `ascii.rs`, `cp1252.rs` | `rust/tests/charset/`, `rust/src/charset/reader/tests.rs`, `rust/src/utf8/tests.rs`, `rust/tests/interop/charset.rs` | [Charset](charset/index.md) |
+| `rust/src/media_type.rs`, `mime_type.rs`, `rust/src/media/`, and one root folder per medium: `rust/src/ipc/`, `parquet/`, `avro/`, `iceberg/`, `text/` | `rust/tests/media/`, `rust/tests/interop/`, `rust/src/{ipc,parquet,avro,iceberg}/tests.rs`, `rust/src/media/*/tests.rs` | [Media](media/index.md) |
+| `rust/src/json/`, `toml/`, `yaml/` over the codec machinery in `rust/src/text/` | `rust/tests/text/`, `rust/src/toml/wire/tests.rs` | [Structured documents](media/structured.md) |
+| `rust/src/uri/` | `rust/tests/uri/`, `rust/src/uri/pattern/tests.rs` | [URI](uri/index.md) |
 | `rust/src/arrow/` | `rust/tests/arrow/` | [Arrow](arrow/index.md) |
-| `rust/src/expression/` | `rust/src/expression/tests.rs` | [Expression](expression/index.md) |
+| `rust/src/expression/` | `rust/tests/expression/`, `rust/src/expression/eval/tests.rs` | [Expression](expression/index.md) |
 | `rust/src/graph/` | `rust/tests/graph/` | [Graph](graph.md) |
-| `rust/src/hashing/` | `rust/src/hashing/xxhash/tests.rs`, `rust/src/hashing/txhash/tests.rs` | [Hashing](hashing.md) |
-| `rust/src/fix/` | `rust/tests/fix/` | [FIX](fix/index.md) |
+| `rust/src/digest.rs`, `rust/src/hashing/`, `rust/src/xxhash/`, `rust/src/txhash/` | `rust/tests/hashing/`, `rust/src/xxhash/tests.rs`, `rust/src/txhash/tests.rs` | [Hashing](hashing.md) |
+| `rust/src/fix/` | `rust/tests/fix/`, `rust/src/fix/tests.rs` | [FIX](fix/index.md) |
 
-Each shared trait, enum, or value owns one root `rust/src/<name>.rs`; each layer owns one folder. Python and Node mirror the layer names without reimplementing core behavior: `yggdryl.hashing.xxhash` and `yggdryl.hashing.txhash` in Python, `hashing.xxhash` and `hashing.txhash` in JavaScript. Runnable examples live in the documentation, never in an `examples/` directory.
+Each shared trait, enum, value or type owns one root `rust/src/<name>.rs`; each implementation owns a root folder or file of its own name; a parent folder holds only what its implementations share. Python and Node mirror the docs tabs, not the crate's folders, without reimplementing core behavior: `yggdryl.hashing.xxhash` and `yggdryl.hashing.txhash` in Python, `hashing.xxhash` and `hashing.txhash` in JavaScript, both over the root `xxhash/` and `txhash/`. Runnable examples live in the documentation, never in an `examples/` directory.
 
 ## What a change must satisfy
 

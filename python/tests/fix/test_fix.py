@@ -50,17 +50,17 @@ SEED = REPO / "config" / "fix"
 # order from 65003 and the two Map groups. Nothing about the market is here -
 # every market fact is FIX's own field, and the graph traits answer it off
 # those.
-CRATED = 20
+CRATED = 19
 # What ``FixRegistry()`` holds: the crate's own scalar fields, the two seeded
 # standard clocks SendingTime (52) and TransactTime (60), and the two Map
 # groups. ``len`` counts the groups; iteration walks the scalars alone.
-SEEDED = 22
-SEEDED_SCALARS = 20
+SEEDED = 21
+SEEDED_SCALARS = 19
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
 CLOCK_NS = 1_704_190_530_000_000_000
-CLOCK = Scalar.datetime(CLOCK_NS, "ns", "UTC")
+CLOCK = DataType('datetime64(ns,"UTC")').scalar(CLOCK_NS)
 CLOCK_INSTANT = dt.datetime(2024, 1, 2, 10, 15, 30, tzinfo=dt.timezone.utc)
 
 # The crate's own tags the message answers as typed facts.
@@ -70,7 +70,7 @@ CROSSHASHCODE_TAG = 65018
 IDENTIFIERS_TAG = 65020
 PREVUNIX_TAG = 65021
 PREVUUID_TAG = 65022
-CREATUNIX_TAG = 65023
+CREAUNIX_TAG = 65023
 SNAPUNIX_TAG = 65025
 NOFIXENTRIES_TAG = 65027
 CURRUUID_TAG = 65039
@@ -154,13 +154,13 @@ def test_protocol_view_carries_the_typed_fix_vocabulary() -> None:
     assert field.fix.description == "Quantity ordered."
     # Ordinary namespaced text, in the one metadata map: a list is the
     # compact JSON array it is.
-    assert field.metadata["fix:names"] == '["Qty","Quantity"]'
-    assert field.metadata["fix:tags"] == "[1088]"
+    assert field.metadata["FIX:names"] == '["Qty","Quantity"]'
+    assert field.metadata["FIX:tags"] == "[1088]"
     assert field.fix["tag"] == "38"
     # Three, not four: a description is a fact about the column rather than a
     # FIX fact, so it lives on the generic key every catalog reads.
     assert field.metadata["description"] == "Quantity ordered."
-    assert "fix:description" not in field.metadata
+    assert "FIX:description" not in field.metadata
     assert len(field.fix) == 3
 
     # An empty list removes the property; `del` removes any of them.
@@ -210,7 +210,7 @@ def test_a_derivation_crosses_as_canonical_text(seed: FixRegistry) -> None:
 
     field.fix.derivation = "orderqty-cumqty"
     assert field.fix.derivation == "orderqty - cumqty"
-    assert field.metadata["fix:derivation"] == "orderqty - cumqty"
+    assert field.metadata["FIX:derivation"] == "orderqty - cumqty"
 
     with pytest.raises(ValueError):
         field.fix.derivation = "orderqty -"
@@ -227,7 +227,7 @@ def test_a_derivation_crosses_as_canonical_text(seed: FixRegistry) -> None:
 
     field.fix.derivation = None
     assert field.fix.derivation is None
-    assert "fix:derivation" not in field.metadata
+    assert "FIX:derivation" not in field.metadata
 
 
 def test_direction_rules_cross_as_a_list() -> None:
@@ -242,7 +242,7 @@ def test_direction_rules_cross_as_a_list() -> None:
     ]
     field.fix.directions = rules
     assert field.fix.directions == rules
-    assert json.loads(field.metadata["fix:directions"]) == rules
+    assert json.loads(field.metadata["FIX:directions"]) == rules
 
     # A codec compiles the rules of the dictionary it is built over, once,
     # and the line door fills the header's direction from them.
@@ -258,7 +258,7 @@ def test_direction_rules_cross_as_a_list() -> None:
         field.fix.directions = [{"code": "S", "patterns": ["("]}]
     assert field.fix.directions == rules
     field.fix.directions = []
-    assert "fix:directions" not in field.metadata
+    assert "FIX:directions" not in field.metadata
 
 
 def test_tag_and_identifier_keys_refuse_bool_and_narrowing(seed: FixRegistry) -> None:
@@ -283,7 +283,7 @@ def test_id_is_the_tag_under_the_name_and_never_stored() -> None:
     field = _field("Symbol", "utf8", 55)
     assert field.fix.id == _field("symbol", "utf8", 55).fix.id
     assert field.fix.id != _field("Symbol", "utf8", 56).fix.id
-    assert "fix:id" not in field.metadata
+    assert "FIX:id" not in field.metadata
     assert Field("Symbol", "utf8").fix.id is None
 
 
@@ -442,17 +442,16 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert list(fields) == [
         "currunix",
         "msgctxid",
-        "pluginid",
+        "msgpluginid",
         "currhashcode",
         "crosshashcode",
         "identifiers",
         "prevunix",
         "prevuuid",
-        "creatunix",
+        "creaunix",
         "snapunix",
         "sourceurl",
         "nofixentries",
-        "recordedat",
         "msgsessionid",
         "curruuid",
         "crossuuid",
@@ -473,7 +472,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "currunix",
         "currhashcode",
         "crosshashcode",
-        "creatunix",
+        "creaunix",
         "curruuid",
         "crossuuid",
     ]
@@ -481,7 +480,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # The clocks are instants in UTC, to the nanosecond; the identities are
     # what a lake reads as a UUID and a 64-bit integer; the facts a row
     # derives are typed as the thing they hold.
-    for name in ("currunix", "prevunix", "creatunix", "snapunix", "recordedat"):
+    for name in ("currunix", "prevunix", "creaunix", "snapunix"):
         assert fields[name].dtype == DataType('datetime64(ns,"UTC")'), name
     for name in ("curruuid", "crossuuid", "prevuuid"):
         assert fields[name].dtype == DataType("uuid"), name
@@ -573,8 +572,17 @@ def test_registry_insert_update_and_remove_over_fields() -> None:
     assert removed is not None and removed.name == "symbol"
     assert registry.remove(9999) is None
 
+    # `remove` reads an int as a tag, so a field sharing its tag with another
+    # leaves only through the identifier `remove_by_id` reads as one.
+    registry.insert(_field("Held", "utf8", 77, names=["Beside"]))
+    registry.insert(_field("Beside", "utf8", 78, tags=[77]))
+    beside = registry.field_by_name("Beside")
+    assert registry.remove_by_id(beside.fix.id) is not None
+    assert registry.field_by_tag(77).name == "Held"
+    assert registry.remove_by_id(beside.fix.id) is None
+
     # A field with no tag cannot enter at all.
-    with pytest.raises(ValueError, match="fix:tag"):
+    with pytest.raises(ValueError, match="FIX:tag"):
         registry.insert(Field("Untagged", "utf8"))
 
 
@@ -648,7 +656,7 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect(tmp_path: pathlib.Path) 
     assert dictionary.field_by_tag(55).fix.branches == ["bloomberg"]
 
     # A stem or a dialect that carries a comma is refused rather than stored.
-    with pytest.raises(ValueError, match="fix:branches"):
+    with pytest.raises(ValueError, match="FIX:branches"):
         fix_cfb_fields(path, "b,loomberg")
 
 
@@ -837,11 +845,12 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     capture = message.capture()
     assert isinstance(capture, FixCapture)
     # What the line said about its capture, and nothing the reader said: the
-    # object it came out of and the instant it was recorded are the
-    # capture's own columns, on the row.
+    # object it came out of, and whatever else the reader carried, are the
+    # capture's own columns, on the row - and nothing records a capture
+    # clock.
     assert not hasattr(capture, "sourceurl")
     assert not hasattr(capture, "recordedat")
-    assert capture.pluginid is None
+    assert capture.msgpluginid is None
     assert capture.msgctxid is None
     assert capture.msgsessionid is None
 
@@ -849,7 +858,7 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert isinstance(event, MarketEventData)
     # The instant is TransactTime where the message states one.
     assert event.currunix == CLOCK_NS + 1_000_000_000
-    assert event.creatunix == event.currunix
+    assert event.creaunix == event.currunix
     assert event.px.as_py() == 10.5
     assert event.qty.as_py() == 100
     assert event.currency.as_py() == "USD"
@@ -1022,7 +1031,7 @@ def test_a_write_reaches_the_holder_or_the_row_by_the_key_it_resolves(seed: FixR
 
     # A removal answers the value and the other tags still reach theirs.
     count = len(message)
-    assert message.remove(9999) == Scalar("custom")
+    assert message.remove(9999) == Scalar.from_("custom")
     assert len(message) == count - 1
     assert message.remove("nosuchfield") is None
     assert message.by_tag(11).as_py() == "A1"
@@ -1250,7 +1259,7 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     assert first.header().sendingtime == CLOCK_NS
     assert not first.header().stated_sendingtime
     assert first.currunix == CLOCK_NS
-    assert first.event().creatunix == CLOCK_NS
+    assert first.event().creaunix == CLOCK_NS
     # A settled clock is not the message's own, so the wire does not state it.
     assert first.into_bytes(ord("|")) == wire
 
@@ -1261,22 +1270,22 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
             b"8=FIX.4.4|35=0|52=19700101-00:00:02.123456789|60=19700101-00:00:03.987654321|10=0|"
         )
     )
-    assert stated.by_tag(52) == Scalar.datetime(2_123_456_789, "ns", "UTC")
+    assert stated.by_tag(52) == DataType('datetime64(ns,"UTC")').scalar(2_123_456_789)
     assert stated.header().sendingtime == 2_123_456_789
     assert stated.header().stated_sendingtime
     assert stated.currunix == 3_987_654_321
-    assert stated.event().creatunix == 3_987_654_321
+    assert stated.event().creaunix == 3_987_654_321
     # `OrigSendingTime(122)` is when a resent message came into being, and a
     # TransactTime stating only a day names no instant, so the sending clock
     # stands in. Both are read off the dictionary's own fields.
     dictionary = _fixed(seed, exclude_msgtypes=[])
     resent = next(dictionary.parse_line(b"8=FIX.4.4|35=0|122=19700101-00:00:01|10=0|"))
-    assert resent.event().creatunix == 1_000_000_000
+    assert resent.event().creaunix == 1_000_000_000
     day = next(dictionary.parse_line(b"8=FIX.4.4|35=D|11=A|60=20260814|10=0|"))
     assert day.currunix == CLOCK_NS
 
     # The pin is exact: another unit, a naive clock or text is refused.
-    for refused in (Scalar.datetime(0, "us", "UTC"), Scalar.datetime(0, "ns"), "1970-01-01T00:00:00Z"):
+    for refused in (DataType('datetime64(us,"UTC")').scalar(0), DataType("datetime64(ns)").scalar(0), "1970-01-01T00:00:00Z"):
         with pytest.raises(ValueError, match="default_sending_time"):
             FixCodec(registry, default_sending_time=refused)
 
@@ -1381,7 +1390,7 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
         assert later.event().prevunix == earlier.currunix
         assert earlier.curruuid in later.parentuuids
     # The lifecycle's own creation instant is carried forward.
-    assert {held.event().creatunix for held in walked} == {walked[0].event().creatunix}
+    assert {held.event().creaunix for held in walked} == {walked[0].event().creaunix}
     # The state moves with the messages.
     assert [held.state.as_py() for held in walked] == ["00UNKNOWN", "20NEW", "40PARTFILL"]
 
@@ -1451,7 +1460,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     # each falls in is the core's to order.
     assert {child.name for child in schema if not child.nullable} == {
         "currunix",
-        "creatunix",
+        "creaunix",
         "currhashcode",
         "crosshashcode",
         "curruuid",
@@ -1477,7 +1486,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert row[schema.index_of("msgtype")] == "D"
     assert row[schema.index_of("clordid")] == "A"
     assert row[schema.index_of("currunix")] == CLOCK_INSTANT
-    assert row[schema.index_of("creatunix")] == CLOCK_INSTANT
+    assert row[schema.index_of("creaunix")] == CLOCK_INSTANT
     assert row[schema.index_of("sendingtime")] == CLOCK_INSTANT
     assert row[schema.index_of("crosscode")] == "A"
     assert row[schema.index_of("currhashcode")] == message.currhashcode
@@ -1609,22 +1618,22 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     ]
 
 
-def test_a_rows_pluginid_fills_its_field_and_selects_nothing(seed: FixRegistry) -> None:
-    """A row's `pluginid` fills the capture's own fact; one namespace."""
+def test_a_rows_msgpluginid_fills_its_field_and_selects_nothing(seed: FixRegistry) -> None:
+    """A row's `msgpluginid` fills the capture's own fact; one namespace."""
     seed.insert(_field("VenueTag", "utf8", 5001, branches=["venue"]))
     codec = _fixed(seed)
     body = b"MSGTYPE=D|CLORDID=A|VENUETAG=dark"
     spellings = ["venue", "OMS_X1_TradeCapture", None]
     source = pa.table(
         {
-            "pluginid": pa.array(spellings, pa.utf8()),
+            "msgpluginid": pa.array(spellings, pa.utf8()),
             "body": pa.array([body] * len(spellings), pa.binary()),
         }
     )
     parsed = codec.parse_text_arrow_reader(source).read_all()
     assert parsed.schema.names[0] == "body"
-    assert parsed.schema.names.count("pluginid") == 1
-    assert parsed.column("pluginid").to_pylist() == spellings
+    assert parsed.schema.names.count("msgpluginid") == 1
+    assert parsed.column("msgpluginid").to_pylist() == spellings
     # The plugin selects nothing: the venue's key maps to its field on every
     # row, so no arrival is left unresolved.
     for row in parsed.column("fixentries").to_pylist():
@@ -1632,11 +1641,11 @@ def test_a_rows_pluginid_fills_its_field_and_selects_nothing(seed: FixRegistry) 
 
     # One line read alone answers exactly what the batch did, and the plugin
     # is a fact about the capture rather than an entry.
-    lined = _fixed(seed, capture_names=["pluginid"])
+    lined = _fixed(seed, capture_names=["msgpluginid"])
     for spelled in spellings:
         message = next(lined.parse_text_line(TextLine(0, body, [spelled])))
         assert message.by_tag(5001).as_py() == "dark", spelled
-        assert message.capture().pluginid == spelled, spelled
+        assert message.capture().msgpluginid == spelled, spelled
         assert all(tag != 65009 for tag, _, _, _ in message.entries()), spelled
 
     # A stated `msgdirection` column is the row's direction, read once and
@@ -1644,7 +1653,7 @@ def test_a_rows_pluginid_fills_its_field_and_selects_nothing(seed: FixRegistry) 
     # The second row is a bridge frame stating no type, which the default
     # refuses, and this case is about the direction column.
     spoken = (
-        _fixed(seed, capture_names=["pluginid"], exclude_msgtypes=[])
+        _fixed(seed, capture_names=["msgpluginid"], exclude_msgtypes=[])
         .parse_text_arrow_reader(
             pa.table(
                 {

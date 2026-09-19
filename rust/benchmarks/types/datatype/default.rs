@@ -1,10 +1,10 @@
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::{DataType, Field, Scheme};
+use yggdryl::{DataType, Field, Scheme, StructureType};
 
 pub(crate) fn default_and_compatibility_benchmarks(criterion: &mut Criterion) {
-    let nested = DataType::from_fields([
+    let nested = StructureType::from_fields([
         Field::new("id", DataType::Int64, false),
         Field::new("label", DataType::utf8(), true),
         Field::new(
@@ -13,6 +13,7 @@ pub(crate) fn default_and_compatibility_benchmarks(criterion: &mut Criterion) {
             false,
         ),
     ])
+    .map(DataType::from)
     .unwrap();
     let fixed =
         DataType::fixed_size_list(Field::new("item", DataType::Int64, false), 1_024).unwrap();
@@ -29,7 +30,7 @@ pub(crate) fn default_and_compatibility_benchmarks(criterion: &mut Criterion) {
     });
     defaults.finish();
 
-    let arrow_wide = DataType::from_fields((0..1_024).map(|index| {
+    let arrow_wide = StructureType::from_fields((0..1_024).map(|index| {
         Field::new(
             format!("column_{index:04}"),
             if index == 1_023 {
@@ -40,10 +41,12 @@ pub(crate) fn default_and_compatibility_benchmarks(criterion: &mut Criterion) {
             false,
         )
     }))
+    .map(DataType::from)
     .unwrap();
-    let spark_wide = DataType::from_fields(
+    let spark_wide = StructureType::from_fields(
         (0..1_024).map(|index| Field::new(format!("column_{index:04}"), DataType::Int64, false)),
     )
+    .map(DataType::from)
     .unwrap();
     let mut compatibility = criterion.benchmark_group("datatype_compatibility");
     compatibility.bench_function("arrow_noop_wide_struct", |bencher| {

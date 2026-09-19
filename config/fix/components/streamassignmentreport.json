@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "streamasgnrptid",
-          "fix:tag": "1501"
+          "FIX:field": "streamasgnrptid",
+          "FIX:tag": "1501"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamasgnreqtype",
-          "fix:tag": "1498"
+          "FIX:field": "streamasgnreqtype",
+          "FIX:tag": "1498"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamasgnreqid",
-          "fix:tag": "1497"
+          "FIX:field": "streamasgnreqid",
+          "FIX:tag": "1497"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noasgnreqs",
-          "fix:tag": "1499"
+          "FIX:field": "noasgnreqs",
+          "FIX:tag": "1499"
         }
       },
       {
@@ -64,7 +64,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "strmasgnrptgrp"
+          "FIX:group": "strmasgnrptgrp"
         }
       },
       {
@@ -74,16 +74,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "CD",
+    "FIX:tag": "917016",
     "description": "MsgType = CD",
-    "display": "StreamAssignmentReport",
-    "fix:msgtype": "CD",
-    "fix:tag": "917016"
+    "display": "StreamAssignmentReport"
   }
 }

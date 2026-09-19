@@ -11,7 +11,7 @@ fn round_trip(dtype: DataType, value: Scalar) -> Scalar {
 
 mod widths {
     use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
-    use yggdryl::types::{BytesLayout, BytesParameters};
+    use yggdryl::BytesType;
     use yggdryl::{DataTypeId, i256};
 
     #[test]
@@ -74,7 +74,7 @@ mod widths {
             DataType::binary(),
             DataType::large_binary(),
             DataType::binary_view(),
-            DataType::fixed_size_binary(6).unwrap(),
+            DataType::fixed_binary(6).unwrap(),
         ] {
             let decoded = round_trip(column.clone(), payload.clone());
             assert_eq!(decoded, payload);
@@ -90,19 +90,21 @@ mod widths {
 
     #[test]
     fn a_maximum_is_the_columns_rule_and_never_the_cells() {
-        let column = DataType::bytes(
-            BytesParameters::new(BytesLayout::Binary)
-                .try_with_bound(8)
-                .unwrap(),
-        )
-        .unwrap();
+        let column = DataType::bytes(BytesType::SizedBinary(8)).unwrap();
         let decoded = round_trip(column, Scalar::from(b"AAPL".as_slice()));
         assert_eq!(decoded.dtype().unwrap(), DataType::binary());
     }
 
     #[test]
+    fn a_text_maximum_is_the_columns_rule_and_never_the_cells() {
+        let column = DataType::sized_cp1252(8).unwrap();
+        let decoded = round_trip(column, Scalar::from("café"));
+        assert_eq!(decoded.dtype().unwrap(), DataType::cp1252());
+    }
+
+    #[test]
     fn a_fixed_width_takes_exactly_its_width() {
-        let field = Field::new("key", DataType::fixed_size_binary(6).unwrap(), true);
+        let field = Field::new("key", DataType::fixed_binary(6).unwrap(), true);
         assert!(scalar_array(&field, &Scalar::from(b"AAPL".as_slice())).is_err());
     }
 
@@ -124,16 +126,25 @@ mod widths {
                 Scalar::from(125),
                 DataTypeId::Decimal128,
             ),
-            (DataType::utf8(), Scalar::from("value"), DataTypeId::String),
+            (
+                DataType::utf8(),
+                Scalar::from("value"),
+                DataTypeId::Utf8String,
+            ),
             (
                 DataType::large_utf8(),
                 Scalar::from("value"),
-                DataTypeId::LargeString,
+                DataTypeId::LargeUtf8String,
             ),
             (
                 DataType::utf8_view(),
                 Scalar::from("value"),
-                DataTypeId::StringView,
+                DataTypeId::Utf8StringView,
+            ),
+            (
+                DataType::large_utf8_view(),
+                Scalar::from("value"),
+                DataTypeId::LargeUtf8StringView,
             ),
             (
                 DataType::binary(),
@@ -141,9 +152,9 @@ mod widths {
                 DataTypeId::Binary,
             ),
             (
-                DataType::fixed_size_binary(5).unwrap(),
+                DataType::fixed_binary(5).unwrap(),
                 Scalar::from(b"value".as_slice()),
-                DataTypeId::FixedSizeBinary,
+                DataTypeId::FixedBinary,
             ),
             (
                 DataType::large_binary(),
@@ -155,11 +166,25 @@ mod widths {
                 Scalar::from(b"value".as_slice()),
                 DataTypeId::BinaryView,
             ),
-            (DataType::ascii(), Scalar::from("FIX"), DataTypeId::String),
+            (
+                DataType::ascii(),
+                Scalar::from("FIX"),
+                DataTypeId::AsciiString,
+            ),
             (
                 DataType::fixed_ascii(4).unwrap(),
                 Scalar::from("FIX"),
-                DataTypeId::FixedString,
+                DataTypeId::FixedAsciiString,
+            ),
+            (
+                DataType::cp1252(),
+                Scalar::from("café"),
+                DataTypeId::Cp1252String,
+            ),
+            (
+                DataType::fixed_cp1252(4).unwrap(),
+                Scalar::from("café"),
+                DataTypeId::FixedCp1252String,
             ),
             (DataType::Country, Scalar::from("US"), DataTypeId::Country),
             (
@@ -170,17 +195,17 @@ mod widths {
             (DataType::Mic, Scalar::from("XNAS"), DataTypeId::Mic),
             (DataType::Cfi, Scalar::from("ESXXXX"), DataTypeId::Cfi),
             (
-                DataType::Interval(TimeUnit::YearMonth),
+                DataType::interval(TimeUnit::YearMonth).unwrap(),
                 Scalar::from(15),
                 DataTypeId::Interval,
             ),
             (
-                DataType::Interval(TimeUnit::DayTime),
+                DataType::interval(TimeUnit::DayTime).unwrap(),
                 Scalar::from_sequence([Scalar::from(2), Scalar::from(3)]),
                 DataTypeId::Interval,
             ),
             (
-                DataType::Interval(TimeUnit::MonthDayNano),
+                DataType::interval(TimeUnit::MonthDayNano).unwrap(),
                 Scalar::from_sequence([Scalar::from(1), Scalar::from(2), Scalar::from(3)]),
                 DataTypeId::Interval,
             ),
@@ -218,6 +243,8 @@ mod widths {
 }
 
 mod bulk {
+
+    use yggdryl::StructureType;
     use yggdryl::{DataType, Field, Scalar};
 
     #[test]
@@ -233,10 +260,11 @@ mod bulk {
 
     #[test]
     fn named_records_build_one_schema_ordered_record_batch() {
-        let root = DataType::from_fields([
+        let root = StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("venue"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
         let rows = Scalar::from_sequence([
@@ -260,7 +288,8 @@ mod bulk {
         let field = Field::new("id", DataType::Int64, false);
         assert!(yggdryl::arrow::array_from_value(&field, &Scalar::from(1)).is_err());
 
-        let root = DataType::from_fields([field])
+        let root = StructureType::from_fields([field])
+            .map(DataType::from)
             .unwrap()
             .required_field("row");
         assert!(yggdryl::arrow::batch_from_value(&root, &Scalar::from(1)).is_err());
@@ -270,6 +299,7 @@ mod bulk {
 mod restating {
     use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
     use yggdryl::Timezone;
+    use yggdryl::{DateTimeType, DurationType};
 
     #[test]
     fn a_decimal_is_written_at_the_scale_its_column_declares() {
@@ -294,10 +324,10 @@ mod restating {
 
     #[test]
     fn a_temporal_is_written_at_the_unit_its_column_declares() {
-        let micros = DataType::DateTime64 {
+        let micros = DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::NAIVE,
-        };
+        });
         let at =
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, yggdryl::Timezone::NAIVE).unwrap();
 
@@ -311,17 +341,17 @@ mod restating {
             .unwrap()
         );
         assert_eq!(
-            round_trip(DataType::Date32, Scalar::date32(19_723)),
+            round_trip(DataType::date32(), Scalar::date32(19_723)),
             Scalar::date32(19_723)
         );
         // A Date64 spells its day in milliseconds; the day is what reads back.
         assert_eq!(
-            round_trip(DataType::Date64, Scalar::date32(2)),
+            round_trip(DataType::date64(), Scalar::date32(2)),
             Scalar::date64(172_800_000)
         );
         assert_eq!(
             round_trip(
-                DataType::Duration64(TimeUnit::Millisecond),
+                DataType::Duration(DurationType::Duration64(TimeUnit::Millisecond)),
                 Scalar::duration64(90, TimeUnit::Second).unwrap()
             ),
             Scalar::duration64(90_000, TimeUnit::Millisecond).unwrap()
@@ -342,10 +372,10 @@ mod restating {
         // Coarsening that would drop a digit is refused, naming the kind.
         let seconds = Field::new(
             "at",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            },
+            }),
             true,
         );
         let error = scalar_array(
@@ -359,7 +389,11 @@ mod restating {
 
     #[test]
     fn duration32_checks_its_logical_width_on_both_arrow_directions() {
-        let field = Field::new("elapsed", DataType::Duration32(TimeUnit::Second), false);
+        let field = Field::new(
+            "elapsed",
+            DataType::Duration(DurationType::Duration32(TimeUnit::Second)),
+            false,
+        );
         let maximum = Scalar::duration32(i32::MAX, TimeUnit::Second).unwrap();
         assert_eq!(round_trip(field.dtype().clone(), maximum.clone()), maximum);
 

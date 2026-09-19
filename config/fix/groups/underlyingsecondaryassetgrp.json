@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingsecondaryasset"
+        "FIX:component": "underlyingsecondaryasset"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingsecondaryasset",
+    "FIX:counter": "2080",
+    "FIX:tag": "765122",
     "description": "Required if NoUnderlyingSecondaryAssetClasses(2080) > 0.",
-    "display": "UnderlyingSecondaryAssetGrp",
-    "fix:component": "underlyingsecondaryasset",
-    "fix:counter": "2080",
-    "fix:tag": "765122"
+    "display": "UnderlyingSecondaryAssetGrp"
   }
 }

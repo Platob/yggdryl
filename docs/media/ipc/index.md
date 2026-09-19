@@ -1,6 +1,6 @@
 # Arrow IPC
 
-`yggdryl::media::ipc` reads and writes Arrow IPC streams over any byte handle.
+`yggdryl::ipc` reads and writes Arrow IPC streams over any byte handle.
 
 ## Contract
 
@@ -15,7 +15,7 @@
 | Cached | `open` caches schema and dimensions until `close`; writes and every `Ipc` builder drop the cache |
 | Format settings | none beyond the shared [`IORecordOptions`](../options.md) fields |
 | Errors | bytes that are not a stream fail `read_field` and `read_batch_reader` at once |
-| Bindings | Rust: free functions and `Ipc<H>`; Python: `yggdryl.media.Ipc`, the class an `.arrows` handle answers, with `pyarrow.RecordBatchReader` over Arrow C Stream; JavaScript: `IOBase` with Arrow JS over the copied [IPC boundary](../../extensions/javascript.md) |
+| Bindings | Rust: free functions and `Ipc<H>`; Python: `yggdryl.media.Ipc`, the class an `.arrows` handle answers, with `pyarrow.RecordBatchReader` over Arrow C Stream; JavaScript: `IOBase` with Arrow JS over the copied IPC bytes |
 
 ## Surfaces
 
@@ -37,9 +37,9 @@ A name that says Arrow IPC is the whole configuration: the stream carries its ow
     use yggdryl::holder::Holder;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
-    let field = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let field = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let schema = field.clone().into_arrow_schema()?;
     let batch = RecordBatch::try_new(
@@ -102,12 +102,12 @@ use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch};
 use yggdryl::arrow;
-use yggdryl::{IOBase, IOMedia};
+use yggdryl::{IOBase, IOMedia, StructureType};
 use yggdryl::holder::Buffer;
-use yggdryl::media::ipc::Ipc;
+use yggdryl::ipc::Ipc;
 use yggdryl::{DataType, Url};
 
-let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
 let arrow_schema = schema.clone().into_arrow_schema()?;
 let batch = RecordBatch::try_new(
     Arc::clone(&arrow_schema),
@@ -151,10 +151,10 @@ The encoding applies the content coding the name declares on write and strips it
     use yggdryl::arrow;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::media::ipc::Ipc;
-    use yggdryl::{DataType, Level, Url};
+    use yggdryl::ipc::Ipc;
+    use yggdryl::{DataType, Level, StructureType, Url};
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
     let arrow_schema = schema.clone().into_arrow_schema()?;
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
@@ -271,12 +271,12 @@ A location that holds nothing yields nothing, the laziness rule [Bytes](../../ho
     ```rust
     use arrow_array::{RecordBatch, RecordBatchReader};
     use yggdryl::arrow;
-    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::{IOBase, IOMedia, StructureType};
     use yggdryl::holder::Buffer;
-    use yggdryl::media::ipc::{self, Ipc, IpcOptions};
+    use yggdryl::ipc::{self, Ipc, IpcOptions};
     use yggdryl::DataType;
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
 
     // A resource that does not exist yet holds no batches; it is not a parse failure.
     let missing = Ipc::new(Buffer::new()).with_field(schema.clone());
@@ -401,7 +401,7 @@ A location that holds nothing yields nothing, the laziness rule [Bytes](../../ho
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::ipc::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib ipc::tests
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_dimensions/ipc
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_stateful/ipc
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_record

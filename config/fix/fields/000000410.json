@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41000",
       "description": "Specifies the applicable currency when ComplexEventCreditEventValue(40999) is an amount. Uses ISO 4217 currency codes.",
-      "display": "ComplexEventCreditEventCurrency",
-      "fix:tag": "41000"
+      "display": "ComplexEventCreditEventCurrency"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41001",
       "description": "Time unit multiplier for complex credit events.",
-      "display": "ComplexEventCreditEventPeriod",
-      "fix:tag": "41001"
+      "display": "ComplexEventCreditEventPeriod"
     }
   },
   {
@@ -30,9 +30,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with complex credit events.",
-      "display": "ComplexEventCreditEventUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -54,7 +52,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41002"
+      "FIX:tag": "41002",
+      "description": "Time unit associated with complex credit events.",
+      "display": "ComplexEventCreditEventUnit"
     }
   },
   {
@@ -64,9 +64,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type for the complex credit events.",
-      "display": "ComplexEventCreditEventDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -98,7 +96,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "41003"
+      "FIX:tag": "41003",
+      "description": "Specifies the day type for the complex credit events.",
+      "display": "ComplexEventCreditEventDayType"
     }
   },
   {
@@ -108,9 +108,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41004",
       "description": "Identifies the source of rate information used for credit events. See https://fixtrading.org/packages/credit-event-rate-source for code list of applicable sources.",
-      "display": "ComplexEventCreditEventRateSource",
-      "fix:tag": "41004"
+      "display": "ComplexEventCreditEventRateSource"
     }
   },
   {
@@ -120,9 +120,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41005",
       "description": "The number of qualifiers in the repeating group.",
-      "display": "NoComplexEventCreditEventQualifiers",
-      "fix:tag": "41005"
+      "display": "NoComplexEventCreditEventQualifiers"
     }
   },
   {
@@ -132,9 +132,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies a complex event qualifier. Used to further qualify ComplexEventCreditEventType(40998).",
-      "display": "ComplexEventCreditEventQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "H",
           "name": "RestructuringMultipleHoldingObligations",
@@ -151,7 +149,9 @@
           "doc": "Floating rate interest shortfall"
         }
       ],
-      "fix:tag": "41006"
+      "FIX:tag": "41006",
+      "description": "Specifies a complex event qualifier. Used to further qualify ComplexEventCreditEventType(40998).",
+      "display": "ComplexEventCreditEventQualifier"
     }
   },
   {
@@ -161,9 +161,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41007",
       "description": "The number of entries in the date-time repeating group.",
-      "display": "NoComplexEventPeriodDateTimes",
-      "fix:tag": "41007"
+      "display": "NoComplexEventPeriodDateTimes"
     }
   },
   {
@@ -174,9 +174,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41008",
       "description": "The averaging date for an Asian option.",
-      "display": "ComplexEventPeriodDate",
-      "fix:tag": "41008"
+      "display": "ComplexEventPeriodDate"
     }
   },
   {
@@ -187,9 +187,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41009",
       "description": "The averaging time for an Asian option.",
-      "display": "ComplexEventPeriodTime",
-      "fix:tag": "41009"
+      "display": "ComplexEventPeriodTime"
     }
   },
   {
@@ -199,9 +199,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41010",
       "description": "The number of periods in the repeating group.",
-      "display": "NoComplexEventPeriods",
-      "fix:tag": "41010"
+      "display": "NoComplexEventPeriods"
     }
   },
   {
@@ -211,9 +211,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the period type.",
-      "display": "ComplexEventPeriodType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "AsianOut",
@@ -245,7 +243,9 @@
           "doc": "Knock In"
         }
       ],
-      "fix:tag": "41011"
+      "FIX:tag": "41011",
+      "description": "Specifies the period type.",
+      "display": "ComplexEventPeriodType"
     }
   },
   {
@@ -255,9 +255,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41012",
       "description": "The business center used to determine dates and times in the schedule or date-time group. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "ComplexEventBusinessCenter",
-      "fix:tag": "41012"
+      "display": "ComplexEventBusinessCenter"
     }
   },
   {
@@ -267,9 +267,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41013",
       "description": "The number of rate sources in the repeating group.",
-      "display": "NoComplexEventRateSources",
-      "fix:tag": "41013"
+      "display": "NoComplexEventRateSources"
     }
   },
   {
@@ -279,9 +279,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source of rate information.",
-      "display": "ComplexEventRateSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bloomberg",
@@ -308,7 +306,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "41014"
+      "FIX:tag": "41014",
+      "description": "Identifies the source of rate information.",
+      "display": "ComplexEventRateSource"
     }
   },
   {
@@ -318,9 +318,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether the rate source specified is a primary or secondary source.",
-      "display": "ComplexEventRateSourceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Primary",
@@ -332,7 +330,9 @@
           "doc": "Secondary"
         }
       ],
-      "fix:tag": "41015"
+      "FIX:tag": "41015",
+      "description": "Indicates whether the rate source specified is a primary or secondary source.",
+      "display": "ComplexEventRateSourceType"
     }
   },
   {
@@ -342,9 +342,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41016",
       "description": "Identifies the reference page from the rate source. For FX, the reference page to the spot rate is to be used for the reference FX spot rate. When ComplexEventRateSource(41014) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option.",
-      "display": "ComplexEventReferencePage",
-      "fix:tag": "41016"
+      "display": "ComplexEventReferencePage"
     }
   },
   {
@@ -354,9 +354,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41017",
       "description": "Identifies the reference page heading from the rate source.",
-      "display": "ComplexEventReferencePageHeading",
-      "fix:tag": "41017"
+      "display": "ComplexEventReferencePageHeading"
     }
   },
   {
@@ -366,9 +366,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41018",
       "description": "The number of business centers in the repeating group.",
-      "display": "NoComplexEventDateBusinessCenters",
-      "fix:tag": "41018"
+      "display": "NoComplexEventDateBusinessCenters"
     }
   },
   {
@@ -378,9 +378,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41019",
       "description": "The business center calendar used to adjust the complex event date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "ComplexEventDateBusinessCenter",
-      "fix:tag": "41019"
+      "display": "ComplexEventDateBusinessCenter"
     }
   },
   {
@@ -391,9 +391,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41020",
       "description": "The unadjusted complex event date.",
-      "display": "ComplexEventDateUnadjusted",
-      "fix:tag": "41020"
+      "display": "ComplexEventDateUnadjusted"
     }
   },
   {
@@ -403,9 +403,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41021",
       "description": "Specifies the anchor date when the complex event date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "ComplexEventDateRelativeTo",
-      "fix:tag": "41021"
+      "display": "ComplexEventDateRelativeTo"
     }
   },
   {
@@ -415,9 +415,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41022",
       "description": "Time unit multiplier for the relative date offset.",
-      "display": "ComplexEventDateOffsetPeriod",
-      "fix:tag": "41022"
+      "display": "ComplexEventDateOffsetPeriod"
     }
   },
   {
@@ -427,9 +427,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative date offset.",
-      "display": "ComplexEventDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -451,7 +449,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41023"
+      "FIX:tag": "41023",
+      "description": "Time unit associated with the relative date offset.",
+      "display": "ComplexEventDateOffsetUnit"
     }
   },
   {
@@ -461,9 +461,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative date offset.",
-      "display": "ComplexEventDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -495,7 +493,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "41024"
+      "FIX:tag": "41024",
+      "description": "Specifies the day type of the relative date offset.",
+      "display": "ComplexEventDateOffsetDayType"
     }
   },
   {
@@ -505,9 +505,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the complex event date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "ComplexEventDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -549,7 +547,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "41025"
+      "FIX:tag": "41025",
+      "description": "The business day convention used to adjust the complex event date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "ComplexEventDateBusinessDayConvention"
     }
   },
   {
@@ -560,9 +560,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41026",
       "description": "The adjusted complex event date.",
-      "display": "ComplexEventDateAdjusted",
-      "fix:tag": "41026"
+      "display": "ComplexEventDateAdjusted"
     }
   },
   {
@@ -573,9 +573,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41027",
       "description": "The local market fixing time.",
-      "display": "ComplexEventFixingTime",
-      "fix:tag": "41027"
+      "display": "ComplexEventFixingTime"
     }
   },
   {
@@ -585,9 +585,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41028",
       "description": "The business center calendar used to determine the actual fixing times. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "ComplexEventFixingTimeBusinessCenter",
-      "fix:tag": "41028"
+      "display": "ComplexEventFixingTimeBusinessCenter"
     }
   },
   {
@@ -597,9 +597,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41029",
       "description": "Number of event sources in the repeating group.",
-      "display": "NoComplexEventCreditEventSources",
-      "fix:tag": "41029"
+      "display": "NoComplexEventCreditEventSources"
     }
   },
   {
@@ -609,9 +609,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41030",
       "description": "A newspaper or electronic news service that may publish relevant information used in the determination of whether or not a credit event has occurred.",
-      "display": "ComplexEventCreditEventSource",
-      "fix:tag": "41030"
+      "display": "ComplexEventCreditEventSource"
     }
   },
   {
@@ -621,9 +621,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41031",
       "description": "Number of schedules in the repeating group.",
-      "display": "NoComplexEventSchedules",
-      "fix:tag": "41031"
+      "display": "NoComplexEventSchedules"
     }
   },
   {
@@ -634,9 +634,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41032",
       "description": "The start date of the schedule.",
-      "display": "ComplexEventScheduleStartDate",
-      "fix:tag": "41032"
+      "display": "ComplexEventScheduleStartDate"
     }
   },
   {
@@ -647,9 +647,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41033",
       "description": "The end date of the schedule.",
-      "display": "ComplexEventScheduleEndDate",
-      "fix:tag": "41033"
+      "display": "ComplexEventScheduleEndDate"
     }
   },
   {
@@ -659,9 +659,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41034",
       "description": "Time unit multiplier for the schedule date frequency.",
-      "display": "ComplexEventScheduleFrequencyPeriod",
-      "fix:tag": "41034"
+      "display": "ComplexEventScheduleFrequencyPeriod"
     }
   },
   {
@@ -671,9 +671,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the schedule date frequency.",
-      "display": "ComplexEventScheduleFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -695,7 +693,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41035"
+      "FIX:tag": "41035",
+      "description": "Time unit associated with the schedule date frequency.",
+      "display": "ComplexEventScheduleFrequencyUnit"
     }
   },
   {
@@ -705,9 +705,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The convention for determining the sequence of dates. It is used in conjunction with a specified frequency. Used only to override the roll convention defined in the DateAdjustment component in Instrument.",
-      "display": "ComplexEventScheduleRollConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FirstDay",
@@ -939,7 +937,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "41036"
+      "FIX:tag": "41036",
+      "description": "The convention for determining the sequence of dates. It is used in conjunction with a specified frequency. Used only to override the roll convention defined in the DateAdjustment component in Instrument.",
+      "display": "ComplexEventScheduleRollConvention"
     }
   },
   {
@@ -949,9 +949,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41037",
       "description": "Number of delivery schedules in the repeating group.",
-      "display": "NoDeliverySchedules",
-      "fix:tag": "41037"
+      "display": "NoDeliverySchedules"
     }
   },
   {
@@ -961,9 +961,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of delivery schedule.",
-      "display": "DeliveryScheduleType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Notional",
@@ -980,7 +978,9 @@
           "doc": "Physical settlement period"
         }
       ],
-      "fix:tag": "41038"
+      "FIX:tag": "41038",
+      "description": "Specifies the type of delivery schedule.",
+      "display": "DeliveryScheduleType"
     }
   },
   {
@@ -990,9 +990,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41039",
       "description": "Identifier for this instance of delivery schedule for cross referencing elsewhere in the message.",
-      "display": "DeliveryScheduleXID",
-      "fix:tag": "41039"
+      "display": "DeliveryScheduleXID"
     }
   },
   {
@@ -1004,9 +1004,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41040",
       "description": "Physical delivery quantity.",
-      "display": "DeliveryScheduleNotional",
-      "fix:tag": "41040"
+      "display": "DeliveryScheduleNotional"
     }
   },
   {
@@ -1016,9 +1016,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the delivery quantity unit of measure (UOM).",
-      "display": "DeliveryScheduleNotionalUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -1500,7 +1498,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41041"
+      "FIX:tag": "41041",
+      "description": "Specifies the delivery quantity unit of measure (UOM).",
+      "display": "DeliveryScheduleNotionalUnitOfMeasure"
     }
   },
   {
@@ -1510,9 +1510,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The frequency of notional delivery.",
-      "display": "DeliveryScheduleNotionalCommodityFrequency",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Term",
@@ -1549,7 +1547,9 @@
           "doc": "Per month"
         }
       ],
-      "fix:tag": "41042"
+      "FIX:tag": "41042",
+      "description": "The frequency of notional delivery.",
+      "display": "DeliveryScheduleNotionalCommodityFrequency"
     }
   },
   {
@@ -1559,9 +1559,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41043",
       "description": "Specifies the negative tolerance value. The value may be an absolute quantity or a percentage, as specified in DeliveryScheduleToleranceType(41046). Percentage value is to be expressed relative to \"1.0\" representing 100% (e.g. a value of \"0.0575\" represents 5.75%).",
-      "display": "DeliveryScheduleNegativeTolerance",
-      "fix:tag": "41043"
+      "display": "DeliveryScheduleNegativeTolerance"
     }
   },
   {
@@ -1571,9 +1571,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41044",
       "description": "Specifies the positive tolerance value. The value may be an absolute quantity or a percentage, as specified in DeliveryScheduleToleranceType(41046). Value may exceed agreed upon value. Percentage value is to be expressed relative to \"1.0\" representing 100% (e.g. a value of \"0.0575\" represents 5.75%).",
-      "display": "DeliverySchedulePositiveTolerance",
-      "fix:tag": "41044"
+      "display": "DeliverySchedulePositiveTolerance"
     }
   },
   {
@@ -1583,9 +1583,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the tolerance value's unit of measure (UOM).",
-      "display": "DeliveryScheduleToleranceUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -2067,7 +2065,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41045"
+      "FIX:tag": "41045",
+      "description": "Specifies the tolerance value's unit of measure (UOM).",
+      "display": "DeliveryScheduleToleranceUnitOfMeasure"
     }
   },
   {
@@ -2077,9 +2077,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the tolerance value type.",
-      "display": "DeliveryScheduleToleranceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Absolute",
@@ -2091,7 +2089,9 @@
           "doc": "Percentage"
         }
       ],
-      "fix:tag": "41046"
+      "FIX:tag": "41046",
+      "description": "Specifies the tolerance value type.",
+      "display": "DeliveryScheduleToleranceType"
     }
   },
   {
@@ -2101,9 +2101,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41047",
       "description": "Specifies the country where delivery takes place. Uses ISO 3166 2-character country code.",
-      "display": "DeliveryScheduleSettlCountry",
-      "fix:tag": "41047"
+      "display": "DeliveryScheduleSettlCountry"
     }
   },
   {
@@ -2113,9 +2113,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41048",
       "description": "Delivery timezone specified as \"prevailing\" rather than \"standard\" or \"daylight\". See https://fixtrading.org/packages/prevailing-timezones for code list of applicable prevailing timezones.",
-      "display": "DeliveryScheduleSettlTimeZone",
-      "fix:tag": "41048"
+      "display": "DeliveryScheduleSettlTimeZone"
     }
   },
   {
@@ -2125,9 +2125,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the commodity delivery flow type.",
-      "display": "DeliveryScheduleSettlFlowType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "AllTimes",
@@ -2159,7 +2157,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "41049"
+      "FIX:tag": "41049",
+      "description": "Specifies the commodity delivery flow type.",
+      "display": "DeliveryScheduleSettlFlowType"
     }
   },
   {
@@ -2169,9 +2169,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether holidays are included in the settlement periods. Required for electricity contracts.",
-      "display": "DeliveryScheduleSettlHolidaysProcessingInstruction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "DoNotIncludeHolidays",
@@ -2183,7 +2181,9 @@
           "doc": "Include holidays"
         }
       ],
-      "fix:tag": "41050"
+      "FIX:tag": "41050",
+      "description": "Indicates whether holidays are included in the settlement periods. Required for electricity contracts.",
+      "display": "DeliveryScheduleSettlHolidaysProcessingInstruction"
     }
   },
   {
@@ -2193,9 +2193,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41051",
       "description": "Number of delivery schedules in the repeating group.",
-      "display": "NoDeliveryScheduleSettlDays",
-      "fix:tag": "41051"
+      "display": "NoDeliveryScheduleSettlDays"
     }
   },
   {
@@ -2205,9 +2205,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day or group of days for delivery.",
-      "display": "DeliveryScheduleSettlDay",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Monday",
@@ -2259,7 +2257,9 @@
           "doc": "All weekends"
         }
       ],
-      "fix:tag": "41052"
+      "FIX:tag": "41052",
+      "description": "Specifies the day or group of days for delivery.",
+      "display": "DeliveryScheduleSettlDay"
     }
   },
   {
@@ -2269,9 +2269,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41053",
       "description": "The sum of the total hours specified in the DeliveryScheduleSettlTimeGrp component.",
-      "display": "DeliveryScheduleSettlTotalHours",
-      "fix:tag": "41053"
+      "display": "DeliveryScheduleSettlTotalHours"
     }
   },
   {
@@ -2281,9 +2281,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41054",
       "description": "Number of hour ranges in the repeating group.",
-      "display": "NoDeliveryScheduleSettlTimes",
-      "fix:tag": "41054"
+      "display": "NoDeliveryScheduleSettlTimes"
     }
   },
   {
@@ -2293,9 +2293,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41055",
       "description": "The scheduled start time for the delivery of the commodity where delivery occurs over specified times. The format of the time value is specified in DeliveryScheduleSettlTimeType(41057).",
-      "display": "DeliveryScheduleSettlStart",
-      "fix:tag": "41055"
+      "display": "DeliveryScheduleSettlStart"
     }
   },
   {
@@ -2305,9 +2305,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41056",
       "description": "The scheduled end time for the delivery of the commodity where delivery occurs over specified times. The format of the time value is specified in DeliveryScheduleSettlTimeType(41057).",
-      "display": "DeliveryScheduleSettlEnd",
-      "fix:tag": "41056"
+      "display": "DeliveryScheduleSettlEnd"
     }
   },
   {
@@ -2317,9 +2317,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the format of the delivery start and end time values.",
-      "display": "DeliveryScheduleSettlTimeType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Hour",
@@ -2331,7 +2329,9 @@
           "doc": "HH:MM time format"
         }
       ],
-      "fix:tag": "41057"
+      "FIX:tag": "41057",
+      "description": "Specifies the format of the delivery start and end time values.",
+      "display": "DeliveryScheduleSettlTimeType"
     }
   },
   {
@@ -2341,9 +2341,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of delivery stream.",
-      "display": "DeliveryStreamType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Periodic",
@@ -2360,7 +2358,9 @@
           "doc": "Single"
         }
       ],
-      "fix:tag": "41058"
+      "FIX:tag": "41058",
+      "description": "Specifies the type of delivery stream.",
+      "display": "DeliveryStreamType"
     }
   },
   {
@@ -2370,9 +2370,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41059",
       "description": "The name of the oil delivery pipeline.",
-      "display": "DeliveryStreamPipeline",
-      "fix:tag": "41059"
+      "display": "DeliveryStreamPipeline"
     }
   },
   {
@@ -2382,9 +2382,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41060",
       "description": "The point at which the commodity will enter the delivery mechanism or pipeline.",
-      "display": "DeliveryStreamEntryPoint",
-      "fix:tag": "41060"
+      "display": "DeliveryStreamEntryPoint"
     }
   },
   {
@@ -2394,9 +2394,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41061",
       "description": "The point at which the commodity product will be withdrawn prior to delivery.",
-      "display": "DeliveryStreamWithdrawalPoint",
-      "fix:tag": "41061"
+      "display": "DeliveryStreamWithdrawalPoint"
     }
   },
   {
@@ -2406,9 +2406,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41062",
       "description": "The point at which the commodity product will be delivered and received. Value specified should follow market convention appropriate for the commodity product. For bullion, see https://fpml.org/coding-scheme/bullion-delivery-location for values.",
-      "display": "DeliveryStreamDeliveryPoint",
-      "fix:tag": "41062"
+      "display": "DeliveryStreamDeliveryPoint"
     }
   },
   {
@@ -2418,9 +2418,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies under what conditions the buyer and seller should be excused of their delivery obligations.",
-      "display": "DeliveryStreamDeliveryRestriction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Firm",
@@ -2447,7 +2445,9 @@
           "doc": "Unit firm"
         }
       ],
-      "fix:tag": "41063"
+      "FIX:tag": "41063",
+      "description": "Specifies under what conditions the buyer and seller should be excused of their delivery obligations.",
+      "display": "DeliveryStreamDeliveryRestriction"
     }
   },
   {
@@ -2457,9 +2457,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41064",
       "description": "Specifies the electricity delivery contingency. See https://fpml.org/coding-scheme/electricity-transmission-contingency for values.",
-      "display": "DeliveryStreamDeliveryContingency",
-      "fix:tag": "41064"
+      "display": "DeliveryStreamDeliveryContingency"
     }
   },
   {
@@ -2469,9 +2469,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The trade side value of the party responsible for electricity delivery contingency.",
-      "display": "DeliveryStreamDeliveryContingentPartySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Buyer",
@@ -2483,7 +2481,9 @@
           "doc": "Seller"
         }
       ],
-      "fix:tag": "41065"
+      "FIX:tag": "41065",
+      "description": "The trade side value of the party responsible for electricity delivery contingency.",
+      "display": "DeliveryStreamDeliveryContingentPartySide"
     }
   },
   {
@@ -2493,9 +2493,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41066",
       "description": "When this element is specified and set to 'Y', delivery of the coal product is to be at its source.",
-      "display": "DeliveryStreamDeliverAtSourceIndicator",
-      "fix:tag": "41066"
+      "display": "DeliveryStreamDeliverAtSourceIndicator"
     }
   },
   {
@@ -2505,9 +2505,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41067",
       "description": "Specifies how the parties to the trade apportion responsibility for the delivery of the commodity product. See https://fixtrading.org/packages/risk-apportionment for the details of the external code list.",
-      "display": "DeliveryStreamRiskApportionment",
-      "fix:tag": "41067"
+      "display": "DeliveryStreamRiskApportionment"
     }
   },
   {
@@ -2517,9 +2517,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41068",
       "description": "Specifies the title transfer location.",
-      "display": "DeliveryStreamTitleTransferLocation",
-      "fix:tag": "41068"
+      "display": "DeliveryStreamTitleTransferLocation"
     }
   },
   {
@@ -2529,9 +2529,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the condition of title transfer.",
-      "display": "DeliveryStreamTitleTransferCondition",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Transfers",
@@ -2543,7 +2541,9 @@
           "doc": "Does not transfer with risk of loss"
         }
       ],
-      "fix:tag": "41069"
+      "FIX:tag": "41069",
+      "description": "Specifies the condition of title transfer.",
+      "display": "DeliveryStreamTitleTransferCondition"
     }
   },
   {
@@ -2553,9 +2553,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41070",
       "description": "A party, not necessarily of the trade, who is the Importer of Record for the purposes of paying customs duties and applicable taxes or costs related to importation.",
-      "display": "DeliveryStreamImporterOfRecord",
-      "fix:tag": "41070"
+      "display": "DeliveryStreamImporterOfRecord"
     }
   },
   {
@@ -2565,9 +2565,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41071",
       "description": "Specifies the negative tolerance value. The value may be an absolute quantity or a percentage, as specified in DeliveryStreamToleranceType(41074). Percentage value is to be expressed relative to \"1.0\" representing 100% (e.g. a value of \"0.0575\" represents 5.75%).",
-      "display": "DeliveryStreamNegativeTolerance",
-      "fix:tag": "41071"
+      "display": "DeliveryStreamNegativeTolerance"
     }
   },
   {
@@ -2577,9 +2577,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41072",
       "description": "Specifies the positive tolerance value. The value may be an absolute quantity or a percentage, as specified in DeliveryStreamToleranceType(41074). Value may exceed agreed upon value. Percentage value is to be expressed relative to \"1.0\" representing 100% (e.g. a value of \"0.0575\" represents 5.75%).",
-      "display": "DeliveryStreamPositiveTolerance",
-      "fix:tag": "41072"
+      "display": "DeliveryStreamPositiveTolerance"
     }
   },
   {
@@ -2589,9 +2589,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the tolerance value's unit of measure (UOM).",
-      "display": "DeliveryStreamToleranceUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -3073,7 +3071,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41073"
+      "FIX:tag": "41073",
+      "description": "Specifies the tolerance value's unit of measure (UOM).",
+      "display": "DeliveryStreamToleranceUnitOfMeasure"
     }
   },
   {
@@ -3083,9 +3083,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the tolerance value type.",
-      "display": "DeliveryStreamToleranceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Absolute",
@@ -3097,7 +3095,9 @@
           "doc": "Percentage"
         }
       ],
-      "fix:tag": "41074"
+      "FIX:tag": "41074",
+      "description": "Specifies the tolerance value type.",
+      "display": "DeliveryStreamToleranceType"
     }
   },
   {
@@ -3107,9 +3107,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether the tolerance is at the seller's or buyer's option.",
-      "display": "DeliveryStreamToleranceOptionSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -3121,7 +3119,9 @@
           "doc": "Seller"
         }
       ],
-      "fix:tag": "41075"
+      "FIX:tag": "41075",
+      "description": "Indicates whether the tolerance is at the seller's or buyer's option.",
+      "display": "DeliveryStreamToleranceOptionSide"
     }
   },
   {
@@ -3131,9 +3131,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41076",
       "description": "The positive percent tolerance which applies to the total quantity delivered over all shipment periods.",
-      "display": "DeliveryStreamTotalPositiveTolerance",
-      "fix:tag": "41076"
+      "display": "DeliveryStreamTotalPositiveTolerance"
     }
   },
   {
@@ -3143,9 +3143,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41077",
       "description": "The negative percent tolerance which applies to the total quantity delivered over all shipment periods.",
-      "display": "DeliveryStreamTotalNegativeTolerance",
-      "fix:tag": "41077"
+      "display": "DeliveryStreamTotalNegativeTolerance"
     }
   },
   {
@@ -3155,9 +3155,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41078",
       "description": "If the notional quantity is specified in a unit that does not match the unit in which the commodity reference price is quoted, the scaling or conversion factor used to convert the commodity reference price unit into the notional quantity unit should be stated here. If there is no conversion, this field is not intended to be used.",
-      "display": "DeliveryStreamNotionalConversionFactor",
-      "fix:tag": "41078"
+      "display": "DeliveryStreamNotionalConversionFactor"
     }
   },
   {
@@ -3167,9 +3167,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41079",
       "description": "The transportation equipment with which the commodity product will be delivered and received.",
-      "display": "DeliveryStreamTransportEquipment",
-      "fix:tag": "41079"
+      "display": "DeliveryStreamTransportEquipment"
     }
   },
   {
@@ -3179,9 +3179,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "A reference to the party able to choose whether the gas is delivered for a particular period as found in a swing or interruptible contract.",
-      "display": "DeliveryStreamElectingPartySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Buyer",
@@ -3193,7 +3191,9 @@
           "doc": "Seller"
         }
       ],
-      "fix:tag": "41080"
+      "FIX:tag": "41080",
+      "description": "A reference to the party able to choose whether the gas is delivered for a particular period as found in a swing or interruptible contract.",
+      "display": "DeliveryStreamElectingPartySide"
     }
   },
   {
@@ -3203,9 +3203,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41081",
       "description": "Number of delivery cycles in the repeating group.",
-      "display": "NoDeliveryStreamCycles",
-      "fix:tag": "41081"
+      "display": "NoDeliveryStreamCycles"
     }
   },
   {
@@ -3215,9 +3215,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41082",
       "description": "The delivery cycles during which the oil product will be transported in the pipeline.",
-      "display": "DeliveryStreamCycleDesc",
-      "fix:tag": "41082"
+      "display": "DeliveryStreamCycleDesc"
     }
   },
   {
@@ -3227,9 +3227,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41083",
       "description": "Byte length of encoded (non-ASCII characters) EncodedDeliveryStreamCycleDesc(41084) field.",
-      "display": "EncodedDeliveryStreamCycleDescLen",
-      "fix:tag": "41083"
+      "display": "EncodedDeliveryStreamCycleDescLen"
     }
   },
   {
@@ -3239,9 +3239,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41084",
       "description": "Encoded (non-ASCII characters) representation of the DeliveryStreamCycleDesc(41082) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the DeliveryStreamCycleDesc(41082) field.",
-      "display": "EncodedDeliveryStreamCycleDesc",
-      "fix:tag": "41084"
+      "display": "EncodedDeliveryStreamCycleDesc"
     }
   },
   {
@@ -3251,9 +3251,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41085",
       "description": "Number of commodity sources in the repeating group.",
-      "display": "NoDeliveryStreamCommoditySources",
-      "fix:tag": "41085"
+      "display": "NoDeliveryStreamCommoditySources"
     }
   },
   {
@@ -3263,9 +3263,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41086",
       "description": "The SCoTA coal cargo origin, mining region, mine(s), mining complex(es), loadout(s) or river dock(s) or other point(s) of origin that seller and buyer agree are acceptable origins for the coal product. For international coal transactions, this is the origin of the coal product. See https://fpml.org/coding-scheme/commodity-coal-product-source for values.",
-      "display": "DeliveryStreamCommoditySource",
-      "fix:tag": "41086"
+      "display": "DeliveryStreamCommoditySource"
     }
   },
   {
@@ -3275,9 +3275,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The consequences of market disruption events.",
-      "display": "MarketDisruptionProvision",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -3299,7 +3297,9 @@
           "doc": "As specified in confirmation"
         }
       ],
-      "fix:tag": "41087"
+      "FIX:tag": "41087",
+      "description": "The consequences of market disruption events.",
+      "display": "MarketDisruptionProvision"
     }
   },
   {
@@ -3309,9 +3309,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the location of the fallback provision documentation.",
-      "display": "MarketDisruptionFallbackProvision",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "MasterAgreement",
@@ -3323,7 +3321,9 @@
           "doc": "As specified in confirmation"
         }
       ],
-      "fix:tag": "41088"
+      "FIX:tag": "41088",
+      "description": "Specifies the location of the fallback provision documentation.",
+      "display": "MarketDisruptionFallbackProvision"
     }
   },
   {
@@ -3333,9 +3333,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41089",
       "description": "Specifies the maximum number of market disruption days (commodity or bullion business days) in a contract or confirmation. If none are specified, the maximum number of market disruption days is five (5).",
-      "display": "MarketDisruptionMaximumDays",
-      "fix:tag": "41089"
+      "display": "MarketDisruptionMaximumDays"
     }
   },
   {
@@ -3345,9 +3345,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41090",
       "description": "Used when a price materiality percentage applies to the price source disruption event and this event has been specified.",
-      "display": "MarketDisruptionMaterialityPercentage",
-      "fix:tag": "41090"
+      "display": "MarketDisruptionMaterialityPercentage"
     }
   },
   {
@@ -3357,9 +3357,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41091",
       "description": "Specifies the minimum futures contracts level that dictates whether or not a 'De Minimis Trading' event has occurred.",
-      "display": "MarketDisruptionMinimumFuturesContracts",
-      "fix:tag": "41091"
+      "display": "MarketDisruptionMinimumFuturesContracts"
     }
   },
   {
@@ -3369,9 +3369,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41092",
       "description": "Number of disruption events in the repeating group.",
-      "display": "NoMarketDisruptionEvents",
-      "fix:tag": "41092"
+      "display": "NoMarketDisruptionEvents"
     }
   },
   {
@@ -3381,9 +3381,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41093",
       "description": "Specifies the market disruption event. For commodities see https://fpml.org/coding-scheme/commodity-market-disruption for values. For foreign exchange, see https://fixtrading.org/packages/market-disruption-event for code list of applicable event types.",
-      "display": "MarketDisruptionEvent",
-      "fix:tag": "41093"
+      "display": "MarketDisruptionEvent"
     }
   },
   {
@@ -3393,9 +3393,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41094",
       "description": "Number of fallbacks in the repeating group.",
-      "display": "NoMarketDisruptionFallbacks",
-      "fix:tag": "41094"
+      "display": "NoMarketDisruptionFallbacks"
     }
   },
   {
@@ -3405,9 +3405,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41095",
       "description": "Specifies the type of disruption fallback. See https://fpml.org/coding-scheme/commodity-market-disruption-fallback for values.",
-      "display": "MarketDisruptionFallbackType",
-      "fix:tag": "41095"
+      "display": "MarketDisruptionFallbackType"
     }
   },
   {
@@ -3417,9 +3417,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41096",
       "description": "Number of fallback reference securities in the repeating group.",
-      "display": "NoMarketDisruptionFallbackReferencePrices",
-      "fix:tag": "41096"
+      "display": "NoMarketDisruptionFallbackReferencePrices"
     }
   },
   {
@@ -3429,9 +3429,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The type of reference price underlier.",
-      "display": "MarketDisruptionFallbackUnderlierType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Basket",
@@ -3493,7 +3491,9 @@
           "doc": "Mutual fund"
         }
       ],
-      "fix:tag": "41097"
+      "FIX:tag": "41097",
+      "description": "The type of reference price underlier.",
+      "display": "MarketDisruptionFallbackUnderlierType"
     }
   },
   {
@@ -3503,9 +3503,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41098",
       "description": "Specifies the identifier value of the security.",
-      "display": "MarketDisruptionFallbackUnderlierSecurityID",
-      "fix:tag": "41098"
+      "display": "MarketDisruptionFallbackUnderlierSecurityID"
     }
   },
   {
@@ -3515,9 +3515,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the class or source scheme of the security identifier.",
-      "display": "MarketDisruptionFallbackUnderlierSecurityIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -3684,7 +3682,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "41099"
+      "FIX:tag": "41099",
+      "description": "Specifies the class or source scheme of the security identifier.",
+      "display": "MarketDisruptionFallbackUnderlierSecurityIDSource"
     }
   }
 ]

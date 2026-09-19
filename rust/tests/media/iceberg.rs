@@ -4,7 +4,7 @@
 //!
 //! Everything here reaches the crate through `yggdryl::`; the plan counts and
 //! grouping the crate alone can see are pinned in
-//! `rust/src/media/iceberg/tests.rs`.
+//! `rust/src/iceberg/tests.rs`.
 
 use std::sync::{Arc, Mutex};
 
@@ -13,13 +13,13 @@ use arrow_array::{
 };
 use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Holder;
-use yggdryl::holder::local::Folder;
-use yggdryl::media::iceberg::{
+use yggdryl::iceberg::{
     FormatVersion, IcebergOptions, PartitionSpec, PrimitiveType, SortField, SortOrder, Table,
     TableMetadata, Transform, WriteStaging, assign_field_ids, schema_from_json, schema_into_json,
 };
+use yggdryl::local::Folder;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{DataType, Field, IOBase, IOMedia, Scalar, Selector};
+use yggdryl::{DataType, Field, IOBase, IOMedia, Scalar, Selector, StructureType};
 
 /// A table folder that records every relative path resolved through it.
 ///
@@ -86,11 +86,12 @@ fn root(label: &str) -> std::path::PathBuf {
 }
 
 fn schema() -> Field {
-    let mut schema = DataType::from_fields([
+    let mut schema = StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
         DataType::utf8().nullable_field("venue"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     assign_field_ids(&mut schema, 1).unwrap();
@@ -618,7 +619,7 @@ fn unknown_is_the_null_column_and_variant_is_the_semi_structured_one() {
         "variant"
     );
 
-    let document: Scalar = yggdryl::text::json::from_utf8(
+    let document: Scalar = yggdryl::json::from_utf8(
         r#"{"type":"struct","schema-id":0,"fields":[
             {"id":1,"name":"id","required":true,"type":"long"},
             {"id":2,"name":"later","required":false,"type":"unknown"},

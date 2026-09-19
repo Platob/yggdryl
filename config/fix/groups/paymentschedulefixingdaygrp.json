@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "paymentschedulefixingday"
+        "FIX:component": "paymentschedulefixingday"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "paymentschedulefixingday",
+    "FIX:counter": "41161",
+    "FIX:tag": "644735",
     "description": "Required if NoPaymentScheduleFixingDays(41161) > 0.",
-    "display": "PaymentScheduleFixingDayGrp",
-    "fix:component": "paymentschedulefixingday",
-    "fix:counter": "41161",
-    "fix:tag": "644735"
+    "display": "PaymentScheduleFixingDayGrp"
   }
 }

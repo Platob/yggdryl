@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingstreamcommoditydatasource"
+        "FIX:component": "underlyingstreamcommoditydatasource"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingstreamcommoditydatasource",
+    "FIX:counter": "41993",
+    "FIX:tag": "1005623",
     "description": "Required if NoUnderlyingStreamCommodityDataSources(41993) > 0.",
-    "display": "UnderlyingStreamCommodityDataSourceGrp",
-    "fix:component": "underlyingstreamcommoditydatasource",
-    "fix:counter": "41993",
-    "fix:tag": "1005623"
+    "display": "UnderlyingStreamCommodityDataSourceGrp"
   }
 }

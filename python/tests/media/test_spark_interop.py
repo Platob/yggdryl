@@ -465,7 +465,7 @@ class TestPartitioning:
                 pa.field(
                     "venue",
                     pa.string(),
-                    metadata={b"field:partition": b"true"},
+                    metadata={b"FIELD:partition": b"true"},
                 ),
             ]
         )

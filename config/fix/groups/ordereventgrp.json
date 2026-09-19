@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "orderevent"
+        "FIX:component": "orderevent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "orderevent",
+    "FIX:counter": "1795",
+    "FIX:tag": "725988",
     "description": "Required when NoOrderEvents(1795) > 0.",
-    "display": "OrderEventGrp",
-    "fix:component": "orderevent",
-    "fix:counter": "1795",
-    "fix:tag": "725988"
+    "display": "OrderEventGrp"
   }
 }

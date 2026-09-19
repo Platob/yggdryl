@@ -193,7 +193,7 @@ impl JsField {
         use arrow_array::{RecordBatch, RecordBatchOptions, new_empty_array};
         use arrow_ipc::writer::StreamWriter;
         use arrow_schema::Schema;
-        use yggdryl::ArrowCast;
+        use yggdryl::FieldValue as _;
 
         use crate::text::codec::{arrow_batches, ensure_one_column};
 
@@ -203,7 +203,7 @@ impl JsField {
         let target_schema = Arc::new(Schema::new([self
             .inner
             .clone()
-            .into_arrow_ref()
+            .into_arrow_field_ref()
             .map_err(napi_error)?]));
         let mut writer =
             StreamWriter::try_new(Vec::new(), target_schema.as_ref()).map_err(napi_error)?;
@@ -548,7 +548,7 @@ impl JsField {
 
     /// The enum this field's string values name, `null` when it declares none.
     ///
-    /// The declaration is one `field:enum` document, so it reaches Arrow, a
+    /// The declaration is one `FIELD:enum` document, so it reaches Arrow, a
     /// file, and another runtime as ordinary field metadata and comes back the
     /// enum that was written.
     #[napi(getter)]
@@ -1756,7 +1756,7 @@ impl JsProtocolField {
     /// The canonical key prefix this view applies.
     #[napi(getter)]
     pub fn prefix(&self) -> String {
-        self.view().prefix().to_owned()
+        self.view().prefix().into_owned()
     }
 
     /// The full metadata key one bare property name is stored under.
@@ -1854,7 +1854,7 @@ impl JsProtocolField {
 
     /// The dictionaries that contributed this field, on the `fix` view.
     ///
-    /// `fix:branches` read as an array: sorted, ASCII lowercase, and empty
+    /// `FIX:branches` read as an array: sorted, ASCII lowercase, and empty
     /// where the field states none - every field the specification alone
     /// defines. Membership is provenance a caller filters on; no lookup
     /// consults it. Assigning an array replaces the list - folded once,
@@ -1910,7 +1910,7 @@ impl JsProtocolField {
     /// The signed 32-bit digest of the canonical tag and the field's name
     /// under the one fold - so `MsgType`, `msg_type` and `msgtype` under tag
     /// 35 are one identity - derived on every read and never stored, so it
-    /// is `null` exactly when `fix:tag` is absent. It is what `fieldById`
+    /// is `null` exactly when `FIX:tag` is absent. It is what `fieldById`
     /// and `getById` take, and it cannot be assigned: the tag and the name
     /// are what it is made of.
     #[napi(getter)]
@@ -1926,7 +1926,7 @@ impl JsProtocolField {
 
     /// The canonical FIX tag, on the `fix` view.
     ///
-    /// Reads and writes `fix:tag` through the core's own typed accessors, so
+    /// Reads and writes `FIX:tag` through the core's own typed accessors, so
     /// the property name is never spelled at a call site. `view.delete('tag')`
     /// removes it, the way every other property is removed.
     #[napi(getter)]

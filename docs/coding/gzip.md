@@ -25,7 +25,7 @@ RFC 1952 gzip as whole buffers, Rust streams, and a transparent `Gzip<H>` handle
 === "Rust"
 
     ```rust
-    use yggdryl::coding::gzip;
+    use yggdryl::gzip;
 
     let encoded = gzip::dump(b"symbol,price\nAAPL,1\n")?;
     assert_eq!(gzip::load(&encoded)?, b"symbol,price\nAAPL,1\n");
@@ -73,7 +73,7 @@ RFC 1952 gzip as whole buffers, Rust streams, and a transparent `Gzip<H>` handle
 === "Rust"
 
     ```rust
-    use yggdryl::coding::gzip;
+    use yggdryl::gzip;
     use yggdryl::Level;
 
     let payload = b"AAPL,1\nAAPL,2\nAAPL,3\nAAPL,4\nAAPL,5\nAAPL,6\nAAPL,7\nAAPL,8\n";
@@ -133,7 +133,7 @@ Rust only. `finish` writes the trailer, and decoding stops where the reader stop
 
 ```rust
 use std::io::{Read, Write};
-use yggdryl::coding::gzip;
+use yggdryl::gzip;
 use yggdryl::Level;
 
 let mut target = Vec::new();
@@ -163,7 +163,7 @@ Downstream encodings and codecs never see the coding. A level set on the handle 
 === "Rust"
 
     ```rust
-    use yggdryl::coding::gzip::{self, Gzip};
+    use yggdryl::gzip::{self, Gzip};
     use yggdryl::holder::Buffer;
     use yggdryl::{IOBase, Level};
 
@@ -215,7 +215,7 @@ A compound [filename](../uri/path.md) names the coding, which [`Coded::infer`](i
 === "Rust"
 
     ```rust
-    use yggdryl::coding::gzip::Gzip;
+    use yggdryl::gzip::Gzip;
     use yggdryl::holder::Buffer;
     use yggdryl::{Codec, IOBase, MediaType, MimeType};
 
@@ -267,7 +267,7 @@ A compound [filename](../uri/path.md) names the coding, which [`Coded::infer`](i
 Rust only. A payload that is not gzip is an error; absence is not a failure.
 
 ```rust
-use yggdryl::coding::gzip::{self, Gzip};
+use yggdryl::gzip::{self, Gzip};
 use yggdryl::holder::Buffer;
 use yggdryl::IOBase;
 
@@ -293,7 +293,7 @@ assert!(handle.read_all_bytes()?.is_empty());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib coding::gzip::
+    cargo test --features "parquet iceberg" -p yggdryl --test coding -- gzip::
     cargo bench -p yggdryl --bench coding -- gzip
     ```
 

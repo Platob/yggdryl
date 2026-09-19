@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholedate",
-          "fix:tag": "42392"
+          "FIX:field": "legmakewholedate",
+          "FIX:tag": "42392"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholeamount",
-          "fix:tag": "42393"
+          "FIX:field": "legmakewholeamount",
+          "FIX:tag": "42393"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholebenchmarkcurvename",
-          "fix:tag": "42394"
+          "FIX:field": "legmakewholebenchmarkcurvename",
+          "FIX:tag": "42394"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholebenchmarkcurvepoint",
-          "fix:tag": "42395"
+          "FIX:field": "legmakewholebenchmarkcurvepoint",
+          "FIX:tag": "42395"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholerecallspread",
-          "fix:tag": "42396"
+          "FIX:field": "legmakewholerecallspread",
+          "FIX:tag": "42396"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholebenchmarkquote",
-          "fix:tag": "42397"
+          "FIX:field": "legmakewholebenchmarkquote",
+          "FIX:tag": "42397"
         }
       },
       {
@@ -76,16 +76,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmakewholeinterpolationmethod",
-          "fix:tag": "42398"
+          "FIX:field": "legmakewholeinterpolationmethod",
+          "FIX:tag": "42398"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "312387",
     "description": "LegOptionExerciseMakeWholeProvision is a subcomponent of the LegOptionExercise component used to specify the set of rules of maintaining balance when an option is exercised.",
-    "display": "LegOptionExerciseMakeWholeProvision",
-    "fix:tag": "312387"
+    "display": "LegOptionExerciseMakeWholeProvision"
   }
 }

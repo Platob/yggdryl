@@ -5,9 +5,9 @@ use std::hint::black_box;
 use criterion::{Criterion, Throughput};
 use yggdryl::DigestAlgorithm;
 use yggdryl::IOBase;
-use yggdryl::hashing::xxhash::{self, Hashed};
 use yggdryl::holder::Buffer;
-use yggdryl::holder::local::Folder;
+use yggdryl::local::Folder;
+use yggdryl::xxhash::{self, Hashed};
 
 use super::super::payload;
 
@@ -41,7 +41,7 @@ fn peak_resident() -> Option<u64> {
 /// falls, which is exactly why the order matters. The gap is the reason
 /// `read_digest` exists.
 fn report_memory(path: &std::path::Path) {
-    let handle = yggdryl::holder::local::File::new(path).expect("a readable local file");
+    let handle = yggdryl::local::File::new(path).expect("a readable local file");
     let before = peak_resident();
     let streamed = handle
         .read_digest(DigestAlgorithm::Xxh3)
@@ -79,7 +79,7 @@ pub(crate) fn handle_benchmarks(criterion: &mut Criterion) {
     group.sample_size(10);
     group.throughput(Throughput::Bytes(FILE_BYTES as u64));
     group.bench_function("read_digest", |bencher| {
-        let handle = yggdryl::holder::local::File::new(&path).expect("a readable local file");
+        let handle = yggdryl::local::File::new(&path).expect("a readable local file");
         bencher.iter(|| {
             black_box(&handle)
                 .read_digest(DigestAlgorithm::Xxh3)
@@ -87,7 +87,7 @@ pub(crate) fn handle_benchmarks(criterion: &mut Criterion) {
         });
     });
     group.bench_function("read_all_bytes_then_digest", |bencher| {
-        let handle = yggdryl::holder::local::File::new(&path).expect("a readable local file");
+        let handle = yggdryl::local::File::new(&path).expect("a readable local file");
         bencher.iter(|| {
             let bytes = black_box(&handle).read_all_bytes().expect("the file reads");
             DigestAlgorithm::Xxh3.digest(&bytes)

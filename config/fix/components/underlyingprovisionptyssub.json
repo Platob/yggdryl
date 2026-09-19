@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprovisionpartysubid",
-          "fix:tag": "42178"
+          "FIX:field": "underlyingprovisionpartysubid",
+          "FIX:tag": "42178"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprovisionpartysubidtype",
-          "fix:tag": "42179"
+          "FIX:field": "underlyingprovisionpartysubidtype",
+          "FIX:tag": "42179"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingProvisionPtysSub",
-    "fix:tag": "750825"
+    "FIX:tag": "750825",
+    "display": "UnderlyingProvisionPtysSub"
   }
 }

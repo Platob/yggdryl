@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use yggdryl::holder::local::Folder;
+use yggdryl::local::Folder;
 use yggdryl::{Field, FixCategory, FixRegistry, Result};
 
 use crate::style;
@@ -113,7 +113,7 @@ const COLUMNS: [&str; 5] = ["tag", "name", "type", "dialects", "description"];
 
 /// Lists the fields whose name or tag contains `filter`.
 ///
-/// `dialect` keeps only the definitions whose `fix:branches` membership
+/// `dialect` keeps only the definitions whose `FIX:branches` membership
 /// names that dictionary; it is a filter on provenance and changes nothing
 /// about how a key resolves.
 pub fn list(

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlinstid",
-          "fix:tag": "162"
+          "FIX:field": "settlinstid",
+          "FIX:tag": "162"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlinsttranstype",
-          "fix:tag": "163"
+          "FIX:field": "settlinsttranstype",
+          "FIX:tag": "163"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlinstrefid",
-          "fix:tag": "214"
+          "FIX:field": "settlinstrefid",
+          "FIX:tag": "214"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -54,7 +54,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "side",
-          "fix:tag": "54"
+          "FIX:field": "side",
+          "FIX:tag": "54"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "product",
-          "fix:tag": "460"
+          "FIX:field": "product",
+          "FIX:tag": "460"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitytype",
-          "fix:tag": "167"
+          "FIX:field": "securitytype",
+          "FIX:tag": "167"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cficode",
-          "fix:tag": "461"
+          "FIX:field": "cficode",
+          "FIX:tag": "461"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "upicode",
-          "fix:tag": "2891"
+          "FIX:field": "upicode",
+          "FIX:tag": "2891"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlcurrency",
-          "fix:tag": "120"
+          "FIX:field": "settlcurrency",
+          "FIX:tag": "120"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlcurrencycodesource",
-          "fix:tag": "2899"
+          "FIX:field": "settlcurrencycodesource",
+          "FIX:tag": "2899"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "effectivetime",
-          "fix:tag": "168"
+          "FIX:field": "effectivetime",
+          "FIX:tag": "168"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "expiretime",
-          "fix:tag": "126"
+          "FIX:field": "expiretime",
+          "FIX:tag": "126"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastupdatetime",
-          "fix:tag": "779"
+          "FIX:field": "lastupdatetime",
+          "FIX:tag": "779"
         }
       },
       {
@@ -174,7 +174,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "settlinstructionsdata"
+          "FIX:component": "settlinstructionsdata"
         }
       },
       {
@@ -184,8 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentmethod",
-          "fix:tag": "492"
+          "FIX:field": "paymentmethod",
+          "FIX:tag": "492"
         }
       },
       {
@@ -195,8 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentref",
-          "fix:tag": "476"
+          "FIX:field": "paymentref",
+          "FIX:tag": "476"
         }
       },
       {
@@ -206,8 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cardholdername",
-          "fix:tag": "488"
+          "FIX:field": "cardholdername",
+          "FIX:tag": "488"
         }
       },
       {
@@ -217,8 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cardnumber",
-          "fix:tag": "489"
+          "FIX:field": "cardnumber",
+          "FIX:tag": "489"
         }
       },
       {
@@ -228,8 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cardstartdate",
-          "fix:tag": "503"
+          "FIX:field": "cardstartdate",
+          "FIX:tag": "503"
         }
       },
       {
@@ -239,8 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cardexpdate",
-          "fix:tag": "490"
+          "FIX:field": "cardexpdate",
+          "FIX:tag": "490"
         }
       },
       {
@@ -250,8 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cardissnum",
-          "fix:tag": "491"
+          "FIX:field": "cardissnum",
+          "FIX:tag": "491"
         }
       },
       {
@@ -261,8 +261,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentdate",
-          "fix:tag": "504"
+          "FIX:field": "paymentdate",
+          "FIX:tag": "504"
         }
       },
       {
@@ -272,15 +272,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentremitterid",
-          "fix:tag": "505"
+          "FIX:field": "paymentremitterid",
+          "FIX:tag": "505"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SettlInst",
-    "fix:tag": "242991"
+    "FIX:tag": "242991",
+    "display": "SettlInst"
   }
 }

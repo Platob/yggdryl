@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesymbol",
-          "fix:tag": "1214"
+          "FIX:field": "derivativesymbol",
+          "FIX:tag": "1214"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesymbolsfx",
-          "fix:tag": "1215"
+          "FIX:field": "derivativesymbolsfx",
+          "FIX:tag": "1215"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecurityid",
-          "fix:tag": "1216"
+          "FIX:field": "derivativesecurityid",
+          "FIX:tag": "1216"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecurityidsource",
-          "fix:tag": "1217"
+          "FIX:field": "derivativesecurityidsource",
+          "FIX:tag": "1217"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noderivativesecurityaltid",
-          "fix:tag": "1218"
+          "FIX:field": "noderivativesecurityaltid",
+          "FIX:tag": "1218"
         }
       },
       {
@@ -65,7 +65,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "derivativesecurityaltidgrp"
+          "FIX:group": "derivativesecurityaltidgrp"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeproduct",
-          "fix:tag": "1246"
+          "FIX:field": "derivativeproduct",
+          "FIX:tag": "1246"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeproductcomplex",
-          "fix:tag": "1228"
+          "FIX:field": "derivativeproductcomplex",
+          "FIX:tag": "1228"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivflexproducteligibilityindicator",
-          "fix:tag": "1243"
+          "FIX:field": "derivflexproducteligibilityindicator",
+          "FIX:tag": "1243"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecuritygroup",
-          "fix:tag": "1247"
+          "FIX:field": "derivativesecuritygroup",
+          "FIX:tag": "1247"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativecficode",
-          "fix:tag": "1248"
+          "FIX:field": "derivativecficode",
+          "FIX:tag": "1248"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeupicode",
-          "fix:tag": "2892"
+          "FIX:field": "derivativeupicode",
+          "FIX:tag": "2892"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecuritytype",
-          "fix:tag": "1249"
+          "FIX:field": "derivativesecuritytype",
+          "FIX:tag": "1249"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecuritysubtype",
-          "fix:tag": "1250"
+          "FIX:field": "derivativesecuritysubtype",
+          "FIX:tag": "1250"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativematuritymonthyear",
-          "fix:tag": "1251"
+          "FIX:field": "derivativematuritymonthyear",
+          "FIX:tag": "1251"
         }
       },
       {
@@ -174,8 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativematuritydate",
-          "fix:tag": "1252"
+          "FIX:field": "derivativematuritydate",
+          "FIX:tag": "1252"
         }
       },
       {
@@ -185,8 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativematuritytime",
-          "fix:tag": "1253"
+          "FIX:field": "derivativematuritytime",
+          "FIX:tag": "1253"
         }
       },
       {
@@ -196,8 +196,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesettleonopenflag",
-          "fix:tag": "1254"
+          "FIX:field": "derivativesettleonopenflag",
+          "FIX:tag": "1254"
         }
       },
       {
@@ -207,8 +207,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrmtassignmentmethod",
-          "fix:tag": "1255"
+          "FIX:field": "derivativeinstrmtassignmentmethod",
+          "FIX:tag": "1255"
         }
       },
       {
@@ -218,8 +218,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecuritystatus",
-          "fix:tag": "1256"
+          "FIX:field": "derivativesecuritystatus",
+          "FIX:tag": "1256"
         }
       },
       {
@@ -229,8 +229,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeissuedate",
-          "fix:tag": "1276"
+          "FIX:field": "derivativeissuedate",
+          "FIX:tag": "1276"
         }
       },
       {
@@ -240,8 +240,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrregistry",
-          "fix:tag": "1257"
+          "FIX:field": "derivativeinstrregistry",
+          "FIX:tag": "1257"
         }
       },
       {
@@ -251,8 +251,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativecountryofissue",
-          "fix:tag": "1258"
+          "FIX:field": "derivativecountryofissue",
+          "FIX:tag": "1258"
         }
       },
       {
@@ -262,8 +262,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativestateorprovinceofissue",
-          "fix:tag": "1259"
+          "FIX:field": "derivativestateorprovinceofissue",
+          "FIX:tag": "1259"
         }
       },
       {
@@ -273,8 +273,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativelocaleofissue",
-          "fix:tag": "1260"
+          "FIX:field": "derivativelocaleofissue",
+          "FIX:tag": "1260"
         }
       },
       {
@@ -284,8 +284,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativestrikeprice",
-          "fix:tag": "1261"
+          "FIX:field": "derivativestrikeprice",
+          "FIX:tag": "1261"
         }
       },
       {
@@ -295,8 +295,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativestrikecurrency",
-          "fix:tag": "1262"
+          "FIX:field": "derivativestrikecurrency",
+          "FIX:tag": "1262"
         }
       },
       {
@@ -306,8 +306,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativestrikecurrencycodesource",
-          "fix:tag": "2912"
+          "FIX:field": "derivativestrikecurrencycodesource",
+          "FIX:tag": "2912"
         }
       },
       {
@@ -317,8 +317,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativestrikemultiplier",
-          "fix:tag": "1263"
+          "FIX:field": "derivativestrikemultiplier",
+          "FIX:tag": "1263"
         }
       },
       {
@@ -328,8 +328,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativestrikevalue",
-          "fix:tag": "1264"
+          "FIX:field": "derivativestrikevalue",
+          "FIX:tag": "1264"
         }
       },
       {
@@ -339,8 +339,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeoptattribute",
-          "fix:tag": "1265"
+          "FIX:field": "derivativeoptattribute",
+          "FIX:tag": "1265"
         }
       },
       {
@@ -350,8 +350,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativecontractmultiplier",
-          "fix:tag": "1266"
+          "FIX:field": "derivativecontractmultiplier",
+          "FIX:tag": "1266"
         }
       },
       {
@@ -361,8 +361,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativecontractmultiplierunit",
-          "fix:tag": "1438"
+          "FIX:field": "derivativecontractmultiplierunit",
+          "FIX:tag": "1438"
         }
       },
       {
@@ -372,8 +372,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeflowscheduletype",
-          "fix:tag": "1442"
+          "FIX:field": "derivativeflowscheduletype",
+          "FIX:tag": "1442"
         }
       },
       {
@@ -383,8 +383,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeminpriceincrement",
-          "fix:tag": "1267"
+          "FIX:field": "derivativeminpriceincrement",
+          "FIX:tag": "1267"
         }
       },
       {
@@ -394,8 +394,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeminpriceincrementamount",
-          "fix:tag": "1268"
+          "FIX:field": "derivativeminpriceincrementamount",
+          "FIX:tag": "1268"
         }
       },
       {
@@ -405,8 +405,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeunitofmeasure",
-          "fix:tag": "1269"
+          "FIX:field": "derivativeunitofmeasure",
+          "FIX:tag": "1269"
         }
       },
       {
@@ -416,8 +416,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeunitofmeasureqty",
-          "fix:tag": "1270"
+          "FIX:field": "derivativeunitofmeasureqty",
+          "FIX:tag": "1270"
         }
       },
       {
@@ -427,8 +427,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeunitofmeasurecurrency",
-          "fix:tag": "1722"
+          "FIX:field": "derivativeunitofmeasurecurrency",
+          "FIX:tag": "1722"
         }
       },
       {
@@ -438,8 +438,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeunitofmeasurecurrencycodesource",
-          "fix:tag": "2913"
+          "FIX:field": "derivativeunitofmeasurecurrencycodesource",
+          "FIX:tag": "2913"
         }
       },
       {
@@ -449,8 +449,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativepriceunitofmeasure",
-          "fix:tag": "1315"
+          "FIX:field": "derivativepriceunitofmeasure",
+          "FIX:tag": "1315"
         }
       },
       {
@@ -460,8 +460,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativepriceunitofmeasureqty",
-          "fix:tag": "1316"
+          "FIX:field": "derivativepriceunitofmeasureqty",
+          "FIX:tag": "1316"
         }
       },
       {
@@ -471,8 +471,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativepriceunitofmeasurecurrency",
-          "fix:tag": "1723"
+          "FIX:field": "derivativepriceunitofmeasurecurrency",
+          "FIX:tag": "1723"
         }
       },
       {
@@ -482,8 +482,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativepriceunitofmeasurecurrencycodesource",
-          "fix:tag": "2914"
+          "FIX:field": "derivativepriceunitofmeasurecurrencycodesource",
+          "FIX:tag": "2914"
         }
       },
       {
@@ -493,8 +493,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesettlmethod",
-          "fix:tag": "1317"
+          "FIX:field": "derivativesettlmethod",
+          "FIX:tag": "1317"
         }
       },
       {
@@ -504,8 +504,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativepricequotemethod",
-          "fix:tag": "1318"
+          "FIX:field": "derivativepricequotemethod",
+          "FIX:tag": "1318"
         }
       },
       {
@@ -515,8 +515,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativevaluationmethod",
-          "fix:tag": "1319"
+          "FIX:field": "derivativevaluationmethod",
+          "FIX:tag": "1319"
         }
       },
       {
@@ -526,8 +526,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativepricequotecurrency",
-          "fix:tag": "1576"
+          "FIX:field": "derivativepricequotecurrency",
+          "FIX:tag": "1576"
         }
       },
       {
@@ -537,8 +537,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativepricequotecurrencycodesource",
-          "fix:tag": "2915"
+          "FIX:field": "derivativepricequotecurrencycodesource",
+          "FIX:tag": "2915"
         }
       },
       {
@@ -548,8 +548,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativelistmethod",
-          "fix:tag": "1320"
+          "FIX:field": "derivativelistmethod",
+          "FIX:tag": "1320"
         }
       },
       {
@@ -559,8 +559,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativecapprice",
-          "fix:tag": "1321"
+          "FIX:field": "derivativecapprice",
+          "FIX:tag": "1321"
         }
       },
       {
@@ -570,8 +570,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativefloorprice",
-          "fix:tag": "1322"
+          "FIX:field": "derivativefloorprice",
+          "FIX:tag": "1322"
         }
       },
       {
@@ -581,8 +581,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeputorcall",
-          "fix:tag": "1323"
+          "FIX:field": "derivativeputorcall",
+          "FIX:tag": "1323"
         }
       },
       {
@@ -592,8 +592,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinthemoneycondition",
-          "fix:tag": "2684"
+          "FIX:field": "derivativeinthemoneycondition",
+          "FIX:tag": "2684"
         }
       },
       {
@@ -603,8 +603,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativecontraryinstructioneligibilityindicator",
-          "fix:tag": "2688"
+          "FIX:field": "derivativecontraryinstructioneligibilityindicator",
+          "FIX:tag": "2688"
         }
       },
       {
@@ -614,8 +614,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeexercisestyle",
-          "fix:tag": "1299"
+          "FIX:field": "derivativeexercisestyle",
+          "FIX:tag": "1299"
         }
       },
       {
@@ -625,8 +625,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeoptpayoutamount",
-          "fix:tag": "1225"
+          "FIX:field": "derivativeoptpayoutamount",
+          "FIX:tag": "1225"
         }
       },
       {
@@ -636,8 +636,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativetimeunit",
-          "fix:tag": "1271"
+          "FIX:field": "derivativetimeunit",
+          "FIX:tag": "1271"
         }
       },
       {
@@ -647,8 +647,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecurityexchange",
-          "fix:tag": "1272"
+          "FIX:field": "derivativesecurityexchange",
+          "FIX:tag": "1272"
         }
       },
       {
@@ -658,8 +658,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativepositionlimit",
-          "fix:tag": "1273"
+          "FIX:field": "derivativepositionlimit",
+          "FIX:tag": "1273"
         }
       },
       {
@@ -669,8 +669,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativentpositionlimit",
-          "fix:tag": "1274"
+          "FIX:field": "derivativentpositionlimit",
+          "FIX:tag": "1274"
         }
       },
       {
@@ -680,8 +680,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeissuer",
-          "fix:tag": "1275"
+          "FIX:field": "derivativeissuer",
+          "FIX:tag": "1275"
         }
       },
       {
@@ -691,8 +691,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeencodedissuerlen",
-          "fix:tag": "1277"
+          "FIX:field": "derivativeencodedissuerlen",
+          "FIX:tag": "1277"
         }
       },
       {
@@ -702,8 +702,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeencodedissuer",
-          "fix:tag": "1278"
+          "FIX:field": "derivativeencodedissuer",
+          "FIX:tag": "1278"
         }
       },
       {
@@ -713,8 +713,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecuritydesc",
-          "fix:tag": "1279"
+          "FIX:field": "derivativesecuritydesc",
+          "FIX:tag": "1279"
         }
       },
       {
@@ -724,8 +724,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeencodedsecuritydesclen",
-          "fix:tag": "1280"
+          "FIX:field": "derivativeencodedsecuritydesclen",
+          "FIX:tag": "1280"
         }
       },
       {
@@ -735,8 +735,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeencodedsecuritydesc",
-          "fix:tag": "1281"
+          "FIX:field": "derivativeencodedsecuritydesc",
+          "FIX:tag": "1281"
         }
       },
       {
@@ -746,7 +746,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "derivativesecurityxmlcomponent"
+          "FIX:component": "derivativesecurityxmlcomponent"
         }
       },
       {
@@ -756,8 +756,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativecontractsettlmonth",
-          "fix:tag": "1285"
+          "FIX:field": "derivativecontractsettlmonth",
+          "FIX:tag": "1285"
         }
       },
       {
@@ -767,8 +767,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noderivativeevents",
-          "fix:tag": "1286"
+          "FIX:field": "noderivativeevents",
+          "FIX:tag": "1286"
         }
       },
       {
@@ -778,7 +778,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "derivativeeventsgrp"
+          "FIX:group": "derivativeeventsgrp"
         }
       },
       {
@@ -788,8 +788,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noderivativeinstrumentparties",
-          "fix:tag": "1292"
+          "FIX:field": "noderivativeinstrumentparties",
+          "FIX:tag": "1292"
         }
       },
       {
@@ -799,15 +799,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "derivativeinstrumentparties"
+          "FIX:group": "derivativeinstrumentparties"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "697291",
     "description": "Common, \"human understood\" representation of the security. SecurityID value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
-    "display": "DerivativeInstrument",
-    "fix:tag": "697291"
+    "display": "DerivativeInstrument"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "ratesourcecomponent"
+        "FIX:component": "ratesourcecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "ratesourcecomponent",
+    "FIX:counter": "1445",
+    "FIX:tag": "191602",
     "description": "Required if NoRateSource(1445) > 0",
-    "display": "RateSource",
-    "fix:component": "ratesourcecomponent",
-    "fix:counter": "1445",
-    "fix:tag": "191602"
+    "display": "RateSource"
   }
 }

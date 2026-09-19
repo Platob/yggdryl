@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldealer",
-          "fix:tag": "40032"
+          "FIX:field": "cashsettldealer",
+          "FIX:tag": "40032"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "CashSettlDealer",
-    "fix:tag": "275091"
+    "FIX:tag": "275091",
+    "display": "CashSettlDealer"
   }
 }

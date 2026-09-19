@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legpaymentstreaminitialfixingdatebusinesscentercomponent"
+        "FIX:component": "legpaymentstreaminitialfixingdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legpaymentstreaminitialfixingdatebusinesscentercomponent",
+    "FIX:counter": "40932",
+    "FIX:tag": "968860",
     "description": "Required if NoLegPaymentStreamInitialFixingDateBusinessCenters(40932) > 0.",
-    "display": "LegPaymentStreamInitialFixingDateBusinessCenterGrp",
-    "fix:component": "legpaymentstreaminitialfixingdatebusinesscentercomponent",
-    "fix:counter": "40932",
-    "fix:tag": "968860"
+    "display": "LegPaymentStreamInitialFixingDateBusinessCenterGrp"
   }
 }

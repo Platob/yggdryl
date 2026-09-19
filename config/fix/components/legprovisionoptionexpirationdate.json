@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexpirationdateunadjusted",
-          "fix:tag": "40498"
+          "FIX:field": "legprovisionoptionexpirationdateunadjusted",
+          "FIX:tag": "40498"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexpirationdatebusinessdayconvention",
-          "fix:tag": "40499"
+          "FIX:field": "legprovisionoptionexpirationdatebusinessdayconvention",
+          "FIX:tag": "40499"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegprovisionoptionexpirationdatebusinesscenters",
-          "fix:tag": "40937"
+          "FIX:field": "nolegprovisionoptionexpirationdatebusinesscenters",
+          "FIX:tag": "40937"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legprovisionoptionexpirationdatebusinesscentergrp"
+          "FIX:group": "legprovisionoptionexpirationdatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexpirationdaterelativeto",
-          "fix:tag": "40501"
+          "FIX:field": "legprovisionoptionexpirationdaterelativeto",
+          "FIX:tag": "40501"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexpirationdateoffsetperiod",
-          "fix:tag": "40502"
+          "FIX:field": "legprovisionoptionexpirationdateoffsetperiod",
+          "FIX:tag": "40502"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexpirationdateoffsetunit",
-          "fix:tag": "40503"
+          "FIX:field": "legprovisionoptionexpirationdateoffsetunit",
+          "FIX:tag": "40503"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexpirationdateoffsetdaytype",
-          "fix:tag": "40504"
+          "FIX:field": "legprovisionoptionexpirationdateoffsetdaytype",
+          "FIX:tag": "40504"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexpirationdateadjusted",
-          "fix:tag": "40505"
+          "FIX:field": "legprovisionoptionexpirationdateadjusted",
+          "FIX:tag": "40505"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexpirationtime",
-          "fix:tag": "40506"
+          "FIX:field": "legprovisionoptionexpirationtime",
+          "FIX:tag": "40506"
         }
       },
       {
@@ -119,16 +119,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexpirationtimebusinesscenter",
-          "fix:tag": "40507"
+          "FIX:field": "legprovisionoptionexpirationtimebusinesscenter",
+          "FIX:tag": "40507"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "1012009",
     "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of the leg provision option expiration date.",
-    "display": "LegProvisionOptionExpirationDate",
-    "fix:tag": "1012009"
+    "display": "LegProvisionOptionExpirationDate"
   }
 }

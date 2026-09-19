@@ -12,22 +12,23 @@ use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use yggdryl::IOBase;
+use yggdryl::avro;
+use yggdryl::avro::AvroOptions;
 use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
-use yggdryl::media::avro;
-use yggdryl::media::avro::AvroOptions;
-use yggdryl::{DataType, Url};
+use yggdryl::{DataType, StructureType, Url};
 
 /// Rows in the sweep fixture.
 const ROWS: usize = crate::bench_profile::corpus(65_536, 1_024);
 
 /// One canonical batch of `rows` trades starting at `base`.
 fn batch(base: usize, rows: usize) -> RecordBatch {
-    let schema = DataType::from_fields([
+    let schema = StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
         DataType::Float64.required_field("price"),
     ])
+    .map(DataType::from)
     .expect("a struct")
     .required_field("row")
     .into_arrow_schema()

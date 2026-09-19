@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollecttype",
-          "fix:tag": "1708"
+          "FIX:field": "paycollecttype",
+          "FIX:tag": "1708"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollectcurrency",
-          "fix:tag": "1709"
+          "FIX:field": "paycollectcurrency",
+          "FIX:tag": "1709"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollectcurrencycodesource",
-          "fix:tag": "2955"
+          "FIX:field": "paycollectcurrencycodesource",
+          "FIX:tag": "2955"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollectfxrate",
-          "fix:tag": "2094"
+          "FIX:field": "paycollectfxrate",
+          "FIX:tag": "2094"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollectfxratecalc",
-          "fix:tag": "2095"
+          "FIX:field": "paycollectfxratecalc",
+          "FIX:tag": "2095"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "payamount",
-          "fix:tag": "1710"
+          "FIX:field": "payamount",
+          "FIX:tag": "1710"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collectamount",
-          "fix:tag": "1711"
+          "FIX:field": "collectamount",
+          "FIX:tag": "1711"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollectmarketsegmentid",
-          "fix:tag": "1712"
+          "FIX:field": "paycollectmarketsegmentid",
+          "FIX:tag": "1712"
         }
       },
       {
@@ -98,15 +98,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paycollectmarketid",
-          "fix:tag": "1713"
+          "FIX:field": "paycollectmarketid",
+          "FIX:tag": "1713"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PayCollect",
-    "fix:tag": "887353"
+    "FIX:tag": "887353",
+    "display": "PayCollect"
   }
 }

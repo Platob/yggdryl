@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "mdack"
+        "FIX:component": "mdack"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "mdack",
+    "FIX:counter": "268",
+    "FIX:tag": "682387",
     "description": "Number of entries following.",
-    "display": "MDAckGrp",
-    "fix:component": "mdack",
-    "fix:counter": "268",
-    "fix:tag": "682387"
+    "display": "MDAckGrp"
   }
 }

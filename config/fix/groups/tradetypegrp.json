@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "tradetypecomponent"
+        "FIX:component": "tradetypecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "tradetypecomponent",
+    "FIX:counter": "3005",
+    "FIX:tag": "630004",
     "description": "Required if NoTradeTypes(3005) > 0.",
-    "display": "TradeTypeGrp",
-    "fix:component": "tradetypecomponent",
-    "fix:counter": "3005",
-    "fix:tag": "630004"
+    "display": "TradeTypeGrp"
   }
 }

@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "400",
       "description": "BidDescriptor value. Usage depends upon BidDescriptorTyp (399).",
-      "display": "BidDescriptor",
-      "fix:tag": "400"
+      "display": "BidDescriptor"
     }
   },
   {
@@ -18,9 +18,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to identify which \"SideValue\" the value refers to. SideValue1 and SideValue2 are used as opposed to Buy or Sell so that the basket can be quoted either way as Buy or Sell.",
-      "display": "SideValueInd",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "SideValue1",
@@ -32,7 +30,9 @@
           "doc": "Side Value 2"
         }
       ],
-      "fix:tag": "401"
+      "FIX:tag": "401",
+      "description": "Code to identify which \"SideValue\" the value refers to. SideValue1 and SideValue2 are used as opposed to Buy or Sell so that the basket can be quoted either way as Buy or Sell.",
+      "display": "SideValueInd"
     }
   },
   {
@@ -42,9 +42,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "402",
       "description": "Liquidity indicator or lower limit if TotalNumSecurities (393) > 1. Represented as a percentage.",
-      "display": "LiquidityPctLow",
-      "fix:tag": "402"
+      "display": "LiquidityPctLow"
     }
   },
   {
@@ -54,9 +54,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "403",
       "description": "Upper liquidity indicator if TotalNumSecurities (393) > 1. Represented as a percentage.",
-      "display": "LiquidityPctHigh",
-      "fix:tag": "403"
+      "display": "LiquidityPctHigh"
     }
   },
   {
@@ -68,9 +68,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "404",
       "description": "Value between LiquidityPctLow (402) and LiquidityPctHigh (403) in Currency",
-      "display": "LiquidityValue",
-      "fix:tag": "404"
+      "display": "LiquidityValue"
     }
   },
   {
@@ -80,9 +80,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "405",
       "description": "Eg Used in EFP trades 2% (EFP - Exchange for Physical ). Represented as a percentage.",
-      "display": "EFPTrackingError",
-      "fix:tag": "405"
+      "display": "EFPTrackingError"
     }
   },
   {
@@ -94,9 +94,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "406",
       "description": "Used in EFP trades",
-      "display": "FairValue",
-      "fix:tag": "406"
+      "display": "FairValue"
     }
   },
   {
@@ -106,9 +106,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "407",
       "description": "Used in EFP trades. Represented as a percentage.",
-      "display": "OutsideIndexPct",
-      "fix:tag": "407"
+      "display": "OutsideIndexPct"
     }
   },
   {
@@ -120,9 +120,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "408",
       "description": "Used in EFP trades",
-      "display": "ValueOfFutures",
-      "fix:tag": "408"
+      "display": "ValueOfFutures"
     }
   },
   {
@@ -132,9 +132,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to identify the type of liquidity indicator.",
-      "display": "LiquidityIndType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FiveDayMovingAverage",
@@ -156,7 +154,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "409"
+      "FIX:tag": "409",
+      "description": "Code to identify the type of liquidity indicator.",
+      "display": "LiquidityIndType"
     }
   },
   {
@@ -166,9 +166,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "410",
       "description": "Overall weighted average liquidity expressed as a % of average daily volume. Represented as a percentage.",
-      "display": "WtAverageLiquidity",
-      "fix:tag": "410"
+      "display": "WtAverageLiquidity"
     }
   },
   {
@@ -178,9 +178,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether or not to exchange for phsyical.",
-      "display": "ExchangeForPhysical",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "False",
@@ -198,7 +196,9 @@
           "doc": "True"
         }
       ],
-      "fix:tag": "411"
+      "FIX:tag": "411",
+      "description": "Indicates whether or not to exchange for phsyical.",
+      "display": "ExchangeForPhysical"
     }
   },
   {
@@ -210,9 +210,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "412",
       "description": "Value of stocks in Currency",
-      "display": "OutMainCntryUIndex",
-      "fix:tag": "412"
+      "display": "OutMainCntryUIndex"
     }
   },
   {
@@ -222,9 +222,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "413",
       "description": "Percentage of program that crosses in Currency. Represented as a percentage.",
-      "display": "CrossPercent",
-      "fix:tag": "413"
+      "display": "CrossPercent"
     }
   },
   {
@@ -234,9 +234,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to identify the desired frequency of progress reports.",
-      "display": "ProgRptReqs",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "BuySideRequests",
@@ -253,7 +251,9 @@
           "doc": "Real-time execution reports (to be discourage)"
         }
       ],
-      "fix:tag": "414"
+      "FIX:tag": "414",
+      "description": "Code to identify the desired frequency of progress reports.",
+      "display": "ProgRptReqs"
     }
   },
   {
@@ -263,9 +263,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "415",
       "description": "Time in minutes between each ListStatus report sent by SellSide. Zero means don't send status.",
-      "display": "ProgPeriodInterval",
-      "fix:tag": "415"
+      "display": "ProgPeriodInterval"
     }
   },
   {
@@ -275,9 +275,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to represent whether value is net (inclusive of tax) or gross.",
-      "display": "IncTaxInd",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Net",
@@ -289,7 +287,9 @@
           "doc": "Gross"
         }
       ],
-      "fix:tag": "416"
+      "FIX:tag": "416",
+      "description": "Code to represent whether value is net (inclusive of tax) or gross.",
+      "display": "IncTaxInd"
     }
   },
   {
@@ -299,9 +299,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "417",
       "description": "Indicates the total number of bidders on the list",
-      "display": "NumBidders",
-      "fix:tag": "417"
+      "display": "NumBidders"
     }
   },
   {
@@ -311,9 +311,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to represent the type of trade.",
-      "display": "BidTradeType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "A",
           "name": "Agency",
@@ -335,10 +333,12 @@
           "doc": "Risk Trade"
         }
       ],
-      "fix:names": [
+      "FIX:names": [
         "tradetype"
       ],
-      "fix:tag": "418"
+      "FIX:tag": "418",
+      "description": "Code to represent the type of trade.",
+      "display": "BidTradeType"
     }
   },
   {
@@ -348,9 +348,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to represent the basis price type.",
-      "display": "BasisPxType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "2",
           "name": "ClosingPriceAtMorningSession",
@@ -417,7 +415,9 @@
           "doc": "Others"
         }
       ],
-      "fix:tag": "419"
+      "FIX:tag": "419",
+      "description": "Code to represent the basis price type.",
+      "display": "BasisPxType"
     }
   },
   {
@@ -427,9 +427,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "420",
       "description": "Indicates the number of list entries.",
-      "display": "NoBidComponents",
-      "fix:tag": "420"
+      "display": "NoBidComponents"
     }
   },
   {
@@ -439,9 +439,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "421",
       "description": "ISO Country Code in field",
-      "display": "Country",
-      "fix:tag": "421"
+      "display": "Country"
     }
   },
   {
@@ -451,9 +451,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "422",
       "description": "Total number of strike price entries across all messages. Should be the sum of all NoStrikes (428) in each message that has repeating strike price entries related to the same ListID (66). Used to support fragmentation.",
-      "display": "TotNoStrikes",
-      "fix:tag": "422"
+      "display": "TotNoStrikes"
     }
   },
   {
@@ -463,9 +463,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to represent the price type.",
-      "display": "PriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Percentage",
@@ -604,7 +602,9 @@
           "doc": "Percentage of notional"
         }
       ],
-      "fix:tag": "423"
+      "FIX:tag": "423",
+      "description": "Code to represent the price type.",
+      "display": "PriceType"
     }
   },
   {
@@ -616,9 +616,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "424",
       "description": "For GT orders, the OrderQty (38) less all quantity (adjusted for stock splits) that traded on previous days. DayOrderQty (424) = OrderQty - (CumQty (14) - DayCumQty (425))",
-      "display": "DayOrderQty",
-      "fix:tag": "424"
+      "display": "DayOrderQty"
     }
   },
   {
@@ -630,9 +630,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "425",
       "description": "Quantity on a GT order that has traded today.",
-      "display": "DayCumQty",
-      "fix:tag": "425"
+      "display": "DayCumQty"
     }
   },
   {
@@ -644,9 +644,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "426",
       "description": "The average price for quantity on a GT order that has traded today.",
-      "display": "DayAvgPx",
-      "fix:tag": "426"
+      "display": "DayAvgPx"
     }
   },
   {
@@ -656,9 +656,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to identify whether to book out executions on a part-filled GT order on the day of execution or to accumulate.",
-      "display": "GTBookingInst",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "BookOutAllTradesOnDayOfExecution",
@@ -678,7 +676,9 @@
           "doc": "Accumulate until verbally notified otherwise"
         }
       ],
-      "fix:tag": "427"
+      "FIX:tag": "427",
+      "description": "Code to identify whether to book out executions on a part-filled GT order on the day of execution or to accumulate.",
+      "display": "GTBookingInst"
     }
   },
   {
@@ -688,9 +688,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "428",
       "description": "Number of list strike price entries.",
-      "display": "NoStrikes",
-      "fix:tag": "428"
+      "display": "NoStrikes"
     }
   },
   {
@@ -700,9 +700,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to represent the status type.",
-      "display": "ListStatusType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Ack",
@@ -734,7 +732,9 @@
           "doc": "Alert"
         }
       ],
-      "fix:tag": "429"
+      "FIX:tag": "429",
+      "description": "Code to represent the status type.",
+      "display": "ListStatusType"
     }
   },
   {
@@ -744,9 +744,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to represent whether value is net (inclusive of tax) or gross.",
-      "display": "NetGrossInd",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Net",
@@ -758,7 +756,9 @@
           "doc": "Gross"
         }
       ],
-      "fix:tag": "430"
+      "FIX:tag": "430",
+      "description": "Code to represent whether value is net (inclusive of tax) or gross.",
+      "display": "NetGrossInd"
     }
   },
   {
@@ -768,9 +768,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to represent the status of a list order.",
-      "display": "ListOrderStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "InBiddingProcess",
@@ -807,7 +805,9 @@
           "doc": "Reject"
         }
       ],
-      "fix:tag": "431"
+      "FIX:tag": "431",
+      "description": "Code to represent the status of a list order.",
+      "display": "ListOrderStatus"
     }
   },
   {
@@ -818,9 +818,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "432",
       "description": "Date of order expiration (last day the order can trade), always expressed in terms of the local market date. The time at which the order expires is determined by the local market's business practices",
-      "display": "ExpireDate",
-      "fix:tag": "432"
+      "display": "ExpireDate"
     }
   },
   {
@@ -830,9 +830,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of ListExecInst (69).",
-      "display": "ListExecInstType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Immediate",
@@ -859,7 +857,9 @@
           "doc": "Exchange/switch CIV order - Buy driven, cash withdraw (i.e. additional cash will not be provided to fulfill the order)"
         }
       ],
-      "fix:tag": "433"
+      "FIX:tag": "433",
+      "description": "Identifies the type of ListExecInst (69).",
+      "display": "ListExecInstType"
     }
   },
   {
@@ -869,9 +869,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of request that a Cancel Reject is in response to.",
-      "display": "CxlRejResponseTo",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "OrderCancelRequest",
@@ -886,7 +884,9 @@
           "doc": "Order cancel/replace request"
         }
       ],
-      "fix:tag": "434"
+      "FIX:tag": "434",
+      "description": "Identifies the type of request that a Cancel Reject is in response to.",
+      "display": "CxlRejResponseTo"
     }
   },
   {
@@ -896,9 +896,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "435",
       "description": "Underlying security's CouponRate.",
-      "display": "UnderlyingCouponRate",
-      "fix:tag": "435"
+      "display": "UnderlyingCouponRate"
     }
   },
   {
@@ -908,9 +908,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "436",
       "description": "Underlying security's ContractMultiplier.",
-      "display": "UnderlyingContractMultiplier",
-      "fix:tag": "436"
+      "display": "UnderlyingContractMultiplier"
     }
   },
   {
@@ -922,9 +922,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "437",
       "description": "Quantity traded with the ContraBroker (375).",
-      "display": "ContraTradeQty",
-      "fix:tag": "437"
+      "display": "ContraTradeQty"
     }
   },
   {
@@ -936,9 +936,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "438",
       "description": "Identifes the time of the trade with the ContraBroker (375). (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
-      "display": "ContraTradeTime",
-      "fix:tag": "438"
+      "display": "ContraTradeTime"
     }
   },
   {
@@ -948,14 +948,14 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "ClearingFirm",
-      "fix:replacements": [
+      "FIX:replacements": [
         {
           "plan": "select [{partyid: clearingfirm, partyrole: '4'}] as parties",
           "doc": "ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)"
         }
       ],
-      "fix:tag": "439"
+      "FIX:tag": "439",
+      "display": "ClearingFirm"
     }
   },
   {
@@ -965,14 +965,14 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "ClearingAccount",
-      "fix:replacements": [
+      "FIX:replacements": [
         {
           "plan": "select [{partyrole: '4', ptyssubgrp: [{partysubid: clearingaccount}]}] as parties",
           "doc": "ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)"
         }
       ],
-      "fix:tag": "440"
+      "FIX:tag": "440",
+      "display": "ClearingAccount"
     }
   },
   {
@@ -982,9 +982,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "441",
       "description": "Number of Securites between LiquidityPctLow (402) and LiquidityPctHigh (403) in Currency.",
-      "display": "LiquidityNumSecurities",
-      "fix:tag": "441"
+      "display": "LiquidityNumSecurities"
     }
   },
   {
@@ -994,9 +994,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to indicate how the multi-legged security (e.g. option strategies, spreads, etc.) is being reported.",
-      "display": "MultiLegReportingType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "SingleSecurity",
@@ -1013,7 +1011,9 @@
           "doc": "Multi-leg security"
         }
       ],
-      "fix:tag": "442"
+      "FIX:tag": "442",
+      "description": "Used to indicate how the multi-legged security (e.g. option strategies, spreads, etc.) is being reported.",
+      "display": "MultiLegReportingType"
     }
   },
   {
@@ -1025,9 +1025,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "443",
       "description": "The time at which current market prices are used to determine the value of a basket.",
-      "display": "StrikeTime",
-      "fix:tag": "443"
+      "display": "StrikeTime"
     }
   },
   {
@@ -1037,9 +1037,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "444",
       "description": "Free format text string related to List Status.",
-      "display": "ListStatusText",
-      "fix:tag": "444"
+      "display": "ListStatusText"
     }
   },
   {
@@ -1049,9 +1049,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "445",
       "description": "Byte length of encoded (non-ASCII characters) EncodedListStatusText (446) field.",
-      "display": "EncodedListStatusTextLen",
-      "fix:tag": "445"
+      "display": "EncodedListStatusTextLen"
     }
   },
   {
@@ -1061,9 +1061,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "446",
       "description": "Encoded (non-ASCII characters) representation of the ListStatusText (444) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the ListStatusText field.",
-      "display": "EncodedListStatusText",
-      "fix:tag": "446"
+      "display": "EncodedListStatusText"
     }
   },
   {
@@ -1073,9 +1073,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies class or source of the PartyID (448) value. Required if PartyID is specified. Note: applicable values depend upon PartyRole (452) specified.",
-      "display": "PartyIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "KoreanInvestorID",
@@ -1263,7 +1261,9 @@
           "doc": "Korea Short Selling Registration Number"
         }
       ],
-      "fix:tag": "447"
+      "FIX:tag": "447",
+      "description": "Identifies class or source of the PartyID (448) value. Required if PartyID is specified. Note: applicable values depend upon PartyRole (452) specified.",
+      "display": "PartyIDSource"
     }
   },
   {
@@ -1273,9 +1273,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "448",
       "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
-      "display": "PartyID",
-      "fix:tag": "448"
+      "display": "PartyID"
     }
   },
   {
@@ -1287,8 +1287,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "TotalVolumeTradedDate",
-      "fix:tag": "449"
+      "FIX:tag": "449",
+      "display": "TotalVolumeTradedDate"
     }
   },
   {
@@ -1299,8 +1299,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "TotalVolumeTradedTime",
-      "fix:tag": "450"
+      "FIX:tag": "450",
+      "display": "TotalVolumeTradedTime"
     }
   },
   {
@@ -1312,9 +1312,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "451",
       "description": "Net change from previous day's closing price vs. last traded price.",
-      "display": "NetChgPrevDay",
-      "fix:tag": "451"
+      "display": "NetChgPrevDay"
     }
   },
   {
@@ -1324,9 +1324,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type or role of the PartyID (448) specified.",
-      "display": "PartyRole",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ExecutingFirm",
@@ -1973,7 +1971,9 @@
           "doc": "Algorithm"
         }
       ],
-      "fix:tag": "452"
+      "FIX:tag": "452",
+      "description": "Identifies the type or role of the PartyID (448) specified.",
+      "display": "PartyRole"
     }
   },
   {
@@ -1983,9 +1983,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "453",
       "description": "Number of PartyID (448), PartyIDSource (447), and PartyRole (452) entries",
-      "display": "NoPartyIDs",
-      "fix:tag": "453"
+      "display": "NoPartyIDs"
     }
   },
   {
@@ -1995,9 +1995,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "454",
       "description": "Number of SecurityAltID (455) entries.",
-      "display": "NoSecurityAltID",
-      "fix:tag": "454"
+      "display": "NoSecurityAltID"
     }
   },
   {
@@ -2007,9 +2007,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "455",
       "description": "Alternate Security identifier value for this security of SecurityAltIDSource (456) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityAltIDSource.",
-      "display": "SecurityAltID",
-      "fix:tag": "455"
+      "display": "SecurityAltID"
     }
   },
   {
@@ -2019,9 +2019,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies class or source of the SecurityAltID(455) value.",
-      "display": "SecurityAltIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -2188,7 +2186,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "456"
+      "FIX:tag": "456",
+      "description": "Identifies class or source of the SecurityAltID(455) value.",
+      "display": "SecurityAltIDSource"
     }
   },
   {
@@ -2198,9 +2198,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "457",
       "description": "Number of UnderlyingSecurityAltID (458) entries.",
-      "display": "NoUnderlyingSecurityAltID",
-      "fix:tag": "457"
+      "display": "NoUnderlyingSecurityAltID"
     }
   },
   {
@@ -2210,9 +2210,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "458",
       "description": "Alternate Security identifier value for this underlying security of UnderlyingSecurityAltIDSource (459) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires UnderlyingSecurityAltIDSource.",
-      "display": "UnderlyingSecurityAltID",
-      "fix:tag": "458"
+      "display": "UnderlyingSecurityAltID"
     }
   },
   {
@@ -2222,9 +2222,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies class or source of the UnderlyingSecurityAltID(458) value.",
-      "display": "UnderlyingSecurityAltIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -2391,7 +2389,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "459"
+      "FIX:tag": "459",
+      "description": "Identifies class or source of the UnderlyingSecurityAltID(458) value.",
+      "display": "UnderlyingSecurityAltIDSource"
     }
   },
   {
@@ -2401,9 +2401,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the type of product the security is associated with. See also the CFICode (461) and SecurityType (167) fields.",
-      "display": "Product",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "AGENCY",
@@ -2470,8 +2468,10 @@
           "doc": "FINANCING"
         }
       ],
-      "fix:derivation": "case when upper(securitytype) in ('EUSUPRA', 'FAC', 'FADN', 'PEF', 'SUPRA') then 1 when upper(securitytype) in ('CB', 'CORP', 'CPP', 'DIMSUMCORP', 'DUAL', 'EUCORP', 'EUFRN', 'FRN', 'PRCORP', 'STRUCT', 'XLINKD', 'YANK') then 3 when upper(securitytype) in ('FOR', 'FXBN', 'FXDN', 'FXFWD', 'FXNDF', 'FXNDS', 'FXSPOT', 'FXSWAP') then 4 when upper(securitytype) in ('CS', 'DR', 'PS') then 5 when upper(securitytype) in ('BRADY', 'CAN', 'CTB', 'DIMSUMSOV', 'EUSOV', 'PROV', 'SOV', 'TB', 'TBILL', 'TBOND', 'TCAL', 'TFRN', 'TINT', 'TIPS', 'TNOTE', 'TPRN') then 6 when upper(securitytype) in ('AMENDED', 'BRIDGE', 'DEFLTED', 'DINP', 'LOFC', 'MATURED', 'REPLACD', 'RETIRED', 'RVLV', 'RVLVTRM', 'SWING', 'TERM', 'WITHDRN') then 8 when upper(securitytype) in ('BA', 'BAB', 'BDN', 'BN', 'BNST', 'BOX', 'CAMM', 'CD', 'CL', 'CLCP', 'CN', 'CP', 'CPIB', 'DN', 'EUCD', 'EUCP', 'EUMTN', 'EUNCP', 'EUSTLQN', 'EUTD', 'JCD', 'LQN', 'MMF', 'MN', 'MTN', 'NCD', 'NCP', 'ONITE', 'PN', 'PZFJ', 'RCD', 'SLQN', 'STN', 'TD', 'TDR', 'TLQN', 'XCN', 'YCD') then 9 when upper(securitytype) in ('ABS', 'CMB', 'CMBS', 'CMO', 'IET', 'MBS', 'MIO', 'MPO', 'MPP', 'MPT', 'PFAND', 'TBA') then 10 when upper(securitytype) in ('AN', 'COFO', 'COFP', 'GO', 'MCPIB', 'MT', 'RAN', 'REV', 'SPCLA', 'SPCLO', 'SPCLT', 'TAN', 'TAXA', 'TECP', 'TMB', 'TMCP', 'TRAN', 'VRDN', 'VRDO', 'WAR') then 11 when upper(securitytype) in ('BUYSELL', 'COLLBSKT', 'DVPLDG', 'FORWARD', 'MRGNLOAN', 'REPO', 'SECLOAN', 'SECPLEDGE', 'SFP') then 13 when cficode ilike 'E%' then 5 when cficode ilike 'L%' then 13 end",
-      "fix:tag": "460"
+      "FIX:derivation": "case when upper(securitytype) in ('EUSUPRA', 'FAC', 'FADN', 'PEF', 'SUPRA') then 1 when upper(securitytype) in ('CB', 'CORP', 'CPP', 'DIMSUMCORP', 'DUAL', 'EUCORP', 'EUFRN', 'FRN', 'PRCORP', 'STRUCT', 'XLINKD', 'YANK') then 3 when upper(securitytype) in ('FOR', 'FXBN', 'FXDN', 'FXFWD', 'FXNDF', 'FXNDS', 'FXSPOT', 'FXSWAP') then 4 when upper(securitytype) in ('CS', 'DR', 'PS') then 5 when upper(securitytype) in ('BRADY', 'CAN', 'CTB', 'DIMSUMSOV', 'EUSOV', 'PROV', 'SOV', 'TB', 'TBILL', 'TBOND', 'TCAL', 'TFRN', 'TINT', 'TIPS', 'TNOTE', 'TPRN') then 6 when upper(securitytype) in ('AMENDED', 'BRIDGE', 'DEFLTED', 'DINP', 'LOFC', 'MATURED', 'REPLACD', 'RETIRED', 'RVLV', 'RVLVTRM', 'SWING', 'TERM', 'WITHDRN') then 8 when upper(securitytype) in ('BA', 'BAB', 'BDN', 'BN', 'BNST', 'BOX', 'CAMM', 'CD', 'CL', 'CLCP', 'CN', 'CP', 'CPIB', 'DN', 'EUCD', 'EUCP', 'EUMTN', 'EUNCP', 'EUSTLQN', 'EUTD', 'JCD', 'LQN', 'MMF', 'MN', 'MTN', 'NCD', 'NCP', 'ONITE', 'PN', 'PZFJ', 'RCD', 'SLQN', 'STN', 'TD', 'TDR', 'TLQN', 'XCN', 'YCD') then 9 when upper(securitytype) in ('ABS', 'CMB', 'CMBS', 'CMO', 'IET', 'MBS', 'MIO', 'MPO', 'MPP', 'MPT', 'PFAND', 'TBA') then 10 when upper(securitytype) in ('AN', 'COFO', 'COFP', 'GO', 'MCPIB', 'MT', 'RAN', 'REV', 'SPCLA', 'SPCLO', 'SPCLT', 'TAN', 'TAXA', 'TECP', 'TMB', 'TMCP', 'TRAN', 'VRDN', 'VRDO', 'WAR') then 11 when upper(securitytype) in ('BUYSELL', 'COLLBSKT', 'DVPLDG', 'FORWARD', 'MRGNLOAN', 'REPO', 'SECLOAN', 'SECPLEDGE', 'SFP') then 13 when cficode ilike 'E%' then 5 when cficode ilike 'L%' then 13 end",
+      "FIX:tag": "460",
+      "description": "Indicates the type of product the security is associated with. See also the CFICode (461) and SecurityType (167) fields.",
+      "display": "Product"
     }
   },
   {
@@ -2481,10 +2481,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:derivation": "case when upper(securitytype) in ('CS') then 'ESXXXX' when upper(securitytype) in ('PS') then 'EPXXXX' when upper(securitytype) in ('DR') then 'EDXXXX' when upper(securitytype) in ('MF', 'MMF') then 'CIXXXX' when upper(securitytype) in ('ETF') then 'CEXXXX' when upper(securitytype) in ('FUT') then 'FXXXXX' when upper(securitytype) in ('OPT', 'OOP', 'OOC') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'XXXX') when upper(securitytype) in ('OOF') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'FXXX') when upper(securitytype) in ('CB') then 'DCXXXX' when upper(securitytype) in ('MTN', 'EUMTN') then 'DTXXXX' when upper(securitytype) in ('ABS') then 'DAXXXX' when upper(securitytype) in ('MBS', 'CMBS', 'CMO', 'TBA', 'PFAND', 'MPT', 'IET', 'MIO', 'MPO', 'MPP', 'CMB') then 'DGXXXX' when upper(securitytype) in ('CORP', 'EUCORP', 'YANK', 'PRCORP', 'DUAL', 'XLINKD', 'DIMSUMCORP') then 'DBXXXX' when upper(securitytype) in ('FRN', 'EUFRN', 'TFRN') then 'DBVXXX' when upper(securitytype) in ('TBOND', 'TNOTE', 'SOV', 'EUSOV', 'BRADY', 'PROV', 'CAN', 'DIMSUMSOV', 'TIPS') then 'DBXXXX' when upper(securitytype) in ('TBILL', 'TB', 'CTB', 'CP', 'CD', 'BA', 'BN', 'CL', 'DN', 'EUCD', 'EUCP', 'LQN', 'ONITE', 'PN', 'STN', 'TD', 'XCN', 'YCD', 'NCD', 'NCP', 'JCD', 'RCD', 'TDR', 'TLQN', 'SLQN', 'CPIB', 'CLCP', 'CAMM', 'BAB', 'BDN', 'BNST', 'BOX', 'CN', 'EUNCP', 'EUSTLQN', 'EUTD', 'MN', 'PZFJ') then 'DYXXXX' when upper(securitytype) in ('GO', 'REV', 'AN', 'COFO', 'COFP', 'MT', 'RAN', 'SPCLA', 'SPCLO', 'SPCLT', 'TAN', 'TAXA', 'TECP', 'TRAN', 'VRDN', 'VRDO', 'TMB', 'TMCP', 'MCPIB') then 'DNXXXX' when upper(securitytype) in ('IRS') then 'SRXXXX' when upper(securitytype) in ('CDS') then 'SCXXXX' when upper(securitytype) in ('CMDTYSWAP') then 'STXXXX' when upper(securitytype) in ('FXSWAP') then 'SFXXXX' when upper(securitytype) in ('FXSPOT') then 'IFXXXX' when upper(securitytype) in ('FXFWD') then 'JFXXXX' when upper(securitytype) in ('FRA') then 'JRXXXX' when upper(securitytype) in ('EQFWD') then 'JEXXXX' when upper(securitytype) in ('REPO') then 'LRXXXX' when upper(securitytype) in ('SECLOAN') then 'LSXXXX' when upper(securitytype) in ('INDEX') then 'TIXXXX' end",
+      "FIX:tag": "461",
       "description": "Indicates the type of security using ISO 10962 standard, Classification of Financial Instruments (CFI code) values. ISO 10962 is maintained by ANNA (Association of National Numbering Agencies) acting as Registration Authority. See \"Appendix 6-B FIX Fields Based Upon Other Standards\". See also the Product (460) and SecurityType (167) fields. It is recommended that CFICode be used instead of SecurityType (167) for non-Fixed Income instruments.",
-      "display": "CFICode",
-      "fix:derivation": "case when upper(securitytype) in ('CS') then 'ESXXXX' when upper(securitytype) in ('PS') then 'EPXXXX' when upper(securitytype) in ('DR') then 'EDXXXX' when upper(securitytype) in ('MF', 'MMF') then 'CIXXXX' when upper(securitytype) in ('ETF') then 'CEXXXX' when upper(securitytype) in ('FUT') then 'FXXXXX' when upper(securitytype) in ('OPT', 'OOP', 'OOC') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'XXXX') when upper(securitytype) in ('OOF') then concat('O', case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end, 'FXXX') when upper(securitytype) in ('CB') then 'DCXXXX' when upper(securitytype) in ('MTN', 'EUMTN') then 'DTXXXX' when upper(securitytype) in ('ABS') then 'DAXXXX' when upper(securitytype) in ('MBS', 'CMBS', 'CMO', 'TBA', 'PFAND', 'MPT', 'IET', 'MIO', 'MPO', 'MPP', 'CMB') then 'DGXXXX' when upper(securitytype) in ('CORP', 'EUCORP', 'YANK', 'PRCORP', 'DUAL', 'XLINKD', 'DIMSUMCORP') then 'DBXXXX' when upper(securitytype) in ('FRN', 'EUFRN', 'TFRN') then 'DBVXXX' when upper(securitytype) in ('TBOND', 'TNOTE', 'SOV', 'EUSOV', 'BRADY', 'PROV', 'CAN', 'DIMSUMSOV', 'TIPS') then 'DBXXXX' when upper(securitytype) in ('TBILL', 'TB', 'CTB', 'CP', 'CD', 'BA', 'BN', 'CL', 'DN', 'EUCD', 'EUCP', 'LQN', 'ONITE', 'PN', 'STN', 'TD', 'XCN', 'YCD', 'NCD', 'NCP', 'JCD', 'RCD', 'TDR', 'TLQN', 'SLQN', 'CPIB', 'CLCP', 'CAMM', 'BAB', 'BDN', 'BNST', 'BOX', 'CN', 'EUNCP', 'EUSTLQN', 'EUTD', 'MN', 'PZFJ') then 'DYXXXX' when upper(securitytype) in ('GO', 'REV', 'AN', 'COFO', 'COFP', 'MT', 'RAN', 'SPCLA', 'SPCLO', 'SPCLT', 'TAN', 'TAXA', 'TECP', 'TRAN', 'VRDN', 'VRDO', 'TMB', 'TMCP', 'MCPIB') then 'DNXXXX' when upper(securitytype) in ('IRS') then 'SRXXXX' when upper(securitytype) in ('CDS') then 'SCXXXX' when upper(securitytype) in ('CMDTYSWAP') then 'STXXXX' when upper(securitytype) in ('FXSWAP') then 'SFXXXX' when upper(securitytype) in ('FXSPOT') then 'IFXXXX' when upper(securitytype) in ('FXFWD') then 'JFXXXX' when upper(securitytype) in ('FRA') then 'JRXXXX' when upper(securitytype) in ('EQFWD') then 'JEXXXX' when upper(securitytype) in ('REPO') then 'LRXXXX' when upper(securitytype) in ('SECLOAN') then 'LSXXXX' when upper(securitytype) in ('INDEX') then 'TIXXXX' end",
-      "fix:tag": "461"
+      "display": "CFICode"
     }
   },
   {
@@ -2494,9 +2494,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Underlying security's Product.",
-      "display": "UnderlyingProduct",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "AGENCY",
@@ -2563,7 +2561,9 @@
           "doc": "FINANCING"
         }
       ],
-      "fix:tag": "462"
+      "FIX:tag": "462",
+      "description": "Underlying security's Product.",
+      "display": "UnderlyingProduct"
     }
   },
   {
@@ -2573,9 +2573,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "463",
       "description": "Underlying security's CFICode.",
-      "display": "UnderlyingCFICode",
-      "fix:tag": "463"
+      "display": "UnderlyingCFICode"
     }
   },
   {
@@ -2585,9 +2585,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether or not this FIX Session is a \"test\" vs. \"production\" connection. Useful for preventing \"accidents\".",
-      "display": "TestMessageIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "False",
@@ -2605,7 +2603,9 @@
           "doc": "True (test)"
         }
       ],
-      "fix:tag": "464"
+      "FIX:tag": "464",
+      "description": "Indicates whether or not this FIX Session is a \"test\" vs. \"production\" connection. Useful for preventing \"accidents\".",
+      "display": "TestMessageIndicator"
     }
   },
   {
@@ -2615,8 +2615,7 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "QuantityType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Shares"
@@ -2650,7 +2649,7 @@
           "name": "Par"
         }
       ],
-      "fix:replacements": [
+      "FIX:replacements": [
         {
           "plan": "select '1' as qtytype where quantitytype = '6'",
           "doc": "QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)"
@@ -2668,7 +2667,8 @@
           "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)"
         }
       ],
-      "fix:tag": "465"
+      "FIX:tag": "465",
+      "display": "QuantityType"
     }
   },
   {
@@ -2678,9 +2678,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "466",
       "description": "Common reference passed to a post-trade booking process (e.g. industry matching utility).",
-      "display": "BookingRefID",
-      "fix:tag": "466"
+      "display": "BookingRefID"
     }
   },
   {
@@ -2690,9 +2690,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "467",
       "description": "Unique identifier for a specific NoAllocs (78) repeating group instance (e.g. for an AllocAccount).",
-      "display": "IndividualAllocID",
-      "fix:tag": "467"
+      "display": "IndividualAllocID"
     }
   },
   {
@@ -2702,9 +2702,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies which direction to round For CIV - indicates whether or not the quantity of shares/units is to be rounded and in which direction where CashOrdQty (152) or (for CIV only) OrderPercent (516) are specified on an order.",
-      "display": "RoundingDirection",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "RoundToNearest",
@@ -2721,7 +2719,9 @@
           "doc": "Round up"
         }
       ],
-      "fix:tag": "468"
+      "FIX:tag": "468",
+      "description": "Specifies which direction to round For CIV - indicates whether or not the quantity of shares/units is to be rounded and in which direction where CashOrdQty (152) or (for CIV only) OrderPercent (516) are specified on an order.",
+      "display": "RoundingDirection"
     }
   },
   {
@@ -2731,9 +2731,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "469",
       "description": "For CIV - a float value indicating the value to which rounding is required.",
-      "display": "RoundingModulus",
-      "fix:tag": "469"
+      "display": "RoundingModulus"
     }
   },
   {
@@ -2743,10 +2743,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:derivation": "case when substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) end",
+      "FIX:tag": "470",
       "description": "ISO Country code of instrument issue (e.g. the country portion typically used in ISIN). Can be used in conjunction with non-ISIN SecurityID (48) (e.g. CUSIP for Municipal Bonds without ISIN) to provide uniqueness.",
-      "display": "CountryOfIssue",
-      "fix:derivation": "case when substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin)), 1, 2) end",
-      "fix:tag": "470"
+      "display": "CountryOfIssue"
     }
   },
   {
@@ -2756,9 +2756,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "471",
       "description": "A two-character state or province abbreviation.",
-      "display": "StateOrProvinceOfIssue",
-      "fix:tag": "471"
+      "display": "StateOrProvinceOfIssue"
     }
   },
   {
@@ -2768,9 +2768,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "472",
       "description": "Identifies the locale or region of issue.",
-      "display": "LocaleOfIssue",
-      "fix:tag": "472"
+      "display": "LocaleOfIssue"
     }
   },
   {
@@ -2780,9 +2780,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "473",
       "description": "The number of registration details on a Registration Instructions message",
-      "display": "NoRegistDtls",
-      "fix:tag": "473"
+      "display": "NoRegistDtls"
     }
   },
   {
@@ -2792,9 +2792,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "474",
       "description": "Set of Correspondence address details, possibly including phone, fax, etc.",
-      "display": "MailingDtls",
-      "fix:tag": "474"
+      "display": "MailingDtls"
     }
   },
   {
@@ -2804,9 +2804,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "475",
       "description": "The ISO 3166 Country code (2 character) identifying which country the beneficial investor is resident for tax purposes.",
-      "display": "InvestorCountryOfResidence",
-      "fix:tag": "475"
+      "display": "InvestorCountryOfResidence"
     }
   },
   {
@@ -2816,9 +2816,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "476",
       "description": "\"Settlement Payment Reference\" - A free format Payment reference to assist with reconciliation, e.g. a Client and/or Order ID number.",
-      "display": "PaymentRef",
-      "fix:tag": "476"
+      "display": "PaymentRef"
     }
   },
   {
@@ -2828,9 +2828,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the payment method for a (fractional) distribution. Used for CIV.",
-      "display": "DistribPaymentMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CREST",
@@ -2897,7 +2895,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "477"
+      "FIX:tag": "477",
+      "description": "Identifies the payment method for a (fractional) distribution. Used for CIV.",
+      "display": "DistribPaymentMethod"
     }
   },
   {
@@ -2907,9 +2907,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "478",
       "description": "Specifies currency to be used for Cash Distributions see \"Appendix 6-A Valid Currency Codes\".",
-      "display": "CashDistribCurr",
-      "fix:tag": "478"
+      "display": "CashDistribCurr"
     }
   },
   {
@@ -2919,9 +2919,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "479",
       "description": "Specifies currency to be used for Commission(12) if the commission currency is different from the deal currency.",
-      "display": "CommCurrency",
-      "fix:tag": "479"
+      "display": "CommCurrency"
     }
   },
   {
@@ -2931,9 +2931,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "For CIV - A one character code identifying whether Cancellation rights/Cooling off period applies.",
-      "display": "CancellationRights",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Y",
           "name": "Yes",
@@ -2955,7 +2953,9 @@
           "doc": "No - Institutional"
         }
       ],
-      "fix:tag": "480"
+      "FIX:tag": "480",
+      "description": "For CIV - A one character code identifying whether Cancellation rights/Cooling off period applies.",
+      "display": "CancellationRights"
     }
   },
   {
@@ -2965,9 +2965,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "A one character code identifying Money laundering status.",
-      "display": "MoneyLaunderingStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Y",
           "name": "Passed",
@@ -2994,7 +2992,9 @@
           "doc": "Exempt - Authorised Credit or financial institution"
         }
       ],
-      "fix:tag": "481"
+      "FIX:tag": "481",
+      "description": "A one character code identifying Money laundering status.",
+      "display": "MoneyLaunderingStatus"
     }
   },
   {
@@ -3004,9 +3004,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "482",
       "description": "Free format text to specify mailing instruction requirements, e.g. \"no third party mailings\".",
-      "display": "MailingInst",
-      "fix:tag": "482"
+      "display": "MailingInst"
     }
   },
   {
@@ -3018,9 +3018,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "483",
       "description": "For CIV A date and time stamp to indicate the time a CIV order was booked by the fund manager.",
-      "display": "TransBkdTime",
-      "fix:tag": "483"
+      "display": "TransBkdTime"
     }
   },
   {
@@ -3030,9 +3030,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "For CIV - Identifies how the execution price LastPx (31) was calculated from the fund unit/share price(s) calculated at the fund valuation point.",
-      "display": "ExecPriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "B",
           "name": "BidPrice",
@@ -3074,7 +3072,9 @@
           "doc": "Single price"
         }
       ],
-      "fix:tag": "484"
+      "FIX:tag": "484",
+      "description": "For CIV - Identifies how the execution price LastPx (31) was calculated from the fund unit/share price(s) calculated at the fund valuation point.",
+      "display": "ExecPriceType"
     }
   },
   {
@@ -3084,9 +3084,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "485",
       "description": "For CIV the amount or percentage by which the fund unit/share price was adjusted, as indicated by ExecPriceType (484)",
-      "display": "ExecPriceAdjustment",
-      "fix:tag": "485"
+      "display": "ExecPriceAdjustment"
     }
   },
   {
@@ -3097,9 +3097,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "486",
       "description": "The date of birth applicable to the individual, e.g. required to open some types of tax-exempt account.",
-      "display": "DateOfBirth",
-      "fix:tag": "486"
+      "display": "DateOfBirth"
     }
   },
   {
@@ -3109,9 +3109,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies Trade Report message transaction type",
-      "display": "TradeReportTransType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "New",
@@ -3155,7 +3153,9 @@
           "name": "ReplaceLegacy"
         }
       ],
-      "fix:tag": "487"
+      "FIX:tag": "487",
+      "description": "Identifies Trade Report message transaction type",
+      "display": "TradeReportTransType"
     }
   },
   {
@@ -3165,9 +3165,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "488",
       "description": "The name of the payment card holder as specified on the card being used for payment.",
-      "display": "CardHolderName",
-      "fix:tag": "488"
+      "display": "CardHolderName"
     }
   },
   {
@@ -3177,9 +3177,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "489",
       "description": "The number of the payment card as specified on the card being used for payment.",
-      "display": "CardNumber",
-      "fix:tag": "489"
+      "display": "CardNumber"
     }
   },
   {
@@ -3190,9 +3190,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "490",
       "description": "The expiry date of the payment card as specified on the card being used for payment.",
-      "display": "CardExpDate",
-      "fix:tag": "490"
+      "display": "CardExpDate"
     }
   },
   {
@@ -3202,12 +3202,12 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The issue number of the payment card as specified on the card being used for payment. This is only applicable to certain types of card.",
-      "display": "CardIssNum",
-      "fix:names": [
+      "FIX:names": [
         "cardissno"
       ],
-      "fix:tag": "491"
+      "FIX:tag": "491",
+      "description": "The issue number of the payment card as specified on the card being used for payment. This is only applicable to certain types of card.",
+      "display": "CardIssNum"
     }
   },
   {
@@ -3217,9 +3217,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the settlement payment method.",
-      "display": "PaymentMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CREST",
@@ -3326,7 +3324,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "492"
+      "FIX:tag": "492",
+      "description": "Identifies the settlement payment method.",
+      "display": "PaymentMethod"
     }
   },
   {
@@ -3336,9 +3336,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "493",
       "description": "For CIV - a fund manager-defined code identifying which of the fund manager's account types is required.",
-      "display": "RegistAcctType",
-      "fix:tag": "493"
+      "display": "RegistAcctType"
     }
   },
   {
@@ -3348,9 +3348,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "494",
       "description": "Free format text defining the designation to be associated with a holding on the register. Used to identify assets of a specific underlying investor using a common registration, e.g. a broker's nominee or street name.",
-      "display": "Designation",
-      "fix:tag": "494"
+      "display": "Designation"
     }
   },
   {
@@ -3360,9 +3360,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of tax exempt account in which purchases shares/units are to be held. Used for CIV.",
-      "display": "TaxAdvantageType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "None",
@@ -3519,7 +3517,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "495"
+      "FIX:tag": "495",
+      "description": "Identifies the type of tax exempt account in which purchases shares/units are to be held. Used for CIV.",
+      "display": "TaxAdvantageType"
     }
   },
   {
@@ -3529,9 +3529,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "496",
       "description": "Text indicating reason(s) why a Registration Instruction has been rejected.",
-      "display": "RegistRejReasonText",
-      "fix:tag": "496"
+      "display": "RegistRejReasonText"
     }
   },
   {
@@ -3541,9 +3541,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "A one character code identifying whether the Fund based renewal commission is to be waived.",
-      "display": "FundRenewWaiv",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "No",
@@ -3555,7 +3553,9 @@
           "doc": "Yes"
         }
       ],
-      "fix:tag": "497"
+      "FIX:tag": "497",
+      "description": "A one character code identifying whether the Fund based renewal commission is to be waived.",
+      "display": "FundRenewWaiv"
     }
   },
   {
@@ -3565,9 +3565,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "498",
       "description": "Name of local agent bank if for cash distributions",
-      "display": "CashDistribAgentName",
-      "fix:tag": "498"
+      "display": "CashDistribAgentName"
     }
   },
   {
@@ -3577,9 +3577,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "499",
       "description": "BIC (Bank Identification Code--Swift managed) code of agent bank for cash distributions",
-      "display": "CashDistribAgentCode",
-      "fix:tag": "499"
+      "display": "CashDistribAgentCode"
     }
   }
 ]

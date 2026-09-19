@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventstarttime",
-          "fix:tag": "1495"
+          "FIX:field": "complexeventstarttime",
+          "FIX:tag": "1495"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventendtime",
-          "fix:tag": "1496"
+          "FIX:field": "complexeventendtime",
+          "FIX:tag": "1496"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ComplexEventTime",
-    "fix:tag": "349238"
+    "FIX:tag": "349238",
+    "display": "ComplexEventTime"
   }
 }

@@ -1,21 +1,25 @@
 //! The `Scalar` conversion is the one structural model of a schema, and every
 //! serialized form is expressed over it.
 
+use yggdryl::DateTimeType;
 use yggdryl::Scalar;
-use yggdryl::{DataType, Field, Metadata, PythonKind, PythonMetadata, TimeUnit};
+use yggdryl::{DataType, Field, Metadata, PythonKind, PythonMetadata, StructureType, TimeUnit};
 
 /// One representative field per shape the model can carry.
 fn shapes() -> Vec<Field> {
-    let nested = DataType::from_fields([
+    let nested = StructureType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::from_fields([
-            DataType::from_fields([DataType::utf8().nullable_field("leaf")])
-                .unwrap()
-                .nullable_field("inner"),
+        StructureType::from_fields([StructureType::from_fields([
+            DataType::utf8().nullable_field("leaf")
         ])
+        .map(DataType::from)
+        .unwrap()
+        .nullable_field("inner")])
+        .map(DataType::from)
         .unwrap()
         .required_field("middle"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("deep");
 
@@ -38,12 +42,13 @@ fn shapes() -> Vec<Field> {
     );
     dictionary.set_dictionary_options(42, true).unwrap();
 
-    let partitioned = DataType::from_fields([
+    let partitioned = StructureType::from_fields([
         DataType::utf8()
             .required_field("venue")
             .with_partition(true),
         DataType::Int64.required_field("id"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
 
@@ -51,7 +56,8 @@ fn shapes() -> Vec<Field> {
         DataType::Int64.required_field("flat"),
         nested,
         DataType::list(
-            DataType::from_fields([DataType::Int64.required_field("id")])
+            StructureType::from_fields([DataType::Int64.required_field("id")])
+                .map(DataType::from)
                 .unwrap()
                 .nullable_field("item"),
         )
@@ -74,10 +80,10 @@ fn shapes() -> Vec<Field> {
         DataType::decimal128(38, 6)
             .unwrap()
             .nullable_field("amount"),
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: "Europe/Paris".parse().unwrap(),
-        }
+        })
         .nullable_field("at"),
         DataType::run_end_encoded(
             DataType::Int32.required_field("run_ends"),
@@ -85,9 +91,7 @@ fn shapes() -> Vec<Field> {
         )
         .unwrap()
         .nullable_field("runs"),
-        DataType::fixed_size_binary(16)
-            .unwrap()
-            .nullable_field("uuid"),
+        DataType::fixed_binary(16).unwrap().nullable_field("uuid"),
         DataType::from_str("binary(64)")
             .unwrap()
             .nullable_field("blob"),
@@ -137,7 +141,7 @@ fn the_value_shape_matches_the_json_structure_exactly() {
         // pins `into_json` against drift.
         let direct = field.clone().into_json().expect("structural JSON");
         let through_value = String::from_utf8(
-            yggdryl::text::json::into_bytes(&field.clone().into_value()).expect("a JSON dump"),
+            yggdryl::json::into_bytes(&field.clone().into_value()).expect("a JSON dump"),
         )
         .expect("UTF-8");
         assert_eq!(direct, through_value, "{field}");
@@ -145,7 +149,7 @@ fn the_value_shape_matches_the_json_structure_exactly() {
         let dtype = field.dtype();
         let direct = dtype.clone().into_json().expect("structural JSON");
         let through_value = String::from_utf8(
-            yggdryl::text::json::into_bytes(&dtype.clone().into_value()).expect("a JSON dump"),
+            yggdryl::json::into_bytes(&dtype.clone().into_value()).expect("a JSON dump"),
         )
         .expect("UTF-8");
         assert_eq!(direct, through_value, "{dtype}");
@@ -201,7 +205,8 @@ fn the_trait_forms_sit_beside_the_inherent_ones() {
 
 /// One representative small field, for literal-text assertions.
 fn small() -> Field {
-    DataType::from_fields([DataType::Int64.required_field("id")])
+    StructureType::from_fields([DataType::Int64.required_field("id")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
 }
@@ -240,38 +245,36 @@ fn every_shape_round_trips_through_every_format() {
 
 #[test]
 fn every_string_and_byte_column_is_one_tag_with_its_parameters() {
-    // One `"string"` tag carries the layout, the charset and the bound, each
-    // omitted when it is the default; `"binary"` the same without a charset.
+    // One `"string"` tag carries the leaf and its number, each omitted when it
+    // is the default - the leaf's name already says the charset; `"binary"`
+    // the same over its six leaves.
     for (dtype, json) in [
         (DataType::utf8(), r#"{"type":"string"}"#),
         (
             DataType::from_str("utf8(32)").unwrap(),
-            r#"{"type":"string","max":32}"#,
+            r#"{"type":"string","layout":"sized_utf8","max":32}"#,
         ),
         (
             DataType::fixed_ascii(4).unwrap(),
-            r#"{"type":"string","layout":"fixed_string","charset":"us-ascii","fixed":4}"#,
+            r#"{"type":"string","layout":"fixed_ascii","fixed":4}"#,
         ),
-        (
-            DataType::ascii(),
-            r#"{"type":"string","charset":"us-ascii"}"#,
-        ),
+        (DataType::ascii(), r#"{"type":"string","layout":"ascii"}"#),
         (
             DataType::large_utf8(),
-            r#"{"type":"string","layout":"large_string"}"#,
+            r#"{"type":"string","layout":"large_utf8"}"#,
         ),
         (
             DataType::from_str("string(windows-1252)").unwrap(),
-            r#"{"type":"string","charset":"windows-1252"}"#,
+            r#"{"type":"string","layout":"cp1252"}"#,
         ),
         (DataType::binary(), r#"{"type":"binary"}"#),
         (
             DataType::from_str("binary(16)").unwrap(),
-            r#"{"type":"binary","max":16}"#,
+            r#"{"type":"binary","layout":"sized_binary","max":16}"#,
         ),
         (
-            DataType::fixed_size_binary(16).unwrap(),
-            r#"{"type":"binary","layout":"fixed_size_binary","fixed":16}"#,
+            DataType::fixed_binary(16).unwrap(),
+            r#"{"type":"binary","layout":"fixed_binary","fixed":16}"#,
         ),
         (
             DataType::binary_view(),
@@ -305,9 +308,9 @@ fn every_string_and_byte_column_is_one_tag_with_its_parameters() {
 fn natural_text_objects_feed_record_aware_structural_readers() {
     let field = small();
     let documents = [
-        yggdryl::text::json::from_utf8(&field.clone().into_json().unwrap()).unwrap(),
-        yggdryl::text::yaml::from_utf8(&field.clone().into_yaml().unwrap()).unwrap(),
-        yggdryl::text::toml::from_utf8(&field.clone().into_toml().unwrap()).unwrap(),
+        yggdryl::json::from_utf8(&field.clone().into_json().unwrap()).unwrap(),
+        yggdryl::yaml::from_utf8(&field.clone().into_yaml().unwrap()).unwrap(),
+        yggdryl::toml::from_utf8(&field.clone().into_toml().unwrap()).unwrap(),
     ];
 
     for document in documents {
@@ -424,37 +427,37 @@ fn indentation_reads_literally_in_every_format() {
     .unwrap();
 
     assert_eq!(
-        yggdryl::text::json::into_bytes(&value).unwrap(),
+        yggdryl::json::into_bytes(&value).unwrap(),
         br#"{"id":1,"tags":["a"]}"#
     );
     assert_eq!(
-        yggdryl::text::json::into_bytes_with_formatting(&value, Formatting::indented(2)).unwrap(),
+        yggdryl::json::into_bytes_with_formatting(&value, Formatting::indented(2)).unwrap(),
         b"{\n  \"id\": 1,\n  \"tags\": [\n    \"a\"\n  ]\n}"
     );
     assert_eq!(
-        yggdryl::text::json::into_bytes_with_formatting(&value, Formatting::indented(4)).unwrap(),
+        yggdryl::json::into_bytes_with_formatting(&value, Formatting::indented(4)).unwrap(),
         b"{\n    \"id\": 1,\n    \"tags\": [\n        \"a\"\n    ]\n}"
     );
 
     assert_eq!(
-        yggdryl::text::yaml::into_bytes(&value).unwrap(),
+        yggdryl::yaml::into_bytes(&value).unwrap(),
         b"id: 1\ntags:\n  - a\n"
     );
     assert_eq!(
-        yggdryl::text::yaml::into_bytes_with_formatting(&value, Formatting::indented(4)).unwrap(),
+        yggdryl::yaml::into_bytes_with_formatting(&value, Formatting::indented(4)).unwrap(),
         b"id: 1\ntags:\n    - a\n"
     );
     assert_eq!(
-        yggdryl::text::yaml::into_bytes_with_formatting(&value, Formatting::compact()).unwrap(),
+        yggdryl::yaml::into_bytes_with_formatting(&value, Formatting::compact()).unwrap(),
         b"{id: 1, tags: [a]}\n"
     );
 
     assert_eq!(
-        yggdryl::text::toml::into_bytes(&value).unwrap(),
+        yggdryl::toml::into_bytes(&value).unwrap(),
         b"\"id\" = 1\n\"tags\" = [\"a\"]\n"
     );
     assert_eq!(
-        yggdryl::text::toml::into_bytes_with_formatting(&value, Formatting::indented(2)).unwrap(),
+        yggdryl::toml::into_bytes_with_formatting(&value, Formatting::indented(2)).unwrap(),
         b"\"id\" = 1\n\"tags\" = [\n  \"a\",\n]\n"
     );
 }
@@ -463,13 +466,16 @@ fn indentation_reads_literally_in_every_format() {
 fn depth_three_indents_one_level_per_level() {
     use yggdryl::text::Formatting;
 
-    let deep = DataType::from_fields([DataType::from_fields([DataType::from_fields([
-        DataType::Int64.required_field("leaf"),
+    let deep = StructureType::from_fields([StructureType::from_fields([
+        StructureType::from_fields([DataType::Int64.required_field("leaf")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("inner"),
     ])
-    .unwrap()
-    .required_field("inner")])
+    .map(DataType::from)
     .unwrap()
     .required_field("middle")])
+    .map(DataType::from)
     .unwrap()
     .required_field("outer");
 
@@ -561,13 +567,15 @@ fn the_compact_form_is_unchanged_and_still_parses_back() {
 
 #[test]
 fn the_readable_form_indents_by_depth_and_omits_unset_attributes() {
-    let mut field = DataType::from_fields([
+    let mut field = StructureType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::from_fields([DataType::Float64.required_field("price")])
+        StructureType::from_fields([DataType::Float64.required_field("price")])
+            .map(DataType::from)
             .unwrap()
             .nullable_field("line"),
         DataType::list(DataType::utf8().nullable_field("tag")).nullable_field("tags"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("order");
     field.insert_metadata("owner", "trading").unwrap();
@@ -585,7 +593,7 @@ order: struct[3], required
     );
 
     // `{:#}` and the named adapter are one implementation.
-    assert_eq!(format!("{field:#}"), field.pretty().to_string());
+    assert_eq!(format!("{field:#}"), field.into_pretty_str());
 
     // Unset attributes are absent: no dictionary_id=0, no empty metadata blob.
     let plain = DataType::Int64.required_field("id");
@@ -608,7 +616,8 @@ fn the_readable_form_is_stable_across_runs() {
     // Nothing here iterates a hash map, so two renderings of one value - and
     // of two equal values built independently - agree exactly.
     let build = || {
-        let mut field = DataType::from_fields([DataType::Int64.required_field("id")])
+        let mut field = StructureType::from_fields([DataType::Int64.required_field("id")])
+            .map(DataType::from)
             .unwrap()
             .required_field("row");
         for (key, value) in [("z", "last"), ("a", "first"), ("m", "middle")] {
@@ -628,18 +637,20 @@ fn the_readable_form_is_stable_across_runs() {
 fn json_bytes_and_text_carry_the_same_nested_document() {
     // struct > list > struct > map, so the assertion is about nesting rather
     // than about a flat field.
-    let inner = DataType::from_fields([
+    let inner = StructureType::from_fields([
         DataType::utf8().required_field("sym"),
         DataType::decimal128(18, 4).unwrap().nullable_field("px"),
     ])
+    .map(DataType::from)
     .unwrap();
-    let row = DataType::from_fields([
+    let row = StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::list(inner.nullable_field("item")).nullable_field("levels"),
         DataType::map_of(DataType::utf8(), DataType::Int64, true)
             .unwrap()
             .nullable_field("tags"),
     ])
+    .map(DataType::from)
     .unwrap();
     let mut field = row.required_field("row");
     field.set_comment("a deeply nested row").unwrap();
@@ -670,12 +681,14 @@ fn json_bytes_and_text_carry_the_same_nested_document() {
 
 #[test]
 fn every_format_round_trips_the_same_nested_field() {
-    let field = DataType::from_fields([
+    let field = StructureType::from_fields([
         DataType::list(DataType::Int64.nullable_field("item")).nullable_field("levels"),
-        DataType::from_fields([DataType::Boolean.required_field("ok")])
+        StructureType::from_fields([DataType::Boolean.required_field("ok")])
+            .map(DataType::from)
             .unwrap()
             .required_field("flags"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
 

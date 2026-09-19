@@ -1,10 +1,10 @@
-//! The `fix:` vocabulary, on the field views that carry it.
+//! The `FIX:` vocabulary, on the field views that carry it.
 //!
 //! One type reads each property and one type writes it, and both reach the
 //! metadata only through the view's own `get`, `insert` and `remove`, so
 //! [`Field`](crate::Field)'s cache-aware mutation and metadata validation
 //! apply to every write. The property names are private to this module: a
-//! caller writes `set_tag(35)`, never `"fix:tag"`.
+//! caller writes `set_tag(35)`, never `"FIX:tag"`.
 
 use std::iter::FusedIterator;
 use std::str::Split;
@@ -17,7 +17,7 @@ use super::directions::{FixDirection, FixDirections};
 use super::document::{Cursor, Numbers, Words, Writer, is_word, repeated_number, repeated_word};
 use super::replacements::{FixReplacement, FixReplacements};
 use crate::expression::Term;
-use crate::types::folds_equal;
+use crate::folds_equal;
 use crate::{DataType, Error, FixField, FixFieldMut, Result};
 
 /// The dictionaries that contributed this field, folded and sorted; absent
@@ -26,7 +26,7 @@ const BRANCHES: &str = "branches";
 /// The canonical tag.
 const TAG: &str = "tag";
 /// The full key the canonical tag is stored under.
-pub(super) const TAG_KEY: &str = "fix:tag";
+pub(super) const TAG_KEY: &str = "FIX:tag";
 /// The alternate tags, a JSON array of tags, highest priority first.
 const TAGS: &str = "tags";
 /// The alternate names, a JSON array of words, highest priority first.
@@ -41,7 +41,7 @@ const NULLS: &str = "nulls";
 /// A description is a property of the *field*, not of the protocol quoting
 /// it: the same sentence is what an Iceberg doc, a SQL column comment and a
 /// FIX definition each publish. It is therefore read and written on the
-/// generic key every catalog already reads, rather than under `fix:` where
+/// generic key every catalog already reads, rather than under `FIX:` where
 /// only a FIX reader would find it.
 /// The FIX code set this field's values are drawn from.
 const CODES: &str = "codes";
@@ -135,7 +135,7 @@ impl<'field> FixField<'field> {
     ///
     /// # Errors
     ///
-    /// Returns an error naming the full `fix:transient` key when the stored
+    /// Returns an error naming the full `FIX:transient` key when the stored
     /// text is not `true` or `false`.
     pub fn is_transient(&self) -> Result<bool> {
         match self.get(TRANSIENT) {
@@ -166,7 +166,7 @@ impl<'field> FixField<'field> {
         self.branches().any(|held| folds_equal(held, dialect))
     }
 
-    /// Builds this field's identity, absent exactly when `fix:tag` is.
+    /// Builds this field's identity, absent exactly when `FIX:tag` is.
     ///
     /// Derived from the canonical tag and the field's own name on every ask;
     /// nothing stores it, so a rename is never stale.
@@ -185,7 +185,7 @@ impl<'field> FixField<'field> {
     ///
     /// # Errors
     ///
-    /// Returns an error naming the full `fix:tag` key when the stored text is
+    /// Returns an error naming the full `FIX:tag` key when the stored text is
     /// not a tag: [`FixFieldMut::set_tag`] never writes one, so this can only
     /// come from externally edited state.
     pub fn tag(&self) -> Result<Option<i32>> {
@@ -201,7 +201,7 @@ impl<'field> FixField<'field> {
     ///
     /// # Errors
     ///
-    /// Returns an error naming the full `fix:tags` key when the stored text
+    /// Returns an error naming the full `FIX:tags` key when the stored text
     /// is not the compact JSON array of tags [`FixFieldMut::set_tags`]
     /// writes, holds a tag that is not positive, or names one twice.
     pub fn tags(&self) -> Result<Vec<i32>> {
@@ -242,7 +242,7 @@ impl<'field> FixField<'field> {
     ///
     /// # Errors
     ///
-    /// Returns an error naming the full `fix:names` key when the stored text
+    /// Returns an error naming the full `FIX:names` key when the stored text
     /// is not the compact JSON array of words the setter writes, or names one
     /// twice with ASCII case folded.
     pub(super) fn validate_names(&self) -> Result<()> {
@@ -285,7 +285,7 @@ impl<'field> FixField<'field> {
             if spelling.is_empty() || spelling.contains(SEPARATOR) {
                 return Err(refused("a nonempty member spelling without a comma"));
             }
-            if !matches!(self.as_field().dtype(), DataType::Struct(_)) {
+            if !matches!(self.as_field().dtype(), DataType::Structure(_)) {
                 return Err(refused(
                     "a Struct component declaring its own scalar members",
                 ));
@@ -362,7 +362,7 @@ impl<'field> FixField<'field> {
 
     /// Returns the specification's own wording for this field.
     ///
-    /// Read from the generic `description` key rather than from `fix:`,
+    /// Read from the generic `description` key rather than from `FIX:`,
     /// because what a field is for belongs to the field. See
     /// [`Field::description`](crate::Field::description).
     pub fn description(&self) -> Option<&'field str> {
@@ -469,7 +469,7 @@ impl<'field> FixField<'field> {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidMetadataValue`] naming `fix:derivation` when
+    /// Returns [`Error::InvalidMetadataValue`] naming `FIX:derivation` when
     /// the stored text is not a term, or one past the depth or node budget.
     pub fn derivation(&self) -> Result<Option<Term>> {
         let Some(stored) = self.get(DERIVATION) else {
@@ -805,10 +805,11 @@ impl FixFieldMut<'_> {
     ///
     /// ```
     /// use yggdryl::DataType;
+    /// use yggdryl::StructureType;
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut order = DataType::utf8().nullable_field("clordid");
     /// order.as_fix_mut().set_tag(11)?;
-    /// let mut component = DataType::from_fields([order])?.required_field("order");
+    /// let mut component = DataType::from(StructureType::from_fields([order])?).required_field("order");
     /// component.as_fix_mut().set_identifiers(["11"])?;
     /// assert_eq!(component.as_fix().identifiers().collect::<Vec<_>>(), ["clordid"]);
     /// # Ok(())
@@ -967,7 +968,7 @@ impl FixFieldMut<'_> {
     ///     FixReplacement::new(plan).with_doc("Agency single order"),
     /// ])?;
     /// assert_eq!(
-    ///     rule80a.get_metadata("fix:replacements"),
+    ///     rule80a.get_metadata("FIX:replacements"),
     ///     Some(concat!(
     ///         r#"[{"plan":"select 'A' as ordercapacity where rule80a = 'A'","#,
     ///         r#""doc":"Agency single order"}]"#,
@@ -975,7 +976,7 @@ impl FixFieldMut<'_> {
     /// );
     ///
     /// rule80a.as_fix_mut().set_replacements(&[])?;
-    /// assert_eq!(rule80a.get_metadata("fix:replacements"), None);
+    /// assert_eq!(rule80a.get_metadata("FIX:replacements"), None);
     /// # Ok(())
     /// # }
     /// ```
@@ -1055,7 +1056,7 @@ impl FixFieldMut<'_> {
     ///     FixDirection::new("R", [r"^RX\b"]),
     /// ])?;
     /// assert_eq!(
-    ///     direction.get_metadata("fix:directions"),
+    ///     direction.get_metadata("FIX:directions"),
     ///     Some(concat!(
     ///         r#"[{"code":"S","patterns":["^TX\\b"]},"#,
     ///         r#"{"code":"R","patterns":["^RX\\b"]}]"#,
@@ -1063,7 +1064,7 @@ impl FixFieldMut<'_> {
     /// );
     ///
     /// direction.as_fix_mut().set_directions(&[])?;
-    /// assert_eq!(direction.get_metadata("fix:directions"), None);
+    /// assert_eq!(direction.get_metadata("FIX:directions"), None);
     /// # Ok(())
     /// # }
     /// ```
@@ -1159,7 +1160,7 @@ impl FixFieldMut<'_> {
     /// let mut gross = DataType::Float64.nullable_field("grosstradeamt");
     /// gross.as_fix_mut().set_tag(381)?;
     /// gross.as_fix_mut().set_derivation(&"lastqty*lastpx".parse::<Term>()?)?;
-    /// assert_eq!(gross.get_metadata("fix:derivation"), Some("lastqty * lastpx"));
+    /// assert_eq!(gross.get_metadata("FIX:derivation"), Some("lastqty * lastpx"));
     /// # Ok(())
     /// # }
     /// ```
@@ -1188,7 +1189,7 @@ impl FixFieldMut<'_> {
     ///
     /// assert_eq!(gross.as_fix_mut().remove_derivation()?, Some(term));
     /// assert_eq!(gross.as_fix_mut().remove_derivation()?, None);
-    /// assert_eq!(gross.get_metadata("fix:derivation"), None);
+    /// assert_eq!(gross.get_metadata("FIX:derivation"), None);
     /// # Ok(())
     /// # }
     /// ```
@@ -1218,17 +1219,17 @@ impl FixFieldMut<'_> {
     ///
     /// | key | rule |
     /// | --- | --- |
-    /// | `fix:tag` | MUST agree; a disagreement is a typed refusal naming both. Identity is not merged. |
-    /// | `fix:branches` | union, folded, sorted: every dictionary that contributed either side |
-    /// | `fix:tags` | union, incoming first, order kept, deduplicated |
-    /// | `fix:names` | union, folded, incoming first |
+    /// | `FIX:tag` | MUST agree; a disagreement is a typed refusal naming both. Identity is not merged. |
+    /// | `FIX:branches` | union, folded, sorted: every dictionary that contributed either side |
+    /// | `FIX:tags` | union, incoming first, order kept, deduplicated |
+    /// | `FIX:names` | union, folded, incoming first |
     /// | `description` | not folded here at all: it is a generic key, so the metadata merge every protocol shares carries it |
-    /// | `fix:codes` | merged by wire value, incoming winning a shared value |
-    /// | `fix:replacements` | incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
-    /// | `fix:directions` | incoming wins whole: a rule table is one statement, and two tables have no order between them |
-    /// | `fix:derivation` | incoming wins whole: a derivation is one term, and a field derives one way |
-    /// | `fix:identifiers` | incoming wins whole: identifiers are one ordered component declaration |
-    /// | any other `fix:` key | incoming wins; stored keeps what only it has |
+    /// | `FIX:codes` | merged by wire value, incoming winning a shared value |
+    /// | `FIX:replacements` | incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
+    /// | `FIX:directions` | incoming wins whole: a rule table is one statement, and two tables have no order between them |
+    /// | `FIX:derivation` | incoming wins whole: a derivation is one term, and a field derives one way |
+    /// | `FIX:identifiers` | incoming wins whole: identifiers are one ordered component declaration |
+    /// | any other `FIX:` key | incoming wins; stored keeps what only it has |
     ///
     /// Precedence is the caller's ordering rather than a field on the merge:
     /// a generator merges its lowest-priority source first, so the highest
@@ -1274,7 +1275,7 @@ impl FixFieldMut<'_> {
             }
         }
 
-        // One pass over the `fix:` key set, which is a const listing beside
+        // One pass over the `FIX:` key set, which is a const listing beside
         // these accessors, so no held key name is ever collected into a
         // `String` to be walked.
         let mut tags = held.tags()?;
@@ -1311,7 +1312,7 @@ impl FixFieldMut<'_> {
                 merged.push((key, value));
             }
         }
-        // A `fix:` key this vocabulary does not name is still one side's
+        // A `FIX:` key this vocabulary does not name is still one side's
         // statement, so it travels rather than being dropped by the replace.
         let mut extra: Vec<(String, String)> = Vec::new();
         for (name, value) in held.iter().chain(other.iter()) {
@@ -1367,7 +1368,7 @@ pub(super) fn spells_absence<'a>(nulls: impl IntoIterator<Item = &'a str>, text:
         .any(|spelling| spelling.eq_ignore_ascii_case(trimmed))
 }
 
-/// The spellings one comma-separated `fix:` property holds, in stored order.
+/// The spellings one comma-separated `FIX:` property holds, in stored order.
 ///
 /// Answered by [`FixField::branches`], [`FixField::identifiers`] and
 /// [`FixField::nulls`]. It walks the stored text as it goes and hands back
@@ -1412,7 +1413,7 @@ impl DoubleEndedIterator for FixSpellings<'_> {
 
 impl FusedIterator for FixSpellings<'_> {}
 
-/// The `fix:` keys a merge folds, as a `const` listing.
+/// The `FIX:` keys a merge folds, as a `const` listing.
 ///
 /// A merge walks this rather than collecting the keys a field holds, because
 /// the held names are owned `String`s behind a generic snapshot and building

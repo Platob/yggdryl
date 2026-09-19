@@ -9,13 +9,14 @@ use arrow_array::{
 };
 use arrow_schema::{DataType as ArrowDataType, Schema, TimeUnit as ArrowTimeUnit};
 
-use yggdryl::hashing::txhash::arrow::{
-    column_txhashes, compose, decompose, row_txhashes, unix_array,
+use yggdryl::DateTimeType;
+use yggdryl::txhash::arrow::{column_txhashes, compose, decompose, row_txhashes, unix_array};
+use yggdryl::txhash::{TxHash, TxHasher};
+use yggdryl::xxhash::Xxh3;
+use yggdryl::xxhash::arrow::{column_digests, row_digests};
+use yggdryl::{
+    ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, StructureType, TimeUnit, Timezone,
 };
-use yggdryl::hashing::txhash::{TxHash, TxHasher};
-use yggdryl::hashing::xxhash::Xxh3;
-use yggdryl::hashing::xxhash::arrow::{column_digests, row_digests};
-use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
 
 const INSTANTS: [i64; 3] = [
     1_700_000_000_000_000,
@@ -25,14 +26,14 @@ const INSTANTS: [i64; 3] = [
 const UNIT: TimeUnit = TimeUnit::Microsecond;
 
 fn struct_root(fields: impl IntoIterator<Item = Field>) -> Field {
-    DataType::from_fields(fields).unwrap().required_field("row")
+    DataType::from(StructureType::from_fields(fields).unwrap()).required_field("row")
 }
 
 fn batch(fields: &[Field], columns: Vec<ArrayRef>) -> RecordBatch {
     let fields = fields
         .iter()
         .cloned()
-        .map(Field::into_arrow)
+        .map(Field::into_arrow_field)
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap()
@@ -41,10 +42,10 @@ fn batch(fields: &[Field], columns: Vec<ArrayRef>) -> RecordBatch {
 fn event_field() -> Field {
     Field::new(
         "event",
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: UNIT,
             timezone: Timezone::UTC,
-        },
+        }),
         false,
     )
 }
@@ -63,7 +64,7 @@ fn quantities() -> ArrayRef {
 
 /// A coupled holder of the given width, naming its instant.
 fn coupled(name: &str, width: u32, time: &str) -> Field {
-    let mut field = Field::new(name, DataType::fixed_size_binary(width).unwrap(), false);
+    let mut field = Field::new(name, DataType::fixed_binary(width).unwrap(), false);
     field.as_digest_mut().set_holder().unwrap();
     field.as_digest_mut().set_time(time).unwrap();
     field
@@ -149,7 +150,7 @@ fn row_txhashes_couple_row_digests_with_instants() {
         assert_eq!(
             coupled.data_type(),
             &ArrowDataType::FixedSizeBinary(
-                i32::try_from(yggdryl::hashing::txhash::width(algorithm)).unwrap()
+                i32::try_from(yggdryl::txhash::width(algorithm)).unwrap()
             )
         );
         assert_eq!(coupled.null_count(), 0);
@@ -543,9 +544,10 @@ fn quantity_field() -> Field {
 
 #[test]
 fn a_dotted_time_path_reads_an_instant_under_a_nested_struct() {
-    let inner = DataType::from_fields([event_field(), symbol_field()]).unwrap();
+    let inner =
+        DataType::from(StructureType::from_fields([event_field(), symbol_field()]).unwrap());
     let meta = Field::new("meta", inner, true);
-    let struct_fields = match meta.clone().into_arrow().unwrap().data_type() {
+    let struct_fields = match meta.clone().into_arrow_field().unwrap().data_type() {
         ArrowDataType::Struct(fields) => fields.clone(),
         _ => unreachable!(),
     };
@@ -588,10 +590,10 @@ fn a_dotted_time_path_reads_an_instant_under_a_nested_struct() {
 fn an_instant_that_does_not_fit_the_holder_unit_is_refused_by_cell() {
     let seconds = Field::new(
         "event",
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Second,
             timezone: Timezone::UTC,
-        },
+        }),
         false,
     );
     let mut key = coupled("key", 16, "event");
@@ -628,7 +630,7 @@ fn the_instant_may_be_an_integer_or_date_column() {
         "an integer is the count already"
     );
 
-    let day = Field::new("day", DataType::Date32, false);
+    let day = Field::new("day", DataType::date32(), false);
     let root = struct_root([day.clone(), symbol_field(), coupled("key", 16, "day")]);
     let source = batch(
         &[day, symbol_field()],
@@ -647,10 +649,10 @@ fn the_instant_may_be_an_integer_or_date_column() {
 fn a_null_instant_nulls_a_nullable_holder_and_refuses_a_required_one() {
     let event = Field::new(
         "event",
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: UNIT,
             timezone: Timezone::UTC,
-        },
+        }),
         true,
     );
     let sparse: ArrayRef = Arc::new(
@@ -670,13 +672,15 @@ fn a_null_instant_nulls_a_nullable_holder_and_refuses_a_required_one() {
     let required = struct_root([event, symbol_field(), coupled("key", 16, "event")]);
     let refused = required.as_digest().apply_arrow_batch(&source).unwrap_err();
     assert!(refused.to_string().contains("row 1"), "{refused}");
-    assert!(refused.to_string().contains("digest:time"), "{refused}");
+    assert!(refused.to_string().contains("DIGEST:time"), "{refused}");
 }
 
 #[test]
 fn a_coupled_holder_under_a_null_struct_stays_untouched() {
-    let inner = DataType::from_fields([event_field(), symbol_field(), coupled("key", 16, "event")])
-        .unwrap();
+    let inner =
+        StructureType::from_fields([event_field(), symbol_field(), coupled("key", 16, "event")])
+            .map(DataType::from)
+            .unwrap();
     let nested = Field::new("nested", inner.clone(), true);
     let root = struct_root([nested.clone()]);
     let children: Vec<ArrayRef> = vec![
@@ -684,7 +688,7 @@ fn a_coupled_holder_under_a_null_struct_stays_untouched() {
         symbols(),
         Arc::new(FixedSizeBinaryArray::new(16, vec![0_u8; 48].into(), None)),
     ];
-    let struct_fields = match nested.clone().into_arrow().unwrap().data_type() {
+    let struct_fields = match nested.clone().into_arrow_field().unwrap().data_type() {
         ArrowDataType::Struct(fields) => fields.clone(),
         _ => unreachable!(),
     };
@@ -707,14 +711,16 @@ fn a_coupled_holder_under_a_null_struct_stays_untouched() {
 
 #[test]
 fn a_containing_holder_reads_a_nested_coupled_holder_as_its_bytes() {
-    let inner = DataType::from_fields([event_field(), symbol_field(), coupled("key", 16, "event")])
-        .unwrap();
+    let inner =
+        StructureType::from_fields([event_field(), symbol_field(), coupled("key", 16, "event")])
+            .map(DataType::from)
+            .unwrap();
     let nested = Field::new("nested", inner, false);
     let mut outer = Field::new("digest", DataType::UInt64, false);
     outer.as_digest_mut().set_holder().unwrap();
     outer.as_digest_mut().set_sources(["nested"]).unwrap();
     let root = struct_root([nested.clone(), outer]);
-    let struct_fields = match nested.clone().into_arrow().unwrap().data_type() {
+    let struct_fields = match nested.clone().into_arrow_field().unwrap().data_type() {
         ArrowDataType::Struct(fields) => fields.clone(),
         _ => unreachable!(),
     };
@@ -754,7 +760,7 @@ fn coupling_declarations_that_cannot_be_filled_are_refused() {
     let missing = struct_root([event_field(), symbol_field(), coupled("key", 16, "arrival")]);
     let error = refused(missing);
     assert!(
-        error.contains("digest:time") && error.contains("arrival"),
+        error.contains("DIGEST:time") && error.contains("arrival"),
         "{error}"
     );
 
@@ -776,11 +782,11 @@ fn coupling_declarations_that_cannot_be_filled_are_refused() {
 
     // A unit without an instant, and coupling metadata off a holder, written
     // raw where the typed setters would have refused.
-    let mut unit_only = Field::new("key", DataType::fixed_size_binary(16).unwrap(), false);
+    let mut unit_only = Field::new("key", DataType::fixed_binary(16).unwrap(), false);
     unit_only.as_digest_mut().set_holder().unwrap();
     unit_only.as_digest_mut().insert("unit", "s").unwrap();
     let error = refused(struct_root([event_field(), symbol_field(), unit_only]));
-    assert!(error.contains("digest:unit"), "{error}");
+    assert!(error.contains("DIGEST:unit"), "{error}");
     let mut stray = symbol_field();
     stray.as_digest_mut().insert("time", "event").unwrap();
     let error = refused(struct_root([
@@ -797,7 +803,7 @@ fn coupling_declarations_that_cannot_be_filled_are_refused() {
         coupled("key", 16, "event"),
     ]));
     assert!(
-        error.contains("digest:unit belongs only to a digest holder"),
+        error.contains("DIGEST:unit belongs only to a digest holder"),
         "{error}"
     );
 
@@ -815,12 +821,12 @@ fn coupling_declarations_that_cannot_be_filled_are_refused() {
         ))
         .unwrap_err()
         .to_string();
-    assert!(error.contains("digest:time"), "{error}");
+    assert!(error.contains("DIGEST:time"), "{error}");
 }
 
 #[test]
 fn a_coupled_holder_of_the_wrong_width_is_refused_by_name() {
-    let mut odd = Field::new("key", DataType::fixed_size_binary(20).unwrap(), false);
+    let mut odd = Field::new("key", DataType::fixed_binary(20).unwrap(), false);
     odd.as_digest_mut().set_holder().unwrap();
     odd.as_digest_mut().insert("time", "event").unwrap();
     let root = struct_root([event_field(), symbol_field(), odd]);

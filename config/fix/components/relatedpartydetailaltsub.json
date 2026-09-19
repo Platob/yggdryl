@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpartydetailaltsubid",
-          "fix:tag": "1573"
+          "FIX:field": "relatedpartydetailaltsubid",
+          "FIX:tag": "1573"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedpartydetailaltsubidtype",
-          "fix:tag": "1574"
+          "FIX:field": "relatedpartydetailaltsubidtype",
+          "FIX:tag": "1574"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "RelatedPartyDetailAltSub",
-    "fix:tag": "121287"
+    "FIX:tag": "121287",
+    "display": "RelatedPartyDetailAltSub"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "ordercapacity",
-          "fix:tag": "528"
+          "FIX:field": "ordercapacity",
+          "FIX:tag": "528"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderrestrictions",
-          "fix:tag": "529"
+          "FIX:field": "orderrestrictions",
+          "FIX:tag": "529"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordercapacityqty",
-          "fix:tag": "863"
+          "FIX:field": "ordercapacityqty",
+          "FIX:tag": "863"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "CpctyConf",
-    "fix:tag": "973861"
+    "FIX:tag": "973861",
+    "display": "CpctyConf"
   }
 }

@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettldealer",
-          "fix:tag": "42040"
+          "FIX:field": "underlyingcashsettldealer",
+          "FIX:tag": "42040"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingCashSettlDealer",
-    "fix:tag": "386201"
+    "FIX:tag": "386201",
+    "display": "UnderlyingCashSettlDealer"
   }
 }

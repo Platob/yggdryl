@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transactionattributetype",
-          "fix:tag": "2872"
+          "FIX:field": "transactionattributetype",
+          "FIX:tag": "2872"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transactionattributevalue",
-          "fix:tag": "2873"
+          "FIX:field": "transactionattributevalue",
+          "FIX:tag": "2873"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TransactionAttribute",
-    "fix:tag": "426931"
+    "FIX:tag": "426931",
+    "display": "TransactionAttribute"
   }
 }

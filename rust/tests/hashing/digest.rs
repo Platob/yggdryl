@@ -234,9 +234,9 @@ fn the_digester_is_a_hasher() {
 
     let mut digester = DigestAlgorithm::Xxh3.digester();
     digester.write(b"abc");
-    assert_eq!(digester.finish(), yggdryl::hashing::xxhash::xxh3(b"abc"));
+    assert_eq!(digester.finish(), yggdryl::xxhash::xxh3(b"abc"));
 
     let mut wide = DigestAlgorithm::Xxh128.digester();
     wide.write(b"abc");
-    assert_eq!(wide.finish(), yggdryl::hashing::xxhash::xxh3(b"abc"));
+    assert_eq!(wide.finish(), yggdryl::xxhash::xxh3(b"abc"));
 }

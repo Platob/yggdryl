@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legprovisioncashsettlpaymentfixeddate"
+        "FIX:component": "legprovisioncashsettlpaymentfixeddate"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legprovisioncashsettlpaymentfixeddate",
+    "FIX:counter": "40473",
+    "FIX:tag": "901649",
     "description": "Required if NoLegProvisionCashSettlPaymentDates (40473) > 0.",
-    "display": "LegProvisionCashSettlPaymentFixedDateGrp",
-    "fix:component": "legprovisioncashsettlpaymentfixeddate",
-    "fix:counter": "40473",
-    "fix:tag": "901649"
+    "display": "LegProvisionCashSettlPaymentFixedDateGrp"
   }
 }

@@ -27,12 +27,12 @@ One bind per stream, and the stream stays a stream.
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::expression::Plan;
-    use yggdryl::{DataType, Expression, Scalar};
+    use yggdryl::{DataType, Expression, Scalar, StructureType};
 
-    let root = DataType::from_fields([
+    let root = DataType::from(StructureType::from_fields([
         DataType::utf8().nullable_field("ccy"),
         DataType::Int64.nullable_field("size"),
-    ])?
+    ])?)
     .required_field("rows");
     let batch = RecordBatch::try_new(
         root.clone().into_arrow_schema()?,
@@ -211,8 +211,8 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 === "Rust"
 
     ```{ .rust .ignore }
-    use yggdryl::media::iceberg::Table;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::Table;
+    use yggdryl::local::Folder;
 
     let table = Table::open(Folder::new("/lake/trades")?)?;
 
@@ -274,7 +274,7 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::tests::scalar_and_vectorized_agree expression::tests::projections_agree_between_the_tiers expression::tests::a_mask_that_keeps_everything_keeps_the_batch_itself expression::tests::a_projection_reorders_without_touching_a_buffer expression::tests::a_reader_filters_and_projects_in_one_pass expression::tests::binds_and_evaluates_rows
     cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::plan::tests::streams::a_plan_shapes_a_stream_in_section_order expression::plan::tests::streams::records_run_through_every_expression
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::planning
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::tests::planning
     cargo bench -p yggdryl --bench expression -- expression_mask
     cargo bench -p yggdryl --bench expression -- kernel_mask
     cargo bench -p yggdryl --bench expression -- expression_filter

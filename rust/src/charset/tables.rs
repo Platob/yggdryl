@@ -16,7 +16,7 @@ use super::single_byte::SingleByte;
 /// The rows are the table's own shape - eight scalars, four encodings, sixteen
 /// widths - so a byte is found by counting rows rather than by scrolling.
 #[rustfmt::skip]
-pub(super) static LATIN1: SingleByte = SingleByte {
+pub(crate) static LATIN1: SingleByte = SingleByte {
     name: "iso-8859-1",
     scalars: [
         '\u{0080}', '\u{0081}', '\u{0082}', '\u{0083}', '\u{0084}', '\u{0085}', '\u{0086}', '\u{0087}',
@@ -121,7 +121,7 @@ pub(super) static LATIN1: SingleByte = SingleByte {
 /// The rows are the table's own shape - eight scalars, four encodings, sixteen
 /// widths - so a byte is found by counting rows rather than by scrolling.
 #[rustfmt::skip]
-pub(super) static LATIN2: SingleByte = SingleByte {
+pub(crate) static LATIN2: SingleByte = SingleByte {
     name: "iso-8859-2",
     scalars: [
         '\u{0080}', '\u{0081}', '\u{0082}', '\u{0083}', '\u{0084}', '\u{0085}', '\u{0086}', '\u{0087}',
@@ -226,7 +226,7 @@ pub(super) static LATIN2: SingleByte = SingleByte {
 /// The rows are the table's own shape - eight scalars, four encodings, sixteen
 /// widths - so a byte is found by counting rows rather than by scrolling.
 #[rustfmt::skip]
-pub(super) static LATIN9: SingleByte = SingleByte {
+pub(crate) static LATIN9: SingleByte = SingleByte {
     name: "iso-8859-15",
     scalars: [
         '\u{0080}', '\u{0081}', '\u{0082}', '\u{0083}', '\u{0084}', '\u{0085}', '\u{0086}', '\u{0087}',
@@ -331,7 +331,7 @@ pub(super) static LATIN9: SingleByte = SingleByte {
 /// The rows are the table's own shape - eight scalars, four encodings, sixteen
 /// widths - so a byte is found by counting rows rather than by scrolling.
 #[rustfmt::skip]
-pub(super) static CP1250: SingleByte = SingleByte {
+pub(crate) static CP1250: SingleByte = SingleByte {
     name: "windows-1250",
     scalars: [
         '\u{20AC}', '\u{FFFD}', '\u{201A}', '\u{FFFD}', '\u{201E}', '\u{2026}', '\u{2020}', '\u{2021}',
@@ -435,7 +435,7 @@ pub(super) static CP1250: SingleByte = SingleByte {
 /// The rows are the table's own shape - eight scalars, four encodings, sixteen
 /// widths - so a byte is found by counting rows rather than by scrolling.
 #[rustfmt::skip]
-pub(super) static CP1251: SingleByte = SingleByte {
+pub(crate) static CP1251: SingleByte = SingleByte {
     name: "windows-1251",
     scalars: [
         '\u{0402}', '\u{0403}', '\u{201A}', '\u{0453}', '\u{201E}', '\u{2026}', '\u{2020}', '\u{2021}',
@@ -540,7 +540,7 @@ pub(super) static CP1251: SingleByte = SingleByte {
 /// The rows are the table's own shape - eight scalars, four encodings, sixteen
 /// widths - so a byte is found by counting rows rather than by scrolling.
 #[rustfmt::skip]
-pub(super) static CP1252: SingleByte = SingleByte {
+pub(crate) static CP1252: SingleByte = SingleByte {
     name: "windows-1252",
     scalars: [
         '\u{20AC}', '\u{FFFD}', '\u{201A}', '\u{0192}', '\u{201E}', '\u{2026}', '\u{2020}', '\u{2021}',
@@ -644,7 +644,7 @@ pub(super) static CP1252: SingleByte = SingleByte {
 /// The rows are the table's own shape - eight scalars, four encodings, sixteen
 /// widths - so a byte is found by counting rows rather than by scrolling.
 #[rustfmt::skip]
-pub(super) static CP437: SingleByte = SingleByte {
+pub(crate) static CP437: SingleByte = SingleByte {
     name: "ibm437",
     scalars: [
         '\u{00C7}', '\u{00FC}', '\u{00E9}', '\u{00E2}', '\u{00E4}', '\u{00E0}', '\u{00E5}', '\u{00E7}',
@@ -749,7 +749,7 @@ pub(super) static CP437: SingleByte = SingleByte {
 /// The rows are the table's own shape - eight scalars, four encodings, sixteen
 /// widths - so a byte is found by counting rows rather than by scrolling.
 #[rustfmt::skip]
-pub(super) static CP850: SingleByte = SingleByte {
+pub(crate) static CP850: SingleByte = SingleByte {
     name: "ibm850",
     scalars: [
         '\u{00C7}', '\u{00FC}', '\u{00E9}', '\u{00E2}', '\u{00E4}', '\u{00E0}', '\u{00E5}', '\u{00E7}',
@@ -854,7 +854,7 @@ pub(super) static CP850: SingleByte = SingleByte {
 /// The rows are the table's own shape - eight scalars, four encodings, sixteen
 /// widths - so a byte is found by counting rows rather than by scrolling.
 #[rustfmt::skip]
-pub(super) static MAC_ROMAN: SingleByte = SingleByte {
+pub(crate) static MAC_ROMAN: SingleByte = SingleByte {
     name: "macintosh",
     scalars: [
         '\u{00C4}', '\u{00C5}', '\u{00C7}', '\u{00C9}', '\u{00D1}', '\u{00D6}', '\u{00DC}', '\u{00E1}',

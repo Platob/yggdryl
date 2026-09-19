@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "businesscenter",
-          "fix:tag": "40471"
+          "FIX:field": "businesscenter",
+          "FIX:tag": "40471"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "BusinessCenter",
-    "fix:tag": "217451"
+    "FIX:tag": "217451",
+    "display": "BusinessCenter"
   }
 }

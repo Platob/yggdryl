@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingpaymentstubenddatebusinesscentercomponent"
+        "FIX:component": "underlyingpaymentstubenddatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingpaymentstubenddatebusinesscentercomponent",
+    "FIX:counter": "42991",
+    "FIX:tag": "253456",
     "description": "Required if NoUnderlyingPaymentStubEndDateBusinessCenters(42991) > 0.",
-    "display": "UnderlyingPaymentStubEndDateBusinessCenterGrp",
-    "fix:component": "underlyingpaymentstubenddatebusinesscentercomponent",
-    "fix:counter": "42991",
-    "fix:tag": "253456"
+    "display": "UnderlyingPaymentStubEndDateBusinessCenterGrp"
   }
 }

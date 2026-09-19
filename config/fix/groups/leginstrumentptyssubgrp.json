@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "leginstrumentptyssub"
+        "FIX:component": "leginstrumentptyssub"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "leginstrumentptyssub",
+    "FIX:counter": "2258",
+    "FIX:tag": "707066",
     "description": "Required if NoLegInstrumentPartySubIDs(2258) > 0.",
-    "display": "LegInstrumentPtysSubGrp",
-    "fix:component": "leginstrumentptyssub",
-    "fix:counter": "2258",
-    "fix:tag": "707066"
+    "display": "LegInstrumentPtysSubGrp"
   }
 }

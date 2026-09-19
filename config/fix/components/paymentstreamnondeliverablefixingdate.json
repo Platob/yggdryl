@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nondeliverablefixingdate",
-          "fix:tag": "40826"
+          "FIX:field": "nondeliverablefixingdate",
+          "FIX:tag": "40826"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nondeliverablefixingdatetype",
-          "fix:tag": "40827"
+          "FIX:field": "nondeliverablefixingdatetype",
+          "FIX:tag": "40827"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentStreamNonDeliverableFixingDate",
-    "fix:tag": "205723"
+    "FIX:tag": "205723",
+    "display": "PaymentStreamNonDeliverableFixingDate"
   }
 }

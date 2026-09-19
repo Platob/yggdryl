@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderqty",
-          "fix:tag": "38"
+          "FIX:field": "orderqty",
+          "FIX:tag": "38"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashorderqty",
-          "fix:tag": "152"
+          "FIX:field": "cashorderqty",
+          "FIX:tag": "152"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderpercent",
-          "fix:tag": "516"
+          "FIX:field": "orderpercent",
+          "FIX:tag": "516"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "roundingdirection",
-          "fix:tag": "468"
+          "FIX:field": "roundingdirection",
+          "FIX:tag": "468"
         }
       },
       {
@@ -54,16 +54,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "roundingmodulus",
-          "fix:tag": "469"
+          "FIX:field": "roundingmodulus",
+          "FIX:tag": "469"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "607394",
     "description": "One of CashOrderQty, OrderQty, or (for CIV only) OrderPercent is required. Note that unless otherwise specified, only one of CashOrderQty, OrderQty, or OrderPercent should be specified.",
-    "display": "OrderQtyData",
-    "fix:tag": "607394"
+    "display": "OrderQtyData"
   }
 }

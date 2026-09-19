@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legexercisedesc",
-          "fix:tag": "41481"
+          "FIX:field": "legexercisedesc",
+          "FIX:tag": "41481"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegexercisedesclen",
-          "fix:tag": "41482"
+          "FIX:field": "encodedlegexercisedesclen",
+          "FIX:tag": "41482"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegexercisedesc",
-          "fix:tag": "41483"
+          "FIX:field": "encodedlegexercisedesc",
+          "FIX:tag": "41483"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legautomaticexerciseindicator",
-          "fix:tag": "41484"
+          "FIX:field": "legautomaticexerciseindicator",
+          "FIX:tag": "41484"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legautomaticexercisethresholdrate",
-          "fix:tag": "41485"
+          "FIX:field": "legautomaticexercisethresholdrate",
+          "FIX:tag": "41485"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legexerciseconfirmationmethod",
-          "fix:tag": "41486"
+          "FIX:field": "legexerciseconfirmationmethod",
+          "FIX:tag": "41486"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmanualnoticebusinesscenter",
-          "fix:tag": "41487"
+          "FIX:field": "legmanualnoticebusinesscenter",
+          "FIX:tag": "41487"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legfallbackexerciseindicator",
-          "fix:tag": "41488"
+          "FIX:field": "legfallbackexerciseindicator",
+          "FIX:tag": "41488"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leglimitrighttoconfirmindicator",
-          "fix:tag": "41489"
+          "FIX:field": "leglimitrighttoconfirmindicator",
+          "FIX:tag": "41489"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legexercisesplitticketindicator",
-          "fix:tag": "41490"
+          "FIX:field": "legexercisesplitticketindicator",
+          "FIX:tag": "41490"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlmethodelectingpartyside",
-          "fix:tag": "42391"
+          "FIX:field": "legsettlmethodelectingpartyside",
+          "FIX:tag": "42391"
         }
       },
       {
@@ -131,7 +131,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legsettlmethodelectiondate"
+          "FIX:component": "legsettlmethodelectiondate"
         }
       },
       {
@@ -141,7 +141,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legoptionexercisedates"
+          "FIX:component": "legoptionexercisedates"
         }
       },
       {
@@ -151,7 +151,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legoptionexerciseexpiration"
+          "FIX:component": "legoptionexerciseexpiration"
         }
       },
       {
@@ -161,15 +161,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legoptionexercisemakewholeprovision"
+          "FIX:component": "legoptionexercisemakewholeprovision"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "762849",
     "description": "Must be set if EncodedLegExerciseDesc (41483) field is specified and must immediately precede it.",
-    "display": "LegOptionExercise",
-    "fix:tag": "762849"
+    "display": "LegOptionExercise"
   }
 }

@@ -1,0 +1,192 @@
+//! Stateful plain-text record media over one byte handle.
+
+use smol_str::SmolStr;
+
+use crate::media::{IORecordOptions as _, RecordOptions};
+use crate::{Field, Result};
+use crate::{IOBase, IOMedia};
+
+use super::TextOptions;
+
+/// A byte handle retained with one flat plain-text record configuration.
+///
+/// `Text` adds no line-specific read surface. Rows still flow through the
+/// ordinary [`IOMedia`] methods; the wrapper only retains the `TextOptions`
+/// returned by [`IOMedia::record_options`].
+#[derive(Debug)]
+pub struct Text<H: IOBase> {
+    handle: H,
+    options: TextOptions,
+}
+
+impl<H: IOBase> Text<H> {
+    /// Wrap a handle with default plain-text record options.
+    #[must_use]
+    pub fn new(handle: H) -> Self {
+        Self {
+            handle,
+            options: TextOptions::new(),
+        }
+    }
+
+    /// Return this media with a complete flat text configuration.
+    #[must_use]
+    pub fn with_options(mut self, options: TextOptions) -> Self {
+        self.options = options;
+        self
+    }
+
+    /// Return this media with a declared canonical row field.
+    #[must_use]
+    pub fn with_field(mut self, field: Field) -> Self {
+        self.options.set_field(field);
+        self
+    }
+
+    /// Borrow the retained text options.
+    pub const fn options(&self) -> &TextOptions {
+        &self.options
+    }
+
+    /// Borrow the retained text options mutably.
+    pub fn options_mut(&mut self) -> &mut TextOptions {
+        &mut self.options
+    }
+
+    /// Borrow the underlying byte handle.
+    pub const fn handle(&self) -> &H {
+        &self.handle
+    }
+
+    /// Borrow the underlying byte handle mutably.
+    pub fn handle_mut(&mut self) -> &mut H {
+        &mut self.handle
+    }
+
+    /// Consume this media and return its byte handle.
+    pub fn into_handle(self) -> H {
+        self.handle
+    }
+
+    /// Return this text media unchanged.
+    ///
+    /// This inherent method makes ordinary `handle.into_text().into_text()`
+    /// idempotent because inherent methods win over [`IOBase::into_text`].
+    #[must_use]
+    pub const fn into_text(self) -> Self {
+        self
+    }
+
+    /// Replace the retained configuration without nesting another wrapper.
+    #[must_use]
+    pub fn into_text_with(self, options: TextOptions) -> Self {
+        self.with_options(options)
+    }
+
+    /// Decode this handle into typed lines under its retained configuration.
+    ///
+    /// The one decode entry point, reached with the options this wrapper
+    /// already holds. Every record method routes through the same iterator, so
+    /// a caller reading lines and a caller reading batches read one decode.
+    ///
+    /// # Errors
+    ///
+    /// Returns the configuration's refusals - a framing mode with no header
+    /// pattern, a rename naming no column, a lifted path with no name - before
+    /// a byte is read.
+    pub fn read_text_lines(&self) -> Result<super::TextLines> {
+        super::read_text_lines(&self.handle, &self.options)
+    }
+
+    fn require_text_options<'a>(&self, options: &'a RecordOptions) -> Result<&'a TextOptions> {
+        match options {
+            RecordOptions::Text(options) => Ok(options),
+            _ => Err(crate::Error::InvalidRecord {
+                path: SmolStr::new_static("$.encoding"),
+                reason: crate::text::expected_got("plain-text record options", options.mime_type()),
+            }),
+        }
+    }
+}
+
+impl<H: IOBase> IOMedia for Text<H> {
+    fn as_io_base(&self) -> &dyn IOBase {
+        self
+    }
+
+    fn as_io_base_mut(&mut self) -> &mut dyn IOBase {
+        self
+    }
+
+    fn row_size(&self) -> Result<u64> {
+        super::arrow::row_size(&self.handle, &self.options)
+    }
+
+    fn column_size(&self) -> Result<usize> {
+        if let Some(field) = self.options.field() {
+            return Ok(field.field_len());
+        }
+        Ok(self.options.source_field()?.field_len())
+    }
+
+    fn record_options(&self) -> Result<RecordOptions> {
+        Ok(self.options.clone().into())
+    }
+
+    fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field> {
+        let text = self.require_text_options(options)?;
+        text.field().map_or_else(|| text.source_field(), Ok)
+    }
+
+    fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
+        self.require_text_options(options)?;
+        IOMedia::read_arrow_reader(&self.handle, options)
+    }
+
+    fn overwrite_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        self.require_text_options(options)?;
+        IOMedia::overwrite_arrow_reader(&mut self.handle, batches, options)
+    }
+
+    fn overwrite_prepared_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        self.require_text_options(options)?;
+        IOMedia::overwrite_prepared_arrow_reader(&mut self.handle, batches, options)
+    }
+
+    fn append_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        self.require_text_options(options)?;
+        IOMedia::append_arrow_reader(&mut self.handle, batches, options)
+    }
+
+    fn merge_arrow_reader(
+        &mut self,
+        batches: crate::arrow::BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
+        self.require_text_options(options)?;
+        IOMedia::merge_arrow_reader(&mut self.handle, batches, options)
+    }
+}
+
+impl<H: IOBase> IOBase for Text<H> {
+    crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
+        pwrite, size, capacity, reserve,
+        truncate, url, bound_location, mtime, media_type, set_media_type, flush, open, opened, close, parent,
+        child_by_path, ls, kind, clear, remove, is_atomic, is_io);
+
+    fn is_tabular(&self) -> bool {
+        true
+    }
+}

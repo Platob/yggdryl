@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "posundinstrmt"
+        "FIX:component": "posundinstrmt"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "posundinstrmt",
+    "FIX:counter": "711",
+    "FIX:tag": "969568",
     "description": "Insert here the set of \"Underlying Instrument\" (underlying symbology) fields defined in \"Common Components of Application Messages\"",
-    "display": "PosUndInstrmtGrp",
-    "fix:component": "posundinstrmt",
-    "fix:counter": "711",
-    "fix:tag": "969568"
+    "display": "PosUndInstrmtGrp"
   }
 }

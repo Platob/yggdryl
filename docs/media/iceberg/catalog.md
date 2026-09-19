@@ -27,9 +27,9 @@ A caller holding rows and a dotted name needs nothing else.
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::media::iceberg::Catalog;
-    use yggdryl::holder::local::Folder;
-    use yggdryl::DataType;
+    use yggdryl::iceberg::Catalog;
+    use yggdryl::local::Folder;
+    use yggdryl::{DataType, StructureType};
 
     let warehouse = Folder::temporary()?.path()?.join("yggdryl-doc-warehouse");
     let _ = std::fs::remove_dir_all(&warehouse);
@@ -37,10 +37,10 @@ A caller holding rows and a dotted name needs nothing else.
 
     // Rows and a name are enough: the first append creates the table with the
     // schema the rows carry, and the second appends to it.
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
-    ])?
+    ])?)
     .required_field("row")
     .with_partition_fields(&["venue"])?;
     let arrow_schema = schema.into_arrow_schema()?;
@@ -186,8 +186,8 @@ A nested namespace comes from its parent's own view.
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::Catalog;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::iceberg::Catalog;
+    use yggdryl::local::Folder;
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-views");
     let _ = std::fs::remove_dir_all(&root);
@@ -320,23 +320,24 @@ use std::sync::Arc;
 
 use arrow_array::{Float32Array, Float64Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::holder::Holder;
-use yggdryl::media::iceberg::Table;
-use yggdryl::holder::local::Folder;
+use yggdryl::StructureType;
+use yggdryl::iceberg::Table;
+use yggdryl::local::Folder;
 use yggdryl::DataType;
 
 let root = Folder::temporary()?.path()?.join("yggdryl-doc-nyc-taxis");
 let _ = std::fs::remove_dir_all(&root);
-let catalog = yggdryl::media::iceberg::Catalog::new(Folder::new(&root)?);
+let catalog = yggdryl::iceberg::Catalog::new(Folder::new(&root)?);
 
 // CREATE TABLE nyc.taxis (...) PARTITIONED BY (vendor_id)
 // The partition mark on the schema is the whole PARTITIONED BY clause.
-let schema = DataType::from_fields([
+let schema = DataType::from(StructureType::from_fields([
     DataType::Int64.required_field("vendor_id"),
     DataType::Int64.required_field("trip_id"),
     DataType::Float32.nullable_field("trip_distance"),
     DataType::Float64.nullable_field("fare_amount"),
     DataType::utf8().nullable_field("store_and_fwd_flag"),
-])?
+])?)
 .required_field("row")
 .with_partition_fields(&["vendor_id"])?;
 let mut table = catalog.tables().create("nyc.taxis", schema.clone())?;
@@ -409,7 +410,7 @@ assert_eq!(
 );
 
 // ALTER TABLE nyc.taxis ADD COLUMN fare_per_distance float
-let mut update = yggdryl::media::iceberg::SchemaUpdate::from_metadata(table.metadata())?;
+let mut update = yggdryl::iceberg::SchemaUpdate::from_metadata(table.metadata())?;
 update.add_column("", DataType::Float32.nullable_field("fare_per_distance"));
 let evolved = update.into_field()?;
 table.commit_metadata_changes(|metadata| {
@@ -445,7 +446,7 @@ let _ = std::fs::remove_dir_all(&root);
 - No JavaScript indexing hook -> Map verbs: `get`, `has`, `size`, `keys`, `values`, `entries`, `create`, `openOrCreate`.
 - `len` / `size` -> drains the listing, costing the level.
 - No properties document -> empty properties, never an error.
-- A key prefixed `iceberg:` -> refused; reserved for the format.
+- A key prefixed `ICEBERG:` -> refused; reserved for the format.
 - `update_properties` on an empty namespace -> durable, plus ancestry.
 - Removal anywhere -> absent; storage has no delete or move primitive.
 
@@ -454,7 +455,7 @@ let _ = std::fs::remove_dir_all(&root);
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::catalog::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib iceberg::catalog::tests
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^catalog_resolve/'
     ```
 

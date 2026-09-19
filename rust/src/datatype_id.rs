@@ -43,7 +43,7 @@ pub enum DataTypeId {
     /// Signed 128-bit integers.
     ///
     /// Arrow has no 128-bit integer layout, so no [`crate::DataType`] answers
-    /// this identifier. It names the width [`crate::types::integer::Int128`] stores and
+    /// this identifier. It names the width [`crate::integer::Int128`] stores and
     /// the canonical identity a negative integer of any width carries into
     /// [`crate::Scalar::write_bytes`].
     Int128 = 10,
@@ -76,25 +76,26 @@ pub enum DataTypeId {
     /// Bytes with 32-bit offsets, under any bound.
     Binary = 23,
     /// Bytes of one fixed width.
-    FixedSizeBinary = 24,
+    FixedBinary = 24,
     /// Bytes with 64-bit offsets.
     LargeBinary = 25,
     /// Bytes in the view layout.
     BinaryView = 26,
-    /// A string with 32-bit offsets, in any charset, with any bound.
+    /// Any length of UTF-8 with 32-bit offsets.
     ///
-    /// The five string layouts sit where the five text identifiers they
-    /// replaced sat, so every later number - and every digest tag - stays
-    /// what it was; this one is the number UTF-8 text always fed.
-    String = 27,
-    /// A string of one fixed, padded byte width.
-    FixedString = 28,
-    /// A string in the view layout.
-    StringView = 29,
-    /// A string with 64-bit offsets.
-    LargeString = 30,
-    /// A string in the view layout, declared large.
-    LargeStringView = 31,
+    /// The five UTF-8 leaves sit where the five string layouts they replaced
+    /// sat - and those sat where the five text identifiers before them did -
+    /// so every later number, and every digest tag, stays what it was; this
+    /// one is the number UTF-8 text always fed.
+    Utf8String = 27,
+    /// UTF-8 of one fixed, padded byte width.
+    FixedUtf8String = 28,
+    /// UTF-8 in the view layout.
+    Utf8StringView = 29,
+    /// UTF-8 with 64-bit offsets.
+    LargeUtf8String = 30,
+    /// UTF-8 in the view layout, declared large.
+    LargeUtf8StringView = 31,
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country = 32,
     /// ISO 4217: a currency code, three ASCII bytes.
@@ -179,11 +180,83 @@ pub enum DataTypeId {
     /// Appended because [`Self::as_u8`] is a wire contract.
     Sedol = 65,
     Bloomberg = 66,
+    /// Arrow map entries whose keys are ordered within each row.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    SortedMap = 67,
+    /// Exactly two children: a structure of a first and a second field.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Struct2 = 68,
+    /// The viewed byte layout over 64-bit offsets.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    LargeBinaryView = 72,
+    /// Bytes under a declared maximum.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    SizedBinary = 73,
+    /// UTF-8 under a declared maximum.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    SizedUtf8String = 74,
+    /// Any length of US-ASCII with 32-bit offsets.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    AsciiString = 75,
+    /// US-ASCII with 64-bit offsets.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    LargeAsciiString = 76,
+    /// US-ASCII in the view layout.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    AsciiStringView = 77,
+    /// US-ASCII in the view layout, declared large.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    LargeAsciiStringView = 78,
+    /// US-ASCII of one fixed, padded byte width.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    FixedAsciiString = 79,
+    /// US-ASCII under a declared maximum.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    SizedAsciiString = 80,
+    /// Any length of windows-1252 with 32-bit offsets.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Cp1252String = 81,
+    /// Windows-1252 with 64-bit offsets.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    LargeCp1252String = 82,
+    /// Windows-1252 in the view layout.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Cp1252StringView = 83,
+    /// Windows-1252 in the view layout, declared large.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    LargeCp1252StringView = 84,
+    /// Windows-1252 of one fixed, padded byte width.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    FixedCp1252String = 85,
+    /// Windows-1252 under a declared maximum.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    SizedCp1252String = 86,
+    /// A validated, canonical resource name.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Urn = 87,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 66] = [
+    pub const ALL: [Self; 84] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -208,14 +281,14 @@ impl DataTypeId {
         Self::Duration64,
         Self::Interval,
         Self::Binary,
-        Self::FixedSizeBinary,
+        Self::FixedBinary,
         Self::LargeBinary,
         Self::BinaryView,
-        Self::String,
-        Self::FixedString,
-        Self::StringView,
-        Self::LargeString,
-        Self::LargeStringView,
+        Self::Utf8String,
+        Self::FixedUtf8String,
+        Self::Utf8StringView,
+        Self::LargeUtf8String,
+        Self::LargeUtf8StringView,
         Self::Country,
         Self::Currency,
         Self::Mic,
@@ -250,6 +323,24 @@ impl DataTypeId {
         Self::Cusip,
         Self::Sedol,
         Self::Bloomberg,
+        Self::SortedMap,
+        Self::Struct2,
+        Self::LargeBinaryView,
+        Self::SizedBinary,
+        Self::SizedUtf8String,
+        Self::AsciiString,
+        Self::LargeAsciiString,
+        Self::AsciiStringView,
+        Self::LargeAsciiStringView,
+        Self::FixedAsciiString,
+        Self::SizedAsciiString,
+        Self::Cp1252String,
+        Self::LargeCp1252String,
+        Self::Cp1252StringView,
+        Self::LargeCp1252StringView,
+        Self::FixedCp1252String,
+        Self::SizedCp1252String,
+        Self::Urn,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -293,7 +384,7 @@ impl DataTypeId {
             Self::Duration64 => "duration64",
             Self::Interval => "interval",
             Self::Binary => "binary",
-            Self::FixedSizeBinary => "fixed_size_binary",
+            Self::FixedBinary => "fixed_binary",
             Self::LargeBinary => "large_binary",
             Self::BinaryView => "binary_view",
             Self::Country => "country",
@@ -308,6 +399,8 @@ impl DataTypeId {
             Self::State => "state",
             Self::TimeInForce => "timeinforce",
             Self::Uuid => "uuid",
+            Self::LargeBinaryView => "large_binary_view",
+            Self::SizedBinary => "sized_binary",
             Self::List => "list",
             Self::ListView => "list_view",
             Self::FixedSizeList => "fixed_size_list",
@@ -321,20 +414,36 @@ impl DataTypeId {
             Self::Decimal128 => "decimal128",
             Self::Decimal256 => "decimal256",
             Self::Map => "map",
+            Self::SortedMap => "sorted_map",
+            Self::Struct2 => "struct2",
             Self::RunEndEncoded => "run_end_encoded",
             Self::Variant => "variant",
             Self::Geometry => "geometry",
             Self::Geography => "geography",
             Self::Version => "version",
             Self::Url => "url",
+            Self::Urn => "urn",
             Self::Timezone => "timezone",
             Self::MimeType => "mimetype",
             Self::MediaType => "mediatype",
-            Self::String => "string",
-            Self::FixedString => "fixed_string",
-            Self::StringView => "string_view",
-            Self::LargeString => "large_string",
-            Self::LargeStringView => "large_string_view",
+            Self::Utf8String => "utf8",
+            Self::FixedUtf8String => "fixed_utf8",
+            Self::Utf8StringView => "utf8_view",
+            Self::LargeUtf8String => "large_utf8",
+            Self::LargeUtf8StringView => "large_utf8_view",
+            Self::SizedUtf8String => "sized_utf8",
+            Self::AsciiString => "ascii",
+            Self::LargeAsciiString => "large_ascii",
+            Self::AsciiStringView => "ascii_view",
+            Self::LargeAsciiStringView => "large_ascii_view",
+            Self::FixedAsciiString => "fixed_ascii",
+            Self::SizedAsciiString => "sized_ascii",
+            Self::Cp1252String => "cp1252",
+            Self::LargeCp1252String => "large_cp1252",
+            Self::Cp1252StringView => "cp1252_view",
+            Self::LargeCp1252StringView => "large_cp1252_view",
+            Self::FixedCp1252String => "fixed_cp1252",
+            Self::SizedCp1252String => "sized_cp1252",
         }
     }
 
@@ -343,8 +452,9 @@ impl DataTypeId {
     /// Every variant states its discriminant, and it is a wire contract:
     /// [`crate::Scalar::write_bytes`] writes it as the tag of every value, so
     /// a number is never reused and never moves. A retired variant leaves its
-    /// number unused - 58 was `msgdirection`, since retired - so
-    /// the byte is no longer the variant's position in [`Self::ALL`]; the
+    /// number unused - 58 was `msgdirection` and 69 to 71 were the versioned
+    /// `uuidv4`, `uuidv7` and `uuidv8` leaves, all since retired - so the
+    /// byte is no longer the variant's position in [`Self::ALL`]; the
     /// test pinning every value is what makes a moved number a failure rather
     /// than a surprise.
     ///
@@ -385,16 +495,33 @@ impl DataTypeId {
             | Self::Duration32
             | Self::Duration64
             | Self::Interval => DataTypeKind::Temporal,
-            Self::Binary | Self::FixedSizeBinary | Self::LargeBinary | Self::BinaryView => {
-                DataTypeKind::Bytes
-            }
-            Self::String
-            | Self::FixedString
-            | Self::StringView
-            | Self::LargeString
-            | Self::LargeStringView
+            Self::Binary
+            | Self::FixedBinary
+            | Self::LargeBinary
+            | Self::BinaryView
+            | Self::LargeBinaryView
+            | Self::SizedBinary => DataTypeKind::Bytes,
+            Self::Utf8String
+            | Self::FixedUtf8String
+            | Self::Utf8StringView
+            | Self::LargeUtf8String
+            | Self::LargeUtf8StringView
+            | Self::SizedUtf8String
+            | Self::AsciiString
+            | Self::LargeAsciiString
+            | Self::AsciiStringView
+            | Self::LargeAsciiStringView
+            | Self::FixedAsciiString
+            | Self::SizedAsciiString
+            | Self::Cp1252String
+            | Self::LargeCp1252String
+            | Self::Cp1252StringView
+            | Self::LargeCp1252StringView
+            | Self::FixedCp1252String
+            | Self::SizedCp1252String
             | Self::Version
             | Self::Url
+            | Self::Urn
             | Self::Timezone
             | Self::MimeType
             | Self::MediaType => DataTypeKind::Text,
@@ -421,6 +548,8 @@ impl DataTypeId {
             | Self::Struct
             | Self::Union
             | Self::Map
+            | Self::SortedMap
+            | Self::Struct2
             | Self::Dictionary
             | Self::RunEndEncoded
             | Self::Variant => DataTypeKind::Nested,
@@ -442,14 +571,29 @@ impl DataTypeId {
                 | Self::Duration64
                 | Self::Interval
                 | Self::Binary
-                | Self::FixedSizeBinary
+                | Self::FixedBinary
+                | Self::LargeBinaryView
+                | Self::SizedBinary
                 | Self::LargeBinary
                 | Self::BinaryView
-                | Self::String
-                | Self::FixedString
-                | Self::StringView
-                | Self::LargeString
-                | Self::LargeStringView
+                | Self::Utf8String
+                | Self::FixedUtf8String
+                | Self::Utf8StringView
+                | Self::LargeUtf8String
+                | Self::LargeUtf8StringView
+                | Self::SizedUtf8String
+                | Self::AsciiString
+                | Self::LargeAsciiString
+                | Self::AsciiStringView
+                | Self::LargeAsciiStringView
+                | Self::FixedAsciiString
+                | Self::SizedAsciiString
+                | Self::Cp1252String
+                | Self::LargeCp1252String
+                | Self::Cp1252StringView
+                | Self::LargeCp1252StringView
+                | Self::FixedCp1252String
+                | Self::SizedCp1252String
                 | Self::List
                 | Self::ListView
                 | Self::FixedSizeList
@@ -463,6 +607,8 @@ impl DataTypeId {
                 | Self::Decimal128
                 | Self::Decimal256
                 | Self::Map
+                | Self::SortedMap
+                | Self::Struct2
                 | Self::RunEndEncoded
                 | Self::Geometry
                 | Self::Geography
@@ -531,6 +677,8 @@ impl DataTypeId {
                 | Self::Struct
                 | Self::Union
                 | Self::Map
+                | Self::SortedMap
+                | Self::Struct2
                 | Self::Variant
         )
     }
@@ -635,226 +783,5 @@ impl<'de> Deserialize<'de> for DataTypeId {
     {
         let value = <&str>::deserialize(deserializer)?;
         Self::from_str(value).map_err(D::Error::custom)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{DataTypeId, DataTypeKind};
-
-    #[test]
-    fn names_round_trip_case_insensitively() {
-        for id in DataTypeId::ALL {
-            assert_eq!(DataTypeId::from_str(id.as_str()).unwrap(), id);
-            assert_eq!(
-                DataTypeId::from_str(&id.as_str().to_uppercase()).unwrap(),
-                id
-            );
-        }
-    }
-
-    #[test]
-    fn names_are_unique() {
-        let mut names: Vec<_> = DataTypeId::ALL.iter().map(|id| id.as_str()).collect();
-        names.sort_unstable();
-        let total = names.len();
-        names.dedup();
-        assert_eq!(names.len(), total);
-    }
-
-    #[test]
-    fn every_kind_is_reachable() {
-        for kind in DataTypeKind::ALL {
-            assert!(
-                DataTypeId::ALL.iter().any(|id| id.kind() == kind),
-                "no identifier maps to {kind}"
-            );
-        }
-    }
-
-    #[test]
-    fn the_strings_and_the_codes_are_text() {
-        assert_eq!(DataTypeId::ALL.len(), 66);
-        for id in [
-            DataTypeId::String,
-            DataTypeId::FixedString,
-            DataTypeId::StringView,
-            DataTypeId::LargeString,
-            DataTypeId::LargeStringView,
-        ] {
-            assert_eq!(id.kind(), DataTypeKind::Text);
-            assert!(id.is_string());
-            // Every string carries a charset and a bound, so none of the
-            // layouts is a complete datatype on its own.
-            assert!(id.is_parameterized());
-        }
-        for (_, dtype, width) in crate::DataType::CODES {
-            let id = dtype.id();
-            assert_eq!(id.kind(), DataTypeKind::Code);
-            assert!(id.is_string());
-            assert!(!id.is_parameterized());
-            // A code's width bounds its values; it is not a layout, so the
-            // identifier names no fixed width.
-            assert_eq!(id.code_width(), Some(*width));
-            assert_eq!(id.fixed_byte_width(), None);
-        }
-        assert_eq!(DataTypeId::from_str("STRING").unwrap(), DataTypeId::String);
-        assert_eq!(
-            DataTypeId::from_str("Fixed_String").unwrap(),
-            DataTypeId::FixedString
-        );
-        assert_eq!(
-            DataTypeId::from_str("Currency").unwrap(),
-            DataTypeId::Currency
-        );
-    }
-
-    #[test]
-    fn the_two_arrow_less_integer_widths_are_named_here_and_nowhere_in_datatype() {
-        // Arrow has no 128-bit integer layout, so these two identifiers name a
-        // width `Scalar` stores and `DataType` cannot. Every integer predicate
-        // still has to place them, and `DataType::id` still has to be able to
-        // produce every *other* identifier.
-        for id in [DataTypeId::Int128, DataTypeId::UInt128] {
-            assert!(id.is_integer());
-            assert_eq!(id.kind(), DataTypeKind::Integer);
-            assert_eq!(id.fixed_byte_width(), Some(16));
-            assert!(!id.is_parameterized());
-        }
-        assert!(DataTypeId::Int128.is_signed_integer());
-        assert!(DataTypeId::UInt128.is_unsigned_integer());
-        assert_eq!(DataTypeId::from_str("int128").unwrap(), DataTypeId::Int128);
-        assert_eq!(
-            DataTypeId::from_str("UINT128").unwrap(),
-            DataTypeId::UInt128
-        );
-        // The datatype grammar does not accept them, because no Arrow layout
-        // holds one.
-        assert!(crate::DataType::from_str("int128").is_err());
-    }
-
-    #[test]
-    fn every_discriminant_is_stated_and_pinned() {
-        // The byte `Scalar::write_bytes` writes as a value's tag. Every
-        // variant states its number, a retired one leaves its number unused
-        // (58 was `msgdirection`, since retired), and this pins every byte so a
-        // moved or reused number is a failure rather than a surprise.
-        let pinned = [
-            (DataTypeId::Null, 0),
-            (DataTypeId::Boolean, 1),
-            (DataTypeId::Int8, 2),
-            (DataTypeId::Int16, 3),
-            (DataTypeId::Int32, 4),
-            (DataTypeId::Int64, 5),
-            (DataTypeId::UInt8, 6),
-            (DataTypeId::UInt16, 7),
-            (DataTypeId::UInt32, 8),
-            (DataTypeId::UInt64, 9),
-            (DataTypeId::Int128, 10),
-            (DataTypeId::UInt128, 11),
-            (DataTypeId::Float16, 12),
-            (DataTypeId::Float32, 13),
-            (DataTypeId::Float64, 14),
-            (DataTypeId::DateTime64, 15),
-            (DataTypeId::Date32, 16),
-            (DataTypeId::Date64, 17),
-            (DataTypeId::Time32, 18),
-            (DataTypeId::Time64, 19),
-            (DataTypeId::Duration32, 20),
-            (DataTypeId::Duration64, 21),
-            (DataTypeId::Interval, 22),
-            (DataTypeId::Binary, 23),
-            (DataTypeId::FixedSizeBinary, 24),
-            (DataTypeId::LargeBinary, 25),
-            (DataTypeId::BinaryView, 26),
-            (DataTypeId::String, 27),
-            (DataTypeId::FixedString, 28),
-            (DataTypeId::StringView, 29),
-            (DataTypeId::LargeString, 30),
-            (DataTypeId::LargeStringView, 31),
-            (DataTypeId::Country, 32),
-            (DataTypeId::Currency, 33),
-            (DataTypeId::Mic, 34),
-            (DataTypeId::Cfi, 35),
-            (DataTypeId::Uuid, 36),
-            (DataTypeId::List, 37),
-            (DataTypeId::ListView, 38),
-            (DataTypeId::FixedSizeList, 39),
-            (DataTypeId::LargeList, 40),
-            (DataTypeId::LargeListView, 41),
-            (DataTypeId::Struct, 42),
-            (DataTypeId::Union, 43),
-            (DataTypeId::Dictionary, 44),
-            (DataTypeId::Decimal32, 45),
-            (DataTypeId::Decimal64, 46),
-            (DataTypeId::Decimal128, 47),
-            (DataTypeId::Decimal256, 48),
-            (DataTypeId::Map, 49),
-            (DataTypeId::RunEndEncoded, 50),
-            (DataTypeId::Variant, 51),
-            (DataTypeId::Geometry, 52),
-            (DataTypeId::Geography, 53),
-            (DataTypeId::Version, 54),
-            (DataTypeId::Side, 55),
-            (DataTypeId::State, 56),
-            (DataTypeId::TimeInForce, 57),
-            (DataTypeId::Url, 59),
-            (DataTypeId::Isin, 60),
-            (DataTypeId::Timezone, 61),
-            (DataTypeId::MimeType, 62),
-            (DataTypeId::MediaType, 63),
-            (DataTypeId::Cusip, 64),
-            (DataTypeId::Sedol, 65),
-            (DataTypeId::Bloomberg, 66),
-        ];
-        assert_eq!(pinned.len(), DataTypeId::ALL.len());
-        for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::ALL) {
-            assert_eq!(id, held, "declaration order");
-            assert_eq!(id.as_u8(), byte, "{id}");
-        }
-        assert!(
-            DataTypeId::ALL.iter().all(|id| id.as_u8() != 58),
-            "58 is retired and never reused"
-        );
-        assert_eq!(DataTypeId::Isin.code_width(), Some(12));
-        assert_eq!(DataTypeId::Cusip.code_width(), Some(9));
-        assert_eq!(DataTypeId::Sedol.code_width(), Some(7));
-    }
-
-    #[test]
-    fn unknown_name_reports_the_input() {
-        let error = DataTypeId::from_str("int33").unwrap_err();
-        assert!(error.to_string().contains("\"int33\""), "{error}");
-    }
-
-    #[test]
-    fn integer_predicates_partition_the_family() {
-        for id in DataTypeId::ALL.into_iter().filter(|id| id.is_integer()) {
-            assert_ne!(id.is_signed_integer(), id.is_unsigned_integer());
-        }
-    }
-
-    #[test]
-    fn fixed_widths_match_their_layout() {
-        assert_eq!(DataTypeId::Int32.fixed_byte_width(), Some(4));
-        assert_eq!(DataTypeId::Decimal256.fixed_byte_width(), Some(32));
-        assert_eq!(DataTypeId::Uuid.fixed_byte_width(), Some(16));
-        // A fixed string's width is a parameter, so the identifier alone has
-        // none: `DataType::fixed_byte_width` is what answers for one value.
-        assert_eq!(DataTypeId::FixedString.fixed_byte_width(), None);
-        assert_eq!(DataTypeId::String.fixed_byte_width(), None);
-        assert_eq!(DataTypeId::Struct.fixed_byte_width(), None);
-    }
-
-    #[test]
-    fn a_code_width_is_a_bound_and_never_a_layout() {
-        assert_eq!(DataTypeId::Currency.code_width(), Some(3));
-        assert_eq!(DataTypeId::Cfi.code_width(), Some(6));
-        assert_eq!(DataTypeId::Currency.fixed_byte_width(), None);
-        assert_eq!(DataTypeId::Cfi.fixed_byte_width(), None);
-        // Only a code has one: a width that is a layout is not this fact.
-        assert_eq!(DataTypeId::Uuid.code_width(), None);
-        assert_eq!(DataTypeId::FixedString.code_width(), None);
-        assert_eq!(DataTypeId::Int32.code_width(), None);
     }
 }

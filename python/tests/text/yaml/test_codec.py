@@ -56,7 +56,7 @@ def test_nested_field_class_yaml_is_ordinary_yaml_with_no_class_name() -> None:
 
     assert restored == value
     # No custom tag metadata is written, so the document stays language-portable.
-    assert b"python:" not in encoded
+    assert b"PYTHON:" not in encoded
     assert b"Trade" not in encoded
     assert yaml.loads(encoded) == {
         "trade_id": 42,

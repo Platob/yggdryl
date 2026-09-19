@@ -10,13 +10,18 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
-use yggdryl::types::{Cusip, CusipField, Sedol, SedolField};
+use yggdryl::FieldValue as _;
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, Term,
+    ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, StructureType, Term,
 };
+use yggdryl::{Cusip, CusipField, Sedol, SedolField};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    Field::new("row", DataType::from_fields(fields).unwrap(), false)
+    Field::new(
+        "row",
+        DataType::from(StructureType::from_fields(fields).unwrap()),
+        false,
+    )
 }
 
 fn text(values: &[&str]) -> ArrayRef {
@@ -190,7 +195,7 @@ fn each_identifier_is_a_registered_code_that_round_trips_everywhere() {
         // The value door: the check digit gates the space, the case folds,
         // and the stored value is the code under its own identity.
         let value = dtype.scalar(Scalar::from(*sample)).unwrap();
-        assert!(matches!(value, Scalar::Code(_)), "{name}");
+        assert!(value.is_code(), "{name}");
         assert_eq!(value.kind(), *name);
         assert_eq!(value.as_str(), Some(*sample));
         assert_eq!(value.dtype().unwrap(), *dtype);
@@ -213,13 +218,13 @@ fn each_identifier_is_a_registered_code_that_round_trips_everywhere() {
         // Arrow: the text storage under the code's own extension name, and
         // the identity back from it.
         let field = Field::new(*name, dtype.clone(), false);
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
         assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
         assert_eq!(
             arrow.metadata()["ARROW:extension:name"],
             format!("yggdryl.{name}")
         );
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field);
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
 
         // The packing is at the code's own width, and there is no
         // vocabulary to prebuild for an open identifier space.
@@ -374,12 +379,30 @@ fn the_identifiers_are_appended_after_every_earlier_datatype() {
     assert_eq!(DataTypeId::Sedol.as_u8(), 65);
     assert_eq!(DataTypeId::Bloomberg.as_u8(), 66);
     assert_eq!(
-        &DataTypeId::ALL[DataTypeId::ALL.len() - 4..],
+        &DataTypeId::ALL[DataTypeId::ALL.len() - 22..],
         &[
             DataTypeId::MediaType,
             DataTypeId::Cusip,
             DataTypeId::Sedol,
-            DataTypeId::Bloomberg
+            DataTypeId::Bloomberg,
+            DataTypeId::SortedMap,
+            DataTypeId::Struct2,
+            DataTypeId::LargeBinaryView,
+            DataTypeId::SizedBinary,
+            DataTypeId::SizedUtf8String,
+            DataTypeId::AsciiString,
+            DataTypeId::LargeAsciiString,
+            DataTypeId::AsciiStringView,
+            DataTypeId::LargeAsciiStringView,
+            DataTypeId::FixedAsciiString,
+            DataTypeId::SizedAsciiString,
+            DataTypeId::Cp1252String,
+            DataTypeId::LargeCp1252String,
+            DataTypeId::Cp1252StringView,
+            DataTypeId::LargeCp1252StringView,
+            DataTypeId::FixedCp1252String,
+            DataTypeId::SizedCp1252String,
+            DataTypeId::Urn
         ]
     );
     // The datatype order is total and appends too, so no earlier pair
@@ -426,11 +449,11 @@ fn the_identifiers_are_appended_after_every_earlier_datatype() {
 
 #[test]
 fn the_typed_fields_name_their_identifier() {
-    let cusip: CusipField = CusipField::new("cusip", true);
-    assert_eq!(cusip.as_field().dtype(), &DataType::Cusip);
-    let sedol: SedolField = SedolField::new("sedol", false);
-    assert_eq!(sedol.as_field().dtype(), &DataType::Sedol);
-    assert!(!sedol.as_field().is_nullable());
+    let cusip: CusipField = CusipField::unit("cusip", true);
+    assert_eq!(cusip.to_field().dtype(), &DataType::Cusip);
+    let sedol: SedolField = SedolField::unit("sedol", false);
+    assert_eq!(sedol.to_field().dtype(), &DataType::Sedol);
+    assert!(!&sedol.to_field().is_nullable());
     // A shared field is kept for each, as for every parameter-free leaf.
     for dtype in [DataType::Cusip, DataType::Sedol] {
         let shared = dtype.shared_field().unwrap();

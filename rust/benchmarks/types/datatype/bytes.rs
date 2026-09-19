@@ -1,5 +1,6 @@
-//! The byte family: building a value, cloning it, and the two directions
-//! across Arrow for the variable layouts and the fixed slot.
+//! The byte family: every one of its six leaves through the doors a caller
+//! uses, building a value and cloning it, and the two directions across
+//! Arrow with the leaf as the column.
 //!
 //! Payload sizes straddle the value's thirty-byte inline buffer on purpose,
 //! for the reason the string cases straddle theirs: below it a value is free
@@ -9,15 +10,37 @@
 //! time those counts buy.
 
 use std::hint::black_box;
+use std::sync::Arc;
 
+use arrow_array::{ArrayRef, BinaryArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
+use yggdryl::BytesType;
 use yggdryl::{Bytes, DataType, Scalar};
+
+use super::doors;
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
 
 /// The payload sizes every case runs at: two inside the inline buffer, two
 /// past it, and one page.
 const SIZES: [usize; 5] = [8, 30, 31, 64, 4096];
+
+/// The number the two numbered leaves state through the doors: past the
+/// inline buffer, so the scalar door adopts a handle rather than copying.
+const BOUND: usize = 64;
+
+/// The six leaves, each numbered one at `bound`.
+fn leaves(bound: usize) -> impl Iterator<Item = BytesType> {
+    let bound = u32::try_from(bound).expect("every benchmark size fits");
+    BytesType::ALL
+        .into_iter()
+        .map(move |leaf| match leaf.bound() {
+            Some(_) => leaf
+                .with_bound(bound)
+                .expect("every benchmark size is a width"),
+            None => leaf,
+        })
+}
 
 /// One payload of the size, with no byte repeated across a row.
 fn payload(size: usize, seed: usize) -> Vec<u8> {
@@ -74,15 +97,16 @@ fn column_round_trip(
 pub(crate) fn bytes_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("bytes");
 
-    // The grammar: what a schema pays once per declared column.
-    group.bench_function("parse_display_round_trip", |bencher| {
-        bencher.iter(|| {
-            let dtype = DataType::from_str(black_box("fixed_size_binary(16)"))
-                .expect("the static spelling must parse");
-            DataType::from_str(black_box(&dtype.to_string()))
-                .expect("canonical display output must round-trip")
-        });
-    });
+    // Every leaf through every door: what a schema pays once per declared
+    // column, and what one value pays entering it.
+    let sample = Scalar::from(payload(BOUND, 0));
+    for leaf in leaves(BOUND) {
+        doors::leaf_doors(
+            &mut group,
+            &DataType::bytes(leaf).expect("every leaf is a datatype"),
+            &sample,
+        );
+    }
 
     // One value with no Arrow around it: the copy into the inline buffer or
     // the one allocation past it, then the clone each regime pays.
@@ -96,7 +120,7 @@ pub(crate) fn bytes_benchmarks(criterion: &mut Criterion) {
             bencher.iter(|| black_box(&value).clone());
         });
         // Restating the layout: the width is checked, the payload shared.
-        let fixed = DataType::fixed_size_binary(u32::try_from(size).expect("the sizes fit"))
+        let fixed = DataType::fixed_binary(u32::try_from(size).expect("the sizes fit"))
             .expect("every payload size is a width");
         group.bench_function(BenchmarkId::new("restate_fixed", size), |bencher| {
             bencher.iter(|| {
@@ -108,35 +132,35 @@ pub(crate) fn bytes_benchmarks(criterion: &mut Criterion) {
     }
 
     group.throughput(Throughput::Elements(ROWS as u64));
+    // A binary column read into every leaf: the reader's door, at the size
+    // past the inline buffer, which every payload here fills exactly.
+    let payloads: Vec<Vec<u8>> = (0..ROWS).map(|index| payload(BOUND, index)).collect();
+    let ingested: ArrayRef = Arc::new(BinaryArray::from_iter_values(payloads.iter()));
+    for leaf in leaves(BOUND) {
+        doors::ingest(
+            &mut group,
+            &DataType::bytes(leaf).expect("every leaf is a datatype"),
+            &ingested,
+        );
+    }
+    // Every leaf as the column, both ways, at every size. The numbered
+    // leaves are stated at the column's own size, which every payload fills
+    // exactly.
     for size in SIZES {
         let column = column(ROWS, size);
-        column_round_trip(
-            &mut group,
-            &format!("binary_{size}"),
-            &DataType::binary(),
-            &column,
-        );
-        column_round_trip(
-            &mut group,
-            &format!("large_binary_{size}"),
-            &DataType::large_binary(),
-            &column,
-        );
-        column_round_trip(
-            &mut group,
-            &format!("binary_view_{size}"),
-            &DataType::binary_view(),
-            &column,
-        );
-        // The fixed slot, which every payload here fills exactly.
-        let fixed = DataType::fixed_size_binary(u32::try_from(size).expect("the sizes fit"))
-            .expect("every payload size is a width");
-        column_round_trip(
-            &mut group,
-            &format!("fixed_size_binary_{size}"),
-            &fixed,
-            &column,
-        );
+        for leaf in leaves(size) {
+            // The fixed slot keeps the name Arrow gives its storage.
+            let label = match leaf {
+                BytesType::FixedBinary(_) => "fixed_size_binary",
+                _ => leaf.as_str(),
+            };
+            column_round_trip(
+                &mut group,
+                &format!("{label}_{size}"),
+                &DataType::bytes(leaf).expect("every leaf is a datatype"),
+                &column,
+            );
+        }
     }
 
     group.finish();

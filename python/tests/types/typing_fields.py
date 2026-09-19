@@ -27,6 +27,7 @@ from yggdryl.types import (
     MimeTypeField,
     StructField,
     TimezoneField,
+    UrnField,
     UrlField,
     VersionField,
 )
@@ -57,7 +58,7 @@ variant_datatype: DataType = DataType.variant(
 optional: Field = Field.from_pyhint("note", str | None)
 native_scalar: Scalar = Scalar.from_(order)
 python_value: object = native_scalar.as_py()
-arrow_scalar: pa.Scalar = Scalar.float(1.5, 32).into_arrow_scalar()
+arrow_scalar: pa.Scalar = DataType("float32").scalar(1.5).into_arrow_scalar()
 
 yaml_payload: bytes = yaml.dumps(order)
 from_yaml: TypedOrder = yaml.loads(yaml_payload, cls=TypedOrder)
@@ -77,6 +78,8 @@ version: VersionField = types.version("version", nullable=False)
 version_default_scalar: Scalar = version.default_scalar()
 location: UrlField = types.url("url")
 location_dtype: DataType = location.dtype
+name: UrnField = types.urn("urn")
+name_dtype: DataType = name.dtype
 zone: TimezoneField = types.timezone("zone")
 mime: MimeTypeField = types.mimetype("mime")
 media: MediaTypeField = types.mediatype("media")
@@ -101,6 +104,7 @@ assert dynamic_class.into_field() is imported  # type: ignore[attr-defined]
 assert currency_default_scalar.as_py() == ""
 assert version_default_scalar.as_py() == Version(0)
 assert location_dtype == DataType("url")
+assert name_dtype == DataType("urn")
 assert canonical_text_dtypes == (
     DataType("timezone"),
     DataType("mimetype"),

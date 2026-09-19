@@ -10,14 +10,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingleginstrument"
+          "FIX:component": "underlyingleginstrument"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TradeCapLegUnderlying",
-    "fix:tag": "1064424"
+    "FIX:tag": "1064424",
+    "display": "TradeCapLegUnderlying"
   }
 }

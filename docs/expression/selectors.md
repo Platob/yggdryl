@@ -10,7 +10,7 @@
 | Projection | a term, an optional alias, an optional declared datatype with `null` / `not null`, optional `with (...)` metadata |
 | `*` | every column; `* exclude (a, b)` every column but those |
 | Declared column | a `create table` column: `id int64 not null` publishes `id` cast to `int64`, refusing a null; a declared cast is safe (a value that does not fit becomes null) unless the column is `not null` |
-| Field | `from_field(field)` is lossless: each child becomes a declared column carrying its metadata and its `transform:` derivation - a function over columns as `transform:function` and `transform:sources`, any other term as `transform:expression`; `into_field(root)` writes the selector back as that declaration, so a `Field` is a plan holder |
+| Field | `from_field(field)` is lossless: each child becomes a declared column carrying its metadata and its `TRANSFORM:` derivation - a function over columns as `TRANSFORM:function` and `TRANSFORM:sources`, any other term as `TRANSFORM:expression`; `into_field(root)` writes the selector back as that declaration, so a `Field` is a plan holder |
 | Identity | binding `select *`, a self alias, or a cast to the type a column has is skipped; the batch or reader is handed back as is |
 | Apply | `apply_field(root)`, `apply_scalar(root, row)`, `apply_arrow_reader` (primary, streamed), `apply_arrow_batch`, `apply_arrow_array`, `apply_records` |
 | Bindings | Python and JavaScript `Selector` and `BoundSelector`, the same names; a projection list can be text, terms, or `(term, alias)` pairs |
@@ -23,12 +23,12 @@
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::{DataType, Field, Selector};
+    use yggdryl::{DataType, Field, Selector, StructureType};
 
-    let root = DataType::from_fields([
+    let root = DataType::from(StructureType::from_fields([
         DataType::utf8().nullable_field("ccy"),
         DataType::Int64.nullable_field("size"),
-    ])?
+    ])?)
     .required_field("rows");
     let selector: Selector = "ccy, size as quantity, size * 2 as doubled int32".parse()?;
     assert_eq!(selector.names(), ["ccy", "quantity", "doubled"]);
@@ -56,13 +56,13 @@
     // A field is a selector, and the selector is a field again: the one
     // that declares every column the field stores.
     let stored = selector.into_field(&root)?;
-    assert_eq!(stored.fields()[2].get_metadata("transform:expression"), Some("size * 2"));
+    assert_eq!(stored.fields()[2].get_metadata("TRANSFORM:expression"), Some("size * 2"));
     // A call over plain columns is stored as the function and its sources.
     let year: Selector = "year(event) as year".parse()?;
-    let dated = DataType::from_fields([DataType::Date32.required_field("event")])?.required_field("rows");
+    let dated = DataType::from(StructureType::from_fields([DataType::date32().required_field("event")])?).required_field("rows");
     let stored_year = year.into_field(&dated)?;
-    assert_eq!(stored_year.fields()[0].get_metadata("transform:function"), Some("year"));
-    assert_eq!(stored_year.fields()[0].get_metadata("transform:sources"), Some(r#"["event"]"#));
+    assert_eq!(stored_year.fields()[0].get_metadata("TRANSFORM:function"), Some("year"));
+    assert_eq!(stored_year.fields()[0].get_metadata("TRANSFORM:sources"), Some(r#"["event"]"#));
     let declared: Selector = "ccy utf8 null, size as quantity int64 null, size * 2 as doubled int32 null".parse()?;
     assert_eq!(Selector::from_field(&stored), declared);
     ```
@@ -155,7 +155,7 @@ A projection with a datatype is a `create table` column, and a `Selector` is wha
 | `price decimal(9,2) not null` | the same cast, a null or a value that does not fit refused naming `price` |
 | `id int64 with (comment = 'key')` | the column with that metadata on its field |
 
-`Selector::from_field` spells every child as `name dtype null|not null`, its metadata as `with (...)`, and its derivation as the term: a `transform:function` over its `transform:sources` - `year(event)`, `py.double(size)`, the shape a [user function's signature](functions.md) and a partition spec share - or a `transform:expression` for any other term. `declared_field` and a plan's `create` section read the declaration back into a `Field`. The [transform protocol](../types/protocol.md) is where a stored field carries the derivation, beside the [partition](../holder/iobase/partitions.md#derived-partition-columns) declaration that is a transform of one source.
+`Selector::from_field` spells every child as `name dtype null|not null`, its metadata as `with (...)`, and its derivation as the term: a `TRANSFORM:function` over its `TRANSFORM:sources` - `year(event)`, `py.double(size)`, the shape a [user function's signature](functions.md) and a partition spec share - or a `TRANSFORM:expression` for any other term. `declared_field` and a plan's `create` section read the declaration back into a `Field`. The [transform protocol](../types/protocol.md) is where a stored field carries the derivation, beside the [partition](../holder/iobase/partitions.md#derived-partition-columns) declaration that is a transform of one source.
 
 ## Edges
 
@@ -164,8 +164,8 @@ A projection with a datatype is a `create table` column, and a `Selector` is wha
 - A declared column a value cannot fit -> null, unless `not null`, where the error names the column and the value.
 - `apply_arrow_reader` -> the output schema is known before the first batch; `apply_arrow_batch` is the one-batch spelling and never collects a stream.
 - `apply_records` with no schema and no record -> refused; with records, the first one's own datatype is the schema.
-- `into_field` of a selector with a bare column -> no `transform:` property, so `from_field` gives the bare column back.
-- `into_field` of `lower(s) as name` -> `transform:function = lower` and `transform:sources = ["s"]`, never an expression; of `s || 'x'` or `size * 2` -> `transform:expression`, because only a call over plain columns is a function over sources.
+- `into_field` of a selector with a bare column -> no `TRANSFORM:` property, so `from_field` gives the bare column back.
+- `into_field` of `lower(s) as name` -> `TRANSFORM:function = lower` and `TRANSFORM:sources = ["s"]`, never an expression; of `s || 'x'` or `size * 2` -> `TRANSFORM:expression`, because only a call over plain columns is a function over sources.
 
 ## Commands
 

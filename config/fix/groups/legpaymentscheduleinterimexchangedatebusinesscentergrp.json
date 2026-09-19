@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legpaymentscheduleinterimexchangedatebusinesscenter"
+        "FIX:component": "legpaymentscheduleinterimexchangedatebusinesscenter"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legpaymentscheduleinterimexchangedatebusinesscenter",
+    "FIX:counter": "40928",
+    "FIX:tag": "628939",
     "description": "Required if NoLegPaymentScheduleInterimExchangeDateBusinessCenters(40928) > 0.",
-    "display": "LegPaymentScheduleInterimExchangeDateBusinessCenterGrp",
-    "fix:component": "legpaymentscheduleinterimexchangedatebusinesscenter",
-    "fix:counter": "40928",
-    "fix:tag": "628939"
+    "display": "LegPaymentScheduleInterimExchangeDateBusinessCenterGrp"
   }
 }

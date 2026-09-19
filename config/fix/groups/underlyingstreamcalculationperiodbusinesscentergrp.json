@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingstreamcalculationperiodbusinesscentercomponent"
+        "FIX:component": "underlyingstreamcalculationperiodbusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingstreamcalculationperiodbusinesscentercomponent",
+    "FIX:counter": "40973",
+    "FIX:tag": "692028",
     "description": "Required if NoUnderlyingStreamCalculationPeriodBusinessCenters(40973) > 0.",
-    "display": "UnderlyingStreamCalculationPeriodBusinessCenterGrp",
-    "fix:component": "underlyingstreamcalculationperiodbusinesscentercomponent",
-    "fix:counter": "40973",
-    "fix:tag": "692028"
+    "display": "UnderlyingStreamCalculationPeriodBusinessCenterGrp"
   }
 }

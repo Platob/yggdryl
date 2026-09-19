@@ -1,6 +1,7 @@
-//! US-ASCII is a charset of the one string family: `ascii` is a string whose
-//! bytes are US-ASCII, `ascii(n)` bounds it, `fixed_ascii(n)` pads it, and
-//! every one of them is `Scalar::String` in memory and Arrow text on the wire.
+//! US-ASCII is one charset of the one string family: `ascii` is a string
+//! whose bytes are US-ASCII, `sized_ascii(n)` bounds it, `fixed_ascii(n)` pads
+//! it, and every one of them is `Scalar::String` in memory and Arrow text on
+//! the wire.
 
 use std::sync::Arc;
 
@@ -11,12 +12,16 @@ use yggdryl::arrow::{batch_reader, scalar_array, scalar_value};
 use yggdryl::expression::Literal;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::types::{Str, StringLayout, StringParameters};
-use yggdryl::{Charset, DataType, DataTypeId, Field, Scalar, StringEnum, Term, Url};
+use yggdryl::{Charset, DataType, DataTypeId, Field, Scalar, StringEnum, StructureType, Term, Url};
 use yggdryl::{IOBase, IOMedia};
+use yggdryl::{Str, StringType};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    Field::new("row", DataType::from_fields(fields).unwrap(), false)
+    Field::new(
+        "row",
+        DataType::from(StructureType::from_fields(fields).unwrap()),
+        false,
+    )
 }
 
 /// Four-byte storage: the padded codes the writer would have stored.
@@ -230,12 +235,13 @@ fn an_ascii_literal_has_a_text_form() {
     // `ascii(4)` is the bounded string, not the padded one.
     assert_eq!(
         **literal,
-        Term::Literal(Literal::new(DataType::from_str("ascii(4)").unwrap(), "USD").unwrap())
+        Term::Literal(Literal::new(DataType::sized_ascii(4).unwrap(), "USD").unwrap())
     );
-    // The literal prints in its own datatype and re-parses; a registered code
-    // spells a literal of its own, which is not the literal of the width that
-    // happens to hold the same bytes.
-    assert_eq!(parsed.to_string(), "ccy = ascii(4) 'USD'");
+    // The literal prints in its own datatype - the sized leaf, canonically
+    // spelled - and re-parses; a registered code spells a literal of its own,
+    // which is not the literal of the width that happens to hold the same
+    // bytes.
+    assert_eq!(parsed.to_string(), "ccy = sized_ascii(4) 'USD'");
     assert_eq!(parsed.to_string().parse::<Term>().unwrap(), parsed);
     let currency = "ccy = currency 'USD'".parse::<Term>().unwrap();
     assert_eq!(currency.to_string(), "ccy = currency 'USD'");
@@ -291,8 +297,8 @@ fn an_ascii_column_round_trips_through_avro_as_text() {
 #[test]
 fn an_ascii_column_is_an_iceberg_string() {
     let mut schema = root([DataType::fixed_ascii(4).unwrap().required_field("ccy")]);
-    yggdryl::media::iceberg::assign_field_ids(&mut schema, 1).unwrap();
-    let json = yggdryl::media::iceberg::schema_into_json(&schema).unwrap();
+    yggdryl::iceberg::assign_field_ids(&mut schema, 1).unwrap();
+    let json = yggdryl::iceberg::schema_into_json(&schema).unwrap();
     let fields = json
         .get_key_str("fields")
         .and_then(Scalar::as_sequence)
@@ -305,32 +311,31 @@ fn an_ascii_column_is_an_iceberg_string() {
 
 #[test]
 fn ascii_is_one_charset_of_the_string_family() {
-    // The three shapes are one datatype under one charset, and each reads
-    // back from its own spelling.
+    // The three shapes are three leaves of one charset, and each reads back
+    // from its own spelling.
     let plain = DataType::ascii();
     assert_eq!(plain.to_string(), "ascii");
     assert_eq!(DataType::from_str("ascii").unwrap(), plain);
     assert_eq!(DataType::from_str("string(us-ascii)").unwrap(), plain);
-    assert_eq!(
-        plain.string_parameters(),
-        Some(StringParameters::ascii(StringLayout::String))
-    );
+    assert_eq!(plain.string_parameters(), Some(StringType::AsciiString));
     assert_eq!(plain.charset(), Some(Charset::Ascii));
-    assert_eq!(plain.id(), DataTypeId::String);
+    assert_eq!(plain.id(), DataTypeId::AsciiString);
     assert!(plain.is_string());
     assert!(!plain.is_code());
     assert_eq!(plain.fixed_byte_width(), None);
 
-    // One number, one reading per layout: `ascii(4)` is a maximum and
-    // `fixed_ascii(4)` the width.
+    // One number, one reading per leaf: `ascii(4)` is a maximum, which is
+    // the sized leaf, and `fixed_ascii(4)` the width.
     let bounded = DataType::from_str("ascii(4)").unwrap();
-    assert_eq!(bounded.to_string(), "ascii(4)");
+    assert_eq!(bounded.to_string(), "sized_ascii(4)");
     assert_eq!(bounded, DataType::from_str("string(us-ascii,4)").unwrap());
+    assert_eq!(bounded, DataType::sized_ascii(4).unwrap());
     let parameters = bounded.string_parameters().unwrap();
+    assert_eq!(parameters, StringType::SizedAsciiString(4));
     assert_eq!(parameters.max(), Some(4));
     assert_eq!(parameters.fixed(), None);
     assert_eq!(bounded.fixed_byte_width(), None);
-    assert_eq!(bounded.id(), DataTypeId::String);
+    assert_eq!(bounded.id(), DataTypeId::SizedAsciiString);
 
     let fixed = DataType::fixed_ascii(4).unwrap();
     assert_eq!(fixed.to_string(), "fixed_ascii(4)");
@@ -339,9 +344,13 @@ fn ascii_is_one_charset_of_the_string_family() {
         DataType::from_str("fixed_string(us-ascii,4)").unwrap(),
         fixed
     );
+    assert_eq!(
+        fixed.string_parameters(),
+        Some(StringType::FixedAsciiString(4))
+    );
     assert_eq!(fixed.string_parameters().unwrap().fixed(), Some(4));
     assert_eq!(fixed.fixed_byte_width(), Some(4));
-    assert_eq!(fixed.id(), DataTypeId::FixedString);
+    assert_eq!(fixed.id(), DataTypeId::FixedAsciiString);
     assert_ne!(bounded, fixed);
 
     // A charset-named spelling takes only a bound; a width is what makes a
@@ -361,10 +370,10 @@ fn an_ascii_value_is_the_string_value_and_carries_no_maximum() {
         panic!("an ascii value is a string, got {value:?}");
     };
     assert_eq!(held.charset(), Charset::Ascii);
-    assert_eq!(held.layout(), StringLayout::String);
+    assert_eq!(held.parameters(), StringType::AsciiString);
     assert_eq!(value, Scalar::from("USD"));
     assert_eq!(value.as_str(), Some("USD"));
-    assert_eq!(value.id(), DataTypeId::String);
+    assert_eq!(value.id(), DataTypeId::AsciiString);
     assert_eq!(value.dtype().unwrap(), DataType::ascii());
 
     // A maximum is the column's rule: a value read out of `ascii(4)` is an
@@ -382,7 +391,7 @@ fn an_ascii_value_is_the_string_value_and_carries_no_maximum() {
     let fixed = DataType::fixed_ascii(4).unwrap();
     let padded = fixed.scalar("USD\0").unwrap();
     assert_eq!(padded.as_str(), Some("USD"));
-    assert_eq!(padded.id(), DataTypeId::FixedString);
+    assert_eq!(padded.id(), DataTypeId::FixedAsciiString);
     assert_eq!(padded.dtype().unwrap(), fixed);
     let Scalar::String(held) = &padded else {
         panic!("a fixed ascii value is a string, got {padded:?}");
@@ -442,7 +451,7 @@ fn ascii_is_a_repertoire_and_refuses_what_it_never_holds() {
         Some("USD")
     );
     // The same rule under the value's own door.
-    let ascii = StringParameters::ascii(StringLayout::String);
+    let ascii = StringType::AsciiString;
     assert!(Str::new("caf\u{e9}").try_with_parameters(ascii).is_err());
     assert!(Str::from_bytes(&[0x80], ascii).is_err());
 }
@@ -455,23 +464,27 @@ fn ascii_rides_arrow_text_storage_under_the_string_document() {
         (
             DataType::ascii(),
             ArrowDataType::Utf8,
-            r#"{"layout":"string","charset":"us-ascii"}"#,
+            r#"{"layout":"ascii","charset":"us-ascii"}"#,
         ),
         (
             DataType::from_str("ascii(4)").unwrap(),
             ArrowDataType::Utf8,
-            r#"{"layout":"string","charset":"us-ascii","max":4}"#,
+            r#"{"layout":"sized_ascii","charset":"us-ascii","max":4}"#,
         ),
         (
             DataType::fixed_ascii(4).unwrap(),
             ArrowDataType::FixedSizeBinary(4),
-            r#"{"layout":"fixed_string","charset":"us-ascii","fixed":4}"#,
+            r#"{"layout":"fixed_ascii","charset":"us-ascii","fixed":4}"#,
         ),
     ];
     for (dtype, storage, document) in cases {
-        assert_eq!(dtype.clone().into_arrow().unwrap(), storage, "{dtype}");
+        assert_eq!(
+            dtype.clone().into_arrow_datatype().unwrap(),
+            storage,
+            "{dtype}"
+        );
         let field = dtype.clone().nullable_field("ccy");
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
         assert_eq!(arrow.data_type(), &storage, "{dtype}");
         assert_eq!(
             arrow
@@ -489,7 +502,7 @@ fn ascii_rides_arrow_text_storage_under_the_string_document() {
             Some(document),
             "{dtype}"
         );
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{dtype}");
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{dtype}");
 
         // A value crosses as itself in both directions.
         let value = dtype.scalar("USD").unwrap();
@@ -506,7 +519,7 @@ fn ascii_rides_arrow_text_storage_under_the_string_document() {
     // name is nobody's: a field wearing it imports as its storage.
     let plain = arrow_schema::Field::new("ccy", ArrowDataType::Utf8, true);
     assert_eq!(
-        Field::from_arrow(&plain).unwrap().dtype(),
+        Field::from_arrow_field(&plain).unwrap().dtype(),
         &DataType::utf8()
     );
     let retired = plain.with_metadata(
@@ -521,7 +534,7 @@ fn ascii_rides_arrow_text_storage_under_the_string_document() {
         .collect(),
     );
     assert_eq!(
-        Field::from_arrow(&retired).unwrap().dtype(),
+        Field::from_arrow_field(&retired).unwrap().dtype(),
         &DataType::utf8()
     );
 }
@@ -541,7 +554,8 @@ fn a_string_enum_needs_a_fixed_ascii_width_its_members_pack_into() {
             .try_with_string_enum(&sides)
             .unwrap_or_else(|error| panic!("{accepted}: {error}"));
         assert_eq!(field.string_enum().unwrap().as_ref(), Some(&sides));
-        let recovered = Field::from_arrow(&field.clone().into_arrow().unwrap()).unwrap();
+        let recovered =
+            Field::from_arrow_field(&field.clone().into_arrow_field().unwrap()).unwrap();
         assert_eq!(recovered, field, "{accepted}");
     }
     for refused in [

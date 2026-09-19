@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamtype",
-          "fix:tag": "41058"
+          "FIX:field": "deliverystreamtype",
+          "FIX:tag": "41058"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nodeliverystreamcommoditysources",
-          "fix:tag": "41085"
+          "FIX:field": "nodeliverystreamcommoditysources",
+          "FIX:tag": "41085"
         }
       },
       {
@@ -32,7 +32,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "deliverystreamcommoditysourcegrp"
+          "FIX:group": "deliverystreamcommoditysourcegrp"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreampipeline",
-          "fix:tag": "41059"
+          "FIX:field": "deliverystreampipeline",
+          "FIX:tag": "41059"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamentrypoint",
-          "fix:tag": "41060"
+          "FIX:field": "deliverystreamentrypoint",
+          "FIX:tag": "41060"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamwithdrawalpoint",
-          "fix:tag": "41061"
+          "FIX:field": "deliverystreamwithdrawalpoint",
+          "FIX:tag": "41061"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamdeliverypoint",
-          "fix:tag": "41062"
+          "FIX:field": "deliverystreamdeliverypoint",
+          "FIX:tag": "41062"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamdeliverypointsource",
-          "fix:tag": "42192"
+          "FIX:field": "deliverystreamdeliverypointsource",
+          "FIX:tag": "42192"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamdeliverypointdesc",
-          "fix:tag": "42193"
+          "FIX:field": "deliverystreamdeliverypointdesc",
+          "FIX:tag": "42193"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamdeliveryrestriction",
-          "fix:tag": "41063"
+          "FIX:field": "deliverystreamdeliveryrestriction",
+          "FIX:tag": "41063"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamdeliverycontingency",
-          "fix:tag": "41064"
+          "FIX:field": "deliverystreamdeliverycontingency",
+          "FIX:tag": "41064"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamdeliverycontingentpartyside",
-          "fix:tag": "41065"
+          "FIX:field": "deliverystreamdeliverycontingentpartyside",
+          "FIX:tag": "41065"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamdeliveratsourceindicator",
-          "fix:tag": "41066"
+          "FIX:field": "deliverystreamdeliveratsourceindicator",
+          "FIX:tag": "41066"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamriskapportionment",
-          "fix:tag": "41067"
+          "FIX:field": "deliverystreamriskapportionment",
+          "FIX:tag": "41067"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamriskapportionmentsource",
-          "fix:tag": "41218"
+          "FIX:field": "deliverystreamriskapportionmentsource",
+          "FIX:tag": "41218"
         }
       },
       {
@@ -174,8 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nodeliverystreamcycles",
-          "fix:tag": "41081"
+          "FIX:field": "nodeliverystreamcycles",
+          "FIX:tag": "41081"
         }
       },
       {
@@ -185,7 +185,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "deliverystreamcyclegrp"
+          "FIX:group": "deliverystreamcyclegrp"
         }
       },
       {
@@ -195,8 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamtitletransferlocation",
-          "fix:tag": "41068"
+          "FIX:field": "deliverystreamtitletransferlocation",
+          "FIX:tag": "41068"
         }
       },
       {
@@ -206,8 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamtitletransfercondition",
-          "fix:tag": "41069"
+          "FIX:field": "deliverystreamtitletransfercondition",
+          "FIX:tag": "41069"
         }
       },
       {
@@ -217,8 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamimporterofrecord",
-          "fix:tag": "41070"
+          "FIX:field": "deliverystreamimporterofrecord",
+          "FIX:tag": "41070"
         }
       },
       {
@@ -228,8 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamnegativetolerance",
-          "fix:tag": "41071"
+          "FIX:field": "deliverystreamnegativetolerance",
+          "FIX:tag": "41071"
         }
       },
       {
@@ -239,8 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreampositivetolerance",
-          "fix:tag": "41072"
+          "FIX:field": "deliverystreampositivetolerance",
+          "FIX:tag": "41072"
         }
       },
       {
@@ -250,8 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamtoleranceunitofmeasure",
-          "fix:tag": "41073"
+          "FIX:field": "deliverystreamtoleranceunitofmeasure",
+          "FIX:tag": "41073"
         }
       },
       {
@@ -261,8 +261,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamtolerancetype",
-          "fix:tag": "41074"
+          "FIX:field": "deliverystreamtolerancetype",
+          "FIX:tag": "41074"
         }
       },
       {
@@ -272,8 +272,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamtoleranceoptionside",
-          "fix:tag": "41075"
+          "FIX:field": "deliverystreamtoleranceoptionside",
+          "FIX:tag": "41075"
         }
       },
       {
@@ -283,8 +283,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamtotalpositivetolerance",
-          "fix:tag": "41076"
+          "FIX:field": "deliverystreamtotalpositivetolerance",
+          "FIX:tag": "41076"
         }
       },
       {
@@ -294,8 +294,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamtotalnegativetolerance",
-          "fix:tag": "41077"
+          "FIX:field": "deliverystreamtotalnegativetolerance",
+          "FIX:tag": "41077"
         }
       },
       {
@@ -305,8 +305,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamnotionalconversionfactor",
-          "fix:tag": "41078"
+          "FIX:field": "deliverystreamnotionalconversionfactor",
+          "FIX:tag": "41078"
         }
       },
       {
@@ -316,8 +316,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamtransportequipment",
-          "fix:tag": "41079"
+          "FIX:field": "deliverystreamtransportequipment",
+          "FIX:tag": "41079"
         }
       },
       {
@@ -327,8 +327,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamelectingpartyside",
-          "fix:tag": "41080"
+          "FIX:field": "deliverystreamelectingpartyside",
+          "FIX:tag": "41080"
         }
       },
       {
@@ -338,16 +338,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamrouteorcharter",
-          "fix:tag": "43094"
+          "FIX:field": "deliverystreamrouteorcharter",
+          "FIX:tag": "43094"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "855821",
     "description": "The DeliveryStream component is used to optionally specify the attributes of a physical delivery stream in a swap.",
-    "display": "DeliveryStream",
-    "fix:tag": "855821"
+    "display": "DeliveryStream"
   }
 }

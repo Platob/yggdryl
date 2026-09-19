@@ -147,7 +147,7 @@ pub(super) fn emit_text(
 /// dictionary that never coded it; everything else spells as it does
 /// under no field.
 pub(super) fn wire_text_under(field: &crate::Field, value: &crate::Scalar) -> Option<SmolStr> {
-    let coded = matches!(value, crate::Scalar::Code(_))
+    let coded = value.is_code()
         || matches!(
             field.dtype(),
             crate::DataType::Side | crate::DataType::State
@@ -166,7 +166,8 @@ pub(super) fn wire_text_under(field: &crate::Field, value: &crate::Scalar) -> Op
 pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
     use crate::Scalar;
     match value {
-        Scalar::String(_) | Scalar::Code(_) | Scalar::Enum(_) => value.as_str().map(SmolStr::new),
+        Scalar::String(_) => value.as_str().map(SmolStr::new),
+        coded if coded.is_code() => value.as_str().map(SmolStr::new),
         Scalar::Boolean(_) => value
             .as_bool()
             .map(|held| SmolStr::new_static(if held { "Y" } else { "N" })),
@@ -193,8 +194,9 @@ pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
         Scalar::Decimal32(_)
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
-        | Scalar::Decimal256(_) => crate::types::Decimal::from_scalar(value)
-            .map(|held| smol_str::format_smolstr!("{held}")),
+        | Scalar::Decimal256(_) => {
+            crate::Decimal18::from_scalar(value).map(|held| smol_str::format_smolstr!("{held}"))
+        }
         // Every other number and duration writes its leaf's own canonical text.
         other => other
             .leaf_display()
@@ -221,7 +223,7 @@ const fn nanos_per(unit: crate::TimeUnit) -> Option<i64> {
 
 /// One day since the epoch as FIX spells it: `YYYYMMDD`.
 fn fix_date(days: i64) -> SmolStr {
-    let (year, month, day) = crate::types::timezone::civil_from_days(days);
+    let (year, month, day) = crate::timezone::civil_from_days(days);
     smol_str::format_smolstr!("{year:04}{month:02}{day:02}")
 }
 

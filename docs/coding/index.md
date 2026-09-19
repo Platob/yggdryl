@@ -95,7 +95,7 @@ A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` - a
 === "Rust"
 
     ```rust
-    use yggdryl::coding::{gzip, Coded};
+    use yggdryl::{coding::Coded, gzip};
     use yggdryl::holder::Buffer;
     use yggdryl::{Codec, IOBase, Level, MimeType, Url};
 
@@ -204,8 +204,7 @@ The scan answers *candidates*: the pattern a coding restarts after can also occu
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib coding::tests::
-    cargo test --features "parquet iceberg" -p yggdryl --lib coding::
+    cargo test --features "parquet iceberg" -p yggdryl --test coding
     cargo bench -p yggdryl --bench coding -- io_pstream_first
     cargo bench -p yggdryl --bench coding -- io_pstream_drain
     cargo bench -p yggdryl --bench coding -- io_pstream_repeated_pread

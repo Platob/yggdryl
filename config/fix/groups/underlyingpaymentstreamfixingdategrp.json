@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingpaymentstreamfixingdatecomponent"
+        "FIX:component": "underlyingpaymentstreamfixingdatecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingpaymentstreamfixingdatecomponent",
+    "FIX:counter": "42955",
+    "FIX:tag": "606978",
     "description": "Required if NoUnderlyingPaymentStreamFixingDates(42955) > 0.",
-    "display": "UnderlyingPaymentStreamFixingDateGrp",
-    "fix:component": "underlyingpaymentstreamfixingdatecomponent",
-    "fix:counter": "42955",
-    "fix:tag": "606978"
+    "display": "UnderlyingPaymentStreamFixingDateGrp"
   }
 }

@@ -1,23 +1,35 @@
-//! UUID packing without hashing or a clock, the canonical rendering, and the
-//! cast both ways between an identifier column and the string and byte
-//! datatypes it reads into; allocations are pinned separately.
+//! UUID packing without hashing or a clock, the canonical rendering, the
+//! datatype through the doors a caller uses, and the cast both ways between
+//! an identifier column and the string and byte datatypes it reads into;
+//! allocations are pinned separately.
 
 use std::hint::black_box;
 use std::sync::Arc;
 
 use arrow_array::{ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::types::Uuid;
-use yggdryl::{ArrowCast, ArrowCastOptions, DataType, Field};
+use yggdryl::FieldValue as _;
+use yggdryl::Uuid;
+use yggdryl::{ArrowCastOptions, DataType, Field, StructureType};
+
+use super::doors;
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
 
 fn root(field: Field) -> Field {
     Field::new(
         "row",
-        DataType::from_fields([field]).expect("the benchmark fields are valid"),
+        DataType::from(
+            StructureType::from_fields([field]).expect("the benchmark fields are valid"),
+        ),
         false,
     )
+}
+
+/// The `index`th identifier of the corpus: time-ordered, so the column is
+/// what a stored one looks like.
+fn identifier(index: usize) -> Uuid {
+    Uuid::from_v7(1_645_557_742_000_000 + index as i64, index as u64).expect("an in-range instant")
 }
 
 pub(crate) fn uuid_benchmarks(criterion: &mut Criterion) {
@@ -46,19 +58,23 @@ pub(crate) fn uuid_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(value).to_string());
     });
 
-    // The column both ways: text into the identifier's sixteen bytes, and
-    // those bytes back out as every reading the two families offer.
+    // The datatype through every door.
+    doors::leaf_doors(
+        &mut group,
+        &DataType::Uuid,
+        &identifier(0).to_string().into(),
+    );
+
+    // The column both ways: text into the identifier's sixteen bytes, those
+    // bytes back in under the one rule, and out again as every reading the
+    // two families offer.
     let strict = ArrowCastOptions::new().with_safe(false);
+    group.throughput(Throughput::Elements(ROWS as u64));
     let spellings: Vec<String> = (0..ROWS)
-        .map(|index| {
-            Uuid::from_v7(1_645_557_742_000_000 + index as i64, index as u64)
-                .expect("an in-range instant")
-                .to_string()
-        })
+        .map(|index| identifier(index).to_string())
         .collect();
     let text: ArrayRef = Arc::new(StringArray::from_iter_values(spellings.iter()));
     let id = DataType::Uuid.required_field("id");
-    group.throughput(Throughput::Elements(ROWS as u64));
     group.bench_function("text_ingest", |bencher| {
         bencher.iter(|| {
             black_box(&id)
@@ -85,8 +101,8 @@ pub(crate) fn uuid_benchmarks(criterion: &mut Criterion) {
         });
     });
 
-    // The stored column under its own root's schema, so each render sees the
-    // `arrow.uuid` identity exactly as a stored column carries it.
+    // The stored column under its own root's schema, so each render sees
+    // the `arrow.uuid` identity exactly as a stored column carries it.
     let batch = RecordBatch::try_new(
         root(id.clone())
             .into_arrow_schema()

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legcomplexeventcrediteventsourcecomponent"
+        "FIX:component": "legcomplexeventcrediteventsourcecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legcomplexeventcrediteventsourcecomponent",
+    "FIX:counter": "41398",
+    "FIX:tag": "861914",
     "description": "Required if NoLegComplexEventCreditEventSources(41398) > 0.",
-    "display": "LegComplexEventCreditEventSourceGrp",
-    "fix:component": "legcomplexeventcrediteventsourcecomponent",
-    "fix:counter": "41398",
-    "fix:tag": "861914"
+    "display": "LegComplexEventCreditEventSourceGrp"
   }
 }

@@ -10,7 +10,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrumentleg"
+          "FIX:component": "instrumentleg"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legfinancingdetails"
+          "FIX:component": "legfinancingdetails"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegratesources",
-          "fix:tag": "3116"
+          "FIX:field": "nolegratesources",
+          "FIX:tag": "3116"
         }
       },
       {
@@ -41,14 +41,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legratesourcegrp"
+          "FIX:group": "legratesourcegrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "InstrmtLeg",
-    "fix:tag": "520248"
+    "FIX:tag": "520248",
+    "display": "InstrmtLeg"
   }
 }

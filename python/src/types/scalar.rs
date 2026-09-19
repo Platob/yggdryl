@@ -6,8 +6,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, RecordBatch};
-use arrow_pyarrow::FromPyArrow;
+use arrow_array::{ArrayRef, RecordBatch};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{
     PyArithmeticError, PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError,
@@ -19,20 +18,18 @@ use pyo3::types::{
     PyMemoryView, PyModule, PySet, PyString, PyTuple, PyType,
 };
 use pyo3::{IntoPyObjectExt, PyTypeInfo};
-use yggdryl::arrow::{
-    array_from_value, array_to_value, batch_from_value, batch_to_value, scalar_array, scalar_value,
-};
-use yggdryl::types::bytes::{Bytes, BytesLayout, BytesParameters};
-use yggdryl::types::decimal::{Decimal32, Decimal64};
-use yggdryl::types::geospatial::{Geography, Geometry};
-use yggdryl::types::string::{Code, Str, StringLayout, StringParameters};
-use yggdryl::types::temporal::Interval;
-use yggdryl::types::{
+use yggdryl::arrow::{array_from_value, batch_from_value, scalar_array};
+use yggdryl::bytes::{Bytes, BytesType};
+use yggdryl::decimal::{Decimal32, Decimal64};
+use yggdryl::geospatial::{Geography, Geometry};
+use yggdryl::interval::Interval;
+use yggdryl::string::{Str, StringType};
+use yggdryl::{
     Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce,
 };
 use yggdryl::{
-    ArrowCast, DataType as CoreDataType, Enum, Error as CoreError, Field as CoreField, Float16,
-    Float32, Float64, Scalar, TimeUnit, Timezone, i256,
+    DataType as CoreDataType, Error as CoreError, Field as CoreField, Float16, Float32, Float64,
+    Scalar, TimeUnit, Timezone, Vocabulary, i256,
 };
 
 use crate::iomedia::{batch_to_pyarrow, core_root_field_from_value};
@@ -41,7 +38,6 @@ use crate::types::field::{PyField, core_field_from_value};
 use crate::types::timezone::core_timezone_from_value;
 use crate::uri::{PyUri, PyUrl, PyUrn};
 use crate::{compare, value_error};
-use yggdryl::ArrowCastOptions;
 
 /// How deep a Python graph may nest before conversion refuses to recurse.
 const MAX_PYTHON_DEPTH: usize = 128;
@@ -107,10 +103,6 @@ fn time_unit(value: &str) -> PyResult<TimeUnit> {
     TimeUnit::from_str(value).map_err(value_error)
 }
 
-fn timezone_or_naive(value: Option<&Bound<'_, PyAny>>) -> PyResult<Timezone> {
-    value.map_or(Ok(Timezone::NAIVE), core_timezone_from_value)
-}
-
 fn i256_from_py(value: &Bound<'_, PyAny>) -> PyResult<i256> {
     if value.is_instance_of::<PyBool>()
         || !(value.is_instance_of::<PyInt>() || value.is_instance_of::<PyString>())
@@ -148,26 +140,6 @@ fn ensure_pyarrow_instance(value: &Bound<'_, PyAny>, class: &str) -> PyResult<()
             value.get_type().name()?
         )))
     }
-}
-
-fn exact_or_inferred_array_field(
-    field: Option<&Bound<'_, PyAny>>,
-    array: &ArrayRef,
-    name: &str,
-) -> PyResult<CoreField> {
-    if let Some(field) = field {
-        return core_field_from_value(field);
-    }
-    let dtype = CoreDataType::try_from(array.data_type().clone()).map_err(value_error)?;
-    Ok(CoreField::new(name, dtype, array.null_count() != 0))
-}
-
-fn extend_rows(rows: &mut Vec<Scalar>, value: &Scalar) -> PyResult<()> {
-    let values = value.as_sequence().ok_or_else(|| {
-        PyValueError::new_err("Arrow record conversion must produce an outer Sequence")
-    })?;
-    rows.extend(values.iter().cloned());
-    Ok(())
 }
 
 fn value_into_arrow_array(field: &CoreField, value: &Scalar) -> PyResult<ArrayRef> {
@@ -327,10 +299,10 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
         Scalar::Decimal256(value) => {
             decimal_pickle_state(py, "d256", &value.coefficient().to_string(), value.scale())
         }
-        // The ordinary string - UTF-8, the default layout, no width - pickles
-        // its characters alone. A layout, a charset, or a width is what makes
-        // a value carry more than that, and those pickle the whole declaration.
-        Scalar::String(value) if value.parameters() == StringParameters::default() => {
+        // The ordinary string - the plain `utf8` leaf - pickles its
+        // characters alone. Any other leaf pickles its name beside the text,
+        // and a fixed leaf its width: the name already says the charset.
+        Scalar::String(value) if value.parameters() == StringType::default() => {
             tagged_pickle_state(
                 py,
                 "string",
@@ -338,10 +310,7 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             )
         }
         Scalar::String(value) => {
-            let layout = PyString::new(py, value.layout().as_str())
-                .into_any()
-                .unbind();
-            let charset = PyString::new(py, value.charset().as_str())
+            let layout = PyString::new(py, value.parameters().as_str())
                 .into_any()
                 .unbind();
             let fixed = value.fixed().into_pyobject(py)?.into_any().unbind();
@@ -349,15 +318,19 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             tagged_pickle_state(
                 py,
                 "string",
-                Some(pickle_tuple(py, vec![layout, charset, fixed, text])?),
+                Some(pickle_tuple(py, vec![layout, fixed, text])?),
             )
         }
         // A code pickles under its own identity, which is what tells a
         // currency from a country whose bytes agree.
-        Scalar::Code(value) => tagged_pickle_state(
+        code if code.is_code() => tagged_pickle_state(
             py,
-            value.identifier().as_str(),
-            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+            code.id().as_str(),
+            Some(
+                PyString::new(py, code.as_str().expect("a code borrowed its text"))
+                    .into_any()
+                    .unbind(),
+            ),
         ),
         Scalar::Uuid(value) => tagged_pickle_state(
             py,
@@ -372,6 +345,11 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
         Scalar::Url(value) => tagged_pickle_state(
             py,
             "url",
+            Some(PyString::new(py, &value.to_string()).into_any().unbind()),
+        ),
+        Scalar::Urn(value) => tagged_pickle_state(
+            py,
+            "urn",
             Some(PyString::new(py, &value.to_string()).into_any().unbind()),
         ),
         Scalar::Timezone(value) => tagged_pickle_state(
@@ -389,28 +367,15 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "mediatype",
             Some(PyString::new(py, &value.to_string()).into_any().unbind()),
         ),
-        Scalar::Enum(value) => tagged_pickle_state(
-            py,
-            "enum",
-            Some(pickle_tuple(
-                py,
-                vec![
-                    PyString::new(py, value.kind()).into_any().unbind(),
-                    PyString::new(py, value.as_str()).into_any().unbind(),
-                ],
-            )?),
-        ),
         // Plain bytes pickle as the payload alone; another layout or a fixed
         // width pickles the declaration beside it.
-        Scalar::Bytes(value) if value.parameters() == BytesParameters::default() => {
-            tagged_pickle_state(
-                py,
-                "bytes",
-                Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
-            )
-        }
+        Scalar::Bytes(value) if value.parameters() == BytesType::default() => tagged_pickle_state(
+            py,
+            "bytes",
+            Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
+        ),
         Scalar::Bytes(value) => {
-            let layout = PyString::new(py, value.layout().as_str())
+            let layout = PyString::new(py, value.parameters().as_str())
                 .into_any()
                 .unbind();
             let fixed = value.fixed().into_pyobject(py)?.into_any().unbind();
@@ -627,55 +592,53 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             if let Ok(text) = payload.extract::<String>() {
                 return Ok(Scalar::from(text));
             }
-            let (layout, charset, fixed, text) =
-                payload.extract::<(String, String, Option<u32>, String)>()?;
-            let layout = StringLayout::from_str(&layout).map_err(value_error)?;
-            let charset = yggdryl::Charset::from_str(&charset).map_err(value_error)?;
-            let mut parameters = StringParameters::new(layout, charset);
-            if let Some(width) = fixed {
-                parameters = parameters.try_with_bound(width).map_err(value_error)?;
-            }
+            let (layout, fixed, text) = payload.extract::<(String, Option<u32>, String)>()?;
+            // The name alone lands a fixed leaf on its placeholder, so the
+            // width the state carries is put back before it is read.
+            let parameters = StringType::from_str(&layout)
+                .and_then(|leaf| leaf.with_declared_bound(fixed))
+                .map_err(value_error)?;
             Str::new(text)
                 .try_with_parameters(parameters)
                 .map(Scalar::String)
                 .map_err(value_error)
         }
         "country" => Country::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Country(value)))
+            .map(Scalar::Country)
             .map_err(value_error),
         "currency" => Currency::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Currency(value)))
+            .map(Scalar::Currency)
             .map_err(value_error),
         "mic" => Mic::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Mic(value)))
+            .map(Scalar::Mic)
             .map_err(value_error),
         "cfi" => Cfi::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Cfi(value)))
+            .map(Scalar::Cfi)
             .map_err(value_error),
         "isin" => Isin::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Isin(value)))
+            .map(Scalar::Isin)
             .map_err(value_error),
         "cusip" => Cusip::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Cusip(value)))
+            .map(Scalar::Cusip)
             .map_err(value_error),
         "sedol" => Sedol::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Sedol(value)))
+            .map(Scalar::Sedol)
             .map_err(value_error),
         "bloomberg" => Bloomberg::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Bloomberg(value)))
+            .map(Scalar::Bloomberg)
             .map_err(value_error),
         "side" => Side::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::Side(value)))
+            .map(Scalar::Side)
             .map_err(value_error),
         "state" => State::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::State(value)))
+            .map(Scalar::State)
             .map_err(value_error),
         "timeinforce" => TimeInForce::new(payload()?.extract::<String>()?)
-            .map(|value| Scalar::Code(Code::TimeInForce(value)))
+            .map(Scalar::TimeInForce)
             .map_err(value_error),
         "uuid" => {
             let value = payload()?.extract::<String>()?;
-            yggdryl::types::uuid::Uuid::from_bytes(value.as_bytes())
+            yggdryl::uuid::Uuid::from_bytes(value.as_bytes())
                 .map(Scalar::Uuid)
                 .map_err(value_error)
         }
@@ -688,6 +651,11 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .extract::<String>()?
             .parse::<yggdryl::Url>()
             .map(|value| Scalar::Url(Arc::new(value)))
+            .map_err(value_error),
+        "urn" => payload()?
+            .extract::<String>()?
+            .parse::<yggdryl::Urn>()
+            .map(|value| Scalar::Urn(Arc::new(value)))
             .map_err(value_error),
         "timezone" => payload()?
             .extract::<String>()?
@@ -704,12 +672,6 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .parse::<yggdryl::MediaType>()
             .map(|value| Scalar::MediaType(Arc::new(value)))
             .map_err(value_error),
-        "enum" => {
-            let (kind, value) = payload()?.extract::<(String, String)>()?;
-            Enum::from_parts(&kind, &value)
-                .map(Scalar::Enum)
-                .map_err(value_error)
-        }
         "bytes" => {
             let payload = payload()?;
             if let Ok(bytes) = payload.cast::<PyBytes>() {
@@ -722,11 +684,7 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                         "Scalar byte state must be bytes or (layout, fixed, bytes)",
                     )
                 })?;
-            let layout = BytesLayout::from_str(&layout).map_err(value_error)?;
-            let mut parameters = BytesParameters::new(layout);
-            if let Some(width) = fixed {
-                parameters = parameters.try_with_bound(width).map_err(value_error)?;
-            }
+            let parameters = crate::types::parameters::core_bytes_parameters(&layout, fixed)?;
             Bytes::from_shared(pickle_bytes(&bytes)?)
                 .try_with_parameters(parameters)
                 .map(Scalar::Bytes)
@@ -846,11 +804,6 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
 #[pymethods]
 #[allow(clippy::wrong_self_convention)] // Python `into_*` methods do not consume wrappers.
 impl PyScalar {
-    #[new]
-    fn new(value: &Bound<'_, PyAny>) -> PyResult<Self> {
-        from_py(value).map(Self::from_inner)
-    }
-
     /// Rebuild exact private state used by pickle and reconstructible repr.
     #[staticmethod]
     fn _from_pickle(state: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -860,7 +813,9 @@ impl PyScalar {
     /// Convert a Python-native value without a text intermediate.
     ///
     /// Spelled `from_` because `from` is a Python keyword; it is the one
-    /// reading every native input crosses through.
+    /// reading every native input crosses through. `Scalar(value)` was a
+    /// second spelling of it - a `#[new]` with a byte-identical body - and is
+    /// gone.
     #[staticmethod]
     #[pyo3(name = "from_")]
     fn from_(value: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -890,19 +845,14 @@ impl PyScalar {
             .map_err(value_error)
     }
 
-    /// Build an identity-preserving member of a core enum.
+    /// Build the canonical text of one core enum member, validating it.
+    ///
+    /// An enum member's datatype is `string`, so this answers a string
+    /// scalar; `kind` is the vocabulary the value has to belong to.
     #[staticmethod]
     fn from_enum(kind: &str, value: &str) -> PyResult<Self> {
-        Enum::from_parts(kind, value)
+        Vocabulary::from_parts(kind, value)
             .map(Scalar::from)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    #[staticmethod]
-    #[pyo3(signature = (value, width=64))]
-    fn float(value: f64, width: u8) -> PyResult<Self> {
-        Scalar::from_float(value, width)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -916,116 +866,20 @@ impl PyScalar {
         )))
     }
 
+    /// Build an elapsed duration, picking the width from the count itself.
+    ///
+    /// The one construct the type side cannot express: `duration32` and
+    /// `duration64` are two static choices, and a count that overflows 32 bits
+    /// is an error there rather than a widening. Here it widens.
+    ///
+    /// An elapsed duration has no zone - the core requires a naive one - so
+    /// there is no `timezone` parameter to pass a zone that could only be
+    /// refused.
     #[staticmethod]
-    #[pyo3(signature = (count, unit="d", timezone=None))]
-    fn date(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::from_date(count, time_unit(unit)?, timezone_or_naive(timezone)?)
+    fn duration(count: i64, unit: &str) -> PyResult<Self> {
+        Scalar::from_duration(count, time_unit(unit)?, Timezone::NAIVE)
             .map(Self::from_inner)
             .map_err(value_error)
-    }
-
-    #[staticmethod]
-    #[pyo3(signature = (count, unit, timezone=None))]
-    fn time(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::from_time(count, time_unit(unit)?, timezone_or_naive(timezone)?)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    #[staticmethod]
-    #[pyo3(signature = (count, unit, timezone=None))]
-    fn datetime(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::from_datetime(count, time_unit(unit)?, timezone_or_naive(timezone)?)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    #[staticmethod]
-    #[pyo3(signature = (count, unit, timezone=None))]
-    fn duration(count: i64, unit: &str, timezone: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        Scalar::from_duration(count, time_unit(unit)?, timezone_or_naive(timezone)?)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// Decode one `PyArrow` scalar through Arrow C Data.
-    #[staticmethod]
-    #[pyo3(signature = (value, field=None))]
-    fn from_arrow_scalar(
-        value: &Bound<'_, PyAny>,
-        field: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
-        let input = arrow_scalar_into_array(value)?;
-        let field = exact_or_inferred_array_field(field, &input, "value")?;
-        let input = field
-            .cast_arrow_array(input, ArrowCastOptions::new())
-            .map_err(value_error)?;
-        scalar_value(&field, input.as_ref())
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// Decode one `PyArrow` array as an outer Sequence.
-    #[staticmethod]
-    #[pyo3(signature = (value, field=None))]
-    fn from_arrow_array(
-        value: &Bound<'_, PyAny>,
-        field: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
-        let input = arrow_array_from_pyarrow(value)?;
-        let field = exact_or_inferred_array_field(field, &input, "item")?;
-        let input = field
-            .cast_arrow_array(input, ArrowCastOptions::new())
-            .map_err(value_error)?;
-        array_to_value(&field, input.as_ref())
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// Decode one `PyArrow` `RecordBatch` as an outer Sequence of rows.
-    #[staticmethod]
-    #[pyo3(signature = (value, field=None))]
-    fn from_arrow_batch(
-        value: &Bound<'_, PyAny>,
-        field: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
-        let batch = RecordBatch::from_pyarrow_bound(value)?;
-        let batch = match field {
-            Some(field) => core_root_field_from_value(field, "row")?
-                .cast_arrow_batch(batch, ArrowCastOptions::new())
-                .map_err(value_error)?,
-            None => batch,
-        };
-        batch_to_value(&batch)
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
-    /// Decode one `PyArrow` Table through its Arrow C stream.
-    #[staticmethod]
-    #[pyo3(signature = (value, field=None))]
-    fn from_arrow_table(
-        value: &Bound<'_, PyAny>,
-        field: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
-        ensure_pyarrow_instance(value, "Table")?;
-        let root = field
-            .map(|field| core_root_field_from_value(field, "row"))
-            .transpose()?;
-        let mut reader =
-            arrow_array::ffi_stream::ArrowArrayStreamReader::from_pyarrow_bound(value)?;
-        let mut rows = Vec::new();
-        for batch in &mut reader {
-            let batch = batch.map_err(value_error)?;
-            let batch = match &root {
-                Some(root) => root
-                    .cast_arrow_batch(batch, ArrowCastOptions::new())
-                    .map_err(value_error)?,
-                None => batch,
-            };
-            extend_rows(&mut rows, &batch_to_value(&batch).map_err(value_error)?)?;
-        }
-        Ok(Self::from_inner(Scalar::from_sequence(rows)))
     }
 
     /// Convert back to Python's native scalar and collection types.
@@ -1129,24 +983,6 @@ impl PyScalar {
     #[getter]
     fn family(&self) -> &'static str {
         self.inner.family().as_str()
-    }
-
-    /// The enum vocabulary name, or `None`.
-    #[getter]
-    fn enum_kind(&self) -> Option<&'static str> {
-        self.inner.as_enum().map(|value| value.kind())
-    }
-
-    /// The canonical enum member spelling, or `None`.
-    #[getter]
-    fn enum_value(&self) -> Option<&'static str> {
-        self.inner.as_enum().map(|value| value.as_str())
-    }
-
-    /// The compact zero-based enum member index, or `None`.
-    #[getter]
-    fn enum_ordinal(&self) -> Option<u8> {
-        self.inner.as_enum().map(|value| value.ordinal())
     }
 
     /// The count carried by a temporal value, or `None`.
@@ -1285,15 +1121,15 @@ impl PyScalar {
         self.inner.as_str()
     }
 
-    fn as_json_bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+    fn into_json_bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
         self.inner
-            .as_json_bytes()
+            .into_json_bytes()
             .map(|value| PyBytes::new(py, &value))
             .map_err(value_error)
     }
 
-    fn as_json_utf8(&self) -> PyResult<String> {
-        self.inner.as_json_utf8().map_err(value_error)
+    fn into_json(&self) -> PyResult<String> {
+        self.inner.into_json().map_err(value_error)
     }
 
     /// Add an inferred Python/native value through the core's checked rules.
@@ -1388,6 +1224,18 @@ impl PyScalar {
     /// Return the number of direct children or entries.
     fn __len__(&self) -> usize {
         self.inner.len()
+    }
+
+    /// Return whether this value reads as true where a condition is wanted.
+    ///
+    /// Falsy is absence, a zero of any width, empty text or bytes, and a
+    /// container with nothing set in it; text that spells false reads false.
+    ///
+    /// Without this, `bool(scalar)` fell through to `__len__`, which counts
+    /// entries and answers zero for every value that is not a container - so
+    /// `bool(Scalar.from_(5))` was False.
+    fn __bool__(&self) -> bool {
+        self.inner.is_truthy()
     }
 
     /// Return whether this is an empty sequence, mapping, or record.
@@ -1689,7 +1537,12 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_) => decimal_as_py(py, value),
         Scalar::String(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
-        Scalar::Code(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
+        code if code.is_code() => Ok(PyString::new(
+            py,
+            code.as_str().expect("a code borrowed its text"),
+        )
+        .into_any()
+        .unbind()),
         Scalar::Uuid(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         Scalar::Version(value) => Ok(crate::version::PyVersion { inner: *value }
             .into_pyobject(py)?
@@ -1699,10 +1552,10 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         // the other parsed text families do; a zone, a MIME type and a media
         // type each render their own canonical spelling the same way.
         Scalar::Url(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
+        Scalar::Urn(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         Scalar::Timezone(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::MimeType(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::MediaType(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
-        Scalar::Enum(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         // A geometry has no Python binding surface yet, so its WKB crosses as
         // its plain shape: bytes.
         Scalar::Bytes(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
@@ -1744,7 +1597,8 @@ pub(crate) fn as_py_with_field(
         return as_py(py, value);
     }
     match field.dtype() {
-        CoreDataType::Struct(fields) => {
+        CoreDataType::Structure(structure) => {
+            let fields = structure.as_fields();
             let output = PyDict::new(py);
             match value {
                 Scalar::Sequence(values) if values.as_slice().len() == fields.len() => {
@@ -1773,11 +1627,8 @@ pub(crate) fn as_py_with_field(
             }
             Ok(output.into_any().unbind())
         }
-        CoreDataType::List(child)
-        | CoreDataType::ListView(child)
-        | CoreDataType::FixedSizeList(child, _)
-        | CoreDataType::LargeList(child)
-        | CoreDataType::LargeListView(child) => {
+        CoreDataType::Sequence(sequence) => {
+            let child = sequence.item();
             let values = value.as_sequence().ok_or_else(|| {
                 PyValueError::new_err(format!(
                     "expected a typed list sequence, got {}",
@@ -1790,8 +1641,8 @@ pub(crate) fn as_py_with_field(
                 .collect::<PyResult<Vec<_>>>()?;
             Ok(PyList::new(py, values)?.into_any().unbind())
         }
-        CoreDataType::Map(map) => {
-            let [_key_field, value_field] = map.entries().fields() else {
+        CoreDataType::Mapping(mapping) => {
+            let [_key_field, value_field] = mapping.entries().fields() else {
                 return Err(PyValueError::new_err(
                     "typed map entries need key and value fields",
                 ));
@@ -1830,7 +1681,7 @@ pub(crate) fn as_py_with_field(
                 .ok_or_else(|| PyValueError::new_err("typed union id is not declared"))?;
             as_py_with_field(py, payload, branch)
         }
-        CoreDataType::Dictionary(dictionary) => {
+        CoreDataType::Enum(dictionary) => {
             let value_field = CoreField::new(
                 field.name(),
                 dictionary.value().clone(),

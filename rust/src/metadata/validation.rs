@@ -7,16 +7,16 @@ use crate::expression::{
     Function, TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_SOURCES_KEY,
     canonicalize_transform_expression, canonicalize_transform_function,
 };
-use crate::hashing::txhash::{
-    DIGEST_TIME_KEY, DIGEST_UNIT_KEY, canonicalize_digest_unit, validate_digest_time,
-};
-use crate::hashing::xxhash::{
-    DIGEST_ALGORITHM_KEY, DIGEST_ROLE_HOLDER, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY,
-    canonicalize_digest_algorithm,
-};
-use crate::types::protocol::{
+use crate::protocol::{
     PYTHON_KIND_KEY, PYTHON_MODULE_KEY, PYTHON_QUALNAME_KEY, canonicalize_python_kind,
     validate_python_module, validate_python_qualname,
+};
+use crate::txhash::{
+    DIGEST_TIME_KEY, DIGEST_UNIT_KEY, canonicalize_digest_unit, validate_digest_time,
+};
+use crate::xxhash::{
+    DIGEST_ALGORITHM_KEY, DIGEST_ROLE_HOLDER, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY,
+    canonicalize_digest_algorithm,
 };
 
 use super::*;
@@ -34,8 +34,8 @@ pub(crate) fn is_all_sources(sources: &[String]) -> bool {
 
 /// Parse the ordered field paths one `sources` property names.
 ///
-/// One shape serves every namespace that names its inputs, so a `digest:` and
-/// a `partition:` list are read, written and refused identically. `["*"]` is
+/// One shape serves every namespace that names its inputs, so a `DIGEST:` and
+/// a `PARTITION:` list are read, written and refused identically. `["*"]` is
 /// the whole selection rather than a path, so it is the one entry that may not
 /// travel beside another: a list naming both everything and one column states
 /// no order for the rest.
@@ -44,7 +44,7 @@ pub(crate) fn is_all_sources(sources: &[String]) -> bool {
 ///
 /// Returns an error naming `key` when the text is not that array.
 pub(crate) fn parse_source_list(key: &str, value: &str) -> Result<Vec<String>> {
-    let document = crate::text::json::from_utf8(value).map_err(|error| {
+    let document = crate::json::from_utf8(value).map_err(|error| {
         invalid_source_list(
             key,
             format_smolstr!(
@@ -66,7 +66,7 @@ pub(crate) fn parse_source_list(key: &str, value: &str) -> Result<Vec<String>> {
     let mut seen = HashSet::with_capacity(values.len());
     for (index, value) in values.iter().enumerate() {
         let Some(path) = value.as_str() else {
-            let actual = crate::text::json::into_utf8(value)
+            let actual = crate::json::into_utf8(value)
                 .unwrap_or_else(|_| "<unencodable JSON value>".to_owned());
             return Err(invalid_source_list(
                 key,
@@ -125,7 +125,7 @@ where
     }
     reject_mixed_all(key, &sources)?;
     let document = Scalar::from_sequence(sources.into_iter().map(Scalar::from));
-    crate::text::json::into_utf8(&document).map_err(|error| {
+    crate::json::into_utf8(&document).map_err(|error| {
         invalid_source_list(
             key,
             format_smolstr!(
@@ -166,7 +166,7 @@ fn invalid_source_list(key: &str, reason: SmolStr) -> Error {
     }
 }
 
-/// Resolve the one-argument transform a stored `partition:transform` names.
+/// Resolve the one-argument transform a stored `PARTITION:transform` names.
 ///
 /// The vocabulary is the expression grammar's own [`Function`] set, so a
 /// derived partition column and a predicate over the same value share one
@@ -205,11 +205,11 @@ pub(crate) fn canonicalize_partition_transform(key: &str, value: &str) -> Result
     Ok(parse_partition_transform(key, value)?.as_str().to_owned())
 }
 
-/// Return the full `scheme:name` key one property is stored under.
+/// Return the full `SCHEME:name` key one property is stored under.
 pub(crate) fn property_key(scheme: &Scheme, name: &str) -> String {
     let prefix = protocol_metadata_prefix(scheme);
     let mut key = String::with_capacity(prefix.len() + 1 + name.len());
-    key.push_str(prefix);
+    key.push_str(&prefix);
     key.push(':');
     key.push_str(name);
     key
@@ -297,14 +297,16 @@ pub(super) fn validate_entry(key: String, value: String) -> Result<(String, Stri
         FIELD_PARTITION_KEY => parse_reserved_bool(FIELD_PARTITION_KEY, &value)?.to_string(),
         PARQUET_FIELD_ID_KEY => parse_field_id(&value)?.to_string(),
         _ => {
-            if key.starts_with("http:") {
+            if key.starts_with("HTTP:") {
                 validate_http_header_value(&key, &value)?;
                 if key == HTTP_CONTENT_LENGTH_KEY {
                     return Ok((key, parse_content_length(&value)?.to_string()));
                 }
             }
             if let Some((prefix, name)) = key.split_once(':') {
-                if Scheme::from_str(prefix).is_ok_and(|scheme| scheme.as_str() == prefix) {
+                if Scheme::from_str(prefix)
+                    .is_ok_and(|scheme| protocol_metadata_prefix(&scheme) == prefix)
+                {
                     validate_property_part(&key, "property name", name)?;
                 }
             }
@@ -314,28 +316,64 @@ pub(super) fn validate_entry(key: String, value: String) -> Result<(String, Stri
     Ok((key, value))
 }
 
+/// Restate a key in the one spelling it is stored under.
+///
+/// A protocol key spells its scheme upper case - `FIX:tag` - and a scheme is
+/// case-insensitive, so a key written `FIX:tag` or `Fix:tag` is the same key
+/// and folds to it on the way in. An HTTP field name folds to lower case
+/// beside that, as the protocol defines it. A key with no scheme in front of
+/// its colon, or none at all, is stored as written.
 pub(super) fn canonicalize_metadata_key(mut key: String) -> Result<String> {
     if let Some((prefix, name)) = http_header_parts(&key) {
         validate_http_header_name(&key, name)?;
         let prefix_len = prefix.len();
-        key.replace_range(..prefix_len, Scheme::HTTP.as_str());
         key.make_ascii_lowercase();
+        key.replace_range(..prefix_len, HTTP_PREFIX);
+        return Ok(key);
+    }
+    if let Some((end, canonical)) = folded_scheme_prefix(&key) {
+        key.replace_range(..end, &canonical);
     }
     Ok(key)
 }
 
-pub(super) fn canonical_http_lookup_key(key: &str) -> Cow<'_, str> {
-    let Some((prefix, _)) = http_header_parts(key) else {
-        return Cow::Borrowed(key);
-    };
-    if prefix == Scheme::HTTP.as_str() && !key.bytes().any(|byte| byte.is_ascii_uppercase()) {
-        return Cow::Borrowed(key);
+/// The key a lookup reads: the stored spelling of `key`, allocated only when
+/// `key` is not already it.
+pub(super) fn canonical_lookup_key(key: &str) -> Cow<'_, str> {
+    if let Some((prefix, name)) = http_header_parts(key) {
+        if prefix == HTTP_PREFIX && !name.bytes().any(|byte| byte.is_ascii_uppercase()) {
+            return Cow::Borrowed(key);
+        }
+        let mut canonical = key.to_owned();
+        canonical.make_ascii_lowercase();
+        canonical.replace_range(..prefix.len(), HTTP_PREFIX);
+        return Cow::Owned(canonical);
     }
-    let mut canonical = key.to_owned();
-    canonical.replace_range(..prefix.len(), Scheme::HTTP.as_str());
-    canonical.make_ascii_lowercase();
-    Cow::Owned(canonical)
+    match folded_scheme_prefix(key) {
+        Some((end, prefix)) => {
+            let mut canonical = String::with_capacity(key.len());
+            canonical.push_str(&prefix);
+            canonical.push_str(&key[end..]);
+            Cow::Owned(canonical)
+        }
+        None => Cow::Borrowed(key),
+    }
 }
+
+/// The scheme prefix `key` carries in another case than the stored one, as
+/// the byte the prefix ends at and the spelling to store it under.
+fn folded_scheme_prefix(key: &str) -> Option<(usize, Cow<'static, str>)> {
+    let (prefix, _) = key.split_once(':')?;
+    if prefix.is_empty() || !prefix.bytes().any(|byte| byte.is_ascii_lowercase()) {
+        return None;
+    }
+    let scheme = Scheme::from_str(prefix).ok()?;
+    let canonical = scheme.metadata_prefix().into_owned();
+    Some((prefix.len(), Cow::Owned(canonical)))
+}
+
+/// The prefix every HTTP field key carries, HTTPS sharing it.
+pub(crate) const HTTP_PREFIX: &str = "HTTP";
 
 pub(super) fn http_header_parts(key: &str) -> Option<(&str, &str)> {
     let (prefix, name) = key.split_once(':')?;
@@ -347,12 +385,10 @@ pub(super) fn is_http_metadata_prefix(prefix: &str) -> bool {
         || prefix.eq_ignore_ascii_case(Scheme::HTTPS.as_str())
 }
 
-pub(crate) fn protocol_metadata_prefix(scheme: &Scheme) -> &str {
-    if scheme == &Scheme::HTTPS {
-        Scheme::HTTP.as_str()
-    } else {
-        scheme.as_str()
-    }
+/// The prefix one protocol's keys are stored under: the scheme upper case,
+/// HTTPS sharing HTTP's namespace.
+pub(crate) fn protocol_metadata_prefix(scheme: &Scheme) -> Cow<'_, str> {
+    scheme.metadata_prefix()
 }
 
 pub(super) fn validate_http_header_name(key: &str, name: &str) -> Result<()> {

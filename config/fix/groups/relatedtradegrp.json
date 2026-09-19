@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "relatedtrade"
+        "FIX:component": "relatedtrade"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "relatedtrade",
+    "FIX:counter": "1855",
+    "FIX:tag": "500690",
     "description": "Required if NoRelatedTrades(1855) > 0.",
-    "display": "RelatedTradeGrp",
-    "fix:component": "relatedtrade",
-    "fix:counter": "1855",
-    "fix:tag": "500690"
+    "display": "RelatedTradeGrp"
   }
 }

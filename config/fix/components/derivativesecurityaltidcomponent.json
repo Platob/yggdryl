@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecurityaltid",
-          "fix:tag": "1219"
+          "FIX:field": "derivativesecurityaltid",
+          "FIX:tag": "1219"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecurityaltidsource",
-          "fix:tag": "1220"
+          "FIX:field": "derivativesecurityaltidsource",
+          "FIX:tag": "1220"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "DerivativeSecurityAltID",
-    "fix:tag": "1082056"
+    "FIX:tag": "1082056",
+    "display": "DerivativeSecurityAltID"
   }
 }

@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -11,8 +12,12 @@ use smol_str::{SmolStr, SmolStrBuilder};
 use crate::text::Format;
 use crate::{Error, Result, hashing::stable_hash_display};
 
+mod datatype;
+
+pub use datatype::*;
+
 #[derive(Clone, Debug)]
-enum MimeTypeValue {
+enum MimeTypeWire {
     OctetStream,
     Json,
     JsonLines,
@@ -91,37 +96,37 @@ use registry::{known_from_extension, known_from_mime};
 /// allocation-free representations. Any valid RFC restricted `type/subtype`
 /// name remains supported and is stored once in canonical ASCII lowercase.
 #[derive(Clone, Debug)]
-pub struct MimeType(MimeTypeValue);
+pub struct MimeType(MimeTypeWire);
 
 impl MimeType {
     /// Arbitrary binary data and the default MIME type.
-    pub const OCTET_STREAM: Self = Self(MimeTypeValue::OctetStream);
+    pub const OCTET_STREAM: Self = Self(MimeTypeWire::OctetStream);
     /// JSON structured data.
-    pub const JSON: Self = Self(MimeTypeValue::Json);
+    pub const JSON: Self = Self(MimeTypeWire::Json);
     /// Newline-delimited JSON data.
-    pub const JSON_LINES: Self = Self(MimeTypeValue::JsonLines);
+    pub const JSON_LINES: Self = Self(MimeTypeWire::JsonLines);
     /// YAML structured data.
-    pub const YAML: Self = Self(MimeTypeValue::Yaml);
+    pub const YAML: Self = Self(MimeTypeWire::Yaml);
     /// TOML structured data.
-    pub const TOML: Self = Self(MimeTypeValue::Toml);
+    pub const TOML: Self = Self(MimeTypeWire::Toml);
     /// Comma-separated tabular text.
-    pub const CSV: Self = Self(MimeTypeValue::Csv);
+    pub const CSV: Self = Self(MimeTypeWire::Csv);
     /// Tab-separated tabular text.
-    pub const TSV: Self = Self(MimeTypeValue::Tsv);
+    pub const TSV: Self = Self(MimeTypeWire::Tsv);
     /// Apache Parquet tabular data.
-    pub const PARQUET: Self = Self(MimeTypeValue::Parquet);
+    pub const PARQUET: Self = Self(MimeTypeWire::Parquet);
     /// An Apache Arrow IPC file.
-    pub const ARROW_FILE: Self = Self(MimeTypeValue::ArrowFile);
+    pub const ARROW_FILE: Self = Self(MimeTypeWire::ArrowFile);
     /// An Apache Arrow IPC stream.
-    pub const ARROW_STREAM: Self = Self(MimeTypeValue::ArrowStream);
+    pub const ARROW_STREAM: Self = Self(MimeTypeWire::ArrowStream);
     /// Apache Avro data.
-    pub const AVRO: Self = Self(MimeTypeValue::Avro);
+    pub const AVRO: Self = Self(MimeTypeWire::Avro);
     /// Apache ORC tabular data.
-    pub const ORC: Self = Self(MimeTypeValue::Orc);
+    pub const ORC: Self = Self(MimeTypeWire::Orc);
     /// Apache Puffin statistics and index data.
-    pub const PUFFIN: Self = Self(MimeTypeValue::Puffin);
+    pub const PUFFIN: Self = Self(MimeTypeWire::Puffin);
     /// Unformatted plain text.
-    pub const PLAIN_TEXT: Self = Self(MimeTypeValue::PlainText);
+    pub const PLAIN_TEXT: Self = Self(MimeTypeWire::PlainText);
     /// Infers what one captured byte line is, without a dictionary.
     ///
     /// A capture is millions of lines and most are not the protocol a reader
@@ -178,109 +183,109 @@ impl MimeType {
     /// The generic shape a log attribute run has: no numeric tags, no
     /// `#`-marked keys, no envelope. It is what a line still is when every
     /// frame rule declined it and it is nevertheless pairs throughout.
-    pub const KEYVALUE: Self = Self(MimeTypeValue::KeyValue);
+    pub const KEYVALUE: Self = Self(MimeTypeWire::KeyValue);
     /// A symbolic-key Ullink text frame.
-    pub const ULLINK: Self = Self(MimeTypeValue::Ullink);
+    pub const ULLINK: Self = Self(MimeTypeWire::Ullink);
     /// A numeric-tag FIX text frame.
-    pub const FIX: Self = Self(MimeTypeValue::Fix);
+    pub const FIX: Self = Self(MimeTypeWire::Fix);
     /// A FIX text frame containing Ullink symbolic key/value entries.
-    pub const FIXUL: Self = Self(MimeTypeValue::Fixul);
+    pub const FIXUL: Self = Self(MimeTypeWire::Fixul);
     /// A FIXML frame carrying XML.
-    pub const FIXML: Self = Self(MimeTypeValue::Fixml);
+    pub const FIXML: Self = Self(MimeTypeWire::Fixml);
     /// Markdown text.
-    pub const MARKDOWN: Self = Self(MimeTypeValue::Markdown);
+    pub const MARKDOWN: Self = Self(MimeTypeWire::Markdown);
     /// HTML text.
-    pub const HTML: Self = Self(MimeTypeValue::Html);
+    pub const HTML: Self = Self(MimeTypeWire::Html);
     /// Cascading Style Sheets text.
-    pub const CSS: Self = Self(MimeTypeValue::Css);
+    pub const CSS: Self = Self(MimeTypeWire::Css);
     /// JavaScript source text.
-    pub const JAVASCRIPT: Self = Self(MimeTypeValue::JavaScript);
+    pub const JAVASCRIPT: Self = Self(MimeTypeWire::JavaScript);
     /// XML structured data.
-    pub const XML: Self = Self(MimeTypeValue::Xml);
+    pub const XML: Self = Self(MimeTypeWire::Xml);
     /// A PDF document.
-    pub const PDF: Self = Self(MimeTypeValue::Pdf);
+    pub const PDF: Self = Self(MimeTypeWire::Pdf);
     /// CBOR structured data.
-    pub const CBOR: Self = Self(MimeTypeValue::Cbor);
+    pub const CBOR: Self = Self(MimeTypeWire::Cbor);
     /// MessagePack structured data.
-    pub const MESSAGE_PACK: Self = Self(MimeTypeValue::MessagePack);
+    pub const MESSAGE_PACK: Self = Self(MimeTypeWire::MessagePack);
     /// Protocol Buffers data.
-    pub const PROTOBUF: Self = Self(MimeTypeValue::Protobuf);
+    pub const PROTOBUF: Self = Self(MimeTypeWire::Protobuf);
     /// A SQLite 3 database.
-    pub const SQLITE3: Self = Self(MimeTypeValue::Sqlite3);
+    pub const SQLITE3: Self = Self(MimeTypeWire::Sqlite3);
     /// A PNG image.
-    pub const PNG: Self = Self(MimeTypeValue::Png);
+    pub const PNG: Self = Self(MimeTypeWire::Png);
     /// A JPEG image.
-    pub const JPEG: Self = Self(MimeTypeValue::Jpeg);
+    pub const JPEG: Self = Self(MimeTypeWire::Jpeg);
     /// A GIF image.
-    pub const GIF: Self = Self(MimeTypeValue::Gif);
+    pub const GIF: Self = Self(MimeTypeWire::Gif);
     /// A WebP image.
-    pub const WEBP: Self = Self(MimeTypeValue::WebP);
+    pub const WEBP: Self = Self(MimeTypeWire::WebP);
     /// An SVG image.
-    pub const SVG: Self = Self(MimeTypeValue::Svg);
+    pub const SVG: Self = Self(MimeTypeWire::Svg);
     /// MPEG audio, conventionally an MP3 file.
-    pub const MP3: Self = Self(MimeTypeValue::Mp3);
+    pub const MP3: Self = Self(MimeTypeWire::Mp3);
     /// WAV audio.
-    pub const WAV: Self = Self(MimeTypeValue::Wav);
+    pub const WAV: Self = Self(MimeTypeWire::Wav);
     /// Ogg audio.
-    pub const OGG: Self = Self(MimeTypeValue::Ogg);
+    pub const OGG: Self = Self(MimeTypeWire::Ogg);
     /// FLAC audio.
-    pub const FLAC: Self = Self(MimeTypeValue::Flac);
+    pub const FLAC: Self = Self(MimeTypeWire::Flac);
     /// MP4 video.
-    pub const MP4: Self = Self(MimeTypeValue::Mp4);
+    pub const MP4: Self = Self(MimeTypeWire::Mp4);
     /// WebM video.
-    pub const WEBM: Self = Self(MimeTypeValue::WebM);
+    pub const WEBM: Self = Self(MimeTypeWire::WebM);
     /// A Web Open Font Format font.
-    pub const WOFF: Self = Self(MimeTypeValue::Woff);
+    pub const WOFF: Self = Self(MimeTypeWire::Woff);
     /// A Web Open Font Format 2 font.
-    pub const WOFF2: Self = Self(MimeTypeValue::Woff2);
+    pub const WOFF2: Self = Self(MimeTypeWire::Woff2);
     /// A TrueType font.
-    pub const TTF: Self = Self(MimeTypeValue::Ttf);
+    pub const TTF: Self = Self(MimeTypeWire::Ttf);
     /// An OpenType font.
-    pub const OTF: Self = Self(MimeTypeValue::Otf);
+    pub const OTF: Self = Self(MimeTypeWire::Otf);
     /// A binary Microsoft Excel workbook.
-    pub const XLS: Self = Self(MimeTypeValue::Xls);
+    pub const XLS: Self = Self(MimeTypeWire::Xls);
     /// An Office Open XML spreadsheet.
-    pub const XLSX: Self = Self(MimeTypeValue::Xlsx);
+    pub const XLSX: Self = Self(MimeTypeWire::Xlsx);
     /// An OpenDocument spreadsheet.
-    pub const ODS: Self = Self(MimeTypeValue::Ods);
+    pub const ODS: Self = Self(MimeTypeWire::Ods);
     /// A binary Microsoft Word document.
-    pub const DOC: Self = Self(MimeTypeValue::Doc);
+    pub const DOC: Self = Self(MimeTypeWire::Doc);
     /// An Office Open XML word-processing document.
-    pub const DOCX: Self = Self(MimeTypeValue::Docx);
+    pub const DOCX: Self = Self(MimeTypeWire::Docx);
     /// Gzip-compressed data.
-    pub const GZIP: Self = Self(MimeTypeValue::Gzip);
+    pub const GZIP: Self = Self(MimeTypeWire::Gzip);
     /// Zstandard-compressed data.
-    pub const ZSTD: Self = Self(MimeTypeValue::Zstd);
+    pub const ZSTD: Self = Self(MimeTypeWire::Zstd);
     /// Brotli-compressed data.
-    pub const BROTLI: Self = Self(MimeTypeValue::Brotli);
+    pub const BROTLI: Self = Self(MimeTypeWire::Brotli);
     /// Zlib-wrapped DEFLATE data.
-    pub const ZLIB: Self = Self(MimeTypeValue::Zlib);
+    pub const ZLIB: Self = Self(MimeTypeWire::Zlib);
     /// Historic UNIX `compress` data.
-    pub const COMPRESS: Self = Self(MimeTypeValue::Compress);
+    pub const COMPRESS: Self = Self(MimeTypeWire::Compress);
     /// Bzip2-compressed data.
-    pub const BZIP2: Self = Self(MimeTypeValue::Bzip2);
+    pub const BZIP2: Self = Self(MimeTypeWire::Bzip2);
     /// XZ-compressed data.
-    pub const XZ: Self = Self(MimeTypeValue::Xz);
+    pub const XZ: Self = Self(MimeTypeWire::Xz);
     /// LZ4-compressed data.
-    pub const LZ4: Self = Self(MimeTypeValue::Lz4);
+    pub const LZ4: Self = Self(MimeTypeWire::Lz4);
     /// Snappy-framed compressed data.
-    pub const SNAPPY: Self = Self(MimeTypeValue::Snappy);
+    pub const SNAPPY: Self = Self(MimeTypeWire::Snappy);
     /// A ZIP archive.
-    pub const ZIP: Self = Self(MimeTypeValue::Zip);
+    pub const ZIP: Self = Self(MimeTypeWire::Zip);
     /// A 7-Zip archive.
-    pub const SEVEN_ZIP: Self = Self(MimeTypeValue::SevenZip);
+    pub const SEVEN_ZIP: Self = Self(MimeTypeWire::SevenZip);
     /// A RAR archive.
-    pub const RAR: Self = Self(MimeTypeValue::Rar);
+    pub const RAR: Self = Self(MimeTypeWire::Rar);
     /// A tar archive.
-    pub const TAR: Self = Self(MimeTypeValue::Tar);
+    pub const TAR: Self = Self(MimeTypeWire::Tar);
     /// A file system directory, which holds entries rather than bytes.
-    pub const DIRECTORY: Self = Self(MimeTypeValue::Directory);
+    pub const DIRECTORY: Self = Self(MimeTypeWire::Directory);
     /// A regular file whose contents are not identified any further.
     ///
     /// This is the local-leaf counterpart of [`Self::DIRECTORY`]: it says the
     /// resource is a file, not what is in it. A file whose type *is* known
     /// reports that type instead.
-    pub const FILE: Self = Self(MimeTypeValue::File);
+    pub const FILE: Self = Self(MimeTypeWire::File);
 
     /// Report the MIME type of one local path from the file system.
     ///
@@ -299,12 +304,12 @@ impl MimeType {
     /// Return whether this MIME value names a file system entry rather than a
     /// content format.
     pub const fn is_filesystem(&self) -> bool {
-        matches!(self.0, MimeTypeValue::Directory | MimeTypeValue::File)
+        matches!(self.0, MimeTypeWire::Directory | MimeTypeWire::File)
     }
 
     /// Return whether this MIME value names a container of other entries.
     pub const fn is_directory(&self) -> bool {
-        matches!(self.0, MimeTypeValue::Directory)
+        matches!(self.0, MimeTypeWire::Directory)
     }
 
     /// Return whether this MIME value can describe an I/O value.
@@ -423,75 +428,75 @@ impl MimeType {
     /// Return the canonical lowercase MIME name without allocating.
     pub fn as_str(&self) -> &str {
         match &self.0 {
-            MimeTypeValue::OctetStream => "application/octet-stream",
-            MimeTypeValue::Json => "application/json",
-            MimeTypeValue::JsonLines => "application/x-ndjson",
-            MimeTypeValue::Yaml => "application/yaml",
-            MimeTypeValue::Toml => "application/toml",
-            MimeTypeValue::Csv => "text/csv",
-            MimeTypeValue::Tsv => "text/tab-separated-values",
-            MimeTypeValue::Parquet => "application/vnd.apache.parquet",
-            MimeTypeValue::ArrowFile => "application/vnd.apache.arrow.file",
-            MimeTypeValue::ArrowStream => "application/vnd.apache.arrow.stream",
-            MimeTypeValue::Avro => "application/avro",
-            MimeTypeValue::Orc => "application/vnd.apache.orc",
-            MimeTypeValue::Puffin => "application/vnd.apache.puffin",
-            MimeTypeValue::PlainText => "text/plain",
-            MimeTypeValue::KeyValue => "text/key-value",
-            MimeTypeValue::Ullink => "text/ullink",
-            MimeTypeValue::Fix => "text/fix",
-            MimeTypeValue::Fixul => "text/fixul",
-            MimeTypeValue::Fixml => "text/fixml",
-            MimeTypeValue::Markdown => "text/markdown",
-            MimeTypeValue::Html => "text/html",
-            MimeTypeValue::Css => "text/css",
-            MimeTypeValue::JavaScript => "text/javascript",
-            MimeTypeValue::Xml => "application/xml",
-            MimeTypeValue::Pdf => "application/pdf",
-            MimeTypeValue::Cbor => "application/cbor",
-            MimeTypeValue::MessagePack => "application/vnd.msgpack",
-            MimeTypeValue::Protobuf => "application/protobuf",
-            MimeTypeValue::Sqlite3 => "application/vnd.sqlite3",
-            MimeTypeValue::Png => "image/png",
-            MimeTypeValue::Jpeg => "image/jpeg",
-            MimeTypeValue::Gif => "image/gif",
-            MimeTypeValue::WebP => "image/webp",
-            MimeTypeValue::Svg => "image/svg+xml",
-            MimeTypeValue::Mp3 => "audio/mpeg",
-            MimeTypeValue::Wav => "audio/wav",
-            MimeTypeValue::Ogg => "audio/ogg",
-            MimeTypeValue::Flac => "audio/flac",
-            MimeTypeValue::Mp4 => "video/mp4",
-            MimeTypeValue::WebM => "video/webm",
-            MimeTypeValue::Woff => "font/woff",
-            MimeTypeValue::Woff2 => "font/woff2",
-            MimeTypeValue::Ttf => "font/ttf",
-            MimeTypeValue::Otf => "font/otf",
-            MimeTypeValue::Xls => "application/vnd.ms-excel",
-            MimeTypeValue::Xlsx => {
+            MimeTypeWire::OctetStream => "application/octet-stream",
+            MimeTypeWire::Json => "application/json",
+            MimeTypeWire::JsonLines => "application/x-ndjson",
+            MimeTypeWire::Yaml => "application/yaml",
+            MimeTypeWire::Toml => "application/toml",
+            MimeTypeWire::Csv => "text/csv",
+            MimeTypeWire::Tsv => "text/tab-separated-values",
+            MimeTypeWire::Parquet => "application/vnd.apache.parquet",
+            MimeTypeWire::ArrowFile => "application/vnd.apache.arrow.file",
+            MimeTypeWire::ArrowStream => "application/vnd.apache.arrow.stream",
+            MimeTypeWire::Avro => "application/avro",
+            MimeTypeWire::Orc => "application/vnd.apache.orc",
+            MimeTypeWire::Puffin => "application/vnd.apache.puffin",
+            MimeTypeWire::PlainText => "text/plain",
+            MimeTypeWire::KeyValue => "text/key-value",
+            MimeTypeWire::Ullink => "text/ullink",
+            MimeTypeWire::Fix => "text/fix",
+            MimeTypeWire::Fixul => "text/fixul",
+            MimeTypeWire::Fixml => "text/fixml",
+            MimeTypeWire::Markdown => "text/markdown",
+            MimeTypeWire::Html => "text/html",
+            MimeTypeWire::Css => "text/css",
+            MimeTypeWire::JavaScript => "text/javascript",
+            MimeTypeWire::Xml => "application/xml",
+            MimeTypeWire::Pdf => "application/pdf",
+            MimeTypeWire::Cbor => "application/cbor",
+            MimeTypeWire::MessagePack => "application/vnd.msgpack",
+            MimeTypeWire::Protobuf => "application/protobuf",
+            MimeTypeWire::Sqlite3 => "application/vnd.sqlite3",
+            MimeTypeWire::Png => "image/png",
+            MimeTypeWire::Jpeg => "image/jpeg",
+            MimeTypeWire::Gif => "image/gif",
+            MimeTypeWire::WebP => "image/webp",
+            MimeTypeWire::Svg => "image/svg+xml",
+            MimeTypeWire::Mp3 => "audio/mpeg",
+            MimeTypeWire::Wav => "audio/wav",
+            MimeTypeWire::Ogg => "audio/ogg",
+            MimeTypeWire::Flac => "audio/flac",
+            MimeTypeWire::Mp4 => "video/mp4",
+            MimeTypeWire::WebM => "video/webm",
+            MimeTypeWire::Woff => "font/woff",
+            MimeTypeWire::Woff2 => "font/woff2",
+            MimeTypeWire::Ttf => "font/ttf",
+            MimeTypeWire::Otf => "font/otf",
+            MimeTypeWire::Xls => "application/vnd.ms-excel",
+            MimeTypeWire::Xlsx => {
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             }
-            MimeTypeValue::Ods => "application/vnd.oasis.opendocument.spreadsheet",
-            MimeTypeValue::Doc => "application/msword",
-            MimeTypeValue::Docx => {
+            MimeTypeWire::Ods => "application/vnd.oasis.opendocument.spreadsheet",
+            MimeTypeWire::Doc => "application/msword",
+            MimeTypeWire::Docx => {
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             }
-            MimeTypeValue::Gzip => "application/gzip",
-            MimeTypeValue::Zstd => "application/zstd",
-            MimeTypeValue::Brotli => "application/x-brotli",
-            MimeTypeValue::Zlib => "application/zlib",
-            MimeTypeValue::Compress => "application/x-compress",
-            MimeTypeValue::Bzip2 => "application/x-bzip2",
-            MimeTypeValue::Xz => "application/x-xz",
-            MimeTypeValue::Lz4 => "application/x-lz4",
-            MimeTypeValue::Snappy => "application/x-snappy-framed",
-            MimeTypeValue::Zip => "application/zip",
-            MimeTypeValue::SevenZip => "application/x-7z-compressed",
-            MimeTypeValue::Rar => "application/vnd.rar",
-            MimeTypeValue::Tar => "application/x-tar",
-            MimeTypeValue::Directory => "inode/directory",
-            MimeTypeValue::File => "inode/file",
-            MimeTypeValue::Custom(value) => value.as_str(),
+            MimeTypeWire::Gzip => "application/gzip",
+            MimeTypeWire::Zstd => "application/zstd",
+            MimeTypeWire::Brotli => "application/x-brotli",
+            MimeTypeWire::Zlib => "application/zlib",
+            MimeTypeWire::Compress => "application/x-compress",
+            MimeTypeWire::Bzip2 => "application/x-bzip2",
+            MimeTypeWire::Xz => "application/x-xz",
+            MimeTypeWire::Lz4 => "application/x-lz4",
+            MimeTypeWire::Snappy => "application/x-snappy-framed",
+            MimeTypeWire::Zip => "application/zip",
+            MimeTypeWire::SevenZip => "application/x-7z-compressed",
+            MimeTypeWire::Rar => "application/vnd.rar",
+            MimeTypeWire::Tar => "application/x-tar",
+            MimeTypeWire::Directory => "inode/directory",
+            MimeTypeWire::File => "inode/file",
+            MimeTypeWire::Custom(value) => value.as_str(),
         }
     }
 
@@ -522,72 +527,72 @@ impl MimeType {
     /// Return the preferred filename extension without a leading dot.
     pub fn extension(&self) -> Option<&'static str> {
         match self.0 {
-            MimeTypeValue::OctetStream => Some("bin"),
-            MimeTypeValue::Json => Some("json"),
-            MimeTypeValue::JsonLines => Some("jsonl"),
-            MimeTypeValue::Yaml => Some("yaml"),
-            MimeTypeValue::Toml => Some("toml"),
-            MimeTypeValue::Csv => Some("csv"),
-            MimeTypeValue::Tsv => Some("tsv"),
-            MimeTypeValue::Parquet => Some("parquet"),
-            MimeTypeValue::ArrowFile => Some("arrow"),
-            MimeTypeValue::ArrowStream => Some("arrows"),
-            MimeTypeValue::Avro => Some("avro"),
-            MimeTypeValue::Orc => Some("orc"),
-            MimeTypeValue::Puffin => Some("puffin"),
-            MimeTypeValue::PlainText => Some("txt"),
+            MimeTypeWire::OctetStream => Some("bin"),
+            MimeTypeWire::Json => Some("json"),
+            MimeTypeWire::JsonLines => Some("jsonl"),
+            MimeTypeWire::Yaml => Some("yaml"),
+            MimeTypeWire::Toml => Some("toml"),
+            MimeTypeWire::Csv => Some("csv"),
+            MimeTypeWire::Tsv => Some("tsv"),
+            MimeTypeWire::Parquet => Some("parquet"),
+            MimeTypeWire::ArrowFile => Some("arrow"),
+            MimeTypeWire::ArrowStream => Some("arrows"),
+            MimeTypeWire::Avro => Some("avro"),
+            MimeTypeWire::Orc => Some("orc"),
+            MimeTypeWire::Puffin => Some("puffin"),
+            MimeTypeWire::PlainText => Some("txt"),
             // These classify embedded frame syntax, not a filename format.
-            MimeTypeValue::KeyValue
-            | MimeTypeValue::Ullink
-            | MimeTypeValue::Fix
-            | MimeTypeValue::Fixul
-            | MimeTypeValue::Fixml => None,
-            MimeTypeValue::Markdown => Some("md"),
-            MimeTypeValue::Html => Some("html"),
-            MimeTypeValue::Css => Some("css"),
-            MimeTypeValue::JavaScript => Some("js"),
-            MimeTypeValue::Xml => Some("xml"),
-            MimeTypeValue::Pdf => Some("pdf"),
-            MimeTypeValue::Cbor => Some("cbor"),
-            MimeTypeValue::MessagePack => Some("msgpack"),
-            MimeTypeValue::Protobuf => Some("pb"),
-            MimeTypeValue::Sqlite3 => Some("sqlite3"),
-            MimeTypeValue::Png => Some("png"),
-            MimeTypeValue::Jpeg => Some("jpg"),
-            MimeTypeValue::Gif => Some("gif"),
-            MimeTypeValue::WebP => Some("webp"),
-            MimeTypeValue::Svg => Some("svg"),
-            MimeTypeValue::Mp3 => Some("mp3"),
-            MimeTypeValue::Wav => Some("wav"),
-            MimeTypeValue::Ogg => Some("ogg"),
-            MimeTypeValue::Flac => Some("flac"),
-            MimeTypeValue::Mp4 => Some("mp4"),
-            MimeTypeValue::WebM => Some("webm"),
-            MimeTypeValue::Woff => Some("woff"),
-            MimeTypeValue::Woff2 => Some("woff2"),
-            MimeTypeValue::Ttf => Some("ttf"),
-            MimeTypeValue::Otf => Some("otf"),
-            MimeTypeValue::Xls => Some("xls"),
-            MimeTypeValue::Xlsx => Some("xlsx"),
-            MimeTypeValue::Ods => Some("ods"),
-            MimeTypeValue::Doc => Some("doc"),
-            MimeTypeValue::Docx => Some("docx"),
-            MimeTypeValue::Gzip => Some("gz"),
-            MimeTypeValue::Zstd => Some("zst"),
-            MimeTypeValue::Brotli => Some("br"),
-            MimeTypeValue::Zlib => Some("zz"),
-            MimeTypeValue::Compress => Some("Z"),
-            MimeTypeValue::Bzip2 => Some("bz2"),
-            MimeTypeValue::Xz => Some("xz"),
-            MimeTypeValue::Lz4 => Some("lz4"),
-            MimeTypeValue::Snappy => Some("snappy"),
-            MimeTypeValue::Zip => Some("zip"),
-            MimeTypeValue::SevenZip => Some("7z"),
-            MimeTypeValue::Rar => Some("rar"),
-            MimeTypeValue::Tar => Some("tar"),
+            MimeTypeWire::KeyValue
+            | MimeTypeWire::Ullink
+            | MimeTypeWire::Fix
+            | MimeTypeWire::Fixul
+            | MimeTypeWire::Fixml => None,
+            MimeTypeWire::Markdown => Some("md"),
+            MimeTypeWire::Html => Some("html"),
+            MimeTypeWire::Css => Some("css"),
+            MimeTypeWire::JavaScript => Some("js"),
+            MimeTypeWire::Xml => Some("xml"),
+            MimeTypeWire::Pdf => Some("pdf"),
+            MimeTypeWire::Cbor => Some("cbor"),
+            MimeTypeWire::MessagePack => Some("msgpack"),
+            MimeTypeWire::Protobuf => Some("pb"),
+            MimeTypeWire::Sqlite3 => Some("sqlite3"),
+            MimeTypeWire::Png => Some("png"),
+            MimeTypeWire::Jpeg => Some("jpg"),
+            MimeTypeWire::Gif => Some("gif"),
+            MimeTypeWire::WebP => Some("webp"),
+            MimeTypeWire::Svg => Some("svg"),
+            MimeTypeWire::Mp3 => Some("mp3"),
+            MimeTypeWire::Wav => Some("wav"),
+            MimeTypeWire::Ogg => Some("ogg"),
+            MimeTypeWire::Flac => Some("flac"),
+            MimeTypeWire::Mp4 => Some("mp4"),
+            MimeTypeWire::WebM => Some("webm"),
+            MimeTypeWire::Woff => Some("woff"),
+            MimeTypeWire::Woff2 => Some("woff2"),
+            MimeTypeWire::Ttf => Some("ttf"),
+            MimeTypeWire::Otf => Some("otf"),
+            MimeTypeWire::Xls => Some("xls"),
+            MimeTypeWire::Xlsx => Some("xlsx"),
+            MimeTypeWire::Ods => Some("ods"),
+            MimeTypeWire::Doc => Some("doc"),
+            MimeTypeWire::Docx => Some("docx"),
+            MimeTypeWire::Gzip => Some("gz"),
+            MimeTypeWire::Zstd => Some("zst"),
+            MimeTypeWire::Brotli => Some("br"),
+            MimeTypeWire::Zlib => Some("zz"),
+            MimeTypeWire::Compress => Some("Z"),
+            MimeTypeWire::Bzip2 => Some("bz2"),
+            MimeTypeWire::Xz => Some("xz"),
+            MimeTypeWire::Lz4 => Some("lz4"),
+            MimeTypeWire::Snappy => Some("snappy"),
+            MimeTypeWire::Zip => Some("zip"),
+            MimeTypeWire::SevenZip => Some("7z"),
+            MimeTypeWire::Rar => Some("rar"),
+            MimeTypeWire::Tar => Some("tar"),
             // A file system entry is named by its kind, not by an extension.
-            MimeTypeValue::Directory | MimeTypeValue::File => None,
-            MimeTypeValue::Custom(_) => match self.structured_suffix() {
+            MimeTypeWire::Directory | MimeTypeWire::File => None,
+            MimeTypeWire::Custom(_) => match self.structured_suffix() {
                 Some("json") => Some("json"),
                 Some("xml") => Some("xml"),
                 Some("yaml") => Some("yaml"),
@@ -600,11 +605,11 @@ impl MimeType {
     /// Return the registered HTTP content-coding token, when one exists.
     pub const fn content_coding(&self) -> Option<&'static str> {
         match self.0 {
-            MimeTypeValue::Gzip => Some("gzip"),
-            MimeTypeValue::Zstd => Some("zstd"),
-            MimeTypeValue::Brotli => Some("br"),
-            MimeTypeValue::Zlib => Some("deflate"),
-            MimeTypeValue::Compress => Some("compress"),
+            MimeTypeWire::Gzip => Some("gzip"),
+            MimeTypeWire::Zstd => Some("zstd"),
+            MimeTypeWire::Brotli => Some("br"),
+            MimeTypeWire::Zlib => Some("deflate"),
+            MimeTypeWire::Compress => Some("compress"),
             _ => None,
         }
     }
@@ -615,10 +620,10 @@ impl MimeType {
             // A FIX frame carrying XML in a tag is not a document and does
             // not read as one; a bridge configuration document is JSON, and
             // is answered as the JSON it is.
-            MimeTypeValue::Json => Some(Format::Json),
-            MimeTypeValue::JsonLines => Some(Format::JsonLines),
-            MimeTypeValue::Yaml => Some(Format::Yaml),
-            MimeTypeValue::Toml => Some(Format::Toml),
+            MimeTypeWire::Json => Some(Format::Json),
+            MimeTypeWire::JsonLines => Some(Format::JsonLines),
+            MimeTypeWire::Yaml => Some(Format::Yaml),
+            MimeTypeWire::Toml => Some(Format::Toml),
             _ => match self.structured_suffix() {
                 Some("json") => Some(Format::Json),
                 Some("yaml") => Some(Format::Yaml),
@@ -629,7 +634,7 @@ impl MimeType {
 
     /// Return whether this value uses a static, allocation-free representation.
     pub const fn is_known(&self) -> bool {
-        !matches!(self.0, MimeTypeValue::Custom(_))
+        !matches!(self.0, MimeTypeWire::Custom(_))
     }
 
     /// Return whether this has the `application` top-level type.
@@ -687,12 +692,12 @@ impl MimeType {
         self.is_text()
             || matches!(
                 self.0,
-                MimeTypeValue::Json
-                    | MimeTypeValue::JsonLines
-                    | MimeTypeValue::Yaml
-                    | MimeTypeValue::Toml
-                    | MimeTypeValue::Xml
-                    | MimeTypeValue::Svg
+                MimeTypeWire::Json
+                    | MimeTypeWire::JsonLines
+                    | MimeTypeWire::Yaml
+                    | MimeTypeWire::Toml
+                    | MimeTypeWire::Xml
+                    | MimeTypeWire::Svg
             )
             || matches!(
                 self.structured_suffix(),
@@ -705,16 +710,16 @@ impl MimeType {
         self.is_tabular()
             || matches!(
                 self.0,
-                MimeTypeValue::Json
-                    | MimeTypeValue::JsonLines
-                    | MimeTypeValue::Yaml
-                    | MimeTypeValue::Toml
-                    | MimeTypeValue::Xml
-                    | MimeTypeValue::Cbor
-                    | MimeTypeValue::MessagePack
-                    | MimeTypeValue::Protobuf
-                    | MimeTypeValue::Sqlite3
-                    | MimeTypeValue::Puffin
+                MimeTypeWire::Json
+                    | MimeTypeWire::JsonLines
+                    | MimeTypeWire::Yaml
+                    | MimeTypeWire::Toml
+                    | MimeTypeWire::Xml
+                    | MimeTypeWire::Cbor
+                    | MimeTypeWire::MessagePack
+                    | MimeTypeWire::Protobuf
+                    | MimeTypeWire::Sqlite3
+                    | MimeTypeWire::Puffin
             )
             || matches!(
                 self.structured_suffix(),
@@ -726,16 +731,16 @@ impl MimeType {
     pub const fn is_tabular(&self) -> bool {
         matches!(
             self.0,
-            MimeTypeValue::Csv
-                | MimeTypeValue::Tsv
-                | MimeTypeValue::Parquet
-                | MimeTypeValue::ArrowFile
-                | MimeTypeValue::ArrowStream
-                | MimeTypeValue::Avro
-                | MimeTypeValue::Orc
-                | MimeTypeValue::Xls
-                | MimeTypeValue::Xlsx
-                | MimeTypeValue::Ods
+            MimeTypeWire::Csv
+                | MimeTypeWire::Tsv
+                | MimeTypeWire::Parquet
+                | MimeTypeWire::ArrowFile
+                | MimeTypeWire::ArrowStream
+                | MimeTypeWire::Avro
+                | MimeTypeWire::Orc
+                | MimeTypeWire::Xls
+                | MimeTypeWire::Xlsx
+                | MimeTypeWire::Ods
         )
     }
 
@@ -743,15 +748,15 @@ impl MimeType {
     pub const fn is_encoding(&self) -> bool {
         matches!(
             self.0,
-            MimeTypeValue::Gzip
-                | MimeTypeValue::Zstd
-                | MimeTypeValue::Brotli
-                | MimeTypeValue::Zlib
-                | MimeTypeValue::Compress
-                | MimeTypeValue::Bzip2
-                | MimeTypeValue::Xz
-                | MimeTypeValue::Lz4
-                | MimeTypeValue::Snappy
+            MimeTypeWire::Gzip
+                | MimeTypeWire::Zstd
+                | MimeTypeWire::Brotli
+                | MimeTypeWire::Zlib
+                | MimeTypeWire::Compress
+                | MimeTypeWire::Bzip2
+                | MimeTypeWire::Xz
+                | MimeTypeWire::Lz4
+                | MimeTypeWire::Snappy
         )
     }
 
@@ -759,7 +764,7 @@ impl MimeType {
     pub const fn is_archive(&self) -> bool {
         matches!(
             self.0,
-            MimeTypeValue::Zip | MimeTypeValue::SevenZip | MimeTypeValue::Rar | MimeTypeValue::Tar
+            MimeTypeWire::Zip | MimeTypeWire::SevenZip | MimeTypeWire::Rar | MimeTypeWire::Tar
         )
     }
 
@@ -776,24 +781,24 @@ impl MimeType {
             || self.is_font()
             || matches!(
                 self.0,
-                MimeTypeValue::OctetStream
-                    | MimeTypeValue::Parquet
-                    | MimeTypeValue::ArrowFile
-                    | MimeTypeValue::ArrowStream
-                    | MimeTypeValue::Avro
-                    | MimeTypeValue::Orc
-                    | MimeTypeValue::Puffin
-                    | MimeTypeValue::Pdf
-                    | MimeTypeValue::Cbor
-                    | MimeTypeValue::MessagePack
-                    | MimeTypeValue::Protobuf
-                    | MimeTypeValue::Sqlite3
-                    | MimeTypeValue::Xls
-                    | MimeTypeValue::Xlsx
-                    | MimeTypeValue::Ods
-                    | MimeTypeValue::Doc
-                    | MimeTypeValue::Docx
-                    | MimeTypeValue::File
+                MimeTypeWire::OctetStream
+                    | MimeTypeWire::Parquet
+                    | MimeTypeWire::ArrowFile
+                    | MimeTypeWire::ArrowStream
+                    | MimeTypeWire::Avro
+                    | MimeTypeWire::Orc
+                    | MimeTypeWire::Puffin
+                    | MimeTypeWire::Pdf
+                    | MimeTypeWire::Cbor
+                    | MimeTypeWire::MessagePack
+                    | MimeTypeWire::Protobuf
+                    | MimeTypeWire::Sqlite3
+                    | MimeTypeWire::Xls
+                    | MimeTypeWire::Xlsx
+                    | MimeTypeWire::Ods
+                    | MimeTypeWire::Doc
+                    | MimeTypeWire::Docx
+                    | MimeTypeWire::File
             )
     }
 
@@ -924,13 +929,13 @@ fn parse_mime(value: &str, target: &'static str, offset: usize) -> Result<MimeTy
     validate_restricted_name(&bytes[slash + 1..], target, offset + slash + 1, "subtype")?;
 
     if bytes.iter().all(|byte| !byte.is_ascii_uppercase()) {
-        return Ok(MimeType(MimeTypeValue::Custom(SmolStr::new(value))));
+        return Ok(MimeType(MimeTypeWire::Custom(SmolStr::new(value))));
     }
     let mut canonical = SmolStrBuilder::new();
     for byte in bytes {
         canonical.push(char::from(byte.to_ascii_lowercase()));
     }
-    Ok(MimeType(MimeTypeValue::Custom(canonical.into())))
+    Ok(MimeType(MimeTypeWire::Custom(canonical.into())))
 }
 
 fn validate_restricted_name(

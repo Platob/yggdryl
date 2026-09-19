@@ -10,8 +10,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdstatistictype",
-          "fix:tag": "2456"
+          "FIX:field": "mdstatistictype",
+          "FIX:tag": "2456"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdstatisticscope",
-          "fix:tag": "2457"
+          "FIX:field": "mdstatisticscope",
+          "FIX:tag": "2457"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticsubscope",
-          "fix:tag": "2458"
+          "FIX:field": "mdstatisticsubscope",
+          "FIX:tag": "2458"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticscopetype",
-          "fix:tag": "2459"
+          "FIX:field": "mdstatisticscopetype",
+          "FIX:tag": "2459"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticname",
-          "fix:tag": "2454"
+          "FIX:field": "mdstatisticname",
+          "FIX:tag": "2454"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticdesc",
-          "fix:tag": "2455"
+          "FIX:field": "mdstatisticdesc",
+          "FIX:tag": "2455"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmdstatisticdesclen",
-          "fix:tag": "2481"
+          "FIX:field": "encodedmdstatisticdesclen",
+          "FIX:tag": "2481"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmdstatisticdesc",
-          "fix:tag": "2482"
+          "FIX:field": "encodedmdstatisticdesc",
+          "FIX:tag": "2482"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdepth",
-          "fix:tag": "264"
+          "FIX:field": "marketdepth",
+          "FIX:tag": "264"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticfrequencyperiod",
-          "fix:tag": "2460"
+          "FIX:field": "mdstatisticfrequencyperiod",
+          "FIX:tag": "2460"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticfrequencyunit",
-          "fix:tag": "2461"
+          "FIX:field": "mdstatisticfrequencyunit",
+          "FIX:tag": "2461"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticdelayperiod",
-          "fix:tag": "2462"
+          "FIX:field": "mdstatisticdelayperiod",
+          "FIX:tag": "2462"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticdelayunit",
-          "fix:tag": "2463"
+          "FIX:field": "mdstatisticdelayunit",
+          "FIX:tag": "2463"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdstatisticintervaltype",
-          "fix:tag": "2464"
+          "FIX:field": "mdstatisticintervaltype",
+          "FIX:tag": "2464"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticintervaltypeunit",
-          "fix:tag": "2465"
+          "FIX:field": "mdstatisticintervaltypeunit",
+          "FIX:tag": "2465"
         }
       },
       {
@@ -175,8 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticintervalperiod",
-          "fix:tag": "2466"
+          "FIX:field": "mdstatisticintervalperiod",
+          "FIX:tag": "2466"
         }
       },
       {
@@ -186,8 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticintervalunit",
-          "fix:tag": "2467"
+          "FIX:field": "mdstatisticintervalunit",
+          "FIX:tag": "2467"
         }
       },
       {
@@ -197,8 +197,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticstartdate",
-          "fix:tag": "2468"
+          "FIX:field": "mdstatisticstartdate",
+          "FIX:tag": "2468"
         }
       },
       {
@@ -208,8 +208,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticenddate",
-          "fix:tag": "2469"
+          "FIX:field": "mdstatisticenddate",
+          "FIX:tag": "2469"
         }
       },
       {
@@ -219,8 +219,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticstarttime",
-          "fix:tag": "2470"
+          "FIX:field": "mdstatisticstarttime",
+          "FIX:tag": "2470"
         }
       },
       {
@@ -230,8 +230,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticendtime",
-          "fix:tag": "2471"
+          "FIX:field": "mdstatisticendtime",
+          "FIX:tag": "2471"
         }
       },
       {
@@ -241,8 +241,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticratiotype",
-          "fix:tag": "2472"
+          "FIX:field": "mdstatisticratiotype",
+          "FIX:tag": "2472"
         }
       },
       {
@@ -252,8 +252,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedpartyids",
-          "fix:tag": "539"
+          "FIX:field": "nonestedpartyids",
+          "FIX:tag": "539"
         }
       },
       {
@@ -263,7 +263,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "nestedparties"
+          "FIX:group": "nestedparties"
         }
       },
       {
@@ -273,8 +273,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "annualtradingbusinessdays",
-          "fix:tag": "2584"
+          "FIX:field": "annualtradingbusinessdays",
+          "FIX:tag": "2584"
         }
       },
       {
@@ -284,8 +284,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingcapacity",
-          "fix:tag": "1815"
+          "FIX:field": "tradingcapacity",
+          "FIX:tag": "1815"
         }
       },
       {
@@ -295,8 +295,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordtype",
-          "fix:tag": "40"
+          "FIX:field": "ordtype",
+          "FIX:tag": "40"
         }
       },
       {
@@ -306,8 +306,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "timeinforce",
-          "fix:tag": "59"
+          "FIX:field": "timeinforce",
+          "FIX:tag": "59"
         }
       },
       {
@@ -317,8 +317,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotecondition",
-          "fix:tag": "276"
+          "FIX:field": "quotecondition",
+          "FIX:tag": "276"
         }
       },
       {
@@ -328,8 +328,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradecondition",
-          "fix:tag": "277"
+          "FIX:field": "tradecondition",
+          "FIX:tag": "277"
         }
       },
       {
@@ -339,8 +339,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "side",
-          "fix:tag": "54"
+          "FIX:field": "side",
+          "FIX:tag": "54"
         }
       },
       {
@@ -350,8 +350,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeinputsource",
-          "fix:tag": "578"
+          "FIX:field": "tradeinputsource",
+          "FIX:tag": "578"
         }
       },
       {
@@ -361,8 +361,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionid",
-          "fix:tag": "336"
+          "FIX:field": "tradingsessionid",
+          "FIX:tag": "336"
         }
       },
       {
@@ -372,8 +372,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid",
-          "fix:tag": "625"
+          "FIX:field": "tradingsessionsubid",
+          "FIX:tag": "625"
         }
       },
       {
@@ -383,8 +383,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdorigintype",
-          "fix:tag": "1024"
+          "FIX:field": "mdorigintype",
+          "FIX:tag": "1024"
         }
       },
       {
@@ -394,8 +394,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdvaluetier",
-          "fix:tag": "2711"
+          "FIX:field": "mdvaluetier",
+          "FIX:tag": "2711"
         }
       },
       {
@@ -405,8 +405,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesmethod",
-          "fix:tag": "338"
+          "FIX:field": "tradsesmethod",
+          "FIX:tag": "338"
         }
       },
       {
@@ -416,8 +416,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdfeedtype",
-          "fix:tag": "1022"
+          "FIX:field": "mdfeedtype",
+          "FIX:tag": "1022"
         }
       },
       {
@@ -427,8 +427,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exposureduration",
-          "fix:tag": "1629"
+          "FIX:field": "exposureduration",
+          "FIX:tag": "1629"
         }
       },
       {
@@ -438,8 +438,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exposuredurationunit",
-          "fix:tag": "1916"
+          "FIX:field": "exposuredurationunit",
+          "FIX:tag": "1916"
         }
       },
       {
@@ -449,16 +449,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "aggressorindicator",
-          "fix:tag": "1057"
+          "FIX:field": "aggressorindicator",
+          "FIX:tag": "1057"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "1039053",
     "description": "Must be set if EncodedMDStatisticDesc(2482) field is specified and must immediately precede it.",
-    "display": "MDStatisticParameters",
-    "fix:tag": "1039053"
+    "display": "MDStatisticParameters"
   }
 }

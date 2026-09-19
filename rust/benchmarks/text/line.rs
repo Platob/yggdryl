@@ -5,7 +5,7 @@ use std::hint::black_box;
 use criterion::{Criterion, Throughput};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::media::text::{
+use yggdryl::text::{
     LineSep, TextBytes, TextEntries, TextOptions, from_arrow_batch, from_arrow_reader,
     into_arrow_batch, into_arrow_reader, read_text_lines,
 };

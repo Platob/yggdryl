@@ -190,10 +190,10 @@ test('a URL and a Date read their state from the prototype, not the instance', (
 
 test('temporal values cross as classic ISO strings; a decimal stays typed', () => {
   const values = {
-    at: Scalar.datetime(1700000000000000n, 'us', 'UTC'),
-    naive: Scalar.datetime(1700000000123456n, 'us', 'NAIVE'),
-    on: Scalar.date(19723),
-    sinceMidnight: Scalar.time(45296000000n, 'us'),
+    at: new DataType('datetime64(us,"UTC")').scalar(1700000000000000n),
+    naive: new DataType('datetime64(us)').scalar(1700000000123456n),
+    on: new DataType('date32').scalar(19723),
+    sinceMidnight: new DataType('time64(us)').scalar(45296000000n),
     took: Scalar.duration(90, 's'),
     price: Scalar.decimal(-1050n, 2),
   }
@@ -223,11 +223,12 @@ test('temporal values cross as classic ISO strings; a decimal stays typed', () =
 test('temporal families select one exact width and non-null timezone', () => {
   const naive = Timezone.from('naive')
   const values = [
-    [Scalar.date(7), 'date32', 7n, 'd'],
-    [Scalar.date(7n, 'ms'), 'date64', 7n, 'ms'],
-    [Scalar.time(7, 's'), 'time32', 7n, 's'],
-    [Scalar.time(7n, 'us'), 'time64', 7n, 'us'],
-    [Scalar.datetime(7n, 'ns'), 'datetime64', 7n, 'ns'],
+    [new DataType('date32').scalar(7), 'date32', 7n, 'd'],
+    // A `date64` counts whole days in milliseconds, and the type checks it.
+    [new DataType('date64').scalar(86_400_000n), 'date64', 86_400_000n, 'ms'],
+    [new DataType('time32(s)').scalar(7), 'time32', 7n, 's'],
+    [new DataType('time64(us)').scalar(7n), 'time64', 7n, 'us'],
+    [new DataType('datetime64(ns)').scalar(7n), 'datetime64', 7n, 'ns'],
     [Scalar.duration(7, 'ms'), 'duration32', 7n, 'ms'],
     [Scalar.duration(2147483648n, 'us'), 'duration64', 2147483648n, 'us'],
   ]
@@ -239,28 +240,31 @@ test('temporal families select one exact width and non-null timezone', () => {
     assert.equal(value.zone, 'NAIVE')
   }
 
-  assert.ok(Scalar.date(7, 'd', naive).equals(Scalar.date(7)))
-  assert.ok(Scalar.date(7, null, null).equals(Scalar.date(7)))
-  assert.ok(Scalar.date(7n, 'ms', 'NAIVE').equals(Scalar.date(7n, 'ms')))
-  assert.ok(Scalar.time(7, 's', naive).equals(Scalar.time(7, 's')))
-  assert.ok(Scalar.time(7n, 'us', 'naive').equals(Scalar.time(7n, 'us')))
+  // A zone is part of the type now, so it is spelled once, where the width is.
+  // These used to pass a `timezone` argument the core could only accept as
+  // naive; the type simply has nowhere to put one for a date or a time of day.
   assert.ok(
-    Scalar.datetime(7n, 'ns', Timezone.UTC).equals(
-      Scalar.datetime(7n, 'ns', 'UTC'),
+    new DataType('datetime64(ns,"UTC")')
+      .scalar(7n)
+      .equals(new DataType('datetime64(ns,"UTC")').scalar(7n)),
+  )
+  assert.ok(
+    !new DataType('datetime64(ns)').scalar(7n).equals(
+      new DataType('datetime64(ns,"UTC")').scalar(7n),
     ),
+    'a naive instant is not the same value as a zoned one',
   )
-  assert.ok(Scalar.datetime(7n, 'ns', null).equals(Scalar.datetime(7n, 'ns')))
-  assert.ok(Scalar.duration(7, 'ms', naive).equals(Scalar.duration(7, 'ms')))
+  assert.equal(new DataType('datetime64(ns,"UTC")').scalar(7n).zone, 'UTC')
+  assert.ok(Scalar.duration(7, 'ms').equals(Scalar.duration(7, 'ms')))
 
-  assert.throws(() => Scalar.date(1, 's'), /date unit/)
-  assert.throws(() => Scalar.time(1, 'd'), /time unit/)
-  assert.throws(() => Scalar.time(1, 's', 'UTC'), /timezone must be NAIVE/)
-  assert.throws(() => Scalar.time(1n, 'us', Timezone.UTC), /timezone must be NAIVE/)
-  assert.throws(() => Scalar.duration(1, 's', 'UTC'), /timezone must be NAIVE/)
-  assert.throws(
-    () => Scalar.duration(1n, 'ns', Timezone.UTC),
-    /timezone must be NAIVE/,
-  )
+  // A unit the width cannot hold is refused by the type, not by a factory.
+  assert.throws(() => new DataType('date32(s)'), /unexpected/)
+  assert.throws(() => new DataType('time32(d)'), /expected/)
+  // A date and a time of day carry no zone, so the type cannot spell one.
+  assert.throws(() => new DataType('date32(d,"UTC")'), /unexpected/)
+  assert.throws(() => new DataType('time64(us,"UTC")'), /expected/)
+  // A duration keeps its factory, and still refuses a zone.
+  assert.throws(() => new DataType('duration32(s,"UTC")'), /expected/)
 })
 
 test('Scalar family factories keep selected widths, hashes, and natural accessors', () => {
@@ -270,7 +274,7 @@ test('Scalar family factories keep selected widths, hashes, and natural accessor
   assert.equal(Scalar.float(1.5, 32).kind, 'f32')
   assert.equal(Scalar.float(1.5).kind, 'f64')
   assert.equal(Scalar.decimal(1n).scale, 0)
-  assert.throws(() => Scalar.float(1.5, 24), /16, 32, or 64/)
+  assert.throws(() => new DataType('float24'), /unknown datatype/)
   assert.throws(() => Scalar.decimal(1n, 128), /scale/)
   assert.equal(wide.kind, 'd256')
   assert.equal(wide.unscaled, -(2n ** 200n))
@@ -283,22 +287,46 @@ test('Scalar family factories keep selected widths, hashes, and natural accessor
   assert.equal(longDuration.asJs().kind, 'duration64')
   assert.equal(longDuration.asJs().count, longDuration.count)
 
-  const mode = Scalar.fromEnum('io_mode', 'append')
-  assert.equal(mode.kind, 'enum')
-  assert.equal(mode.enumKind, 'io_mode')
-  assert.equal(mode.enumValue, 'append')
-  assert.equal(mode.enumOrdinal, 1)
+  // An enum member's datatype is `string`, so the value is its canonical
+  // name and the vocabulary is what `fromEnum` validates against.
+  const mode = Scalar.fromEnum('IOMode', 'append')
+  assert.equal(mode.kind, 'string')
   assert.equal(mode.asJs(), 'append')
   assert.equal(mode.asStr(), 'append')
-  assert.throws(() => Scalar.fromEnum('io_mode', 'missing'), /unknown/)
+  assert.deepEqual(mode, Scalar.from('append'))
+  assert.throws(() => Scalar.fromEnum('IOMode', 'missing'), /unknown/)
 
   assert.deepEqual(Scalar.from(Buffer.from([0, 255])).asBytes(), Buffer.from([0, 255]))
   assert.equal(Scalar.from('AAPL').asStr(), 'AAPL')
   assert.equal(Scalar.from(1).asStr(), null)
   const record = Scalar.from({ z: 2, a: 1 })
-  assert.equal(record.asJsonUtf8(), '{"a":1,"z":2}')
-  assert.deepEqual(record.asJsonBytes(), Buffer.from(record.asJsonUtf8()))
-  assert.equal(record.toString(), record.asJsonUtf8())
+  assert.equal(record.intoJson(), '{"a":1,"z":2}')
+  assert.deepEqual(record.intoJsonBytes(), Buffer.from(record.intoJson()))
+  assert.equal(record.toString(), record.intoJson())
+  // `toJSON` goes through binding.js, which called a method the rename had
+  // already removed - nothing covered that path, so the break shipped.
+  assert.deepEqual(JSON.parse(JSON.stringify(record)), { a: 1, z: 2 })
+
+  // Truthiness is a coercion: absence, zero, empty text or bytes, and a
+  // container with nothing set in it all read false.
+  assert.equal(Scalar.from(5).isTruthy(), true)
+  assert.equal(Scalar.from(0).isTruthy(), false)
+  assert.equal(Scalar.from('').isTruthy(), false)
+  assert.equal(Scalar.from('off').isTruthy(), false)
+  assert.equal(Scalar.from('anything').isTruthy(), true)
+  assert.equal(record.isTruthy(), true)
+
+  // The typed door for a value: the width, unit, scale and zone are named on
+  // the type. Node had no `scalar` on either prototype, so the only spelling
+  // was the options bag - which is the same conversion, said awkwardly.
+  const instant = new Field('at', new DataType('datetime64(ns,"UTC")'), true)
+  assert.equal(instant.scalar(1700000000123456789n).kind, 'datetime64')
+  assert.equal(instant.scalar(1n).unit, 'ns')
+  assert.equal(instant.scalar(1n).zone, 'UTC')
+  assert.ok(instant.scalar(1n).equals(Scalar.from(1n, { field: instant })))
+  // A width the statics cannot reach at all.
+  assert.equal(new DataType('decimal32(9,2)').scalar(125).kind, 'd32')
+  assert.ok(Scalar.float(1.5, 16).equals(Scalar.float(1.5, 16)))
   assert.deepEqual(record.toJSON(), { a: 1, z: 2 })
   const clone = record.clone()
   assert.notEqual(clone, record)
@@ -316,8 +344,8 @@ test('Scalar identity accessors name the exact leaf and family', () => {
     [Scalar.from(1n), 'int64', 'integer'],
     [Scalar.float(1.5, 32), 'float32', 'floating'],
     [Scalar.decimal(150n, 2), 'decimal128', 'decimal'],
-    [Scalar.date(1), 'date32', 'temporal'],
-    [Scalar.from('AAPL'), 'string', 'text'],
+    [new DataType('date32').scalar(1), 'date32', 'temporal'],
+    [Scalar.from('AAPL'), 'utf8', 'text'],
     [
       json.loads('"USD"', {
         field: new Field('value', 'currency', false),
@@ -368,7 +396,7 @@ test('exact intervals retain their flat JavaScript layouts', () => {
 })
 
 test('Scalar traversal and persistent updates stay entirely native', () => {
-  const instant = Scalar.datetime(1700000000123456789n, 'ns', 'Europe/Paris')
+  const instant = new DataType('datetime64(ns,"Europe/Paris")').scalar(1700000000123456789n)
   const record = Scalar.from({ z: 2, legs: [{ at: instant }] })
 
   assert.equal(record.length, 2)
@@ -461,15 +489,15 @@ test('Scalar arithmetic infers JavaScript operands once and stays native', () =>
   )
   assert.equal(Scalar.float(1.5, 16).multiply(Scalar.float(2, 32)).kind, 'f32')
 
-  const instant = Scalar.datetime(1000n, 'ms', 'UTC')
+  const instant = new DataType('datetime64(ms,"UTC")').scalar(1000n)
   assert.ok(
     instant
       .add(Scalar.duration(2n, 's'))
-      .equals(Scalar.datetime(3000n, 'ms', 'UTC')),
+      .equals(new DataType('datetime64(ms,"UTC")').scalar(3000n)),
   )
   assert.ok(
     instant
-      .subtract(Scalar.datetime(500n, 'ms', 'UTC'))
+      .subtract(new DataType('datetime64(ms,"UTC")').scalar(500n))
       .equals(Scalar.duration(500n, 'ms')),
   )
 
@@ -485,12 +513,27 @@ test('Scalar arithmetic infers JavaScript operands once and stays native', () =>
     (error) =>
       error instanceof RangeError && error.code === 'ERR_YGGDRYL_ARITHMETIC_OVERFLOW',
   )
+  // Text, bytes and sequences have no sum, so `add` joins them.
+  assert.equal(Scalar.from('AA').add('PL').asJs(), 'AAPL')
+  assert.deepEqual(
+    Scalar.from(Buffer.from([1])).add(Buffer.from([2])).asBytes(),
+    Buffer.from([1, 2]),
+  )
+  assert.deepEqual(Scalar.from([1]).add([2]).asJs(), [1, 2])
+  // Two repertoires still do not join, and only `add` joins at all.
   assert.throws(
-    () => Scalar.from('a').add('b'),
+    () => Scalar.from('a').add(1),
     (error) =>
       error instanceof TypeError &&
       error.code === 'ERR_YGGDRYL_INVALID_ARITHMETIC' &&
       /addition/i.test(error.message),
+  )
+  assert.throws(
+    () => Scalar.from('a').subtract('b'),
+    (error) =>
+      error instanceof TypeError &&
+      error.code === 'ERR_YGGDRYL_INVALID_ARITHMETIC' &&
+      /subtraction/i.test(error.message),
   )
   for (const hidden of [
     '_addNative',
@@ -641,17 +684,17 @@ test('Scalar Arrow record and table interop uses the native schema engine', () =
 
 test('a Date is the JavaScript spelling of a UTC millisecond datetime64', () => {
   const date = new Date('2026-08-15T12:30:00.000Z')
-  assert.ok(Scalar.from(date).equals(Scalar.datetime(1786797000000n, 'ms', 'UTC')))
+  assert.ok(Scalar.from(date).equals(new DataType('datetime64(ms,"UTC")').scalar(1786797000000n)))
   assert.ok(Scalar.from(date).asJs() instanceof Date)
 
   // On the wire every temporal is its classic ISO string; the typed reading
   // comes back wherever a schema names the column's datatype.
   assert.equal(
-    json.loads(json.dumps(Scalar.datetime(1786797000n, 's', 'NAIVE'))),
+    json.loads(json.dumps(new DataType('datetime64(s)').scalar(1786797000n))),
     '2026-08-15T12:30:00',
   )
   assert.equal(
-    json.loads(json.dumps(Scalar.datetime(1786797000000n, 'ms', 'Europe/Paris'))),
+    json.loads(json.dumps(new DataType('datetime64(ms,"Europe/Paris")').scalar(1786797000000n))),
     '2026-08-15T14:30:00.000+02:00[Europe/Paris]',
   )
 })

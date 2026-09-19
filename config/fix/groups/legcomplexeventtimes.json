@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legcomplexeventtime"
+        "FIX:component": "legcomplexeventtime"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legcomplexeventtime",
+    "FIX:counter": "2253",
+    "FIX:tag": "145594",
     "description": "Required if NoLegComplexEventTimes(2253) > 0.",
-    "display": "LegComplexEventTimes",
-    "fix:component": "legcomplexeventtime",
-    "fix:counter": "2253",
-    "fix:tag": "145594"
+    "display": "LegComplexEventTimes"
   }
 }

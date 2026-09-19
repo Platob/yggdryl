@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "paymentstreampricingdatecomponent"
+        "FIX:component": "paymentstreampricingdatecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "paymentstreampricingdatecomponent",
+    "FIX:counter": "41224",
+    "FIX:tag": "453555",
     "description": "Required if NoPaymentStreamPricingDates(41224) > 0.",
-    "display": "PaymentStreamPricingDateGrp",
-    "fix:component": "paymentstreampricingdatecomponent",
-    "fix:counter": "41224",
-    "fix:tag": "453555"
+    "display": "PaymentStreamPricingDateGrp"
   }
 }

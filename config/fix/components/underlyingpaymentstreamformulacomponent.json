@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamformulacurrency",
-          "fix:tag": "42978"
+          "FIX:field": "underlyingpaymentstreamformulacurrency",
+          "FIX:tag": "42978"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamformulacurrencydeterminationmethod",
-          "fix:tag": "42979"
+          "FIX:field": "underlyingpaymentstreamformulacurrencydeterminationmethod",
+          "FIX:tag": "42979"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamformulareferenceamount",
-          "fix:tag": "42980"
+          "FIX:field": "underlyingpaymentstreamformulareferenceamount",
+          "FIX:tag": "42980"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingpaymentstreamformulas",
-          "fix:tag": "42981"
+          "FIX:field": "nounderlyingpaymentstreamformulas",
+          "FIX:tag": "42981"
         }
       },
       {
@@ -54,7 +54,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingpaymentstreamformulamathgrp"
+          "FIX:group": "underlyingpaymentstreamformulamathgrp"
         }
       },
       {
@@ -64,15 +64,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingpaymentstreamformulaimagecomponent"
+          "FIX:component": "underlyingpaymentstreamformulaimagecomponent"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "876325",
     "description": "UnderlyingPaymentStreamFormula is a subcomponent of the UnderlyingPaymentStreamFloatingRate component used to report the parameters for determining the floating rate of the stream e.g. for equity swaps.",
-    "display": "UnderlyingPaymentStreamFormula",
-    "fix:tag": "876325"
+    "display": "UnderlyingPaymentStreamFormula"
   }
 }

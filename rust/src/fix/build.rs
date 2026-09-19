@@ -35,9 +35,10 @@ use smol_str::{SmolStr, format_smolstr};
 use super::group_plan::GroupPlan;
 use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
-use crate::media::text::TextBytes;
-use crate::types::{Code, Side, State};
-use crate::{DataType, Error, Field, Result, Scalar, Version};
+use crate::sequence::SequenceType;
+use crate::text::TextBytes;
+use crate::{DataType, Error, Field, Result, Scalar, StructureType, Version};
+use crate::{Side, State};
 
 /// What a key resolved to, before any field is built.
 enum Located<'key> {
@@ -152,7 +153,7 @@ struct Slot {
     /// Whether the field is the dictionary's own, and so carries the tag it
     /// resolved to.
     ///
-    /// A key no dictionary explains keeps its spelling and no `fix:tag`, so
+    /// A key no dictionary explains keeps its spelling and no `FIX:tag`, so
     /// the message's tag index leaves it out - which is what a reader of the
     /// finished field would find, read once here instead of once per child.
     known: bool,
@@ -1587,7 +1588,7 @@ impl<'registry> Builder<'registry> {
     /// and the name only where it agrees, so a hit costs one string compare
     /// and a miss costs none.
     fn slot_for(&mut self, field: Field, tag: i32, known: bool) -> &mut Slot {
-        let hash = crate::hashing::xxhash::xxh64(field.name().as_bytes());
+        let hash = crate::xxhash::xxh64(field.name().as_bytes());
         let held = self
             .hashes
             .iter()
@@ -1768,7 +1769,7 @@ impl<'registry> Builder<'registry> {
             }
         }
         tags.sort_unstable();
-        let root = DataType::from_fields(fields)?.required_field(name);
+        let root = DataType::from(StructureType::from_fields(fields)?).required_field(name);
         Ok(Built {
             field: root,
             value: Scalar::from_sequence(values),
@@ -1927,8 +1928,10 @@ impl Slot {
             // An unlabeled value cannot type as a component. Preserve its
             // raw entry and occurrence position; the typed occurrence is null.
             let mut item = match self.field.dtype() {
-                DataType::List(item) | DataType::LargeList(item) => item.as_ref().clone(),
-                _ => DataType::from_fields([])?.required_field(occurrence_name(&self.field)),
+                DataType::Sequence(SequenceType::List(item))
+                | DataType::Sequence(SequenceType::LargeList(item)) => item.as_ref().clone(),
+                _ => DataType::from(StructureType::from_fields([])?)
+                    .required_field(occurrence_name(&self.field)),
             };
             item.set_nullable(true);
             let values = Scalar::from_sequence(self.values.into_iter().map(|_| Scalar::Null));
@@ -1998,7 +2001,7 @@ impl Slot {
                 member_fields.push(member);
             }
         }
-        let mut item = DataType::from_fields(member_fields.clone())?
+        let mut item = DataType::from(StructureType::from_fields(member_fields.clone())?)
             .required_field(occurrence_name(&self.field));
         // A gapped index leaves an occurrence nobody stated, which is null.
         if finished.iter().any(Option::is_none) {
@@ -2081,7 +2084,8 @@ pub(super) fn wire_spelling(dtype: &DataType, text: &str) -> Option<Scalar> {
             [b'N' | b'n'] => Some(Scalar::from(false)),
             _ => None,
         },
-        DataType::DateTime64 { timezone, .. } => {
+        DataType::DateTime(leaf) => {
+            let timezone = leaf.timezone();
             // The zone a value states outranks the column's, and a column
             // stating none takes no zone rather than Z: a `LocalMktDate` and
             // a `LocalMktDatetime` are local market values, and rendering
@@ -2212,12 +2216,12 @@ fn typed_translation(field: &Field, text: &str, translated: Option<&str>) -> Res
     match field.dtype() {
         DataType::State => {
             if let Some(state) = view.code_name(spelling).and_then(State::from_spelling) {
-                return Ok(Scalar::Code(Code::State(state)));
+                return Ok(Scalar::State(state));
             }
         }
         DataType::Side => {
             if let Some(side) = view.code_name(spelling).and_then(Side::from_spelling) {
-                return Ok(Scalar::Code(Code::Side(side)));
+                return Ok(Scalar::Side(side));
             }
         }
         _ => {}
@@ -2288,7 +2292,7 @@ pub(super) fn stated(known: &Field) -> Field {
 /// explains itself.
 fn in_scope<'held>(scope: &'held [Field], key: &str) -> Option<(&'held Field, i32)> {
     scope.iter().find_map(|held| {
-        if held.dtype().is_nested() || !crate::types::folds_equal(held.name(), key) {
+        if held.dtype().is_nested() || !crate::folds_equal(held.name(), key) {
             return None;
         }
         Some((held, held.as_fix().tag().ok()??))
@@ -2339,7 +2343,7 @@ const fn is_binary(dtype: &DataType) -> bool {
 /// empties - separators alone - keeps its own spelling, because a child has
 /// to be called something.
 fn folded_name(key: &str) -> String {
-    let name = crate::types::normalized(key);
+    let name = crate::normalized(key);
     if name.is_empty() {
         key.to_owned()
     } else {

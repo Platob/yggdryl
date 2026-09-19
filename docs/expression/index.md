@@ -237,7 +237,7 @@ for text in [
 - Null operand in a comparison -> unknown; `eval` gives `Scalar::Null`, `matches` gives false.
 - `is distinct from`, `is not distinct from` -> two-valued, never unknown.
 - `(a and b) and c`, `a and (b and c)` -> one value, one printing.
-- Python `float` or JavaScript number against `decimal(9,2)` -> a different number; pass `Decimal` or `Scalar.decimal`.
+- Python `float` or JavaScript number against `decimal(9,2)` -> a different number; pass `decimal.Decimal` or `Scalar.decimal`.
 - `"a > 1"` read as an `Expression` -> refused naming `select` and `where`: the text has to say which clause it is; a `Filter` or `Term` takes it as is.
 - Nesting past the shared limit -> parse error at the failing byte.
 

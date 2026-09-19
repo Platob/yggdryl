@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdateunadjusted",
-          "fix:tag": "41739"
+          "FIX:field": "underlyingcomplexeventdateunadjusted",
+          "FIX:tag": "41739"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdaterelativeto",
-          "fix:tag": "41740"
+          "FIX:field": "underlyingcomplexeventdaterelativeto",
+          "FIX:tag": "41740"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdateoffsetperiod",
-          "fix:tag": "41741"
+          "FIX:field": "underlyingcomplexeventdateoffsetperiod",
+          "FIX:tag": "41741"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdateoffsetunit",
-          "fix:tag": "41742"
+          "FIX:field": "underlyingcomplexeventdateoffsetunit",
+          "FIX:tag": "41742"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdateoffsetdaytype",
-          "fix:tag": "41743"
+          "FIX:field": "underlyingcomplexeventdateoffsetdaytype",
+          "FIX:tag": "41743"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdatebusinessdayconvention",
-          "fix:tag": "41744"
+          "FIX:field": "underlyingcomplexeventdatebusinessdayconvention",
+          "FIX:tag": "41744"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingcomplexeventdatebusinesscenters",
-          "fix:tag": "41737"
+          "FIX:field": "nounderlyingcomplexeventdatebusinesscenters",
+          "FIX:tag": "41737"
         }
       },
       {
@@ -87,7 +87,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingcomplexeventdatebusinesscentergrp"
+          "FIX:group": "underlyingcomplexeventdatebusinesscentergrp"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdateadjusted",
-          "fix:tag": "41745"
+          "FIX:field": "underlyingcomplexeventdateadjusted",
+          "FIX:tag": "41745"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventfixingtime",
-          "fix:tag": "41746"
+          "FIX:field": "underlyingcomplexeventfixingtime",
+          "FIX:tag": "41746"
         }
       },
       {
@@ -119,16 +119,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventfixingtimebusinesscenter",
-          "fix:tag": "41747"
+          "FIX:field": "underlyingcomplexeventfixingtimebusinesscenter",
+          "FIX:tag": "41747"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "966005",
     "description": "Conditionally required when UnderlyingComplexEventDateOffsetUnit(41742) is specified.",
-    "display": "UnderlyingComplexEventRelativeDate",
-    "fix:tag": "966005"
+    "display": "UnderlyingComplexEventRelativeDate"
   }
 }

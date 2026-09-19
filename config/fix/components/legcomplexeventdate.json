@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventstartdate",
-          "fix:tag": "2251"
+          "FIX:field": "legcomplexeventstartdate",
+          "FIX:tag": "2251"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventenddate",
-          "fix:tag": "2252"
+          "FIX:field": "legcomplexeventenddate",
+          "FIX:tag": "2252"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventtimes",
-          "fix:tag": "2253"
+          "FIX:field": "nolegcomplexeventtimes",
+          "FIX:tag": "2253"
         }
       },
       {
@@ -43,14 +43,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legcomplexeventtimes"
+          "FIX:group": "legcomplexeventtimes"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEventDate",
-    "fix:tag": "192524"
+    "FIX:tag": "192524",
+    "display": "LegComplexEventDate"
   }
 }

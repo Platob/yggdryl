@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legprovisionoptionexercisefixeddatecomponent"
+        "FIX:component": "legprovisionoptionexercisefixeddatecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legprovisionoptionexercisefixeddatecomponent",
+    "FIX:counter": "40495",
+    "FIX:tag": "891484",
     "description": "Required if NoLegProvisionOptionExerciseFixedDates(40495) > 0.",
-    "display": "LegProvisionOptionExerciseFixedDateGrp",
-    "fix:component": "legprovisionoptionexercisefixeddatecomponent",
-    "fix:counter": "40495",
-    "fix:tag": "891484"
+    "display": "LegProvisionOptionExerciseFixedDateGrp"
   }
 }

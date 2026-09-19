@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecurityxmllen",
-          "fix:tag": "1282"
+          "FIX:field": "derivativesecurityxmllen",
+          "FIX:tag": "1282"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecurityxml",
-          "fix:tag": "1283"
+          "FIX:field": "derivativesecurityxml",
+          "FIX:tag": "1283"
         }
       },
       {
@@ -32,16 +32,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativesecurityxmlschema",
-          "fix:tag": "1284"
+          "FIX:field": "derivativesecurityxmlschema",
+          "FIX:tag": "1284"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "252421",
     "description": "Must be set if DerivativeSecurityXML(1283) field is specified and must immediately precede it.",
-    "display": "DerivativeSecurityXML",
-    "fix:tag": "252421"
+    "display": "DerivativeSecurityXML"
   }
 }

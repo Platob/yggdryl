@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingbusinessdate",
-          "fix:tag": "715"
+          "FIX:field": "clearingbusinessdate",
+          "FIX:tag": "715"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlementcycleno",
-          "fix:tag": "1153"
+          "FIX:field": "settlementcycleno",
+          "FIX:tag": "1153"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "settlobligmsgid",
-          "fix:tag": "1160"
+          "FIX:field": "settlobligmsgid",
+          "FIX:tag": "1160"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "settlobligmode",
-          "fix:tag": "1159"
+          "FIX:field": "settlobligmode",
+          "FIX:tag": "1159"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nosettloblig",
-          "fix:tag": "1165"
+          "FIX:field": "nosettloblig",
+          "FIX:tag": "1165"
         }
       },
       {
@@ -129,7 +129,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "settlobligationinstructions"
+          "FIX:group": "settlobligationinstructions"
         }
       },
       {
@@ -139,16 +139,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "BQ",
+    "FIX:tag": "156588",
     "description": "MsgType = BQ",
-    "display": "SettlementObligationReport",
-    "fix:msgtype": "BQ",
-    "fix:tag": "156588"
+    "display": "SettlementObligationReport"
   }
 }

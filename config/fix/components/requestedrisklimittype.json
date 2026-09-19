@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimittype",
-          "fix:tag": "1530"
+          "FIX:field": "risklimittype",
+          "FIX:tag": "1530"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "RequestedRiskLimitType",
-    "fix:tag": "671967"
+    "FIX:tag": "671967",
+    "display": "RequestedRiskLimitType"
   }
 }

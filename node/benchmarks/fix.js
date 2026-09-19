@@ -186,11 +186,11 @@ const parsedRow = parsed.intoRow(fixedSchema)
 const parsedIpc = seedCodec.parseTextArrowReader(capture).intoIpc()
 // The line door, each line as a text reader answers it.
 const TEXT_LINES = LINES.map((body, index) => new TextLine(index, Buffer.from(body)))
-// The same door with a `pluginid` capture on every line: the capture fills
+// The same door with a `msgpluginid` capture on every line: the capture fills
 // the crate's own column and selects nothing, so this is what a line costs
 // with one more capture to place beside a venue field the one namespace
 // holds.
-const pluginidRegistry = (() => {
+const msgpluginidRegistry = (() => {
   const held = registry.clone()
   const venue = Field.from('VenueTag: utf8')
   venue.fix.tag = 5001
@@ -198,12 +198,12 @@ const pluginidRegistry = (() => {
   held.insert(venue)
   return held
 })()
-const pluginidCodec = new fix.FixCodec(pluginidRegistry, { captureNames: ['pluginid'] })
-const PLUGINID_LINES = LINES.map((body, index) =>
+const msgpluginidCodec = new fix.FixCodec(msgpluginidRegistry, { captureNames: ['msgpluginid'] })
+const MSGPLUGINID_LINES = LINES.map((body, index) =>
   new TextLine(index, Buffer.from(body), [index % 2 === 0 ? VENDOR_DIALECT : 'OMS_X1_TradeCapture']),
 )
-if (drain(pluginidCodec.parseTextLines(PLUGINID_LINES)) !== LINES.length) {
-  throw new Error('pluginid line cardinality mismatch')
+if (drain(msgpluginidCodec.parseTextLines(MSGPLUGINID_LINES)) !== LINES.length) {
+  throw new Error('msgpluginid line cardinality mismatch')
 }
 if (drain(seedCodec.parseLines(LINES)) !== LINES.length) throw new Error('line cardinality mismatch')
 const sink = { write() {} }
@@ -305,8 +305,8 @@ try {
   benchmarkStreams(`fix/parse_text_lines_drain/${LINES.length}`, streams, () =>
     drain(seedCodec.parseTextLines(TEXT_LINES)),
   )
-  benchmarkStreams(`fix/parse_text_lines_pluginid_drain/${LINES.length}`, streams, () =>
-    drain(pluginidCodec.parseTextLines(PLUGINID_LINES)),
+  benchmarkStreams(`fix/parse_text_lines_msgpluginid_drain/${LINES.length}`, streams, () =>
+    drain(msgpluginidCodec.parseTextLines(MSGPLUGINID_LINES)),
   )
   benchmarkStreams(`fix/parse_text_arrow_reader/${LINES.length}`, streams, () =>
     seedCodec.parseTextArrowReader(capture).intoTable().numRows,

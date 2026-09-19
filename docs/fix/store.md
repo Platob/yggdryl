@@ -1,6 +1,6 @@
 # Store
 
-A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as three category directories; a message is a component carrying `fix:msgtype` and lives among the components. What each dialect contributed travels inside the document of the field it contributed to; nothing in the layout is keyed by a dialect.
+A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as three category directories; a message is a component carrying `FIX:msgtype` and lives among the components. What each dialect contributed travels inside the document of the field it contributed to; nothing in the layout is keyed by a dialect.
 
 ## Contract
 
@@ -8,16 +8,16 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as thre
 | --- | --- |
 | Owner | `FixRegistry::from_handle` and `write_into`; bindings redirect to the native loader/writer |
 | Fields | `fields/<tag / 100>.json`, the shard written as nine digits with leading zeros - tag 55 in `fields/000000000.json`, tag 5001 in `fields/000000050.json` - so the shards list in tag order wherever they are listed; each document is an array of tagged scalar fields, tag-major, the holder of a shared tag first |
-| Named definitions | `components/<name>.json`, `groups/<name>.json`; a message is a component carrying `fix:msgtype` and is written beside the others; one native `Field` per document, with a derived tag for a component or List/LargeList group and an own reserved tag for a Map group |
-| Enums | Inline `fix:codes` metadata on each scalar field |
-| Documents | The five `fix:` properties that hold a canonical document - the entry documents `fix:codes`, `fix:replacements` and `fix:directions`, and the lists `fix:names` and `fix:tags` - are written as the JSON arrays they are rather than as one escaped line, so an indented document renders a code set as a code set and a person can edit one. Reading restates each as the compact canonical text a field's metadata holds, with each entry's keys put back into the order the grammar declares and each list held to its element grammar - a word, a positive tag - so a file may spell them in any order and the field still holds one text. One shape: a file spelling one of these keys as text is refused by name, and so is a field holding text no reader can parse. `yggdryl::into_fix_document`/`from_fix_document` are that pair on one field, which is what `ygg fix read --json` prints and `ygg fix ... --input` takes |
-| Snapshots | `FixRegistry::into_json`/`from_json` render and read the whole catalog in that same shape; `add_json_file(handle)` folds one such file into a dictionary the way `merge_with` folds any, and takes no dialect - a snapshot already carries the `fix:branches` its writer meant |
+| Named definitions | `components/<name>.json`, `groups/<name>.json`; a message is a component carrying `FIX:msgtype` and is written beside the others; one native `Field` per document, with a derived tag for a component or List/LargeList group and an own reserved tag for a Map group |
+| Enums | Inline `FIX:codes` metadata on each scalar field |
+| Documents | The five `FIX:` properties that hold a canonical document - the entry documents `FIX:codes`, `FIX:replacements` and `FIX:directions`, and the lists `FIX:names` and `FIX:tags` - are written as the JSON arrays they are rather than as one escaped line, so an indented document renders a code set as a code set and a person can edit one. Reading restates each as the compact canonical text a field's metadata holds, with each entry's keys put back into the order the grammar declares and each list held to its element grammar - a word, a positive tag - so a file may spell them in any order and the field still holds one text. One shape: a file spelling one of these keys as text is refused by name, and so is a field holding text no reader can parse. `yggdryl::into_fix_document`/`from_fix_document` are that pair on one field, which is what `ygg fix read --json` prints and `ygg fix ... --input` takes |
+| Snapshots | `FixRegistry::into_json`/`from_json` render and read the whole catalog in that same shape; `add_json_file(handle)` folds one such file into a dictionary the way `merge_with` folds any, and takes no dialect - a snapshot already carries the `FIX:branches` its writer meant |
 | References | Ordinary compact child fields use `Null` as the unresolved datatype; a Map's referenced entries keep the Struct its datatype requires. Both retain reference metadata and resolve to canonical native fields at intake |
-| Identifiers | `fix:identifiers` stays on its component; canonical member names and order resolve through the same owner after references load |
-| Membership | `fix:branches` metadata inside each field and named definition document: the sorted, lowercase, comma-separated names of the dictionaries that contributed it; that document is the only place a dictionary is recorded |
-| Identity | Derived on every read from `fix:tag` and the field's name; no document holds an id |
-| Builtins | The crate listing has 20 definitions: 18 scalar fields and the `identifiers(65020)` and `metadata(65049)` Map groups. Every registry constructs them, and a write states them too - `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` - so a store is the whole row rather than the half it declared itself; a stored document never overrides them, because a reader takes the constructed definition over the one it finds |
-| The fixed row | `write_into` also writes `components/fixmsg.json`: the [row every message answers as](capture.md#the-columns-are-the-folded-names) under the name and tag of `FIXMSG_TAG_NAME` (65050), each column a `fix:field` or `fix:group` reference carrying its own `fix:tag`. It is the crate's rather than the store's, so a read passes it over as it passes the crate's own fields; it is there for a consumer that reads the row's shape without running this crate |
+| Identifiers | `FIX:identifiers` stays on its component; canonical member names and order resolve through the same owner after references load |
+| Membership | `FIX:branches` metadata inside each field and named definition document: the sorted, lowercase, comma-separated names of the dictionaries that contributed it; that document is the only place a dictionary is recorded |
+| Identity | Derived on every read from `FIX:tag` and the field's name; no document holds an id |
+| Builtins | The crate listing has 19 definitions: 17 scalar fields and the `identifiers(65020)` and `metadata(65049)` Map groups. Every registry constructs them, and a write states them too - `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` - so a store is the whole row rather than the half it declared itself; a stored document never overrides them, because a reader takes the constructed definition over the one it finds |
+| The fixed row | `write_into` also writes `components/fixmsg.json`: the [row every message answers as](capture.md#the-columns-are-the-folded-names) under the name and tag of `FIXMSG_TAG_NAME` (65050), each column a `FIX:field` or `FIX:group` reference carrying its own `FIX:tag`. It is the crate's rather than the store's, so a read passes it over as it passes the crate's own fields; it is there for a consumer that reads the row's shape without running this crate |
 | Standard clocks | `SendingTime(52)` and `TransactTime(60)` are ordinary fields: a stored document defining either is loaded first and keeps its metadata, and only a clock the store does not define is seeded afterwards; a registry writes them like any other field in `fields/000000000.json` |
 | Validation | Category shape, shard arithmetic, tag and name identity, references, identifiers, codes, cycles, and depth are checked before exposing the registry |
 | Missing folder | Loads only the builtins and the seeded standard clocks, and creates nothing |
@@ -32,8 +32,8 @@ The counter is a scalar field; a reusable component defines one occurrence and t
 === "Rust"
 
     ```rust
-    use yggdryl::holder::local::Folder;
-    use yggdryl::{DataType, FixRegistry, IOBase, FieldPath};
+    use yggdryl::local::Folder;
+    use yggdryl::{DataType, FixRegistry, IOBase, FieldPath, StructureType};
 
     let path = Folder::temporary()?.path()?.join(format!("ygg-doc-store-{}", std::process::id()));
     let mut root = Folder::new(&path)?;
@@ -45,14 +45,14 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     let mut registry = FixRegistry::from_fields([count, id])?;
     let mut member = registry.field(448)?.clone();
     member.as_fix_mut().set_field_ref("PartyID")?;
-    let mut party = DataType::from_fields([member])?.required_field("Party");
+    let mut party = DataType::from(StructureType::from_fields([member])?).required_field("Party");
     party.as_fix_mut().set_identifiers(["448"])?;
     registry.insert(party.clone())?;
     let mut group = DataType::list(party).nullable_field("Parties");
     group.as_fix_mut().set_counter(453)?;
     group.as_fix_mut().set_component("Party")?;
     registry.insert(group)?;
-    let mut order = DataType::from_fields([])?.required_field("Order");
+    let mut order = DataType::from(StructureType::from_fields([])?).required_field("Order");
     order.as_fix_mut().set_msgtype("D")?;
     registry.insert(order)?;
 
@@ -201,30 +201,30 @@ Only scalar fields use numeric shards; alternate tags do not create additional c
 <root>/groups/Parties.json
 ```
 
-Tag 55 belongs in `fields/000000000.json`; tag 5001 belongs in `fields/000000050.json`, whichever dictionary defined it. The nine digits are what makes a listing of the shards read in tag order. Every field's canonical tag must agree with its document's shard. Two fields on one tag - a dialect's own name over a tag the specification holds - share the shard, the field the bare tag answers written first; a reader loads a shard in file order, so the holder survives a round trip. A field the specification alone defines states no `fix:branches`.
+Tag 55 belongs in `fields/000000000.json`; tag 5001 belongs in `fields/000000050.json`, whichever dictionary defined it. The nine digits are what makes a listing of the shards read in tag order. Every field's canonical tag must agree with its document's shard. Two fields on one tag - a dialect's own name over a tag the specification holds - share the shard, the field the bare tag answers written first; a reader loads a shard in file order, so the holder survives a round trip. A field the specification alone defines states no `FIX:branches`.
 
 ## Compact references
 
-A persisted child refers to one canonical definition using `fix:field`, `fix:component`, or `fix:group`; its `Null` datatype is replaced at intake. A `fix:component` or `fix:group` occurrence states no tag of its own: the derived tag belongs to the canonical definition, and the resolver leaves it there rather than inheriting it, so a catalog compares equal to itself across a round trip. A placeholder states no membership either, because that is the target's to carry. The loaded object is a resolved `Field`, so message readers do not perform filesystem access or resolve schema references per row.
+A persisted child refers to one canonical definition using `FIX:field`, `FIX:component`, or `FIX:group`; its `Null` datatype is replaced at intake. A `FIX:component` or `FIX:group` occurrence states no tag of its own: the derived tag belongs to the canonical definition, and the resolver leaves it there rather than inheriting it, so a catalog compares equal to itself across a round trip. A placeholder states no membership either, because that is the target's to carry. The loaded object is a resolved `Field`, so message readers do not perform filesystem access or resolve schema references per row.
 
 ```json
 {
   "name": "PartyID",
   "dtype": {"type": "null"},
   "nullable": true,
-  "metadata": {"fix:field": "partyid"}
+  "metadata": {"FIX:field": "partyid"}
 }
 ```
 
-A List/LargeList group stores a non-null item referencing its occurrence component; its root records the separate scalar counter and component relationship beside the group's own derived `fix:tag`. A Map instead keeps its required entries Struct, non-null key and sortedness; a referenced entries component carries only reference metadata, and reload uses the same occurrence resolver.
+A List/LargeList group stores a non-null item referencing its occurrence component; its root records the separate scalar counter and component relationship beside the group's own derived `FIX:tag`. A Map instead keeps its required entries Struct, non-null key and sortedness; a referenced entries component carries only reference metadata, and reload uses the same occurrence resolver.
 
-The writer compacts resolved references again, keeping each canonical definition in one document; a reference carries its target's `fix:tag` beside the name, so a reader resolves it by the identity the pair makes, and references to `identifiers` resolve against the registry-owned builtin rather than against the `groups/identifiers.json` a write leaves beside them. Missing targets, conflicting reference kinds, cycles, and nesting beyond 64 are located intake errors; independent occurrence metadata overrides are refused, and canonical updates refresh references atomically.
+The writer compacts resolved references again, keeping each canonical definition in one document; a reference carries its target's `FIX:tag` beside the name, so a reader resolves it by the identity the pair makes, and references to `identifiers` resolve against the registry-owned builtin rather than against the `groups/identifiers.json` a write leaves beside them. Missing targets, conflicting reference kinds, cycles, and nesting beyond 64 are located intake errors; independent occurrence metadata overrides are refused, and canonical updates refresh references atomically.
 
 Identifier declarations normalize through the [component setter](registry.md#component-identifiers) after these references resolve, so stored aliases or decimal tags become canonical direct member names in final component order. A malformed or ambiguous declaration fails the complete load rather than losing a selection silently.
 
 ## Membership
 
-A dictionary is a membership, not a namespace: the store has no document for one. Each field and named definition carries the names of the dictionaries that contributed it as `fix:branches`, written as one comma-separated string, folded to ASCII lowercase, deduplicated and sorted, so two registries built from the same dictionaries in any order write the same bytes and hash alike. `FixRegistry::dialects` (`dialects()` in Python and JavaScript) lists the distinct names across every category, and `has_branch` / `branches` on the field read one field's; none of them takes part in a lookup. A document written with no `fix:branches` is a field the specification alone defines, which is every field of the tracked seed.
+A dictionary is a membership, not a namespace: the store has no document for one. Each field and named definition carries the names of the dictionaries that contributed it as `FIX:branches`, written as one comma-separated string, folded to ASCII lowercase, deduplicated and sorted, so two registries built from the same dictionaries in any order write the same bytes and hash alike. `FixRegistry::dialects` (`dialects()` in Python and JavaScript) lists the distinct names across every category, and `has_branch` / `branches` on the field read one field's; none of them takes part in a lookup. A document written with no `FIX:branches` is a field the specification alone defines, which is every field of the tracked seed.
 
 ## Complete JSON snapshots
 
@@ -234,20 +234,20 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 generated JSON documents totaling 9,562,071 bytes, every code set written as the JSON it is rather than as one escaped line, which is what makes the tree readable. The generator writes the specification's own fields and nothing else, so loading it adds the crate's 18 fields - `parentuuids` among them, one column under one name - and its two Map groups, and its own `SendingTime` and `TransactTime` leave no clock to seed: 6,259 scalar fields, 582 groups, 928 components and 181 message types in the live registry.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `FIX:msgtype` - and 580 groups: 1,573 generated JSON documents totaling 9,562,071 bytes, every code set written as the JSON it is rather than as one escaped line, which is what makes the tree readable. The generator writes the specification's own fields and nothing else, so loading it adds the crate's 18 fields - `parentuuids` among them, one column under one name - and its two Map groups, and its own `SendingTime` and `TransactTime` leave no clock to seed: 6,258 scalar fields, 582 groups, 928 components and 181 message types in the live registry.
 
 Beside those 1,573 the tracked tree carries the crate's own dump, which `write_into` writes and a read passes over: `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json`. The generator neither writes nor removes them, and its `--check` ignores them.
 
 It contains 27,209 inline code records on 2,026 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 persisted named definitions states a unique derived tag - `groups/parties.json` is 209321 - and 109 components declare their matching direct [identifiers](registry.md#component-identifiers), the property omitted where none match.
 
-Fifty-six fields are ones FIX Latest has since removed, [kept under their own tags](registry.md#the-dictionary-holds-one-reading-and-filters-by-no-version) and marked `fix:deprecated` with the version that removed them; 37 carry [`fix:replacements`](registry.md#a-field-carries-what-replaced-it), 100 entries in all; 29 carry [`fix:derivation`](registry.md#a-field-carries-how-it-is-derived), one term each, and no column of this crate's derives at all. No document states a `fix:branches` and no document stores the derived `FixId`.
+Fifty-six fields are ones FIX Latest has since removed, [kept under their own tags](registry.md#the-dictionary-holds-one-reading-and-filters-by-no-version) and marked `FIX:deprecated` with the version that removed them; 37 carry [`FIX:replacements`](registry.md#a-field-carries-what-replaced-it), 100 entries in all; 29 carry [`FIX:derivation`](registry.md#a-field-carries-how-it-is-derived), one term each, and no column of this crate's derives at all. No document states a `FIX:branches` and no document stores the derived `FixId`.
 
 The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradingCommunity/orchestrations/blob/099914dd0edd49a699326f0441776d6e21cfaf93/FIX%20Standard/OrchestraFIXLatest.xml), with the [documented naming rules](registry.md#group-names). This is a complete resolved catalog workload, so its load/write timings are not comparable to a scalar-only seed or a small FIX-version subset.
 
 === "Rust"
 
     ```rust
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{fix_crate_fields, FixId, FixRegistry, FieldPath};
 
     let seed = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");
@@ -271,9 +271,9 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert!(registry.iter().all(|field| field.as_fix().branches().next().is_none()));
     // The crate's own definitions are in the store and in the registry alike:
     // 17 scalar fields, the `parentuuids` list and two Map groups.
-    assert_eq!(fix_crate_fields()?.len(), 20);
-    assert_eq!(registry.iter().count(), 7_769, "the fields and the definitions");
-    assert_eq!(registry.len(), 7_769, "the fields, the components and the groups");
+    assert_eq!(fix_crate_fields()?.len(), 19);
+    assert_eq!(registry.iter().count(), 7_768, "the fields and the definitions");
+    assert_eq!(registry.len(), 7_768, "the fields, the components and the groups");
     assert_eq!(registry.field_by_counter(65_020)?.name(), "identifiers");
     assert_eq!(registry.msgtype("D")?.name(), "newordersingle");
     ```
@@ -305,9 +305,9 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert all(field.fix.branches == [] for field in registry)
     # The crate's own definitions are in the store and in the registry alike:
     # 17 scalar fields, the `parentuuids` list and two Map groups.
-    assert len(fix_crate_fields()) == 20
-    assert sum(1 for _ in registry) == 6_259
-    assert len(registry) == 7_769
+    assert len(fix_crate_fields()) == 19
+    assert sum(1 for _ in registry) == 6_258
+    assert len(registry) == 7_768
     assert registry.field_by_counter(65_020).name == "identifiers"
     assert registry.msgtype("D").name == "newordersingle"
     ```
@@ -340,8 +340,8 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     // 17 scalar fields, the `parentuuids` list and two Map groups. A Node
     // registry sizes and iterates every field, the components and the groups
     // among them.
-    assert.equal(fix.crateFields().length, 20)
-    assert.equal(registry.size, 7769)
+    assert.equal(fix.crateFields().length, 19)
+    assert.equal(registry.size, 7768)
     assert.equal([...registry].length, registry.size)
     assert.equal(registry.fieldByCounter(65020).name, 'identifiers')
     assert.equal(registry.msgtype('D').name, 'newordersingle')
@@ -354,8 +354,8 @@ A field document stores the crate's own [datatype document](../types/datatype.md
 | FIX datatype | Stored `dtype` | Reads as |
 | --- | --- | --- |
 | `String`, `char`, `MultipleCharValue`, `MultipleStringValue`, `XID`, `XIDREF`, `Pattern` | `{"type": "string"}` | `utf8` |
-| `MonthYear`, `Tenor` | `{"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 8}` | `fixed_ascii(8)` |
-| `Language` | `{"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 2}` | `fixed_ascii(2)` |
+| `MonthYear`, `Tenor` | `{"type": "string", "layout": "fixed_ascii", "fixed": 8}` | `fixed_ascii(8)` |
+| `Language` | `{"type": "string", "layout": "fixed_ascii", "fixed": 2}` | `fixed_ascii(2)` |
 | `data`, `XMLData` | `{"type": "binary"}` | `binary` |
 | `Country`, `Currency`, `Exchange` | `{"type": "country"}`, `{"type": "currency"}`, `{"type": "mic"}` | the [code](../types/codes.md) |
 
@@ -378,7 +378,7 @@ python scripts/generate_fix_dictionary.py --check
 - A directory inside a category is not a store's layout: what it holds is passed over on read and left alone by publication, so nothing is read as a dialect's own shard.
 - A `README` beside the field shards is ignored on read and left alone by publication; only a decimal `<n>.json` is read, whatever width it was written at.
 - Builtin scalar and Map group definitions are written like any other, and read past on load in favour of their native owner; an incoming document cannot override a builtin, by restating its name under another tag or by restating the builtin itself.
-- A `fix:branches` value is held to the membership grammar: a name that is empty or carries a comma is refused naming the key.
+- A `FIX:branches` value is held to the membership grammar: a name that is empty or carries a comma is refused naming the key.
 - Removing the last definition from a shard or category removes its owned document or directory on the next write.
 - Folder writes publish individual documents; a backend failure can leave already published files visible.
 - `config/fix` in the Python and JavaScript seed examples resolves against the working directory, so run them from the repository root.

@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "tradeaggregationrequestid",
-          "fix:tag": "2786"
+          "FIX:field": "tradeaggregationrequestid",
+          "FIX:tag": "2786"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeaggregationrequestrefid",
-          "fix:tag": "2787"
+          "FIX:field": "tradeaggregationrequestrefid",
+          "FIX:tag": "2787"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "tradeaggregationtranstype",
-          "fix:tag": "2788"
+          "FIX:field": "tradeaggregationtranstype",
+          "FIX:tag": "2788"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "aggregatedqty",
-          "fix:tag": "2789"
+          "FIX:field": "aggregatedqty",
+          "FIX:tag": "2789"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency",
-          "fix:tag": "15"
+          "FIX:field": "currency",
+          "FIX:tag": "15"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource",
-          "fix:tag": "2897"
+          "FIX:field": "currencycodesource",
+          "FIX:tag": "2897"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "avgpx",
-          "fix:tag": "6"
+          "FIX:field": "avgpx",
+          "FIX:tag": "6"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "side",
-          "fix:tag": "54"
+          "FIX:field": "side",
+          "FIX:tag": "54"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "priceprecision",
-          "fix:tag": "2349"
+          "FIX:field": "priceprecision",
+          "FIX:tag": "2349"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noorders",
-          "fix:tag": "73"
+          "FIX:field": "noorders",
+          "FIX:tag": "73"
         }
       },
       {
@@ -130,7 +130,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "orderaggregationgrp"
+          "FIX:group": "orderaggregationgrp"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noexecs",
-          "fix:tag": "124"
+          "FIX:field": "noexecs",
+          "FIX:tag": "124"
         }
       },
       {
@@ -151,7 +151,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "executionaggregationgrp"
+          "FIX:group": "executionaggregationgrp"
         }
       },
       {
@@ -161,8 +161,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "account",
-          "fix:tag": "1"
+          "FIX:field": "account",
+          "FIX:tag": "1"
         }
       },
       {
@@ -172,7 +172,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -182,8 +182,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -193,7 +193,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -203,16 +203,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "DW",
+    "FIX:tag": "474335",
     "description": "MsgType = DW",
-    "display": "TradeAggregationRequest",
-    "fix:msgtype": "DW",
-    "fix:tag": "474335"
+    "display": "TradeAggregationRequest"
   }
 }

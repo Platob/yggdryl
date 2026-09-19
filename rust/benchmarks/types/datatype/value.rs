@@ -2,8 +2,8 @@ use std::hint::black_box;
 
 use criterion::Criterion;
 use yggdryl::{
-    DataType, Enum, Field, FieldScalar, Float16, Float32, Float64, IOMode, Scalar, TimeUnit,
-    Timezone, i256,
+    DataType, Field, FieldScalar, Float16, Float32, Float64, IOMode, Scalar, TimeUnit, Timezone,
+    Vocabulary, i256,
 };
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
@@ -43,7 +43,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     let float16 = Float16::from_f16(half::f16::from_f32(1.25));
     let float32 = Float32::from_f32(1.25);
     let float64 = Float64::from_f64(1.25);
-    let enum_member = Enum::IOMode(IOMode::Append);
+    let enum_member = Vocabulary::IOMode(IOMode::Append);
     let integer_scalar = Scalar::from(42);
     let decimal_scalar = Scalar::d256(integer256, 2);
     let float_scalar = Scalar::from_float(1.25, 32).unwrap();
@@ -99,14 +99,14 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     group.bench_function("as_decimal", |bencher| {
         bencher.iter(|| black_box(&decimal_scalar).as_decimal());
     });
-    group.bench_function("temporal_family", |bencher| {
-        bencher.iter(|| black_box(&instant).temporal_family());
+    group.bench_function("as_temporal", |bencher| {
+        bencher.iter(|| black_box(&instant).as_temporal());
     });
     group.bench_function("temporal_readers", |bencher| {
         bencher.iter(|| {
             let value = black_box(&instant);
             black_box((
-                value.temporal_family(),
+                value.as_temporal().map(|held| held.family()),
                 value.temporal_count(),
                 value.temporal_unit(),
                 value.temporal_timezone(),
@@ -114,7 +114,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         });
     });
     group.bench_function("enum_from_parts", |bencher| {
-        bencher.iter(|| Enum::from_parts(black_box("io_mode"), black_box("append")).unwrap());
+        bencher.iter(|| Vocabulary::from_parts(black_box("IOMode"), black_box("append")).unwrap());
     });
     group.bench_function("enum_kind", |bencher| {
         bencher.iter(|| black_box(enum_member).kind());
@@ -149,10 +149,10 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&date).temporal_count_at(TimeUnit::Nanosecond));
     });
     group.bench_function("json_bytes_record", |bencher| {
-        bencher.iter(|| black_box(&record).as_json_bytes().unwrap());
+        bencher.iter(|| black_box(&record).into_json_bytes().unwrap());
     });
     group.bench_function("json_utf8_record", |bencher| {
-        bencher.iter(|| black_box(&record).as_json_utf8().unwrap());
+        bencher.iter(|| black_box(&record).into_json().unwrap());
     });
     group.bench_function("checked_add_i64", |bencher| {
         bencher.iter(|| black_box(&integer_left).checked_add(black_box(&integer_right)));

@@ -16,7 +16,7 @@ use napi::bindgen_prelude::{
 use napi::{JsError, JsValue as _};
 use napi_derive::napi;
 
-use yggdryl::holder::fs::{
+use yggdryl::fs::{
     ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector as CoreFileSelector, FileSystem,
     OutputMetadata, RandomAccessReader,
 };

@@ -10,7 +10,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settltype",
-          "fix:tag": "63"
+          "FIX:field": "settltype",
+          "FIX:tag": "63"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdentrysize",
-          "fix:tag": "271"
+          "FIX:field": "mdentrysize",
+          "FIX:tag": "271"
         }
       },
       {
@@ -42,15 +42,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstreamid",
-          "fix:tag": "1500"
+          "FIX:field": "mdstreamid",
+          "FIX:tag": "1500"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "StrmAsgnReqInstrmt",
-    "fix:tag": "218449"
+    "FIX:tag": "218449",
+    "display": "StrmAsgnReqInstrmt"
   }
 }

@@ -193,8 +193,7 @@ Then read: ${page.read}.
 What the page must cover: ${page.cover}
 
 Other core pages you may link to (all will exist, relative from docs/): ${CORE_LINKS}.
-You may also link to ../index.md, ../getting-started.md, ../architecture.md,
-../extensions/python.md, ../extensions/javascript.md.
+You may also link to ../index.md, ../getting-started.md, ../architecture.md.
 
 Method:
 1. Read the inventories, then the sources and their tests. Test bodies and doctests are where the
@@ -267,7 +266,7 @@ const REVIEW_GROUPS = [
   { name: 'storage', pages: ['docs/io.md', 'docs/generic.md', 'docs/local.md', 'docs/gzip.md', 'docs/zlib.md', 'docs/zstd.md'] },
   { name: 'records', pages: ['docs/ipc.md', 'docs/parquet.md', 'docs/iceberg.md'] },
   { name: 'values', pages: ['docs/uri.md', 'docs/text.md', 'docs/json.md', 'docs/yaml.md', 'docs/toml.md'] },
-  { name: 'guides', pages: ['docs/index.md', 'docs/getting-started.md', 'docs/architecture.md', 'docs/extensions/python.md', 'docs/extensions/javascript.md', 'docs/testing.md', 'docs/benchmarks.md', 'docs/contributing.md'] },
+  { name: 'guides', pages: ['docs/index.md', 'docs/getting-started.md', 'docs/architecture.md', 'docs/testing.md', 'docs/benchmarks.md', 'docs/contributing.md'] },
 ]
 
 const verification = await parallel([

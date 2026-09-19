@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testorderid",
-          "fix:tag": "3083"
+          "FIX:field": "testorderid",
+          "FIX:tag": "3083"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testordersymbol",
-          "fix:tag": "3084"
+          "FIX:field": "testordersymbol",
+          "FIX:tag": "3084"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testordersecurityid",
-          "fix:tag": "3085"
+          "FIX:field": "testordersecurityid",
+          "FIX:tag": "3085"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testordersecurityidsource",
-          "fix:tag": "3086"
+          "FIX:field": "testordersecurityidsource",
+          "FIX:tag": "3086"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testorderprice",
-          "fix:tag": "3087"
+          "FIX:field": "testorderprice",
+          "FIX:tag": "3087"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testorderpricetype",
-          "fix:tag": "3088"
+          "FIX:field": "testorderpricetype",
+          "FIX:tag": "3088"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testorderqty",
-          "fix:tag": "3089"
+          "FIX:field": "testorderqty",
+          "FIX:tag": "3089"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testorderoffsetperiod",
-          "fix:tag": "3090"
+          "FIX:field": "testorderoffsetperiod",
+          "FIX:tag": "3090"
         }
       },
       {
@@ -98,16 +98,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testorderoffsetunit",
-          "fix:tag": "3091"
+          "FIX:field": "testorderoffsetunit",
+          "FIX:tag": "3091"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TestOrder",
-    "fix:identifiers": "testorderid",
-    "fix:tag": "108569"
+    "FIX:identifiers": "testorderid",
+    "FIX:tag": "108569",
+    "display": "TestOrder"
   }
 }

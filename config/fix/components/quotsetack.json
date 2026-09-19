@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotesetid",
-          "fix:tag": "302"
+          "FIX:field": "quotesetid",
+          "FIX:tag": "302"
         }
       },
       {
@@ -21,7 +21,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyinginstrument"
+          "FIX:component": "underlyinginstrument"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotesetvaliduntiltime",
-          "fix:tag": "367"
+          "FIX:field": "quotesetvaliduntiltime",
+          "FIX:tag": "367"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnoquoteentries",
-          "fix:tag": "304"
+          "FIX:field": "totnoquoteentries",
+          "FIX:tag": "304"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnocxldquotes",
-          "fix:tag": "1168"
+          "FIX:field": "totnocxldquotes",
+          "FIX:tag": "1168"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnoaccquotes",
-          "fix:tag": "1169"
+          "FIX:field": "totnoaccquotes",
+          "FIX:tag": "1169"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnorejquotes",
-          "fix:tag": "1170"
+          "FIX:field": "totnorejquotes",
+          "FIX:tag": "1170"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment",
-          "fix:tag": "893"
+          "FIX:field": "lastfragment",
+          "FIX:tag": "893"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noquoteentries",
-          "fix:tag": "295"
+          "FIX:field": "noquoteentries",
+          "FIX:tag": "295"
         }
       },
       {
@@ -108,14 +108,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "quotentryackgrp"
+          "FIX:group": "quotentryackgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "QuotSetAck",
-    "fix:tag": "641195"
+    "FIX:tag": "641195",
+    "display": "QuotSetAck"
   }
 }

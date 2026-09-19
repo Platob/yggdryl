@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "netgrossind",
-          "fix:tag": "430"
+          "FIX:field": "netgrossind",
+          "FIX:tag": "430"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlobligid",
-          "fix:tag": "1161"
+          "FIX:field": "settlobligid",
+          "FIX:tag": "1161"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlobligtranstype",
-          "fix:tag": "1162"
+          "FIX:field": "settlobligtranstype",
+          "FIX:tag": "1162"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlobligrefid",
-          "fix:tag": "1163"
+          "FIX:field": "settlobligrefid",
+          "FIX:tag": "1163"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ccyamt",
-          "fix:tag": "1157"
+          "FIX:field": "ccyamt",
+          "FIX:tag": "1157"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlcurramt",
-          "fix:tag": "119"
+          "FIX:field": "settlcurramt",
+          "FIX:tag": "119"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency",
-          "fix:tag": "15"
+          "FIX:field": "currency",
+          "FIX:tag": "15"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource",
-          "fix:tag": "2897"
+          "FIX:field": "currencycodesource",
+          "FIX:tag": "2897"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlcurrency",
-          "fix:tag": "120"
+          "FIX:field": "settlcurrency",
+          "FIX:tag": "120"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlcurrencycodesource",
-          "fix:tag": "2899"
+          "FIX:field": "settlcurrencycodesource",
+          "FIX:tag": "2899"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlcurrfxrate",
-          "fix:tag": "155"
+          "FIX:field": "settlcurrfxrate",
+          "FIX:tag": "155"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settldate",
-          "fix:tag": "64"
+          "FIX:field": "settldate",
+          "FIX:tag": "64"
         }
       },
       {
@@ -142,7 +142,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -163,7 +163,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -173,8 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "effectivetime",
-          "fix:tag": "168"
+          "FIX:field": "effectivetime",
+          "FIX:tag": "168"
         }
       },
       {
@@ -184,8 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "expiretime",
-          "fix:tag": "126"
+          "FIX:field": "expiretime",
+          "FIX:tag": "126"
         }
       },
       {
@@ -195,8 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastupdatetime",
-          "fix:tag": "779"
+          "FIX:field": "lastupdatetime",
+          "FIX:tag": "779"
         }
       },
       {
@@ -206,8 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosettldetails",
-          "fix:tag": "1158"
+          "FIX:field": "nosettldetails",
+          "FIX:tag": "1158"
         }
       },
       {
@@ -217,14 +217,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "settldetails"
+          "FIX:group": "settldetails"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SettlObligationInstruction",
-    "fix:tag": "559300"
+    "FIX:tag": "559300",
+    "display": "SettlObligationInstruction"
   }
 }

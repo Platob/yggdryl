@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Any
 
 from .._native import (
+    ArrowScalar,
     DataType,
     Field as NativeField,
     PythonMetadata,
@@ -63,7 +64,7 @@ def _select_identity(
 ) -> tuple[str, str]:
     """Resolve the class a materialized dataclass is given.
 
-    An explicit argument wins, then the field's own ``python:`` declaration,
+    An explicit argument wins, then the field's own ``PYTHON:`` declaration,
     then the field's name. Two rules apply, deliberately different ones: the
     native construction says what a declaration may be *stored* as - dotted,
     Unicode, and ``<locals>`` and all - and names the key a bad half failed
@@ -606,9 +607,11 @@ def _arrow_scalar_value(
     # A leaf crosses under its native datatype through the core scalar
     # boundary, so storage such as a fixed width's padding never reaches
     # Python.
-    return Scalar.from_arrow_scalar(
-        scalar, NativeField("value", plan.dtype, nullable=True)
-    ).as_py()
+    return (
+        ArrowScalar.from_(scalar, NativeField("value", plan.dtype, nullable=True))
+        .into_scalar()
+        .as_py()
+    )
 
 
 def _map_keys_equal(left: Any, right: Any) -> bool:

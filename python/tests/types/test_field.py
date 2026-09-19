@@ -136,10 +136,10 @@ def test_field_http_metadata_is_canonical_typed_and_https_compatible() -> None:
         "location": "../relative",
     }
     assert list(field.metadata) == [
-        "http:content-encoding",
-        "http:content-length",
-        "http:content-type",
-        "http:location",
+        "HTTP:content-encoding",
+        "HTTP:content-length",
+        "HTTP:content-type",
+        "HTTP:location",
     ]
     with pytest.raises(ValueError):
         _ = field.http_location
@@ -352,7 +352,7 @@ def test_typed_names_location_and_protocol_properties_share_field_metadata() -> 
         ("column", "close"),
         ("type", "numeric(18,6)"),
     ]
-    assert field.metadata["postgres:type"] == "numeric(18,6)"
+    assert field.metadata["POSTGRES:type"] == "numeric(18,6)"
 
     assert field.set_property("postgres", "type", "decimal") == "numeric(18,6)"
     assert field.remove_property("postgres", "type") == "decimal"
@@ -404,8 +404,8 @@ def test_protocol_view_implements_the_mapping_protocol_over_bare_names() -> None
     assert len(view) == 0
     assert list(view) == []
     assert view.scheme == "iceberg"
-    assert view.prefix == "iceberg"
-    assert view.key("doc") == "iceberg:doc"
+    assert view.prefix == "ICEBERG"
+    assert view.key("doc") == "ICEBERG:doc"
 
     view["doc"] = "closing price"
     view["field-id"] = "7"
@@ -413,7 +413,7 @@ def test_protocol_view_implements_the_mapping_protocol_over_bare_names() -> None
     assert bool(view)
     assert len(view) == 2
     assert "doc" in view
-    assert "iceberg:doc" not in view
+    assert "ICEBERG:doc" not in view
     assert 7 not in view
     assert view["doc"] == "closing price"
     assert view.get("doc") == "closing price"
@@ -427,12 +427,12 @@ def test_protocol_view_implements_the_mapping_protocol_over_bare_names() -> None
     assert dict(view) == {"doc": "closing price", "field-id": "7"}
     assert str(view) == '{"doc":"closing price","field-id":"7"}'
     assert repr(view) == (
-        'ProtocolField("iceberg", {"doc":"closing price","field-id":"7"})'
+        'ProtocolField("ICEBERG", {"doc":"closing price","field-id":"7"})'
     )
 
-    with pytest.raises(KeyError, match="iceberg:missing"):
+    with pytest.raises(KeyError, match="ICEBERG:missing"):
         _ = view["missing"]
-    with pytest.raises(KeyError, match="iceberg:missing"):
+    with pytest.raises(KeyError, match="ICEBERG:missing"):
         del view["missing"]
     with pytest.raises(TypeError):
         view["doc"] = 3  # type: ignore[assignment]
@@ -464,7 +464,7 @@ def test_protocol_view_is_a_live_window_on_the_field_it_came_from() -> None:
 
     view["doc"] = "closing price"
     assert field.get_property("iceberg", "doc") == "closing price"
-    assert field.metadata["iceberg:doc"] == "closing price"
+    assert field.metadata["ICEBERG:doc"] == "closing price"
     assert other["doc"] == "closing price"
     assert view == other
 
@@ -498,16 +498,16 @@ def test_protocol_view_named_accessors_cover_every_well_known_protocol() -> None
     for protocol in WELL_KNOWN_PROTOCOLS:
         view = getattr(field, PROTOCOL_ACCESSORS.get(protocol, protocol))
         assert view.scheme == protocol
-        assert view.prefix == protocol
-        assert view.key("doc") == f"{protocol}:doc"
+        assert view.prefix == protocol.upper()
+        assert view.key("doc") == f"{protocol.upper()}:doc"
         view["doc"] = protocol
 
-    assert [name.split(":", 1)[0] for name in field.metadata] == sorted(
+    assert [name.split(":", 1)[0].lower() for name in field.metadata] == sorted(
         WELL_KNOWN_PROTOCOLS
     )
     for protocol in WELL_KNOWN_PROTOCOLS:
         assert field.get_property(protocol, "doc") == protocol
-        assert field.metadata[f"{protocol}:doc"] == protocol
+        assert field.metadata[f"{protocol.upper()}:doc"] == protocol
         assert field.protocol(protocol.upper())["doc"] == protocol
 
     with pytest.raises(ValueError):
@@ -522,9 +522,9 @@ def test_python_view_carries_one_declaration_and_derives_the_bare_name() -> None
     # One crossing writes the three properties the declaration is stored as.
     assert field.python.class_metadata == declared
     assert dict(field.metadata.items()) == {
-        "python:kind": "dataclass",
-        "python:module": "trading.book",
-        "python:qualname": "Book.Quote",
+        "PYTHON:kind": "dataclass",
+        "PYTHON:module": "trading.book",
+        "PYTHON:qualname": "Book.Quote",
     }
     # The bare class name is derived from the qualified one, never stored.
     assert field.python.class_name == "Quote"
@@ -552,19 +552,19 @@ def test_python_view_refuses_a_name_python_could_not_have_written() -> None:
     field.python.class_metadata = PythonMetadata("trading", "Quote", "field")
 
     for module in ("trading.", "1trading", "trading book", "class", ""):
-        with pytest.raises(ValueError, match="python:module"):
+        with pytest.raises(ValueError, match="PYTHON:module"):
             field.python.module = module
     for qualname in ("", "Book..Quote"):
-        with pytest.raises(ValueError, match="python:qualname"):
+        with pytest.raises(ValueError, match="PYTHON:qualname"):
             field.python.qualname = qualname
-    with pytest.raises(ValueError, match="python:kind"):
+    with pytest.raises(ValueError, match="PYTHON:kind"):
         field.python.kind = "record"
     # A refused write leaves the declaration exactly as it stood.
     assert field.python.class_metadata == PythonMetadata("trading", "Quote", "field")
 
     # The generic mapping path runs the same validator.
-    with pytest.raises(ValueError, match="python:kind"):
-        Field("quote", "int64", metadata={"python:kind": "record"})
+    with pytest.raises(ValueError, match="PYTHON:kind"):
+        Field("quote", "int64", metadata={"PYTHON:kind": "record"})
 
 
 def test_python_vocabulary_is_answered_only_by_the_python_view() -> None:
@@ -637,9 +637,9 @@ def test_partition_view_stores_a_transform_in_its_canonical_spelling() -> None:
 
     # The dialect alias resolves on the way in, so one name is stored.
     assert year.partition.transform == "day"
-    assert year.metadata["partition:transform"] == "day"
+    assert year.metadata["PARTITION:transform"] == "day"
     assert year.partition.sources == ["event"]
-    assert year.metadata["partition:sources"] == '["event"]'
+    assert year.metadata["PARTITION:sources"] == '["event"]'
 
     with pytest.raises(ValueError):
         # A function of two arguments is not a transform of one column.
@@ -724,7 +724,7 @@ def test_partition_apply_arrow_batch_computes_a_declared_column() -> None:
     assert filled.num_columns == 2
     assert filled.column("year").to_pylist() == [2024, 2025]
     # The declaration travels with the filled column.
-    assert filled.schema.field(1).metadata[b"partition:sources"] == b'["event"]'
+    assert filled.schema.field(1).metadata[b"PARTITION:sources"] == b'["event"]'
 
 
 def test_partition_apply_arrow_batch_leaves_a_stored_column_alone() -> None:
@@ -809,7 +809,7 @@ def test_protocol_view_http_covers_https_and_ignores_header_case() -> None:
     https = field.protocol("HTTPS")
 
     assert https.scheme == "https"
-    assert http.prefix == https.prefix == "http"
+    assert http.prefix == https.prefix == "HTTP"
     assert http["Content-Type"] == "application/json"
     assert https["content-type"] == "application/json"
     assert "CONTENT-TYPE" in http
@@ -817,7 +817,7 @@ def test_protocol_view_http_covers_https_and_ignores_header_case() -> None:
     assert http == https
 
     https["Content-Encoding"] = "gzip"
-    assert field.metadata["http:content-encoding"] == "gzip"
+    assert field.metadata["HTTP:content-encoding"] == "gzip"
     assert http["content-encoding"] == "gzip"
     assert field.content_encoding == "gzip"
 
@@ -864,10 +864,10 @@ def test_digest_roles_select_effective_components_and_validate_atomically() -> N
         holder.digest.update({"note": "output", "role": "invalid"})
     assert dict(holder.digest) == before
     with pytest.raises(ValueError, match="holder"):
-        Field("bad", "uint64", metadata={"digest:role": "invalid"})
+        Field("bad", "uint64", metadata={"DIGEST:role": "invalid"})
     # `holder` is the only role: a digest never marks the fields it reads.
     with pytest.raises(ValueError, match="holder"):
-        Field("bad", "uint64", metadata={"digest:role": "component"})
+        Field("bad", "uint64", metadata={"DIGEST:role": "component"})
 
     default = Field(
         "row",
@@ -896,11 +896,11 @@ def test_digest_roles_select_effective_components_and_validate_atomically() -> N
     assert dict(venue.digest) == {}
     assert explicit.digest_field_names == ["symbol", "venue", "price"]
     assert explicit.digest_field_len == 3
-    with pytest.raises(ValueError, match="digest:sources"):
+    with pytest.raises(ValueError, match="DIGEST:sources"):
         Field(
             "bad",
             "uint64",
-            metadata={"digest:role": "holder", "digest:sources": '["*","venue"]'},
+            metadata={"DIGEST:role": "holder", "DIGEST:sources": '["*","venue"]'},
         )
 
     holders_only = Field(
@@ -959,7 +959,7 @@ def test_partition_fields_are_marked_reported_and_split_on_a_struct_root() -> No
     assert not year.is_partition
     year.set_partition(True)
     assert year.is_partition
-    assert year.metadata["field:partition"] == "true"
+    assert year.metadata["FIELD:partition"] == "true"
     assert year.field_properties["partition"] == "true"
     year.set_partition(False)
     assert not year.is_partition
@@ -1058,15 +1058,18 @@ def test_typed_metadata_validation_is_atomic_and_arrow_compatible() -> None:
     assert field.remove_property("postgres", "default") == ""
     field.set_comment("events")
     field.set_display("Events")
-    field.set_property("arrow", "extension:name", "example.event")
+    # A protocol property is spelled with its scheme upper case, as Arrow
+    # spells its own keys; `ARROW:extension:name` is Arrow's and the datatype
+    # decides it, so the property is another one under the same scheme.
+    field.set_property("arrow", "note", "example.event")
     arrow = field.into_arrow()
     assert arrow.metadata[b"comment"] == b"events"
     assert arrow.metadata[b"display"] == b"Events"
-    assert arrow.metadata[b"arrow:extension:name"] == b"example.event"
+    assert arrow.metadata[b"ARROW:note"] == b"example.event"
     imported = Field.from_arrow(arrow)
     assert imported.comment == "events"
     assert imported.display == "Events"
-    assert imported.get_property("arrow", "extension:name") == "example.event"
+    assert imported.get_property("arrow", "note") == "example.event"
 
 
 def test_dictionary_options_are_owned_and_validated_by_core() -> None:
@@ -2185,12 +2188,12 @@ def test_a_field_says_whether_a_constructor_may_supply_it() -> None:
 
     field.set_init(False)
     assert not field.is_init
-    assert field.metadata["field:init"] == "false"
+    assert field.metadata["FIELD:init"] == "false"
 
     # True is the absence of the marker, so two equal schemas stay equal.
     field.set_init(True)
     assert field.is_init
-    assert "field:init" not in field.metadata
+    assert "FIELD:init" not in field.metadata
     assert field == Field("id", "int64")
 
 

@@ -266,15 +266,15 @@ assert PARSED.identifiers == {"clordid": "ORDER-000000"}
 assert [field.name for field, _ in ORDER_TYPE.identifier_values(PARSED)] == ["clordid"]
 WALKED = next(iter(CODEC.lifecycle([PARSED])))
 
-# The record door with a `pluginid` capture on every row: the capture fills
-# the crate's `pluginid` field and selects nothing, so this is what a row
-# costs with one more fill beside the parse.
-PLUGINID_CODEC = FixCodec(SEED_REGISTRY, capture_names=["pluginid"])
-PLUGINID_LINES = [
+# The record door with a `msgpluginid` capture on every row: the capture
+# fills the crate's `msgpluginid` field and selects nothing, so this is what
+# a row costs with one more fill beside the parse.
+MSGPLUGINID_CODEC = FixCodec(SEED_REGISTRY, capture_names=["msgpluginid"])
+MSGPLUGINID_LINES = [
     TextLine(index, line, ["ULB" if index % 2 == 0 else "OMS_X1_TradeCapture"])
     for index, line in enumerate(LINES)
 ]
-assert len(list(PLUGINID_CODEC.parse_text_lines(PLUGINID_LINES))) == len(LINES)
+assert len(list(MSGPLUGINID_CODEC.parse_text_lines(MSGPLUGINID_LINES))) == len(LINES)
 
 
 def _parse_lines_drain() -> int:
@@ -287,8 +287,8 @@ def _parse_text_lines_drain() -> int:
     )
 
 
-def _parse_text_lines_pluginid_drain() -> int:
-    return sum(1 for _ in PLUGINID_CODEC.parse_text_lines(PLUGINID_LINES))
+def _parse_text_lines_msgpluginid_drain() -> int:
+    return sum(1 for _ in MSGPLUGINID_CODEC.parse_text_lines(MSGPLUGINID_LINES))
 
 
 def _parse_text_arrow_reader() -> int:
@@ -471,8 +471,8 @@ def main() -> None:
         _measure(f"parse_lines drain/{len(LINES)}", _parse_lines_drain, streams)
         _measure(f"parse_text_lines drain/{len(LINES)}", _parse_text_lines_drain, streams)
         _measure(
-            f"parse_text_lines pluginid drain/{len(LINES)}",
-            _parse_text_lines_pluginid_drain,
+            f"parse_text_lines msgpluginid drain/{len(LINES)}",
+            _parse_text_lines_msgpluginid_drain,
             streams,
         )
         _measure(f"parse_text_arrow_reader/{len(LINES)}", _parse_text_arrow_reader, streams)

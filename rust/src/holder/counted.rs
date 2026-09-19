@@ -584,7 +584,7 @@ impl<H: IOBase> IOBase for Counted<H> {
         self.record(Call::Url).url()
     }
 
-    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+    fn bound_location(&self) -> Option<&crate::fs::BoundLocation> {
         self.record(Call::BoundLocation).bound_location()
     }
 

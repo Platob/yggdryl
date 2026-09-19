@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "securityreqid",
-          "fix:tag": "320"
+          "FIX:field": "securityreqid",
+          "FIX:tag": "320"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "securityresponseid",
-          "fix:tag": "322"
+          "FIX:field": "securityresponseid",
+          "FIX:tag": "322"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "securityresponsetype",
-          "fix:tag": "323"
+          "FIX:field": "securityresponsetype",
+          "FIX:tag": "323"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnosecuritytypes",
-          "fix:tag": "557"
+          "FIX:field": "totnosecuritytypes",
+          "FIX:tag": "557"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment",
-          "fix:tag": "893"
+          "FIX:field": "lastfragment",
+          "FIX:tag": "893"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosecuritytypes",
-          "fix:tag": "558"
+          "FIX:field": "nosecuritytypes",
+          "FIX:tag": "558"
         }
       },
       {
@@ -96,7 +96,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "sectypesgrp"
+          "FIX:group": "sectypesgrp"
         }
       },
       {
@@ -106,8 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -117,8 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -128,8 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -139,8 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid",
-          "fix:tag": "1301"
+          "FIX:field": "marketid",
+          "FIX:tag": "1301"
         }
       },
       {
@@ -150,8 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid",
-          "fix:tag": "1300"
+          "FIX:field": "marketsegmentid",
+          "FIX:tag": "1300"
         }
       },
       {
@@ -161,8 +161,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionid",
-          "fix:tag": "336"
+          "FIX:field": "tradingsessionid",
+          "FIX:tag": "336"
         }
       },
       {
@@ -172,8 +172,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid",
-          "fix:tag": "625"
+          "FIX:field": "tradingsessionsubid",
+          "FIX:tag": "625"
         }
       },
       {
@@ -183,8 +183,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "subscriptionrequesttype",
-          "fix:tag": "263"
+          "FIX:field": "subscriptionrequesttype",
+          "FIX:tag": "263"
         }
       },
       {
@@ -194,16 +194,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "w",
+    "FIX:tag": "223603",
     "description": "MsgType = w (lowercase W)",
-    "display": "SecurityTypes",
-    "fix:msgtype": "w",
-    "fix:tag": "223603"
+    "display": "SecurityTypes"
   }
 }

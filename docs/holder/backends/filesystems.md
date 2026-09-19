@@ -1,6 +1,6 @@
 # Filesystems
 
-`yggdryl::holder::fs::FileSystem` is the one Arrow-compatible storage seam, and [`IOBase`](../index.md) is the one bound handle above it.
+`yggdryl::fs::FileSystem` is the one Arrow-compatible storage seam, and [`IOBase`](../index.md) is the one bound handle above it.
 
 ## Contract
 
@@ -28,7 +28,7 @@ Pass the filesystem and its opaque path separately.
     use std::sync::Arc;
 
     use yggdryl::IOBase;
-    use yggdryl::holder::fs::{
+    use yggdryl::fs::{
         File, FileSystem, Folder, MemoryFileSystem, OutputMetadata,
     };
 
@@ -249,16 +249,94 @@ Root-content deletion is unreachable through an empty or broad ordinary delete. 
 
 Arrow JS supplies no filesystem backend, so the package exports synchronous protocols. They are `FileSystemHandler`, `FileSelector`, `ArrowFileInfo`, `RandomAccessReader`, `ByteReader`, `ByteWriter`, `OutputMetadata`, and typed filesystem errors.
 
+A handler is any object answering sixteen calls. `typeName`, `equals` and
+`normalizePath` identify it; `fileInfo` and `list` describe; `createDir`,
+`deleteDir`, `deleteDirContents`, `deleteRootDirContents`, `deleteFile`,
+`copyFile` and `move` mutate; `openInputFile`, `openInputStream`,
+`openOutputStream` and `openAppendStream` open. An `ArrowFileInfo` names its
+`path` and a `kind` of `file`, `directory` or `not-found`, and reports `size`
+and `mtimeNs` where the backend has them.
+
 === "JavaScript"
 
-    ```typescript
-    const source = IOBase.fromFs(handler, "bucket/v=a%2Fb.bin")
-    const target = IOBase.fromFs(otherHandler, "archive/v=a%2Fb.bin")
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
 
-    using input = source.openInputFile()
-    const header = input.readAt(0n, 8n)
+    // The whole protocol over one Map.
+    const files = new Map()
 
+    const handler = {
+      typeName: 'memory',
+      equals: (other) => other === handler,
+      normalizePath: (path) => path,
+      fileInfo: (path) =>
+        files.has(path)
+          ? { path, kind: 'file', size: BigInt(files.get(path).length) }
+          : { path, kind: 'not-found' },
+      *list(selector) {
+        for (const [path, bytes] of files) {
+          if (path.startsWith(selector.baseDir)) {
+            yield { path, kind: 'file', size: BigInt(bytes.length) }
+          }
+        }
+      },
+      createDir() {},
+      deleteDir: (path) => void files.delete(path),
+      deleteDirContents: () => files.clear(),
+      deleteRootDirContents: () => files.clear(),
+      deleteFile: (path) => void files.delete(path),
+      copyFile: (source, target) => void files.set(target, files.get(source)),
+      move(source, target) {
+        files.set(target, files.get(source))
+        files.delete(source)
+      },
+      openInputFile(path) {
+        const bytes = files.get(path) ?? new Uint8Array()
+        let at = 0n
+        return {
+          closed: false,
+          readAt: (offset, length) =>
+            bytes.slice(Number(offset), Number(offset) + Number(length)),
+          seek(offset) {
+            at = offset
+            return at
+          },
+          read(length) {
+            const out = bytes.slice(Number(at), Number(at) + Number(length))
+            at += BigInt(out.length)
+            return out
+          },
+          tell: () => at,
+          close() {},
+        }
+      },
+      openInputStream: (path) => handler.openInputFile(path),
+      openOutputStream(path) {
+        const chunks = []
+        return {
+          closed: false,
+          write(bytes) {
+            chunks.push(bytes)
+            return BigInt(bytes.length)
+          },
+          tell: () => BigInt(chunks.reduce((sum, one) => sum + one.length, 0)),
+          flush() {},
+          close: () => void files.set(path, Buffer.concat(chunks)),
+        }
+      },
+      openAppendStream: (path) => handler.openOutputStream(path),
+    }
+
+    const source = IOBase.fromFs(handler, 'bucket/v=a%2Fb.bin')
+    source.writeBytes(Buffer.from('trades'))
+
+    // The filesystem receives that literal name; `%2F` never becomes a slash.
+    assert.deepEqual([...files.keys()], ['bucket/v=a%2Fb.bin'])
+
+    const target = IOBase.fromFs(handler, 'archive/v=a%2Fb.bin')
     source.copyInto(target)
+    assert.equal(Buffer.from(target.readBytes()).toString(), 'trades')
     ```
 
 Handler calls stay synchronous and on the JavaScript isolate that supplied the handler. Sizes, offsets, and nanosecond mtimes use `bigint`.
@@ -293,7 +371,7 @@ Handler calls stay synchronous and on the JavaScript isolate that supplied the h
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib holder::fs::
+    cargo test --features "parquet iceberg" -p yggdryl --lib fs::
     cargo bench --bench holder --features parquet -- fs_bytes
     cargo bench --bench holder --features parquet -- fs_record
     cargo bench --bench holder --features parquet -- fs_listing

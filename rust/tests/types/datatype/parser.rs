@@ -1,4 +1,5 @@
-use yggdryl::{DataType, Field, TimeUnit, Timezone};
+use yggdryl::{DataType, DataTypeId, Field, StructureType, TimeUnit, Timezone};
+use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 #[test]
 fn variant_parser_alias_canonicalizes_to_dense_union() {
@@ -102,61 +103,73 @@ fn datatype_parser_reuses_unified_temporal_and_interval_aliases() {
     for (source, expected) in [
         (
             "datetime64(Second)",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            },
+            }),
         ),
         (
             "datetime64(Nanoseconds,UTC)",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
         (
             "timestamp(nano seconds,UTC)",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
-        ("time32(seconds)", DataType::Time32(TimeUnit::Second)),
+        (
+            "time32(seconds)",
+            DataType::Time(TimeType::Time32(TimeUnit::Second)),
+        ),
         (
             "time32(milli seconds)",
-            DataType::Time32(TimeUnit::Millisecond),
+            DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
         ),
         (
             "time64(Microsecond)",
-            DataType::Time64(TimeUnit::Microsecond),
+            DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
         ),
         (
             "time64(micro seconds)",
-            DataType::Time64(TimeUnit::Microsecond),
+            DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
         ),
         (
             "duration32(MILLIS)",
-            DataType::Duration32(TimeUnit::Millisecond),
+            DataType::Duration(DurationType::Duration32(TimeUnit::Millisecond)),
         ),
         (
             "duration64(micro seconds)",
-            DataType::Duration64(TimeUnit::Microsecond),
+            DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
         ),
         (
             "interval(YearMonth)",
-            DataType::Interval(TimeUnit::YearMonth),
+            DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
         ),
         (
             "interval(DAY TO SECOND)",
-            DataType::Interval(TimeUnit::DayTime),
+            DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
         ),
         (
             "interval(MonthDayNano)",
-            DataType::Interval(TimeUnit::MonthDayNano),
+            DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
         ),
-        ("interval", DataType::Interval(TimeUnit::MonthDayNano)),
-        ("INTERVAL YEAR", DataType::Interval(TimeUnit::YearMonth)),
-        ("INTERVAL DAY", DataType::Interval(TimeUnit::DayTime)),
+        (
+            "interval",
+            DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
+        ),
+        (
+            "INTERVAL YEAR",
+            DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
+        ),
+        (
+            "INTERVAL DAY",
+            DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
+        ),
     ] {
         assert_eq!(DataType::from_str(source).unwrap(), expected, "{source:?}");
     }
@@ -208,7 +221,7 @@ fn datatype_unit_errors_point_at_the_original_unit_token() {
 
 #[test]
 fn bare_interval_defaults_before_postfix_list_wrapping() {
-    let interval = DataType::Interval(TimeUnit::MonthDayNano);
+    let interval = DataType::interval(TimeUnit::MonthDayNano).unwrap();
     let list = DataType::list(Field::new("item", interval, true));
     let nested_list = DataType::list(Field::new("item", list.clone(), true));
 
@@ -284,7 +297,7 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
         DataType::Float32,
         DataType::Float64,
         DataType::binary(),
-        DataType::fixed_size_binary(16).unwrap(),
+        DataType::fixed_binary(16).unwrap(),
         DataType::large_binary(),
         DataType::binary_view(),
         DataType::utf8(),
@@ -293,7 +306,7 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
         DataType::ascii(),
         DataType::from_str("ascii(4)").unwrap(),
         DataType::fixed_ascii(4).unwrap(),
-        DataType::from_str("binary(16)").unwrap(),
+        DataType::from_str("sized_binary(16)").unwrap(),
         DataType::from_str("string(windows-1252)").unwrap(),
         DataType::Country,
         DataType::Currency,
@@ -302,17 +315,17 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
         DataType::Uuid,
         DataType::Version,
         DataType::variant(),
-        DataType::Date32,
-        DataType::Date64,
+        DataType::date32(),
+        DataType::date64(),
         DataType::time(TimeUnit::Second).unwrap(),
         DataType::time(TimeUnit::Nanosecond).unwrap(),
         DataType::datetime64(TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
         DataType::datetime64(TimeUnit::Microsecond, "UTC".parse::<Timezone>().unwrap()).unwrap(),
         DataType::duration32(TimeUnit::Second).unwrap(),
         DataType::duration64(TimeUnit::Nanosecond).unwrap(),
-        DataType::Interval(TimeUnit::YearMonth),
-        DataType::Interval(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::MonthDayNano),
+        DataType::interval(TimeUnit::YearMonth).unwrap(),
+        DataType::interval(TimeUnit::DayTime).unwrap(),
+        DataType::interval(TimeUnit::MonthDayNano).unwrap(),
         DataType::decimal32(9, 2).unwrap(),
         DataType::decimal64(18, 2).unwrap(),
         DataType::decimal128(38, 2).unwrap(),
@@ -322,7 +335,7 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
         DataType::list_view(DataType::Int32.nullable_field("item")),
         DataType::large_list_view(DataType::Int32.nullable_field("item")),
         DataType::fixed_size_list(DataType::Int32.nullable_field("item"), 4).unwrap(),
-        DataType::from_fields([DataType::Int32.required_field("a")]).unwrap(),
+        DataType::from(StructureType::from_fields([DataType::Int32.required_field("a")]).unwrap()),
         DataType::map_of(DataType::utf8(), DataType::Int32, false).unwrap(),
         DataType::map_of(DataType::utf8(), DataType::Int32, true).unwrap(),
         DataType::dictionary(DataType::Int32, DataType::utf8()).unwrap(),
@@ -362,10 +375,7 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
     // Every parameterized id name is a grammar keyword too.
     for (named, expected) in [
         ("fixed_ascii(4)", DataType::fixed_ascii(4).unwrap()),
-        (
-            "fixed_size_binary(16)",
-            DataType::fixed_size_binary(16).unwrap(),
-        ),
+        ("fixed_binary(16)", DataType::fixed_binary(16).unwrap()),
         ("fixed_size_list(int32, 4)", {
             DataType::fixed_size_list(DataType::Int32.nullable_field("item"), 4).unwrap()
         }),
@@ -385,24 +395,53 @@ fn a_declared_sql_length_is_a_length() {
     // stores. A declaration no storage could have meant is malformed input.
     assert_eq!(
         "varchar(10)".parse::<DataType>().unwrap().to_string(),
-        "utf8(10)"
+        "sized_utf8(10)"
     );
     assert_eq!(
         "char(1)".parse::<DataType>().unwrap().to_string(),
         "fixed_utf8(1)"
     );
-    for (accepted, canonical) in [("binary(16)", "binary(16)"), ("varbinary(4)", "binary(4)")] {
+    for (accepted, max) in [
+        ("sized_binary(16)", 16_u32),
+        ("varbinary(4)", 4),
+        ("binary(8)", 8),
+    ] {
         let parsed = accepted.parse::<DataType>().unwrap();
-        assert_eq!(parsed.to_string(), canonical, "{accepted}");
+        assert_eq!(
+            parsed.to_string(),
+            format!("sized_binary({max})"),
+            "{accepted}"
+        );
         assert_eq!(
             parsed.bytes_parameters().unwrap().max(),
-            Some(canonical[7..canonical.len() - 1].parse().unwrap()),
+            Some(max),
             "{accepted}"
         );
     }
     for malformed in ["binary(-1)", "varbinary(0)"] {
         let refused = malformed.parse::<DataType>().unwrap_err().to_string();
-        assert!(refused.contains("maximum"), "{refused}");
+        assert!(
+            refused.contains("maximum") || refused.contains("width"),
+            "{refused}"
+        );
+    }
+    // One byte is a number like any other. The two leaves that *are* their
+    // number carry a placeholder in `BytesType::ALL`, and reading "was a
+    // number stated?" off that placeholder refused the one width that
+    // happened to equal it.
+    assert_eq!(
+        "fixed_binary(1)".parse::<DataType>().unwrap(),
+        DataType::fixed_binary(1).unwrap()
+    );
+    assert_eq!(
+        "sized_binary(1)".parse::<DataType>().unwrap().to_string(),
+        "sized_binary(1)"
+    );
+    // And a leaf that is its number still refuses to stand without one.
+    for bare in ["fixed_binary", "sized_binary"] {
+        let refused = bare.parse::<DataType>().unwrap_err().to_string();
+        assert!(refused.contains(bare), "{refused}");
+        assert!(refused.contains("got none"), "{refused}");
     }
     for malformed in ["varchar(0)", "char(-1)"] {
         assert!(malformed.parse::<DataType>().is_err(), "{malformed}");
@@ -438,4 +477,29 @@ fn a_field_spelled_without_nullability_is_nullable_wherever_it_sits() {
         "field(\"a\",int32)".parse::<Field>().unwrap(),
         Field::new("a", DataType::Int32, true)
     );
+}
+
+#[test]
+fn a_parameter_free_type_displays_as_the_name_its_identifier_spells() {
+    // `Display` used to restate a literal for each of the thirty-three
+    // parameter-free variants, beside the same word in `DataTypeId::as_str`.
+    // The two spellings agreed only because nothing had drifted yet; this
+    // walks every identifier so a variant that displays as anything but its
+    // own name fails here instead of silently breaking the round trip.
+    for id in DataTypeId::ALL {
+        if id.is_parameterized() {
+            continue;
+        }
+        let Ok(dtype) = DataType::from_str(id.as_str()) else {
+            continue; // an identifier with no standalone datatype spelling
+        };
+        assert_eq!(dtype.name(), id.as_str(), "{}", id.as_str());
+        assert_eq!(dtype.to_string(), id.as_str(), "{}", id.as_str());
+        assert_eq!(
+            DataType::from_str(&dtype.to_string()).unwrap(),
+            dtype,
+            "{}",
+            id.as_str()
+        );
+    }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegoffsetvalue",
-          "fix:tag": "211"
+          "FIX:field": "pegoffsetvalue",
+          "FIX:tag": "211"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegpricetype",
-          "fix:tag": "1094"
+          "FIX:field": "pegpricetype",
+          "FIX:tag": "1094"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegmovetype",
-          "fix:tag": "835"
+          "FIX:field": "pegmovetype",
+          "FIX:tag": "835"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegoffsettype",
-          "fix:tag": "836"
+          "FIX:field": "pegoffsettype",
+          "FIX:tag": "836"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "peglimittype",
-          "fix:tag": "837"
+          "FIX:field": "peglimittype",
+          "FIX:tag": "837"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegrounddirection",
-          "fix:tag": "838"
+          "FIX:field": "pegrounddirection",
+          "FIX:tag": "838"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegscope",
-          "fix:tag": "840"
+          "FIX:field": "pegscope",
+          "FIX:tag": "840"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegsecurityidsource",
-          "fix:tag": "1096"
+          "FIX:field": "pegsecurityidsource",
+          "FIX:tag": "1096"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegsecurityid",
-          "fix:tag": "1097"
+          "FIX:field": "pegsecurityid",
+          "FIX:tag": "1097"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegsymbol",
-          "fix:tag": "1098"
+          "FIX:field": "pegsymbol",
+          "FIX:tag": "1098"
         }
       },
       {
@@ -120,16 +120,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pegsecuritydesc",
-          "fix:tag": "1099"
+          "FIX:field": "pegsecuritydesc",
+          "FIX:tag": "1099"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "466790",
     "description": "Amount (signed) added to the peg for a pegged order in the context of the PegOffsetType",
-    "display": "PegInstructions",
-    "fix:tag": "466790"
+    "display": "PegInstructions"
   }
 }

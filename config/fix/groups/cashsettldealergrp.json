@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "cashsettldealercomponent"
+        "FIX:component": "cashsettldealercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "cashsettldealercomponent",
+    "FIX:counter": "40277",
+    "FIX:tag": "591908",
     "description": "Required if NoCashSettlDealers(40277) > 0.",
-    "display": "CashSettlDealerGrp",
-    "fix:component": "cashsettldealercomponent",
-    "fix:counter": "40277",
-    "fix:tag": "591908"
+    "display": "CashSettlDealerGrp"
   }
 }

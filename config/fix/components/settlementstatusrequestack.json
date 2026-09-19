@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "settlstatusrequestid",
-          "fix:tag": "2965"
+          "FIX:field": "settlstatusrequestid",
+          "FIX:tag": "2965"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "settlstatusrequeststatus",
-          "fix:tag": "2966"
+          "FIX:field": "settlstatusrequeststatus",
+          "FIX:tag": "2966"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext",
-          "fix:tag": "1328"
+          "FIX:field": "rejecttext",
+          "FIX:tag": "1328"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen",
-          "fix:tag": "1664"
+          "FIX:field": "encodedrejecttextlen",
+          "FIX:tag": "1664"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext",
-          "fix:tag": "1665"
+          "FIX:field": "encodedrejecttext",
+          "FIX:tag": "1665"
         }
       },
       {
@@ -75,16 +75,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "ED",
+    "FIX:tag": "490132",
     "description": "MsgType = ED",
-    "display": "SettlementStatusRequestAck",
-    "fix:msgtype": "ED",
-    "fix:tag": "490132"
+    "display": "SettlementStatusRequestAck"
   }
 }

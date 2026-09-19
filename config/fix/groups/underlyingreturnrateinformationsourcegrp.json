@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingreturnrateinformationsourcecomponent"
+        "FIX:component": "underlyingreturnrateinformationsourcecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingreturnrateinformationsourcecomponent",
+    "FIX:counter": "43060",
+    "FIX:tag": "760646",
     "description": "Required if NoUnderlyingReturnRateInformationSources(43060) > 0.",
-    "display": "UnderlyingReturnRateInformationSourceGrp",
-    "fix:component": "underlyingreturnrateinformationsourcecomponent",
-    "fix:counter": "43060",
-    "fix:tag": "760646"
+    "display": "UnderlyingReturnRateInformationSourceGrp"
   }
 }

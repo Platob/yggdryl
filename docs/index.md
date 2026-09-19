@@ -5,15 +5,15 @@ Arrow-native schemas, byte storage, and structured values, implemented once in R
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field};
+    use yggdryl::{DataType, Field, StructureType};
 
     // A non-null struct field is the schema. There is no separate schema type.
     let schema = Field::new(
         "row",
-        DataType::from_fields([
+        DataType::from(StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
-        ])?,
+        ])?),
         false,
     );
 
@@ -76,9 +76,8 @@ One tab per layer in the top bar; one page per family in that layer's sidebar.
 | URI | `Uri`, `Url`, `Urn`, paths, globs, and partitions | [uri](uri/index.md) |
 | Arrow | Scalars, schema projection, and batch readers at the Arrow boundary | [arrow](arrow/index.md) |
 | Expression | Predicates: parse, bind, evaluate, and push down | [expression](expression/index.md) |
-| Hashing | xxHash digests over bytes, values, handles, and Arrow rows, and TxHash: an instant coupled with a digest, its sortable keys, coupled columns, and the `digest:time` holder | [hashing](hashing.md) |
+| Hashing | xxHash digests over bytes, values, handles, and Arrow rows, and TxHash: an instant coupled with a digest, its sortable keys, coupled columns, and the `DIGEST:time` holder | [hashing](hashing.md) |
 | FIX | Protocol vocabulary, registries, and messages over `Field`, with a live [explorer](fix/explorer.md), [decoder](fix/decode.md) and [composer](fix/encode.md) | [fix](fix/index.md) |
-| Extensions | What crosses the Python and JavaScript boundaries | [Python](extensions/python.md), [JavaScript](extensions/javascript.md) |
 
 ## Install
 

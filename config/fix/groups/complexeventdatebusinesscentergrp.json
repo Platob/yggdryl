@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "complexeventdatebusinesscentercomponent"
+        "FIX:component": "complexeventdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "complexeventdatebusinesscentercomponent",
+    "FIX:counter": "41018",
+    "FIX:tag": "237639",
     "description": "Required if NoComplexEventDateBuisinessCenters(41018) > 0.",
-    "display": "ComplexEventDateBusinessCenterGrp",
-    "fix:component": "complexeventdatebusinesscentercomponent",
-    "fix:counter": "41018",
-    "fix:tag": "237639"
+    "display": "ComplexEventDateBusinessCenterGrp"
   }
 }

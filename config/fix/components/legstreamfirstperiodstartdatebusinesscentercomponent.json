@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamfirstperiodstartdatebusinesscenter",
-          "fix:tag": "40269"
+          "FIX:field": "legstreamfirstperiodstartdatebusinesscenter",
+          "FIX:tag": "40269"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamFirstPeriodStartDateBusinessCenter",
-    "fix:tag": "724654"
+    "FIX:tag": "724654",
+    "display": "LegStreamFirstPeriodStartDateBusinessCenter"
   }
 }

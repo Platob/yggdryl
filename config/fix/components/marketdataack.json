@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdmsgid",
-          "fix:tag": "3110"
+          "FIX:field": "mdmsgid",
+          "FIX:tag": "3110"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "reportstatus",
-          "fix:tag": "3113"
+          "FIX:field": "reportstatus",
+          "FIX:tag": "3113"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomdentries",
-          "fix:tag": "268"
+          "FIX:field": "nomdentries",
+          "FIX:tag": "268"
         }
       },
       {
@@ -53,7 +53,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "mdackgrp"
+          "FIX:group": "mdackgrp"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolinesoftext",
-          "fix:tag": "33"
+          "FIX:field": "nolinesoftext",
+          "FIX:tag": "33"
         }
       },
       {
@@ -85,7 +85,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "linesoftextgrp"
+          "FIX:group": "linesoftextgrp"
         }
       },
       {
@@ -95,8 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext",
-          "fix:tag": "1328"
+          "FIX:field": "rejecttext",
+          "FIX:tag": "1328"
         }
       },
       {
@@ -106,8 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen",
-          "fix:tag": "1664"
+          "FIX:field": "encodedrejecttextlen",
+          "FIX:tag": "1664"
         }
       },
       {
@@ -117,8 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext",
-          "fix:tag": "1665"
+          "FIX:field": "encodedrejecttext",
+          "FIX:tag": "1665"
         }
       },
       {
@@ -128,16 +128,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "EQ",
+    "FIX:tag": "626627",
     "description": "MsgType = EQ",
-    "display": "MarketDataAck",
-    "fix:msgtype": "EQ",
-    "fix:tag": "626627"
+    "display": "MarketDataAck"
   }
 }

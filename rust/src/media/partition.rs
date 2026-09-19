@@ -25,17 +25,18 @@ use arrow_cast::display::{ArrayFormatter, FormatOptions};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema, rebuilt_batch};
+use crate::cast::{ArrowCastOptions, cast_field_array};
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::types::cast::{ArrowCastOptions, cast_field_array};
-use crate::types::string::is_text_storage;
-use crate::{ArrowCast, DataType, Error, Field, Result, Url};
+use crate::string::is_text_storage;
+use crate::{DataType, Error, Field, Result, Url};
 use crate::{IOBase, IOMedia, Listing};
 
 /// One partition's `column=value` pairs and the rows that belong to it.
 type PartitionGroup = (Vec<(String, String)>, RecordBatch);
 
 pub use super::NULL_PARTITION;
+use crate::FieldValue as _;
 
 /// How every partition value in the project is rendered as directory text.
 ///
@@ -82,7 +83,12 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
     // the formatter would spell as hex - and a code is the text it is.
     match value {
         crate::Scalar::String(text) => return Ok(text.storage().clone()),
-        crate::Scalar::Code(code) => return Ok(code.storage().clone()),
+        code if code.is_code() => {
+            return Ok(code
+                .code_storage()
+                .expect("a code borrowed its storage")
+                .clone());
+        }
         _ => {}
     }
     // The value is non-null here, so the typed pairing's own projection is the
@@ -137,6 +143,7 @@ fn constant_column(value: &str, rows: usize, child: Option<&Field>) -> Result<Ar
 ///
 /// use arrow_array::{ArrayRef, Int64Array, RecordBatch};
 /// use yggdryl::media::partition::with_partitions;
+/// use yggdryl::StructureType;
 /// use yggdryl::DataType;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -144,7 +151,7 @@ fn constant_column(value: &str, rows: usize, child: Option<&Field>) -> Result<Ar
 ///     "price",
 ///     Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
 /// )])?;
-/// let schema = DataType::from_fields([DataType::Int32.required_field("year")])?
+/// let schema = DataType::from(StructureType::from_fields([DataType::Int32.required_field("year")])?)
 ///     .required_field("row");
 ///
 /// let restored = with_partitions(&batch, &[("year".into(), "2024".into())], Some(&schema))?;
@@ -182,7 +189,7 @@ pub fn with_partitions(
         // fact the batch would otherwise lose, and it is what lets a read of a
         // lake be written back out with the same layout.
         let restored = match child {
-            Some(child) => child.clone().into_arrow()?,
+            Some(child) => child.clone().into_arrow_field()?,
             // A path value is spelled out, so it is never null.
             None => ArrowField::new(column, ArrowDataType::Utf8, false),
         };
@@ -482,7 +489,7 @@ fn partition_values(batch: &RecordBatch, columns: &[String]) -> Result<Vec<Vec<S
         // datatype's own path. A code already rides text storage, so its
         // column is formatted where it stands.
         let schema = batch.schema();
-        let field = Field::from_arrow(schema.field(index))?;
+        let field = Field::from_arrow_field(schema.field(index))?;
         let dtype = field.dtype();
         let stored_as_bytes = dtype
             .string_parameters()
@@ -625,7 +632,9 @@ pub(crate) fn folder_reader(
         // The same predicate a listing answers, asked of each leaf's own path.
         // A leaf that does not name a filtered column is unknown rather than
         // false, so it stays and the row filter answers for it.
-        let bound = filter.bind(&crate::DataType::from_fields([])?.required_field("holder"))?;
+        let bound = filter.bind(
+            &crate::DataType::from(crate::StructureType::from_fields([])?).required_field("holder"),
+        )?;
         parts = Listing::new(parts.filter_map(move |part| match part {
             Err(error) => Some(Err(error)),
             Ok(part) => match bound.matches_holder(&crate::expression::Handle(&part)) {

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fundingsource",
-          "fix:tag": "2846"
+          "FIX:field": "fundingsource",
+          "FIX:tag": "2846"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fundingsourcemarketvalue",
-          "fix:tag": "2848"
+          "FIX:field": "fundingsourcemarketvalue",
+          "FIX:tag": "2848"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fundingsourcecurrency",
-          "fix:tag": "2847"
+          "FIX:field": "fundingsourcecurrency",
+          "FIX:tag": "2847"
         }
       },
       {
@@ -43,15 +43,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fundingsourcecurrencycodesource",
-          "fix:tag": "2954"
+          "FIX:field": "fundingsourcecurrencycodesource",
+          "FIX:tag": "2954"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "FundingSource",
-    "fix:tag": "508510"
+    "FIX:tag": "508510",
+    "display": "FundingSource"
   }
 }

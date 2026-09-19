@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradereportid",
-          "fix:tag": "571"
+          "FIX:field": "tradereportid",
+          "FIX:tag": "571"
         }
       },
       {
@@ -21,16 +21,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondarytradereportid",
-          "fix:tag": "818"
+          "FIX:field": "secondarytradereportid",
+          "FIX:tag": "818"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdColl",
-    "fix:identifiers": "tradereportid,secondarytradereportid",
-    "fix:tag": "278824"
+    "FIX:identifiers": "tradereportid,secondarytradereportid",
+    "FIX:tag": "278824",
+    "display": "TrdColl"
   }
 }

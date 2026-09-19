@@ -1,5 +1,5 @@
 use yggdryl::Timezone;
-use yggdryl::types::DataType;
+use yggdryl::{DataType, DateTimeType, TimeType};
 use yggdryl::{TimeUnit, UnionMode};
 
 #[test]
@@ -59,54 +59,60 @@ fn registered() -> Vec<(&'static str, DataType)> {
         ("amt", DataType::Float64),
         (
             "utctimestamp",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
         (
             "tztimestamp",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
-        ("utctimeonly", DataType::Time64(TimeUnit::Nanosecond)),
-        ("localmkttime", DataType::Time64(TimeUnit::Nanosecond)),
+        (
+            "utctimeonly",
+            DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
+        ),
+        (
+            "localmkttime",
+            DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
+        ),
         (
             "utcdate",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
         (
             "utcdateonly",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
         (
             "localmktdate",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::NAIVE,
-            },
+            }),
         ),
         (
             "localmktdatetime",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::NAIVE,
-            },
+            }),
         ),
         (
             "tztimeonly",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            },
+            }),
         ),
         ("multiplecharvalue", DataType::utf8()),
         ("multiplestringvalue", DataType::utf8()),
@@ -150,10 +156,10 @@ fn a_name_folds_case_separators_and_surrounding_space() {
     ] {
         assert_eq!(
             DataType::from_logical_name(spelling).unwrap(),
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC
-            },
+            }),
             "{spelling}"
         );
     }
@@ -168,13 +174,19 @@ fn the_grammar_resolves_a_name_and_displays_the_datatype_it_named() {
         ("DayOfMonth", DataType::Int8),
         (
             "LocalMktDate",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::NAIVE,
-            },
+            }),
         ),
-        ("LocalMktTime", DataType::Time64(TimeUnit::Nanosecond)),
-        ("UTCTimeOnly", DataType::Time64(TimeUnit::Nanosecond)),
+        (
+            "LocalMktTime",
+            DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
+        ),
+        (
+            "UTCTimeOnly",
+            DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
+        ),
         ("XMLData", DataType::binary()),
         ("data", DataType::binary()),
         ("Tenor", DataType::fixed_ascii(8).unwrap()),

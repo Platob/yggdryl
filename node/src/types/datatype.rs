@@ -6,12 +6,9 @@ use napi::bindgen_prelude::{
     BigInt, ClassInstance, Either, Either3, Env, Error, Object, Result, Unknown,
 };
 use napi_derive::napi;
-use yggdryl::types::{
-    BytesLayout, BytesParameters as CoreBytesParameters, StringLayout,
-    StringParameters as CoreStringParameters,
-};
+use yggdryl::{BytesType as CoreBytesType, StringType as CoreStringType, StructureType};
 use yggdryl::{
-    Charset, DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField,
+    DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField,
     Scheme as CoreScheme, StringEnum as CoreStringEnum, TimeUnit as CoreTimeUnit,
     UnionMode as CoreUnionMode,
 };
@@ -106,15 +103,24 @@ impl JsDataType {
             "float16" => CoreDataType::Float16,
             "float32" => CoreDataType::Float32,
             "float64" => CoreDataType::Float64,
-            "date32" => CoreDataType::Date32,
-            "date64" => CoreDataType::Date64,
+            "date32" => CoreDataType::date32(),
+            "date64" => CoreDataType::date64(),
             "binary" => CoreDataType::binary(),
             "large_binary" => CoreDataType::large_binary(),
             "binary_view" => CoreDataType::binary_view(),
+            "large_binary_view" => CoreDataType::large_binary_view(),
             "utf8" => CoreDataType::utf8(),
             "large_utf8" => CoreDataType::large_utf8(),
             "utf8_view" => CoreDataType::utf8_view(),
+            "large_utf8_view" => CoreDataType::large_utf8_view(),
             "ascii" => CoreDataType::ascii(),
+            "large_ascii" => CoreDataType::large_ascii(),
+            "ascii_view" => CoreDataType::ascii_view(),
+            "large_ascii_view" => CoreDataType::large_ascii_view(),
+            "cp1252" => CoreDataType::cp1252(),
+            "large_cp1252" => CoreDataType::large_cp1252(),
+            "cp1252_view" => CoreDataType::cp1252_view(),
+            "large_cp1252_view" => CoreDataType::large_cp1252_view(),
             "country" => CoreDataType::Country,
             "currency" => CoreDataType::Currency,
             "mic" => CoreDataType::Mic,
@@ -126,9 +132,10 @@ impl JsDataType {
             "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,
-            "uuid" => CoreDataType::Uuid,
+            "uuid" => CoreDataType::uuid(),
             "version" => CoreDataType::Version,
-            "url" => CoreDataType::Url,
+            "url" => CoreDataType::url(),
+            "urn" => CoreDataType::urn(),
             "timezone" => CoreDataType::Timezone,
             "mimetype" => CoreDataType::MimeType,
             "mediatype" => CoreDataType::MediaType,
@@ -165,7 +172,7 @@ impl JsDataType {
             "duration64" if unit.is_temporal() => {
                 CoreDataType::duration64(unit).map_err(napi_error)?
             }
-            "interval" if unit.is_interval() => CoreDataType::Interval(unit),
+            "interval" if unit.is_interval() => CoreDataType::interval(unit).map_err(napi_error)?,
             "datetime64" | "duration32" | "duration64" => {
                 return Err(Error::from_reason(format!(
                     "{kind} requires a temporal resolution unit"
@@ -194,14 +201,16 @@ impl JsDataType {
             .map_err(napi_error)
     }
 
-    /// The string datatype these parameters name: a layout, the charset its
-    /// bytes are written in, and a byte bound.
+    /// The string datatype these parameters name: one of eighteen leaves,
+    /// six shapes (plain, large, view, large view, fixed, sized) in each of
+    /// three charsets (UTF-8, US-ASCII, windows-1252).
     ///
-    /// Every string is this one datatype; `utf8`, `ascii`, `fixedUtf8` and
-    /// `fixedAscii` are it with a layout and charset picked once. The bound
-    /// is one number read the way the layout reads it: `fixed` is the exact
-    /// width on the fixed layout, `max` the most bytes on any other, and
-    /// `bound` is whichever the layout takes.
+    /// `utf8`, `largeUtf8`, `utf8View`, `ascii`, `fixedUtf8` and `fixedAscii`
+    /// are leaves picked once; `fields` has a factory per leaf. The bound is
+    /// one number read the way the leaf reads it: `fixed` is the exact width
+    /// on a `fixed_*` leaf, `max` the most bytes on a plain or `sized_*` one,
+    /// and `bound` is whichever the leaf takes. A maximum makes a plain leaf
+    /// the sized leaf of its charset; a large or view leaf refuses one.
     #[napi(factory)]
     pub fn string(parameters: Option<StringParametersInput>) -> Result<Self> {
         CoreDataType::string(string_parameters_from_input(
@@ -224,31 +233,35 @@ impl JsDataType {
             .map_err(napi_error)
     }
 
-    /// Unbounded UTF-8 with 32-bit offsets - Arrow's `Utf8`.
+    /// The `utf8` leaf: unbounded UTF-8 with 32-bit offsets - Arrow's `Utf8`.
     #[napi(factory)]
     pub fn utf8() -> Self {
         Self::from_core(CoreDataType::utf8())
     }
 
-    /// Unbounded UTF-8 with 64-bit offsets - Arrow's `LargeUtf8`.
+    /// The `large_utf8` leaf: unbounded UTF-8 with 64-bit offsets - Arrow's
+    /// `LargeUtf8`.
     #[napi(factory)]
     pub fn large_utf8() -> Self {
         Self::from_core(CoreDataType::large_utf8())
     }
 
-    /// Unbounded UTF-8 in the view layout - Arrow's `Utf8View`.
+    /// The `utf8_view` leaf: unbounded UTF-8 in the view layout - Arrow's
+    /// `Utf8View`.
     #[napi(factory)]
     pub fn utf8_view() -> Self {
         Self::from_core(CoreDataType::utf8_view())
     }
 
-    /// Unbounded US-ASCII with 32-bit offsets.
+    /// The `ascii` leaf: unbounded US-ASCII with 32-bit offsets, Arrow's
+    /// `Utf8` under the `yggdryl.string` document.
     #[napi(factory)]
     pub fn ascii() -> Self {
         Self::from_core(CoreDataType::ascii())
     }
 
-    /// UTF-8 of exactly `width` stored bytes, padded with trailing NUL.
+    /// The `fixed_utf8(width)` leaf: UTF-8 of exactly `width` stored bytes,
+    /// padded with trailing NUL.
     #[napi(factory)]
     pub fn fixed_utf8(width: f64) -> Result<Self> {
         CoreDataType::fixed_utf8(exact_u32(width, "width")?)
@@ -256,7 +269,8 @@ impl JsDataType {
             .map_err(napi_error)
     }
 
-    /// US-ASCII of exactly `width` stored bytes, padded with trailing NUL.
+    /// The `fixed_ascii(width)` leaf: US-ASCII of exactly `width` stored
+    /// bytes, padded with trailing NUL.
     #[napi(factory)]
     pub fn fixed_ascii(width: f64) -> Result<Self> {
         CoreDataType::fixed_ascii(exact_u32(width, "width")?)
@@ -285,7 +299,7 @@ impl JsDataType {
     /// Exactly `byteWidth` bytes per value - Arrow's `FixedSizeBinary`.
     #[napi(factory)]
     pub fn fixed_size_binary(byte_width: f64) -> Result<Self> {
-        CoreDataType::fixed_size_binary(exact_u32(byte_width, "byteWidth")?)
+        CoreDataType::fixed_binary(exact_u32(byte_width, "byteWidth")?)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -355,7 +369,8 @@ impl JsDataType {
     /// Internal direct Struct constructor preserving exact child Fields.
     #[napi(factory, js_name = "_fromFields", skip_typescript)]
     pub fn from_fields(fields: Vec<ClassInstance<'_, JsField>>) -> Result<Self> {
-        let inner = CoreDataType::from_fields(fields.into_iter().map(|field| field.inner.clone()))
+        let inner = StructureType::from_fields(fields.into_iter().map(|field| field.inner.clone()))
+            .map(CoreDataType::from)
             .map_err(napi_error)?;
         Ok(Self::from_core(inner))
     }
@@ -934,30 +949,32 @@ impl JsDataType {
     }
 }
 
-/// What a string datatype declares: its layout, its charset, and its bound.
+/// What a string datatype declares: its leaf, the charset that leaf writes,
+/// and the number the leaf carries.
 ///
 /// `bound` is the one declared number; `fixed` and `max` are its two
-/// readings, and exactly one of them answers - the exact width on the fixed
-/// layout, the maximum on every other.
+/// readings, and exactly one of them answers - the exact width on a
+/// `fixed_*` leaf, the maximum on a `sized_*` one.
 #[napi(object, object_from_js = false)]
 pub struct StringParameters {
-    /// The layout, under its general name: `string`, `fixed_string`,
-    /// `string_view`, `large_string` or `large_string_view`.
+    /// The leaf's canonical name - `utf8`, `large_ascii`, `sized_cp1252`,
+    /// ... - which is also the datatype's `id`.
     pub layout: String,
-    /// The canonical charset name the stored bytes are written in.
+    /// The canonical charset name the stored bytes are written in: `utf-8`,
+    /// `us-ascii` or `windows-1252`.
     pub charset: String,
-    /// The declared byte bound, whichever shape the layout gives it.
+    /// The declared byte bound, whichever reading the leaf gives it.
     pub bound: Option<u32>,
-    /// The exact bytes every value fills, on the fixed layout.
+    /// The exact bytes every value fills, on a `fixed_*` leaf.
     pub fixed: Option<u32>,
-    /// The most bytes a value may hold, on a variable layout.
+    /// The most bytes a value may hold, on a `sized_*` leaf.
     pub max: Option<u32>,
 }
 
 impl StringParameters {
-    fn from_core(parameters: CoreStringParameters) -> Self {
+    fn from_core(parameters: CoreStringType) -> Self {
         Self {
-            layout: parameters.layout().as_str().to_owned(),
+            layout: parameters.as_str().to_owned(),
             charset: parameters.charset().as_str().to_owned(),
             bound: parameters.bound(),
             fixed: parameters.fixed(),
@@ -968,17 +985,22 @@ impl StringParameters {
 
 /// What `DataType.string` and `fields.string` read; every key is optional.
 ///
-/// The layout defaults to `string` and the charset to `utf-8`. At most one
-/// of `bound`, `fixed` and `max` is given: `fixed` needs the fixed layout,
-/// `max` a variable one, and `bound` is read the way the layout reads it.
+/// The layout defaults to `string`, the plain `utf8` leaf. A charset is
+/// accepted only beside a charset-free spelling - `string`, `fixed_string`,
+/// `string_view`, `large_string`, `large_string_view`, `sized_string`,
+/// `varchar`, `char`, ... - and moves that shape into the charset's family:
+/// `{ charset: 'windows-1252', max: 32 }` is `sized_cp1252(32)`. At most one
+/// of `bound`, `fixed` and `max` is given: `fixed` needs a fixed leaf, `max`
+/// a plain or sized one, and `bound` is read the way the leaf reads it.
 #[napi(object, object_to_js = false)]
 #[derive(Default)]
 pub struct StringParametersInput {
-    /// A layout name in any of its spellings - `fixed_string`, `fixed_utf8`
-    /// and `fixed_ascii` are one layout - naming the layout alone; the
-    /// charset is its own key.
+    /// A leaf in any of its spellings - `fixed_utf8`, `fixed_utf8_string`
+    /// and `fixed_string` are one leaf - naming the leaf alone; a charset
+    /// beside a charset-named spelling such as `ascii` is refused.
     pub layout: Option<String>,
-    /// A charset name or alias.
+    /// A charset name or alias: `utf-8`, `us-ascii` or `windows-1252`, the
+    /// three that have a string family.
     pub charset: Option<String>,
     pub bound: Option<f64>,
     pub fixed: Option<f64>,
@@ -1000,9 +1022,9 @@ pub struct BytesParameters {
 }
 
 impl BytesParameters {
-    fn from_core(parameters: CoreBytesParameters) -> Self {
+    fn from_core(parameters: CoreBytesType) -> Self {
         Self {
-            layout: parameters.layout().as_str().to_owned(),
+            layout: parameters.as_str().to_owned(),
             bound: parameters.bound(),
             fixed: parameters.fixed(),
             max: parameters.max(),
@@ -1057,39 +1079,36 @@ fn declared_bound(
     exact_u32(declared, name).map(Some)
 }
 
-fn string_parameters_from_input(input: StringParametersInput) -> Result<CoreStringParameters> {
-    let layout = match input.layout {
-        Some(layout) => StringLayout::from_str(&layout).map_err(napi_error)?,
-        None => StringLayout::String,
-    };
-    let charset = match input.charset {
-        Some(charset) => Charset::from_str(&charset).map_err(napi_error)?,
-        None => Charset::Utf8,
-    };
-    let parameters = CoreStringParameters::new(layout, charset);
-    match declared_bound(layout.is_fixed(), input.bound, input.fixed, input.max)? {
-        Some(bound) => parameters.try_with_bound(bound).map_err(napi_error),
-        None => Ok(parameters),
-    }
+fn string_parameters_from_input(input: StringParametersInput) -> Result<CoreStringType> {
+    let layout = input.layout.as_deref().unwrap_or("string");
+    // `declared_bound` reads the number the way the leaf reads it, so the
+    // leaf is named first; the declaration itself - a charset only beside a
+    // charset-free spelling, a stated number restating the leaf as the one
+    // that carries it - is the core's, read here rather than decided again.
+    let is_fixed = CoreStringType::from_str(layout)
+        .map_err(napi_error)?
+        .is_fixed();
+    let bound = declared_bound(is_fixed, input.bound, input.fixed, input.max)?;
+    CoreStringType::from_declaration(layout, input.charset.as_deref(), bound).map_err(napi_error)
 }
 
-fn bytes_parameters_from_input(input: BytesParametersInput) -> Result<CoreBytesParameters> {
-    let layout = match input.layout {
-        Some(layout) => BytesLayout::from_str(&layout).map_err(napi_error)?,
-        None => BytesLayout::Binary,
+fn bytes_parameters_from_input(input: BytesParametersInput) -> Result<CoreBytesType> {
+    let leaf = match input.layout {
+        Some(layout) => CoreBytesType::from_str(&layout).map_err(napi_error)?,
+        None => CoreBytesType::Binary,
     };
-    let parameters = CoreBytesParameters::new(layout);
-    match declared_bound(layout.is_fixed(), input.bound, input.fixed, input.max)? {
-        Some(bound) => parameters.try_with_bound(bound).map_err(napi_error),
-        None => Ok(parameters),
-    }
+    // The leaf is the whole declaration, so a stated number restates the leaf
+    // as the one that carries it and a leaf that *is* a number stands with
+    // none. Both rules are the core's, read here rather than decided again.
+    let bound = declared_bound(leaf.is_fixed(), input.bound, input.fixed, input.max)?;
+    leaf.with_declared_bound(bound).map_err(napi_error)
 }
 
 /// The enum a string field's values name: one value per member name.
 ///
 /// A dictionary is a vocabulary and derives its member names; this is the
 /// vocabulary a declaration named itself, and it is what a `Field` stores
-/// under `field:enum` so the enum crosses Arrow, a file, and another runtime
+/// under `FIELD:enum` so the enum crosses Arrow, a file, and another runtime
 /// intact. The width lives in the field's datatype - a fixed US-ASCII string
 /// of at most sixteen bytes or a code - so a member's code is its packed
 /// ASCII value under that width and never a position.
@@ -1118,7 +1137,7 @@ impl JsStringEnum {
             .map_err(napi_error)
     }
 
-    /// Parse the `field:enum` document.
+    /// Parse the `FIELD:enum` document.
     #[napi(factory)]
     pub fn from_json(document: String) -> Result<Self> {
         CoreStringEnum::from_json(&document)
@@ -1126,7 +1145,7 @@ impl JsStringEnum {
             .map_err(napi_error)
     }
 
-    /// Render the `field:enum` document, which is one text per enum.
+    /// Render the `FIELD:enum` document, which is one text per enum.
     #[napi]
     #[allow(clippy::wrong_self_convention)]
     pub fn into_json(&self) -> String {
@@ -1236,7 +1255,7 @@ impl JsStringEnum {
         Self::from_core(self.inner.clone())
     }
 
-    /// The `field:enum` document, which is the enum's one canonical text.
+    /// The `FIELD:enum` document, which is the enum's one canonical text.
     #[napi(js_name = "toString")]
     pub fn js_string(&self) -> String {
         self.inner.into_json()

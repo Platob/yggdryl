@@ -5,11 +5,12 @@ use std::sync::Arc;
 use arrow_array::{Array, Int32Array, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 
+use yggdryl::DataType;
+use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::types::DataType;
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, DataTypeId, DataTypeKind, Error, Field, FieldScalar, Scalar,
-    Scheme, Version, VersionField,
+    ArrowCastOptions, DataTypeId, DataTypeKind, Error, Field, FieldScalar, Scalar, Scheme,
+    StructureType, Version, VersionField,
 };
 
 fn version(text: &str) -> Version {
@@ -35,7 +36,8 @@ fn digest(value: &Version) -> u64 {
 }
 
 fn root(field: Field) -> Field {
-    DataType::from_fields([field])
+    StructureType::from_fields([field])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
 }
@@ -264,11 +266,14 @@ fn datatype_identity_naming_and_serde_are_total() {
     assert_eq!(DataTypeId::Version.fixed_byte_width(), None);
     // `Version` is no longer last: the coded FIX datatypes, then `Url`,
     // `Isin`, the three canonical text datatypes and the three securities
-    // identifiers `Cusip`, `Sedol` and `Bloomberg` were appended after it,
-    // which is what `as_u8` being a wire contract requires; the five string
-    // layouts took the slots the text variants they replaced held.
-    assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::Bloomberg));
-    assert_eq!(DataTypeId::LargeStringView.as_u8(), 31);
+    // identifiers `Cusip`, `Sedol` and `Bloomberg`, the mapping family's
+    // `SortedMap` leaf, the structure family's `Struct2` leaf, the uuid
+    // family's three versioned leaves, the byte family's two and the
+    // string family's thirteen, and the `uri` datatype were appended after it,
+    // which is what `as_u8` being a wire contract requires; the five UTF-8
+    // string leaves took the slots the text variants they replaced held.
+    assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::Urn));
+    assert_eq!(DataTypeId::LargeUtf8StringView.as_u8(), 31);
     assert!(!DataTypeId::Version.is_parameterized());
     assert!(DataTypeId::Version.is_string());
     assert!(!dtype.is_nested());
@@ -306,19 +311,20 @@ fn scalar_and_field_contracts_rewrite_text_once() {
         Scalar::Null
     );
 
-    let begin_string = VersionField::new("begin_string", false);
+    let begin_string = VersionField::unit("begin_string", false);
     assert_eq!(begin_string.dtype(), &DataType::Version);
-    let typed = FieldScalar::new(begin_string.as_field(), expected.clone()).unwrap();
+    let begin_string_field = begin_string.to_field();
+    let typed = FieldScalar::new(&begin_string_field, expected.clone()).unwrap();
     assert_eq!(typed.value(), &expected);
 }
 
 #[test]
 fn arrow_field_values_and_casts_keep_version_identity() {
     let field = Field::new("begin_string", DataType::Version, false);
-    let arrow = field.clone().into_arrow().unwrap();
+    let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.version");
-    assert_eq!(Field::from_arrow(&arrow).unwrap(), field);
+    assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
 
     let stored = scalar_array(&field, &Scalar::from(version("5.0.2"))).unwrap();
     assert_eq!(
@@ -435,7 +441,7 @@ fn defaults_merges_and_compatibility_do_not_fall_through() {
 #[cfg(feature = "iceberg")]
 #[test]
 fn a_closed_exchange_vocabulary_refuses_version_by_name() {
-    let error = yggdryl::media::iceberg::PrimitiveType::from_dtype(&DataType::Version)
+    let error = yggdryl::iceberg::PrimitiveType::from_dtype(&DataType::Version)
         .unwrap_err()
         .to_string();
     assert!(error.contains("Iceberg"), "{error}");

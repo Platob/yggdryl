@@ -1,6 +1,6 @@
 """FIX field definitions, messages and the codec, over the fields and handles :mod:`yggdryl` already has.
 
-A FIX field is an ordinary :class:`~yggdryl.Field` whose ``fix:`` metadata the
+A FIX field is an ordinary :class:`~yggdryl.Field` whose ``FIX:`` metadata the
 protocol view ``field.fix`` reads and writes as typed properties - ``id``,
 ``tag``, ``tags``, ``branches``, ``aliases``, ``identifiers``, ``description``,
 ``derivation`` - so nothing here is a second field class. A field is its tag
@@ -10,7 +10,7 @@ field say is ``branches``, a sorted list of names that a caller filters on
 and no lookup consults. The registry is one namespace: :class:`FixRegistry`
 resolves scalar fields, components and repeating groups by identifier, by
 tag, by counter, by name or by dotted path - a Struct is a component, a List
-of Structs or a Map a group, a message a component carrying ``fix:msgtype``,
+of Structs or a Map a group, a message a component carrying ``FIX:msgtype``,
 each filed by :meth:`FixRegistry.insert` under the shape it has - and
 persists them as JSON shards through any ``IOBase`` location, the fixed row
 among them as ``components/fixmsg.json``. Every registry holds the crate's
@@ -36,14 +36,14 @@ a dictionary and the message roots its grammar bindings describe.
 live in three holders and two extras - :meth:`FixMsg.event`, the facts the
 core's graph vocabulary answers (``curruuid``, ``crossuuid``, ``crosscode``,
 ``currhashcode``, ``crosshashcode``, ``identifiers``, ``parentuuids``, ``currunix``,
-``state``, ``seqnum``, the lifecycle's ``creatunix``, ``expirunix``,
+``state``, ``seqnum``, the lifecycle's ``creaunix``, ``expirunix``,
 ``prevunix``, ``prevuuid`` and ``snapunix``, the market's ``px``, ``qty``,
 ``currency``, ``unit``, ``side``, its ISIN, CUSIP, SEDOL, Bloomberg, CFI and
 MIC codes and the bid and ask lanes); :meth:`FixMsg.header`, the standard
 header (``beginstring``, ``msgtype``, ``sendercompid``, ``targetcompid``,
 ``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``);
 :meth:`FixMsg.capture`, what the line's own bridge row header said about
-the capture it was written for (``pluginid``, ``msgctxid``,
+the capture it was written for (``msgpluginid``, ``msgctxid``,
 ``msgsessionid``) - never what a *reader* said about the line, which is
 held nowhere on a message; the free
 :attr:`FixMsg.text` of tag 58; and a bridge's own :attr:`FixMsg.metadata`,
@@ -69,14 +69,14 @@ turns one captured line into a lazy :class:`FixMessages` stream and
 :meth:`FixCodec.parse_lines` a whole iterable of lines, one line at a time;
 :meth:`FixCodec.parse_text_line` and :meth:`FixCodec.parse_text_lines` read
 the lines a text reader answers, the line's own body beside the
-row-header captures that state its ``pluginid``, ``msgsessionid``,
+row-header captures that state its ``msgpluginid``, ``msgsessionid``,
 ``msgctxid`` and ``msgseqnum`` - ``capture_names`` is what says which
 capture is which, once for the whole run, and a ``msgdirection`` capture or
 column states the direction FIX's own tag 385 carries, filled from the verb
 in front of the payload where the row states none. A line's ``timestamp``
 is capture context and stamps nothing. A parse builds the message, lifts
 its typed facts, explodes a nested ``XmlData`` into it, restates deprecated
-fields to their latest aliases, runs the dictionary's ``fix:derivation``
+fields to their latest aliases, runs the dictionary's ``FIX:derivation``
 rules, fills the identifiers the message component declares and an order's
 lanes, and settles the identity: ``SendingTime`` is the message's own, else
 the carrier's, else the codec's ``default_sending_time``, else UTC now
@@ -93,7 +93,7 @@ the codec's ``batch_byte_size``. :meth:`FixCodec.lifecycle` chains a stream
 of messages lazily - each stated as the one after the live message it
 follows under its cross identity, carrying ``prevuuid``, ``prevunix``,
 ``seqnum``, the predecessor among its ``parentuuids`` and the lifecycle's
-``creatunix`` - and :meth:`FixCodec.lifecycle_arrow_reader` does the same
+``creaunix`` - and :meth:`FixCodec.lifecycle_arrow_reader` does the same
 over batches of rows without parsing them again. Both compose through the two
 converters every stage composes over batches: :meth:`FixCodec.messages`
 reads a batch back as the messages that made it and
@@ -113,9 +113,9 @@ header, the fields a consumer reads, the three groups worth persisting whole,
 the trailer and ``MsgDirection`` (385) - each spelled by the dictionary's
 folded canonical name, ``msgtype`` and never ``35``, so a column is found
 with ``schema.index_of("msgtype")`` and nothing has to be resolved per row;
-the tag stays on each column's ``fix:tag``. One ``fixentries`` list closes
+the tag stays on each column's ``FIX:tag``. One ``fixentries`` list closes
 the row with the whole content under the ``nofixentries`` that counts it,
-where an unresolved key has tag 0; ``beginstring``, ``currunix``, ``creatunix``,
+where an unresolved key has tag 0; ``beginstring``, ``currunix``, ``creaunix``,
 ``currhashcode``, ``crosshashcode``, ``curruuid`` and ``crossuuid`` are its
 non-null columns. :func:`fix_schema_carrying` puts a capture's own columns in
 front of them, dropping a capture column whose folded name a FIX column
@@ -133,7 +133,7 @@ Repeating counts such as ``NoPartyIDs`` are ``int32`` fields; ``Parties`` is a
 separate list of ``Party`` components, reached by its name or by
 :meth:`FixRegistry.field_by_counter`. A crate Map is a group too: its
 occurrence is its non-null entries Struct, its key stays non-null and its own
-tag is its counter. Enum codes remain inline in each field's ``fix:codes``
+tag is its counter. Enum codes remain inline in each field's ``FIX:codes``
 metadata.
 
 A component's ``field.fix.identifiers`` accepts an iterable of its direct

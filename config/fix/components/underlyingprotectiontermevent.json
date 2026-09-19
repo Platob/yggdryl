@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventtype",
-          "fix:tag": "42078"
+          "FIX:field": "underlyingprotectiontermeventtype",
+          "FIX:tag": "42078"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventvalue",
-          "fix:tag": "42079"
+          "FIX:field": "underlyingprotectiontermeventvalue",
+          "FIX:tag": "42079"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventcurrency",
-          "fix:tag": "42080"
+          "FIX:field": "underlyingprotectiontermeventcurrency",
+          "FIX:tag": "42080"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventperiod",
-          "fix:tag": "42081"
+          "FIX:field": "underlyingprotectiontermeventperiod",
+          "FIX:tag": "42081"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventunit",
-          "fix:tag": "42082"
+          "FIX:field": "underlyingprotectiontermeventunit",
+          "FIX:tag": "42082"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventdaytype",
-          "fix:tag": "42083"
+          "FIX:field": "underlyingprotectiontermeventdaytype",
+          "FIX:tag": "42083"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventratesource",
-          "fix:tag": "42084"
+          "FIX:field": "underlyingprotectiontermeventratesource",
+          "FIX:tag": "42084"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingprotectiontermeventqualifiers",
-          "fix:tag": "42085"
+          "FIX:field": "nounderlyingprotectiontermeventqualifiers",
+          "FIX:tag": "42085"
         }
       },
       {
@@ -98,14 +98,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingprotectiontermeventqualifiergrp"
+          "FIX:group": "underlyingprotectiontermeventqualifiergrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingProtectionTermEvent",
-    "fix:tag": "995051"
+    "FIX:tag": "995051",
+    "display": "UnderlyingProtectionTermEvent"
   }
 }

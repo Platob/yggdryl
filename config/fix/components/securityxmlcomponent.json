@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityxmllen",
-          "fix:tag": "1184"
+          "FIX:field": "securityxmllen",
+          "FIX:tag": "1184"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityxml",
-          "fix:tag": "1185"
+          "FIX:field": "securityxml",
+          "FIX:tag": "1185"
         }
       },
       {
@@ -32,16 +32,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityxmlschema",
-          "fix:tag": "1186"
+          "FIX:field": "securityxmlschema",
+          "FIX:tag": "1186"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "507714",
     "description": "Must be provided if SecurityXML(1185) field is specified and must immediately precede it.",
-    "display": "SecurityXML",
-    "fix:tag": "507714"
+    "display": "SecurityXML"
   }
 }

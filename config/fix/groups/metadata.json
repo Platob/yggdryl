@@ -32,9 +32,9 @@
   },
   "nullable": true,
   "metadata": {
+    "FIX:counter": "65049",
+    "FIX:tag": "65049",
     "description": "What a bridge stated under its own namespaces - a `TECH.` or an `AMON.` key - each under the key as the bridge spelled it, folded, in sorted order.",
-    "display": "Metadata",
-    "fix:counter": "65049",
-    "fix:tag": "65049"
+    "display": "Metadata"
   }
 }

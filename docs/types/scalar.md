@@ -12,12 +12,13 @@
 | `MimeType`, `MediaType` | Representation, ordered codings; suffix, coding, and `MAGIC_PROBE_LEN`-bounded content inference |
 | `Scheme`, `IOKind`, `IOMode` | Scheme, resource kind, intent: `overwrite`, `append`, `merge`, `readonly`, `random` |
 | `TimeUnit`, `Timezone`, `UnionMode`, `EdgeAlgorithm` | Resolution, zone, union layout, edge model |
-| `Enum` | Kind, spelling, ordinal; JSON, YAML, TOML, and host projections emit the spelling |
+| `Vocabulary` | The closed name set: kind, spelling, ordinal. A member's datatype is `string`, so its value is the spelling and no `Scalar` variant holds it |
 | Widths | one flat enum: every width is its own variant (`Scalar::Int32`, `Scalar::Date32`, ...), matched directly and named by `kind()` |
 | `Scalar::Arrow` | an [`ArrowScalar`](../arrow/values.md) behind one shared pointer: a columnar value crossing a boundary as the scalar it is, buffers shared; `into_native` reads it as rows, `as_arrow` borrows it, and the narrowing readers answer `None` |
-| Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
+| Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
+| Families | one value enum per family with several leaves - `Integer`, `Floating`, `Decimal`, `Temporal`, `Code`, `Geospatial`, `Nested` - each a `FamilyValue`; `as_integer`, `as_floating`, `as_temporal`, `as_code`, `as_geospatial`, `as_nested` narrow a `Scalar` to one by value, `None` for another kind |
 | Identity | total equality, ordering, hash, cross-width: `I32(7)` is `U8(7)`, `F32(1.5)` is `F64(1.5)`, `D32(1250, 2)` is `D256(125, 1)`; kinds stay apart, `I32(1)` is not `F64(1.0)` |
-| Bindings | `yggdryl.enums`, `enums`; `FieldScalar` and the `wkb` reader Rust only |
+| Bindings | `yggdryl.enums`, `enums`; `FieldScalar`, the family value enums and the `wkb` reader Rust only |
 
 ## Use
 
@@ -52,19 +53,27 @@ One spelling per member at every boundary.
     assert.deepEqual(enums.ioModes, ['overwrite', 'append', 'merge', 'readonly', 'random'])
     ```
 
-## Enum scalars
+## Vocabulary members
 
-`Scalar.from_enum` keeps kind, spelling, and ordinal.
+A vocabulary member's datatype is `string`, so a member **is** its canonical
+name, and which vocabulary it belongs to is the column's business.
+`Vocabulary` is that closed name set: `from_parts` validates a name against
+it, `kind`, `as_str` and `ordinal` read the member, and building a `Scalar`
+from one answers the text a column holds. `DataType::Enum` is a different
+fact - the dictionary encoding a column is stored under, not the set a name
+is drawn from.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{Enum, IOMode, Scalar};
+    use yggdryl::{IOMode, Scalar, Vocabulary};
 
-    let value = Scalar::from(IOMode::Append);
-    let member = value.as_enum().expect("an enum scalar");
-    assert_eq!(member, &Enum::IOMode(IOMode::Append));
-    assert_eq!((member.kind(), member.as_str(), member.ordinal()), ("io_mode", "append", 1));
+    let member = Vocabulary::from_parts("IOMode", "append").expect("a known member");
+    assert_eq!(member, Vocabulary::IOMode(IOMode::Append));
+    assert_eq!((member.kind(), member.as_str(), member.ordinal()), ("IOMode", "append", 1));
+
+    // The value is the name, so it is the same scalar the text is.
+    assert_eq!(Scalar::from(IOMode::Append), Scalar::from("append"));
     ```
 
 === "Python"
@@ -72,9 +81,10 @@ One spelling per member at every boundary.
     ```python
     from yggdryl import Scalar
 
-    value = Scalar.from_enum("io_mode", "append")
-    assert (value.enum_kind, value.enum_value, value.enum_ordinal) == ("io_mode", "append", 1)
+    value = Scalar.from_enum("IOMode", "append")
+    assert value.kind == "string"
     assert value.as_py() == "append"
+    assert value == Scalar.from_("append")
     ```
 
 === "JavaScript"
@@ -83,9 +93,10 @@ One spelling per member at every boundary.
     const assert = require('node:assert/strict')
     const { Scalar } = require('yggdryl')
 
-    const value = Scalar.fromEnum('io_mode', 'append')
-    assert.deepEqual([value.enumKind, value.enumValue, value.enumOrdinal], ['io_mode', 'append', 1])
+    const value = Scalar.fromEnum('IOMode', 'append')
+    assert.equal(value.kind, 'string')
     assert.equal(value.asJs(), 'append')
+    assert.deepEqual(value, Scalar.from('append'))
     ```
 
 ## Widths and readers
@@ -95,7 +106,7 @@ The readers answer across widths and `None` for another kind; an interval's `tem
 Rust only.
 
 ```rust
-use yggdryl::{i256, Scalar, TemporalFamily, TimeUnit, Timezone};
+use yggdryl::{i256, Scalar, Temporal, TimeUnit, Timezone};
 
 let date = Scalar::from_date(20_000, TimeUnit::Day, Timezone::NAIVE)?;
 let time = Scalar::from_time(1, TimeUnit::Nanosecond, Timezone::NAIVE)?;
@@ -107,11 +118,12 @@ assert!(matches!(date, Scalar::Date32(_)));
 assert_eq!(time.kind(), "time64");
 assert!(matches!(duration, Scalar::Duration64(_)));
 
-assert_eq!(time.temporal_family(), Some(TemporalFamily::Time));
+assert!(matches!(time.as_temporal(), Some(Temporal::Time64(_))));
+assert_eq!(time.as_temporal().map(|held| held.family()), Some("time"));
 assert_eq!(time.temporal_unit(), Some(TimeUnit::Nanosecond));
 assert_eq!(date.temporal_timezone(), Some(Timezone::NAIVE));
 assert_eq!(duration.temporal_count(), Some(i64::from(i32::MAX) + 1));
-assert_eq!(decimal.temporal_family(), None);
+assert_eq!(decimal.as_temporal(), None);
 
 // Numbers read across widths, and one number at two widths is one value.
 assert_eq!(decimal.as_decimal(), Some((i256::from_i128(1_250), 2)));
@@ -120,9 +132,95 @@ assert_eq!(Scalar::from(7_u8).as_i128(), Some(7));
 assert_eq!(Scalar::from(7_u8), Scalar::from(7_i32));
 ```
 
+## Families
+
+A family with several leaves is one value enum over them - `Integer`, `Floating`, `Decimal`, `Temporal`, `Code`, `Geospatial` and `Nested` - each a `FamilyValue`: it stands for any one leaf, answers that leaf's datatype (`dtype`) and the kind every leaf shares (`KIND`), widens to the scalar the leaf widens to (`into_scalar`), and narrows a scalar whose variant is one of its leaves (`from_scalar`, by value: the scalar holds the leaf and not the family, and every leaf is `Copy` or one shared pointer). A variant is named as the leaf and the `Scalar` variant are, so `Integer::Int32(Int32)` is `Scalar::Int32(Int32)`. A kind with one leaf value - a boolean, a string, a byte value, a UUID, a version, a time zone, a MIME type, a media type - has no enum: the leaf is the family. The uri family has no enum either: its two leaves hold `Url` and `Urn`, the narrowings of one `Uri`, and `as_uri` borrows that identifier from either scalar. `Scalar` narrows to a family through `as_integer`, `as_floating`, `as_temporal`, `as_code`, `as_geospatial` and `as_nested`, `None` for another kind; the decimal family narrows through `Decimal::from_scalar`, because `as_decimal` is the coefficient-and-scale reader. A `Temporal` also answers `family()`: `date`, `time`, `datetime`, `duration` or `interval`.
+Rust only.
+
+```rust
+use yggdryl::{Decimal, Decimal18, FamilyValue, Floating, Int32, Integer, Nested, Temporal};
+use yggdryl::{DataType, DataTypeKind, Scalar, TimeUnit, Timezone};
+
+// The variant is the leaf, spelled as the scalar spells it, and the enum
+// answers the leaf's datatype.
+let held = Integer::from(Int32::new(7));
+assert_eq!(Integer::KIND, DataTypeKind::Integer);
+assert_eq!(held.dtype()?, DataType::Int32);
+assert_eq!(held.clone().into_scalar(), Scalar::Int32(Int32::new(7)));
+assert_eq!(Scalar::from(7_i32).as_integer(), Some(held));
+
+// A scalar narrows to its own family by value, and to no other.
+let at = Scalar::from_datetime(1, TimeUnit::Microsecond, Timezone::UTC)?;
+assert!(matches!(at.as_temporal(), Some(Temporal::DateTime64(_))));
+assert_eq!(at.as_temporal().map(|held| held.family()), Some("datetime"));
+assert_eq!(at.as_integer(), None);
+assert!(matches!(Scalar::from(1.5_f64).as_floating(), Some(Floating::Float64(_))));
+assert!(matches!(Scalar::from_sequence([Scalar::from(1_i64)]).as_nested(), Some(Nested::Sequence(_))));
+
+// The decimal family narrows through its own enum, because `as_decimal`
+// is the coefficient-and-scale reader.
+let price = Scalar::from(Decimal18::from_int(3));
+assert!(matches!(Decimal::from_scalar(&price), Some(Decimal::Decimal128(_))));
+assert_eq!(price.as_decimal().map(|(_, scale)| scale), Some(18));
+```
+
+## Truthiness and length
+
+`is_truthy` is a coercion and answers for every value; `as_bool` is a reading
+and answers only for a boolean, keeping the `None` a filter's three-valued
+logic walks. Nothing falls back between them.
+
+Falsy is absence and emptiness: `Null`, `false`, a zero of any width, empty
+text or bytes, and a container with nothing set in it. That last one is wider
+than `is_empty`, which only counts entries - a record of three nulls has three
+fields and nothing set, so it is not empty but it is falsy.
+
+Text is the one place this is wider than Python. `false`, `no`, `off`, `f`,
+`n` and `0` read as false, case-insensitively and trimmed, where Python calls
+every non-empty string true. Values arrive as text from CSV, FIX and query
+strings, and a column that spells false is not asking to be read as true.
+[`Boolean`](numeric.md)'s own text reader stays strict, because that
+one is the String-to-Boolean *cast*, not a coercion.
+
+`len` counts a container's direct children and answers zero for everything
+else, so it is not a text or byte length and never a truthiness test.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::Scalar;
+
+    assert!(Scalar::from(5).is_truthy());
+    assert!(!Scalar::from(0).is_truthy());
+    assert!(!Scalar::from("OFF").is_truthy());
+    assert!(Scalar::from("anything else").is_truthy());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Scalar
+
+    assert bool(Scalar.from_(5))
+    assert not bool(Scalar.from_(0))
+    assert not bool(Scalar.from_("off"))
+    assert not bool(Scalar.from_({"a": None, "b": ""}))
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Scalar } = require('yggdryl')
+
+    assert.equal(Scalar.from(5).isTruthy(), true)
+    assert.equal(Scalar.from(0).isTruthy(), false)
+    assert.equal(Scalar.from('off').isTruthy(), false)
+    ```
+
 ## Variants and arithmetic
 
-Every width is a direct `Scalar` variant, with no family enum between (`Scalar::Int32(Int32(2))`). Every `Scalar` is hashable and totally ordered; equal numeric or temporal values compare and hash equal across storage widths (`Int32(7)` equals `UInt8(7)`). Width stays available for datatype and Arrow projection.
+Every width is a direct `Scalar` variant, with no family enum between (`Scalar::Int32(Int32(2))`); a [family enum](#families) is what a reader narrows to, never what a variant holds. Every `Scalar` is hashable and totally ordered; equal numeric or temporal values compare and hash equal across storage widths (`Int32(7)` equals `UInt8(7)`). Width stays available for datatype and Arrow projection.
 
 | group | variants |
 | --- | --- |
@@ -130,8 +228,9 @@ Every width is a direct `Scalar` variant, with no family enum between (`Scalar::
 | integers | `I8`, `I16`, `I32`, `I64`, `I128`, `U8`, `U16`, `U32`, `U64`, `U128` |
 | floats | `F16`, `F32`, `F64` |
 | decimals | `D32`, `D64`, `D128`, `D256`, each a coefficient and a scale |
-| text and binary | `String`, `Code`, `Enum`, `Bytes`, `Geospatial` |
-| identifiers | `Uuid`, `Version`, `Url` |
+| text and binary | `String`, `Bytes`, `Geometry`, `Geography` |
+| registered codes | `Country`, `Currency`, `Mic`, `Cfi`, `Side`, `State`, `TimeInForce`, `Isin`, `Cusip`, `Sedol`, `Bloomberg` |
+| identifiers | `Uuid`, `Version`, `Url`, `Urn` |
 | date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
 | elapsed time | `Duration32`, `Duration64`, `Interval` |
 | containers | `Sequence`, `Mapping`, `Record` |
@@ -144,9 +243,10 @@ Arithmetic is checked in the Rust value model, both bindings redirect to it, and
 | floats | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | retain the widest float input; mixing an integer uses `F64` |
 | exact decimals | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | preserve an exact coefficient and scale; an inexact quotient is refused |
 | temporal and duration | temporal `+/-` duration, temporal `-` temporal, duration `+/-` duration, duration `*` integer, duration `/` integer | preserve the temporal kind or return an exact duration in the finest required unit |
+| text, bytes, sequences | `+` only | concatenation - the join a repertoire with no sum has. Both sides one repertoire; a code joins as its text and stops being a code; a WKB payload does not join |
 | null | every binary operation above | propagate `Null` |
 
-Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_rem`, `checked_neg`, `checked_abs`, and `Result<Scalar>` operator traits; Python adds operators, JavaScript only the named methods.
+Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_rem`, `checked_neg`, `checked_abs`, and `Result<Scalar>` operator traits; Python adds operators, JavaScript only the named methods: `add`, `subtract`, `multiply`, `divide`, `remainder`, `negate`, `absolute`.
 
 === "Rust"
 
@@ -180,12 +280,19 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
 
     assert.equal(Scalar.from(40).add(2).asJs(), 42)
     assert.ok(Scalar.decimal(1n).divide(Scalar.decimal(2n)).equals(Scalar.decimal(5n, 1)))
+
+    // The named methods are the whole vocabulary: no operator overloading here.
+    assert.equal(Scalar.from(40).subtract(2).asJs(), 38)
+    assert.equal(Scalar.from(6).multiply(7).asJs(), 42)
+    assert.equal(Scalar.from(43).remainder(2).asJs(), 1)
+    assert.equal(Scalar.from(42).negate().asJs(), -42)
+    assert.equal(Scalar.from(-42).absolute().asJs(), 42)
     ```
 
 | item | rule |
 | --- | --- |
 | rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `Sequence` in child-field order; `Mapping` is insertion-ordered with any unique `Scalar` key |
-| accessors | `as_bytes`, `as_str`, `as_json_bytes` / `as_json_utf8`, `as_decimal`, and the temporal readers `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
+| accessors | `as_bytes`, `as_str`, `into_json_bytes` / `into_json`, `as_decimal`, the temporal readers `temporal_unit`, `temporal_timezone`, `temporal_count`, and the [family accessors](#families) `as_integer` .. `as_nested`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
 
 ## FieldScalar
 
@@ -196,7 +303,7 @@ same pairing before that proof: it holds whatever it was given and casts on
 read, and `checked` is where it becomes a `FieldScalar`. Rust only.
 
 ```rust
-use yggdryl::types::UncheckedFieldScalar;
+use yggdryl::UncheckedFieldScalar;
 use yggdryl::{DataType, Field, FieldScalar, Scalar};
 
 let price = Field::new("price", DataType::Int32, false);
@@ -275,25 +382,36 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
 ## Edges
 
 - `readonly` or `random` at a write entry point -> refused.
-- Overflow, division by zero, inexact decimal quotient, undefined operand pair -> four separate core errors.
-- `+` on text or containers -> absent; concatenation is not arithmetic.
-- `count`, `unit`, `zone`, `unscaled`, `scale`, or a Rust `temporal_*` reader on an unrelated kind -> `None` / `null`; an `Interval` answers `temporal_count` with its nanosecond component.
+- Overflow, division by zero, inexact decimal quotient, undefined operand pair
+  -> four separate core errors. JavaScript names them on the thrown error's
+  `code`: `ERR_YGGDRYL_ARITHMETIC_OVERFLOW`, `ERR_YGGDRYL_DIVISION_BY_ZERO`
+  and `ERR_YGGDRYL_INEXACT_ARITHMETIC` arrive as a `RangeError`, and
+  `ERR_YGGDRYL_INVALID_ARITHMETIC` - an operand pair with no defined
+  operation - as a `TypeError`, so a `catch` branches on the code rather
+  than on the message. `ERR_YGGDRYL_ARITHMETIC` covers the rest.
+- `+` on text, bytes or a sequence -> concatenation, the join a repertoire with
+  no sum has. Both sides must be the same repertoire, and only `+`: `-`, `*`,
+  `/` and `%` over text stay refusals. A code joins as its text and stops being
+  a code. Geospatial values read as bytes but do not join - two WKB payloads
+  end to end are not a geometry. This is not the expression language's
+  `concat`, which is a variadic text function that also renders a version.
+- `count`, `unit`, `zone`, `unscaled`, `scale`, or a Rust `temporal_*` reader or `as_<family>` accessor on an unrelated kind -> `None` / `null`; an `Interval` answers `temporal_count` with its nanosecond component.
 - Empty or positional rows -> ambiguous; declare the `Field`.
 - Physical Arrow identity -> exact constructors, [Rust only](numeric.md).
 - `MimeType::PUFFIN` -> `application/vnd.apache.puffin`, `.puffin`, `PFA1`; the specification names no MIME type.
 - Geospatial value across a binding -> WKB bytes; `wkb` reader [Rust only](geospatial.md).
-- [Code](codes.md) bases in `yggdryl.enums` -> [Python only](../extensions/python.md): the fixed US-ASCII widths `fixed_ascii(width)` builds and the four registered code bases, building the shared `StringEnum`.
+- [Code](codes.md) bases in `yggdryl.enums` -> Python only: the fixed US-ASCII widths `fixed_ascii(width)` builds and the four registered code bases, building the shared `StringEnum`.
 - Field inference -> `Scalar.into_field` in Python, beside the `into_field` a `@scalar` class caches for its own struct root; no binding reimplements it.
 - Named record rows -> a non-null Struct root named `row`.
-- Default `arrow` feature -> `into_arrow_array` materializes one row, `from_arrow_array` decodes one back ([Arrow scalars](../arrow/scalars.md)).
+- `into_arrow_array` materializes one row, `from_arrow_array` decodes one back ([Arrow scalars](../arrow/scalars.md)).
 
 ## Commands
 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::scalar types::enumeration types::arithmetic types::decimal::scalars types::temporal::scalars
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- enums::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- scalar::tests arithmetic::tests decimal::tests
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- enums:: scalar:: temporal::
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(stable_hash_|from_float32|family_constructors|as_|temporal_|enum_|infer_|record_field_update|json_|checked_)'
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^(enum_accessors|mime_parse|media_infer)/'
     ```
@@ -313,9 +431,9 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
 
 ## Performance
 
-### Enum and inference boundary
+### Vocabulary and inference boundary
 
-Enum boundary in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18.0 (2026-08-24). No Node benchmark regenerates the JavaScript row.
+Vocabulary boundary in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18.0 (2026-08-24). No Node benchmark regenerates the JavaScript row.
 
 | boundary | construct | kind | spelling | ordinal |
 | --- | ---: | ---: | ---: | ---: |
@@ -346,8 +464,8 @@ Windows x86_64 release smoke runs, Criterion group `value` in `--bench types` an
 | infer that Record's datatype | 675 ns |
 | persistent Record field update | 273 ns |
 | restate Date32 days as nanoseconds | 3.10 ns |
-| `as_json_bytes` | 2.67 us |
-| `as_json_utf8` | 2.67 us |
+| `into_json_bytes` | 2.67 us |
+| `into_json` | 2.67 us |
 
 | CPython release boundary | estimate |
 | --- | ---: |

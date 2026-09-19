@@ -5,7 +5,10 @@ use std::sync::Arc;
 use arrow_array::types::Int8Type;
 use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, Int32Array, StringArray};
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::{DataType, DataTypeId, Field, FieldScalar, Scalar, TimeUnit, Timezone, UnionMode};
+use yggdryl::{
+    DataType, DataTypeId, Field, FieldScalar, Scalar, StructureType, TimeUnit, Timezone, UnionMode,
+};
+use yggdryl::{DateTimeType, DurationType, TimeType};
 
 fn representative_types() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);
@@ -15,21 +18,21 @@ fn representative_types() -> Vec<DataType> {
         DataType::Int8,
         DataType::UInt64,
         DataType::Float16,
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::UTC,
-        },
-        DataType::Date32,
-        DataType::Date64,
-        DataType::Time32(TimeUnit::Second),
-        DataType::Time64(TimeUnit::Microsecond),
-        DataType::Duration32(TimeUnit::Millisecond),
-        DataType::Duration64(TimeUnit::Millisecond),
-        DataType::Interval(TimeUnit::YearMonth),
-        DataType::Interval(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::MonthDayNano),
+        }),
+        DataType::date32(),
+        DataType::date64(),
+        DataType::Time(TimeType::Time32(TimeUnit::Second)),
+        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+        DataType::Duration(DurationType::Duration32(TimeUnit::Millisecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Millisecond)),
+        DataType::interval(TimeUnit::YearMonth).unwrap(),
+        DataType::interval(TimeUnit::DayTime).unwrap(),
+        DataType::interval(TimeUnit::MonthDayNano).unwrap(),
         DataType::binary(),
-        DataType::fixed_size_binary(2).unwrap(),
+        DataType::fixed_binary(2).unwrap(),
         DataType::large_binary(),
         DataType::binary_view(),
         DataType::from_str("binary(4)").unwrap(),
@@ -41,15 +44,20 @@ fn representative_types() -> Vec<DataType> {
         DataType::fixed_utf8(2).unwrap(),
         DataType::from_str("utf8(8)").unwrap(),
         DataType::from_str("string(windows-1252)").unwrap(),
+        DataType::large_utf8_view(),
+        DataType::ascii_view(),
+        DataType::fixed_cp1252(3).unwrap(),
+        DataType::from_str("sized_cp1252(8)").unwrap(),
         DataType::list(item()),
         DataType::list_view(item()),
         DataType::fixed_size_list(item(), 2).unwrap(),
         DataType::large_list(item()),
         DataType::large_list_view(item()),
-        DataType::from_fields([
+        StructureType::from_fields([
             Field::new("required", DataType::Int32, false),
             Field::new("optional", DataType::utf8(), true),
         ])
+        .map(DataType::from)
         .unwrap(),
         DataType::union(
             [
@@ -120,28 +128,36 @@ fn leaf_defaults_keep_their_declared_physical_identity() {
     let cases = [
         (DataType::decimal32(7, 2).unwrap(), DataTypeId::Decimal32),
         (DataType::decimal64(12, 2).unwrap(), DataTypeId::Decimal64),
-        (DataType::large_utf8(), DataTypeId::LargeString),
-        (DataType::utf8_view(), DataTypeId::StringView),
-        (
-            DataType::fixed_size_binary(3).unwrap(),
-            DataTypeId::FixedSizeBinary,
-        ),
+        (DataType::large_utf8(), DataTypeId::LargeUtf8String),
+        (DataType::utf8_view(), DataTypeId::Utf8StringView),
+        (DataType::fixed_binary(3).unwrap(), DataTypeId::FixedBinary),
         (DataType::large_binary(), DataTypeId::LargeBinary),
         (DataType::binary_view(), DataTypeId::BinaryView),
-        (DataType::ascii(), DataTypeId::String),
-        (DataType::fixed_ascii(4).unwrap(), DataTypeId::FixedString),
+        (DataType::ascii(), DataTypeId::AsciiString),
+        (
+            DataType::fixed_ascii(4).unwrap(),
+            DataTypeId::FixedAsciiString,
+        ),
+        (DataType::cp1252(), DataTypeId::Cp1252String),
+        (
+            DataType::fixed_cp1252(3).unwrap(),
+            DataTypeId::FixedCp1252String,
+        ),
         (DataType::Country, DataTypeId::Country),
         (DataType::Currency, DataTypeId::Currency),
         (DataType::Mic, DataTypeId::Mic),
         (DataType::Cfi, DataTypeId::Cfi),
         (DataType::Uuid, DataTypeId::Uuid),
         (
-            DataType::Interval(TimeUnit::YearMonth),
+            DataType::interval(TimeUnit::YearMonth).unwrap(),
             DataTypeId::Interval,
         ),
-        (DataType::Interval(TimeUnit::DayTime), DataTypeId::Interval),
         (
-            DataType::Interval(TimeUnit::MonthDayNano),
+            DataType::interval(TimeUnit::DayTime).unwrap(),
+            DataTypeId::Interval,
+        ),
+        (
+            DataType::interval(TimeUnit::MonthDayNano).unwrap(),
             DataTypeId::Interval,
         ),
         (DataType::geometry(None).unwrap(), DataTypeId::Geometry),

@@ -48,10 +48,11 @@ use pyo3::types::{
     PyType,
 };
 
+use yggdryl::FieldValue as _;
 use yggdryl::arrow::BatchReader;
-use yggdryl::media::text::{LeadingFragment, TextOptions as CoreTextOptions};
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{ArrowCast, Field as CoreField, Level};
+use yggdryl::text::{LeadingFragment, TextOptions as CoreTextOptions};
+use yggdryl::{Field as CoreField, Level};
 
 use crate::enums::{PyMimeType, core_media_type_from_value};
 use crate::expression::{PyFilter, PyPlan, PySelector, plan_from_value};
@@ -1136,7 +1137,7 @@ fn bytes_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
 }
 
 /// Parse one text row terminator without losing arbitrary byte values.
-fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::media::text::LineSep> {
+fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::text::LineSep> {
     if let Ok(value) = value.extract::<&str>() {
         return value.parse().map_err(value_error);
     }
@@ -1155,7 +1156,7 @@ fn line_sep_from_value(value: &Bound<'_, PyAny>) -> PyResult<yggdryl::media::tex
             "linesep must be str, bytes, bytearray, memoryview, or None",
         ));
     };
-    yggdryl::media::text::LineSep::new(bytes).map_err(value_error)
+    yggdryl::text::LineSep::new(bytes).map_err(value_error)
 }
 
 /// Read one required key from private `RecordOptions` pickle state.
@@ -1719,7 +1720,7 @@ impl PyRecordOptions {
     /// nothing.
     ///
     /// A field shapes rows by applying, not by casting: a declaration is a
-    /// cast *and* the `transform:` and `digest:` columns it derives, so a
+    /// cast *and* the `TRANSFORM:` and `DIGEST:` columns it derives, so a
     /// declared derived column arrives written. The selection after it only
     /// narrows, because deriving there would restore what it was asked to
     /// drop.
@@ -2255,7 +2256,7 @@ impl PyTextOptions {
     /// nothing.
     ///
     /// A field shapes rows by applying, not by casting: a declaration is a
-    /// cast *and* the `transform:` and `digest:` columns it derives, so a
+    /// cast *and* the `TRANSFORM:` and `DIGEST:` columns it derives, so a
     /// declared derived column arrives written. The selection after it only
     /// narrows, because deriving there would restore what it was asked to
     /// drop.

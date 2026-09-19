@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "positionamountdatacomponent"
+        "FIX:component": "positionamountdatacomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "positionamountdatacomponent",
+    "FIX:counter": "753",
+    "FIX:tag": "567840",
     "description": "Number of Position Amount entries",
-    "display": "PositionAmountData",
-    "fix:component": "positionamountdatacomponent",
-    "fix:counter": "753",
-    "fix:tag": "567840"
+    "display": "PositionAmountData"
   }
 }

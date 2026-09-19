@@ -12,7 +12,7 @@ pub(crate) fn arrow_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| {
             black_box(&dtype)
                 .clone()
-                .into_arrow()
+                .into_arrow_datatype()
                 .expect("the benchmark datatype is valid")
         });
     });
@@ -21,24 +21,24 @@ pub(crate) fn arrow_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| {
             black_box(&dtype)
                 .clone()
-                .into_arrow_ffi()
+                .into_arrow_datatype_ffi()
                 .expect("the benchmark datatype is valid")
         });
     });
     group.bench_function("datatype_import_borrowed", |bencher| {
         let arrow = DataType::from_str(NESTED_SQL)
             .expect("static nested type must parse")
-            .into_arrow()
+            .into_arrow_datatype()
             .expect("static nested type must project");
         bencher.iter(|| {
-            DataType::from_arrow(black_box(&arrow))
+            DataType::from_arrow_datatype(black_box(&arrow))
                 .expect("the benchmark Arrow datatype remains valid")
         });
     });
     group.bench_function("datatype_import_owned", |bencher| {
         let arrow = DataType::from_str(NESTED_SQL)
             .expect("static nested type must parse")
-            .into_arrow()
+            .into_arrow_datatype()
             .expect("static nested type must project");
         bencher.iter_batched(
             || arrow.clone(),

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartydetails",
-          "fix:tag": "1671"
+          "FIX:field": "nopartydetails",
+          "FIX:tag": "1671"
         }
       },
       {
@@ -21,7 +21,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "partydetailgrp"
+          "FIX:group": "partydetailgrp"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementstatus",
-          "fix:tag": "1883"
+          "FIX:field": "entitlementstatus",
+          "FIX:tag": "1883"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noentitlements",
-          "fix:tag": "1773"
+          "FIX:field": "noentitlements",
+          "FIX:tag": "1773"
         }
       },
       {
@@ -53,14 +53,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "entitlementgrp"
+          "FIX:group": "entitlementgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyEntitlement",
-    "fix:tag": "353210"
+    "FIX:tag": "353210",
+    "display": "PartyEntitlement"
   }
 }

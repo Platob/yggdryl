@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "matchingdatapoint"
+        "FIX:component": "matchingdatapoint"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "matchingdatapoint",
+    "FIX:counter": "2781",
+    "FIX:tag": "1032047",
     "description": "Required if NoMatchingDataPoints(2781) > 0.",
-    "display": "MatchingDataPointGrp",
-    "fix:component": "matchingdatapoint",
-    "fix:counter": "2781",
-    "fix:tag": "1032047"
+    "display": "MatchingDataPointGrp"
   }
 }

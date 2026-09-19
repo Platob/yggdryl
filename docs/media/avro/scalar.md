@@ -22,8 +22,8 @@ Containers as native values: the header's schema and metadata, rows in the JSON 
     ```rust
     use yggdryl::holder::Buffer;
     use yggdryl::{Scalar};
-    use yggdryl::text::json;
-    use yggdryl::media::avro;
+    use yggdryl::json;
+    use yggdryl::avro;
 
     let schema = json::from_utf8(
         r#"{"type":"record","name":"trade","fields":[
@@ -105,11 +105,11 @@ The header makes a container self-describing, so `read_container` needs only the
 === "Rust"
 
     ```rust
-    use yggdryl::media::avro::Schema;
+    use yggdryl::avro::Schema;
     use yggdryl::holder::Buffer;
     use yggdryl::{Scalar};
-    use yggdryl::text::json;
-    use yggdryl::media::avro;
+    use yggdryl::json;
+    use yggdryl::avro;
 
     let writer = json::from_utf8(
         r#"{"type":"record","name":"trade","fields":[
@@ -216,8 +216,8 @@ The header makes a container self-describing, so `read_container` needs only the
     ```rust
     use yggdryl::holder::Buffer;
     use yggdryl::{Scalar};
-    use yggdryl::text::json;
-    use yggdryl::media::avro;
+    use yggdryl::json;
+    use yggdryl::avro;
 
     let schema = json::from_utf8(r#"{"type":"record","name":"row","fields":[
         {"name":"id","type":"long"}]}"#)?;
@@ -278,9 +278,9 @@ Each datum frames as `C3 01`, the writer schema's Rabin fingerprint in little-en
 === "Rust"
 
     ```rust
-    use yggdryl::media::avro::Schema;
+    use yggdryl::avro::Schema;
     use yggdryl::{Scalar};
-    use yggdryl::media::avro;
+    use yggdryl::avro;
 
     let schema = Schema::from_str(r#"{"type":"record","name":"tick","fields":[
         {"name":"price","type":"double"}]}"#)?;
@@ -341,7 +341,7 @@ The fingerprint is how a receiver picks the writer schema out of a store, and th
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::avro::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib avro::tests
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- codec/avro
     ```
 

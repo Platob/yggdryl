@@ -8,10 +8,10 @@ The closed function set, and its one door: a user-defined function is registered
 | --- | --- |
 | Owns | `FunctionSignature`, `UserFunction`, `UserRef`, the registry (`register_function`, `unregister_function`, `lookup_function`, `registered_functions`), `Function::User` |
 | Spelling | `namespace.name(arguments...)`; both parts identifiers, ASCII case-insensitive, held lowercase |
-| Signature | a struct `Field` named `namespace.name`: one child per parameter in position order, a parameter carrying `function:default` optional, the return as the `function:returns` property; `as_field` and `from_field` are lossless |
+| Signature | a struct `Field` named `namespace.name`: one child per parameter in position order, a parameter carrying `FUNCTION:default` optional, the return as the `FUNCTION:returns` property; `as_field` and `from_field` are lossless |
 | Call | arguments bound by position, defaults filled, each cast to its parameter through `DataType::cast_scalar`; a null meeting a parameter declared `not null` answers null without a call; the answer is cast to the declared return |
 | Tiers | the scalar tier calls `call`; the vectorized tier calls `call_arrow`, whose default runs `call` once per row through the one array crossing; the statistics tier never learns a user function, so a filter over one reads the rows |
-| Stored | a call over plain columns is a column's `transform:function` and `transform:sources` ([Selectors](selectors.md#a-selector-declares-a-schema)) |
+| Stored | a call over plain columns is a column's `TRANSFORM:function` and `TRANSFORM:sources` ([Selectors](selectors.md#a-selector-declares-a-schema)) |
 | Registry | process-wide, one implementation per qualified name, the latest registration wins; an unregistered name is refused where it is typed or bound, never silently null |
 | Bindings | Python `@user_defined_function` and `@user_defined_filter` in `yggdryl.expression`; JavaScript parses and prints the spelling and refuses it at bind |
 
@@ -26,7 +26,7 @@ The closed function set, and its one door: a user-defined function is registered
     use yggdryl::expression::{
         FunctionSignature, UserFunction, UserRef, register_function, unregister_function,
     };
-    use yggdryl::{DataType, Field, Filter, Result, Scalar, Selector};
+    use yggdryl::{DataType, Field, Filter, Result, Scalar, Selector, StructureType};
 
     struct Double(FunctionSignature);
 
@@ -47,7 +47,7 @@ The closed function set, and its one door: a user-defined function is registered
     )?;
     register_function(Arc::new(Double(signature)))?;
 
-    let rows = DataType::from_fields([DataType::Int64.nullable_field("size")])?.required_field("rows");
+    let rows = DataType::from(StructureType::from_fields([DataType::Int64.nullable_field("size")])?).required_field("rows");
     let batch = RecordBatch::try_from_iter([(
         "size",
         Arc::new(Int64Array::from(vec![Some(1), None, Some(3)])) as ArrayRef,
@@ -63,7 +63,7 @@ The closed function set, and its one door: a user-defined function is registered
 
     // The signature is a field, and the stored column knows its function.
     let stored = selector.into_field(&rows)?;
-    assert_eq!(stored.fields()[0].get_metadata("transform:function"), Some("docs.double"));
+    assert_eq!(stored.fields()[0].get_metadata("TRANSFORM:function"), Some("docs.double"));
     let field = FunctionSignature::from_field(&Field::from_str(&stored.fields()[0].to_string()).unwrap_or(stored.fields()[0].clone()));
     assert!(field.is_err() || field.is_ok());
 
@@ -99,7 +99,7 @@ The closed function set, and its one door: a user-defined function is registered
     assert double(4) == 8
     assert str(double.term("size")) == "docs.double(size)"
     assert double.signature.name == "docs.double"
-    assert double.signature.metadata["function:returns"] == "int64 not null"
+    assert double.signature.metadata["FUNCTION:returns"] == "int64 not null"
 
     projected = Selector("docs.double(size) as doubled, docs.shout(ccy) as loud").apply_arrow_batch(batch)
     assert projected.column("doubled").to_pylist() == [2, None, 6]
@@ -137,7 +137,7 @@ The closed function set, and its one door: a user-defined function is registered
 
 ## The signature is a field
 
-A parameter with a Python default, or a Rust field carrying `function:default`, is optional, and a call may leave it out; every parameter after a defaulted one has to carry a default too. The default is stored as the literal the grammar spells - `1`, `'EUR'`, `date32 '2024-01-01'` - and read back cast to the parameter's datatype. `FunctionSignature::as_field` writes `namespace.name` as a struct of the parameters with `function:returns = "<dtype> null|not null"`, and `from_field` reads it back, so a signature travels like any schema.
+A parameter with a Python default, or a Rust field carrying `FUNCTION:default`, is optional, and a call may leave it out; every parameter after a defaulted one has to carry a default too. The default is stored as the literal the grammar spells - `1`, `'EUR'`, `date32 '2024-01-01'` - and read back cast to the parameter's datatype. `FunctionSignature::as_field` writes `namespace.name` as a struct of the parameters with `FUNCTION:returns = "<dtype> null|not null"`, and `from_field` reads it back, so a signature travels like any schema.
 
 ## Calling from Python
 

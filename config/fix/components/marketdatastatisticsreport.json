@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdstatisticrptid",
-          "fix:tag": "2453"
+          "FIX:field": "mdstatisticrptid",
+          "FIX:tag": "2453"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticreqid",
-          "fix:tag": "2452"
+          "FIX:field": "mdstatisticreqid",
+          "FIX:tag": "2452"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticrequestresult",
-          "fix:tag": "2473"
+          "FIX:field": "mdstatisticrequestresult",
+          "FIX:tag": "2473"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "unsolicitedindicator",
-          "fix:tag": "325"
+          "FIX:field": "unsolicitedindicator",
+          "FIX:tag": "325"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -85,7 +85,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -95,8 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "custordercapacity",
-          "fix:tag": "582"
+          "FIX:field": "custordercapacity",
+          "FIX:tag": "582"
         }
       },
       {
@@ -106,8 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradedate",
-          "fix:tag": "75"
+          "FIX:field": "tradedate",
+          "FIX:tag": "75"
         }
       },
       {
@@ -117,8 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid",
-          "fix:tag": "1301"
+          "FIX:field": "marketid",
+          "FIX:tag": "1301"
         }
       },
       {
@@ -128,8 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid",
-          "fix:tag": "1300"
+          "FIX:field": "marketsegmentid",
+          "FIX:tag": "1300"
         }
       },
       {
@@ -139,8 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentdesc",
-          "fix:tag": "1396"
+          "FIX:field": "marketsegmentdesc",
+          "FIX:tag": "1396"
         }
       },
       {
@@ -150,8 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmktsegmdesclen",
-          "fix:tag": "1397"
+          "FIX:field": "encodedmktsegmdesclen",
+          "FIX:tag": "1397"
         }
       },
       {
@@ -161,8 +161,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmktsegmdesc",
-          "fix:tag": "1398"
+          "FIX:field": "encodedmktsegmdesc",
+          "FIX:tag": "1398"
         }
       },
       {
@@ -172,8 +172,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitylistid",
-          "fix:tag": "1465"
+          "FIX:field": "securitylistid",
+          "FIX:tag": "1465"
         }
       },
       {
@@ -183,8 +183,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency",
-          "fix:tag": "15"
+          "FIX:field": "currency",
+          "FIX:tag": "15"
         }
       },
       {
@@ -194,8 +194,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource",
-          "fix:tag": "2897"
+          "FIX:field": "currencycodesource",
+          "FIX:tag": "2897"
         }
       },
       {
@@ -205,7 +205,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -215,7 +215,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrumentextension"
+          "FIX:component": "instrumentextension"
         }
       },
       {
@@ -225,7 +225,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "financingdetails"
+          "FIX:component": "financingdetails"
         }
       },
       {
@@ -235,8 +235,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings",
-          "fix:tag": "711"
+          "FIX:field": "nounderlyings",
+          "FIX:tag": "711"
         }
       },
       {
@@ -246,7 +246,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "undinstrmtgrp"
+          "FIX:group": "undinstrmtgrp"
         }
       },
       {
@@ -256,8 +256,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs",
-          "fix:tag": "555"
+          "FIX:field": "nolegs",
+          "FIX:tag": "555"
         }
       },
       {
@@ -267,7 +267,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrmtleggrp"
+          "FIX:group": "instrmtleggrp"
         }
       },
       {
@@ -277,8 +277,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedinstruments",
-          "fix:tag": "1647"
+          "FIX:field": "norelatedinstruments",
+          "FIX:tag": "1647"
         }
       },
       {
@@ -288,7 +288,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "relatedinstrumentgrp"
+          "FIX:group": "relatedinstrumentgrp"
         }
       },
       {
@@ -298,8 +298,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nomdstatistics",
-          "fix:tag": "2474"
+          "FIX:field": "nomdstatistics",
+          "FIX:tag": "2474"
         }
       },
       {
@@ -309,7 +309,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "mdstatisticrptgrp"
+          "FIX:group": "mdstatisticrptgrp"
         }
       },
       {
@@ -319,8 +319,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -330,8 +330,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -341,8 +341,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -352,8 +352,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -363,17 +363,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "securitylistid",
+    "FIX:msgtype": "DP",
+    "FIX:tag": "480519",
     "description": "MsgType = DP",
-    "display": "MarketDataStatisticsReport",
-    "fix:identifiers": "securitylistid",
-    "fix:msgtype": "DP",
-    "fix:tag": "480519"
+    "display": "MarketDataStatisticsReport"
   }
 }

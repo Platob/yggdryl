@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfinalpricepaymentdateunadjusted",
-          "fix:tag": "42654"
+          "FIX:field": "paymentstreamfinalpricepaymentdateunadjusted",
+          "FIX:tag": "42654"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfinalpricepaymentdaterelativeto",
-          "fix:tag": "42655"
+          "FIX:field": "paymentstreamfinalpricepaymentdaterelativeto",
+          "FIX:tag": "42655"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfinalpricepaymentdateoffsetfperiod",
-          "fix:tag": "42656"
+          "FIX:field": "paymentstreamfinalpricepaymentdateoffsetfperiod",
+          "FIX:tag": "42656"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfinalpricepaymentdateoffsetunit",
-          "fix:tag": "42657"
+          "FIX:field": "paymentstreamfinalpricepaymentdateoffsetunit",
+          "FIX:tag": "42657"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfinalpricepaymentdateoffsetdaytype",
-          "fix:tag": "42658"
+          "FIX:field": "paymentstreamfinalpricepaymentdateoffsetdaytype",
+          "FIX:tag": "42658"
         }
       },
       {
@@ -65,16 +65,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfinalpricepaymentdateadjusted",
-          "fix:tag": "42659"
+          "FIX:field": "paymentstreamfinalpricepaymentdateadjusted",
+          "FIX:tag": "42659"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "424584",
     "description": "Conditionally required when PaymentStreamFinalPricePaymentDateOffsetUnit(42657) is specified.",
-    "display": "PaymentStreamFinalPricePaymentDate",
-    "fix:tag": "424584"
+    "display": "PaymentStreamFinalPricePaymentDate"
   }
 }

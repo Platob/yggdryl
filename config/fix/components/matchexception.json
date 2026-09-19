@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptiontype",
-          "fix:tag": "2773"
+          "FIX:field": "matchexceptiontype",
+          "FIX:tag": "2773"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptionelementtype",
-          "fix:tag": "2774"
+          "FIX:field": "matchexceptionelementtype",
+          "FIX:tag": "2774"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptionelementname",
-          "fix:tag": "2775"
+          "FIX:field": "matchexceptionelementname",
+          "FIX:tag": "2775"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptionallocvalue",
-          "fix:tag": "2776"
+          "FIX:field": "matchexceptionallocvalue",
+          "FIX:tag": "2776"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptionconfirmvalue",
-          "fix:tag": "2777"
+          "FIX:field": "matchexceptionconfirmvalue",
+          "FIX:tag": "2777"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptiontolerancevalue",
-          "fix:tag": "2778"
+          "FIX:field": "matchexceptiontolerancevalue",
+          "FIX:tag": "2778"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptiontolerancevaluetype",
-          "fix:tag": "2779"
+          "FIX:field": "matchexceptiontolerancevaluetype",
+          "FIX:tag": "2779"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchexceptiontext",
-          "fix:tag": "2780"
+          "FIX:field": "matchexceptiontext",
+          "FIX:tag": "2780"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmatchexceptiontextlen",
-          "fix:tag": "2797"
+          "FIX:field": "encodedmatchexceptiontextlen",
+          "FIX:tag": "2797"
         }
       },
       {
@@ -109,15 +109,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmatchexceptiontext",
-          "fix:tag": "2798"
+          "FIX:field": "encodedmatchexceptiontext",
+          "FIX:tag": "2798"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MatchException",
-    "fix:tag": "430998"
+    "FIX:tag": "430998",
+    "display": "MatchException"
   }
 }

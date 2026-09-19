@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "optionexerciseexpirationdatebusinesscentercomponent"
+        "FIX:component": "optionexerciseexpirationdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "optionexerciseexpirationdatebusinesscentercomponent",
+    "FIX:counter": "41140",
+    "FIX:tag": "804054",
     "description": "Required if NoOptionExerciseExpirationDateBusinessCenters(41140) > 0.",
-    "display": "OptionExerciseExpirationDateBusinessCenterGrp",
-    "fix:component": "optionexerciseexpirationdatebusinesscentercomponent",
-    "fix:counter": "41140",
-    "fix:tag": "804054"
+    "display": "OptionExerciseExpirationDateBusinessCenterGrp"
   }
 }

@@ -32,7 +32,7 @@ Loads return only types the JSON grammar proves; dumps interoperate.
 === "Rust"
 
     ```rust
-    use yggdryl::text::json;
+    use yggdryl::json;
     use yggdryl::{from_json_scalar, into_json_scalar, Scalar};
 
     let value = json::from_utf8(r#"{"symbol":"AAPL","quantity":100}"#)?;
@@ -101,13 +101,13 @@ Other native values use interoperable spellings, without a private marker envelo
 | non-finite float | error |
 | Mapping with non-string keys | error |
 
-A schemaless reader sees strings; pass a native [`Field`](../../types/field.md) to recover exact types. A [string](../../types/text.md) Field puts its layout, charset and width on the value it reads and checks its bound, naming the bytes it counted; a byte Field reads base64 and holds the payload to its width or maximum the same way.
+A schemaless reader sees strings; pass a native [`Field`](../../types/field.md) to recover exact types. A [string](../../types/text.md) Field puts its leaf - charset, shape and width - on the value it reads and checks its bound, naming the bytes it counted; a byte Field reads base64 and holds the payload to its width or maximum the same way.
 
 === "Rust"
 
     ```rust
     use yggdryl::{DataType, Field, Scalar};
-    use yggdryl::text::json;
+    use yggdryl::json;
 
     let amount = Field::new("amount", DataType::decimal128(8, 2)?, false);
     assert_eq!(json::from_utf8_with_field(r#""12.50""#, &amount)?, Scalar::d128(1_250, 2));
@@ -120,7 +120,7 @@ A schemaless reader sees strings; pass a native [`Field`](../../types/field.md) 
     let refused = json::from_utf8_with_field(r#""AAPLE""#, &symbol).unwrap_err().to_string();
     assert!(refused.contains("expected at most 4 bytes of us-ascii, got 5"), "{refused}");
 
-    let key = Field::new("key", DataType::fixed_size_binary(2)?, false);
+    let key = Field::new("key", DataType::fixed_binary(2)?, false);
     assert_eq!(json::from_utf8_with_field(r#""AP8=""#, &key)?, Scalar::from(&[0_u8, 0xFF][..]));
     ```
 

@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mandatoryclearingjurisdiction",
-          "fix:tag": "41313"
+          "FIX:field": "mandatoryclearingjurisdiction",
+          "FIX:tag": "41313"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MandatoryClearingJurisdiction",
-    "fix:tag": "579070"
+    "FIX:tag": "579070",
+    "display": "MandatoryClearingJurisdiction"
   }
 }

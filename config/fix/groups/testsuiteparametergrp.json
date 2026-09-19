@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "testsuiteparameter"
+        "FIX:component": "testsuiteparameter"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "testsuiteparameter",
+    "FIX:counter": "3126",
+    "FIX:tag": "1039954",
     "description": "Required if NoTestSuiteParameters(3126) > 0.",
-    "display": "TestSuiteParameterGrp",
-    "fix:component": "testsuiteparameter",
-    "fix:counter": "3126",
-    "fix:tag": "1039954"
+    "display": "TestSuiteParameterGrp"
   }
 }

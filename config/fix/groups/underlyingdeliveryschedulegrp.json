@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingdeliveryschedule"
+        "FIX:component": "underlyingdeliveryschedule"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingdeliveryschedule",
+    "FIX:counter": "41756",
+    "FIX:tag": "1062097",
     "description": "Required if NoUnderlyingDeliverySchedules(41756) > 0.",
-    "display": "UnderlyingDeliveryScheduleGrp",
-    "fix:component": "underlyingdeliveryschedule",
-    "fix:counter": "41756",
-    "fix:tag": "1062097"
+    "display": "UnderlyingDeliveryScheduleGrp"
   }
 }

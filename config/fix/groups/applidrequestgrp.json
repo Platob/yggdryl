@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "applidrequest"
+        "FIX:component": "applidrequest"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "applidrequest",
+    "FIX:counter": "1351",
+    "FIX:tag": "772833",
     "description": "Specifies number of application id occurrences",
-    "display": "ApplIDRequestGrp",
-    "fix:component": "applidrequest",
-    "fix:counter": "1351",
-    "fix:tag": "772833"
+    "display": "ApplIDRequestGrp"
   }
 }

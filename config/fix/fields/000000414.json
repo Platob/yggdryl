@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41400",
       "description": "Number of schedules in the repeating group.",
-      "display": "NoLegComplexEventSchedules",
-      "fix:tag": "41400"
+      "display": "NoLegComplexEventSchedules"
     }
   },
   {
@@ -19,9 +19,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41401",
       "description": "The start date of the schedule.",
-      "display": "LegComplexEventScheduleStartDate",
-      "fix:tag": "41401"
+      "display": "LegComplexEventScheduleStartDate"
     }
   },
   {
@@ -32,9 +32,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41402",
       "description": "The end date of the schedule.",
-      "display": "LegComplexEventScheduleEndDate",
-      "fix:tag": "41402"
+      "display": "LegComplexEventScheduleEndDate"
     }
   },
   {
@@ -44,9 +44,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41403",
       "description": "Time unit multiplier for the schedule date frequency.",
-      "display": "LegComplexEventScheduleFrequencyPeriod",
-      "fix:tag": "41403"
+      "display": "LegComplexEventScheduleFrequencyPeriod"
     }
   },
   {
@@ -56,9 +56,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the schedule date frequency.",
-      "display": "LegComplexEventScheduleFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -80,7 +78,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41404"
+      "FIX:tag": "41404",
+      "description": "Time unit associated with the schedule date frequency.",
+      "display": "LegComplexEventScheduleFrequencyUnit"
     }
   },
   {
@@ -90,9 +90,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The convention for determining the sequence of dates. It is used in conjunction with a specified frequency. Used only to override the roll convention defined in the LegDateAdjustment component in InstrumentLeg.",
-      "display": "LegComplexEventScheduleRollConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FirstDay",
@@ -324,7 +322,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "41405"
+      "FIX:tag": "41405",
+      "description": "The convention for determining the sequence of dates. It is used in conjunction with a specified frequency. Used only to override the roll convention defined in the LegDateAdjustment component in InstrumentLeg.",
+      "display": "LegComplexEventScheduleRollConvention"
     }
   },
   {
@@ -334,9 +334,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41406",
       "description": "Identifies the reference \"page\" from the quote source.",
-      "display": "ProvisionCashSettlQuoteReferencePage",
-      "fix:tag": "41406"
+      "display": "ProvisionCashSettlQuoteReferencePage"
     }
   },
   {
@@ -346,9 +346,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41407",
       "description": "Identifies the reference \"page\" from the quote source.",
-      "display": "LegProvisionCashSettlQuoteReferencePage",
-      "fix:tag": "41407"
+      "display": "LegProvisionCashSettlQuoteReferencePage"
     }
   },
   {
@@ -358,9 +358,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41408",
       "description": "Number of delivery schedules in the repeating group.",
-      "display": "NoLegDeliverySchedules",
-      "fix:tag": "41408"
+      "display": "NoLegDeliverySchedules"
     }
   },
   {
@@ -370,9 +370,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of delivery schedule.",
-      "display": "LegDeliveryScheduleType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Notional",
@@ -389,7 +387,9 @@
           "doc": "Physical settlement period"
         }
       ],
-      "fix:tag": "41409"
+      "FIX:tag": "41409",
+      "description": "Specifies the type of delivery schedule.",
+      "display": "LegDeliveryScheduleType"
     }
   },
   {
@@ -399,9 +399,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41410",
       "description": "Identifier for this instance of delivery schedule for cross referencing elsewhere in the message.",
-      "display": "LegDeliveryScheduleXID",
-      "fix:tag": "41410"
+      "display": "LegDeliveryScheduleXID"
     }
   },
   {
@@ -413,9 +413,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41411",
       "description": "Physical delivery quantity.",
-      "display": "LegDeliveryScheduleNotional",
-      "fix:tag": "41411"
+      "display": "LegDeliveryScheduleNotional"
     }
   },
   {
@@ -425,9 +425,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the delivery quantity unit of measure (UOM).",
-      "display": "LegDeliveryScheduleNotionalUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -909,7 +907,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41412"
+      "FIX:tag": "41412",
+      "description": "Specifies the delivery quantity unit of measure (UOM).",
+      "display": "LegDeliveryScheduleNotionalUnitOfMeasure"
     }
   },
   {
@@ -919,9 +919,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The frequency of notional delivery.",
-      "display": "LegDeliveryScheduleNotionalCommodityFrequency",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Term",
@@ -958,7 +956,9 @@
           "doc": "Per month"
         }
       ],
-      "fix:tag": "41413"
+      "FIX:tag": "41413",
+      "description": "The frequency of notional delivery.",
+      "display": "LegDeliveryScheduleNotionalCommodityFrequency"
     }
   },
   {
@@ -968,9 +968,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41414",
       "description": "Specifies the negative tolerance value. The value may be an absolute quantity or a percentage, as specified in LegDeliveryScheduleToleranceType(41417). Percentage value is to be expressed relative to \"1.0\" representing 100% (e.g. a value of \"0.0575\" represents 5.75%).",
-      "display": "LegDeliveryScheduleNegativeTolerance",
-      "fix:tag": "41414"
+      "display": "LegDeliveryScheduleNegativeTolerance"
     }
   },
   {
@@ -980,9 +980,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41415",
       "description": "Specifies the positive tolerance value. The value may be an absolute quantity or a percentage, as specified in LegDeliveryScheduleToleranceType(41417). Value may exceed agreed upon value. Percentage value is to be expressed relative to \"1.0\" representing 100% (e.g. a value of \"0.0575\" represents 5.75%).",
-      "display": "LegDeliverySchedulePositiveTolerance",
-      "fix:tag": "41415"
+      "display": "LegDeliverySchedulePositiveTolerance"
     }
   },
   {
@@ -992,9 +992,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the tolerance value's unit of measure (UOM).",
-      "display": "LegDeliveryScheduleToleranceUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -1476,7 +1474,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41416"
+      "FIX:tag": "41416",
+      "description": "Specifies the tolerance value's unit of measure (UOM).",
+      "display": "LegDeliveryScheduleToleranceUnitOfMeasure"
     }
   },
   {
@@ -1486,9 +1486,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the tolerance value type.",
-      "display": "LegDeliveryScheduleToleranceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Absolute",
@@ -1500,7 +1498,9 @@
           "doc": "Percentage"
         }
       ],
-      "fix:tag": "41417"
+      "FIX:tag": "41417",
+      "description": "Specifies the tolerance value type.",
+      "display": "LegDeliveryScheduleToleranceType"
     }
   },
   {
@@ -1510,9 +1510,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41418",
       "description": "Specifies the country where delivery takes place. Uses ISO 3166 2-character country code.",
-      "display": "LegDeliveryScheduleSettlCountry",
-      "fix:tag": "41418"
+      "display": "LegDeliveryScheduleSettlCountry"
     }
   },
   {
@@ -1522,9 +1522,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41419",
       "description": "Delivery timezone specified as \"prevailing\" rather than \"standard\" or \"daylight\". See https://fixtrading.org/packages/prevailing-timezones for code list of applicable prevailing timezones.",
-      "display": "LegDeliveryScheduleSettlTimeZone",
-      "fix:tag": "41419"
+      "display": "LegDeliveryScheduleSettlTimeZone"
     }
   },
   {
@@ -1534,9 +1534,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the delivery flow type.",
-      "display": "LegDeliveryScheduleSettlFlowType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "AllTimes",
@@ -1568,7 +1566,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "41420"
+      "FIX:tag": "41420",
+      "description": "Specifies the delivery flow type.",
+      "display": "LegDeliveryScheduleSettlFlowType"
     }
   },
   {
@@ -1578,9 +1578,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether holidays are included in the settlement periods. Required for electricity contracts.",
-      "display": "LegDeliveryScheduleSettlHolidaysProcessingInstruction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "DoNotIncludeHolidays",
@@ -1592,7 +1590,9 @@
           "doc": "Include holidays"
         }
       ],
-      "fix:tag": "41421"
+      "FIX:tag": "41421",
+      "description": "Indicates whether holidays are included in the settlement periods. Required for electricity contracts.",
+      "display": "LegDeliveryScheduleSettlHolidaysProcessingInstruction"
     }
   },
   {
@@ -1602,9 +1602,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41422",
       "description": "Number of delivery schedules in the repeating group.",
-      "display": "NoLegDeliveryScheduleSettlDays",
-      "fix:tag": "41422"
+      "display": "NoLegDeliveryScheduleSettlDays"
     }
   },
   {
@@ -1614,9 +1614,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day or group of days for delivery.",
-      "display": "LegDeliveryScheduleSettlDay",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Monday",
@@ -1668,7 +1666,9 @@
           "doc": "All weekends"
         }
       ],
-      "fix:tag": "41423"
+      "FIX:tag": "41423",
+      "description": "Specifies the day or group of days for delivery.",
+      "display": "LegDeliveryScheduleSettlDay"
     }
   },
   {
@@ -1678,9 +1678,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41424",
       "description": "The sum of the total hours specified in the LegDeliveryScheduleSettlTimeGrp component.",
-      "display": "LegDeliveryScheduleSettlTotalHours",
-      "fix:tag": "41424"
+      "display": "LegDeliveryScheduleSettlTotalHours"
     }
   },
   {
@@ -1690,9 +1690,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41425",
       "description": "Number of hour ranges in the repeating group.",
-      "display": "NoLegDeliveryScheduleSettlTimes",
-      "fix:tag": "41425"
+      "display": "NoLegDeliveryScheduleSettlTimes"
     }
   },
   {
@@ -1702,9 +1702,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41426",
       "description": "The scheduled start time for the delivery of the commodity where delivery occurs over specified times. The format of the time value is specified in LegDeliveryScheduleSettlTimeType(41428).",
-      "display": "LegDeliveryScheduleSettlStart",
-      "fix:tag": "41426"
+      "display": "LegDeliveryScheduleSettlStart"
     }
   },
   {
@@ -1714,9 +1714,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41427",
       "description": "The scheduled end time for the delivery of the commodity where delivery occurs over specified times. The format of the time value is specified in LegDeliveryScheduleSettlTimeType(41428).",
-      "display": "LegDeliveryScheduleSettlEnd",
-      "fix:tag": "41427"
+      "display": "LegDeliveryScheduleSettlEnd"
     }
   },
   {
@@ -1726,9 +1726,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the format of the delivery start and end time values.",
-      "display": "LegDeliveryScheduleSettlTimeType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Hour",
@@ -1740,7 +1738,9 @@
           "doc": "HH:MM time format"
         }
       ],
-      "fix:tag": "41428"
+      "FIX:tag": "41428",
+      "description": "Specifies the format of the delivery start and end time values.",
+      "display": "LegDeliveryScheduleSettlTimeType"
     }
   },
   {
@@ -1750,9 +1750,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of delivery stream.",
-      "display": "LegDeliveryStreamType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Periodic",
@@ -1769,7 +1767,9 @@
           "doc": "Single"
         }
       ],
-      "fix:tag": "41429"
+      "FIX:tag": "41429",
+      "description": "Specifies the type of delivery stream.",
+      "display": "LegDeliveryStreamType"
     }
   },
   {
@@ -1779,9 +1779,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41430",
       "description": "The name of the oil delivery pipeline.",
-      "display": "LegDeliveryStreamPipeline",
-      "fix:tag": "41430"
+      "display": "LegDeliveryStreamPipeline"
     }
   },
   {
@@ -1791,9 +1791,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41431",
       "description": "The point at which the commodity will enter the delivery mechanism or pipeline.",
-      "display": "LegDeliveryStreamEntryPoint",
-      "fix:tag": "41431"
+      "display": "LegDeliveryStreamEntryPoint"
     }
   },
   {
@@ -1803,9 +1803,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41432",
       "description": "The point at which the commodity product will be withdrawn prior to delivery.",
-      "display": "LegDeliveryStreamWithdrawalPoint",
-      "fix:tag": "41432"
+      "display": "LegDeliveryStreamWithdrawalPoint"
     }
   },
   {
@@ -1815,9 +1815,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41433",
       "description": "The point at which the commodity product will be delivered and received. Value specified should follow market convention appropriate for the commodity product. For bullion, see https://fpml.org/coding-scheme/bullion-delivery-location for values.",
-      "display": "LegDeliveryStreamDeliveryPoint",
-      "fix:tag": "41433"
+      "display": "LegDeliveryStreamDeliveryPoint"
     }
   },
   {
@@ -1827,9 +1827,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies under what conditions the buyer and seller should be excused of their delivery obligations.",
-      "display": "LegDeliveryStreamDeliveryRestriction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Firm",
@@ -1856,7 +1854,9 @@
           "doc": "Unit firm"
         }
       ],
-      "fix:tag": "41434"
+      "FIX:tag": "41434",
+      "description": "Specifies under what conditions the buyer and seller should be excused of their delivery obligations.",
+      "display": "LegDeliveryStreamDeliveryRestriction"
     }
   },
   {
@@ -1866,9 +1866,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41435",
       "description": "Specifies the electricity delivery contingency. See https://fpml.org/coding-scheme/electricity-transmission-contingency for values.",
-      "display": "LegDeliveryStreamDeliveryContingency",
-      "fix:tag": "41435"
+      "display": "LegDeliveryStreamDeliveryContingency"
     }
   },
   {
@@ -1878,9 +1878,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The trade side value of the party responsible for electricity delivery contingency.",
-      "display": "LegDeliveryStreamDeliveryContingentPartySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Buyer",
@@ -1892,7 +1890,9 @@
           "doc": "Seller"
         }
       ],
-      "fix:tag": "41436"
+      "FIX:tag": "41436",
+      "description": "The trade side value of the party responsible for electricity delivery contingency.",
+      "display": "LegDeliveryStreamDeliveryContingentPartySide"
     }
   },
   {
@@ -1902,9 +1902,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41437",
       "description": "When this element is specified and set to 'Y', delivery of the coal product is to be at its source.",
-      "display": "LegDeliveryStreamDeliverAtSourceIndicator",
-      "fix:tag": "41437"
+      "display": "LegDeliveryStreamDeliverAtSourceIndicator"
     }
   },
   {
@@ -1914,9 +1914,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41438",
       "description": "Specifies how the parties to the trade apportion responsibility for the delivery of the commodity product. See https://fixtrading.org/packages/risk-apportionment for the details of the external code list.",
-      "display": "LegDeliveryStreamRiskApportionment",
-      "fix:tag": "41438"
+      "display": "LegDeliveryStreamRiskApportionment"
     }
   },
   {
@@ -1926,9 +1926,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41439",
       "description": "Specifies the title transfer location.",
-      "display": "LegDeliveryStreamTitleTransferLocation",
-      "fix:tag": "41439"
+      "display": "LegDeliveryStreamTitleTransferLocation"
     }
   },
   {
@@ -1938,9 +1938,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the condition of title transfer.",
-      "display": "LegDeliveryStreamTitleTransferCondition",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Transfers",
@@ -1952,7 +1950,9 @@
           "doc": "Does not transfer with risk of loss"
         }
       ],
-      "fix:tag": "41440"
+      "FIX:tag": "41440",
+      "description": "Specifies the condition of title transfer.",
+      "display": "LegDeliveryStreamTitleTransferCondition"
     }
   },
   {
@@ -1962,9 +1962,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41441",
       "description": "A party, not necessarily of the trade, who is the Importer of Record for the purposes of paying customs duties and applicable taxes or costs related to importation.",
-      "display": "LegDeliveryStreamImporterOfRecord",
-      "fix:tag": "41441"
+      "display": "LegDeliveryStreamImporterOfRecord"
     }
   },
   {
@@ -1974,9 +1974,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41442",
       "description": "Specifies the negative tolerance value. The value may be an absolute quantity or a percentage, as specified in LegDeliveryStreamToleranceType(41445). Percentage value is to be expressed relative to \"1.0\" representing 100% (e.g. a value of \"0.0575\" represents 5.75%).",
-      "display": "LegDeliveryStreamNegativeTolerance",
-      "fix:tag": "41442"
+      "display": "LegDeliveryStreamNegativeTolerance"
     }
   },
   {
@@ -1986,9 +1986,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41443",
       "description": "Specifies the positive tolerance value. The value may be an absolute quantity or a percentage, as specified in LegDeliveryStreamToleranceType(41445). Value may exceed agreed upon value. Percentage value is to be expressed relative to \"1.0\" representing 100% (e.g. a value of \"0.0575\" represents 5.75%).",
-      "display": "LegDeliveryStreamPositiveTolerance",
-      "fix:tag": "41443"
+      "display": "LegDeliveryStreamPositiveTolerance"
     }
   },
   {
@@ -1998,9 +1998,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the tolerance value's unit of measure (UOM).",
-      "display": "LegDeliveryStreamToleranceUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -2482,7 +2480,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41444"
+      "FIX:tag": "41444",
+      "description": "Specifies the tolerance value's unit of measure (UOM).",
+      "display": "LegDeliveryStreamToleranceUnitOfMeasure"
     }
   },
   {
@@ -2492,9 +2492,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the tolerance value type.",
-      "display": "LegDeliveryStreamToleranceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Absolute",
@@ -2506,7 +2504,9 @@
           "doc": "Percentage"
         }
       ],
-      "fix:tag": "41445"
+      "FIX:tag": "41445",
+      "description": "Specifies the tolerance value type.",
+      "display": "LegDeliveryStreamToleranceType"
     }
   },
   {
@@ -2516,9 +2516,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether the tolerance is at the seller's or buyer's option.",
-      "display": "LegDeliveryStreamToleranceOptionSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -2530,7 +2528,9 @@
           "doc": "Seller"
         }
       ],
-      "fix:tag": "41446"
+      "FIX:tag": "41446",
+      "description": "Indicates whether the tolerance is at the seller's or buyer's option.",
+      "display": "LegDeliveryStreamToleranceOptionSide"
     }
   },
   {
@@ -2540,9 +2540,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41447",
       "description": "The positive percent tolerance which applies to the total quantity delivered over all shipment periods.",
-      "display": "LegDeliveryStreamTotalPositiveTolerance",
-      "fix:tag": "41447"
+      "display": "LegDeliveryStreamTotalPositiveTolerance"
     }
   },
   {
@@ -2552,9 +2552,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41448",
       "description": "The negative percent tolerance which applies to the total quantity delivered over all shipment periods.",
-      "display": "LegDeliveryStreamTotalNegativeTolerance",
-      "fix:tag": "41448"
+      "display": "LegDeliveryStreamTotalNegativeTolerance"
     }
   },
   {
@@ -2564,9 +2564,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41449",
       "description": "If the notional quantity is specified in a unit that does not match the unit in which the commodity reference price is quoted, the scaling or conversion factor used to convert the commodity reference price unit into the notional quantity unit should be stated here. If there is no conversion, this field is not intended to be used.",
-      "display": "LegDeliveryStreamNotionalConversionFactor",
-      "fix:tag": "41449"
+      "display": "LegDeliveryStreamNotionalConversionFactor"
     }
   },
   {
@@ -2576,9 +2576,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41450",
       "description": "The transportation equipment with which the commodity product will be delivered and received.",
-      "display": "LegDeliveryStreamTransportEquipment",
-      "fix:tag": "41450"
+      "display": "LegDeliveryStreamTransportEquipment"
     }
   },
   {
@@ -2588,9 +2588,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "A reference to the party able to choose whether the gas is delivered for a particular period e.g. a swing or interruptible contract.",
-      "display": "LegDeliveryStreamElectingPartySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Buyer",
@@ -2602,7 +2600,9 @@
           "doc": "Seller"
         }
       ],
-      "fix:tag": "41451"
+      "FIX:tag": "41451",
+      "description": "A reference to the party able to choose whether the gas is delivered for a particular period e.g. a swing or interruptible contract.",
+      "display": "LegDeliveryStreamElectingPartySide"
     }
   },
   {
@@ -2612,9 +2612,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41452",
       "description": "Number of asset attribute entries in the group.",
-      "display": "NoLegStreamAssetAttributes",
-      "fix:tag": "41452"
+      "display": "NoLegStreamAssetAttributes"
     }
   },
   {
@@ -2624,9 +2624,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41453",
       "description": "Specifies the name of the attribute. See https://fixtrading.org/packages/asset-attribute-type for code list of applicable asset attribute types.",
-      "display": "LegStreamAssetAttributeType",
-      "fix:tag": "41453"
+      "display": "LegStreamAssetAttributeType"
     }
   },
   {
@@ -2636,9 +2636,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41454",
       "description": "Specifies the value of the attribute.",
-      "display": "LegStreamAssetAttributeValue",
-      "fix:tag": "41454"
+      "display": "LegStreamAssetAttributeValue"
     }
   },
   {
@@ -2648,9 +2648,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41455",
       "description": "Limit or lower acceptable value of the attribute.",
-      "display": "LegStreamAssetAttributeLimit",
-      "fix:tag": "41455"
+      "display": "LegStreamAssetAttributeLimit"
     }
   },
   {
@@ -2660,9 +2660,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41456",
       "description": "Number of commodity sources in the repeating group.",
-      "display": "NoLegDeliveryStreamCycles",
-      "fix:tag": "41456"
+      "display": "NoLegDeliveryStreamCycles"
     }
   },
   {
@@ -2672,9 +2672,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41457",
       "description": "The delivery cycles during which the oil product will be transported in the pipeline.",
-      "display": "LegDeliveryStreamCycleDesc",
-      "fix:tag": "41457"
+      "display": "LegDeliveryStreamCycleDesc"
     }
   },
   {
@@ -2684,9 +2684,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41458",
       "description": "Byte length of encoded (non-ASCII characters) EncodedLegDeliveryStreamCycleDesc(41459) field.",
-      "display": "EncodedLegDeliveryStreamCycleDescLen",
-      "fix:tag": "41458"
+      "display": "EncodedLegDeliveryStreamCycleDescLen"
     }
   },
   {
@@ -2696,9 +2696,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41459",
       "description": "Encoded (non-ASCII characters) representation of the LegDeliveryStreamCycleDesc(41457) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegLeg DeliveryStream(41457) field.",
-      "display": "EncodedLegDeliveryStreamCycleDesc",
-      "fix:tag": "41459"
+      "display": "EncodedLegDeliveryStreamCycleDesc"
     }
   },
   {
@@ -2708,9 +2708,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41460",
       "description": "Number of commodity sources in the repeating group.",
-      "display": "NoLegDeliveryStreamCommoditySources",
-      "fix:tag": "41460"
+      "display": "NoLegDeliveryStreamCommoditySources"
     }
   },
   {
@@ -2720,9 +2720,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41461",
       "description": "The SCoTA coal cargo origin, mining region, mine(s), mining complex(es), loadout(s) or river dock(s) or other point(s) of origin that seller and buyer agree are acceptable origins for the coal product. For international coal transactions, this is the origin of the coal product. See https://fpml.org/coding-scheme/commodity-coal-product-source for values.",
-      "display": "LegDeliveryStreamCommoditySource",
-      "fix:tag": "41461"
+      "display": "LegDeliveryStreamCommoditySource"
     }
   },
   {
@@ -2732,9 +2732,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The consequences of market disruption events.",
-      "display": "LegMarketDisruptionProvision",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -2756,7 +2754,9 @@
           "doc": "As specified in confirmation"
         }
       ],
-      "fix:tag": "41462"
+      "FIX:tag": "41462",
+      "description": "The consequences of market disruption events.",
+      "display": "LegMarketDisruptionProvision"
     }
   },
   {
@@ -2766,9 +2766,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the location of the fallback provision documentation.",
-      "display": "LegMarketDisruptionFallbackProvision",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "MasterAgreement",
@@ -2780,7 +2778,9 @@
           "doc": "As specified in confirmation"
         }
       ],
-      "fix:tag": "41463"
+      "FIX:tag": "41463",
+      "description": "Specifies the location of the fallback provision documentation.",
+      "display": "LegMarketDisruptionFallbackProvision"
     }
   },
   {
@@ -2790,9 +2790,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41464",
       "description": "Specifies the maximum number of market disruption days (commodity or bullion business days) in a contract or confirmation. If none are specified, the maximum number of market disruption days is five (5).",
-      "display": "LegMarketDisruptionMaximumDays",
-      "fix:tag": "41464"
+      "display": "LegMarketDisruptionMaximumDays"
     }
   },
   {
@@ -2802,9 +2802,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41465",
       "description": "Used when a price materiality percentage applies to the price source disruption event and this event has been specified.",
-      "display": "LegMarketDisruptionMaterialityPercentage",
-      "fix:tag": "41465"
+      "display": "LegMarketDisruptionMaterialityPercentage"
     }
   },
   {
@@ -2814,9 +2814,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41466",
       "description": "Specifies the minimum futures contracts level that dictates whether or not a 'De Minimis Trading' event has occurred.",
-      "display": "LegMarketDisruptionMinimumFuturesContracts",
-      "fix:tag": "41466"
+      "display": "LegMarketDisruptionMinimumFuturesContracts"
     }
   },
   {
@@ -2826,9 +2826,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41467",
       "description": "Number of disruption events in the repeating group.",
-      "display": "NoLegMarketDisruptionEvents",
-      "fix:tag": "41467"
+      "display": "NoLegMarketDisruptionEvents"
     }
   },
   {
@@ -2838,9 +2838,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41468",
       "description": "Specifies the market disruption event. For commodities see https://fpml.org/coding-scheme/commodity-market-disruption for values. For foreign exchange, see https://fixtrading.org/packages/market-disruption-event for code list of applicable event types.",
-      "display": "LegMarketDisruptionEvent",
-      "fix:tag": "41468"
+      "display": "LegMarketDisruptionEvent"
     }
   },
   {
@@ -2850,9 +2850,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41469",
       "description": "Number of fallbacks in the repeating group.",
-      "display": "NoLegMarketDisruptionFallbacks",
-      "fix:tag": "41469"
+      "display": "NoLegMarketDisruptionFallbacks"
     }
   },
   {
@@ -2862,9 +2862,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41470",
       "description": "Specifies the type of disruption fallback. See https://fpml.org/coding-scheme/commodity-market-disruption-fallback for values.",
-      "display": "LegMarketDisruptionFallbackType",
-      "fix:tag": "41470"
+      "display": "LegMarketDisruptionFallbackType"
     }
   },
   {
@@ -2874,9 +2874,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41471",
       "description": "Number of fallback reference securities in the repeating group.",
-      "display": "NoLegMarketDisruptionFallbackReferencePrices",
-      "fix:tag": "41471"
+      "display": "NoLegMarketDisruptionFallbackReferencePrices"
     }
   },
   {
@@ -2886,9 +2886,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The type of reference price underlier.",
-      "display": "LegMarketDisruptionFallbackUnderlierType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Basket",
@@ -2950,7 +2948,9 @@
           "doc": "Mutual fund"
         }
       ],
-      "fix:tag": "41472"
+      "FIX:tag": "41472",
+      "description": "The type of reference price underlier.",
+      "display": "LegMarketDisruptionFallbackUnderlierType"
     }
   },
   {
@@ -2960,9 +2960,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41473",
       "description": "Specifies the identifier value of the security.",
-      "display": "LegMarketDisruptionFallbackUnderlierSecurityID",
-      "fix:tag": "41473"
+      "display": "LegMarketDisruptionFallbackUnderlierSecurityID"
     }
   },
   {
@@ -2972,9 +2972,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the class or source scheme of the security identifier.",
-      "display": "LegMarketDisruptionFallbackUnderlierSecurityIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -3141,7 +3139,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "41474"
+      "FIX:tag": "41474",
+      "description": "Specifies the class or source scheme of the security identifier.",
+      "display": "LegMarketDisruptionFallbackUnderlierSecurityIDSource"
     }
   },
   {
@@ -3151,9 +3151,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41475",
       "description": "Specifies the description of the underlying security.",
-      "display": "LegMarketDisruptionFallbackUnderlierSecurityDesc",
-      "fix:tag": "41475"
+      "display": "LegMarketDisruptionFallbackUnderlierSecurityDesc"
     }
   },
   {
@@ -3163,9 +3163,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41476",
       "description": "Byte length of encoded (non-ASCII characters) EncodedLegMarketDisruptionFallbackUnderlierSecurityDesc (41477) field.",
-      "display": "EncodedLegMarketDisruptionFallbackUnderlierSecurityDescLen",
-      "fix:tag": "41476"
+      "display": "EncodedLegMarketDisruptionFallbackUnderlierSecurityDescLen"
     }
   },
   {
@@ -3175,9 +3175,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41477",
       "description": "Encoded (non-ASCII characters) representation of the LegMarketDisruptionFallbackUnderlierSecurityDesc(41475) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegMarketDisruptionFallbackUnderlierSecurityDesc(41475) field.",
-      "display": "EncodedLegMarketDisruptionFallbackUnderlierSecurityDesc",
-      "fix:tag": "41477"
+      "display": "EncodedLegMarketDisruptionFallbackUnderlierSecurityDesc"
     }
   },
   {
@@ -3189,9 +3189,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41478",
       "description": "If there are multiple underlying assets, this specifies the number of units (index or securities) that constitute the underlier of the swap. In the case of a basket swap, this is used to reference both the number of basket units, and the number of each asset components of the basket when these are expressed in absolute terms.",
-      "display": "LegMarketDisruptionFallbackOpenUnits",
-      "fix:tag": "41478"
+      "display": "LegMarketDisruptionFallbackOpenUnits"
     }
   },
   {
@@ -3201,9 +3201,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41479",
       "description": "Specifies the currency if the underlier is a basket. Uses ISO 4217 currency codes.",
-      "display": "LegMarketDisruptionFallbackBasketCurrency",
-      "fix:tag": "41479"
+      "display": "LegMarketDisruptionFallbackBasketCurrency"
     }
   },
   {
@@ -3213,9 +3213,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41480",
       "description": "Specifies the basket divisor amount. This value is normally used to adjust the constituent weight for pricing or to adjust for dividends, or other corporate actions.",
-      "display": "LegMarketDisruptionFallbackBasketDivisor",
-      "fix:tag": "41480"
+      "display": "LegMarketDisruptionFallbackBasketDivisor"
     }
   },
   {
@@ -3225,9 +3225,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41481",
       "description": "A description of the option exercise.",
-      "display": "LegExerciseDesc",
-      "fix:tag": "41481"
+      "display": "LegExerciseDesc"
     }
   },
   {
@@ -3237,9 +3237,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41482",
       "description": "Byte length of encoded (non-ASCII characters) EncodedLegExerciseDesc(41483) field.",
-      "display": "EncodedLegExerciseDescLen",
-      "fix:tag": "41482"
+      "display": "EncodedLegExerciseDescLen"
     }
   },
   {
@@ -3249,9 +3249,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41483",
       "description": "Encoded (non-ASCII characters) representation of the LegExerciseDesc(41481) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegExerciseDesc(41481) field.",
-      "display": "EncodedLegExerciseDesc",
-      "fix:tag": "41483"
+      "display": "EncodedLegExerciseDesc"
     }
   },
   {
@@ -3261,9 +3261,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41484",
       "description": "Indicates (when 'Y') that exercise is automatic when the strike price is crossed or the underlying trade is in the money.",
-      "display": "LegAutomaticExerciseIndicator",
-      "fix:tag": "41484"
+      "display": "LegAutomaticExerciseIndicator"
     }
   },
   {
@@ -3273,9 +3273,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41485",
       "description": "The threshold rate for triggering automatic exercise.",
-      "display": "LegAutomaticExerciseThresholdRate",
-      "fix:tag": "41485"
+      "display": "LegAutomaticExerciseThresholdRate"
     }
   },
   {
@@ -3285,9 +3285,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether follow-up confirmation of exercise (written or electronic) is required following telephonic notice by the buyer to the seller or seller's agent.",
-      "display": "LegExerciseConfirmationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotRequired",
@@ -3309,7 +3307,9 @@
           "doc": "Unknown at time of report"
         }
       ],
-      "fix:tag": "41486"
+      "FIX:tag": "41486",
+      "description": "Indicates whether follow-up confirmation of exercise (written or electronic) is required following telephonic notice by the buyer to the seller or seller's agent.",
+      "display": "LegExerciseConfirmationMethod"
     }
   },
   {
@@ -3319,9 +3319,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41487",
       "description": "Identifies the business center used for adjusting the time for manual exercise notice. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegManualNoticeBusinessCenter",
-      "fix:tag": "41487"
+      "display": "LegManualNoticeBusinessCenter"
     }
   },
   {
@@ -3331,9 +3331,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41488",
       "description": "Indicates whether the notional amount of the underlying swap, not previously exercised under the option, will be automatically exercised at the expiration time on the expiration date if at such time the buyer is in-the-money, provided that the difference between the settlement rate and the fixed rate under the relevant underlying swap is not less than one tenth of a percentage point (0.10% or 0.001).",
-      "display": "LegFallbackExerciseIndicator",
-      "fix:tag": "41488"
+      "display": "LegFallbackExerciseIndicator"
     }
   },
   {
@@ -3343,9 +3343,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41489",
       "description": "Indicates whether the Seller may request the Buyer to confirm its intent to exercise if not done on or before the expiration time on the expiration date. If true (\"Y\") specific rules will apply in relation to the settlement mode.",
-      "display": "LegLimitRightToConfirmIndicator",
-      "fix:tag": "41489"
+      "display": "LegLimitRightToConfirmIndicator"
     }
   },
   {
@@ -3355,9 +3355,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41490",
       "description": "Indicates in physical settlement of bond and convertible bond options whether the party required to deliver the bonds will divide those to be delivered as notifying party desires to facilitate delivery obligations.",
-      "display": "LegExerciseSplitTicketIndicator",
-      "fix:tag": "41490"
+      "display": "LegExerciseSplitTicketIndicator"
     }
   },
   {
@@ -3367,9 +3367,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41491",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegOptionExerciseBusinessCenters",
-      "fix:tag": "41491"
+      "display": "NoLegOptionExerciseBusinessCenters"
     }
   },
   {
@@ -3379,9 +3379,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41492",
       "description": "The business center calendar used to adjust the option exercise dates, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegOptionExerciseBusinessCenter",
-      "fix:tag": "41492"
+      "display": "LegOptionExerciseBusinessCenter"
     }
   },
   {
@@ -3391,9 +3391,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the option exercise dates. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
-      "display": "LegOptionExerciseBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -3435,7 +3433,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "41493"
+      "FIX:tag": "41493",
+      "description": "The business day convention used to adjust the option exercise dates. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
+      "display": "LegOptionExerciseBusinessDayConvention"
     }
   },
   {
@@ -3445,9 +3445,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative earliest exercise date offset.",
-      "display": "LegOptionExerciseEarliestDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -3479,7 +3477,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "41494"
+      "FIX:tag": "41494",
+      "description": "Specifies the day type of the relative earliest exercise date offset.",
+      "display": "LegOptionExerciseEarliestDateOffsetDayType"
     }
   },
   {
@@ -3489,9 +3489,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41495",
       "description": "Time unit multiplier for the relative earliest exercise date offset.",
-      "display": "LegOptionExerciseEarliestDateOffsetPeriod",
-      "fix:tag": "41495"
+      "display": "LegOptionExerciseEarliestDateOffsetPeriod"
     }
   },
   {
@@ -3501,9 +3501,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative earliest exercise date offset.",
-      "display": "LegOptionExerciseEarliestDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -3525,7 +3523,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41496"
+      "FIX:tag": "41496",
+      "description": "Time unit associated with the relative earliest exercise date offset.",
+      "display": "LegOptionExerciseEarliestDateOffsetUnit"
     }
   },
   {
@@ -3535,9 +3535,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41497",
       "description": "Time unit multiplier for the frequency of exercise dates.",
-      "display": "LegOptionExerciseFrequencyPeriod",
-      "fix:tag": "41497"
+      "display": "LegOptionExerciseFrequencyPeriod"
     }
   },
   {
@@ -3547,9 +3547,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the frequency of exercise dates.",
-      "display": "LegOptionExerciseFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -3571,7 +3569,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41498"
+      "FIX:tag": "41498",
+      "description": "Time unit associated with the frequency of exercise dates.",
+      "display": "LegOptionExerciseFrequencyUnit"
     }
   },
   {
@@ -3582,9 +3582,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41499",
       "description": "The unadjusted start date for calculating periodic exercise dates.",
-      "display": "LegOptionExerciseStartDateUnadjusted",
-      "fix:tag": "41499"
+      "display": "LegOptionExerciseStartDateUnadjusted"
     }
   }
 ]

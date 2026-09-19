@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "streamterminationdatebusinesscentercomponent"
+        "FIX:component": "streamterminationdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "streamterminationdatebusinesscentercomponent",
+    "FIX:counter": "40961",
+    "FIX:tag": "901076",
     "description": "Required if NoStreamTerminationDateBusinessCenters(40961) > 0.",
-    "display": "StreamTerminationDateBusinessCenterGrp",
-    "fix:component": "streamterminationdatebusinesscentercomponent",
-    "fix:counter": "40961",
-    "fix:tag": "901076"
+    "display": "StreamTerminationDateBusinessCenterGrp"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "partydetail"
+        "FIX:component": "partydetail"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "partydetail",
+    "FIX:counter": "1671",
+    "FIX:tag": "571526",
     "description": "The identification of the party. Required when NoPartyDetails(1671) > 0.",
-    "display": "PartyDetailGrp",
-    "fix:component": "partydetail",
-    "fix:counter": "1671",
-    "fix:tag": "571526"
+    "display": "PartyDetailGrp"
   }
 }

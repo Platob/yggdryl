@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legnondeliverablefixingdate",
-          "fix:tag": "40368"
+          "FIX:field": "legnondeliverablefixingdate",
+          "FIX:tag": "40368"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legnondeliverablefixingdatetype",
-          "fix:tag": "40369"
+          "FIX:field": "legnondeliverablefixingdatetype",
+          "FIX:tag": "40369"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPaymentStreamNonDeliverableFixingDate",
-    "fix:tag": "534209"
+    "FIX:tag": "534209",
+    "display": "LegPaymentStreamNonDeliverableFixingDate"
   }
 }

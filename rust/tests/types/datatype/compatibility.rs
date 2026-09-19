@@ -1,28 +1,38 @@
 use std::io::Cursor;
 use std::sync::Arc;
 
-use yggdryl::{DataType, Error, Field, Scheme, TimeUnit, Timezone, UnionMode};
+use yggdryl::DecimalType;
+use yggdryl::SequenceType;
+use yggdryl::{
+    DataType, DataTypeId, Error, Field, Scheme, StructureType, TimeUnit, Timezone, UnionMode,
+};
+use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 #[test]
 fn arrow_is_a_cache_preserving_validated_noop() {
     let field = Field::from_parts(
         "value",
-        DataType::from_fields([Field::new("child", DataType::utf8(), true)]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([Field::new("child", DataType::utf8(), true)]).unwrap(),
+        ),
         false,
         [("owner", "yggdryl")],
     )
     .unwrap();
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     let compatible = field.clone().into_scheme_compat(&Scheme::ARROW).unwrap();
 
     assert_eq!(compatible, field);
-    assert!(Arc::ptr_eq(&cached, &compatible.into_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &cached,
+        &compatible.into_arrow_field_ref().unwrap()
+    ));
 }
 
 #[test]
 fn spark_applies_only_the_conservative_recursive_matrix() {
-    let source = DataType::from_fields([
+    let source = StructureType::from_fields([
         Field::new("small", DataType::UInt8, false),
         Field::new("wide", DataType::UInt64, true),
         Field::new(
@@ -36,12 +46,13 @@ fn spark_applies_only_the_conservative_recursive_matrix() {
             false,
         ),
     ])
+    .map(DataType::from)
     .unwrap();
     let transformed = source.into_scheme_compat(&Scheme::SPARK).unwrap();
     let fields = transformed.as_fields().unwrap();
     assert_eq!(fields[0].dtype(), &DataType::Int16);
     assert_eq!(fields[1].dtype(), &DataType::decimal128(20, 0).unwrap());
-    let DataType::List(item) = fields[2].dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = fields[2].dtype() else {
         panic!("expected normalized list");
     };
     assert_eq!(item.dtype(), &DataType::utf8());
@@ -56,7 +67,7 @@ fn spark_physical_rewrite_table_covers_offset_numeric_and_decimal_families() {
         (DataType::UInt16, DataType::Int32),
         (DataType::UInt32, DataType::Int64),
         (DataType::Float16, DataType::Float32),
-        (DataType::fixed_size_binary(8).unwrap(), DataType::binary()),
+        (DataType::fixed_binary(8).unwrap(), DataType::binary()),
         (DataType::large_binary(), DataType::binary()),
         (DataType::binary_view(), DataType::binary()),
         (DataType::large_utf8(), DataType::utf8()),
@@ -93,14 +104,15 @@ fn spark_physical_rewrite_table_covers_offset_numeric_and_decimal_families() {
 
 #[test]
 fn spark_errors_are_path_aware_and_extension_rewrites_are_atomic() {
-    let source = DataType::from_fields([Field::new(
+    let source = StructureType::from_fields([Field::new(
         "a.b",
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
-        },
+        }),
         false,
     )])
+    .map(DataType::from)
     .unwrap();
     let error = source
         .into_scheme_compat(&Scheme::SPARK)
@@ -233,10 +245,11 @@ fn polars_and_pandas_reject_maps_with_a_named_alternative() {
     let map = DataType::map(
         Field::new(
             "entries",
-            DataType::from_fields(vec![
+            StructureType::from_fields(vec![
                 Field::new("key", DataType::utf8(), false),
                 Field::new("value", DataType::Int64, true),
             ])
+            .map(DataType::from)
             .unwrap(),
             false,
         ),
@@ -260,10 +273,10 @@ fn polars_and_pandas_reject_maps_with_a_named_alternative() {
 
 #[test]
 fn temporal_resolution_errors_name_the_expected_and_actual_unit() {
-    let nanosecond = DataType::DateTime64 {
+    let nanosecond = DataType::DateTime(DateTimeType::DateTime64 {
         unit: TimeUnit::Nanosecond,
         timezone: Timezone::NAIVE,
-    };
+    });
 
     // pandas is nanosecond-native, Spark is microsecond-native.
     assert_eq!(
@@ -281,10 +294,10 @@ fn temporal_resolution_errors_name_the_expected_and_actual_unit() {
     assert!(message.contains("got ns"), "{message}");
     assert!(message.contains("value cast"), "{message}");
 
-    let second = DataType::DateTime64 {
+    let second = DataType::DateTime(DateTimeType::DateTime64 {
         unit: TimeUnit::Second,
         timezone: Timezone::NAIVE,
-    };
+    });
     let polars_message = second
         .into_scheme_compat(&Scheme::POLARS)
         .unwrap_err()
@@ -295,18 +308,19 @@ fn temporal_resolution_errors_name_the_expected_and_actual_unit() {
 
 #[test]
 fn every_target_reports_a_path_for_a_nested_failure() {
-    let nested = DataType::from_fields(vec![Field::new(
+    let nested = StructureType::from_fields(vec![Field::new(
         "outer",
         DataType::list(Field::new(
             "item",
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            },
+            }),
             true,
         )),
         true,
     )])
+    .map(DataType::from)
     .unwrap();
 
     for target in [Scheme::SPARK, Scheme::POLARS, Scheme::PANDAS] {
@@ -323,10 +337,10 @@ fn every_target_reports_a_path_for_a_nested_failure() {
 
 #[test]
 fn negative_decimal_scale_names_the_offending_scale() {
-    let negative = DataType::Decimal128 {
+    let negative = DataType::Decimal(DecimalType::Decimal128 {
         precision: 10,
         scale: -2,
-    };
+    });
     for target in [Scheme::SPARK, Scheme::POLARS, Scheme::PANDAS] {
         let message = negative
             .clone()
@@ -364,13 +378,13 @@ fn compatibility_preflight_reports_its_own_operation_kind() {
 #[test]
 fn spark_temporal_decimal_and_union_boundaries_are_explicit() {
     for accepted in [
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        },
-        DataType::Duration32(TimeUnit::Microsecond),
-        DataType::Duration64(TimeUnit::Microsecond),
-        DataType::Interval(TimeUnit::YearMonth),
+        }),
+        DataType::Duration(DurationType::Duration32(TimeUnit::Microsecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
         DataType::decimal128(38, 0).unwrap(),
     ] {
         assert_eq!(
@@ -379,17 +393,17 @@ fn spark_temporal_decimal_and_union_boundaries_are_explicit() {
         );
     }
     for rejected in [
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
-        },
-        DataType::Date64,
-        DataType::Time32(TimeUnit::Second),
-        DataType::Time64(TimeUnit::Microsecond),
-        DataType::Duration32(TimeUnit::Nanosecond),
-        DataType::Duration64(TimeUnit::Nanosecond),
-        DataType::Interval(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::MonthDayNano),
+        }),
+        DataType::date64(),
+        DataType::Time(TimeType::Time32(TimeUnit::Second)),
+        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+        DataType::Duration(DurationType::Duration32(TimeUnit::Nanosecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
         DataType::decimal128(9, -1).unwrap(),
         DataType::decimal256(39, 0).unwrap(),
         DataType::union(
@@ -409,7 +423,7 @@ fn spark_temporal_decimal_and_union_boundaries_are_explicit() {
 fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
     let map = DataType::map_of(DataType::utf8_view(), DataType::UInt8, true).unwrap();
     let transformed = map.into_scheme_compat(&Scheme::SPARK).unwrap();
-    let DataType::Map(map) = transformed else {
+    let DataType::Mapping(map) = transformed else {
         panic!("expected map");
     };
     assert!(map.keys_sorted());
@@ -423,7 +437,7 @@ fn spark_recurses_through_map_dictionary_and_run_end_layouts() {
     )
     .unwrap();
     let transformed = dictionary.into_scheme_compat(&Scheme::SPARK).unwrap();
-    let DataType::List(item) = transformed else {
+    let DataType::Sequence(SequenceType::List(item)) = transformed else {
         panic!("expected logical dictionary list");
     };
     assert_eq!(item.dtype(), &DataType::Int32);
@@ -449,7 +463,7 @@ fn spark_changed_fields_preserve_value_state_and_invalidate_cache_once() {
     )
     .unwrap();
     field.set_dictionary_options(42, true).unwrap();
-    let cached = field.clone().into_arrow_ref().unwrap();
+    let cached = field.clone().into_arrow_field_ref().unwrap();
     let transformed = field.clone().into_scheme_compat(&Scheme::SPARK).unwrap();
     assert_eq!(transformed.name(), field.name());
     assert!(transformed.is_nullable());
@@ -459,7 +473,7 @@ fn spark_changed_fields_preserve_value_state_and_invalidate_cache_once() {
     assert_eq!(transformed.dictionary_is_ordered(), None);
     assert!(!Arc::ptr_eq(
         &cached,
-        &transformed.into_arrow_ref().unwrap()
+        &transformed.into_arrow_field_ref().unwrap()
     ));
 }
 
@@ -562,28 +576,28 @@ fn iceberg_widens_everything_outside_its_closed_primitive_vocabulary() {
         DataType::Int64,
         DataType::Float32,
         DataType::Float64,
-        DataType::Date32,
+        DataType::date32(),
         DataType::binary(),
         DataType::utf8(),
-        DataType::fixed_size_binary(16).unwrap(),
-        DataType::fixed_size_binary(8).unwrap(),
-        DataType::Time64(TimeUnit::Microsecond),
-        DataType::DateTime64 {
+        DataType::fixed_binary(16).unwrap(),
+        DataType::fixed_binary(8).unwrap(),
+        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::NAIVE,
-        },
-        DataType::DateTime64 {
+        }),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        },
-        DataType::DateTime64 {
+        }),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
-        },
-        DataType::DateTime64 {
+        }),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::UTC,
-        },
+        }),
         DataType::decimal128(38, 9).unwrap(),
     ] {
         assert_eq!(
@@ -598,34 +612,34 @@ fn iceberg_widens_everything_outside_its_closed_primitive_vocabulary() {
 fn iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual() {
     let cases = vec![
         (
-            DataType::DateTime64 {
+            DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            },
+            }),
             vec!["expected timestamp of us or ns", "got s", "value cast"],
         ),
         (
-            DataType::Time32(TimeUnit::Millisecond),
+            DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
             vec!["expected time-of-day of us", "got ms"],
         ),
         (
-            DataType::Time64(TimeUnit::Nanosecond),
+            DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
             vec!["expected time-of-day of us", "got ns"],
         ),
         (
-            DataType::Date64,
+            DataType::date64(),
             vec!["date64 milliseconds", "Iceberg date32 days"],
         ),
         (
-            DataType::Duration32(TimeUnit::Microsecond),
+            DataType::Duration(DurationType::Duration32(TimeUnit::Microsecond)),
             vec!["no elapsed-time type", "got duration32(us)"],
         ),
         (
-            DataType::Duration64(TimeUnit::Microsecond),
+            DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
             vec!["no elapsed-time type", "got duration64(us)"],
         ),
         (
-            DataType::Interval(TimeUnit::MonthDayNano),
+            DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
             vec!["no calendar interval type", "got interval(month_day_nano)"],
         ),
         (
@@ -633,16 +647,17 @@ fn iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual() {
             vec!["decimal256(39, 0)", "limited to 38"],
         ),
         (
-            DataType::Decimal128 {
+            DataType::Decimal(DecimalType::Decimal128 {
                 precision: 10,
                 scale: -2,
-            },
+            }),
             vec!["expected a non-negative decimal scale, got -2", "Iceberg"],
         ),
     ];
     for (rejected, fragments) in cases {
-        let source =
-            DataType::from_fields([Field::new("created", rejected.clone(), true)]).unwrap();
+        let source = DataType::from(
+            StructureType::from_fields([Field::new("created", rejected.clone(), true)]).unwrap(),
+        );
         let error = source.into_scheme_compat(&Scheme::ICEBERG).unwrap_err();
         let message = error.to_string();
         assert!(message.contains("$.created"), "{rejected:?}: {message}");
@@ -661,7 +676,7 @@ fn iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual() {
 
 #[test]
 fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_list() {
-    let source = DataType::from_fields([
+    let source = StructureType::from_fields([
         Field::new("id", DataType::UInt16, false),
         Field::new(
             "tags",
@@ -670,7 +685,9 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
         ),
         Field::new(
             "nested",
-            DataType::from_fields([Field::new("half", DataType::Float16, true)]).unwrap(),
+            DataType::from(
+                StructureType::from_fields([Field::new("half", DataType::Float16, true)]).unwrap(),
+            ),
             true,
         ),
         // Iceberg has a first-class map, so it recurses rather than refusing.
@@ -680,13 +697,14 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
             true,
         ),
     ])
+    .map(DataType::from)
     .unwrap();
     let transformed = source.into_scheme_compat(&Scheme::ICEBERG).unwrap();
     let fields = transformed.as_fields().unwrap();
 
     assert_eq!(fields[0].dtype(), &DataType::Int32);
     assert!(!fields[0].is_nullable());
-    let DataType::List(item) = fields[1].dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = fields[1].dtype() else {
         panic!("expected a normalized list");
     };
     assert_eq!(item.dtype(), &DataType::utf8());
@@ -694,7 +712,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
     let nested = fields[2].dtype().as_fields().unwrap();
     assert_eq!(nested[0].name(), "half");
     assert_eq!(nested[0].dtype(), &DataType::Float32);
-    let DataType::Map(map) = fields[3].dtype() else {
+    let DataType::Mapping(map) = fields[3].dtype() else {
         panic!("expected a retained map");
     };
     assert!(map.keys_sorted());
@@ -710,7 +728,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
     );
 
     // A union has none, and says so where it is.
-    let union = DataType::from_fields([Field::new(
+    let union = StructureType::from_fields([Field::new(
         "choice",
         DataType::union(
             [(1, Field::new("value", DataType::Int32, false))],
@@ -719,6 +737,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
         .unwrap(),
         true,
     )])
+    .map(DataType::from)
     .unwrap();
     let message = union
         .into_scheme_compat(&Scheme::ICEBERG)
@@ -755,7 +774,7 @@ fn iceberg_passes_first_class_geospatial_identity_and_still_rejects_foreign_exte
 
     // An imported geometry no longer carries its extension keys - they are
     // stripped as transport - so nothing trips the extension-storage rule.
-    let imported = Field::from_arrow(&geometry.clone().into_arrow().unwrap()).unwrap();
+    let imported = Field::from_arrow_field(&geometry.clone().into_arrow_field().unwrap()).unwrap();
     assert!(!imported.has_metadata("ARROW:extension:name"));
     assert_eq!(
         imported.into_scheme_compat(&Scheme::ICEBERG).unwrap(),
@@ -775,4 +794,40 @@ fn iceberg_passes_first_class_geospatial_identity_and_still_rejects_foreign_exte
         .unwrap_err()
         .to_string();
     assert!(refused.contains("extension storage"), "{refused}");
+}
+
+#[test]
+fn every_scalar_leaf_has_an_answer_for_every_target() {
+    // Seven leaves - Side, State, TimeInForce, Bloomberg, Timezone, MimeType
+    // and MediaType - were absent from all four per-target matches, so each
+    // fell through to the container arm and answered "expected a scalar
+    // datatype, got side; this container is handled by the generic walker".
+    // Twenty-eight wrong answers, and nothing caught them because a missing
+    // arm is not a compile error.
+    //
+    // This walks every parameter-free identifier instead of the seven, so the
+    // next leaf added without a compatibility arm fails here.
+    for id in DataTypeId::ALL {
+        if id.is_parameterized() {
+            continue;
+        }
+        let Ok(dtype) = DataType::from_str(id.as_str()) else {
+            continue; // an identifier with no standalone datatype spelling
+        };
+        for scheme in [
+            &Scheme::SPARK,
+            &Scheme::POLARS,
+            &Scheme::PANDAS,
+            &Scheme::ICEBERG,
+        ] {
+            if let Err(error) = dtype.clone().into_scheme_compat(scheme) {
+                let reason = error.to_string();
+                assert!(
+                    !reason.contains("handled by the generic walker"),
+                    "{} has no arm for {scheme}: {reason}",
+                    id.as_str()
+                );
+            }
+        }
+    }
 }

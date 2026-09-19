@@ -7,7 +7,7 @@ const { performance } = require('node:perf_hooks')
 const { Readable, Writable } = require('node:stream')
 const { pathToFileURL } = require('node:url')
 const arrow = require('apache-arrow')
-const { Field, Scalar, avro, codec, json, toml, yaml } = require('yggdryl')
+const { DataType, Field, Scalar, avro, codec, json, toml, yaml } = require('yggdryl')
 
 const value = {
   trades: Array.from({ length: 1_000 }, (_, index) => ({
@@ -26,11 +26,11 @@ const exotic = {
 // The temporal and decimal boundary is its own cost: each value crosses as
 // parts rather than as one number, and a Date is rebuilt on the way back.
 const temporal = {
-  at: Scalar.datetime(1700000000000000n, 'us', 'UTC'),
+  at: new DataType('datetime64(us,"UTC")').scalar(1700000000000000n),
   date: new Date('2026-08-15T12:30:00.000Z'),
-  on: Scalar.date(19723),
+  on: new DataType('date32').scalar(19723),
   price: Scalar.decimal(-(2n ** 160n), 2),
-  sinceMidnight: Scalar.time(45296000000n, 'us'),
+  sinceMidnight: new DataType('time64(us)').scalar(45296000000n),
   took: Scalar.duration(90, 's'),
 }
 let deep = { leaf: true }
@@ -172,17 +172,15 @@ async function main() {
     measure('pivot/clone_native', pivotBytes, 1_000, () => pivot.clone())
     measure('pivot/id', 1, 10_000, () => pivot.id)
     measure('pivot/family', 1, 10_000, () => pivot.family)
-    const enumScalar = Scalar.fromEnum('io_mode', 'append')
-    measure('pivot/enum_from', 1, 10_000, () => Scalar.fromEnum('io_mode', 'append'))
-    measure('pivot/enum_kind', 1, 10_000, () => enumScalar.enumKind)
-    measure('pivot/enum_value', 1, 10_000, () => enumScalar.enumValue)
-    measure('pivot/enum_ordinal', 1, 10_000, () => enumScalar.enumOrdinal)
+    const enumScalar = Scalar.fromEnum('IOMode', 'append')
+    measure('pivot/enum_from', 1, 10_000, () => Scalar.fromEnum('IOMode', 'append'))
+    measure('pivot/enum_text', 1, 10_000, () => enumScalar.asStr())
     measure('pivot/float_family', 8, 10_000, () => Scalar.float(1.5, 32))
     measure('pivot/decimal_family', 16, 10_000, () => Scalar.decimal(123456n, 2))
-    measure('pivot/date_family', 8, 10_000, () => Scalar.date(19723))
-    measure('pivot/time_family', 8, 10_000, () => Scalar.time(45296, 's'))
+    measure('pivot/date_family', 8, 10_000, () => new DataType('date32').scalar(19723))
+    measure('pivot/time_family', 8, 10_000, () => new DataType('time32(s)').scalar(45296))
     measure('pivot/datetime_family', 8, 10_000, () =>
-      Scalar.datetime(1700000000000n, 'ms', 'UTC'),
+      new DataType('datetime64(ms,"UTC")').scalar(1700000000000n),
     )
     measure('pivot/duration_family', 8, 10_000, () => Scalar.duration(90, 's'))
     const traversed = Scalar.from({ trades: value.trades })

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legprovisioncashsettlvaluedatebusinesscentercomponent"
+        "FIX:component": "legprovisioncashsettlvaluedatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legprovisioncashsettlvaluedatebusinesscentercomponent",
+    "FIX:counter": "40935",
+    "FIX:tag": "568600",
     "description": "Required if NoLegProvisionCashSettlValueDateBusinessCenters(40935) > 0.",
-    "display": "LegProvisionCashSettlValueDateBusinessCenterGrp",
-    "fix:component": "legprovisioncashsettlvaluedatebusinesscentercomponent",
-    "fix:counter": "40935",
-    "fix:tag": "568600"
+    "display": "LegProvisionCashSettlValueDateBusinessCenterGrp"
   }
 }

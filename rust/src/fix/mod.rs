@@ -1,46 +1,46 @@
-//! FIX field definitions: the `fix:` vocabulary, a registry that resolves
+//! FIX field definitions: the `FIX:` vocabulary, a registry that resolves
 //! them, the shards it persists to, the process-wide default, and the
 //! message value that is typed against one.
 //!
-//! A FIX field is a [`Field`](crate::Field) whose metadata carries the `fix:`
+//! A FIX field is a [`Field`](crate::Field) whose metadata carries the `FIX:`
 //! namespace, read and written through [`FixField`](crate::FixField) and
-//! [`FixFieldMut`](crate::FixFieldMut) - nobody spells `fix:` at a call site.
+//! [`FixFieldMut`](crate::FixFieldMut) - nobody spells `FIX:` at a call site.
 //! The canonical name is the field's own `name()`, the datatype its own
 //! `dtype()`, and the display name the generic `display` key; the namespace
 //! adds only what FIX states beyond a field:
 //!
 //! | property | key | type | meaning |
 //! | --- | --- | --- | --- |
-//! | tag | `fix:tag` | `i32` | canonical FIX tag |
-//! | branches | `fix:branches` | ordered name list | the dictionaries that contributed this field, folded and sorted; absent for a field the specification alone defines |
-//! | tags | `fix:tags` | JSON array of `i32` | alternate tags, highest priority first |
-//! | names | `fix:names` | JSON array of names | alternate names, highest priority first |
-//! | identifiers | `fix:identifiers` | ordered member name list | a component's direct scalar identifiers, in declaration order |
+//! | tag | `FIX:tag` | `i32` | canonical FIX tag |
+//! | branches | `FIX:branches` | ordered name list | the dictionaries that contributed this field, folded and sorted; absent for a field the specification alone defines |
+//! | tags | `FIX:tags` | JSON array of `i32` | alternate tags, highest priority first |
+//! | names | `FIX:names` | JSON array of names | alternate names, highest priority first |
+//! | identifiers | `FIX:identifiers` | ordered member name list | a component's direct scalar identifiers, in declaration order |
 //! | description | `description` | text | the specification's own wording, on the key every catalog reads |
-//! | codes | `fix:codes` | canonical JSON, by wire value | enumeration definitions owned by the field |
-//! | replacements | `fix:replacements` | canonical JSON, in order | how a value of this field is restated at a later version: the fields it fills and the values they take |
-//! | directions | `fix:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults |
-//! | derivation | `fix:derivation` | canonical term text | how this field's value is derived from the message where the message states none: one expression over the message's fields, evaluated by the enriching pass to a fixpoint |
-//! | counter | `fix:counter` | `i32` | the wire field counting a group's occurrences |
-//! | component | `fix:component` | name | the component defining a group occurrence |
+//! | codes | `FIX:codes` | canonical JSON, by wire value | enumeration definitions owned by the field |
+//! | replacements | `FIX:replacements` | canonical JSON, in order | how a value of this field is restated at a later version: the fields it fills and the values they take |
+//! | directions | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults |
+//! | derivation | `FIX:derivation` | canonical term text | how this field's value is derived from the message where the message states none: one expression over the message's fields, evaluated by the enriching pass to a fixpoint |
+//! | counter | `FIX:counter` | `i32` | the wire field counting a group's occurrences |
+//! | component | `FIX:component` | name | the component defining a group occurrence |
 //!
 //! The categories are scalar wire fields, components and groups. A message
-//! is a component carrying `fix:msgtype`. List groups hold non-null Struct
+//! is a component carrying `FIX:msgtype`. List groups hold non-null Struct
 //! occurrences and reference a separate int32 counter: `NoPartyIDs` is tag
 //! 453, while `Parties` contains `Party` values, and `NoFixEntries` is the
 //! crate's own 65027 while `FixEntries` contains `FixEntry` values. A
 //! crate-owned Map group holds its native entries under its own counter,
 //! without a scalar count column. Each field keeps its enumeration in
-//! `fix:codes` metadata.
+//! `FIX:codes` metadata.
 //!
 //! # Identity
 //!
 //! [`FixId`] is one `i32`: the digest of a field's tag and its folded name
-//! together. It is derived on every read from `fix:tag` and the field's
-//! name and never stored - there is no `fix:id` key on disk - because the
+//! together. It is derived on every read from `FIX:tag` and the field's
+//! name and never stored - there is no `FIX:id` key on disk - because the
 //! registry, the catalog and the store rename a field after it is built.
 //! A dictionary is not a namespace: the fields a dialect contributed carry
-//! its name in `fix:branches`, which a merge unions and resolution never
+//! its name in `FIX:branches`, which a merge unions and resolution never
 //! consults.
 //!
 //! # Resolution
@@ -67,7 +67,7 @@
 //!
 //! What a *value* was is the field's own business and stays: a
 //! [code](FixCode) an older version declared is a code of the set like any
-//! other, and a [`fix:replacements`](FixReplacement) rule says how a
+//! other, and a [`FIX:replacements`](FixReplacement) rule says how a
 //! retired field or value is restated - which every
 //! [parse](FixCodec::parse_line) applies.
 //!
@@ -83,12 +83,12 @@
 //! # Storage
 //!
 //! One IOBase folder contains `fields`, `components`, `groups`; a message is a
-//! component carrying `fix:msgtype`.
+//! component carrying `FIX:msgtype`.
 //! Scalar fields use `<tag / 100>.json` arrays; other categories use
 //! `<name>.json` native Field documents.
 //!
 //! Referenced children persist as Null-typed native Fields carrying
-//! `fix:field`, `fix:component` or `fix:group`. Loading resolves the graph
+//! `FIX:field`, `FIX:component` or `FIX:group`. Loading resolves the graph
 //! once into typed fields and rejects missing or cyclic references. Writing
 //! compacts these references again.
 //!
@@ -135,7 +135,6 @@ mod aliases;
 mod cfi;
 // Batching is the crate's Arrow surface seen from FIX, so it exists exactly
 // where that surface does.
-#[cfg(feature = "arrow")]
 mod batch;
 mod build;
 mod catalog;
@@ -174,13 +173,12 @@ pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub(crate) use component::occurrence_name;
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
-    CRATE_TAG_MAX, CRATE_TAG_MIN, CREATUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME,
+    CRATE_TAG_MAX, CRATE_TAG_MIN, CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME,
     CROSSUUID_TAG_NAME, CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME, CURRUUID_TAG_NAME,
     FIXMSG_TAG_NAME, IDENTIFIERS_TAG_NAME, METADATA_TAG_NAME, MSGCTXID_TAG_NAME,
-    MSGDIRECTION_TAG_NAME, MSGSESSIONID_TAG_NAME, MSGTYPE_TAG_NAME, NOFIXENTRIES_TAG_NAME,
-    PARENTUUIDS_TAG_NAME, PLUGINID_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
-    RECORDEDAT_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME, fix_crate_fields,
-    is_crate_tag,
+    MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSIONID_TAG_NAME, MSGTYPE_TAG_NAME,
+    NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
+    SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME, fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
 pub use direction::{MsgDirection, RECEIVE_PATTERNS, SEND_PATTERNS};
@@ -226,7 +224,7 @@ const IDENTITY_SEED: u32 = 0x5947_4649;
 /// followed by the name under the crate's one fold - ASCII case dropped,
 /// and `_`, `-` and space dropped - so `Msg_Type`, `msgtype` and `MsgType`
 /// under tag 35 are one identity, and the identity agrees with what every
-/// name lookup already answers. It is derived on every read from `fix:tag`
+/// name lookup already answers. It is derived on every read from `FIX:tag`
 /// and the field's name and never stored: the registry, the catalog and the
 /// store rename a field after it is built, and a stored identity would go
 /// stale where a derived one cannot.
@@ -277,7 +275,7 @@ impl FixId {
     ///
     /// # Errors
     ///
-    /// Returns a typed failure naming `fix:tag` for a nonpositive tag.
+    /// Returns a typed failure naming `FIX:tag` for a nonpositive tag.
     /// Zero belongs only to unresolved arrival entries, never a definition.
     pub fn of(tag: i32, name: &str) -> Result<Self> {
         if tag <= 0 {
@@ -286,7 +284,7 @@ impl FixId {
                 reason: format_smolstr!("expected a positive FIX tag, got {tag}"),
             });
         }
-        let mut state = crate::hashing::xxhash::Xxh32::with_seed(IDENTITY_SEED);
+        let mut state = crate::xxhash::Xxh32::with_seed(IDENTITY_SEED);
         state.write_bytes(&tag.to_le_bytes());
         let mut folded = [0_u8; 64];
         let mut held = 0;

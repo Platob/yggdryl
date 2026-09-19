@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisioncashsettlpaymentdatebusinesscenter",
-          "fix:tag": "40164"
+          "FIX:field": "provisioncashsettlpaymentdatebusinesscenter",
+          "FIX:tag": "40164"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ProvisionCashSettlPaymentDateBusinessCenter",
-    "fix:tag": "284903"
+    "FIX:tag": "284903",
+    "display": "ProvisionCashSettlPaymentDateBusinessCenter"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendaccrualpaymentdaterelativeto",
-          "fix:tag": "42330"
+          "FIX:field": "legdividendaccrualpaymentdaterelativeto",
+          "FIX:tag": "42330"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendaccrualpaymentdateoffsetperiod",
-          "fix:tag": "42331"
+          "FIX:field": "legdividendaccrualpaymentdateoffsetperiod",
+          "FIX:tag": "42331"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendaccrualpaymentdateoffsetunit",
-          "fix:tag": "42332"
+          "FIX:field": "legdividendaccrualpaymentdateoffsetunit",
+          "FIX:tag": "42332"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendaccrualpaymentdateoffsetdaytype",
-          "fix:tag": "42333"
+          "FIX:field": "legdividendaccrualpaymentdateoffsetdaytype",
+          "FIX:tag": "42333"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendaccrualpaymentdateunadjusted",
-          "fix:tag": "42334"
+          "FIX:field": "legdividendaccrualpaymentdateunadjusted",
+          "FIX:tag": "42334"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendaccrualpaymentdatebusinessdayconvention",
-          "fix:tag": "42335"
+          "FIX:field": "legdividendaccrualpaymentdatebusinessdayconvention",
+          "FIX:tag": "42335"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegdividendaccrualpaymentdatebusinesscenters",
-          "fix:tag": "42310"
+          "FIX:field": "nolegdividendaccrualpaymentdatebusinesscenters",
+          "FIX:tag": "42310"
         }
       },
       {
@@ -87,7 +87,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legdividendaccrualpaymentdatebusinesscentergrp"
+          "FIX:group": "legdividendaccrualpaymentdatebusinesscentergrp"
         }
       },
       {
@@ -97,16 +97,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendaccrualpaymentdateadjusted",
-          "fix:tag": "42336"
+          "FIX:field": "legdividendaccrualpaymentdateadjusted",
+          "FIX:tag": "42336"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "655412",
     "description": "Conditionally required when LegDividendAccrualPaymentDateOffsetUnit(42332) is specified.",
-    "display": "LegDividendAccrualPaymentDate",
-    "fix:tag": "655412"
+    "display": "LegDividendAccrualPaymentDate"
   }
 }

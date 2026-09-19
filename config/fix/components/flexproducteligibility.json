@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "flexproducteligibilityindicator",
-          "fix:tag": "1242"
+          "FIX:field": "flexproducteligibilityindicator",
+          "FIX:tag": "1242"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "flexproducteligibilitycomplex",
-          "fix:tag": "2561"
+          "FIX:field": "flexproducteligibilitycomplex",
+          "FIX:tag": "2561"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "FlexProductEligibility",
-    "fix:tag": "745150"
+    "FIX:tag": "745150",
+    "display": "FlexProductEligibility"
   }
 }

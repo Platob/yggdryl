@@ -15,9 +15,9 @@ use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::IOBase;
-use yggdryl::holder::fs::{FileSystem, LocalFileSystem, MemoryFileSystem};
+use yggdryl::fs::{FileSystem, LocalFileSystem, MemoryFileSystem};
 use yggdryl::media::IORecordOptions;
-use yggdryl::{DataType, Field, Url};
+use yggdryl::{DataType, Field, StructureType, Url};
 
 /// Rows per record fixture, large enough that encoding dominates setup.
 pub(crate) const ROWS: i64 = crate::bench_profile::corpus(65_536, 1_024) as i64;
@@ -27,12 +27,13 @@ pub(crate) const PAYLOAD: usize = crate::bench_profile::corpus(512 * 1024, 64 * 
 
 /// The four-column root the record round trips carry.
 pub(crate) fn wide() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
         DataType::Float64.required_field("price"),
         DataType::utf8().required_field("venue"),
     ])
+    .map(DataType::from)
     .expect("a valid struct root")
     .required_field("row")
 }
@@ -80,7 +81,7 @@ pub(crate) fn memory() -> Arc<MemoryFileSystem> {
 
 /// One local filesystem mapping, and the temporary root it works under.
 pub(crate) fn local() -> (Arc<LocalFileSystem>, std::path::PathBuf) {
-    let mut root = yggdryl::holder::local::Folder::temporary()
+    let mut root = yggdryl::local::Folder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path");

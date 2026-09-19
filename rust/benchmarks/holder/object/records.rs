@@ -12,18 +12,19 @@ use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use criterion::{Criterion, Throughput};
-use yggdryl::{DataType, Field, IOBase, IOMedia};
+use yggdryl::{DataType, Field, IOBase, IOMedia, StructureType};
 
 use super::{ROWS, location, options, store};
 
 /// The four-column root the round trips carry.
 fn wide() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
         DataType::Float64.required_field("price"),
         DataType::utf8().required_field("venue"),
     ])
+    .map(DataType::from)
     .expect("a valid struct root")
     .required_field("row")
 }
@@ -66,8 +67,8 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
         if encoding == "parquet" && !cfg!(feature = "parquet") {
             continue;
         }
-        let mut handle = yggdryl::holder::object::file_with(&location(name), options(&store))
-            .expect("an object handle");
+        let mut handle =
+            yggdryl::object::file_with(&location(name), options(&store)).expect("an object handle");
         let record_options = handle.record_options().expect("an implemented encoding");
         handle
             .overwrite_arrow_batch(source.clone(), &record_options)
@@ -88,8 +89,8 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
 
         // The same read on an opened handle, where the metadata questions the
         // encoding asks are answered from the scope rather than the store.
-        let mut opened = yggdryl::holder::object::file_with(&location(name), options(&store))
-            .expect("an object handle");
+        let mut opened =
+            yggdryl::object::file_with(&location(name), options(&store)).expect("an object handle");
         opened.open().expect("an open");
         group.bench_function(format!("read_opened/{encoding}"), |bencher| {
             bencher.iter(|| {
@@ -105,7 +106,7 @@ pub(crate) fn record_benchmarks(criterion: &mut Criterion) {
         });
 
         group.bench_function(format!("overwrite/{encoding}"), |bencher| {
-            let mut target = yggdryl::holder::object::file_with(
+            let mut target = yggdryl::object::file_with(
                 &location(&format!("bench/write.{encoding}")),
                 options(&store),
             )

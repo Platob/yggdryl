@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legfinancingcontractualmatrix"
+        "FIX:component": "legfinancingcontractualmatrix"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legfinancingcontractualmatrix",
+    "FIX:counter": "42203",
+    "FIX:tag": "686204",
     "description": "Required if NoLegContractualMatrices(42203) > 0.",
-    "display": "LegFinancingContractualMatrixGrp",
-    "fix:component": "legfinancingcontractualmatrix",
-    "fix:counter": "42203",
-    "fix:tag": "686204"
+    "display": "LegFinancingContractualMatrixGrp"
   }
 }

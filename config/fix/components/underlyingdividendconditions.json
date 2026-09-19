@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendreinvestmentindicator",
-          "fix:tag": "42826"
+          "FIX:field": "underlyingdividendreinvestmentindicator",
+          "FIX:tag": "42826"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendentitlementevent",
-          "fix:tag": "42827"
+          "FIX:field": "underlyingdividendentitlementevent",
+          "FIX:tag": "42827"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendamounttype",
-          "fix:tag": "42828"
+          "FIX:field": "underlyingdividendamounttype",
+          "FIX:tag": "42828"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendunderlierrefid",
-          "fix:tag": "42829"
+          "FIX:field": "underlyingdividendunderlierrefid",
+          "FIX:tag": "42829"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingdividendperiods",
-          "fix:tag": "42862"
+          "FIX:field": "nounderlyingdividendperiods",
+          "FIX:tag": "42862"
         }
       },
       {
@@ -65,7 +65,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingdividendperiodgrp"
+          "FIX:group": "underlyingdividendperiodgrp"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingextraordinarydividendpartyside",
-          "fix:tag": "42830"
+          "FIX:field": "underlyingextraordinarydividendpartyside",
+          "FIX:tag": "42830"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingextraordinarydividendamounttype",
-          "fix:tag": "42831"
+          "FIX:field": "underlyingextraordinarydividendamounttype",
+          "FIX:tag": "42831"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingextraordinarydividendcurrency",
-          "fix:tag": "42832"
+          "FIX:field": "underlyingextraordinarydividendcurrency",
+          "FIX:tag": "42832"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingextraordinarydividenddeterminationmethod",
-          "fix:tag": "42833"
+          "FIX:field": "underlyingextraordinarydividenddeterminationmethod",
+          "FIX:tag": "42833"
         }
       },
       {
@@ -119,7 +119,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingdividendfxtriggerdate"
+          "FIX:component": "underlyingdividendfxtriggerdate"
         }
       },
       {
@@ -129,7 +129,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingdividendaccrualfloatingrate"
+          "FIX:component": "underlyingdividendaccrualfloatingrate"
         }
       },
       {
@@ -139,8 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendaccrualfixedrate",
-          "fix:tag": "42834"
+          "FIX:field": "underlyingdividendaccrualfixedrate",
+          "FIX:tag": "42834"
         }
       },
       {
@@ -150,7 +150,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingdividendaccrualpaymentdate"
+          "FIX:component": "underlyingdividendaccrualpaymentdate"
         }
       },
       {
@@ -160,8 +160,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendcompoundingmethod",
-          "fix:tag": "42835"
+          "FIX:field": "underlyingdividendcompoundingmethod",
+          "FIX:tag": "42835"
         }
       },
       {
@@ -171,8 +171,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendnumofindexunits",
-          "fix:tag": "42836"
+          "FIX:field": "underlyingdividendnumofindexunits",
+          "FIX:tag": "42836"
         }
       },
       {
@@ -182,8 +182,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendcashpercentage",
-          "fix:tag": "42837"
+          "FIX:field": "underlyingdividendcashpercentage",
+          "FIX:tag": "42837"
         }
       },
       {
@@ -193,8 +193,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendcashequivalentpercentage",
-          "fix:tag": "42838"
+          "FIX:field": "underlyingdividendcashequivalentpercentage",
+          "FIX:tag": "42838"
         }
       },
       {
@@ -204,8 +204,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingnoncashdividendtreatment",
-          "fix:tag": "42839"
+          "FIX:field": "underlyingnoncashdividendtreatment",
+          "FIX:tag": "42839"
         }
       },
       {
@@ -215,8 +215,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendcomposition",
-          "fix:tag": "42840"
+          "FIX:field": "underlyingdividendcomposition",
+          "FIX:tag": "42840"
         }
       },
       {
@@ -226,8 +226,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingspecialdividendsindicator",
-          "fix:tag": "42841"
+          "FIX:field": "underlyingspecialdividendsindicator",
+          "FIX:tag": "42841"
         }
       },
       {
@@ -237,8 +237,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmaterialdividendsindicator",
-          "fix:tag": "42842"
+          "FIX:field": "underlyingmaterialdividendsindicator",
+          "FIX:tag": "42842"
         }
       },
       {
@@ -248,8 +248,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionsexchangedividendsindicator",
-          "fix:tag": "42843"
+          "FIX:field": "underlyingoptionsexchangedividendsindicator",
+          "FIX:tag": "42843"
         }
       },
       {
@@ -259,8 +259,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingadditionaldividendsindicator",
-          "fix:tag": "42844"
+          "FIX:field": "underlyingadditionaldividendsindicator",
+          "FIX:tag": "42844"
         }
       },
       {
@@ -270,16 +270,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingalldividendsindicator",
-          "fix:tag": "42845"
+          "FIX:field": "underlyingalldividendsindicator",
+          "FIX:tag": "42845"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "827741",
     "description": "The UnderlyingDividendConditions component is a subcomponent of UnderlyingPaymentStream used to specify the conditions' valuations and dates governing the payment of dividends.",
-    "display": "UnderlyingDividendConditions",
-    "fix:tag": "827741"
+    "display": "UnderlyingDividendConditions"
   }
 }

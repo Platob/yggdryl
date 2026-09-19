@@ -1,4 +1,4 @@
-use yggdryl::types::{DataType, GeospatialParameters};
+use yggdryl::{DataType, GeospatialParameters, StructureType};
 use yggdryl::{DataTypeId, DataTypeKind, EdgeAlgorithm};
 use yggdryl::{Field, Scalar};
 
@@ -180,7 +180,7 @@ fn defaults_are_a_present_variant_null_and_a_point_empty() {
     assert!(matches!(default, Scalar::Geometry(_)), "{default:?}");
     let bytes = default.as_wkb().expect("a WKB payload");
     assert_eq!(
-        yggdryl::types::geospatial::wkb::into_wkt(bytes).unwrap(),
+        yggdryl::wkb::into_wkt(bytes).unwrap(),
         "POINT EMPTY",
         "the default is POINT EMPTY"
     );
@@ -189,7 +189,8 @@ fn defaults_are_a_present_variant_null_and_a_point_empty() {
 #[test]
 fn rows_validate_through_the_new_columns() {
     let root = |field: Field| {
-        DataType::from_fields([field])
+        StructureType::from_fields([field])
+            .map(DataType::from)
             .unwrap()
             .required_field("row")
     };
@@ -236,13 +237,14 @@ fn rows_validate_through_the_new_columns() {
 fn compatibility_rows_answer_for_every_target() {
     use yggdryl::Scheme;
 
-    let schema = DataType::from_fields([
+    let schema = StructureType::from_fields([
         DataType::Variant.nullable_field("payload"),
         DataType::geometry(None).unwrap().nullable_field("shape"),
         DataType::geography(None, None)
             .unwrap()
             .nullable_field("region"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
 
@@ -262,4 +264,43 @@ fn compatibility_rows_answer_for_every_target() {
             "{error}"
         );
     }
+}
+
+#[test]
+fn the_geospatial_family_stands_for_both_interpretations() {
+    use yggdryl::{FamilyValue, Geography, Geometry, Geospatial};
+
+    let mut point = vec![1, 1, 0, 0, 0];
+    point.extend_from_slice(&1.5_f64.to_le_bytes());
+    point.extend_from_slice(&2.5_f64.to_le_bytes());
+    let geometry = Geometry::new(point.clone()).unwrap();
+    let geography = Geography::new(point).unwrap();
+
+    crate::scalar::assert_family_round_trip(
+        vec![
+            crate::family_leaf!(Geospatial::Geometry, geometry.clone()),
+            crate::family_leaf!(Geospatial::Geography, geography.clone()),
+        ],
+        DataTypeKind::Geospatial,
+        &Scalar::from(1_i64),
+    );
+
+    // The two interpretations of one payload are equal scalars, so the
+    // variant is what tells them apart, on the way in and on the way out.
+    assert!(matches!(
+        Geospatial::from_scalar(&Scalar::Geometry(geometry.clone())),
+        Some(Geospatial::Geometry(_))
+    ));
+    assert!(matches!(
+        Geospatial::from_scalar(&Scalar::Geography(geography.clone())),
+        Some(Geospatial::Geography(_))
+    ));
+    assert!(matches!(
+        Geospatial::from(geometry).into_scalar(),
+        Scalar::Geometry(_)
+    ));
+    assert!(matches!(
+        Geospatial::from(geography).into_scalar(),
+        Scalar::Geography(_)
+    ));
 }

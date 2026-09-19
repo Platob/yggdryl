@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "listid",
-          "fix:tag": "66"
+          "FIX:field": "listid",
+          "FIX:tag": "66"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clientbidid",
-          "fix:tag": "391"
+          "FIX:field": "clientbidid",
+          "FIX:tag": "391"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidid",
-          "fix:tag": "390"
+          "FIX:field": "bidid",
+          "FIX:tag": "390"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -97,17 +97,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "listid",
+    "FIX:msgtype": "L",
+    "FIX:tag": "185663",
     "description": "MsgType = L",
-    "display": "ListExecute",
-    "fix:identifiers": "listid",
-    "fix:msgtype": "L",
-    "fix:tag": "185663"
+    "display": "ListExecute"
   }
 }

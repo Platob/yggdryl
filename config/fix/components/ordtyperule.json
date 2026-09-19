@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordtype",
-          "fix:tag": "40"
+          "FIX:field": "ordtype",
+          "FIX:tag": "40"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "OrdTypeRule",
-    "fix:tag": "189123"
+    "FIX:tag": "189123",
+    "display": "OrdTypeRule"
   }
 }

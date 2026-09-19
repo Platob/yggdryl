@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "averagepricetype",
-          "fix:tag": "2763"
+          "FIX:field": "averagepricetype",
+          "FIX:tag": "2763"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "averagepricestarttime",
-          "fix:tag": "2764"
+          "FIX:field": "averagepricestarttime",
+          "FIX:tag": "2764"
         }
       },
       {
@@ -32,16 +32,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "averagepriceendtime",
-          "fix:tag": "2765"
+          "FIX:field": "averagepriceendtime",
+          "FIX:tag": "2765"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "433012",
     "description": "Required if AveragePriceType(2763)=2 (Percent of volume average price) or 0 (Time weighted average price).",
-    "display": "AveragePriceDetail",
-    "fix:tag": "433012"
+    "display": "AveragePriceDetail"
   }
 }

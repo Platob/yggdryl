@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { DataType, Field, StringEnum, Version } = require('yggdryl')
+const { DataType, Field, StringEnum, Version, enums } = require('yggdryl')
 
 test('datatype values infer inputs and round-trip canonical strings', () => {
   const type = new DataType('varchar')
@@ -22,12 +22,12 @@ test('named regex captures define a nullable Struct before data is read', () => 
     [...inferred].map((field) => field.name),
     ['level', 'id'],
   )
-  assert.equal(inferred.field('level').dtype.id, 'string')
+  assert.equal(inferred.field('level').dtype.id, 'utf8')
   assert.equal(inferred.field('id').dtype.id, 'int64')
   assert.ok([...inferred].every((field) => field.nullable))
 
   const strings = DataType.fromRegex('(?<id>\\d+)', false)
-  assert.equal(strings.field('id').dtype.id, 'string')
+  assert.equal(strings.field('id').dtype.id, 'utf8')
   assert.throws(() => DataType.fromRegex('(?<id>'), /regular expression/)
 })
 
@@ -93,60 +93,94 @@ test('geometry and geography fill and display their shared defaults', () => {
   assert.throws(() => DataType.geography('OGC:CRS84', 'euclidean'), /expected one of spherical/)
 })
 
-test('every string is one datatype: a layout, a charset, and a bound', () => {
-  // The five layouts, each under the name its UTF-8 charset earns.
-  for (const [dtype, layout, spelling] of [
-    [DataType.utf8(), 'string', 'utf8'],
-    [DataType.largeUtf8(), 'large_string', 'large_utf8'],
-    [DataType.utf8View(), 'string_view', 'utf8_view'],
-    [DataType.fixedUtf8(8), 'fixed_string', 'fixed_utf8(8)'],
-    [DataType.string({ layout: 'large_string_view' }), 'large_string_view', 'large_utf8_view'],
+test('every string column is one of eighteen leaves: a shape in a charset', () => {
+  // The six UTF-8 leaves: the identity is the leaf, the display its name
+  // with the number the leaf carries, and the charset is what the leaf says.
+  for (const [dtype, id, spelling] of [
+    [DataType.utf8(), 'utf8', 'utf8'],
+    [DataType.largeUtf8(), 'large_utf8', 'large_utf8'],
+    [DataType.utf8View(), 'utf8_view', 'utf8_view'],
+    [DataType.string({ layout: 'large_string_view' }), 'large_utf8_view', 'large_utf8_view'],
+    [DataType.fixedUtf8(8), 'fixed_utf8', 'fixed_utf8(8)'],
+    [DataType.string({ max: 32 }), 'sized_utf8', 'sized_utf8(32)'],
   ]) {
-    assert.equal(dtype.id, layout, spelling)
+    assert.equal(dtype.id, id, spelling)
     assert.equal(dtype.kind, 'text', spelling)
     assert.equal(dtype.toString(), spelling)
     assert.equal(dtype.charset, 'utf-8', spelling)
-    assert.equal(dtype.stringParameters.layout, layout, spelling)
+    assert.equal(dtype.stringParameters.layout, id, spelling)
     assert.equal(dtype.stringParameters.charset, 'utf-8', spelling)
     assert.ok(DataType.from(spelling).equals(dtype), spelling)
     assert.ok(DataType.fromJSON(dtype.toJSON()).equals(dtype), spelling)
   }
-  assert.ok(
-    DataType.from('large_string_view').equals(DataType.string({ layout: 'large_string_view' })),
-  )
+  // The same six shapes in each of the three charsets: every leaf is a
+  // datatype id, renders under its own name, and reads back from its JSON.
+  for (const [family, charset] of [
+    ['utf8', 'utf-8'],
+    ['ascii', 'us-ascii'],
+    ['cp1252', 'windows-1252'],
+  ]) {
+    for (const spelling of [
+      family,
+      `large_${family}`,
+      `${family}_view`,
+      `large_${family}_view`,
+      `fixed_${family}(4)`,
+      `sized_${family}(4)`,
+    ]) {
+      const dtype = DataType.from(spelling)
+      assert.equal(dtype.toString(), spelling)
+      assert.equal(dtype.kind, 'text', spelling)
+      assert.equal(dtype.charset, charset, spelling)
+      assert.equal(dtype.stringParameters.layout, dtype.id, spelling)
+      assert.ok(enums.dataTypeIds.includes(dtype.id), spelling)
+      assert.ok(DataType.fromJSON(dtype.toJSON()).equals(dtype), spelling)
+      assert.ok(DataType.string({ layout: dtype.id, bound: dtype.stringParameters.bound }).equals(dtype), spelling)
+    }
+  }
   assert.ok(DataType.string().equals(DataType.utf8()))
   assert.deepEqual(DataType.utf8().stringParameters, {
-    layout: 'string',
+    layout: 'utf8',
     charset: 'utf-8',
   })
-  // The SQL spellings are spellings of the same datatype.
+  // The charset-free spellings name the UTF-8 leaf of their shape, and the
+  // SQL spellings are spellings of the same leaves.
+  assert.ok(DataType.from('string').equals(DataType.utf8()))
+  assert.ok(DataType.from('large_string_view').equals(DataType.string({ layout: 'large_string_view' })))
   assert.ok(DataType.from('varchar').equals(DataType.utf8()))
-  assert.equal(DataType.from('varchar(32)').toString(), 'utf8(32)')
+  assert.equal(DataType.from('varchar(32)').toString(), 'sized_utf8(32)')
+  assert.equal(DataType.from('utf8(32)').toString(), 'sized_utf8(32)')
   assert.equal(DataType.from('char(8)').toString(), 'fixed_utf8(8)')
 
-  // A charset or a bound is what a string declares, and the general name
-  // states a charset the short names do not cover.
+  // A charset moves the shape into that charset's family: it is accepted
+  // only beside a charset-free spelling, and the leaf it lands on is the
+  // identity, so `string` in windows-1252 with a maximum is `sized_cp1252`.
   const latin = DataType.string({ charset: 'windows-1252', max: 32 })
-  assert.equal(latin.id, 'string')
-  assert.equal(latin.toString(), 'string(windows-1252,32)')
+  assert.equal(latin.id, 'sized_cp1252')
+  assert.equal(latin.toString(), 'sized_cp1252(32)')
   assert.equal(latin.charset, 'windows-1252')
   assert.deepEqual(latin.stringParameters, {
-    layout: 'string',
+    layout: 'sized_cp1252',
     charset: 'windows-1252',
     bound: 32,
     max: 32,
   })
   assert.equal(latin.fixedByteWidth, null)
   assert.ok(DataType.from(latin.toString()).equals(latin))
+  assert.ok(DataType.from('string(windows-1252,32)').equals(latin))
   assert.ok(DataType.string({ charset: 'cp1252', bound: 32 }).equals(latin))
+  assert.ok(DataType.string({ layout: 'sized_cp1252', max: 32 }).equals(latin))
+  // The schema document names the leaf and never a charset: the leaf says it.
   assert.deepEqual(latin.toJSON(), {
     type: 'string',
-    charset: 'windows-1252',
+    layout: 'sized_cp1252',
     max: 32,
   })
   assert.ok(DataType.fromJSONBytes(latin.toJSONBytes()).equals(latin))
-  // The bound is one number: the exact width on the fixed layout, the
-  // maximum elsewhere, and `bound` follows the layout.
+  assert.ok(DataType.string({ layout: 'large_string', charset: 'cp1252' }).equals(DataType.from('large_cp1252')))
+  assert.ok(DataType.from('cp1252_view').equals(DataType.string({ layout: 'string_view', charset: 'windows-1252' })))
+  // The bound is one number: the exact width on a fixed leaf, the maximum
+  // on a sized one, and `bound` follows the leaf.
   const fixed = DataType.string({
     layout: 'fixed_string',
     charset: 'us-ascii',
@@ -160,18 +194,17 @@ test('every string is one datatype: a layout, a charset, and a bound', () => {
       fixed: 4,
     }).equals(fixed),
   )
-  // A US-ASCII spelling names a charset a bare layout would drop, so the
-  // layout key refuses it: the charset is its own key.
-  assert.throws(() => DataType.string({ layout: 'fixed_ascii', fixed: 4 }), /us-ascii/)
+  assert.ok(DataType.string({ layout: 'fixed_ascii', fixed: 4 }).equals(fixed))
   assert.deepEqual(fixed.stringParameters, {
-    layout: 'fixed_string',
+    layout: 'fixed_ascii',
     charset: 'us-ascii',
     bound: 4,
     fixed: 4,
   })
   assert.equal(fixed.fixedByteWidth, 4)
-  assert.equal(DataType.string({ max: 3 }).toString(), 'utf8(3)')
+  assert.equal(DataType.string({ max: 3 }).toString(), 'sized_utf8(3)')
   assert.equal(DataType.from('utf8(3)').stringParameters.max, 3)
+  assert.equal(DataType.from('sized_utf8(3)').stringParameters.bound, 3)
 
   // A datatype that is not a string answers none of this.
   assert.equal(new DataType('int32').stringParameters, null)
@@ -179,8 +212,10 @@ test('every string is one datatype: a layout, a charset, and a bound', () => {
   assert.equal(new DataType('currency').stringParameters, null)
   assert.equal(new DataType('currency').charset, null)
 
-  // A reading the layout does not take, two readings, a width of nothing,
-  // and a fixed layout with no width are each refused.
+  // A reading the leaf does not take, two readings, a width of nothing, a
+  // numbered leaf with no number, a maximum on a large or view leaf, a
+  // charset beside a spelling that already names one, and a charset with no
+  // family are each refused.
   assert.throws(() => DataType.string({ fixed: 4 }), /expected a maximum on a variable layout/)
   assert.throws(
     () => DataType.string({ layout: 'fixed_string', max: 4 }),
@@ -188,23 +223,32 @@ test('every string is one datatype: a layout, a charset, and a bound', () => {
   )
   assert.throws(() => DataType.string({ bound: 4, max: 4 }), /got more than one/)
   assert.throws(() => DataType.string({ bound: 0 }), /at least one byte, got 0/)
-  assert.throws(() => DataType.string({ layout: 'fixed_string' }), /got no width/)
-  assert.throws(() => DataType.string({ charset: 'utf-16' }), /invalid charset/)
-  assert.throws(() => DataType.string({ layout: 'blob' }), /unknown datatype/)
+  assert.throws(() => DataType.string({ layout: 'fixed_string' }), /expected fixed_utf8\(number\), got none/)
+  assert.throws(() => DataType.string({ layout: 'sized_ascii' }), /expected sized_ascii\(number\), got none/)
+  assert.throws(() => DataType.string({ layout: 'large_utf8', max: 64 }), /sized_utf8\(maximum\)/)
+  assert.throws(() => DataType.from('large_utf8(64)'), /sized_utf8\(maximum\)/)
+  assert.throws(
+    () => DataType.string({ layout: 'ascii', charset: 'utf-8' }),
+    /expected no charset on ascii, got "utf-8"; string is the spelling that takes one/,
+  )
+  assert.throws(() => DataType.string({ charset: 'utf-16' }), /charset/)
+  assert.throws(() => DataType.string({ charset: 'iso-8859-1' }), /utf-8, us-ascii or windows-1252 - got iso-8859-1/)
+  assert.throws(() => DataType.from('string(latin1)'), /utf-8, us-ascii or windows-1252/)
+  assert.throws(() => DataType.string({ layout: 'blob' }), /expected a string layout, got "blob"/)
   assert.throws(() => DataType.fixedUtf8(0), /at least one byte, got 0/)
   assert.throws(() => DataType.fixedUtf8(2.5), /width must be an unsigned 32-bit integer/)
   // The retired tags are no longer read back.
   assert.throws(() => DataType.fromJSON({ type: 'utf8' }), /unknown variant `utf8`/)
 })
 
-test('a string in a declared charset reads back from its structural JSON', () => {
-  // One `string` tag carries the charset; the parsed document and the bytes
-  // it came from are the same door, so both read it back.
+test('a string leaf reads back from its structural JSON', () => {
+  // One `string` tag carries the leaf under `layout`, and the leaf carries
+  // its charset, so no charset key is written; the parsed document and the
+  // bytes it came from are the same door, so both read it back.
   const ascii = DataType.fixedAscii(4)
   assert.deepEqual(ascii.toJSON(), {
     type: 'string',
-    layout: 'fixed_string',
-    charset: 'us-ascii',
+    layout: 'fixed_ascii',
     fixed: 4,
   })
   assert.ok(DataType.fromJSON(ascii.toJSON()).equals(ascii))
@@ -212,31 +256,52 @@ test('a string in a declared charset reads back from its structural JSON', () =>
   assert.ok(Field.fromJSON(field.toJSON()).equals(field))
   const latin = DataType.string({ charset: 'windows-1252', max: 32 })
   assert.ok(DataType.fromJSON(latin.toJSON()).equals(latin))
+  // A document that still restates the charset beside a charset-free layout
+  // reads as the leaf of that charset.
+  assert.ok(
+    DataType.fromJSON({ type: 'string', layout: 'fixed_string', charset: 'us-ascii', fixed: 4 }).equals(ascii),
+  )
+  assert.ok(DataType.fromJSON({ type: 'string', charset: 'windows-1252', max: 32 }).equals(latin))
 })
 
-test('ASCII is one variable form and one fixed width', () => {
+test('ASCII is six leaves: the shapes of UTF-8 in US-ASCII', () => {
   const ascii = DataType.ascii()
 
-  assert.equal(ascii.id, 'string')
+  assert.equal(ascii.id, 'ascii')
   assert.equal(ascii.kind, 'text')
   assert.equal(ascii.toString(), 'ascii')
   assert.equal(ascii.charset, 'us-ascii')
   // Variable-width ASCII stores the bytes it is given, so it has no width.
   assert.equal(ascii.fixedByteWidth, null)
   assert.deepEqual(ascii.stringParameters, {
-    layout: 'string',
+    layout: 'ascii',
     charset: 'us-ascii',
   })
   assert.ok(DataType.from('ascii').equals(ascii))
+  assert.ok(DataType.from('string(us-ascii)').equals(ascii))
   assert.ok(DataType.fromString(ascii.toString()).equals(ascii))
   assert.ok(DataType.string({ charset: 'us-ascii' }).equals(ascii))
-  // `ascii(4)` is a maximum; the fixed four-byte column is `fixed_ascii(4)`.
+  // `ascii(4)` is a maximum, so it is the sized leaf; the fixed four-byte
+  // column is `fixed_ascii(4)`.
+  assert.equal(DataType.from('ascii(4)').id, 'sized_ascii')
+  assert.equal(DataType.from('ascii(4)').toString(), 'sized_ascii(4)')
   assert.equal(DataType.from('ascii(4)').stringParameters.max, 4)
   assert.equal(DataType.from('ascii(4)').fixedByteWidth, null)
+  for (const [spelling, id] of [
+    ['large_ascii', 'large_ascii'],
+    ['ascii_view', 'ascii_view'],
+    ['large_ascii_view', 'large_ascii_view'],
+    ['large_string(us-ascii)', 'large_ascii'],
+    ['string_view(us-ascii)', 'ascii_view'],
+    ['large_string_view(us-ascii)', 'large_ascii_view'],
+  ]) {
+    assert.equal(DataType.from(spelling).id, id, spelling)
+    assert.equal(DataType.from(spelling).charset, 'us-ascii', spelling)
+  }
 
   const fixed = DataType.fixedAscii(3)
 
-  assert.equal(fixed.id, 'fixed_string')
+  assert.equal(fixed.id, 'fixed_ascii')
   assert.equal(fixed.kind, 'text')
   assert.equal(fixed.toString(), 'fixed_ascii(3)')
   assert.equal(fixed.fixedByteWidth, 3)
@@ -274,7 +339,7 @@ test('every byte column is one datatype: a layout and a bound', () => {
     [DataType.binary(), 'binary'],
     [DataType.largeBinary(), 'large_binary'],
     [DataType.binaryView(), 'binary_view'],
-    [DataType.fixedSizeBinary(16), 'fixed_size_binary'],
+    [DataType.fixedSizeBinary(16), 'fixed_binary'],
   ]) {
     assert.equal(dtype.id, layout)
     assert.equal(dtype.kind, 'bytes')
@@ -291,34 +356,37 @@ test('every byte column is one datatype: a layout and a bound', () => {
   }
   assert.ok(DataType.bytes().equals(DataType.binary()))
   assert.deepEqual(DataType.binary().bytesParameters, { layout: 'binary' })
-  assert.equal(DataType.fixedSizeBinary(16).toString(), 'fixed_size_binary(16)')
+  assert.equal(DataType.fixedSizeBinary(16).toString(), 'fixed_binary(16)')
   assert.equal(DataType.fixedSizeBinary(16).fixedByteWidth, 16)
   assert.deepEqual(DataType.fixedSizeBinary(16).bytesParameters, {
-    layout: 'fixed_size_binary',
+    layout: 'fixed_binary',
     bound: 16,
     fixed: 16,
   })
   assert.ok(
     DataType.bytes({ layout: 'fixed_binary', bound: 16 }).equals(DataType.fixedSizeBinary(16)),
   )
-  // `binary(16)` is a maximum of sixteen bytes; the fixed slot is the width.
+  // A maximum of sixteen bytes is its own leaf: plain binary is exactly the
+  // storage such a column fills, so `max` answers `sized_binary`, and the
+  // fixed slot stays empty because that slot is the width only the fixed
+  // leaf has.
   const bounded = DataType.bytes({ max: 16 })
-  assert.equal(bounded.toString(), 'binary(16)')
+  assert.equal(bounded.toString(), 'sized_binary(16)')
   assert.equal(bounded.fixedByteWidth, null)
   assert.deepEqual(bounded.bytesParameters, {
-    layout: 'binary',
+    layout: 'sized_binary',
     bound: 16,
     max: 16,
   })
   assert.ok(DataType.from('varbinary(16)').equals(bounded))
-  assert.deepEqual(bounded.toJSON(), { type: 'binary', max: 16 })
+  assert.deepEqual(bounded.toJSON(), { type: 'binary', layout: 'sized_binary', max: 16 })
   assert.ok(DataType.fromJSON(bounded.toJSON()).equals(bounded))
   assert.ok(DataType.from('bytes').equals(DataType.binary()))
   // A UUID is bytes with an identity, so it is not a byte column.
   assert.equal(new DataType('uuid').bytesParameters, null)
 
   assert.throws(() => DataType.bytes({ fixed: 4 }), /expected a maximum on a variable layout/)
-  assert.throws(() => DataType.bytes({ layout: 'fixed_size_binary' }), /got no width/)
+  assert.throws(() => DataType.bytes({ layout: 'fixed_binary' }), /got none/)
   assert.throws(() => DataType.fixedSizeBinary(0), /at least one byte, got 0/)
   assert.throws(() => DataType.fixedSizeBinary(-1), /byteWidth must be an unsigned 32-bit integer/)
   assert.throws(
@@ -430,6 +498,31 @@ test('url is a validated canonical location', () => {
   // A location has no zero, so the default is the shortest URL the validator
   // accepts: the filesystem root.
   assert.equal(field.defaultJSValue(), 'file:///')
+})
+
+test('urn is a validated canonical name', () => {
+  const urn = new DataType('urn')
+
+  assert.equal(urn.id, 'urn')
+  assert.equal(urn.kind, 'text')
+  assert.equal(urn.toString(), 'urn')
+  assert.equal(urn.fixedByteWidth, null)
+  assert.ok(DataType.from('urn').equals(urn))
+  assert.ok(DataType.fromString(urn.toString()).equals(urn))
+  assert.ok(!urn.equals(new DataType('url')))
+
+  const field = new Field('urn', urn, false)
+  assert.ok(Field.fromJSON(field.toJSON()).equals(field))
+  assert.ok(Field.fromString(field.toString()).equals(field))
+  assert.equal(new Field('urn', 'urn', false).dtype.id, 'urn')
+
+  // A name, not a location: the scheme and the namespace fold to lower case,
+  // and what a `url` column holds is what a `urn` column refuses.
+  assert.equal(field.scalar('URN:ISBN:0451450523').asJs(), 'urn:isbn:0451450523')
+  assert.throws(() => field.scalar('https://example.com/a'), /urn/)
+  assert.throws(() => new Field('url', 'url', false).scalar('urn:isbn:0451450523'), /url/)
+  // A name has no zero either, so the default is the nil name.
+  assert.equal(field.defaultJSValue(), 'urn:nil:nil')
 })
 
 test('recursive datatypes expose fields as a collection', () => {
@@ -620,7 +713,7 @@ test('an enum declares itself onto the field its values name', () => {
   // every serialization carries it and it reads back as the enum that wrote it.
   const field = new Field('side', DataType.fixedAscii(4), false)
   field.setStringEnum(side)
-  assert.equal(field.get('field:enum'), side.intoJson())
+  assert.equal(field.get('FIELD:enum'), side.intoJson())
   assert.ok(Field.fromJSONBytes(field.toJSONBytes()).stringEnum.equals(side))
   assert.ok(Field.fromString(field.toString()).stringEnum.equals(side))
   assert.ok(field.removeStringEnum().equals(side))

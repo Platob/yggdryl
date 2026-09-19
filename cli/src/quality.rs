@@ -100,7 +100,7 @@ pub fn check(registry: &FixRegistry) -> Report {
                         level: Level::Fail,
                         check: "tag",
                         subject: named.clone(),
-                        detail: "states no fix:tag, so it cannot be written back".to_owned(),
+                        detail: "states no FIX:tag, so it cannot be written back".to_owned(),
                     }),
                     Err(error) => report.findings.push(Finding {
                         level: Level::Fail,
@@ -182,7 +182,7 @@ fn shaped_group(report: &mut Report, field: &Field, named: &str) {
 /// A list field's item, where it is one.
 fn list_item(field: &Field) -> Option<&Field> {
     match field.dtype() {
-        yggdryl::DataType::List(item) | yggdryl::DataType::LargeList(item) => Some(item),
+        yggdryl::DataType::Sequence(sequence) => Some(sequence.item()),
         _ => None,
     }
 }

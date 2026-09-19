@@ -137,7 +137,8 @@ nav:
       - Scalar: types/scalar.md
       - Cast: types/cast.md
     - Families:
-      - Numeric & temporal: types/numeric.md
+      - Numeric: types/numeric.md
+      - Temporal: types/temporal.md
       - Strings & bytes: types/text.md
       - Codes: types/codes.md
       - UUID: types/uuid.md
@@ -247,10 +248,6 @@ nav:
     - Capture: fix/capture.md
     - Lifecycle: fix/lifecycle.md
     - CLI: fix/cli.md
-  - Extensions:
-    - extensions/index.md
-    - Python: extensions/python.md
-    - JavaScript: extensions/javascript.md
 
 validation:
   links:

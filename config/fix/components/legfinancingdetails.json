@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legagreementdesc",
-          "fix:tag": "2497"
+          "FIX:field": "legagreementdesc",
+          "FIX:tag": "2497"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legagreementid",
-          "fix:tag": "2498"
+          "FIX:field": "legagreementid",
+          "FIX:tag": "2498"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legagreementversion",
-          "fix:tag": "2499"
+          "FIX:field": "legagreementversion",
+          "FIX:tag": "2499"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legagreementdate",
-          "fix:tag": "2496"
+          "FIX:field": "legagreementdate",
+          "FIX:tag": "2496"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legagreementcurrency",
-          "fix:tag": "2495"
+          "FIX:field": "legagreementcurrency",
+          "FIX:tag": "2495"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legagreementcurrencycodesource",
-          "fix:tag": "2953"
+          "FIX:field": "legagreementcurrencycodesource",
+          "FIX:tag": "2953"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmasterconfirmationdesc",
-          "fix:tag": "2511"
+          "FIX:field": "legmasterconfirmationdesc",
+          "FIX:tag": "2511"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmasterconfirmationdate",
-          "fix:tag": "2510"
+          "FIX:field": "legmasterconfirmationdate",
+          "FIX:tag": "2510"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmasterconfirmationannexdesc",
-          "fix:tag": "2512"
+          "FIX:field": "legmasterconfirmationannexdesc",
+          "FIX:tag": "2512"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmasterconfirmationannexdate",
-          "fix:tag": "2509"
+          "FIX:field": "legmasterconfirmationannexdate",
+          "FIX:tag": "2509"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbrokerconfirmationdesc",
-          "fix:tag": "2500"
+          "FIX:field": "legbrokerconfirmationdesc",
+          "FIX:tag": "2500"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcontractualdefinitions",
-          "fix:tag": "42198"
+          "FIX:field": "nolegcontractualdefinitions",
+          "FIX:tag": "42198"
         }
       },
       {
@@ -142,7 +142,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legfinancingcontractualdefinitionsgrp"
+          "FIX:group": "legfinancingcontractualdefinitionsgrp"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegfinancingtermsupplements",
-          "fix:tag": "42200"
+          "FIX:field": "nolegfinancingtermsupplements",
+          "FIX:tag": "42200"
         }
       },
       {
@@ -163,7 +163,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legfinancingtermsupplementgrp"
+          "FIX:group": "legfinancingtermsupplementgrp"
         }
       },
       {
@@ -173,8 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcontractualmatrices",
-          "fix:tag": "42203"
+          "FIX:field": "nolegcontractualmatrices",
+          "FIX:tag": "42203"
         }
       },
       {
@@ -184,7 +184,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legfinancingcontractualmatrixgrp"
+          "FIX:group": "legfinancingcontractualmatrixgrp"
         }
       },
       {
@@ -194,8 +194,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcreditsupportagreementdesc",
-          "fix:tag": "2502"
+          "FIX:field": "legcreditsupportagreementdesc",
+          "FIX:tag": "2502"
         }
       },
       {
@@ -205,8 +205,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcreditsupportagreementdate",
-          "fix:tag": "2501"
+          "FIX:field": "legcreditsupportagreementdate",
+          "FIX:tag": "2501"
         }
       },
       {
@@ -216,8 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcreditsupportagreementid",
-          "fix:tag": "2503"
+          "FIX:field": "legcreditsupportagreementid",
+          "FIX:tag": "2503"
         }
       },
       {
@@ -227,8 +227,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leggoverninglaw",
-          "fix:tag": "2507"
+          "FIX:field": "leggoverninglaw",
+          "FIX:tag": "2507"
         }
       },
       {
@@ -238,8 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdocumentationtext",
-          "fix:tag": "2505"
+          "FIX:field": "legdocumentationtext",
+          "FIX:tag": "2505"
         }
       },
       {
@@ -249,8 +249,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegdocumentationtextlen",
-          "fix:tag": "2494"
+          "FIX:field": "encodedlegdocumentationtextlen",
+          "FIX:tag": "2494"
         }
       },
       {
@@ -260,8 +260,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegdocumentationtext",
-          "fix:tag": "2493"
+          "FIX:field": "encodedlegdocumentationtext",
+          "FIX:tag": "2493"
         }
       },
       {
@@ -271,8 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legterminationtype",
-          "fix:tag": "2514"
+          "FIX:field": "legterminationtype",
+          "FIX:tag": "2514"
         }
       },
       {
@@ -282,8 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstartdate",
-          "fix:tag": "2513"
+          "FIX:field": "legstartdate",
+          "FIX:tag": "2513"
         }
       },
       {
@@ -293,8 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legenddate",
-          "fix:tag": "2506"
+          "FIX:field": "legenddate",
+          "FIX:tag": "2506"
         }
       },
       {
@@ -304,8 +304,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverytype",
-          "fix:tag": "2504"
+          "FIX:field": "legdeliverytype",
+          "FIX:tag": "2504"
         }
       },
       {
@@ -315,16 +315,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarginratio",
-          "fix:tag": "2508"
+          "FIX:field": "legmarginratio",
+          "FIX:tag": "2508"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "493991",
     "description": "Must be set if EncodedLegDocumentationText(2493) field is specified and must immediately precede it.",
-    "display": "LegFinancingDetails",
-    "fix:tag": "493991"
+    "display": "LegFinancingDetails"
   }
 }

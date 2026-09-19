@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legreturnratefxconversion"
+        "FIX:component": "legreturnratefxconversion"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legreturnratefxconversion",
+    "FIX:counter": "42530",
+    "FIX:tag": "345121",
     "description": "Required if NoLegReturnRateFXConversions(42530) > 0.",
-    "display": "LegReturnRateFXConversionGrp",
-    "fix:component": "legreturnratefxconversion",
-    "fix:counter": "42530",
-    "fix:tag": "345121"
+    "display": "LegReturnRateFXConversionGrp"
   }
 }

@@ -1,7 +1,7 @@
 """Components, groups and message types, all through the field doors.
 
 The registry is one namespace: a Struct is a component, a List of Structs or
-a Map a group, and a message a component carrying ``fix:msgtype``. There is
+a Map a group, and a message a component carrying ``FIX:msgtype``. There is
 no category argument and no definition door of its own - ``insert``,
 ``update``, ``remove`` and the ``field_by_*`` pairs reach every one of them,
 filing each by the shape it has.
@@ -70,7 +70,7 @@ def test_a_definition_is_filed_by_the_shape_it_has() -> None:
     assert registry.get_field_by_counter(9999) is None
     assert registry.field_by_tag(453).dtype == DataType("int32")
 
-    # A message is a component carrying `fix:msgtype`, so the same door
+    # A message is a component carrying `FIX:msgtype`, so the same door
     # reaches it and the message-type view names it.
     message = registry.field_by_name("NewOrderSingle")
     assert message.fix.msgtype == "D"
@@ -122,11 +122,11 @@ def test_update_merges_a_definition_and_remove_keeps_a_referenced_one() -> None:
 def test_inline_codes_are_per_field_and_a_snapshot_preserves_every_definition() -> None:
     registry = _catalog()
     value = registry.field(448)
-    value.metadata["fix:codes"] = '[{"value":"B","name":"Broker"}]'
+    value.metadata["FIX:codes"] = '[{"value":"B","name":"Broker"}]'
     # Membership is metadata like any other: it travels with the field.
     value.fix.branches = ["Pending"]
     registry.update(value)
-    assert "Broker" in registry.field_by_path("NewOrderSingle.Parties.PartyID").metadata["fix:codes"]
+    assert "Broker" in registry.field_by_path("NewOrderSingle.Parties.PartyID").metadata["FIX:codes"]
     assert registry.dialects() == ["pending"]
 
     document = json.loads(registry.into_json())
@@ -279,9 +279,9 @@ def test_identifier_declarations_merge_whole() -> None:
     assert restored.field_by_name("order").fix.identifiers == held
 
     malformed = copy.copy(incoming)
-    malformed.metadata["fix:identifiers"] = "clordid,,orderid"
+    malformed.metadata["FIX:identifiers"] = "clordid,,orderid"
     before = registry.into_json()
-    with pytest.raises(ValueError, match="fix:identifiers"):
+    with pytest.raises(ValueError, match="FIX:identifiers"):
         registry.update(malformed)
     assert registry.into_json() == before
 
@@ -290,7 +290,7 @@ def test_merge_with_folds_definitions_and_unions_their_membership() -> None:
     target, source = _catalog(), _catalog()
     for registry, code, name in ((target, "B", "Broker"), (source, "C", "Client")):
         member = registry.field(448)
-        member.metadata["fix:codes"] = json.dumps(
+        member.metadata["FIX:codes"] = json.dumps(
             [{"value": code, "name": name}], separators=(",", ":")
         )
         registry.update(member)
@@ -305,7 +305,7 @@ def test_merge_with_folds_definitions_and_unions_their_membership() -> None:
     assert (added, merged) == (0, merged)
     assert merged >= 2
     for path in ("PartyID", "Party.PartyID", "Parties.PartyID", "NewOrderSingle.Parties.PartyID"):
-        codes = json.loads(target.field_by_path(path).metadata["fix:codes"])
+        codes = json.loads(target.field_by_path(path).metadata["FIX:codes"])
         assert {item["value"]: item["name"] for item in codes} == {"B": "Broker", "C": "Client"}, path
     assert target.msgtype("I").get_group_by_tag(453).name == "Parties"
     assert source.into_json() == before_source, "the source is untouched"

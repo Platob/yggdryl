@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legstreamterminationdatebusinesscentercomponent"
+        "FIX:component": "legstreamterminationdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legstreamterminationdatebusinesscentercomponent",
+    "FIX:counter": "40943",
+    "FIX:tag": "678441",
     "description": "Required if NoLegStreamTerminationDateBusinessCenters(40943) > 0.",
-    "display": "LegStreamTerminationDateBusinessCenterGrp",
-    "fix:component": "legstreamterminationdatebusinesscentercomponent",
-    "fix:counter": "40943",
-    "fix:tag": "678441"
+    "display": "LegStreamTerminationDateBusinessCenterGrp"
   }
 }

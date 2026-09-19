@@ -6,9 +6,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the floating rate index.",
-      "display": "PaymentFloatingRateIndexCurveUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -30,7 +28,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "43100"
+      "FIX:tag": "43100",
+      "description": "Time unit associated with the floating rate index.",
+      "display": "PaymentFloatingRateIndexCurveUnit"
     }
   },
   {
@@ -42,9 +42,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43101",
       "description": "Spread from floating rate index.",
-      "display": "PaymentFloatingRateSpread",
-      "fix:tag": "43101"
+      "display": "PaymentFloatingRateSpread"
     }
   },
   {
@@ -54,9 +54,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43102",
       "description": "Time unit multiplier for the payment frequency.",
-      "display": "PaymentFrequencyPeriod",
-      "fix:tag": "43102"
+      "display": "PaymentFrequencyPeriod"
     }
   },
   {
@@ -66,9 +66,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the payment frequency.",
-      "display": "PaymentFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -90,7 +88,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "43103"
+      "FIX:tag": "43103",
+      "description": "Time unit associated with the payment frequency.",
+      "display": "PaymentFrequencyUnit"
     }
   },
   {
@@ -100,9 +100,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43104",
       "description": "Time unit multiplier for the floating rate reset frequency.",
-      "display": "PaymentRateResetFrequencyPeriod",
-      "fix:tag": "43104"
+      "display": "PaymentRateResetFrequencyPeriod"
     }
   },
   {
@@ -112,9 +112,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the floating rate reset frequency.",
-      "display": "PaymentRateResetFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -136,7 +134,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "43105"
+      "FIX:tag": "43105",
+      "description": "Time unit associated with the floating rate reset frequency.",
+      "display": "PaymentRateResetFrequencyUnit"
     }
   },
   {
@@ -146,9 +146,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43106",
       "description": "The industry name of the day count convention not listed in PaymentStreamDayCount(40742).",
-      "display": "PaymentStreamOtherDayCount",
-      "fix:tag": "43106"
+      "display": "PaymentStreamOtherDayCount"
     }
   },
   {
@@ -158,9 +158,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43107",
       "description": "The industry name of the day count convention not listed in UnderlyingPaymentStreamDayCount(40572).",
-      "display": "UnderlyingPaymentStreamOtherDayCount",
-      "fix:tag": "43107"
+      "display": "UnderlyingPaymentStreamOtherDayCount"
     }
   },
   {
@@ -170,9 +170,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43108",
       "description": "The industry name of the day count convention not listed in LegPaymentStreamDayCount(40283).",
-      "display": "LegPaymentStreamOtherDayCount",
-      "fix:tag": "43108"
+      "display": "LegPaymentStreamOtherDayCount"
     }
   },
   {
@@ -182,9 +182,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43109",
       "description": "Byte length of encoded (non-ASCII characters) PaymentStreamFormula(42648) field.",
-      "display": "PaymentStreamFormulaLength",
-      "fix:tag": "43109"
+      "display": "PaymentStreamFormulaLength"
     }
   },
   {
@@ -194,9 +194,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43110",
       "description": "Byte length of encoded (non-ASCII characters) LegPaymentStreamFormula(42486) field.",
-      "display": "LegPaymentStreamFormulaLength",
-      "fix:tag": "43110"
+      "display": "LegPaymentStreamFormulaLength"
     }
   },
   {
@@ -206,9 +206,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43111",
       "description": "Byte length of encoded (non-ASCII characters) UnderlyingPaymentStreamFormula(42982) field.",
-      "display": "UnderlyingPaymentStreamFormulaLength",
-      "fix:tag": "43111"
+      "display": "UnderlyingPaymentStreamFormulaLength"
     }
   },
   {
@@ -218,9 +218,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43112",
       "description": "The payment stream's second floating rate index.",
-      "display": "PaymentStreamRateIndex2",
-      "fix:tag": "43112"
+      "display": "PaymentStreamRateIndex2"
     }
   },
   {
@@ -230,9 +230,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The source of the payment stream's second floating rate index.",
-      "display": "PaymentStreamRateIndex2Source",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bloomberg",
@@ -254,7 +252,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "43113"
+      "FIX:tag": "43113",
+      "description": "The source of the payment stream's second floating rate index.",
+      "display": "PaymentStreamRateIndex2Source"
     }
   },
   {
@@ -264,9 +264,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43114",
       "description": "Security identifier of the second floating rate index.",
-      "display": "PaymentStreamRateIndex2ID",
-      "fix:tag": "43114"
+      "display": "PaymentStreamRateIndex2ID"
     }
   },
   {
@@ -276,9 +276,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Source for the second floating rate index identified in PaymentStreamRateIndex2ID(43114).",
-      "display": "PaymentStreamRateIndex2IDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -445,7 +443,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "43115"
+      "FIX:tag": "43115",
+      "description": "Source for the second floating rate index identified in PaymentStreamRateIndex2ID(43114).",
+      "display": "PaymentStreamRateIndex2IDSource"
     }
   },
   {
@@ -455,9 +455,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43116",
       "description": "The payment stream's second floating rate index.",
-      "display": "LegPaymentStreamRateIndex2",
-      "fix:tag": "43116"
+      "display": "LegPaymentStreamRateIndex2"
     }
   },
   {
@@ -467,9 +467,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The source of the payment stream's second floating rate index.",
-      "display": "LegPaymentStreamRateIndex2Source",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bloomberg",
@@ -491,7 +489,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "43117"
+      "FIX:tag": "43117",
+      "description": "The source of the payment stream's second floating rate index.",
+      "display": "LegPaymentStreamRateIndex2Source"
     }
   },
   {
@@ -501,9 +501,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43118",
       "description": "Security identifier of the second floating rate index.",
-      "display": "LegPaymentStreamRateIndex2ID",
-      "fix:tag": "43118"
+      "display": "LegPaymentStreamRateIndex2ID"
     }
   },
   {
@@ -513,9 +513,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Source for the second floating rate index identified in LegPaymentStreamRateIndex2ID(43118).",
-      "display": "LegPaymentStreamRateIndex2IDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -682,7 +680,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "43119"
+      "FIX:tag": "43119",
+      "description": "Source for the second floating rate index identified in LegPaymentStreamRateIndex2ID(43118).",
+      "display": "LegPaymentStreamRateIndex2IDSource"
     }
   },
   {
@@ -692,9 +692,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43120",
       "description": "The payment stream's second floating rate index.",
-      "display": "UnderlyingPaymentStreamRateIndex2",
-      "fix:tag": "43120"
+      "display": "UnderlyingPaymentStreamRateIndex2"
     }
   },
   {
@@ -704,9 +704,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The source of the payment stream's second floating rate index.",
-      "display": "UnderlyingPaymentStreamRateIndex2Source",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bloomberg",
@@ -728,7 +726,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "43121"
+      "FIX:tag": "43121",
+      "description": "The source of the payment stream's second floating rate index.",
+      "display": "UnderlyingPaymentStreamRateIndex2Source"
     }
   },
   {
@@ -738,9 +738,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "43122",
       "description": "Security identifier of the second floating rate index.",
-      "display": "UnderlyingPaymentStreamRateIndex2ID",
-      "fix:tag": "43122"
+      "display": "UnderlyingPaymentStreamRateIndex2ID"
     }
   },
   {
@@ -750,9 +750,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Source for the second floating rate index identified in UnderlyingPaymentStreamRateIndex2ID(43122).",
-      "display": "UnderlyingPaymentStreamRateIndex2IDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -919,7 +917,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "43123"
+      "FIX:tag": "43123",
+      "description": "Source for the second floating rate index identified in UnderlyingPaymentStreamRateIndex2ID(43122).",
+      "display": "UnderlyingPaymentStreamRateIndex2IDSource"
     }
   }
 ]

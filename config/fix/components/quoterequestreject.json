@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "quotereqid",
-          "fix:tag": "131"
+          "FIX:field": "quotereqid",
+          "FIX:tag": "131"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rfqreqid",
-          "fix:tag": "644"
+          "FIX:field": "rfqreqid",
+          "FIX:tag": "644"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "quoterequestrejectreason",
-          "fix:tag": "658"
+          "FIX:field": "quoterequestrejectreason",
+          "FIX:tag": "658"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "privatequote",
-          "fix:tag": "1171"
+          "FIX:field": "privatequote",
+          "FIX:tag": "1171"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "respondenttype",
-          "fix:tag": "1172"
+          "FIX:field": "respondenttype",
+          "FIX:tag": "1172"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pretradeanonymity",
-          "fix:tag": "1091"
+          "FIX:field": "pretradeanonymity",
+          "FIX:tag": "1091"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norootpartyids",
-          "fix:tag": "1116"
+          "FIX:field": "norootpartyids",
+          "FIX:tag": "1116"
         }
       },
       {
@@ -97,7 +97,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "rootparties"
+          "FIX:group": "rootparties"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "norelatedsym",
-          "fix:tag": "146"
+          "FIX:field": "norelatedsym",
+          "FIX:tag": "146"
         }
       },
       {
@@ -118,7 +118,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "quotreqrjctgrp"
+          "FIX:group": "quotreqrjctgrp"
         }
       },
       {
@@ -128,8 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -139,8 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -150,8 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -161,17 +161,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "quotereqid",
+    "FIX:msgtype": "AG",
+    "FIX:tag": "1016263",
     "description": "MsgType = AG",
-    "display": "QuoteRequestReject",
-    "fix:identifiers": "quotereqid",
-    "fix:msgtype": "AG",
-    "fix:tag": "1016263"
+    "display": "QuoteRequestReject"
   }
 }

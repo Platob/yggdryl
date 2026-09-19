@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradedate",
-          "fix:tag": "75"
+          "FIX:field": "tradedate",
+          "FIX:tag": "75"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastupdatetime",
-          "fix:tag": "779"
+          "FIX:field": "lastupdatetime",
+          "FIX:tag": "779"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdCapDt",
-    "fix:tag": "1045003"
+    "FIX:tag": "1045003",
+    "display": "TrdCapDt"
   }
 }

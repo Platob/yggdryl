@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "testactionreportid",
-          "fix:tag": "3071"
+          "FIX:field": "testactionreportid",
+          "FIX:tag": "3071"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "testsuiterequestid",
-          "fix:tag": "3062"
+          "FIX:field": "testsuiterequestid",
+          "FIX:tag": "3062"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostrategyparameters",
-          "fix:tag": "957"
+          "FIX:field": "nostrategyparameters",
+          "FIX:tag": "957"
         }
       },
       {
@@ -53,7 +53,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "strategyparametersgrp"
+          "FIX:group": "strategyparametersgrp"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noalgosystemmodules",
-          "fix:tag": "3025"
+          "FIX:field": "noalgosystemmodules",
+          "FIX:tag": "3025"
         }
       },
       {
@@ -74,7 +74,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "algosystemmodulegrp"
+          "FIX:group": "algosystemmodulegrp"
         }
       },
       {
@@ -84,8 +84,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notestscenarios",
-          "fix:tag": "3028"
+          "FIX:field": "notestscenarios",
+          "FIX:tag": "3028"
         }
       },
       {
@@ -95,7 +95,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "testscenariogrp"
+          "FIX:group": "testscenariogrp"
         }
       },
       {
@@ -105,8 +105,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsuitestatus",
-          "fix:tag": "3070"
+          "FIX:field": "testsuitestatus",
+          "FIX:tag": "3070"
         }
       },
       {
@@ -116,8 +116,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -127,8 +127,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -138,8 +138,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -149,16 +149,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "EP",
+    "FIX:tag": "948265",
     "description": "MsgType = EP",
-    "display": "TestActionReport",
-    "fix:msgtype": "EP",
-    "fix:tag": "948265"
+    "display": "TestActionReport"
   }
 }

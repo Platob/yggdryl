@@ -4,6 +4,7 @@
 use criterion::Criterion;
 use std::collections::HashMap;
 use std::hint::black_box;
+use yggdryl::SequenceType;
 use yggdryl::graph::{Element, Event};
 use yggdryl::{
     DataType, Field, FieldPath, FixCode, FixCodeValue, FixCodec, FixId, FixKey, MimeType,
@@ -16,7 +17,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
     assert!(matches!(
         registry.field_by_name("Parties").unwrap().dtype(),
-        DataType::List(_)
+        DataType::Sequence(SequenceType::List(_))
     ));
     assert_eq!(
         registry.field_by_counter(453).unwrap(),
@@ -63,7 +64,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             let held = black_box(&identifier_message);
             black_box((
                 held.get_currunix(),
-                held.get_creatunix(),
+                held.get_creaunix(),
                 held.get_currhashcode(),
                 held.get_crosshashcode(),
             ))
@@ -259,10 +260,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .add_fields(mixed_categories(LARGE_FIELDS))
         .expect("the generated dictionary has no conflict");
     for index in (0..LARGE_FIELDS).step_by(50) {
-        let item =
-            yggdryl::DataType::from_fields([yggdryl::DataType::utf8().nullable_field("Member")])
-                .unwrap()
-                .required_field("item");
+        let item = yggdryl::StructureType::from_fields([
+            yggdryl::DataType::utf8().nullable_field("Member")
+        ])
+        .map(yggdryl::DataType::from)
+        .unwrap()
+        .required_field("item");
         let mut field = yggdryl::DataType::list(item).nullable_field(format!("Group{index:05}"));
         field
             .as_fix_mut()

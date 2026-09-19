@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "trdmatchid",
-          "fix:tag": "880"
+          "FIX:field": "trdmatchid",
+          "FIX:tag": "880"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchtype",
-          "fix:tag": "574"
+          "FIX:field": "matchtype",
+          "FIX:tag": "574"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradereporttype",
-          "fix:tag": "856"
+          "FIX:field": "tradereporttype",
+          "FIX:tag": "856"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingbusinessdate",
-          "fix:tag": "715"
+          "FIX:field": "clearingbusinessdate",
+          "FIX:tag": "715"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdtype",
-          "fix:tag": "828"
+          "FIX:field": "trdtype",
+          "FIX:tag": "828"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdsubtype",
-          "fix:tag": "829"
+          "FIX:field": "trdsubtype",
+          "FIX:tag": "829"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradedate",
-          "fix:tag": "75"
+          "FIX:field": "tradedate",
+          "FIX:tag": "75"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid",
-          "fix:tag": "1301"
+          "FIX:field": "marketid",
+          "FIX:tag": "1301"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid",
-          "fix:tag": "1300"
+          "FIX:field": "marketsegmentid",
+          "FIX:tag": "1300"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionid",
-          "fix:tag": "336"
+          "FIX:field": "tradingsessionid",
+          "FIX:tag": "336"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid",
-          "fix:tag": "625"
+          "FIX:field": "tradingsessionsubid",
+          "FIX:tag": "625"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "venuetype",
-          "fix:tag": "1430"
+          "FIX:field": "venuetype",
+          "FIX:tag": "1430"
         }
       },
       {
@@ -162,8 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradematchtimestamp",
-          "fix:tag": "1888"
+          "FIX:field": "tradematchtimestamp",
+          "FIX:tag": "1888"
         }
       },
       {
@@ -173,8 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -184,8 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "multilegreportingtype",
-          "fix:tag": "442"
+          "FIX:field": "multilegreportingtype",
+          "FIX:tag": "442"
         }
       },
       {
@@ -195,8 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noinstrmtmatchsides",
-          "fix:tag": "1889"
+          "FIX:field": "noinstrmtmatchsides",
+          "FIX:tag": "1889"
         }
       },
       {
@@ -206,7 +206,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrmtmatchsidegrp"
+          "FIX:group": "instrmtmatchsidegrp"
         }
       },
       {
@@ -216,16 +216,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "DC",
+    "FIX:tag": "800305",
     "description": "MsgType = DC",
-    "display": "TradeMatchReport",
-    "fix:msgtype": "DC",
-    "fix:tag": "800305"
+    "display": "TradeMatchReport"
   }
 }

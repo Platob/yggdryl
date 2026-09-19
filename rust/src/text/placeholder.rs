@@ -66,7 +66,7 @@ use std::hash::{Hash, Hasher};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::temporal::iso;
+use crate::temporal as iso;
 use crate::{Error, Result, Scalar};
 
 /// The two bytes that open a placeholder.
@@ -445,7 +445,7 @@ fn default_literal(filter: &str, path: &str, at: usize) -> Result<Scalar> {
         })?;
     // One literal syntax, and it is one the workspace already parses: a JSON
     // scalar, so a default carries its own type rather than always being text.
-    let value = crate::text::json::from_utf8(literal.trim()).map_err(|error| {
+    let value = crate::json::from_utf8(literal.trim()).map_err(|error| {
         refusal(
             path,
             at,
@@ -483,9 +483,8 @@ fn named(name: &str) -> bool {
 fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
     let owned = match value {
         Scalar::String(text) => return Some(Cow::Borrowed(text.as_str())),
-        Scalar::Code(text) => return Some(Cow::Borrowed(text.as_str())),
+        code if code.is_code() => return code.as_str().map(Cow::Borrowed),
         Scalar::Uuid(value) => value.to_string(),
-        Scalar::Enum(value) => return Some(Cow::Borrowed(value.as_str())),
         Scalar::Boolean(held) => held.to_string(),
         Scalar::Int8(_)
         | Scalar::Int16(_)
@@ -532,10 +531,12 @@ fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
         // hex of its bytes - rather than refusing, because the value holds
         // exactly those bytes and hiding them would make the document
         // unwritable over one broken buffer.
-        Scalar::Geometry(value) => crate::types::geospatial::wkb::into_wkt(value.as_bytes())
-            .unwrap_or_else(|_| hex_text(value.as_bytes())),
-        Scalar::Geography(value) => crate::types::geospatial::wkb::into_wkt(value.as_bytes())
-            .unwrap_or_else(|_| hex_text(value.as_bytes())),
+        Scalar::Geometry(value) => {
+            crate::wkb::into_wkt(value.as_bytes()).unwrap_or_else(|_| hex_text(value.as_bytes()))
+        }
+        Scalar::Geography(value) => {
+            crate::wkb::into_wkt(value.as_bytes()).unwrap_or_else(|_| hex_text(value.as_bytes()))
+        }
         Scalar::Bytes(value) => hex_text(value.as_bytes()),
         // Null included: rendering "nothing" into the middle of a path is how a
         // configuration silently points somewhere wrong.

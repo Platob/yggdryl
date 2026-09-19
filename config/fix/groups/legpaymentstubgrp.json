@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legpaymentstub"
+        "FIX:component": "legpaymentstub"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legpaymentstub",
+    "FIX:counter": "40418",
+    "FIX:tag": "587529",
     "description": "Required if NoLegPaymentStubs(40418) > 0.",
-    "display": "LegPaymentStubGrp",
-    "fix:component": "legpaymentstub",
-    "fix:counter": "40418",
-    "fix:tag": "587529"
+    "display": "LegPaymentStubGrp"
   }
 }

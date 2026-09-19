@@ -4,10 +4,11 @@ use super::*;
 
 /// One protocol's properties, addressed by their bare names.
 ///
-/// A protocol property is stored under a `scheme:name` key, and code that
-/// spells that key by hand has to spell it right in every branch it appears in.
-/// This view remembers the protocol once and applies it to every operation, so
-/// a caller writes `doc` where it used to write `"iceberg:doc"`.
+/// A protocol property is stored under a `SCHEME:name` key - the scheme upper
+/// case, as `ARROW:extension:name` is - and code that spells that key by hand
+/// has to spell it right in every branch it appears in. This view remembers
+/// the protocol once and applies it to every operation, so a caller writes
+/// `doc` where the key is `"ICEBERG:doc"`.
 ///
 /// The view is a borrow, not a copy: it holds the same snapshot the metadata
 /// holds and answers reads out of the same tree, so constructing one costs a
@@ -21,9 +22,9 @@ use super::*;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let metadata = Metadata::from_entries([
-///     ("iceberg:doc", "closing price"),
-///     ("iceberg:schema-id", "3"),
-///     ("postgres:table", "trades"),
+///     ("ICEBERG:doc", "closing price"),
+///     ("ICEBERG:schema-id", "3"),
+///     ("POSTGRES:table", "trades"),
 /// ])?;
 ///
 /// let iceberg = metadata.as_iceberg();
@@ -51,9 +52,9 @@ impl<'metadata> ProtocolMetadata<'metadata> {
 
     /// Returns the canonical key prefix this view applies.
     ///
-    /// This is the scheme's own spelling for every protocol but HTTPS, which
-    /// shares HTTP's one namespace.
-    pub fn prefix(&self) -> &str {
+    /// The scheme's spelling in upper case for every protocol but HTTPS, which
+    /// shares HTTP's one namespace; borrowed for a known scheme.
+    pub fn prefix(&self) -> Cow<'_, str> {
         protocol_metadata_prefix(&self.scheme)
     }
 

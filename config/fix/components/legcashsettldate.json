@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldateunadjusted",
-          "fix:tag": "42299"
+          "FIX:field": "legcashsettldateunadjusted",
+          "FIX:tag": "42299"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldatebusinessdayconvention",
-          "fix:tag": "42300"
+          "FIX:field": "legcashsettldatebusinessdayconvention",
+          "FIX:tag": "42300"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcashsettldatebusinesscenters",
-          "fix:tag": "42306"
+          "FIX:field": "nolegcashsettldatebusinesscenters",
+          "FIX:tag": "42306"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legcashsettldatebusinesscentergrp"
+          "FIX:group": "legcashsettldatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldaterelativeto",
-          "fix:tag": "42301"
+          "FIX:field": "legcashsettldaterelativeto",
+          "FIX:tag": "42301"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldateoffsetperiod",
-          "fix:tag": "42302"
+          "FIX:field": "legcashsettldateoffsetperiod",
+          "FIX:tag": "42302"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldateoffsetunit",
-          "fix:tag": "42303"
+          "FIX:field": "legcashsettldateoffsetunit",
+          "FIX:tag": "42303"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldateoffsetdaytype",
-          "fix:tag": "42304"
+          "FIX:field": "legcashsettldateoffsetdaytype",
+          "FIX:tag": "42304"
         }
       },
       {
@@ -97,16 +97,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldateadjusted",
-          "fix:tag": "42305"
+          "FIX:field": "legcashsettldateadjusted",
+          "FIX:tag": "42305"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "145097",
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in the Instrument component. The specified value would be specific to this instance of the cash settlement provision.",
-    "display": "LegCashSettlDate",
-    "fix:tag": "145097"
+    "display": "LegCashSettlDate"
   }
 }

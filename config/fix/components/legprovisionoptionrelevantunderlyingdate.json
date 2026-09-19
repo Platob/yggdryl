@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdateunadjusted",
-          "fix:tag": "40508"
+          "FIX:field": "legprovisionoptionrelevantunderlyingdateunadjusted",
+          "FIX:tag": "40508"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdatebusinessdayconvention",
-          "fix:tag": "40509"
+          "FIX:field": "legprovisionoptionrelevantunderlyingdatebusinessdayconvention",
+          "FIX:tag": "40509"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegprovisionoptionrelevantunderlyingdatebusinesscenters",
-          "fix:tag": "40938"
+          "FIX:field": "nolegprovisionoptionrelevantunderlyingdatebusinesscenters",
+          "FIX:tag": "40938"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legprovisionoptionrelevantunderlyingdatebusinesscentergrp"
+          "FIX:group": "legprovisionoptionrelevantunderlyingdatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdaterelativeto",
-          "fix:tag": "40511"
+          "FIX:field": "legprovisionoptionrelevantunderlyingdaterelativeto",
+          "FIX:tag": "40511"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdateoffsetperiod",
-          "fix:tag": "40512"
+          "FIX:field": "legprovisionoptionrelevantunderlyingdateoffsetperiod",
+          "FIX:tag": "40512"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdateoffsetunit",
-          "fix:tag": "40513"
+          "FIX:field": "legprovisionoptionrelevantunderlyingdateoffsetunit",
+          "FIX:tag": "40513"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdateoffsetdaytype",
-          "fix:tag": "40514"
+          "FIX:field": "legprovisionoptionrelevantunderlyingdateoffsetdaytype",
+          "FIX:tag": "40514"
         }
       },
       {
@@ -97,16 +97,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionrelevantunderlyingdateadjusted",
-          "fix:tag": "40515"
+          "FIX:field": "legprovisionoptionrelevantunderlyingdateadjusted",
+          "FIX:tag": "40515"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "716517",
     "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of the leg provision option relevant underlying date.",
-    "display": "LegProvisionOptionRelevantUnderlyingDate",
-    "fix:tag": "716517"
+    "display": "LegProvisionOptionRelevantUnderlyingDate"
   }
 }

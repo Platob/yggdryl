@@ -1,14 +1,9 @@
-use yggdryl::types::{Bytes, BytesLayout, BytesParameters, DataType};
+use yggdryl::{Bytes, BytesType, DataType, StructureType};
 use yggdryl::{Field, Scalar, Scheme};
 
 /// Bytes bounded to `max` on the `binary` layout.
 fn bounded_binary(max: u32) -> DataType {
-    DataType::bytes(
-        BytesParameters::new(BytesLayout::Binary)
-            .try_with_bound(max)
-            .unwrap(),
-    )
-    .unwrap()
+    DataType::bytes(BytesType::SizedBinary(max)).unwrap()
 }
 
 #[test]
@@ -25,10 +20,13 @@ fn serde_and_the_structural_value_round_trip() {
             DataType::binary_view(),
             r#"{"type":"binary","layout":"binary_view"}"#,
         ),
-        (bounded_binary(16), r#"{"type":"binary","max":16}"#),
         (
-            DataType::fixed_size_binary(4).unwrap(),
-            r#"{"type":"binary","layout":"fixed_size_binary","fixed":4}"#,
+            bounded_binary(16),
+            r#"{"type":"binary","layout":"sized_binary","max":16}"#,
+        ),
+        (
+            DataType::fixed_binary(4).unwrap(),
+            r#"{"type":"binary","layout":"fixed_binary","fixed":4}"#,
         ),
     ] {
         assert_eq!(dtype.clone().into_json().unwrap(), json);
@@ -53,14 +51,11 @@ fn serde_and_the_structural_value_round_trip() {
             "{tag}"
         );
     }
-    // A fixed layout with no width, a bound of zero, and a bound under the
-    // wrong key are refused.
-    assert!(DataType::from_json(r#"{"type":"binary","layout":"fixed_size_binary"}"#).is_err());
+    // A count of nothing, and a count under the wrong key, are refused.
+    assert!(DataType::from_json(r#"{"type":"binary","layout":"fixed_binary","fixed":0}"#).is_err());
     assert!(DataType::from_json(r#"{"type":"binary","max":0}"#).is_err());
     assert!(DataType::from_json(r#"{"type":"binary","fixed":4}"#).is_err());
-    assert!(
-        DataType::from_json(r#"{"type":"binary","layout":"fixed_size_binary","max":4}"#).is_err()
-    );
+    assert!(DataType::from_json(r#"{"type":"binary","layout":"fixed_binary","max":4}"#).is_err());
     let refused = DataType::from_value(
         DataType::binary()
             .into_value()
@@ -74,15 +69,14 @@ fn serde_and_the_structural_value_round_trip() {
 
 #[test]
 fn only_plain_binary_crosses_a_foreign_target_unchanged() {
-    let schema = DataType::from_fields([
+    let schema = StructureType::from_fields([
         DataType::binary().required_field("plain"),
         bounded_binary(16).required_field("bounded"),
         DataType::large_binary().required_field("large"),
         DataType::binary_view().required_field("view"),
-        DataType::fixed_size_binary(4)
-            .unwrap()
-            .required_field("fixed"),
+        DataType::fixed_binary(4).unwrap().required_field("fixed"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     for scheme in [Scheme::SPARK, Scheme::POLARS, Scheme::PANDAS] {
@@ -96,10 +90,7 @@ fn only_plain_binary_crosses_a_foreign_target_unchanged() {
     for name in ["plain", "bounded", "large", "view"] {
         assert_eq!(compat[name].dtype(), &DataType::binary(), "{name}");
     }
-    assert_eq!(
-        compat["fixed"].dtype(),
-        &DataType::fixed_size_binary(4).unwrap()
-    );
+    assert_eq!(compat["fixed"].dtype(), &DataType::fixed_binary(4).unwrap());
     assert_eq!(
         schema.clone().into_scheme_compat(&Scheme::ARROW).unwrap(),
         schema
@@ -119,11 +110,11 @@ fn the_default_is_the_empty_payload_or_the_zero_filled_slot() {
         // A value never carries a maximum.
         assert_eq!(
             value.dtype().unwrap(),
-            DataType::Bytes(dtype.bytes_parameters().unwrap().without_max())
+            DataType::Bytes(dtype.bytes_parameters().unwrap().storage())
         );
         assert!(dtype.is_default_value(&value).unwrap());
     }
-    let fixed = DataType::fixed_size_binary(4).unwrap();
+    let fixed = DataType::fixed_binary(4).unwrap();
     let value = fixed.default_value().unwrap();
     assert_eq!(value, Scalar::Bytes(Bytes::new([0_u8; 4])));
     assert_eq!(value.dtype().unwrap(), fixed);
@@ -142,8 +133,8 @@ fn a_bound_and_a_layout_are_what_a_diff_reports() {
         "≠ $.bound: None → Some(16)"
     );
     assert_eq!(
-        DataType::fixed_size_binary(4).unwrap().show_diff(
-            &DataType::fixed_size_binary(8).unwrap(),
+        DataType::fixed_binary(4).unwrap().show_diff(
+            &DataType::fixed_binary(8).unwrap(),
             true,
             false
         ),

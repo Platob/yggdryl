@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopesymbol",
-          "fix:tag": "1536"
+          "FIX:field": "instrumentscopesymbol",
+          "FIX:tag": "1536"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopesymbolsfx",
-          "fix:tag": "1537"
+          "FIX:field": "instrumentscopesymbolsfx",
+          "FIX:tag": "1537"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopesecurityid",
-          "fix:tag": "1538"
+          "FIX:field": "instrumentscopesecurityid",
+          "FIX:tag": "1538"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopesecurityidsource",
-          "fix:tag": "1539"
+          "FIX:field": "instrumentscopesecurityidsource",
+          "FIX:tag": "1539"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noinstrumentscopesecurityaltid",
-          "fix:tag": "1540"
+          "FIX:field": "noinstrumentscopesecurityaltid",
+          "FIX:tag": "1540"
         }
       },
       {
@@ -65,7 +65,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrumentscopesecurityaltidgrp"
+          "FIX:group": "instrumentscopesecurityaltidgrp"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopeproduct",
-          "fix:tag": "1543"
+          "FIX:field": "instrumentscopeproduct",
+          "FIX:tag": "1543"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopeproductcomplex",
-          "fix:tag": "1544"
+          "FIX:field": "instrumentscopeproductcomplex",
+          "FIX:tag": "1544"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopesecuritygroup",
-          "fix:tag": "1545"
+          "FIX:field": "instrumentscopesecuritygroup",
+          "FIX:tag": "1545"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopecficode",
-          "fix:tag": "1546"
+          "FIX:field": "instrumentscopecficode",
+          "FIX:tag": "1546"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopeupicode",
-          "fix:tag": "2895"
+          "FIX:field": "instrumentscopeupicode",
+          "FIX:tag": "2895"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopesecuritytype",
-          "fix:tag": "1547"
+          "FIX:field": "instrumentscopesecuritytype",
+          "FIX:tag": "1547"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopesecuritysubtype",
-          "fix:tag": "1548"
+          "FIX:field": "instrumentscopesecuritysubtype",
+          "FIX:tag": "1548"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopematuritymonthyear",
-          "fix:tag": "1549"
+          "FIX:field": "instrumentscopematuritymonthyear",
+          "FIX:tag": "1549"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopematuritytime",
-          "fix:tag": "1550"
+          "FIX:field": "instrumentscopematuritytime",
+          "FIX:tag": "1550"
         }
       },
       {
@@ -174,8 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscoperestructuringtype",
-          "fix:tag": "1551"
+          "FIX:field": "instrumentscoperestructuringtype",
+          "FIX:tag": "1551"
         }
       },
       {
@@ -185,8 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopeseniority",
-          "fix:tag": "1552"
+          "FIX:field": "instrumentscopeseniority",
+          "FIX:tag": "1552"
         }
       },
       {
@@ -196,8 +196,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopeputorcall",
-          "fix:tag": "1553"
+          "FIX:field": "instrumentscopeputorcall",
+          "FIX:tag": "1553"
         }
       },
       {
@@ -207,8 +207,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopeflexibleindicator",
-          "fix:tag": "1554"
+          "FIX:field": "instrumentscopeflexibleindicator",
+          "FIX:tag": "1554"
         }
       },
       {
@@ -218,8 +218,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopecouponrate",
-          "fix:tag": "1555"
+          "FIX:field": "instrumentscopecouponrate",
+          "FIX:tag": "1555"
         }
       },
       {
@@ -229,8 +229,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopesecurityexchange",
-          "fix:tag": "1616"
+          "FIX:field": "instrumentscopesecurityexchange",
+          "FIX:tag": "1616"
         }
       },
       {
@@ -240,8 +240,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopesecuritydesc",
-          "fix:tag": "1556"
+          "FIX:field": "instrumentscopesecuritydesc",
+          "FIX:tag": "1556"
         }
       },
       {
@@ -251,8 +251,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopeencodedsecuritydesclen",
-          "fix:tag": "1620"
+          "FIX:field": "instrumentscopeencodedsecuritydesclen",
+          "FIX:tag": "1620"
         }
       },
       {
@@ -262,8 +262,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopeencodedsecuritydesc",
-          "fix:tag": "1621"
+          "FIX:field": "instrumentscopeencodedsecuritydesc",
+          "FIX:tag": "1621"
         }
       },
       {
@@ -273,16 +273,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopesettltype",
-          "fix:tag": "1557"
+          "FIX:field": "instrumentscopesettltype",
+          "FIX:tag": "1557"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "515527",
     "description": "Can be used to specify FX tenors.",
-    "display": "InstrumentScope",
-    "fix:tag": "515527"
+    "display": "InstrumentScope"
   }
 }

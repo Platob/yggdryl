@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopeoperator",
-          "fix:tag": "1535"
+          "FIX:field": "instrumentscopeoperator",
+          "FIX:tag": "1535"
         }
       },
       {
@@ -21,14 +21,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrumentscope"
+          "FIX:component": "instrumentscope"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "InstrumentScope",
-    "fix:tag": "1093262"
+    "FIX:tag": "1093262",
+    "display": "InstrumentScope"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "entitlementattrib"
+        "FIX:component": "entitlementattrib"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "entitlementattrib",
+    "FIX:counter": "1777",
+    "FIX:tag": "754928",
     "description": "Required if NoEntitlementAttrib(1777) > 0.",
-    "display": "EntitlementAttribGrp",
-    "fix:component": "entitlementattrib",
-    "fix:counter": "1777",
-    "fix:tag": "754928"
+    "display": "EntitlementAttribGrp"
   }
 }

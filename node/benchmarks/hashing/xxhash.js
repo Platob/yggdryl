@@ -103,8 +103,8 @@ function main() {
     new arrow.Utf8(),
   )
   const holder = new Field('row_digest', 'uint64', false, {
-    'digest:role': 'holder',
-    'digest:sources': '["symbol"]',
+    'DIGEST:role': 'holder',
+    'DIGEST:sources': '["symbol"]',
   })
   const root = new Field(
     'row',
@@ -124,8 +124,8 @@ function main() {
     ),
   }).batches[0]
   const signedHolder = new Field('row_digest', 'int64', false, {
-    'digest:role': 'holder',
-    'digest:sources': '["symbol"]',
+    'DIGEST:role': 'holder',
+    'DIGEST:sources': '["symbol"]',
   })
   const signedRoot = new Field(
     'row',

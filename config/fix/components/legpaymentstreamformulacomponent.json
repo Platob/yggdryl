@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamformulacurrency",
-          "fix:tag": "42482"
+          "FIX:field": "legpaymentstreamformulacurrency",
+          "FIX:tag": "42482"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamformulacurrencydeterminationmethod",
-          "fix:tag": "42483"
+          "FIX:field": "legpaymentstreamformulacurrencydeterminationmethod",
+          "FIX:tag": "42483"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamformulareferenceamount",
-          "fix:tag": "42484"
+          "FIX:field": "legpaymentstreamformulareferenceamount",
+          "FIX:tag": "42484"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentstreamformulas",
-          "fix:tag": "42485"
+          "FIX:field": "nolegpaymentstreamformulas",
+          "FIX:tag": "42485"
         }
       },
       {
@@ -54,7 +54,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legpaymentstreamformulamathgrp"
+          "FIX:group": "legpaymentstreamformulamathgrp"
         }
       },
       {
@@ -64,15 +64,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legpaymentstreamformulaimagecomponent"
+          "FIX:component": "legpaymentstreamformulaimagecomponent"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "129493",
     "description": "LegPaymentStreamFormula is a subcomponent of the LegPaymentStreamFloatingRate component used to report the parameters for determining the floating rate of the stream e.g. for equity swaps.",
-    "display": "LegPaymentStreamFormula",
-    "fix:tag": "129493"
+    "display": "LegPaymentStreamFormula"
   }
 }

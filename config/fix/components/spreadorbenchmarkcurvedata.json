@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "spread",
-          "fix:tag": "218"
+          "FIX:field": "spread",
+          "FIX:tag": "218"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarkcurvecurrency",
-          "fix:tag": "220"
+          "FIX:field": "benchmarkcurvecurrency",
+          "FIX:tag": "220"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarkcurvecurrencycodesource",
-          "fix:tag": "2950"
+          "FIX:field": "benchmarkcurvecurrencycodesource",
+          "FIX:tag": "2950"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarkcurvename",
-          "fix:tag": "221"
+          "FIX:field": "benchmarkcurvename",
+          "FIX:tag": "221"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarkcurvepoint",
-          "fix:tag": "222"
+          "FIX:field": "benchmarkcurvepoint",
+          "FIX:tag": "222"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarkprice",
-          "fix:tag": "662"
+          "FIX:field": "benchmarkprice",
+          "FIX:tag": "662"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarkpricetype",
-          "fix:tag": "663"
+          "FIX:field": "benchmarkpricetype",
+          "FIX:tag": "663"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarksecurityid",
-          "fix:tag": "699"
+          "FIX:field": "benchmarksecurityid",
+          "FIX:tag": "699"
         }
       },
       {
@@ -98,16 +98,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "benchmarksecurityidsource",
-          "fix:tag": "761"
+          "FIX:field": "benchmarksecurityidsource",
+          "FIX:tag": "761"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "536533",
     "description": "For Fixed Income",
-    "display": "SpreadOrBenchmarkCurveData",
-    "fix:tag": "536533"
+    "display": "SpreadOrBenchmarkCurveData"
   }
 }

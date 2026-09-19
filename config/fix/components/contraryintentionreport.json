@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "contintrptid",
-          "fix:tag": "977"
+          "FIX:field": "contintrptid",
+          "FIX:tag": "977"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lateindicator",
-          "fix:tag": "978"
+          "FIX:field": "lateindicator",
+          "FIX:tag": "978"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "inputsource",
-          "fix:tag": "979"
+          "FIX:field": "inputsource",
+          "FIX:tag": "979"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "clearingbusinessdate",
-          "fix:tag": "715"
+          "FIX:field": "clearingbusinessdate",
+          "FIX:tag": "715"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -96,7 +96,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -106,8 +106,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "noexpiration",
-          "fix:tag": "981"
+          "FIX:field": "noexpiration",
+          "FIX:tag": "981"
         }
       },
       {
@@ -117,7 +117,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "expirationqty"
+          "FIX:group": "expirationqty"
         }
       },
       {
@@ -127,7 +127,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -137,8 +137,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings",
-          "fix:tag": "711"
+          "FIX:field": "nounderlyings",
+          "FIX:tag": "711"
         }
       },
       {
@@ -148,7 +148,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "undinstrmtgrp"
+          "FIX:group": "undinstrmtgrp"
         }
       },
       {
@@ -158,8 +158,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -169,8 +169,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -180,8 +180,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -191,16 +191,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "BO",
+    "FIX:tag": "968560",
     "description": "MsgType = BO",
-    "display": "ContraryIntentionReport",
-    "fix:msgtype": "BO",
-    "fix:tag": "968560"
+    "display": "ContraryIntentionReport"
   }
 }

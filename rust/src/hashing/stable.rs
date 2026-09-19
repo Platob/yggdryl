@@ -3,7 +3,7 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-use super::xxhash::Xxh3;
+use crate::xxhash::Xxh3;
 
 /// Hash canonical display output with the stable Yggdryl XXH3-64 contract.
 ///
@@ -103,7 +103,7 @@ mod tests {
     use std::hash::Hasher as _;
 
     use super::{StableHash, stable_hash_display, stable_hash_of};
-    use crate::hashing::xxhash::xxh3;
+    use crate::xxhash::xxh3;
 
     #[test]
     fn byte_and_display_hashing_agree() {

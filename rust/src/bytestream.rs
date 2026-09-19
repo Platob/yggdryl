@@ -38,7 +38,7 @@ impl<'source> ByteStream<'source> {
 
     /// Stream one filesystem reader, retaining exactly that open handle.
     pub fn from_fs_reader(
-        reader: Box<dyn crate::holder::fs::ByteReader + 'source>,
+        reader: Box<dyn crate::fs::ByteReader + 'source>,
         batch_size: usize,
     ) -> Result<Self> {
         Self::from_source(FileSystemSource { reader }, batch_size)
@@ -46,7 +46,7 @@ impl<'source> ByteStream<'source> {
 
     /// Stream one random-access filesystem reader after it has been positioned.
     pub fn from_fs_random_reader(
-        reader: Box<dyn crate::holder::fs::RandomAccessReader + 'source>,
+        reader: Box<dyn crate::fs::RandomAccessReader + 'source>,
         batch_size: usize,
     ) -> Result<Self> {
         Self::from_source(RandomFileSystemSource { reader }, batch_size)
@@ -260,11 +260,11 @@ impl<R: Read> ByteSource for ReaderSource<R> {
 }
 
 struct FileSystemSource<'source> {
-    reader: Box<dyn crate::holder::fs::ByteReader + 'source>,
+    reader: Box<dyn crate::fs::ByteReader + 'source>,
 }
 
 struct RandomFileSystemSource<'source> {
-    reader: Box<dyn crate::holder::fs::RandomAccessReader + 'source>,
+    reader: Box<dyn crate::fs::RandomAccessReader + 'source>,
 }
 
 impl ByteSource for RandomFileSystemSource<'_> {

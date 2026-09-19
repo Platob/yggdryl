@@ -1,5 +1,5 @@
 use yggdryl::DataType;
-use yggdryl::types::boolean;
+use yggdryl::boolean;
 
 use super::typed::assert_typed_marker;
 

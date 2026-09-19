@@ -271,6 +271,7 @@ class MediaType:
     def is_binary(self) -> bool: ...
     def stable_hash(self) -> int: ...
     def __len__(self) -> int: ...
+    def __bool__(self) -> bool: ...
     def __iter__(self) -> Iterator[MimeType]: ...
     def __getitem__(self, index: int, /) -> MimeType: ...
     def __contains__(self, value: object, /) -> bool: ...
@@ -477,7 +478,6 @@ class ArrowScalar:
     def as_py(self) -> Any: ...
 
 class Scalar:
-    def __init__(self, value: object) -> None: ...
     @staticmethod
     def _from_pickle(state: object) -> Scalar: ...
     @staticmethod
@@ -489,33 +489,9 @@ class Scalar:
     @staticmethod
     def from_enum(kind: str, value: str) -> Scalar: ...
     @staticmethod
-    def float(value: float, width: int = 64) -> Scalar: ...
-    @staticmethod
     def decimal(coefficient: int | str, scale: int = 0) -> Scalar: ...
     @staticmethod
-    def date(
-        count: int, unit: str = "d", timezone: object | None = None
-    ) -> Scalar: ...
-    @staticmethod
-    def time(count: int, unit: str, timezone: object | None = None) -> Scalar: ...
-    @staticmethod
-    def datetime(
-        count: int, unit: str, timezone: object | None = None
-    ) -> Scalar: ...
-    @staticmethod
-    def duration(
-        count: int, unit: str, timezone: object | None = None
-    ) -> Scalar: ...
-    @staticmethod
-    def from_arrow_scalar(value: pyarrow.Scalar, field: object | None = None) -> Scalar: ...
-    @staticmethod
-    def from_arrow_array(value: pyarrow.Array, field: object | None = None) -> Scalar: ...
-    @staticmethod
-    def from_arrow_batch(
-        value: pyarrow.RecordBatch, field: object | None = None
-    ) -> Scalar: ...
-    @staticmethod
-    def from_arrow_table(value: pyarrow.Table, field: object | None = None) -> Scalar: ...
+    def duration(count: int, unit: str) -> Scalar: ...
     def as_py(self) -> object: ...
     def into_field(self) -> Field: ...
     def into_array_field(self) -> Field: ...
@@ -530,28 +506,26 @@ class Scalar:
     def kind(self) -> Literal[
         "null", "boolean", "i8", "i16", "i32", "i64", "u8", "u16", "u32",
         "u64", "i128", "u128", "f16", "f32", "f64", "d32", "d64", "d128",
-        "d256", "string", "fixed_string", "string_view", "large_string",
-        "large_string_view", "country", "currency", "mic", "cfi", "isin",
+        "d256", "string", "large_utf8", "utf8_view", "large_utf8_view",
+        "fixed_utf8", "ascii", "large_ascii", "ascii_view", "large_ascii_view",
+        "fixed_ascii", "cp1252", "large_cp1252", "cp1252_view",
+        "large_cp1252_view", "fixed_cp1252",
+        "country", "currency", "mic", "cfi", "isin",
         "cusip", "sedol", "bloomberg", "side", "state", "timeinforce",
-        "msghash", "version",
-        "url", "enum", "bytes", "fixed_size_binary", "large_binary",
-        "binary_view", "geospatial",
-        "geography", "date32", "date64", "time32", "time64", "datetime64",
-        "duration32", "duration64", "interval", "sequence", "mapping", "record",
+        "uuid", "version", "timezone", "mimetype", "mediatype", "url", "urn",
+        "bytes", "large_binary", "binary_view", "large_binary_view",
+        "fixed_binary", "sized_binary",
+        "geometry", "geography", "date32", "date64", "time32", "time64",
+        "datetime64", "duration32", "duration64", "interval", "sequence",
+        "mapping", "record", "arrow",
     ]: ...
     @property
     def id(self) -> str: ...
     @property
     def family(self) -> Literal[
         "null", "boolean", "integer", "floating", "decimal", "temporal",
-        "text", "code", "bytes", "nested", "geospatial", "msghash",
+        "text", "code", "bytes", "nested", "geospatial", "uuid",
     ]: ...
-    @property
-    def enum_kind(self) -> str | None: ...
-    @property
-    def enum_value(self) -> str | None: ...
-    @property
-    def enum_ordinal(self) -> int | None: ...
     @property
     def count(self) -> int | None: ...
     @property
@@ -576,8 +550,8 @@ class Scalar:
     def as_int(self) -> int | None: ...
     def as_float(self) -> builtins.float | None: ...
     def as_str(self) -> str | None: ...
-    def as_json_bytes(self) -> bytes: ...
-    def as_json_utf8(self) -> str: ...
+    def into_json_bytes(self) -> bytes: ...
+    def into_json(self) -> str: ...
     def add(self, other: object) -> Scalar: ...
     def subtract(self, other: object) -> Scalar: ...
     def multiply(self, other: object) -> Scalar: ...
@@ -705,16 +679,20 @@ class AvroBlockIterator(Iterator[AvroBlock]):
     def __next__(self) -> AvroBlock: ...
 
 class StringParameters:
-    """What a string column declares: its layout, its charset, and its bound.
+    """What a string column declares: one of the eighteen leaves and, where
+    the leaf carries one, its number.
 
-    The bound is one number with one reading per layout: the exact width on
-    the fixed layout, the maximum everywhere else.
+    Six leaves per charset - plain, large, view, large view, fixed and sized
+    - in UTF-8, US-ASCII and windows-1252. ``layout`` is any spelling of a
+    leaf; only a charset-free spelling (``string``, ``fixed_string``, ...)
+    takes a ``charset``; ``bound`` is the exact width on a fixed leaf and the
+    maximum on a sized one.
     """
 
     def __init__(
         self,
         layout: str = "string",
-        charset: str = "utf-8",
+        charset: str | None = None,
         bound: int | None = None,
     ) -> None: ...
     @property
@@ -742,10 +720,11 @@ class StringParameters:
     def __deepcopy__(self, memo: Any) -> StringParameters: ...
 
 class BytesParameters:
-    """What a byte column declares: its layout and its bound.
+    """What a byte column declares: one of the six leaves, with its number.
 
-    The bound is one number with one reading per layout: the exact width on
-    ``fixed_size_binary``, the maximum everywhere else.
+    Two leaves *are* a number - ``fixed_binary`` is an exact width and
+    ``sized_binary`` a maximum - and the other four stand alone and refuse
+    one.
     """
 
     def __init__(self, layout: str = "binary", bound: int | None = None) -> None: ...
@@ -843,7 +822,7 @@ class DataType:
     def string(
         cls,
         layout: str = "string",
-        charset: str = "utf-8",
+        charset: str | None = None,
         bound: int | None = None,
     ) -> DataType: ...
     @classmethod
@@ -1117,7 +1096,7 @@ class ProtocolField:
     def comment(self) -> str | None: ...
     @property
     def display(self) -> str | None: ...
-    # The typed `fix:` vocabulary, answered only by `field.fix`; every other
+    # The typed `FIX:` vocabulary, answered only by `field.fix`; every other
     # protocol's view raises `TypeError` naming its own scheme.
     @property
     def branches(self) -> list[str]: ...
@@ -1182,12 +1161,12 @@ class ProtocolField:
     def description(self) -> str | None: ...
     @description.setter
     def description(self, value: str) -> None: ...
-    # The typed `partition:` vocabulary, answered only by `field.partition`.
+    # The typed `PARTITION:` vocabulary, answered only by `field.partition`.
     @property
     def sources(self) -> list[str] | None: ...
     @sources.setter
     def sources(self, paths: Iterable[str]) -> None: ...
-    # The typed `digest:` vocabulary, answered only by `field.digest`;
+    # The typed `DIGEST:` vocabulary, answered only by `field.digest`;
     # `sources` is the one property both declaring protocols answer.
     def is_holder(self) -> bool: ...
     def set_holder(self) -> None: ...
@@ -1215,7 +1194,7 @@ class ProtocolField:
     def transform(self) -> str | None: ...
     @transform.setter
     def transform(self, transform: str) -> None: ...
-    # The typed `python:` vocabulary, answered only by `field.python`.
+    # The typed `PYTHON:` vocabulary, answered only by `field.python`.
     @property
     def class_metadata(self) -> PythonMetadata | None: ...
     @class_metadata.setter
@@ -1277,7 +1256,7 @@ class ProtocolField:
     def __ne__(self, other: object, /) -> bool: ...
 
 class PythonMetadata:
-    """The Python class a field's `python:` properties name."""
+    """The Python class a field's `PYTHON:` properties name."""
 
     def __init__(self, module: str, qualname: str, kind: str = "class") -> None: ...
     @classmethod
@@ -1395,7 +1374,7 @@ class Field:
         representation: Representation = "value",
     ) -> pyarrow.Array: ...
     # `cast` reconciles the batch to this root, `transform` computes every
-    # column a `transform:expression` or a `partition:transform` declares, and
+    # column a `TRANSFORM:expression` or a `PARTITION:transform` declares, and
     # `digest` fills every holder last, over the rows as they finally stand.
     def apply_arrow_batch(
         self,
@@ -1637,7 +1616,7 @@ class Field:
     def clear_properties(self, scheme: str) -> None: ...
     def protocol(self, scheme: str) -> ProtocolField: ...
     # One named view per well-known protocol. ``https`` is deliberately absent:
-    # it shares the canonical ``http:`` namespace, which ``http`` already reads.
+    # it shares the canonical ``HTTP:`` namespace, which ``http`` already reads.
     @property
     def http(self) -> ProtocolField: ...
     @property
@@ -4922,7 +4901,7 @@ class FixRegistry:
     """Scalar fields, components and repeating groups, one namespace.
 
     A Struct is a component, a List of Structs or a Map a group, and a
-    message a component carrying ``fix:msgtype``; ``insert`` files each by
+    message a component carrying ``FIX:msgtype``; ``insert`` files each by
     its shape and the field doors reach all of them. A tag is an ``int``
     that fits ``i32`` and never a ``bool``; an identifier is the ``int`` a
     field's ``fix.id`` answers, spelled only where the method name says
@@ -4945,7 +4924,7 @@ class FixRegistry:
     loaded dictionary may supply itself. ``len`` counts the scalar fields,
     the components and the groups; iteration walks the scalars. A store
     writes the crate's own definitions like any other and reads a stored
-    copy past. What a dictionary contributed is ``fix:branches`` on each
+    copy past. What a dictionary contributed is ``FIX:branches`` on each
     field it touched, listed by ``dialects``; no lookup consults it.
     """
 
@@ -5084,15 +5063,16 @@ class FixCapture:
     digests to.
 
     What the *reader* said about the line is not here and is held nowhere on
-    a message: the object it was read from and the instant it was recorded
-    are the capture's own columns, stated on the row by whoever read it.
+    a message: the object it was read from, and whatever else the reader
+    carried, are the capture's own columns, stated on the row by whoever
+    read it.
 
     A copy at the moment ``FixMsg.capture()`` answered it; immutable,
     comparing and hashing by its facts.
     """
 
     @property
-    def pluginid(self) -> str | None: ...
+    def msgpluginid(self) -> str | None: ...
     @property
     def msgctxid(self) -> str | None: ...
     @property
@@ -5139,7 +5119,7 @@ class MarketEventData:
     @property
     def seqnum(self) -> int: ...
     @property
-    def creatunix(self) -> int | None: ...
+    def creaunix(self) -> int | None: ...
     @property
     def expirunix(self) -> int | None: ...
     @property
@@ -5368,7 +5348,7 @@ class FixCodec:
     already split. Lines and records answer a lazy ``FixMessages``; the FIX,
     Ullink, FIXML and pair readers answer one ``FixMsg``. A parse builds the
     message, lifts its typed facts, restates deprecated fields to their
-    latest aliases, runs the dictionary's ``fix:derivation`` rules, fills the
+    latest aliases, runs the dictionary's ``FIX:derivation`` rules, fills the
     identifiers the message component declares and an order's lanes, and
     settles the identity - there is no separate enriching step. Chaining:
     ``lifecycle`` walks a stream of messages as one lifecycle, each stated

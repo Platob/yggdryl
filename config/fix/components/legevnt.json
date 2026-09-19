@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventtype",
-          "fix:tag": "2060"
+          "FIX:field": "legeventtype",
+          "FIX:tag": "2060"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventdate",
-          "fix:tag": "2061"
+          "FIX:field": "legeventdate",
+          "FIX:tag": "2061"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventtime",
-          "fix:tag": "2062"
+          "FIX:field": "legeventtime",
+          "FIX:tag": "2062"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventtimeunit",
-          "fix:tag": "2063"
+          "FIX:field": "legeventtimeunit",
+          "FIX:tag": "2063"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventtimeperiod",
-          "fix:tag": "2064"
+          "FIX:field": "legeventtimeperiod",
+          "FIX:tag": "2064"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventmonthyear",
-          "fix:tag": "2341"
+          "FIX:field": "legeventmonthyear",
+          "FIX:tag": "2341"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventpx",
-          "fix:tag": "2065"
+          "FIX:field": "legeventpx",
+          "FIX:tag": "2065"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legeventtext",
-          "fix:tag": "2066"
+          "FIX:field": "legeventtext",
+          "FIX:tag": "2066"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegeventtextlen",
-          "fix:tag": "2074"
+          "FIX:field": "encodedlegeventtextlen",
+          "FIX:tag": "2074"
         }
       },
       {
@@ -109,15 +109,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegeventtext",
-          "fix:tag": "2075"
+          "FIX:field": "encodedlegeventtext",
+          "FIX:tag": "2075"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegEvnt",
-    "fix:tag": "998739"
+    "FIX:tag": "998739",
+    "display": "LegEvnt"
   }
 }

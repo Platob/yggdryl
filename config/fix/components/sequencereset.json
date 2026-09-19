@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "gapfillflag",
-          "fix:tag": "123"
+          "FIX:field": "gapfillflag",
+          "FIX:tag": "123"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "newseqno",
-          "fix:tag": "36"
+          "FIX:field": "newseqno",
+          "FIX:tag": "36"
         }
       },
       {
@@ -42,16 +42,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "4",
+    "FIX:tag": "356569",
     "description": "MsgType = 4",
-    "display": "SequenceReset",
-    "fix:msgtype": "4",
-    "fix:tag": "356569"
+    "display": "SequenceReset"
   }
 }

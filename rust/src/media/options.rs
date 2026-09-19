@@ -24,10 +24,10 @@
 //!
 //! ```
 //! use yggdryl::media::{IORecordOptions, RecordOptions};
-//! use yggdryl::{DataType, Url};
+//! use yggdryl::{DataType, StructureType, Url};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+//! let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
 //!     .required_field("row");
 //!
 //! // Arrow IPC is available in every Arrow build.
@@ -62,9 +62,9 @@ pub(crate) use limits::WriteLimitState;
 
 use smol_str::SmolStr;
 
+use crate::cast::ArrowCastOptions;
 use crate::expression::{IntoFilter, IntoPlan, IntoSelector, Plan, Term};
-use crate::media::ipc::IpcOptions;
-use crate::types::cast::ArrowCastOptions;
+use crate::ipc::IpcOptions;
 use crate::{
     DataType, Error, Field, Filter, IOMode, Level, MediaType, MimeType, Result, Scalar, Selector,
 };
@@ -655,8 +655,8 @@ pub trait IORecordOptions: Sized {
     /// absent layer costs nothing.
     ///
     /// A field shapes rows by [applying](Field::apply_arrow_batch), not by
-    /// casting: a declaration is a cast *and* the `transform:`, `partition:`
-    /// and `digest:` columns it derives, so a column a schema declares arrives
+    /// casting: a declaration is a cast *and* the `TRANSFORM:`, `PARTITION:`
+    /// and `DIGEST:` columns it derives, so a column a schema declares arrives
     /// written rather than arriving as the default nothing filled. A root that
     /// declares no derivation applies as the cast alone.
     ///
@@ -966,11 +966,11 @@ pub enum RecordOptions {
     Ipc(IpcOptions),
     /// Apache Parquet file options.
     #[cfg(feature = "parquet")]
-    Parquet(crate::media::parquet::ParquetOptions),
+    Parquet(crate::parquet::ParquetOptions),
     /// Apache Avro container options.
-    Avro(crate::media::avro::AvroOptions),
+    Avro(crate::avro::AvroOptions),
     /// Plain-text row options.
-    Text(Box<crate::media::text::TextOptions>),
+    Text(Box<crate::text::TextOptions>),
 }
 
 impl RecordOptions {
@@ -990,7 +990,7 @@ impl RecordOptions {
         &mut self,
         path: &'static str,
         setting: &'static str,
-    ) -> Result<&mut crate::media::text::TextOptions> {
+    ) -> Result<&mut crate::text::TextOptions> {
         let media_type = self.mime_type();
         match self {
             Self::Text(options) => Ok(options),
@@ -1031,7 +1031,7 @@ impl RecordOptions {
         &mut self,
         path: &'static str,
         setting: &'static str,
-    ) -> Result<&mut crate::media::avro::AvroOptions> {
+    ) -> Result<&mut crate::avro::AvroOptions> {
         let media_type = self.mime_type();
         match self {
             Self::Avro(options) => Ok(options),
@@ -1073,7 +1073,7 @@ impl RecordOptions {
     /// implement.
     pub fn set_avro_block_codec(&mut self, codec: &str) -> Result<()> {
         let options = self.avro_mut("$.block_codec", "a block codec")?;
-        crate::media::avro::container::BlockCoding::from_name(codec)?;
+        crate::avro::container::BlockCoding::from_name(codec)?;
         options.codec = SmolStr::new(codec);
         Ok(())
     }
@@ -1120,7 +1120,7 @@ impl RecordOptions {
         &mut self,
         path: &'static str,
         setting: &'static str,
-    ) -> Result<&mut crate::media::parquet::ParquetOptions> {
+    ) -> Result<&mut crate::parquet::ParquetOptions> {
         let media_type = self.mime_type();
         match self {
             Self::Parquet(options) => Ok(options),
@@ -1297,10 +1297,10 @@ impl RecordOptions {
         }
         #[cfg(feature = "parquet")]
         if base == &MimeType::PARQUET {
-            return Ok(Self::Parquet(crate::media::parquet::ParquetOptions::new()));
+            return Ok(Self::Parquet(crate::parquet::ParquetOptions::new()));
         }
         if base == &MimeType::AVRO {
-            return Ok(Self::Avro(crate::media::avro::AvroOptions::new()));
+            return Ok(Self::Avro(crate::avro::AvroOptions::new()));
         }
         // Plain text reads and writes as lines: the projection is the
         // encoding, so a `.log` answers the record surface out of the box.

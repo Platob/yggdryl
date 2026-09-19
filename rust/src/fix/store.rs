@@ -10,8 +10,9 @@ use smol_str::format_smolstr;
 
 use super::FixRegistry;
 use crate::holder::Holder;
+use crate::sequence::SequenceType;
 use crate::text::Formatting;
-use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, Url};
+use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, StructureType, Url};
 
 const SHARD_WIDTH: i32 = 100;
 const LOAD_ORDER: [FixCategory; 3] = [
@@ -196,7 +197,7 @@ impl Resolver<'_> {
                 .or_else(|| {
                     self.raw
                         .keys()
-                        .find(|key| key.0 == category && crate::types::folds_equal(&key.1, name))
+                        .find(|key| key.0 == category && crate::folds_equal(&key.1, name))
                 })
                 .cloned();
             match key {
@@ -231,25 +232,28 @@ impl Resolver<'_> {
         Self::depth(field.name(), depth)?;
         let mut height = 0;
         let dtype = match field.dtype() {
-            DataType::Struct(children) => {
+            DataType::Structure(children) => {
                 let mut resolved = Vec::with_capacity(children.len());
                 for child in children.iter() {
                     let (child, child_height) = self.occurrence(child, depth + 1)?;
                     height = height.max(child_height + 1);
                     resolved.push(child);
                 }
-                Some(DataType::from_fields(resolved)?)
+                Some(DataType::from(StructureType::from_fields(resolved)?))
             }
-            DataType::List(item) | DataType::LargeList(item) => {
+            DataType::Sequence(SequenceType::List(item))
+            | DataType::Sequence(SequenceType::LargeList(item)) => {
                 let (item, child_height) = self.occurrence(item, depth + 1)?;
                 height = child_height + 1;
-                Some(if matches!(field.dtype(), DataType::List(_)) {
-                    DataType::list(item)
-                } else {
-                    DataType::large_list(item)
-                })
+                Some(
+                    if matches!(field.dtype(), DataType::Sequence(SequenceType::List(_))) {
+                        DataType::list(item)
+                    } else {
+                        DataType::large_list(item)
+                    },
+                )
             }
-            DataType::Map(map) => {
+            DataType::Mapping(map) => {
                 let mut entries = map.entries().clone();
                 if reference(&entries).is_some() {
                     // A persisted Map must retain its entries Struct. Only
@@ -302,18 +306,20 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
         }
     }
     let dtype = match field.dtype() {
-        DataType::Struct(children) => Some(DataType::from_fields(
+        DataType::Structure(children) => Some(DataType::from(StructureType::from_fields(
             children
                 .iter()
                 .cloned()
                 .map(|child| compact(child, false))
                 .collect::<Result<Vec<_>>>()?,
-        )?),
-        DataType::List(item) => Some(DataType::list(compact(item.as_ref().clone(), false)?)),
-        DataType::LargeList(item) => {
+        )?)),
+        DataType::Sequence(SequenceType::List(item)) => {
+            Some(DataType::list(compact(item.as_ref().clone(), false)?))
+        }
+        DataType::Sequence(SequenceType::LargeList(item)) => {
             Some(DataType::large_list(compact(item.as_ref().clone(), false)?))
         }
-        DataType::Map(map) => {
+        DataType::Mapping(map) => {
             // Keep the entries Struct for Map validation, but its component
             // reference inherits metadata from the same owner as any other.
             let mut entries = compact(map.entries().clone(), true)?;
@@ -356,7 +362,7 @@ impl FixRegistry {
     /// Reads a complete registry snapshot from JSON.
     ///
     /// `fields`, `components`, and `groups` are arrays of native Field
-    /// documents; a message is a component carrying `fix:msgtype`, and any
+    /// documents; a message is a component carrying `FIX:msgtype`, and any
     /// other key - `messages` among them - is refused by name. References
     /// resolve through the same bounded graph loader as the store.
     pub fn from_json(input: &str) -> Result<Self> {
@@ -369,9 +375,9 @@ impl FixRegistry {
     /// reconstructs the same resolved catalog. No filesystem I/O is performed.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry};
+    /// use yggdryl::{DataType, FixRegistry, StructureType};
     /// let mut registry = FixRegistry::new();
-    /// let mut message = DataType::from_fields([])?.required_field("Order");
+    /// let mut message = DataType::from(StructureType::from_fields([])?).required_field("Order");
     /// message.as_fix_mut().set_msgtype("D")?;
     /// registry.insert(message)?;
     /// let restored = FixRegistry::from_json(&registry.into_json()?)?;
@@ -397,7 +403,7 @@ impl FixRegistry {
     /// states no membership, so [`Self::add_cfb_file`] has to be told one or
     /// guess it from the file's stem, while a snapshot is this crate's own
     /// format and every field and definition in it already carries the
-    /// `fix:branches` its writer meant. Naming one here would overwrite that.
+    /// `FIX:branches` its writer meant. Naming one here would overwrite that.
     ///
     /// A snapshot restating one of this crate's own fields is read past
     /// rather than refused: every registry holds those from construction, so
@@ -753,7 +759,7 @@ impl FixRegistry {
             // and the generator write does, so a rewrite changes no line it
             // did not mean to.
             let mut bytes =
-                crate::text::json::into_bytes_with_formatting(document, Formatting::indented(2))?;
+                crate::json::into_bytes_with_formatting(document, Formatting::indented(2))?;
             bytes.push(b'\n');
             root.child_by_path(path)?.write_all_bytes(&bytes)?;
         }

@@ -10,8 +10,9 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::cast::ArrowCastPlan;
-use crate::{DataType, Field, Scalar};
+use crate::cast::ArrowCastPlan;
+use crate::enums::EnumType;
+use crate::{DataType, Field, Scalar, StructureType};
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
 
@@ -28,7 +29,7 @@ pub use scalars::{ArrowScalar, ArrowShape};
 /// by [`Field::into_arrow_exchange_schema`] and consumed by
 /// [`Field::from_arrow_schema`];
 /// it never becomes root [`Field`] metadata.
-pub const IPC_DICTIONARY_IDS_KEY: &str = "yggdryl:ipc:dictionary-ids";
+pub const IPC_DICTIONARY_IDS_KEY: &str = "YGGDRYL:ipc:dictionary-ids";
 
 /// A failure at the Yggdryl/Arrow runtime boundary.
 #[derive(Debug)]
@@ -316,9 +317,9 @@ pub(crate) fn arrow_schema_from_field(field: &Field) -> Result<SchemaRef> {
         fields
             .iter()
             .cloned()
-            .map(Field::into_arrow_ref)
+            .map(Field::into_arrow_field_ref)
             .collect::<crate::Result<Vec<_>>>()?,
-        field.as_metadata().clone().into_arrow(),
+        field.as_metadata().clone().into_arrow_metadata(),
     )))
 }
 
@@ -341,9 +342,10 @@ pub type BatchReader = Box<dyn arrow_array::RecordBatchReader + Send>;
 ///
 /// use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
 /// use yggdryl::DataType;
+/// use yggdryl::StructureType;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+/// let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
 ///     .required_field("row");
 /// let arrow_schema = schema.into_arrow_schema()?;
 /// let batch = RecordBatch::try_new(
@@ -437,9 +439,10 @@ pub(crate) fn appended(
 ///
 /// use arrow_array::{Int64Array, RecordBatch};
 /// use yggdryl::DataType;
+/// use yggdryl::StructureType;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let root = DataType::from_fields([DataType::Int64.nullable_field("id")])?
+/// let root = DataType::from(StructureType::from_fields([DataType::Int64.nullable_field("id")])?)
 ///     .required_field("row");
 /// let schema = root.clone().into_arrow_schema()?;
 /// let batch = RecordBatch::try_new(
@@ -511,14 +514,15 @@ pub fn combined_as(
 ///
 /// use arrow_array::{Int64Array, RecordBatch, StringArray};
 /// use yggdryl::DataType;
+/// use yggdryl::StructureType;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let left_root = DataType::from_fields([DataType::Int64.nullable_field("id")])?
+/// let left_root = DataType::from(StructureType::from_fields([DataType::Int64.nullable_field("id")])?)
 ///     .required_field("row");
-/// let right_root = DataType::from_fields([
+/// let right_root = DataType::from(StructureType::from_fields([
 ///     DataType::Int64.nullable_field("id"),
 ///     DataType::utf8().nullable_field("venue"),
-/// ])?
+/// ])?)
 /// .required_field("row");
 ///
 /// let left_schema = left_root.into_arrow_schema()?;
@@ -592,7 +596,7 @@ fn merged_root(left: &Field, right: &Field) -> Result<Field> {
         columns.push(column.clone().with_nullable(true));
     }
     // The root name is left's, and the root is what a cast target must be.
-    Ok(DataType::from_fields(columns)?.required_field(left.name()))
+    Ok(DataType::from(StructureType::from_fields(columns)?).required_field(left.name()))
 }
 
 /// Reconcile one column present on both sides, or refuse naming both.
@@ -834,7 +838,7 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
 /// Materialize a sequence of native struct rows as one Arrow record batch.
 ///
 /// The outer value is a sequence and each child is an ordered row sequence or
-/// a named [`crate::types::nested::Record`]. The root Field validates and canonicalizes every
+/// a named [`crate::structure::Record`]. The root Field validates and canonicalizes every
 /// row before one columnar build.
 ///
 /// # Errors
@@ -879,7 +883,7 @@ pub fn scalar_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
     // malformed foreign scalar reports a normal schema error rather than
     // exhausting the native stack.
     field.dtype().validate_bounded()?;
-    let expected = field.clone().into_arrow_ref()?.data_type().clone();
+    let expected = field.clone().into_arrow_field_ref()?.data_type().clone();
     if array.data_type() != &expected {
         return Err(Error::IncompatibleSchema(format!(
             "Arrow scalar datatype {:?} differs from expected {expected:?}",
@@ -948,7 +952,7 @@ pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
 
 /// Read one record batch as a sequence of rows.
 ///
-/// Each row becomes a [`crate::types::nested::Sequence`] with one value per column, in schema
+/// Each row becomes a [`crate::sequence::Sequence`] with one value per column, in schema
 /// order. The batch schema remains the [`RecordBatch`]'s schema rather than
 /// being duplicated inside every row.
 ///
@@ -1089,7 +1093,7 @@ fn collect_dictionary_ids_in_dtype(
     path: &mut Vec<usize>,
     ids: &mut DictionaryIds,
 ) {
-    if let DataType::Dictionary(dictionary) = dtype {
+    if let DataType::Enum(EnumType::Dictionary(dictionary)) = dtype {
         collect_dictionary_ids_in_dtype(dictionary.value(), path, ids);
         return;
     }
@@ -1218,7 +1222,7 @@ fn restore_dictionary_ids_in_dtype(
     path: &mut Vec<usize>,
     ids: &mut DictionaryIds,
 ) -> Result<DataType> {
-    if let DataType::Dictionary(dictionary) = dtype {
+    if let DataType::Enum(EnumType::Dictionary(dictionary)) = dtype {
         let value = restore_dictionary_ids_in_dtype(dictionary.value(), path, ids)?;
         return DataType::dictionary(dictionary.key().clone(), value).map_err(Error::Core);
     }
@@ -1258,9 +1262,9 @@ pub(crate) fn field_from_arrow_schema(name: &str, schema: &Schema) -> Result<Fie
     let fields = schema
         .fields()
         .iter()
-        .map(|field| Field::from_arrow_ref(field.clone()).map_err(Error::Core))
+        .map(|field| Field::from_arrow_field_ref(field.clone()).map_err(Error::Core))
         .collect::<Result<Vec<_>>>()?;
-    let dtype = DataType::from_fields(fields)?;
+    let dtype = DataType::from(StructureType::from_fields(fields)?);
     let mut field = Field::from_parts(name, dtype, false, metadata)?;
     if !dictionary_ids.is_empty() {
         let dtype =

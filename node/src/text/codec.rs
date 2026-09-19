@@ -20,13 +20,14 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 use yggdryl::ArrowCastOptions;
-use yggdryl::text::{self, json, toml, yaml};
+use yggdryl::FieldValue as _;
+use yggdryl::decimal::{Decimal32, Decimal64};
 use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
-use yggdryl::types::decimal::{Decimal32, Decimal64};
 use yggdryl::{
-    ArrowCast, DataType as CoreDataType, DataTypeId, DecimalValue, Enum, Field as CoreField,
-    Fields as CoreFields, MapType as CoreMapType, TemporalValue, TimeUnit, Timezone, i256,
+    DataType as CoreDataType, DataTypeId, DecimalValue, Field as CoreField, MapType as CoreMapType,
+    TemporalValue, TimeUnit, Timezone, Vocabulary, i256,
 };
+use yggdryl::{json, text, toml, yaml};
 
 use crate::types::timezone::{TimezoneInput, timezone_from_input};
 use crate::{JsDataType, JsField, JsUri, JsUrl, JsUrn, JsVersion, napi_error};
@@ -154,19 +155,14 @@ impl JsScalar {
         value_to_transport(&self.inner, 0, checked_depth(max_depth)?)
     }
 
-    /// Build an identity-preserving member of a core enum.
+    /// Build the canonical text of one core enum member, validating it.
+    ///
+    /// An enum member's datatype is `string`, so this answers a string
+    /// scalar; `kind` is the vocabulary the value has to belong to.
     #[napi(factory)]
     pub fn from_enum(kind: String, value: String) -> Result<Self> {
-        Enum::from_parts(&kind, &value)
+        Vocabulary::from_parts(&kind, &value)
             .map(Scalar::from)
-            .map(Self::from_core)
-            .map_err(napi_error)
-    }
-
-    /// Build one floating scalar at 16, 32, or 64 bits.
-    #[napi(factory)]
-    pub fn float(value: f64, width: Option<f64>) -> Result<Self> {
-        Scalar::from_float(value, crate::exact_u8(width.unwrap_or(64.0), "width")?)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -180,65 +176,35 @@ impl JsScalar {
         )))
     }
 
-    /// Build the exact date width selected by its unit.
-    #[napi(factory)]
-    pub fn date(
-        count: Either<BigInt, f64>,
-        unit: Option<String>,
-        timezone: Option<TimezoneInput<'_>>,
-    ) -> Result<Self> {
-        Scalar::from_date(
-            exact_i64_input(count, "count")?,
-            time_unit(unit.as_deref().unwrap_or("d"))?,
-            timezone_or_naive(timezone)?,
-        )
-        .map(Self::from_core)
-        .map_err(napi_error)
-    }
-
-    /// Build the exact time-of-day width selected by its unit.
-    #[napi(factory)]
-    pub fn time(
-        count: Either<BigInt, f64>,
-        unit: String,
-        timezone: Option<TimezoneInput<'_>>,
-    ) -> Result<Self> {
-        Scalar::from_time(
-            exact_i64_input(count, "count")?,
-            time_unit(&unit)?,
-            timezone_or_naive(timezone)?,
-        )
-        .map(Self::from_core)
-        .map_err(napi_error)
-    }
-
-    /// Build an epoch or wall-clock datetime with a non-null timezone.
-    #[napi(factory)]
-    pub fn datetime(
-        count: Either<BigInt, f64>,
-        unit: String,
-        timezone: Option<TimezoneInput<'_>>,
-    ) -> Result<Self> {
-        Scalar::from_datetime(
-            exact_i64_input(count, "count")?,
-            time_unit(&unit)?,
-            timezone_or_naive(timezone)?,
-        )
-        .map(Self::from_core)
-        .map_err(napi_error)
-    }
-
     /// Build the narrowest duration width that holds the count.
+    /// Build one floating scalar at 16, 32, or 64 bits.
+    ///
+    /// The one construct the type side cannot express **in JavaScript**:
+    /// `100` and `100.0` are the same `Number`, so the encoder reads an
+    /// integral one as an integer and `new DataType("float64").scalar(100)`
+    /// is refused. Python deletes this factory because `100.0` is a distinct
+    /// literal there; JavaScript has no way to write one.
     #[napi(factory)]
-    pub fn duration(
-        count: Either<BigInt, f64>,
-        unit: String,
-        timezone: Option<TimezoneInput<'_>>,
-    ) -> Result<Self> {
+    pub fn float(value: f64, width: Option<f64>) -> Result<Self> {
+        Scalar::from_float(value, crate::exact_u8(width.unwrap_or(64.0), "width")?)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Build an elapsed duration, picking the width from the count itself.
+    ///
+    /// The one construct the type side cannot express: `duration32` and
+    /// `duration64` are two static choices, and a count that overflows 32 bits
+    /// is an error there rather than a widening. Here it widens.
+    ///
+    /// An elapsed duration has no zone, so there is no `timezone` parameter to
+    /// pass one that could only be refused.
+    #[napi(factory)]
+    pub fn duration(count: Either<BigInt, f64>, unit: String) -> Result<Self> {
         Scalar::from_duration(
             exact_i64_input(count, "count")?,
             time_unit(&unit)?,
-            timezone_or_naive(timezone)?,
+            yggdryl::Timezone::NAIVE,
         )
         .map(Self::from_core)
         .map_err(napi_error)
@@ -325,30 +291,21 @@ impl JsScalar {
         self.inner.family().as_str().to_owned()
     }
 
-    /// The enum vocabulary name, when this scalar is an enum.
-    #[napi(getter)]
-    pub fn enum_kind(&self) -> Option<String> {
-        self.inner.as_enum().map(|value| value.kind().to_owned())
-    }
-
-    /// The canonical enum member spelling, when this scalar is an enum.
-    #[napi(getter)]
-    pub fn enum_value(&self) -> Option<String> {
-        self.inner.as_enum().map(|value| value.as_str().to_owned())
-    }
-
-    /// The compact zero-based member index, when this scalar is an enum.
-    #[napi(getter)]
-    pub fn enum_ordinal(&self) -> Option<u8> {
-        self.inner.as_enum().map(|value| value.ordinal())
-    }
-
     /// The number of direct sequence children, mapping entries, or record fields.
     #[napi(getter)]
     pub fn length(&self) -> f64 {
         #[allow(clippy::cast_precision_loss)]
         let length = self.inner.len() as f64;
         length
+    }
+
+    /// Whether this value reads as true where a condition is wanted.
+    ///
+    /// Falsy is absence, a zero of any width, empty text or bytes, and a
+    /// container with nothing set in it; text that spells false reads false.
+    #[napi]
+    pub fn is_truthy(&self) -> bool {
+        self.inner.is_truthy()
     }
 
     /// Whether this is an empty sequence, mapping, or record.
@@ -627,23 +584,23 @@ impl JsScalar {
 
     /// Encode this value as natural compact JSON bytes.
     #[napi]
-    pub fn as_json_bytes(&self) -> Result<Buffer> {
+    pub fn into_json_bytes(&self) -> Result<Buffer> {
         self.inner
-            .as_json_bytes()
+            .into_json_bytes()
             .map(Into::into)
             .map_err(napi_error)
     }
 
     /// Encode this value as natural compact JSON UTF-8.
     #[napi]
-    pub fn as_json_utf8(&self) -> Result<String> {
-        self.inner.as_json_utf8().map_err(napi_error)
+    pub fn into_json(&self) -> Result<String> {
+        self.inner.into_json().map_err(napi_error)
     }
 
     /// Natural compact JSON for the standard JavaScript string protocol.
     #[napi(js_name = "toString")]
     pub fn js_string(&self) -> Result<String> {
-        self.as_json_utf8()
+        self.into_json()
     }
 
     /// Whether two native values are the same value.
@@ -671,7 +628,7 @@ impl JsScalar {
             )));
         }
         let inferred =
-            CoreField::from_arrow_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
+            CoreField::from_arrow_field_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
         let field = field
             .as_ref()
             .map_or_else(|| inferred.clone(), |field| field.inner.clone());
@@ -701,7 +658,7 @@ impl JsScalar {
         let (schema, batches) = arrow_batches(&bytes)?;
         ensure_one_column(&schema, "Arrow array")?;
         let inferred =
-            CoreField::from_arrow_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
+            CoreField::from_arrow_field_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
         let field = field
             .as_ref()
             .map_or_else(|| inferred.clone(), |field| field.inner.clone());
@@ -867,7 +824,7 @@ pub(crate) fn ensure_one_column(schema: &SchemaRef, label: &str) -> Result<()> {
 pub(crate) fn arrow_array_ipc(field: &CoreField, array: ArrayRef) -> Result<Buffer> {
     let schema = Arc::new(Schema::new([field
         .clone()
-        .into_arrow_ref()
+        .into_arrow_field_ref()
         .map_err(napi_error)?]));
     let options = RecordBatchOptions::new().with_row_count(Some(array.len()));
     let batch =
@@ -2360,7 +2317,9 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         Scalar::Float32(value) => float_transport(value.as_f64()),
         Scalar::Float64(value) => float_transport(value.as_f64()),
         Scalar::String(value) => Ok(JsonValue::String(value.as_str().to_owned())),
-        Scalar::Code(value) => Ok(JsonValue::String(value.as_str().to_owned())),
+        code if code.is_code() => Ok(JsonValue::String(
+            code.as_str().expect("a code borrowed its text").to_owned(),
+        )),
         Scalar::Uuid(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Version(value) => Ok(marker(
             "version",
@@ -2374,10 +2333,10 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         // zone, a MIME type and a media type each render their own canonical
         // spelling the same way.
         Scalar::Url(value) => Ok(JsonValue::String(value.to_string())),
+        Scalar::Urn(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Timezone(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::MimeType(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::MediaType(value) => Ok(JsonValue::String(value.to_string())),
-        Scalar::Enum(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         // A geometry has no JavaScript binding surface yet, so its WKB crosses
         // as its plain shape: the bytes transport that becomes a Buffer.
         Scalar::Bytes(value) => Ok(marker(
@@ -2439,7 +2398,7 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
 /// field recursively.
 fn struct_transport_with_field(
     value: &Scalar,
-    fields: &CoreFields,
+    fields: &[CoreField],
     depth: usize,
     max_depth: usize,
 ) -> Result<JsonValue> {
@@ -2532,21 +2491,21 @@ pub(crate) fn value_to_transport_with_field(
         return value_to_transport(value, depth, max_depth);
     }
     match field.dtype() {
-        CoreDataType::Struct(fields) => {
-            struct_transport_with_field(value, fields, depth, max_depth)
+        CoreDataType::Structure(structure) => {
+            struct_transport_with_field(value, structure.as_fields(), depth, max_depth)
         }
-        CoreDataType::List(child)
-        | CoreDataType::ListView(child)
-        | CoreDataType::FixedSizeList(child, _)
-        | CoreDataType::LargeList(child)
-        | CoreDataType::LargeListView(child) => value
+        CoreDataType::Sequence(sequence) => value
             .as_sequence()
             .ok_or_else(|| napi_error(format!("expected a typed list, got {}", value.kind())))?
             .iter()
-            .map(|value| value_to_transport_with_field(value, child, depth + 1, max_depth))
+            .map(|value| {
+                value_to_transport_with_field(value, sequence.item(), depth + 1, max_depth)
+            })
             .collect::<Result<Vec<_>>>()
             .map(JsonValue::Array),
-        CoreDataType::Map(map) => map_transport_with_field(value, map, depth, max_depth),
+        CoreDataType::Mapping(mapping) => {
+            map_transport_with_field(value, mapping.parameters(), depth, max_depth)
+        }
         CoreDataType::Union(fields, _) => {
             let Some([type_id, payload]) = value.as_sequence() else {
                 return Err(napi_error(
@@ -2563,7 +2522,7 @@ pub(crate) fn value_to_transport_with_field(
                 .ok_or_else(|| napi_error("typed union id is not declared"))?;
             value_to_transport_with_field(payload, branch, depth, max_depth)
         }
-        CoreDataType::Dictionary(dictionary) => value_to_transport_with_field(
+        CoreDataType::Enum(dictionary) => value_to_transport_with_field(
             value,
             &CoreField::new(
                 field.name(),

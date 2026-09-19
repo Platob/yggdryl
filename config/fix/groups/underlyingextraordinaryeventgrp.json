@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingextraordinaryevent"
+        "FIX:component": "underlyingextraordinaryevent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingextraordinaryevent",
+    "FIX:counter": "42884",
+    "FIX:tag": "477677",
     "description": "Required if NoUnderlyingExtraordinaryEvents(42884) > 0.",
-    "display": "UnderlyingExtraordinaryEventGrp",
-    "fix:component": "underlyingextraordinaryevent",
-    "fix:counter": "42884",
-    "fix:tag": "477677"
+    "display": "UnderlyingExtraordinaryEventGrp"
   }
 }

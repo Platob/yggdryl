@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventtype",
-          "fix:tag": "2219"
+          "FIX:field": "legcomplexeventtype",
+          "FIX:tag": "2219"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexoptpayoutpayside",
-          "fix:tag": "2220"
+          "FIX:field": "legcomplexoptpayoutpayside",
+          "FIX:tag": "2220"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexoptpayoutreceiveside",
-          "fix:tag": "2221"
+          "FIX:field": "legcomplexoptpayoutreceiveside",
+          "FIX:tag": "2221"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexoptpayoutunderlier",
-          "fix:tag": "2222"
+          "FIX:field": "legcomplexoptpayoutunderlier",
+          "FIX:tag": "2222"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexoptpayoutamount",
-          "fix:tag": "2223"
+          "FIX:field": "legcomplexoptpayoutamount",
+          "FIX:tag": "2223"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexoptpayoutpercentage",
-          "fix:tag": "2224"
+          "FIX:field": "legcomplexoptpayoutpercentage",
+          "FIX:tag": "2224"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexoptpayouttime",
-          "fix:tag": "2225"
+          "FIX:field": "legcomplexoptpayouttime",
+          "FIX:tag": "2225"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexoptpayoutcurrency",
-          "fix:tag": "2226"
+          "FIX:field": "legcomplexoptpayoutcurrency",
+          "FIX:tag": "2226"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexoptpayoutcurrencycodesource",
-          "fix:tag": "2944"
+          "FIX:field": "legcomplexoptpayoutcurrencycodesource",
+          "FIX:tag": "2944"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventprice",
-          "fix:tag": "2227"
+          "FIX:field": "legcomplexeventprice",
+          "FIX:tag": "2227"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventpricepercentage",
-          "fix:tag": "2228"
+          "FIX:field": "legcomplexeventpricepercentage",
+          "FIX:tag": "2228"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventpriceboundarymethod",
-          "fix:tag": "2229"
+          "FIX:field": "legcomplexeventpriceboundarymethod",
+          "FIX:tag": "2229"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventpriceboundaryprecision",
-          "fix:tag": "2230"
+          "FIX:field": "legcomplexeventpriceboundaryprecision",
+          "FIX:tag": "2230"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventpricetimetype",
-          "fix:tag": "2231"
+          "FIX:field": "legcomplexeventpricetimetype",
+          "FIX:tag": "2231"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcondition",
-          "fix:tag": "2232"
+          "FIX:field": "legcomplexeventcondition",
+          "FIX:tag": "2232"
         }
       },
       {
@@ -175,8 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventdates",
-          "fix:tag": "2250"
+          "FIX:field": "nolegcomplexeventdates",
+          "FIX:tag": "2250"
         }
       },
       {
@@ -186,7 +186,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legcomplexeventdates"
+          "FIX:group": "legcomplexeventdates"
         }
       },
       {
@@ -196,8 +196,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcurrencyone",
-          "fix:tag": "2233"
+          "FIX:field": "legcomplexeventcurrencyone",
+          "FIX:tag": "2233"
         }
       },
       {
@@ -207,8 +207,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcurrencyonecodesource",
-          "fix:tag": "2945"
+          "FIX:field": "legcomplexeventcurrencyonecodesource",
+          "FIX:tag": "2945"
         }
       },
       {
@@ -218,8 +218,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcurrencytwo",
-          "fix:tag": "2234"
+          "FIX:field": "legcomplexeventcurrencytwo",
+          "FIX:tag": "2234"
         }
       },
       {
@@ -229,8 +229,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcurrencytwocodesource",
-          "fix:tag": "2946"
+          "FIX:field": "legcomplexeventcurrencytwocodesource",
+          "FIX:tag": "2946"
         }
       },
       {
@@ -240,8 +240,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventquotebasis",
-          "fix:tag": "2235"
+          "FIX:field": "legcomplexeventquotebasis",
+          "FIX:tag": "2235"
         }
       },
       {
@@ -251,8 +251,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventfixedfxrate",
-          "fix:tag": "2236"
+          "FIX:field": "legcomplexeventfixedfxrate",
+          "FIX:tag": "2236"
         }
       },
       {
@@ -262,8 +262,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventspotrate",
-          "fix:tag": "2409"
+          "FIX:field": "legcomplexeventspotrate",
+          "FIX:tag": "2409"
         }
       },
       {
@@ -273,8 +273,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventforwardpoints",
-          "fix:tag": "2410"
+          "FIX:field": "legcomplexeventforwardpoints",
+          "FIX:tag": "2410"
         }
       },
       {
@@ -284,8 +284,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdeterminationmethod",
-          "fix:tag": "2237"
+          "FIX:field": "legcomplexeventdeterminationmethod",
+          "FIX:tag": "2237"
         }
       },
       {
@@ -295,8 +295,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcalculationagent",
-          "fix:tag": "2238"
+          "FIX:field": "legcomplexeventcalculationagent",
+          "FIX:tag": "2238"
         }
       },
       {
@@ -306,8 +306,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventstrikeprice",
-          "fix:tag": "2239"
+          "FIX:field": "legcomplexeventstrikeprice",
+          "FIX:tag": "2239"
         }
       },
       {
@@ -317,8 +317,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventstrikefactor",
-          "fix:tag": "2240"
+          "FIX:field": "legcomplexeventstrikefactor",
+          "FIX:tag": "2240"
         }
       },
       {
@@ -328,8 +328,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventstrikenumberofoptions",
-          "fix:tag": "2241"
+          "FIX:field": "legcomplexeventstrikenumberofoptions",
+          "FIX:tag": "2241"
         }
       },
       {
@@ -339,8 +339,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventratesources",
-          "fix:tag": "41382"
+          "FIX:field": "nolegcomplexeventratesources",
+          "FIX:tag": "41382"
         }
       },
       {
@@ -350,7 +350,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legcomplexeventratesourcegrp"
+          "FIX:group": "legcomplexeventratesourcegrp"
         }
       },
       {
@@ -360,7 +360,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legcomplexeventrelativedate"
+          "FIX:component": "legcomplexeventrelativedate"
         }
       },
       {
@@ -370,8 +370,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventperiods",
-          "fix:tag": "41379"
+          "FIX:field": "nolegcomplexeventperiods",
+          "FIX:tag": "41379"
         }
       },
       {
@@ -381,7 +381,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legcomplexeventperiodgrp"
+          "FIX:group": "legcomplexeventperiodgrp"
         }
       },
       {
@@ -391,8 +391,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventsxidref",
-          "fix:tag": "2242"
+          "FIX:field": "legcomplexeventcrediteventsxidref",
+          "FIX:tag": "2242"
         }
       },
       {
@@ -402,8 +402,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventnotifyingparty",
-          "fix:tag": "2243"
+          "FIX:field": "legcomplexeventcrediteventnotifyingparty",
+          "FIX:tag": "2243"
         }
       },
       {
@@ -413,8 +413,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventbusinesscenter",
-          "fix:tag": "2244"
+          "FIX:field": "legcomplexeventcrediteventbusinesscenter",
+          "FIX:tag": "2244"
         }
       },
       {
@@ -424,8 +424,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventstandardsources",
-          "fix:tag": "2245"
+          "FIX:field": "legcomplexeventcrediteventstandardsources",
+          "FIX:tag": "2245"
         }
       },
       {
@@ -435,8 +435,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventcrediteventminimumsources",
-          "fix:tag": "2246"
+          "FIX:field": "legcomplexeventcrediteventminimumsources",
+          "FIX:tag": "2246"
         }
       },
       {
@@ -446,8 +446,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventcrediteventsources",
-          "fix:tag": "41398"
+          "FIX:field": "nolegcomplexeventcrediteventsources",
+          "FIX:tag": "41398"
         }
       },
       {
@@ -457,7 +457,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legcomplexeventcrediteventsourcegrp"
+          "FIX:group": "legcomplexeventcrediteventsourcegrp"
         }
       },
       {
@@ -467,8 +467,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventcreditevents",
-          "fix:tag": "41366"
+          "FIX:field": "nolegcomplexeventcreditevents",
+          "FIX:tag": "41366"
         }
       },
       {
@@ -478,7 +478,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legcomplexeventcrediteventgrp"
+          "FIX:group": "legcomplexeventcrediteventgrp"
         }
       },
       {
@@ -488,8 +488,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventfuturespricevaluation",
-          "fix:tag": "2608"
+          "FIX:field": "legcomplexeventfuturespricevaluation",
+          "FIX:tag": "2608"
         }
       },
       {
@@ -499,8 +499,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventoptionspricevaluation",
-          "fix:tag": "2609"
+          "FIX:field": "legcomplexeventoptionspricevaluation",
+          "FIX:tag": "2609"
         }
       },
       {
@@ -510,8 +510,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventpvfinalpriceelectionfallback",
-          "fix:tag": "2610"
+          "FIX:field": "legcomplexeventpvfinalpriceelectionfallback",
+          "FIX:tag": "2610"
         }
       },
       {
@@ -521,8 +521,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventxid",
-          "fix:tag": "2248"
+          "FIX:field": "legcomplexeventxid",
+          "FIX:tag": "2248"
         }
       },
       {
@@ -532,15 +532,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventxidref",
-          "fix:tag": "2249"
+          "FIX:field": "legcomplexeventxidref",
+          "FIX:tag": "2249"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEvent",
-    "fix:tag": "315022"
+    "FIX:tag": "315022",
+    "display": "LegComplexEvent"
   }
 }

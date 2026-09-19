@@ -10,7 +10,8 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, Env, FnArgs, Function, JsObjectValue, JsValue, Null, Object, Result,
     ToNapiValue, Unknown,
 };
-use yggdryl::{DataType, Field as CoreField, Scalar, TemporalFamily, TimeUnit, i256};
+use yggdryl::{DataType, Field as CoreField, Scalar, TimeUnit, UriType, i256};
+use yggdryl::{DateType, DecimalType, DurationType, IntervalType, TimeType};
 
 use crate::napi_error;
 use crate::types::version::JsVersion;
@@ -63,27 +64,24 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         D::Int8
         | D::Int16
         | D::Int32
-        | D::Date32
-        | D::Time32(_)
+        | D::Date(DateType::Date32)
+        | D::Time(TimeType::Time32(_))
         | D::UInt8
         | D::UInt16
         | D::UInt32
         | D::Float16
         | D::Float32
         | D::Float64
-        | D::Duration32(_)
-        | D::Interval(TimeUnit::YearMonth) => JsValueHint::Number,
+        | D::Duration(DurationType::Duration32(_))
+        | D::Interval(IntervalType::Interval(TimeUnit::YearMonth)) => JsValueHint::Number,
         // 64-bit and wider integers exceed the safe-integer range.
         D::Int64
         | D::UInt64
-        | D::DateTime64 { .. }
-        | D::Date64
-        | D::Time64(_)
-        | D::Duration64(_)
-        | D::Decimal32 { .. }
-        | D::Decimal64 { .. }
-        | D::Decimal128 { .. }
-        | D::Decimal256 { .. } => JsValueHint::BigInt,
+        | D::DateTime(_)
+        | D::Date(DateType::Date64)
+        | D::Time(TimeType::Time64(_))
+        | D::Duration(DurationType::Duration64(_))
+        | D::Decimal(_) => JsValueHint::BigInt,
         // A geospatial value is its Well-Known Binary payload, so the pair
         // projects exactly as the byte family does.
         D::Bytes(_) | D::Geometry(_) | D::Geography(_) => JsValueHint::Buffer,
@@ -102,27 +100,23 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::State
         | D::TimeInForce
         | D::Uuid
-        | D::Url
+        | D::Uri(_)
         | D::Timezone
         | D::MimeType
         | D::MediaType => JsValueHint::String,
         D::Version => JsValueHint::Version,
         // Day-time and month-day-nano intervals are integer tuples, and a
         // struct projects positionally, exactly like a list.
-        D::Interval(TimeUnit::DayTime | TimeUnit::MonthDayNano)
-        | D::List(_)
-        | D::ListView(_)
-        | D::FixedSizeList(..)
-        | D::LargeList(_)
-        | D::LargeListView(_)
-        | D::Struct(_) => JsValueHint::Array,
+        D::Interval(IntervalType::Interval(TimeUnit::DayTime | TimeUnit::MonthDayNano))
+        | D::Sequence(_)
+        | D::Structure(_) => JsValueHint::Array,
         // A union carries its selected type id, so `union_to_js` builds a
         // `{ typeId, value }` object rather than a positional sequence.
         D::Union(..) => JsValueHint::Object,
         D::Interval(_) => return Err(napi_error("invalid native interval layout")),
-        D::Map(_) => JsValueHint::Map,
+        D::Mapping(_) => JsValueHint::Map,
         // Wrappers project as whatever they encode.
-        D::Dictionary(dictionary) => dtype_js_hint(dictionary.value())?,
+        D::Enum(dictionary) => dtype_js_hint(dictionary.value())?,
         D::RunEndEncoded(encoded) => dtype_js_hint(encoded.values().dtype())?,
         other => {
             return Err(napi_error(format!(
@@ -162,15 +156,11 @@ fn dtype_to_js<'env>(env: &'env Env, dtype: &DataType, value: &Scalar) -> Result
     }
     match dtype {
         D::Null => Null.into_unknown(env),
-        D::List(item)
-        | D::ListView(item)
-        | D::FixedSizeList(item, _)
-        | D::LargeList(item)
-        | D::LargeListView(item) => sequence_to_js(env, item, value),
-        D::Struct(fields) => struct_to_js(env, fields, value),
+        D::Sequence(sequence) => sequence_to_js(env, sequence.item(), value),
+        D::Structure(structure) => struct_to_js(env, structure.as_fields(), value),
         D::Union(fields, _) => union_to_js(env, fields, value),
-        D::Dictionary(dictionary) => dtype_to_js(env, dictionary.value(), value),
-        D::Map(map) => map_to_js(env, map, value),
+        D::Enum(dictionary) => dtype_to_js(env, dictionary.value(), value),
+        D::Mapping(mapping) => map_to_js(env, mapping.parameters(), value),
         D::RunEndEncoded(encoded) => value_to_js(env, encoded.values(), value),
         // A non-null variant value crosses as the Parquet Variant binary
         // encoding, which the Iceberg v3 layer owns; refuse by name until
@@ -227,16 +217,18 @@ fn numeric_to_js<'env>(
             .as_f64()
             .ok_or_else(|| napi_error("invalid native floating record value"))?
             .into_unknown(env)?,
-        D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. } => {
-            BigInt::from(
-                value
-                    .decimal_unscaled_at(*scale)
-                    .or_else(|| value.as_i128())
-                    .ok_or_else(|| napi_error("invalid native decimal record value"))?,
-            )
-            .into_unknown(env)?
-        }
-        D::Decimal256 { scale, .. } => decimal256_to_js(env, value, *scale)?,
+        D::Decimal(
+            DecimalType::Decimal32 { scale, .. }
+            | DecimalType::Decimal64 { scale, .. }
+            | DecimalType::Decimal128 { scale, .. },
+        ) => BigInt::from(
+            value
+                .decimal_unscaled_at(*scale)
+                .or_else(|| value.as_i128())
+                .ok_or_else(|| napi_error("invalid native decimal record value"))?,
+        )
+        .into_unknown(env)?,
+        D::Decimal(DecimalType::Decimal256 { scale, .. }) => decimal256_to_js(env, value, *scale)?,
         _ => return Ok(None),
     };
     Ok(Some(output))
@@ -249,23 +241,22 @@ fn temporal_to_js<'env>(
 ) -> Result<Option<Unknown<'env>>> {
     use DataType as D;
 
+    // Every family's leaf states its own unit and width, so one arm per
+    // family projects what eight arms per width did.
     let output = match dtype {
-        D::Date32 => temporal_value_to_js(env, value, TemporalFamily::Date, TimeUnit::Day, 32)?,
-        D::Date64 => {
-            temporal_value_to_js(env, value, TemporalFamily::Date, TimeUnit::Millisecond, 64)?
+        D::Date(leaf) => {
+            temporal_value_to_js(env, value, leaf.family(), leaf.unit(), leaf.bit_width())?
         }
-        D::Time32(unit) => temporal_value_to_js(env, value, TemporalFamily::Time, *unit, 32)?,
-        D::Time64(unit) => temporal_value_to_js(env, value, TemporalFamily::Time, *unit, 64)?,
-        D::DateTime64 { unit, .. } => {
-            temporal_value_to_js(env, value, TemporalFamily::DateTime, *unit, 64)?
+        D::Time(leaf) => {
+            temporal_value_to_js(env, value, leaf.family(), leaf.unit(), leaf.bit_width())?
         }
-        D::Duration32(unit) => {
-            temporal_value_to_js(env, value, TemporalFamily::Duration, *unit, 32)?
+        D::DateTime(leaf) => {
+            temporal_value_to_js(env, value, leaf.family(), leaf.unit(), leaf.bit_width())?
         }
-        D::Duration64(unit) => {
-            temporal_value_to_js(env, value, TemporalFamily::Duration, *unit, 64)?
+        D::Duration(leaf) => {
+            temporal_value_to_js(env, value, leaf.family(), leaf.unit(), leaf.bit_width())?
         }
-        D::Interval(unit) => interval_to_js(env, value, *unit)?,
+        D::Interval(leaf) => interval_to_js(env, value, leaf.unit())?,
         _ => return Ok(None),
     };
     Ok(Some(output))
@@ -274,11 +265,11 @@ fn temporal_to_js<'env>(
 fn temporal_value_to_js<'env>(
     env: &'env Env,
     value: &Scalar,
-    family: TemporalFamily,
+    family: &'static str,
     unit: TimeUnit,
     bit_width: u8,
 ) -> Result<Unknown<'env>> {
-    let temporal = value.temporal_family();
+    let temporal = value.as_temporal().map(|held| held.family());
     if temporal.is_some_and(|held| held != family) {
         return Err(napi_error("invalid native temporal family"));
     }
@@ -335,9 +326,13 @@ fn text_or_binary_to_js<'env>(
         },
         // A location crosses as the canonical text it validated to, exactly as
         // the other parsed text families do.
-        D::Url => match value {
+        D::Uri(UriType::Url) => match value {
             Scalar::Url(value) => value.to_string().into_unknown(env)?,
             _ => return Err(napi_error("invalid native url record value")),
+        },
+        D::Uri(UriType::Urn) => match value {
+            Scalar::Urn(value) => value.to_string().into_unknown(env)?,
+            _ => return Err(napi_error("invalid native urn record value")),
         },
         // A zone, a MIME type and a media type each render their own
         // canonical spelling, so they cross as that text rather than as a
@@ -431,7 +426,7 @@ fn projected_value_to_js<'env>(
 /// Project one struct value as a positional JavaScript array.
 fn struct_to_js<'env>(
     env: &'env Env,
-    fields: &yggdryl::Fields,
+    fields: &[CoreField],
     value: &Scalar,
 ) -> Result<Unknown<'env>> {
     let values = value
@@ -551,7 +546,7 @@ pub(crate) fn arrow_scalar_to_ipc(
 
     let schema = Arc::new(Schema::new([field
         .clone()
-        .into_arrow_ref()
+        .into_arrow_field_ref()
         .map_err(napi_error)?]));
     let options = RecordBatchOptions::new().with_row_count(Some(1));
     let batch =

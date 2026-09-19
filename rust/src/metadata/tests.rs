@@ -31,6 +31,6 @@ fn removing_by_any_spelling_takes_the_one_folded_entry() {
         metadata.remove("HTTPS:CONTENT-TYPE").as_deref(),
         Some("text/plain; charset=utf-8")
     );
-    assert!(!metadata.contains_key("http:content-type"));
-    assert_eq!(metadata.remove("http:content-type"), None);
+    assert!(!metadata.contains_key("HTTP:content-type"));
+    assert_eq!(metadata.remove("HTTP:content-type"), None);
 }

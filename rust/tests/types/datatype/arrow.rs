@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
-use yggdryl::types::{BytesLayout, BytesParameters};
-use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
+use yggdryl::BytesType;
+use yggdryl::SequenceType;
+use yggdryl::{DataType, Field, StructureType, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &str) {
     match error {
@@ -18,9 +20,9 @@ fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &
 fn borrowed_and_consuming_arrow_datatype_paths_are_lossless() {
     let dtype =
         DataType::from_str("struct<id:bigint,values:map<string,array<decimal(38,18)>>>").unwrap();
-    let borrowed = dtype.clone().into_arrow().unwrap();
-    assert_eq!(DataType::from_arrow(&borrowed).unwrap(), dtype);
-    let owned = dtype.clone().into_arrow().unwrap();
+    let borrowed = dtype.clone().into_arrow_datatype().unwrap();
+    assert_eq!(DataType::from_arrow_datatype(&borrowed).unwrap(), dtype);
+    let owned = dtype.clone().into_arrow_datatype().unwrap();
     assert_eq!(DataType::try_from(owned).unwrap(), dtype);
 }
 
@@ -33,8 +35,8 @@ fn direct_arrow_values_round_trip_through_core() {
         ]
         .into(),
     );
-    let core = DataType::from_arrow(&arrow).unwrap();
-    assert_eq!(core.clone().into_arrow().unwrap(), arrow);
+    let core = DataType::from_arrow_datatype(&arrow).unwrap();
+    assert_eq!(core.clone().into_arrow_datatype().unwrap(), arrow);
     assert_eq!(core.get_field(0).unwrap().name(), "id");
     assert_eq!(
         core.get_field_by_path("name").unwrap().dtype(),
@@ -45,41 +47,41 @@ fn direct_arrow_values_round_trip_through_core() {
 #[test]
 fn every_temporal_and_interval_unit_round_trips_through_all_core_formats() {
     let values = [
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Second,
             timezone: Timezone::NAIVE,
-        },
-        DataType::DateTime64 {
+        }),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Millisecond,
             timezone: Timezone::UTC,
-        },
-        DataType::DateTime64 {
+        }),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::from_str("Europe/Paris").unwrap(),
-        },
-        DataType::DateTime64 {
+        }),
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
-        },
-        DataType::Time32(TimeUnit::Second),
-        DataType::Time32(TimeUnit::Millisecond),
-        DataType::Time64(TimeUnit::Microsecond),
-        DataType::Time64(TimeUnit::Nanosecond),
-        DataType::Duration64(TimeUnit::Second),
-        DataType::Duration64(TimeUnit::Millisecond),
-        DataType::Duration64(TimeUnit::Microsecond),
-        DataType::Duration64(TimeUnit::Nanosecond),
-        DataType::Interval(TimeUnit::YearMonth),
-        DataType::Interval(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::MonthDayNano),
+        }),
+        DataType::Time(TimeType::Time32(TimeUnit::Second)),
+        DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
+        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+        DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Millisecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
     ];
 
     for value in values {
         value.validate().unwrap();
-        let arrow = value.clone().into_arrow().unwrap();
-        assert_eq!(DataType::from_arrow(&arrow).unwrap(), value);
+        let arrow = value.clone().into_arrow_datatype().unwrap();
+        assert_eq!(DataType::from_arrow_datatype(&arrow).unwrap(), value);
         assert_eq!(DataType::try_from(arrow.clone()).unwrap(), value);
-        assert_eq!(value.clone().into_arrow().unwrap(), arrow);
+        assert_eq!(value.clone().into_arrow_datatype().unwrap(), arrow);
 
         let displayed = value.to_string();
         assert_eq!(DataType::from_str(&displayed).unwrap(), value);
@@ -98,14 +100,14 @@ fn duration32_projects_to_arrow_and_imports_at_arrows_native_width() {
         TimeUnit::Nanosecond,
     ] {
         let narrow = DataType::duration32(unit).unwrap();
-        let arrow = narrow.into_arrow().unwrap();
+        let arrow = narrow.into_arrow_datatype().unwrap();
         assert_eq!(
             arrow,
             ArrowDataType::Duration(unit.into_arrow_time().unwrap())
         );
         assert_eq!(
-            DataType::from_arrow(&arrow).unwrap(),
-            DataType::Duration64(unit)
+            DataType::from_arrow_datatype(&arrow).unwrap(),
+            DataType::duration64(unit).unwrap()
         );
     }
 }
@@ -116,10 +118,11 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
     let entries = || {
         Field::new(
             "entries",
-            DataType::from_fields([
+            StructureType::from_fields([
                 Field::new("key", DataType::utf8(), false),
                 Field::new("value", DataType::Int64, true),
             ])
+            .map(DataType::from)
             .unwrap(),
             false,
         )
@@ -138,20 +141,20 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
         DataType::Float16,
         DataType::Float32,
         DataType::Float64,
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::from_str("Europe/Paris").unwrap(),
-        },
-        DataType::Date32,
-        DataType::Date64,
-        DataType::Time32(TimeUnit::Millisecond),
-        DataType::Time64(TimeUnit::Microsecond),
-        DataType::Duration64(TimeUnit::Nanosecond),
-        DataType::Interval(TimeUnit::YearMonth),
-        DataType::Interval(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::MonthDayNano),
+        }),
+        DataType::date32(),
+        DataType::date64(),
+        DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
+        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
         DataType::binary(),
-        DataType::fixed_size_binary(16).unwrap(),
+        DataType::fixed_binary(16).unwrap(),
         DataType::large_binary(),
         DataType::binary_view(),
         DataType::utf8(),
@@ -162,7 +165,9 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
         DataType::fixed_size_list(item(), 4).unwrap(),
         DataType::large_list(item()),
         DataType::large_list_view(item()),
-        DataType::from_fields([Field::new("value", DataType::Int32, false)]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([Field::new("value", DataType::Int32, false)]).unwrap(),
+        ),
         DataType::union(
             [
                 (0, Field::new("number", DataType::Int64, false)),
@@ -185,12 +190,12 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
     ];
 
     for value in values {
-        let borrowed = value.clone().into_arrow().unwrap();
-        let ffi = value.clone().into_arrow_ffi().unwrap();
+        let borrowed = value.clone().into_arrow_datatype().unwrap();
+        let ffi = value.clone().into_arrow_datatype_ffi().unwrap();
         assert_eq!(ArrowDataType::try_from(&ffi).unwrap(), borrowed);
-        assert_eq!(DataType::from_arrow(&borrowed).unwrap(), value);
+        assert_eq!(DataType::from_arrow_datatype(&borrowed).unwrap(), value);
         assert_eq!(DataType::try_from(borrowed.clone()).unwrap(), value);
-        assert_eq!(value.clone().into_arrow().unwrap(), borrowed);
+        assert_eq!(value.clone().into_arrow_datatype().unwrap(), borrowed);
         assert_eq!(DataType::from_str(&value.to_string()).unwrap(), value);
         assert_eq!(
             DataType::from_json(&value.clone().into_json().unwrap()).unwrap(),
@@ -232,7 +237,9 @@ fn every_extension_datatype_survives_arrow_projection_in_every_shape() {
             dtype.clone(),
             DataType::dictionary(DataType::Int32, dtype.clone()).unwrap(),
             DataType::list(Field::new("item", dtype.clone(), true)),
-            DataType::from_fields([Field::new("child", dtype.clone(), true)]).unwrap(),
+            DataType::from(
+                StructureType::from_fields([Field::new("child", dtype.clone(), true)]).unwrap(),
+            ),
             DataType::run_end_encoded(
                 Field::new("run_ends", DataType::Int32, false),
                 Field::new("values", dtype.clone(), true),
@@ -240,25 +247,25 @@ fn every_extension_datatype_survives_arrow_projection_in_every_shape() {
             .unwrap(),
         ] {
             let field = Field::new("f", held.clone(), true);
-            let arrow = field.clone().into_arrow().unwrap();
-            assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{held}");
+            let arrow = field.clone().into_arrow_field().unwrap();
+            assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{held}");
 
             // The C schema is a field node too, so it carries the same
             // identity, dictionary encoding included.
-            let ffi = field.clone().into_arrow_ffi().unwrap();
+            let ffi = field.clone().into_arrow_field_ffi().unwrap();
             let imported = ArrowField::try_from(&ffi).unwrap();
             assert_eq!(
-                Field::from_arrow(&imported).unwrap().dtype(),
+                Field::from_arrow_field(&imported).unwrap().dtype(),
                 &held,
                 "{held}"
             );
 
             // A bare datatype has nowhere to carry it in Arrow, but its own C
             // schema does.
-            let ffi = held.clone().into_arrow_ffi().unwrap();
+            let ffi = held.clone().into_arrow_datatype_ffi().unwrap();
             let imported = ArrowField::try_from(&ffi).unwrap();
             assert_eq!(
-                Field::from_arrow(&imported).unwrap().dtype(),
+                Field::from_arrow_field(&imported).unwrap().dtype(),
                 &held,
                 "{held}"
             );
@@ -266,14 +273,18 @@ fn every_extension_datatype_survives_arrow_projection_in_every_shape() {
 
         // The documented exception: an Arrow datatype is storage, because it
         // has no metadata to name an extension with.
-        let storage = dtype.clone().into_arrow().unwrap();
-        assert_ne!(DataType::from_arrow(&storage).unwrap(), dtype, "{dtype}");
+        let storage = dtype.clone().into_arrow_datatype().unwrap();
+        assert_ne!(
+            DataType::from_arrow_datatype(&storage).unwrap(),
+            dtype,
+            "{dtype}"
+        );
     }
 }
 
 #[test]
 fn an_extension_schema_survives_an_ipc_round_trip() {
-    let root = DataType::from_fields(
+    let root = StructureType::from_fields(
         extension_datatypes()
             .into_iter()
             .enumerate()
@@ -289,6 +300,7 @@ fn an_extension_schema_survives_an_ipc_round_trip() {
             })
             .collect::<Vec<_>>(),
     )
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
 
@@ -314,22 +326,30 @@ fn an_extension_schema_survives_an_ipc_round_trip() {
 
 #[test]
 fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
-    assert!(DataType::Time32(TimeUnit::Nanosecond).validate().is_err());
-    assert!(DataType::Time64(TimeUnit::Second).validate().is_err());
+    assert!(
+        DataType::Time(TimeType::Time32(TimeUnit::Nanosecond))
+            .validate()
+            .is_err()
+    );
+    assert!(
+        DataType::Time(TimeType::Time64(TimeUnit::Second))
+            .validate()
+            .is_err()
+    );
     for invalid in [
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::YearMonth,
             timezone: Timezone::NAIVE,
-        },
-        DataType::Duration32(TimeUnit::DayTime),
-        DataType::Duration64(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::Second),
+        }),
+        DataType::Duration(DurationType::Duration32(TimeUnit::DayTime)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::DayTime)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::Second)),
     ] {
         assert!(invalid.validate().is_err());
-        assert!(invalid.clone().into_arrow().is_err());
+        assert!(invalid.clone().into_arrow_datatype().is_err());
         assert!(invalid.into_json().is_err());
     }
-    assert!(DataType::fixed_size_binary(0).is_err());
+    assert!(DataType::fixed_binary(0).is_err());
     assert!(DataType::fixed_size_list(Field::new("item", DataType::utf8(), true), -1).is_err());
     assert!(DataType::decimal128(0, 0).is_err());
     assert!(DataType::decimal128(5, 6).is_err());
@@ -338,10 +358,11 @@ fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
         DataType::map(
             Field::new(
                 "entries",
-                DataType::from_fields([
+                StructureType::from_fields([
                     Field::new("key", DataType::utf8(), true),
                     Field::new("value", DataType::Int64, true),
                 ])
+                .map(DataType::from)
                 .unwrap(),
                 false,
             ),
@@ -364,18 +385,18 @@ fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
         ]
         .into(),
     );
-    assert!(DataType::from_arrow(&duplicate_arrow).is_err());
+    assert!(DataType::from_arrow_datatype(&duplicate_arrow).is_err());
     assert!(DataType::try_from(duplicate_arrow).is_err());
 }
 
 #[test]
 fn invariant_errors_match_across_construction_validation_and_arrow_projection() {
-    let invalid_time = DataType::Time32(TimeUnit::Nanosecond);
+    let invalid_time = DataType::Time(TimeType::Time32(TimeUnit::Nanosecond));
     for error in [
         DataType::time32(TimeUnit::Nanosecond).unwrap_err(),
         invalid_time.validate().unwrap_err(),
-        invalid_time.clone().into_arrow().unwrap_err(),
-        invalid_time.into_arrow_ffi().unwrap_err(),
+        invalid_time.clone().into_arrow_datatype().unwrap_err(),
+        invalid_time.into_arrow_datatype_ffi().unwrap_err(),
     ] {
         assert_invalid(error, "Time32", "unit must be second or millisecond");
     }
@@ -384,30 +405,32 @@ fn invariant_errors_match_across_construction_validation_and_arrow_projection() 
     // fixed layout can also be built with no width at all, and every door
     // past construction refuses that one alike.
     assert_invalid(
-        DataType::fixed_size_binary(0).unwrap_err(),
+        DataType::fixed_binary(0).unwrap_err(),
         "bytes",
         "expected a width of at least one byte, got 0",
     );
-    let invalid_binary = DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary));
+    // A leaf carries its own count, so the state a caller can still build by
+    // hand is a count of nothing.
+    let invalid_binary = DataType::Bytes(BytesType::FixedBinary(0));
     for error in [
         invalid_binary.validate().unwrap_err(),
-        invalid_binary.clone().into_arrow().unwrap_err(),
-        invalid_binary.into_arrow_ffi().unwrap_err(),
+        invalid_binary.clone().into_arrow_datatype().unwrap_err(),
+        invalid_binary.into_arrow_datatype_ffi().unwrap_err(),
     ] {
         assert_invalid(
             error,
             "bytes",
-            "expected fixed_size_binary(width), got no width",
+            "expected a width of at least one byte, got 0",
         );
     }
 
     let item = Field::new("item", DataType::utf8(), true);
-    let invalid_list = DataType::FixedSizeList(Arc::new(item.clone()), -1);
+    let invalid_list = DataType::Sequence(SequenceType::FixedSizeList(Arc::new(item.clone()), -1));
     for error in [
         DataType::fixed_size_list(item, -1).unwrap_err(),
         invalid_list.validate().unwrap_err(),
-        invalid_list.clone().into_arrow().unwrap_err(),
-        invalid_list.into_arrow_ffi().unwrap_err(),
+        invalid_list.clone().into_arrow_datatype().unwrap_err(),
+        invalid_list.into_arrow_datatype_ffi().unwrap_err(),
     ] {
         assert_invalid(error, "FixedSizeList", "length must be non-negative: -1");
     }
@@ -439,7 +462,7 @@ fn every_extension_typed_datatype_keeps_its_identity_across_the_c_interface() {
         DataType::TimeInForce,
         DataType::Uuid,
         DataType::Version,
-        DataType::Url,
+        DataType::url(),
         DataType::Variant,
         DataType::from_str("string(windows-1252)").unwrap(),
         DataType::from_str("fixed_string(windows-1252,8)").unwrap(),
@@ -447,7 +470,7 @@ fn every_extension_typed_datatype_keeps_its_identity_across_the_c_interface() {
     ];
 
     for dtype in extension_typed {
-        let ffi = dtype.clone().into_arrow_ffi().unwrap();
+        let ffi = dtype.clone().into_arrow_datatype_ffi().unwrap();
         let arrow = ArrowField::try_from(&ffi)
             .unwrap_or_else(|error| panic!("{dtype} did not project a C schema: {error}"));
         let name = arrow
@@ -460,7 +483,7 @@ fn every_extension_typed_datatype_keeps_its_identity_across_the_c_interface() {
         );
         // And what came back reads as the datatype that was sent.
         assert_eq!(
-            Field::from_arrow(&arrow).unwrap().dtype(),
+            Field::from_arrow_field(&arrow).unwrap().dtype(),
             &dtype,
             "{dtype} did not read back as itself"
         );

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "partydetailsub"
+        "FIX:component": "partydetailsub"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "partydetailsub",
+    "FIX:counter": "1694",
+    "FIX:tag": "965583",
     "description": "Required when NoPartyDetailSubIDs > 0.",
-    "display": "PartyDetailSubGrp",
-    "fix:component": "partydetailsub",
-    "fix:counter": "1694",
-    "fix:tag": "965583"
+    "display": "PartyDetailSubGrp"
   }
 }

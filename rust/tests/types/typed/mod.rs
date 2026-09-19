@@ -3,9 +3,9 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use yggdryl::types::UncheckedFieldScalar;
-use yggdryl::types::temporal::Interval;
-use yggdryl::{DataType, Field, FieldScalar, Scalar, TimeUnit, Timezone};
+use yggdryl::interval::Interval;
+use yggdryl::{DataType, Field, FieldScalar, Scalar, StructureType, TimeUnit, Timezone};
+use yggdryl::{DateTimeType, UncheckedFieldScalar};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -35,10 +35,10 @@ fn nullability_is_the_fields_rule() {
         DataType::Int64,
         DataType::utf8(),
         DataType::binary(),
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
-        },
+        }),
     ] {
         let nullable = Field::new("value", dtype.clone(), true);
         let typed = FieldScalar::new(&nullable, Scalar::Null).unwrap();
@@ -88,7 +88,7 @@ fn text_is_read_under_the_field_through_the_one_text_door() {
         Some(&b"ABC"[..])
     );
 
-    let day = Field::new("day", DataType::Date32, true);
+    let day = Field::new("day", DataType::date32(), true);
     let typed = FieldScalar::parse_str(&day, "2024-01-01").unwrap();
     assert_eq!(typed.value(), &Scalar::date32(19_723));
     assert_eq!(typed.into_str(), "2024-01-01");
@@ -106,7 +106,7 @@ fn a_value_infers_the_shared_field_of_its_own_datatype() {
     ));
 
     let decimal = FieldScalar::infer(Scalar::d128(150, 2)).unwrap();
-    assert_eq!(decimal.dtype().id(), yggdryl::DataTypeId::Decimal128);
+    assert_eq!(decimal.field().id(), yggdryl::DataTypeId::Decimal128);
     assert_eq!(decimal.as_decimal().map(|(_, scale)| scale), Some(2));
 
     let nothing = FieldScalar::infer(Scalar::Null).unwrap();
@@ -127,10 +127,11 @@ fn a_value_infers_the_shared_field_of_its_own_datatype() {
 #[test]
 fn a_nested_value_is_validated_against_the_field_it_claims() {
     let row = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]);
-    let schema = DataType::from_fields([
+    let schema = StructureType::from_fields([
         Field::new("id", DataType::Int64, false),
         Field::new("symbol", DataType::utf8(), false),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     let typed = FieldScalar::new(&schema, row.clone()).unwrap();
@@ -325,9 +326,10 @@ fn an_unchecked_pairing_reads_through_the_field_without_committing() {
     ));
 }
 
-#[cfg(feature = "arrow")]
 mod arrow {
-    use yggdryl::types::{DataType, Field, FieldScalar, Scalar};
+
+    use yggdryl::StructureType;
+    use yggdryl::{DataType, Field, FieldScalar, Scalar};
 
     #[test]
     fn a_pairing_round_trips_through_its_one_row_arrow_array() {
@@ -385,10 +387,11 @@ mod arrow {
 
     #[test]
     fn a_struct_pairing_decodes_and_reprojects_its_canonical_row_spelling() {
-        let structure = DataType::from_fields([
+        let structure = StructureType::from_fields([
             Field::new("id", DataType::Int64, false),
             Field::new("name", DataType::utf8(), true),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
         let row = Scalar::from_sequence([Scalar::from(7_i64), Scalar::from("XNAS")]);

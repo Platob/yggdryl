@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventratesource",
-          "fix:tag": "41383"
+          "FIX:field": "legcomplexeventratesource",
+          "FIX:tag": "41383"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventratesourcetype",
-          "fix:tag": "41384"
+          "FIX:field": "legcomplexeventratesourcetype",
+          "FIX:tag": "41384"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventreferencepage",
-          "fix:tag": "41385"
+          "FIX:field": "legcomplexeventreferencepage",
+          "FIX:tag": "41385"
         }
       },
       {
@@ -43,15 +43,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexevenreferencepageheading",
-          "fix:tag": "41386"
+          "FIX:field": "legcomplexevenreferencepageheading",
+          "FIX:tag": "41386"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEventRateSource",
-    "fix:tag": "111506"
+    "FIX:tag": "111506",
+    "display": "LegComplexEventRateSource"
   }
 }

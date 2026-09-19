@@ -1,5 +1,8 @@
-use yggdryl::types::{BytesLayout, BytesParameters};
-use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode};
+use yggdryl::BytesType;
+use yggdryl::DecimalType;
+use yggdryl::SequenceType;
+use yggdryl::{DataType, Field, Scalar, StructureType, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 fn all_variants() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);
@@ -17,22 +20,22 @@ fn all_variants() -> Vec<DataType> {
         DataType::Float16,
         DataType::Float32,
         DataType::Float64,
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        },
-        DataType::Date32,
-        DataType::Date64,
-        DataType::Time32(TimeUnit::Millisecond),
-        DataType::Time64(TimeUnit::Nanosecond),
-        DataType::Duration32(TimeUnit::Second),
-        DataType::Duration64(TimeUnit::Second),
-        DataType::Interval(TimeUnit::YearMonth),
-        DataType::Interval(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::MonthDayNano),
+        }),
+        DataType::date32(),
+        DataType::date64(),
+        DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
+        DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
+        DataType::Duration(DurationType::Duration32(TimeUnit::Second)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
         DataType::binary(),
         DataType::from_str("binary(16)").unwrap(),
-        DataType::fixed_size_binary(3).unwrap(),
+        DataType::fixed_binary(3).unwrap(),
         DataType::large_binary(),
         DataType::binary_view(),
         DataType::utf8(),
@@ -52,10 +55,11 @@ fn all_variants() -> Vec<DataType> {
         DataType::fixed_size_list(item(), 2).unwrap(),
         DataType::large_list(item()),
         DataType::large_list_view(item()),
-        DataType::from_fields([
+        StructureType::from_fields([
             Field::new("required", DataType::Int32, false),
             Field::new("optional", DataType::utf8(), true),
         ])
+        .map(DataType::from)
         .unwrap(),
         DataType::union(
             [
@@ -100,7 +104,11 @@ fn every_datatype_variant_has_a_bounded_valid_default() {
             }),
             value
         );
-        let root = Field::new("Root", DataType::from_fields([field]).unwrap(), false);
+        let root = Field::new(
+            "Root",
+            DataType::from(StructureType::from_fields([field]).unwrap()),
+            false,
+        );
         let row = Scalar::from_sequence([value]);
         root.validate_value(&row)
             .unwrap_or_else(|error| panic!("{} default did not validate: {error}", dtype.kind()));
@@ -109,7 +117,7 @@ fn every_datatype_variant_has_a_bounded_valid_default() {
 
 #[test]
 fn default_matching_is_allocation_free_for_wide_values_and_exact_for_unions() {
-    let wide = DataType::fixed_size_binary(64 * 1024 * 1024).unwrap();
+    let wide = DataType::fixed_binary(64 * 1024 * 1024).unwrap();
     assert!(!wide.is_default_value(&Scalar::Null).unwrap());
     assert!(!wide.is_default_value(&Scalar::from(vec![0_u8; 3])).unwrap());
 
@@ -135,16 +143,17 @@ fn default_matching_is_allocation_free_for_wide_values_and_exact_for_unions() {
             .unwrap()
     );
 
-    let fatal = DataType::fixed_size_binary(64 * 1024 * 1024 + 1).unwrap();
+    let fatal = DataType::fixed_binary(64 * 1024 * 1024 + 1).unwrap();
     assert!(fatal.is_default_value(&Scalar::Null).is_err());
 }
 
 #[test]
 fn nested_defaults_respect_child_field_nullability() {
-    let structure = DataType::from_fields([
+    let structure = StructureType::from_fields([
         Field::new("required", DataType::Int32, false),
         Field::new("optional", DataType::utf8(), true),
     ])
+    .map(DataType::from)
     .unwrap();
     assert_eq!(
         structure.default_value().unwrap().as_sequence().unwrap(),
@@ -213,36 +222,36 @@ fn field_defaults_apply_physical_union_and_run_end_nulls() {
 #[test]
 fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
     for invalid in [
-        DataType::Time32(TimeUnit::Nanosecond),
-        DataType::Time64(TimeUnit::Millisecond),
-        DataType::Duration32(TimeUnit::DayTime),
-        DataType::Duration64(TimeUnit::DayTime),
-        DataType::Interval(TimeUnit::Second),
-        DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary)),
-        DataType::FixedSizeList(
+        DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)),
+        DataType::Time(TimeType::Time64(TimeUnit::Millisecond)),
+        DataType::Duration(DurationType::Duration32(TimeUnit::DayTime)),
+        DataType::Duration(DurationType::Duration64(TimeUnit::DayTime)),
+        DataType::Interval(IntervalType::Interval(TimeUnit::Second)),
+        DataType::Bytes(BytesType::FixedBinary(0)),
+        DataType::Sequence(SequenceType::FixedSizeList(
             std::sync::Arc::new(Field::new("item", DataType::Int32, false)),
             -1,
-        ),
-        DataType::Decimal32 {
+        )),
+        DataType::Decimal(DecimalType::Decimal32 {
             precision: 0,
             scale: 0,
-        },
-        DataType::Decimal64 {
+        }),
+        DataType::Decimal(DecimalType::Decimal64 {
             precision: 19,
             scale: 0,
-        },
-        DataType::Decimal128 {
+        }),
+        DataType::Decimal(DecimalType::Decimal128 {
             precision: 39,
             scale: 0,
-        },
-        DataType::Decimal256 {
+        }),
+        DataType::Decimal(DecimalType::Decimal256 {
             precision: 77,
             scale: 0,
-        },
+        }),
     ] {
         assert!(invalid.default_value().is_err(), "{invalid:?}");
     }
-    let too_wide = DataType::fixed_size_binary(64 * 1024 * 1024 + 1).unwrap();
+    let too_wide = DataType::fixed_binary(64 * 1024 * 1024 + 1).unwrap();
     let error = too_wide.default_value().unwrap_err().to_string();
     assert!(error.contains("byte safety limit"), "{error}");
 
@@ -257,7 +266,7 @@ fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
 
     let large_child = Field::new(
         "item",
-        DataType::fixed_size_binary(40 * 1024 * 1024).unwrap(),
+        DataType::fixed_binary(40 * 1024 * 1024).unwrap(),
         false,
     );
     let multiplicative = DataType::fixed_size_list(large_child, 2).unwrap();
@@ -267,7 +276,7 @@ fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
 
 #[test]
 fn fatal_default_limits_never_fall_back_to_nullable_nulls() {
-    let oversized = DataType::fixed_size_binary(64 * 1024 * 1024 + 1).unwrap();
+    let oversized = DataType::fixed_binary(64 * 1024 * 1024 + 1).unwrap();
     let union = DataType::union(
         [(1, Field::new("oversized", oversized.clone(), true))],
         UnionMode::Dense,
@@ -305,11 +314,13 @@ fn null_only_nested_layouts_obey_physical_field_constraints() {
     let positive = DataType::fixed_size_list(Field::new("item", DataType::Null, false), 1).unwrap();
     assert!(positive.default_value().is_err());
 
-    let required_null =
-        DataType::from_fields([Field::new("nothing", DataType::Null, false)]).unwrap();
+    let required_null = DataType::from(
+        StructureType::from_fields([Field::new("nothing", DataType::Null, false)]).unwrap(),
+    );
     assert!(required_null.default_value().is_err());
-    let optional_null =
-        DataType::from_fields([Field::new("nothing", DataType::Null, true)]).unwrap();
+    let optional_null = DataType::from(
+        StructureType::from_fields([Field::new("nothing", DataType::Null, true)]).unwrap(),
+    );
     assert_eq!(
         optional_null
             .default_value()

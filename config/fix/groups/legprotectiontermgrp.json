@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legprotectionterm"
+        "FIX:component": "legprotectionterm"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legprotectionterm",
+    "FIX:counter": "41616",
+    "FIX:tag": "477238",
     "description": "Required if NoLegProtectionTerms(41616) > 0.",
-    "display": "LegProtectionTermGrp",
-    "fix:component": "legprotectionterm",
-    "fix:counter": "41616",
-    "fix:tag": "477238"
+    "display": "LegProtectionTermGrp"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "settlparty"
+        "FIX:component": "settlparty"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "settlparty",
+    "FIX:counter": "781",
+    "FIX:tag": "204697",
     "description": "Repeating group below should contain unique combinations of SettlPartyID, SettlPartyIDSource, and SettlPartyRole",
-    "display": "SettlParties",
-    "fix:component": "settlparty",
-    "fix:counter": "781",
-    "fix:tag": "204697"
+    "display": "SettlParties"
   }
 }

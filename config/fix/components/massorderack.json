@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "massorderrequestid",
-          "fix:tag": "2423"
+          "FIX:field": "massorderrequestid",
+          "FIX:tag": "2423"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "massorderreportid",
-          "fix:tag": "2424"
+          "FIX:field": "massorderreportid",
+          "FIX:tag": "2424"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "massorderrequeststatus",
-          "fix:tag": "2425"
+          "FIX:field": "massorderrequeststatus",
+          "FIX:tag": "2425"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "massorderrequestresult",
-          "fix:tag": "2426"
+          "FIX:field": "massorderrequestresult",
+          "FIX:tag": "2426"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderresponselevel",
-          "fix:tag": "2427"
+          "FIX:field": "orderresponselevel",
+          "FIX:tag": "2427"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext",
-          "fix:tag": "1328"
+          "FIX:field": "rejecttext",
+          "FIX:tag": "1328"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen",
-          "fix:tag": "1664"
+          "FIX:field": "encodedrejecttextlen",
+          "FIX:tag": "1664"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext",
-          "fix:tag": "1665"
+          "FIX:field": "encodedrejecttext",
+          "FIX:tag": "1665"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid",
-          "fix:tag": "1301"
+          "FIX:field": "marketid",
+          "FIX:tag": "1301"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid",
-          "fix:tag": "1300"
+          "FIX:field": "marketsegmentid",
+          "FIX:tag": "1300"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -151,7 +151,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -161,8 +161,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "tradingcapacity",
-          "fix:tag": "1815"
+          "FIX:field": "tradingcapacity",
+          "FIX:tag": "1815"
         }
       },
       {
@@ -172,8 +172,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingaccounttype",
-          "fix:tag": "1816"
+          "FIX:field": "clearingaccounttype",
+          "FIX:tag": "1816"
         }
       },
       {
@@ -183,8 +183,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "account",
-          "fix:tag": "1"
+          "FIX:field": "account",
+          "FIX:tag": "1"
         }
       },
       {
@@ -194,8 +194,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "acctidsource",
-          "fix:tag": "660"
+          "FIX:field": "acctidsource",
+          "FIX:tag": "660"
         }
       },
       {
@@ -205,8 +205,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "accounttype",
-          "fix:tag": "581"
+          "FIX:field": "accounttype",
+          "FIX:tag": "581"
         }
       },
       {
@@ -216,8 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordercapacity",
-          "fix:tag": "528"
+          "FIX:field": "ordercapacity",
+          "FIX:tag": "528"
         }
       },
       {
@@ -227,8 +227,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderrestrictions",
-          "fix:tag": "529"
+          "FIX:field": "orderrestrictions",
+          "FIX:tag": "529"
         }
       },
       {
@@ -238,8 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "custordercapacity",
-          "fix:tag": "582"
+          "FIX:field": "custordercapacity",
+          "FIX:tag": "582"
         }
       },
       {
@@ -249,8 +249,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "manualorderindicator",
-          "fix:tag": "1028"
+          "FIX:field": "manualorderindicator",
+          "FIX:tag": "1028"
         }
       },
       {
@@ -260,8 +260,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "custorderhandlinginst",
-          "fix:tag": "1031"
+          "FIX:field": "custorderhandlinginst",
+          "FIX:tag": "1031"
         }
       },
       {
@@ -271,8 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -282,8 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -293,8 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -304,8 +304,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -315,8 +315,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "copymsgindicator",
-          "fix:tag": "797"
+          "FIX:field": "copymsgindicator",
+          "FIX:tag": "797"
         }
       },
       {
@@ -326,8 +326,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnoorderentries",
-          "fix:tag": "2432"
+          "FIX:field": "totnoorderentries",
+          "FIX:tag": "2432"
         }
       },
       {
@@ -337,8 +337,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment",
-          "fix:tag": "893"
+          "FIX:field": "lastfragment",
+          "FIX:tag": "893"
         }
       },
       {
@@ -348,7 +348,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "throttleresponse"
+          "FIX:component": "throttleresponse"
         }
       },
       {
@@ -358,8 +358,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noorderentries",
-          "fix:tag": "2428"
+          "FIX:field": "noorderentries",
+          "FIX:tag": "2428"
         }
       },
       {
@@ -369,7 +369,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "orderentryackgrp"
+          "FIX:group": "orderentryackgrp"
         }
       },
       {
@@ -379,16 +379,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "DK",
+    "FIX:tag": "288135",
     "description": "MsgType = DK",
-    "display": "MassOrderAck",
-    "fix:msgtype": "DK",
-    "fix:tag": "288135"
+    "display": "MassOrderAck"
   }
 }

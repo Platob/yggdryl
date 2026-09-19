@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "throttlemsgtypecomponent"
+        "FIX:component": "throttlemsgtypecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "throttlemsgtypecomponent",
+    "FIX:counter": "1618",
+    "FIX:tag": "881289",
     "description": "Required when NoThrottleMsgType > 0.",
-    "display": "ThrottleMsgTypeGrp",
-    "fix:component": "throttlemsgtypecomponent",
-    "fix:counter": "1618",
-    "fix:tag": "881289"
+    "display": "ThrottleMsgTypeGrp"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingoptionexercisedatecomponent"
+        "FIX:component": "underlyingoptionexercisedatecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingoptionexercisedatecomponent",
+    "FIX:counter": "41841",
+    "FIX:tag": "723090",
     "description": "Required if NoUnderlyingOptionExerciseDates(41841) > 0.",
-    "display": "UnderlyingOptionExerciseDateGrp",
-    "fix:component": "underlyingoptionexercisedatecomponent",
-    "fix:counter": "41841",
-    "fix:tag": "723090"
+    "display": "UnderlyingOptionExerciseDateGrp"
   }
 }

@@ -1,14 +1,14 @@
 # Hashing
 
-`yggdryl::hashing` is the one digest owner: `hashing::xxhash` digests bytes, values, handles, and Arrow rows with XXH32, XXH64, XXH3-64, and XXH3-128, and `hashing::txhash` couples a UTC instant with one of those digests into one sortable value.
+`yggdryl::xxhash` digests bytes, values, handles, and Arrow rows with XXH32, XXH64, XXH3-64, and XXH3-128, and `yggdryl::txhash` couples a UTC instant with one of those digests into one sortable value; `hashing/` holds only the stable-hash adapters the two share.
 
 ## Contract
 
 | Key | Value |
 | --- | --- |
-| Owner | `hashing` holds the two implementation modules and no second dispatcher; `Digest`, `DigestAlgorithm`, and `Digester` stay root vocabulary. Python `yggdryl.hashing.xxhash` / `yggdryl.hashing.txhash` and JavaScript `hashing.xxhash` / `hashing.txhash` are the host paths; no other module path is kept (JavaScript also exports the classes they carry at top level: `Digest`, `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128`, `TxHash`, `TxHasher`). |
+| Owner | `xxhash/` and `txhash/` are the two implementation folders at the crate root, `hashing/` the private adapters they share, and there is no second dispatcher; `Digest`, `DigestAlgorithm`, and `Digester` stay root vocabulary. Python `yggdryl.hashing.xxhash` / `yggdryl.hashing.txhash` and JavaScript `hashing.xxhash` / `hashing.txhash` are the host paths; no other module path is kept (JavaScript also exports the classes they carry at top level: `Digest`, `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128`, `TxHash`, `TxHasher`). |
 | `xxhash` owns | `xxh32`, `xxh64`, `xxh3`, `xxh128` and their `_with_seed` forms (the XXH3 pair also `_with_secret` and `_with_seed_and_secret`), `digest`, `SECRET_MINIMUM_LENGTH`, the `Xxh32`, `Xxh64`, `Xxh3`, `Xxh128` states, `reader` / `writer`, `Hashed<H>`, `arrow::row_digests` / `column_digests`, and the value methods `as_value_bytes`, `write_bytes`, `digest`, `stable_hash` |
-| `txhash` owns | `TxHash`, `TxHasher`, `txh32`, `txh64`, `txh3`, `txh128`, `digest`, `restate_unix`, `unix_from_scalar`, `unix_now`, `width`, `dtype`, `Scalar::txhash`, `arrow::unix_array` / `row_txhashes` / `column_txhashes` / `compose` / `decompose`; `TxHasher::row_txhashes` / `column_txhashes` / `apply_arrow_batch`, the same columns and holder fill under the hasher's algorithm, seed and secret, and for the two columns its unit; and `digest:time` / `digest:unit` on a holder |
+| `txhash` owns | `TxHash`, `TxHasher`, `txh32`, `txh64`, `txh3`, `txh128`, `digest`, `restate_unix`, `unix_from_scalar`, `unix_now`, `width`, `dtype`, `Scalar::txhash`, `arrow::unix_array` / `row_txhashes` / `column_txhashes` / `compose` / `decompose`; `TxHasher::row_txhashes` / `column_txhashes` / `apply_arrow_batch`, the same columns and holder fill under the hasher's algorithm, seed and secret, and for the two columns its unit; and `DIGEST:time` / `DIGEST:unit` on a holder |
 | Algorithms | `DigestAlgorithm::ALL`: `xxh32`, `xxh64`, `xxh3-64`, `xxh3-128`; `width()` 4, 8, 8, 16 bytes; XXH3-64 is the default and what every `stable_hash` answers |
 | Arguments | Input first; the seed or the instant second, everywhere |
 | `Digest` | The algorithm carried with the number; `DigestAlgorithm` dispatches at runtime, as [`Codec`](coding/index.md) does for [gzip](coding/gzip.md). Spelled `<algorithm>:<hex>`, `from_str` the exact inverse; `into_bytes` is the canonical big-endian form, the reference's `XXH*_canonicalFromHash`; two algorithms are never equal |
@@ -19,7 +19,7 @@
 | Value feed | `write_bytes` is a total prefix-free feed: one [`DataTypeId`](types/datatype.md) tag byte, then the family's canonical form, integers little-endian ([Encoding](#encoding)); `as_value_bytes` is the payload alone - no tag, no length - borrowed, never allocating, `None` for `Null`, `Sequence`, `Mapping`, `Record` |
 | `stable_hash` | XXH3-64 over the feed; [`Field`](types/field.md), [`Uri`](uri/index.md), `DataType`, `MimeType`, and Iceberg values hash their canonical rendering the same way |
 | Row digests | `row_digests` hashes the selected values as one `Scalar::Sequence` through `write_bytes`, on every datatype family except `variant`: nulls, nesting, dictionaries, unions, run-end encodings, geospatial. The column is `UInt32` for XXH32, `UInt64` for XXH64 and XXH3-64, `FixedSizeBinary(16)` big-endian for XXH3-128 |
-| Holders | A holder's `digest:sources` selects relative to its own Struct, `["*"]` and absence both meaning every field except a `digest:role=holder`; `apply_arrow_batch` fills every holder under a non-null Struct root, and a state's running digest is untouched ([Digest holders](#digest-holders-and-row-digests)) |
+| Holders | A holder's `DIGEST:sources` selects relative to its own Struct, `["*"]` and absence both meaning every field except a `DIGEST:role=holder`; `apply_arrow_batch` fills every holder under a non-null Struct root, and a state's running digest is untouched ([Digest holders](#digest-holders-and-row-digests)) |
 | `TxHash` | `unit`, `unix`, `digest`; the digest is exactly what `xxhash` answers for the same bytes, so `txhash` defines no second hash. Spelled `<unix>@<unit>:<algorithm>:<hex>`, `from_str` the exact inverse; two units or two algorithms are never equal |
 | TxHash bytes | The instant as a big-endian `i64`, then the digest's canonical bytes: 12, 16, or 24 bytes for XXH32, the two 64-bit algorithms, XXH3-128. Stored as `fixed_size_binary[12|16|24]`; sixteen bytes imply XXH3-64, the project default |
 | Order | A value compares unit, then signed count, then digest, and never normalizes instants across units. Its bytes sort by time only within one unit, one algorithm, and one sign range: every negative count sorts after every nonnegative one ([Order](#order-and-uuidv7-projection)) |
@@ -27,9 +27,9 @@
 | UUIDv7 | `TxHash::into_uuid` is RFC 9562 UUIDv7, what `Uuid::from_v7` packs: the instant restated to signed nanoseconds and floored to the microsecond - the Unix millisecond in the leading 48 bits, the twelve-bit sub-millisecond fraction behind the version - then the digest's low 62 bits. It needs a 64-bit digest and an instant from the epoch to the 48-bit millisecond count, encodes neither unit nor algorithm, allocates nothing on success, and orders by instant to the microsecond; a lossy fingerprint, not an inverse, and the raw bytes and value order do not change |
 | Ordered bytes | `TxHash::into_ordered_bytes` is the same ordering with nothing spent on a layout: the instant restated to signed nanoseconds with its sign bit flipped in bytes 0..8, then all 64 digest bits in bytes 8..16. It needs a 64-bit digest, encodes neither unit nor algorithm, and is what a `fixed[16]` column holds where `into_uuid` would have given an identifier. Rust-only |
 | Coupled columns | `txhash::arrow` answers `fixed_size_binary(12|16|24)`, one coupled value per row, whose digest half is exactly `row_digests` or `column_digests` of the same rows under the same algorithm; the instant column is read once as `int64` counts at the declared unit, nulls kept; `compose` and `decompose` are inverses ([Coupled columns](#coupled-columns)) |
-| Coupled holders | `digest:time` names the field whose instant a holder stores in front of its digest; `digest:unit` is its resolution, microseconds when absent, and only beside `digest:time` ([Coupled holders](#coupled-holders)) |
+| Coupled holders | `DIGEST:time` names the field whose instant a holder stores in front of its digest; `DIGEST:unit` is its resolution, microseconds when absent, and only beside `DIGEST:time` ([Coupled holders](#coupled-holders)) |
 | FIX identities | a message's `currhashcode` is the XXH3-64 of what the message *states* - the event's facts, the text, the metadata, the header fields it stated, then the entry tree, and never the columns a row happened to lay them out in, so a message read back out of a row is the same message - and its `crosshashcode` the XXH3-64 of the code its chain shares; `curruuid` is the UUIDv7 [`TxHash`](#txhash-values) couples its instant and `currhashcode` into, and `crossuuid` the UUIDv8 of `crosshashcode`. Never a second engine, and the recipes live with [FIX messages](fix/message.md#typed-tags) and the [graph](graph.md) traits that derive them |
-| Feature flag | `xxhash::arrow` and `txhash::arrow` need the default `arrow` feature |
+| Feature flag | none: `xxhash::arrow` and `txhash::arrow` are always compiled |
 | Not | A cryptographic hash, an adversarial integrity check, or a uniqueness guarantee; not Iceberg `bucket[N]`, which is murmur3 x86_32 ([Iceberg](media/iceberg/index.md) never calls this module) |
 | Bindings | Bytes: Python `bytes`, `bytearray`, `memoryview`, any buffer, `str` as UTF-8; JavaScript `Buffer`, `Uint8Array`, `ArrayBuffer`, string as UTF-8. Every `unix` argument is an `int` / `bigint`, a `datetime` / `Date`, timestamp text, or a `Scalar`. Handle digests, `Scalar.digest`, `stable_hash`, a state's `write_scalar` and `apply_arrow_batch`, `TxHasher`, and `TxHash.into_uuid` (a `uuid` `Scalar`) are bound everywhere; `Digester`, `as_value_bytes`, the digest arrays, and the coupled columns are Rust and Python only; `DigestReader`, `DigestWriter`, and `Hashed<H>` are Rust only |
 
@@ -40,7 +40,7 @@ The four one-shot functions answer their native widths with nothing wrapped arou
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::xxhash;
+    use yggdryl::xxhash;
     use yggdryl::{Digest, DigestAlgorithm};
 
     assert_eq!(xxhash::xxh32(b"abc"), 0x32d1_53ff);
@@ -129,7 +129,7 @@ Feed bytes with `write_bytes` and read the digest at any commit boundary. `Diges
 
     ```rust
     use yggdryl::DigestAlgorithm;
-    use yggdryl::hashing::xxhash::{Xxh3, xxh3};
+    use yggdryl::xxhash::{Xxh3, xxh3};
 
     let payload = b"AAPL,187.23";
     for split in [1, 4, payload.len()] {
@@ -208,7 +208,7 @@ The examples hash 241 bytes, past the cutoff where a custom secret is consulted.
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::xxhash::{self, SECRET_MINIMUM_LENGTH, Xxh3};
+    use yggdryl::xxhash::{self, SECRET_MINIMUM_LENGTH, Xxh3};
     use yggdryl::{DigestAlgorithm, Error};
 
     assert!(!DigestAlgorithm::Xxh64.is_secretable());
@@ -279,7 +279,7 @@ Digest an `IOBase` handle's bytes without reading them whole.
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::xxhash;
+    use yggdryl::xxhash;
     use yggdryl::holder::Buffer;
     use yggdryl::{DigestAlgorithm, IOBase};
 
@@ -357,8 +357,8 @@ Rust only: `DigestReader`, `DigestWriter`, and `Hashed<H>` build on `Read`, `Wri
 ```rust
 use std::io::{Read, Write};
 
-use yggdryl::coding::gzip::Gzip;
-use yggdryl::hashing::xxhash::{self, Hashed};
+use yggdryl::gzip::Gzip;
+use yggdryl::xxhash::{self, Hashed};
 use yggdryl::holder::Buffer;
 use yggdryl::{DigestAlgorithm, IOBase};
 
@@ -414,7 +414,7 @@ assert_eq!(
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::xxhash::{self, Xxh3};
+    use yggdryl::xxhash::{self, Xxh3};
     use yggdryl::{DigestAlgorithm, Scalar};
 
     let symbol = Scalar::from("AAPL");
@@ -444,7 +444,7 @@ assert_eq!(
 === "Python"
 
     ```python
-    from yggdryl import Scalar
+    from yggdryl import DataType, Scalar
     from yggdryl.hashing import xxhash
 
     symbol = Scalar.from_("AAPL")
@@ -454,7 +454,7 @@ assert_eq!(
 
     # Equal values answer one digest, across widths.
     assert Scalar.decimal(100, 2).digest() == Scalar.decimal(1, 0).digest()
-    assert Scalar.float(1.5, 32).digest() == Scalar.float(1.5, 64).digest()
+    assert DataType("float32").scalar(1.5).digest() == DataType("float64").scalar(1.5).digest()
     # Values that differ stay apart, across variant boundaries.
     assert Scalar.from_("1").digest() != Scalar.from_(b"1").digest()
     assert Scalar.from_(None).digest() != Scalar.from_("").digest()
@@ -490,7 +490,7 @@ assert_eq!(
 
 The tag byte is a wire contract: inserting a `DataTypeId` variant anywhere but the end changes stored digests. A digest identifies the value, not its storage width.
 
-The tag is the value's own [`DataTypeId`](types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](types/text.md) feeds `string` (27) whatever its layout, charset or bound, and a geography feeds `geometry`. A [code](types/codes.md) feeds its own id - `country`, `currency`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `side`, `state`, `timeinforce` - so a `currency` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
+The tag is the value's own [`DataTypeId`](types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](types/text.md) feeds `utf8` (27) whatever its leaf, and a geography feeds `geometry`. A [code](types/codes.md) feeds its own id - `country`, `currency`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `side`, `state`, `timeinforce` - so a `currency` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
 
 This is where the one string family changed stored digests: a value read from an `ascii` or `ascii(n)` column used to feed the retired `ascii` tag (30) and now feeds `string` (27), the tag UTF-8 text always fed, and every code value used to feed that same `ascii` tag and now feeds its own id. Digests of UTF-8 text and of bytes did not change.
 
@@ -501,11 +501,11 @@ This is where the one string family changed stored digests: a value read from an
 | `I8`..`U128` | `uint128`, or `int128` when negative | magnitude as `u128` little-endian |
 | `F16`/`F32`/`F64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
 | `D32`..`D256` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte |
-| `String` | `string` | length `u64` little-endian, then the characters as UTF-8; the layout, charset and fixed width never feed |
-| `Code` | the code's own id | length `u64` little-endian, then the trimmed text |
+| `String` | `utf8` | length `u64` little-endian, then the characters as UTF-8; the leaf - charset, shape and fixed width - never feeds |
+| a registered code | the code's own id | length `u64` little-endian, then the trimmed text |
 | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
 | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
-| `Enum` | `dictionary` | length-prefixed enum identity, then the member ordinal |
+| `Vocabulary` | `dictionary` | length-prefixed vocabulary identity, then the member ordinal |
 | `Bytes` | `binary` | length `u64` little-endian, then the bytes |
 | `Geospatial` | `geometry` | length `u64` little-endian, then the WKB |
 | `Date32`/`Date64` | `date64` | unit class byte, normalized count as `i128` little-endian, length-prefixed timezone |
@@ -519,7 +519,7 @@ This is where the one string family changed stored digests: a value read from an
 
 ## Digest holders and row digests
 
-A digest holder is a field carrying `digest:role=holder`; a state's `apply_arrow_batch` fills every holder the root declares with its own seed, secret, and a `force` switch, while `root.as_digest().apply_arrow_batch(&batch)` is the seedless form - the same [`stable_hash`](types/scalar.md) every other reader computes - that [`Field::apply_arrow_batch`](types/field.md#applying-a-schemas-declarations) runs beside the partition step. `row_digests` reads a batch rather than a holder: a row is the ordered `Scalar::Sequence` of its non-holder columns in schema order, element count included, and the answer never builds one.
+A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow_batch` fills every holder the root declares with its own seed, secret, and a `force` switch, while `root.as_digest().apply_arrow_batch(&batch)` is the seedless form - the same [`stable_hash`](types/scalar.md) every other reader computes - that [`Field::apply_arrow_batch`](types/field.md#applying-a-schemas-declarations) runs beside the partition step. `row_digests` reads a batch rather than a holder: a row is the ordered `Scalar::Sequence` of its non-holder columns in schema order, element count included, and the answer never builds one.
 
 === "Rust"
 
@@ -530,21 +530,21 @@ A digest holder is a field carrying `digest:role=holder`; a state's `apply_arrow
     use arrow_array::types::UInt64Type;
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use arrow_schema::Schema;
-    use yggdryl::hashing::xxhash::Xxh3;
-    use yggdryl::hashing::xxhash::arrow::row_digests;
-    use yggdryl::{DataType, DigestAlgorithm, Field, Scalar};
+    use yggdryl::xxhash::Xxh3;
+    use yggdryl::xxhash::arrow::row_digests;
+    use yggdryl::{DataType, DigestAlgorithm, Field, Scalar, StructureType};
 
     let symbol = Field::new("symbol", DataType::utf8(), false);
     let quantity = Field::new("quantity", DataType::Int64, false);
     let mut holder = Field::new("row_digest", DataType::UInt64, false);
     holder.as_digest_mut().set_holder()?;
     holder.as_digest_mut().set_sources(["symbol"])?;
-    let root = DataType::from_fields([symbol.clone(), quantity.clone(), holder])?
+    let root = DataType::from(StructureType::from_fields([symbol.clone(), quantity.clone(), holder])?)
         .required_field("row");
 
     // The batch has no holder column; the fill adds it where the root declares it.
     let batch = RecordBatch::try_new(
-        Arc::new(Schema::new(vec![symbol.into_arrow()?, quantity.into_arrow()?])),
+        Arc::new(Schema::new(vec![symbol.into_arrow_field()?, quantity.into_arrow_field()?])),
         vec![
             Arc::new(StringArray::from(vec!["AAPL", "AAPL"])),
             Arc::new(Int64Array::from(vec![100, 999])),
@@ -557,7 +557,7 @@ A digest holder is a field carrying `digest:role=holder`; a state's `apply_arrow
     let filled = state.apply_arrow_batch(&root, batch, false)?;
     assert_eq!(state.as_u64(), running, "filling does not consume the state");
 
-    // `digest:sources` narrows the fill to `symbol`, under the state's seed.
+    // `DIGEST:sources` narrows the fill to `symbol`, under the state's seed.
     let mut expected = Xxh3::with_seed(7);
     expected.write_scalar(&Scalar::from_sequence([Scalar::from("AAPL")]));
     let cells = filled.column(2).as_primitive::<UInt64Type>();
@@ -618,8 +618,8 @@ A digest holder is a field carrying `digest:role=holder`; a state's `apply_arrow
     const { xxhash } = hashing
 
     const holder = new Field('row_digest', 'uint64', false, {
-      'digest:role': 'holder',
-      'digest:sources': '["symbol"]',
+      'DIGEST:role': 'holder',
+      'DIGEST:sources': '["symbol"]',
     })
     const root = new Field(
       'row',
@@ -647,13 +647,13 @@ Each visible row is framed as an ordered `Scalar::Sequence` and streamed through
 
 | Holder setting | Effect |
 | --- | --- |
-| `digest:sources` | canonical JSON array of unique non-empty paths, for example `["id","line.price"]`; its order is the feed order, and it states nothing on the fields it names |
+| `DIGEST:sources` | canonical JSON array of unique non-empty paths, for example `["id","line.price"]`; its order is the feed order, and it states nothing on the fields it names |
 | Source syntax | relative to the containing Struct: an exact whole field name wins, then dots descend through Struct fields only |
-| `["*"]` or no `digest:sources` | every field of the containing Struct except a holder; `[]` hashes an empty sequence, and `"*"` beside a path is refused |
+| `["*"]` or no `DIGEST:sources` | every field of the containing Struct except a holder; `[]` hashes an empty sequence, and `"*"` beside a path is refused |
 | Selected nested Struct with one direct holder | feeds that holder's digest payload instead of hashing the Struct again, which is the bypass a nested holder earns |
-| `digest:algorithm` | `xxh32`, `xxh64`, `xxh3-64`, or `xxh3-128`; it must fit the holder's storage mapping |
-| `digest:time`, `digest:unit` | the holder stores an instant in front of its digest and is a `fixed_size_binary` of the coupled width; [Coupled holders](#coupled-holders) owns the layout |
-| No `digest:algorithm` | a receiver whose output width fits the holder, with its seed and secret |
+| `DIGEST:algorithm` | `xxh32`, `xxh64`, `xxh3-64`, or `xxh3-128`; it must fit the holder's storage mapping |
+| `DIGEST:time`, `DIGEST:unit` | the holder stores an instant in front of its digest and is a `fixed_size_binary` of the coupled width; [Coupled holders](#coupled-holders) owns the layout |
+| No `DIGEST:algorithm` | a receiver whose output width fits the holder, with its seed and secret |
 | Fresh default by holder type | `int32`/`uint32` picks XXH32, `int64`/`uint64` picks XXH3-64, `fixed_size_binary(16)` picks XXH3-128 |
 | `force=false` | a cell equal to the holder `Field`'s default is computed, every non-default value preserved |
 | `force=true` | every visible holder is recomputed |
@@ -662,10 +662,10 @@ Each visible row is framed as an ordered `Scalar::Sequence` and streamed through
 
 | Schema | Selected values for `row_digests` |
 | --- | --- |
-| Any schema | every field except a `digest:role=holder`, in schema order |
+| Any schema | every field except a `DIGEST:role=holder`, in schema order |
 | Only holders | the empty sequence, for every row |
 
-`row_digests` reads a batch, not a holder, so it always takes that whole selection; narrowing is a holder's `digest:sources` and belongs to `apply_arrow_batch`. Names, roles, and other metadata choose the values but never enter the byte feed. The [`DigestField` selection helpers](types/protocol.md) answer the same set without hashing a batch.
+`row_digests` reads a batch, not a holder, so it always takes that whole selection; narrowing is a holder's `DIGEST:sources` and belongs to `apply_arrow_batch`. Names, roles, and other metadata choose the values but never enter the byte feed. The [`DigestField` selection helpers](types/protocol.md) answer the same set without hashing a batch.
 
 `row_digests` always uses its `algorithm` argument and the selection above. `column_digests` is the single-column form, each answer the cell's own value with no row framing.
 
@@ -676,8 +676,8 @@ The four one-shots couple a microsecond instant with the plain digest of a buffe
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::txhash::{self, TxHash};
-    use yggdryl::hashing::xxhash;
+    use yggdryl::txhash::{self, TxHash};
+    use yggdryl::xxhash;
     use yggdryl::{DigestAlgorithm, Scalar, TimeUnit, Timezone};
 
     let instant = 1_700_000_000_000_000; // 2023-11-14T22:13:20Z in microseconds
@@ -740,7 +740,7 @@ The four one-shots couple a microsecond instant with the plain digest of a buffe
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Scalar, hashing } = require('yggdryl')
+    const { DataType, Scalar, hashing } = require('yggdryl')
     const { txhash, xxhash } = hashing
 
     const instant = 1_700_000_000_000_000n // 2023-11-14T22:13:20Z in microseconds
@@ -762,7 +762,11 @@ The four one-shots couple a microsecond instant with the plain digest of a buffe
     const seconds = txhash.txh3('AAPL', instant + 999_999n).withUnit('s')
     assert.equal(seconds.unix, 1_700_000_000n)
     assert.ok(seconds.digest.equals(value.digest))
-    assert.ok(seconds.intoDatetime().equals(Scalar.datetime(1_700_000_000n, 's', 'UTC')))
+    assert.ok(
+      seconds
+        .intoDatetime()
+        .equals(new DataType('datetime64(s,"UTC")').scalar(1_700_000_000n)),
+    )
     // Two units, like two algorithms, are never equal.
     assert.ok(!seconds.equals(seconds.withUnit('ms')))
     ```
@@ -774,7 +778,7 @@ A value orders by unit, then signed count, then digest; its bytes agree with tha
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::txhash::{self, TxHash};
+    use yggdryl::txhash::{self, TxHash};
     use yggdryl::{Digest, DigestAlgorithm, Error, TimeUnit};
 
     let one = Digest::new(DigestAlgorithm::Xxh64, 1);
@@ -889,7 +893,7 @@ Every spelling of an instant resolves to one unix count: an integer is the count
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::txhash;
+    use yggdryl::txhash;
     use yggdryl::{Scalar, TimeUnit, Timezone};
 
     let unit = TimeUnit::Microsecond;
@@ -963,8 +967,8 @@ Every spelling of an instant resolves to one unix count: an integer is the count
 === "Rust"
 
     ```rust
-    use yggdryl::hashing::txhash::TxHasher;
-    use yggdryl::hashing::xxhash::{self, Xxh3};
+    use yggdryl::txhash::TxHasher;
+    use yggdryl::xxhash::{self, Xxh3};
     use yggdryl::{DigestAlgorithm, Scalar, TimeUnit};
 
     let seconds = TxHasher::new_in(TimeUnit::Second, DigestAlgorithm::Xxh64)?.with_seed(7);
@@ -1047,8 +1051,8 @@ A row's coupled value is its row digest with the instant beside it, so a coupled
         TimestampNanosecondArray, TimestampSecondArray,
     };
     use arrow_schema::{DataType, Field, Schema};
-    use yggdryl::hashing::txhash;
-    use yggdryl::hashing::xxhash::arrow::row_digests;
+    use yggdryl::txhash;
+    use yggdryl::xxhash::arrow::row_digests;
     use yggdryl::{DigestAlgorithm, TimeUnit};
 
     let (unit, algorithm) = (TimeUnit::Microsecond, DigestAlgorithm::Xxh3);
@@ -1123,7 +1127,7 @@ A row's coupled value is its row digest with the instant beside it, so a coupled
 
 ## Coupled holders
 
-A holder naming `digest:time` stores the instant it names in front of its digest. Everything else about it is the [digest holder contract](#digest-holders-and-row-digests): `digest:sources` narrows what the digest reads, the instant column included by default; `digest:algorithm` or the storage width picks the algorithm; a written cell is preserved unless forced.
+A holder naming `DIGEST:time` stores the instant it names in front of its digest. Everything else about it is the [digest holder contract](#digest-holders-and-row-digests): `DIGEST:sources` narrows what the digest reads, the instant column included by default; `DIGEST:algorithm` or the storage width picks the algorithm; a written cell is preserved unless forced.
 
 === "Rust"
 
@@ -1132,19 +1136,19 @@ A holder naming `digest:time` stores the instant it names in front of its digest
 
     use arrow_array::{Array as _, RecordBatch, StringArray, TimestampMicrosecondArray};
     use arrow_schema::Schema;
-    use yggdryl::hashing::txhash::TxHash;
-    use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
+    use yggdryl::txhash::TxHash;
+    use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, StructureType, TimeUnit, Timezone};
 
-    let event = Field::new("event", DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::UTC }, false);
+    let event = Field::new("event", DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC)?, false);
     let symbol = Field::new("symbol", DataType::utf8(), false);
-    let mut key = Field::new("key", DataType::fixed_size_binary(16)?, false);
+    let mut key = Field::new("key", DataType::fixed_binary(16)?, false);
     key.as_digest_mut().set_holder()?;
     key.as_digest_mut().set_time("event")?;
     key.as_digest_mut().set_unit(TimeUnit::Second)?;
-    let root = DataType::from_fields([event.clone(), symbol.clone(), key])?.required_field("row");
+    let root = DataType::from(StructureType::from_fields([event.clone(), symbol.clone(), key])?).required_field("row");
 
     let batch = RecordBatch::try_new(
-        Arc::new(Schema::new(vec![event.into_arrow()?, symbol.into_arrow()?])),
+        Arc::new(Schema::new(vec![event.into_arrow_field()?, symbol.into_arrow_field()?])),
         vec![
             Arc::new(TimestampMicrosecondArray::from(vec![1_700_000_000_000_000, 1_700_000_000_999_999]).with_timezone("UTC")),
             Arc::new(StringArray::from(vec!["AAPL", "MSFT"])),
@@ -1212,9 +1216,9 @@ A holder naming `digest:time` stores the instant it names in front of its digest
     const { txhash } = hashing
 
     const key = new Field('key', 'fixed_size_binary[16]', false, {
-      'digest:role': 'holder',
-      'digest:time': 'event',
-      'digest:unit': 's',
+      'DIGEST:role': 'holder',
+      'DIGEST:time': 'event',
+      'DIGEST:unit': 's',
     })
     const root = new Field(
       'row',
@@ -1235,10 +1239,10 @@ A holder naming `digest:time` stores the instant it names in front of its digest
 
 | Holder setting | Effect |
 | --- | --- |
-| `digest:time` | one field path relative to the containing Struct, resolved as a source is; the field must be a datetime, a date, or an integer, never a holder |
-| `digest:unit` | `s`, `ms`, `us`, or `ns`, canonicalized on write; refused without `digest:time`; absent means microseconds |
-| storage | `fixed_size_binary[12]` for XXH32, `[16]` for XXH64 or XXH3-64, `[24]` for XXH3-128; `digest:algorithm` must fit it |
-| the instant column | feeds the digest like any other column unless `digest:sources` leaves it out |
+| `DIGEST:time` | one field path relative to the containing Struct, resolved as a source is; the field must be a datetime, a date, or an integer, never a holder |
+| `DIGEST:unit` | `s`, `ms`, `us`, or `ns`, canonicalized on write; refused without `DIGEST:time`; absent means microseconds |
+| storage | `fixed_size_binary[12]` for XXH32, `[16]` for XXH64 or XXH3-64, `[24]` for XXH3-128; `DIGEST:algorithm` must fit it |
+| the instant column | feeds the digest like any other column unless `DIGEST:sources` leaves it out |
 | a null instant | a nullable holder stores null; a required holder refuses, naming the row |
 | removal order | `remove_unit`, then `remove_time`, then `remove_role`; each refuses while what depends on it stands |
 | Bindings | Python takes and answers `pyarrow` arrays for every column function and fills through `field.apply_arrow_batch` or a `TxHasher`; JavaScript fills through `TxHasher.applyArrowBatch` |
@@ -1266,12 +1270,12 @@ A holder naming `digest:time` stores the instant it names in front of its digest
 - A `variant` column -> refused by name; its binary encoding lands with the Iceberg v3 layer, so there is no value to feed.
 - A `field` whose storage does not match the array given to `column_digests` -> reconciled to the field first, strictly, so a layout difference answers the same digest and a value the declaration cannot hold is named.
 - The same value on a big-endian machine -> the same digest; every integer in the feed is little-endian.
-- An `ascii`, `ascii(n)`, `fixed_ascii(n)`, `utf8(n)` or `string(windows-1252)` cell holding the same characters -> one digest; every string is one value and feeds the `string` tag.
+- An `ascii`, `sized_ascii(n)`, `fixed_ascii(n)`, `sized_utf8(n)` or `cp1252` cell holding the same characters -> one digest; every string is one value and feeds the `utf8` tag.
 - A `currency` and a `country` cell holding the same text -> two digests; a code feeds its own id, and a code never digests like the string that spells it.
 - A `geometry` and a `geography` cell over the same WKB -> one digest; both feed the `geometry` tag.
-- Holder-local `digest:sources` or `digest:algorithm` -> ignored by `row_digests`; they configure [`apply_arrow_batch`](#digest-holders-and-row-digests) only.
+- Holder-local `DIGEST:sources` or `DIGEST:algorithm` -> ignored by `row_digests`; they configure [`apply_arrow_batch`](#digest-holders-and-row-digests) only.
 - A path through a list, map, or union -> that value is selected whole, never traversed.
-- A holder, or `digest:sources`/`digest:algorithm`, under a list, map, union, dictionary, or run-end layout -> refused by path; a fill descends into Struct children only.
+- A holder, or `DIGEST:sources`/`DIGEST:algorithm`, under a list, map, union, dictionary, or run-end layout -> refused by path; a fill descends into Struct children only.
 - A holder that selects itself or another holder in the same Struct -> refused.
 - A Struct with several direct holders -> ambiguous; name the intended nested holder by a path.
 - A holder column missing from the batch -> added in the position the root declares.
@@ -1305,17 +1309,17 @@ A holder naming `digest:time` stores the instant it names in front of its digest
 - A null instant -> a null coupled cell in every column function; the digest functions answer no nulls, so a coupled column carries exactly the instant column's nulls.
 - `compose` with a digest column of another width -> refused naming the expected width; `int32` and `int64` are read as the same bits `uint32` and `uint64` hold.
 - `decompose` on a `fixed_size_binary` of another width -> refused naming the coupled width.
-- A `digest:time` path through a list, map, union, dictionary, or run-end layout -> refused by path, as a holder there is.
-- `digest:time` or `digest:unit` off a holder -> refused as belonging only to a holder.
+- A `DIGEST:time` path through a list, map, union, dictionary, or run-end layout -> refused by path, as a holder there is.
+- `DIGEST:time` or `DIGEST:unit` off a holder -> refused as belonging only to a holder.
 - Nested Structs -> the instant is read after nested holders are final, and a row null at any Struct above the leaf is null.
-- A seeded `TxHasher` -> its seed and secret reach every holder sharing its algorithm's width, as `Digester::apply_arrow_batch` states; the holder's own `digest:unit` always wins over the hasher's.
+- A seeded `TxHasher` -> its seed and secret reach every holder sharing its algorithm's width, as `Digester::apply_arrow_batch` states; the holder's own `DIGEST:unit` always wins over the hasher's.
 
 ## Commands
 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib hashing::
+    cargo test --features "parquet iceberg" -p yggdryl --lib -- xxhash:: txhash:: hashing::
     cargo test --features "parquet iceberg" -p yggdryl --test allocations -- the_canonical_value_feed_allocates_nothing borrowed_value_bytes_allocate_nothing coupled_value_bytes_allocate_nothing reading_an_instant_out_of_a_value_allocates_nothing txhash_uuid_projection_allocates_nothing_at_any_corpus_size
     cargo test --features "parquet iceberg" -p yggdryl --test types -- stable_hash
     cargo bench -p yggdryl --bench hashing

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventtype",
-          "fix:tag": "41626"
+          "FIX:field": "legprotectiontermeventtype",
+          "FIX:tag": "41626"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventvalue",
-          "fix:tag": "41627"
+          "FIX:field": "legprotectiontermeventvalue",
+          "FIX:tag": "41627"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventcurrency",
-          "fix:tag": "41628"
+          "FIX:field": "legprotectiontermeventcurrency",
+          "FIX:tag": "41628"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventperiod",
-          "fix:tag": "41629"
+          "FIX:field": "legprotectiontermeventperiod",
+          "FIX:tag": "41629"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventunit",
-          "fix:tag": "41630"
+          "FIX:field": "legprotectiontermeventunit",
+          "FIX:tag": "41630"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventdaytype",
-          "fix:tag": "41631"
+          "FIX:field": "legprotectiontermeventdaytype",
+          "FIX:tag": "41631"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventratesource",
-          "fix:tag": "41632"
+          "FIX:field": "legprotectiontermeventratesource",
+          "FIX:tag": "41632"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegprotectiontermeventqualifiers",
-          "fix:tag": "41633"
+          "FIX:field": "nolegprotectiontermeventqualifiers",
+          "FIX:tag": "41633"
         }
       },
       {
@@ -98,14 +98,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legprotectiontermeventqualifiergrp"
+          "FIX:group": "legprotectiontermeventqualifiergrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProtectionTermEvent",
-    "fix:tag": "235995"
+    "FIX:tag": "235995",
+    "display": "LegProtectionTermEvent"
   }
 }

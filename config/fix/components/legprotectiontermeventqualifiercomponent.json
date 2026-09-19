@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventqualifier",
-          "fix:tag": "41634"
+          "FIX:field": "legprotectiontermeventqualifier",
+          "FIX:tag": "41634"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProtectionTermEventQualifier",
-    "fix:tag": "176557"
+    "FIX:tag": "176557",
+    "display": "LegProtectionTermEventQualifier"
   }
 }

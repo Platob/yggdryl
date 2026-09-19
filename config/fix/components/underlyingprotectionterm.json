@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermnotional",
-          "fix:tag": "42069"
+          "FIX:field": "underlyingprotectiontermnotional",
+          "FIX:tag": "42069"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermcurrency",
-          "fix:tag": "42070"
+          "FIX:field": "underlyingprotectiontermcurrency",
+          "FIX:tag": "42070"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermsellernotifies",
-          "fix:tag": "42071"
+          "FIX:field": "underlyingprotectiontermsellernotifies",
+          "FIX:tag": "42071"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermbuyernotifies",
-          "fix:tag": "42072"
+          "FIX:field": "underlyingprotectiontermbuyernotifies",
+          "FIX:tag": "42072"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventbusinesscenter",
-          "fix:tag": "42073"
+          "FIX:field": "underlyingprotectiontermeventbusinesscenter",
+          "FIX:tag": "42073"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermstandardsources",
-          "fix:tag": "42074"
+          "FIX:field": "underlyingprotectiontermstandardsources",
+          "FIX:tag": "42074"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventminimumsources",
-          "fix:tag": "42075"
+          "FIX:field": "underlyingprotectiontermeventminimumsources",
+          "FIX:tag": "42075"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingprotectiontermeventnewssources",
-          "fix:tag": "42090"
+          "FIX:field": "nounderlyingprotectiontermeventnewssources",
+          "FIX:tag": "42090"
         }
       },
       {
@@ -98,7 +98,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingprotectiontermeventnewssourcegrp"
+          "FIX:group": "underlyingprotectiontermeventnewssourcegrp"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingprotectiontermevents",
-          "fix:tag": "42077"
+          "FIX:field": "nounderlyingprotectiontermevents",
+          "FIX:tag": "42077"
         }
       },
       {
@@ -119,7 +119,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingprotectiontermeventgrp"
+          "FIX:group": "underlyingprotectiontermeventgrp"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingprotectiontermobligations",
-          "fix:tag": "42087"
+          "FIX:field": "nounderlyingprotectiontermobligations",
+          "FIX:tag": "42087"
         }
       },
       {
@@ -140,7 +140,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingprotectiontermobligationgrp"
+          "FIX:group": "underlyingprotectiontermobligationgrp"
         }
       },
       {
@@ -150,15 +150,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermxid",
-          "fix:tag": "42076"
+          "FIX:field": "underlyingprotectiontermxid",
+          "FIX:tag": "42076"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingProtectionTerm",
-    "fix:tag": "223112"
+    "FIX:tag": "223112",
+    "display": "UnderlyingProtectionTerm"
   }
 }

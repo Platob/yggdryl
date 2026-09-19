@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applid",
-          "fix:tag": "1180"
+          "FIX:field": "applid",
+          "FIX:tag": "1180"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applseqnum",
-          "fix:tag": "1181"
+          "FIX:field": "applseqnum",
+          "FIX:tag": "1181"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "appllastseqnum",
-          "fix:tag": "1350"
+          "FIX:field": "appllastseqnum",
+          "FIX:tag": "1350"
         }
       },
       {
@@ -43,16 +43,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applresendflag",
-          "fix:tag": "1352"
+          "FIX:field": "applresendflag",
+          "FIX:tag": "1352"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "187021",
     "description": "Identifies the application with which a message is associated. Used only if application sequencing is in effect.",
-    "display": "ApplicationSequenceControl",
-    "fix:tag": "187021"
+    "display": "ApplicationSequenceControl"
   }
 }

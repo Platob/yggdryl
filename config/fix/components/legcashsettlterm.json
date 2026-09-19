@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlcurrency",
-          "fix:tag": "41345"
+          "FIX:field": "legcashsettlcurrency",
+          "FIX:tag": "41345"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcassettlvaluationfirstbusinessdayoffset",
-          "fix:tag": "41346"
+          "FIX:field": "legcassettlvaluationfirstbusinessdayoffset",
+          "FIX:tag": "41346"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlvaluationsubsequentbusinessdaysoffset",
-          "fix:tag": "41347"
+          "FIX:field": "legcashsettlvaluationsubsequentbusinessdaysoffset",
+          "FIX:tag": "41347"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlnumofvaluationdates",
-          "fix:tag": "41348"
+          "FIX:field": "legcashsettlnumofvaluationdates",
+          "FIX:tag": "41348"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlvaluationtime",
-          "fix:tag": "41349"
+          "FIX:field": "legcashsettlvaluationtime",
+          "FIX:tag": "41349"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlbusinesscenter",
-          "fix:tag": "41350"
+          "FIX:field": "legcashsettlbusinesscenter",
+          "FIX:tag": "41350"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlquotemethod",
-          "fix:tag": "41351"
+          "FIX:field": "legcashsettlquotemethod",
+          "FIX:tag": "41351"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlquoteamount",
-          "fix:tag": "41352"
+          "FIX:field": "legcashsettlquoteamount",
+          "FIX:tag": "41352"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlquotecurrency",
-          "fix:tag": "41353"
+          "FIX:field": "legcashsettlquotecurrency",
+          "FIX:tag": "41353"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlminimumquoteamount",
-          "fix:tag": "41354"
+          "FIX:field": "legcashsettlminimumquoteamount",
+          "FIX:tag": "41354"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlminimumquotecurrency",
-          "fix:tag": "41355"
+          "FIX:field": "legcashsettlminimumquotecurrency",
+          "FIX:tag": "41355"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcashsettldealers",
-          "fix:tag": "41342"
+          "FIX:field": "nolegcashsettldealers",
+          "FIX:tag": "41342"
         }
       },
       {
@@ -142,7 +142,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legcashsettldealergrp"
+          "FIX:group": "legcashsettldealergrp"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlpricesource",
-          "fix:tag": "42308"
+          "FIX:field": "legcashsettlpricesource",
+          "FIX:tag": "42308"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlpricedefault",
-          "fix:tag": "42309"
+          "FIX:field": "legcashsettlpricedefault",
+          "FIX:tag": "42309"
         }
       },
       {
@@ -174,8 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlbusinessdays",
-          "fix:tag": "41356"
+          "FIX:field": "legcashsettlbusinessdays",
+          "FIX:tag": "41356"
         }
       },
       {
@@ -185,8 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlamount",
-          "fix:tag": "41357"
+          "FIX:field": "legcashsettlamount",
+          "FIX:tag": "41357"
         }
       },
       {
@@ -196,7 +196,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legcashsettldate"
+          "FIX:component": "legcashsettldate"
         }
       },
       {
@@ -206,8 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlrecoveryfactor",
-          "fix:tag": "41358"
+          "FIX:field": "legcashsettlrecoveryfactor",
+          "FIX:tag": "41358"
         }
       },
       {
@@ -217,8 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlfixedtermindicator",
-          "fix:tag": "41359"
+          "FIX:field": "legcashsettlfixedtermindicator",
+          "FIX:tag": "41359"
         }
       },
       {
@@ -228,8 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlaccruedinterestindicator",
-          "fix:tag": "41360"
+          "FIX:field": "legcashsettlaccruedinterestindicator",
+          "FIX:tag": "41360"
         }
       },
       {
@@ -239,8 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettlvaluationmethod",
-          "fix:tag": "41361"
+          "FIX:field": "legcashsettlvaluationmethod",
+          "FIX:tag": "41361"
         }
       },
       {
@@ -250,15 +250,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettltermxid",
-          "fix:tag": "41362"
+          "FIX:field": "legcashsettltermxid",
+          "FIX:tag": "41362"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegCashSettlTerm",
-    "fix:tag": "1092082"
+    "FIX:tag": "1092082",
+    "display": "LegCashSettlTerm"
   }
 }

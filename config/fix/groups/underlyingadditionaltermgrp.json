@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingadditionalterm"
+        "FIX:component": "underlyingadditionalterm"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingadditionalterm",
+    "FIX:counter": "42036",
+    "FIX:tag": "1019489",
     "description": "Required if NoUnderlyingAdditionalTerms(42036) > 0.",
-    "display": "UnderlyingAdditionalTermGrp",
-    "fix:component": "underlyingadditionalterm",
-    "fix:counter": "42036",
-    "fix:tag": "1019489"
+    "display": "UnderlyingAdditionalTermGrp"
   }
 }

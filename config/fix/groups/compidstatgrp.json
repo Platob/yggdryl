@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "compidstat"
+        "FIX:component": "compidstat"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "compidstat",
+    "FIX:counter": "936",
+    "FIX:tag": "790377",
     "description": "Specifies the number of repeating CompId's",
-    "display": "CompIDStatGrp",
-    "fix:component": "compidstat",
-    "fix:counter": "936",
-    "fix:tag": "790377"
+    "display": "CompIDStatGrp"
   }
 }

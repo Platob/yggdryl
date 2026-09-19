@@ -3,7 +3,7 @@
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::hashing::xxhash::Xxh3;
+use yggdryl::xxhash::Xxh3;
 use yggdryl::{DataType, DigestAlgorithm, Field, Scalar, Uri};
 
 /// A leaf, a wide record, and a deep nest: the three shapes the feed walks
@@ -91,19 +91,19 @@ pub(crate) fn stable_hash_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&field).stable_hash());
     });
     group.bench_function("field_bytes_only", |bencher| {
-        bencher.iter(|| yggdryl::hashing::xxhash::xxh3(black_box(field_text.as_bytes())));
+        bencher.iter(|| yggdryl::xxhash::xxh3(black_box(field_text.as_bytes())));
     });
     group.bench_function("uri_hash", |bencher| {
         bencher.iter(|| black_box(&uri).stable_hash());
     });
     group.bench_function("uri_bytes_only", |bencher| {
-        bencher.iter(|| yggdryl::hashing::xxhash::xxh3(black_box(uri_text.as_bytes())));
+        bencher.iter(|| yggdryl::xxhash::xxh3(black_box(uri_text.as_bytes())));
     });
     group.bench_function("datatype_hash", |bencher| {
         bencher.iter(|| black_box(&dtype).stable_hash());
     });
     group.bench_function("datatype_bytes_only", |bencher| {
-        bencher.iter(|| yggdryl::hashing::xxhash::xxh3(black_box(dtype_text.as_bytes())));
+        bencher.iter(|| yggdryl::xxhash::xxh3(black_box(dtype_text.as_bytes())));
     });
     group.finish();
 }

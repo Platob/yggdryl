@@ -22,7 +22,7 @@ The three intents carry the same rows as the [batch surface](arrow.md), one row 
     ```rust
     use yggdryl::holder::Buffer;
     use yggdryl::media::IORecordOptions;
-    use yggdryl::{DataType, IOBase, IOMedia, Scalar, Url};
+    use yggdryl::{DataType, IOBase, IOMedia, Scalar, StructureType, Url};
 
     struct Trade(i64, &'static str);
 
@@ -32,10 +32,10 @@ The three intents carry the same rows as the [batch surface](arrow.md), one row 
         }
     }
 
-    let field = DataType::from_fields([
+    let field = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
-    ])?
+    ])?)
     .required_field("row");
     let mut handle =
         Buffer::new().with_media_type(Url::from_str("file:///trades.parquet")?.media_type());
@@ -133,7 +133,7 @@ Only a whole file is a Parquet file, so an append or a merge reads the stored ro
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib media::parquet::tests
+    cargo test --features "parquet iceberg" -p yggdryl --lib parquet::tests
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_records
     ```
 

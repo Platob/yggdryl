@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlratefallbackratesource",
-          "fix:tag": "40366"
+          "FIX:field": "legsettlratefallbackratesource",
+          "FIX:tag": "40366"
         }
       },
       {
@@ -21,16 +21,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlratefallbackreferencepage",
-          "fix:tag": "40370"
+          "FIX:field": "legsettlratefallbackreferencepage",
+          "FIX:tag": "40370"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "157623",
     "description": "Conditionally required when LegSettlRateFallbackRateSource(40366) = 3 (ISDA Settlement Rate Option) or 99 (Other).",
-    "display": "LegSettlRateFallbackRateSource",
-    "fix:tag": "157623"
+    "display": "LegSettlRateFallbackRateSource"
   }
 }

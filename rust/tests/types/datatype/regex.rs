@@ -1,3 +1,4 @@
+use yggdryl::DateTimeType;
 use yggdryl::{DataType, TimeUnit, Timezone};
 
 #[test]
@@ -17,9 +18,11 @@ fn a_fraction_names_its_unit_at_either_decimal_sign_and_any_width() {
         true,
     )
     .unwrap();
-    let naive = |unit| DataType::DateTime64 {
-        unit,
-        timezone: Timezone::NAIVE,
+    let naive = |unit| {
+        DataType::DateTime(DateTimeType::DateTime64 {
+            unit,
+            timezone: Timezone::NAIVE,
+        })
     };
 
     // ISO 8601 names the comma and the full stop alike, so a log4j rowheader

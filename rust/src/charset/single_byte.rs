@@ -7,37 +7,37 @@
 
 use std::borrow::Cow;
 
-use super::ascii::{ascii_len, text};
 use super::sink::Utf8Sink;
 use super::{REPLACEMENT, REPLACEMENT_UTF8, undecodable, unencodable};
 use crate::Result;
+use crate::ascii::{ascii_len, text};
 
 /// One single-byte charset's whole mapping, in the four shapes it is read in.
 ///
 /// The four arrays are projections of the same 128 facts rather than four
 /// decisions: [`crate::charset`] never lets them disagree because
 /// `scripts/generate_charset_tables.py` writes all four from one codec.
-pub(super) struct SingleByte {
+pub(crate) struct SingleByte {
     /// The canonical charset name, which every error from it reports.
-    pub(super) name: &'static str,
+    pub(crate) name: &'static str,
     /// The scalar each byte `0x80..=0xFF` decodes to; `U+FFFD` marks a byte
     /// the charset leaves unassigned.
-    pub(super) scalars: [char; 128],
+    pub(crate) scalars: [char; 128],
     /// Those scalars pre-encoded as UTF-8, padded to the widest of them, so a
     /// byte target copies bytes instead of encoding a scalar.
-    pub(super) encoded: [[u8; 3]; 128],
+    pub(crate) encoded: [[u8; 3]; 128],
     /// How many bytes of `encoded` each scalar fills; zero is the branch-free
     /// spelling of the `U+FFFD` in `scalars`.
-    pub(super) widths: [u8; 128],
+    pub(crate) widths: [u8; 128],
     /// `(scalar, byte)` above US-ASCII ordered by scalar, which encoding
     /// binary-searches.
-    pub(super) reverse: &'static [(char, u8)],
+    pub(crate) reverse: &'static [(char, u8)],
 }
 
 impl SingleByte {
     /// The scalar one byte decodes to, or `None` where the charset assigns it
     /// nothing.
-    pub(super) fn scalar_of(&self, byte: u8) -> Option<char> {
+    pub(crate) fn scalar_of(&self, byte: u8) -> Option<char> {
         let Some(slot) = usize::from(byte).checked_sub(0x80) else {
             return Some(char::from(byte));
         };
@@ -45,7 +45,7 @@ impl SingleByte {
     }
 
     /// The byte one scalar encodes to, or `None` where the charset has none.
-    pub(super) fn byte_of(&self, scalar: char) -> Option<u8> {
+    pub(crate) fn byte_of(&self, scalar: char) -> Option<u8> {
         if scalar.is_ascii() {
             return Some(scalar as u8);
         }
@@ -56,7 +56,7 @@ impl SingleByte {
     }
 
     /// Decode a complete buffer, borrowing it when it is already US-ASCII.
-    pub(super) fn decode<'input>(&self, input: &'input [u8]) -> Result<Cow<'input, str>> {
+    pub(crate) fn decode<'input>(&self, input: &'input [u8]) -> Result<Cow<'input, str>> {
         if ascii_len(input) == input.len() {
             return Ok(Cow::Borrowed(text(input)?));
         }
@@ -67,7 +67,7 @@ impl SingleByte {
 
     /// Decode a complete buffer, replacing unassigned bytes rather than
     /// refusing them.
-    pub(super) fn decode_lossy<'input>(&self, input: &'input [u8]) -> Cow<'input, str> {
+    pub(crate) fn decode_lossy<'input>(&self, input: &'input [u8]) -> Cow<'input, str> {
         if ascii_len(input) == input.len() {
             if let Ok(borrowed) = text(input) {
                 return Cow::Borrowed(borrowed);
@@ -83,7 +83,7 @@ impl SingleByte {
     }
 
     /// Decode into a target, replacing unassigned bytes when `LOSSY`.
-    pub(super) fn decode_into<const LOSSY: bool>(
+    pub(crate) fn decode_into<const LOSSY: bool>(
         &self,
         input: &[u8],
         target: &mut impl Utf8Sink,
@@ -117,7 +117,7 @@ impl SingleByte {
     }
 
     /// Encode complete text, borrowing it when every scalar is US-ASCII.
-    pub(super) fn encode<'input>(&self, input: &'input str) -> Result<Cow<'input, [u8]>> {
+    pub(crate) fn encode<'input>(&self, input: &'input str) -> Result<Cow<'input, [u8]>> {
         let bytes = input.as_bytes();
         if ascii_len(bytes) == bytes.len() {
             return Ok(Cow::Borrowed(bytes));
@@ -128,7 +128,7 @@ impl SingleByte {
     }
 
     /// Encode text into a byte target.
-    pub(super) fn encode_into(&self, input: &str, target: &mut Vec<u8>) -> Result<()> {
+    pub(crate) fn encode_into(&self, input: &str, target: &mut Vec<u8>) -> Result<()> {
         // One byte per scalar is the whole charset, so the output is never
         // longer than the input and is usually shorter.
         target.reserve(input.len());
@@ -180,22 +180,34 @@ impl SingleByte {
     /// A complete charset has nothing to transcribe: every byte already reads
     /// as a scalar of its own, so the permissive door and the lossy one
     /// answer the same text.
-    pub(super) fn is_complete(&self) -> bool {
+    pub(crate) fn is_complete(&self) -> bool {
         self.widths.iter().all(|width| *width != 0)
     }
 
-    /// Decode into a target, reading an unassigned byte as its ISO 8859-1
+    /// Decode a complete buffer, reading an unassigned byte as its ISO 8859-1
     /// scalar rather than replacing it.
     ///
     /// Only the three Windows code pages leave any byte unassigned, and each
     /// of those bytes is a C1 control in ISO 8859-1 - which is exactly what
-    /// the WHATWG Encoding Standard's own index maps them to.
-    pub(super) fn transcribe_into(&self, input: &[u8], target: &mut String) -> Result<()> {
-        self.transcribe_sink(input, target)
+    /// the WHATWG Encoding Standard's own index maps them to. Every page is
+    /// still ASCII-compatible, so an all-ASCII payload is already its own
+    /// answer: this is the borrow [`Self::decode`], [`Self::decode_lossy`]
+    /// and [`Self::encode`] all take at their first line.
+    pub(crate) fn transcribe<'input>(&self, input: &'input [u8]) -> Cow<'input, str> {
+        if let Ok(borrowed) = text(input) {
+            if ascii_len(input) == input.len() {
+                return Cow::Borrowed(borrowed);
+            }
+        }
+        let mut target = String::new();
+        match self.transcribe_sink(input, &mut target) {
+            Ok(()) => Cow::Owned(target),
+            Err(_) => self.decode_lossy(input),
+        }
     }
 
-    /// [`Self::transcribe_into`] over whichever target a caller brought.
-    pub(super) fn transcribe_sink(&self, input: &[u8], target: &mut impl Utf8Sink) -> Result<()> {
+    /// [`Self::transcribe`] over whichever target a caller brought.
+    pub(crate) fn transcribe_sink(&self, input: &[u8], target: &mut impl Utf8Sink) -> Result<()> {
         // A high byte answers up to three UTF-8 bytes, so the input length is
         // a floor rather than a size: reserving it leaves a target that grows
         // to fit, which is the one reallocation this door exists to avoid.

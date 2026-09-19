@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbusinessdayconvention",
-          "fix:tag": "40925"
+          "FIX:field": "legbusinessdayconvention",
+          "FIX:tag": "40925"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegbusinesscenters",
-          "fix:tag": "40923"
+          "FIX:field": "nolegbusinesscenters",
+          "FIX:tag": "40923"
         }
       },
       {
@@ -32,7 +32,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legbusinesscentergrp"
+          "FIX:group": "legbusinesscentergrp"
         }
       },
       {
@@ -42,16 +42,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdaterollconvention",
-          "fix:tag": "40926"
+          "FIX:field": "legdaterollconvention",
+          "FIX:tag": "40926"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "335507",
     "description": "LegDateAdjustment is a subcomponent within the InstrumentLeg component. It is used to specify date adjustment parameters and rules. The date adjustments specified here applies to all adjustable dates for the instrument leg, unless specifically overridden elsewhere in the respective specified components further within the InstrumentLeg component.",
-    "display": "LegDateAdjustment",
-    "fix:tag": "335507"
+    "display": "LegDateAdjustment"
   }
 }

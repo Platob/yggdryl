@@ -3,7 +3,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use yggdryl::{DataType, Field, FieldRecord, FieldScalar, Scalar};
+use yggdryl::{DataType, Field, FieldRecord, FieldScalar, Scalar, StructType};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -12,11 +12,11 @@ fn hash_of<T: Hash>(value: &T) -> u64 {
 }
 
 fn schema() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         Field::new("id", DataType::Int64, false),
         Field::new("symbol", DataType::utf8(), true),
         Field::new("price", DataType::decimal128(10, 2).unwrap(), true),
-    ])
+    ]).map(DataType::from)
     .unwrap()
     .required_field("row")
 }
@@ -60,13 +60,13 @@ fn a_row_pairs_every_cell_with_its_child() {
 
 #[test]
 fn a_name_resolves_exactly_as_the_field_resolves_it() {
-    let schema = DataType::from_fields([
+    let schema = StructureType::from_fields([
         Field::new("Symbol", DataType::utf8(), false),
         Field::new("symbol", DataType::utf8(), false),
-        DataType::from_fields([Field::new("px", DataType::Float64, false)])
+        StructureType::from_fields([Field::new("px", DataType::Float64, false)]).map(DataType::from)
             .unwrap()
             .required_field("leg"),
-    ])
+    ]).map(DataType::from)
     .unwrap()
     .required_field("row");
     let record = FieldRecord::new(
@@ -155,7 +155,7 @@ fn the_root_must_be_a_required_struct_and_the_row_must_fit_it() {
 
 #[test]
 fn an_empty_struct_reads_an_empty_row() {
-    let schema = DataType::from_fields([]).unwrap().required_field("row");
+    let schema = DataType::from(StructureType::from_fields([]).unwrap()).required_field("row");
     let record = FieldRecord::new(&schema, Scalar::from_sequence([])).unwrap();
     assert!(record.is_empty());
     assert_eq!(record.names().count(), 0);
@@ -189,11 +189,11 @@ fn rows_compare_by_datatype_and_cells_and_never_by_the_root_around_them() {
     .unwrap();
     assert_ne!(left, other);
 
-    let widened = DataType::from_fields([
+    let widened = StructureType::from_fields([
         Field::new("id", DataType::Int64, false),
         Field::new("symbol", DataType::large_utf8(), true),
         Field::new("price", DataType::decimal128(10, 2).unwrap(), true),
-    ])
+    ]).map(DataType::from)
     .unwrap()
     .required_field("row");
     let wide = FieldRecord::new(&widened, row()).unwrap();
@@ -244,8 +244,9 @@ fn subscripting_a_position_past_the_row_panics_like_a_field_does() {
     let _ = &record[3];
 }
 
-#[cfg(feature = "arrow")]
 mod arrow {
+
+    use yggdryl::StructType;
     use super::{DataType, Field, FieldRecord, Scalar, row, schema};
 
     #[test]
@@ -281,7 +282,7 @@ mod arrow {
             .to_string();
         assert!(past.contains("row 2"), "{past}");
 
-        let narrower = DataType::from_fields([Field::new("id", DataType::Int64, false)])
+        let narrower = StructureType::from_fields([Field::new("id", DataType::Int64, false)]).map(DataType::from)
             .unwrap()
             .required_field("row");
         let refused = FieldRecord::from_arrow_batch(&narrower, &batch, 0)

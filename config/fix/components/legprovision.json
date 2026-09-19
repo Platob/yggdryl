@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisiontype",
-          "fix:tag": "40449"
+          "FIX:field": "legprovisiontype",
+          "FIX:tag": "40449"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisiondateunadjusted",
-          "fix:tag": "40450"
+          "FIX:field": "legprovisiondateunadjusted",
+          "FIX:tag": "40450"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisiondatebusinessdayconvention",
-          "fix:tag": "40451"
+          "FIX:field": "legprovisiondatebusinessdayconvention",
+          "FIX:tag": "40451"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegprovisiondatebusinesscenters",
-          "fix:tag": "40939"
+          "FIX:field": "nolegprovisiondatebusinesscenters",
+          "FIX:tag": "40939"
         }
       },
       {
@@ -54,7 +54,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legprovisiondatebusinesscentergrp"
+          "FIX:group": "legprovisiondatebusinesscentergrp"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisiondateadjusted",
-          "fix:tag": "40453"
+          "FIX:field": "legprovisiondateadjusted",
+          "FIX:tag": "40453"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisiondatetenorperiod",
-          "fix:tag": "40454"
+          "FIX:field": "legprovisiondatetenorperiod",
+          "FIX:tag": "40454"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisiondatetenorunit",
-          "fix:tag": "40455"
+          "FIX:field": "legprovisiondatetenorunit",
+          "FIX:tag": "40455"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionbreakfeeelection",
-          "fix:tag": "42506"
+          "FIX:field": "legprovisionbreakfeeelection",
+          "FIX:tag": "42506"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionbreakfeerate",
-          "fix:tag": "42507"
+          "FIX:field": "legprovisionbreakfeerate",
+          "FIX:tag": "42507"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncalculationagent",
-          "fix:tag": "40456"
+          "FIX:field": "legprovisioncalculationagent",
+          "FIX:tag": "40456"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionsinglepartybuyerside",
-          "fix:tag": "40457"
+          "FIX:field": "legprovisionoptionsinglepartybuyerside",
+          "FIX:tag": "40457"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionsinglepartysellerside",
-          "fix:tag": "40458"
+          "FIX:field": "legprovisionoptionsinglepartysellerside",
+          "FIX:tag": "40458"
         }
       },
       {
@@ -152,7 +152,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legprovisioncashsettlvaluedates"
+          "FIX:component": "legprovisioncashsettlvaluedates"
         }
       },
       {
@@ -162,7 +162,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legprovisionoptionexercisedates"
+          "FIX:component": "legprovisionoptionexercisedates"
         }
       },
       {
@@ -172,7 +172,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legprovisionoptionexpirationdate"
+          "FIX:component": "legprovisionoptionexpirationdate"
         }
       },
       {
@@ -182,7 +182,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legprovisionoptionrelevantunderlyingdate"
+          "FIX:component": "legprovisionoptionrelevantunderlyingdate"
         }
       },
       {
@@ -192,8 +192,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisestyle",
-          "fix:tag": "40459"
+          "FIX:field": "legprovisionoptionexercisestyle",
+          "FIX:tag": "40459"
         }
       },
       {
@@ -203,8 +203,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisemultiplenotional",
-          "fix:tag": "40460"
+          "FIX:field": "legprovisionoptionexercisemultiplenotional",
+          "FIX:tag": "40460"
         }
       },
       {
@@ -214,8 +214,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexerciseminimumnotional",
-          "fix:tag": "40461"
+          "FIX:field": "legprovisionoptionexerciseminimumnotional",
+          "FIX:tag": "40461"
         }
       },
       {
@@ -225,8 +225,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisemaximumnotional",
-          "fix:tag": "40462"
+          "FIX:field": "legprovisionoptionexercisemaximumnotional",
+          "FIX:tag": "40462"
         }
       },
       {
@@ -236,8 +236,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionminimumnumber",
-          "fix:tag": "40463"
+          "FIX:field": "legprovisionoptionminimumnumber",
+          "FIX:tag": "40463"
         }
       },
       {
@@ -247,8 +247,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionmaximumnumber",
-          "fix:tag": "40464"
+          "FIX:field": "legprovisionoptionmaximumnumber",
+          "FIX:tag": "40464"
         }
       },
       {
@@ -258,8 +258,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexerciseconfirmation",
-          "fix:tag": "40465"
+          "FIX:field": "legprovisionoptionexerciseconfirmation",
+          "FIX:tag": "40465"
         }
       },
       {
@@ -269,7 +269,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legprovisioncashsettlpaymentdates"
+          "FIX:component": "legprovisioncashsettlpaymentdates"
         }
       },
       {
@@ -279,8 +279,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlmethod",
-          "fix:tag": "40466"
+          "FIX:field": "legprovisioncashsettlmethod",
+          "FIX:tag": "40466"
         }
       },
       {
@@ -290,8 +290,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlcurrency",
-          "fix:tag": "40467"
+          "FIX:field": "legprovisioncashsettlcurrency",
+          "FIX:tag": "40467"
         }
       },
       {
@@ -301,8 +301,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlcurrency2",
-          "fix:tag": "40468"
+          "FIX:field": "legprovisioncashsettlcurrency2",
+          "FIX:tag": "40468"
         }
       },
       {
@@ -312,8 +312,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlquotetype",
-          "fix:tag": "40469"
+          "FIX:field": "legprovisioncashsettlquotetype",
+          "FIX:tag": "40469"
         }
       },
       {
@@ -323,7 +323,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legprovisioncashsettlquotesourcecomponent"
+          "FIX:component": "legprovisioncashsettlquotesourcecomponent"
         }
       },
       {
@@ -333,8 +333,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisiontext",
-          "fix:tag": "40472"
+          "FIX:field": "legprovisiontext",
+          "FIX:tag": "40472"
         }
       },
       {
@@ -344,8 +344,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegprovisiontextlen",
-          "fix:tag": "40980"
+          "FIX:field": "encodedlegprovisiontextlen",
+          "FIX:tag": "40980"
         }
       },
       {
@@ -355,8 +355,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegprovisiontext",
-          "fix:tag": "40981"
+          "FIX:field": "encodedlegprovisiontext",
+          "FIX:tag": "40981"
         }
       },
       {
@@ -366,8 +366,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegprovisionpartyids",
-          "fix:tag": "40533"
+          "FIX:field": "nolegprovisionpartyids",
+          "FIX:tag": "40533"
         }
       },
       {
@@ -377,14 +377,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legprovisionparties"
+          "FIX:group": "legprovisionparties"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProvision",
-    "fix:tag": "1021125"
+    "FIX:tag": "1021125",
+    "display": "LegProvision"
   }
 }

@@ -1,9 +1,11 @@
-use yggdryl::hashing::txhash::{
+use yggdryl::txhash::{
     DEFAULT_UNIT, TxHash, TxHasher, UNIX_WIDTH, digest, dtype, restate_unix, txh3, txh32, txh64,
     txh128, unix_from_scalar, unix_now,
 };
-use yggdryl::hashing::xxhash::{self, Xxh3};
-use yggdryl::{DataType, Digest, DigestAlgorithm, Error, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::xxhash::{self, Xxh3};
+use yggdryl::{
+    DataType, Digest, DigestAlgorithm, Error, Field, Scalar, StructureType, TimeUnit, Timezone,
+};
 
 const INSTANT: i64 = 1_700_000_000_000_000;
 
@@ -635,10 +637,7 @@ fn a_value_projects_to_a_datetime_and_a_fixed_byte_scalar() {
     );
     let scalar = value.into_scalar();
     assert_eq!(scalar.as_bytes(), Some(&*value.into_bytes()));
-    assert_eq!(
-        scalar.dtype().unwrap(),
-        DataType::fixed_size_binary(16).unwrap()
-    );
+    assert_eq!(scalar.dtype().unwrap(), DataType::fixed_binary(16).unwrap());
     assert_eq!(
         TxHash::from_scalar(DEFAULT_UNIT, DigestAlgorithm::Xxh3, &scalar).unwrap(),
         value
@@ -701,7 +700,8 @@ fn a_scalar_couples_its_own_digest() {
         typed.txhash(1, DigestAlgorithm::Xxh3),
         Scalar::from(1_i64).txhash(1, DigestAlgorithm::Xxh3)
     );
-    let row = DataType::from_fields([field.clone()])
+    let row = StructureType::from_fields([field.clone()])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let record =
@@ -718,7 +718,7 @@ fn a_hasher_carries_unit_seed_and_secret() {
     assert_eq!(plain.unit(), DEFAULT_UNIT);
     assert_eq!(plain.algorithm(), DigestAlgorithm::Xxh3);
     assert_eq!(plain.width(), 16);
-    assert_eq!(plain.dtype(), DataType::fixed_size_binary(16).unwrap());
+    assert_eq!(plain.dtype(), DataType::fixed_binary(16).unwrap());
     assert_eq!(plain.digest(b"AAPL", INSTANT), txh3(b"AAPL", INSTANT));
     assert_eq!(
         plain.digest_scalar(&Scalar::from("AAPL"), INSTANT),
@@ -773,16 +773,16 @@ fn a_hasher_carries_unit_seed_and_secret() {
 
 #[test]
 fn every_state_becomes_the_dispatcher_it_names() {
-    let mut expected = yggdryl::hashing::xxhash::Xxh32::with_seed(9);
+    let mut expected = yggdryl::xxhash::Xxh32::with_seed(9);
     expected.write_bytes(b"abc");
     let dispatcher: yggdryl::Digester = expected.clone().into();
     assert_eq!(dispatcher.as_digest(), expected.as_digest());
     assert_eq!(
-        yggdryl::Digester::from(yggdryl::hashing::xxhash::Xxh64::new()).algorithm(),
+        yggdryl::Digester::from(yggdryl::xxhash::Xxh64::new()).algorithm(),
         DigestAlgorithm::Xxh64
     );
     assert_eq!(
-        yggdryl::Digester::from(yggdryl::hashing::xxhash::Xxh128::new()).algorithm(),
+        yggdryl::Digester::from(yggdryl::xxhash::Xxh128::new()).algorithm(),
         DigestAlgorithm::Xxh128
     );
 }
@@ -809,7 +809,7 @@ fn coupled_holder(dtype: DataType) -> Field {
 
 #[test]
 fn the_digest_protocol_couples_a_holder_with_an_instant() {
-    let mut holder = coupled_holder(DataType::fixed_size_binary(16).unwrap());
+    let mut holder = coupled_holder(DataType::fixed_binary(16).unwrap());
     assert!(!holder.as_digest().is_coupled());
     assert_eq!(holder.as_digest().time(), None);
     assert_eq!(holder.as_digest().unit().unwrap(), None);
@@ -818,13 +818,13 @@ fn the_digest_protocol_couples_a_holder_with_an_instant() {
     holder.as_digest_mut().set_time("event").unwrap();
     assert!(holder.as_digest().is_coupled());
     assert_eq!(holder.as_digest().time(), Some("event"));
-    assert_eq!(holder.get_metadata("digest:time"), Some("event"));
+    assert_eq!(holder.get_metadata("DIGEST:time"), Some("event"));
     assert_eq!(holder.as_digest().coupled_unit().unwrap(), DEFAULT_UNIT);
 
     holder.as_digest_mut().set_unit(TimeUnit::Second).unwrap();
     assert_eq!(holder.as_digest().unit().unwrap(), Some(TimeUnit::Second));
     assert_eq!(holder.as_digest().coupled_unit().unwrap(), TimeUnit::Second);
-    assert_eq!(holder.get_metadata("digest:unit"), Some("s"));
+    assert_eq!(holder.get_metadata("DIGEST:unit"), Some("s"));
 
     // Sixteen coupled bytes hold a 64-bit digest of either family, never the
     // 128-bit one.
@@ -866,7 +866,7 @@ fn coupling_refuses_the_wrong_storage_role_and_spelling() {
     let mut narrow = coupled_holder(DataType::UInt64);
     let refused = narrow.as_digest_mut().set_time("event").unwrap_err();
     assert!(
-        matches!(&refused, Error::InvalidMetadataValue { key, .. } if key == "digest:time"),
+        matches!(&refused, Error::InvalidMetadataValue { key, .. } if key == "DIGEST:time"),
         "{refused}"
     );
     assert_eq!(
@@ -876,13 +876,13 @@ fn coupling_refuses_the_wrong_storage_role_and_spelling() {
     );
 
     // A declared algorithm pins the coupled width.
-    let mut pinned = coupled_holder(DataType::fixed_size_binary(16).unwrap());
+    let mut pinned = coupled_holder(DataType::fixed_binary(16).unwrap());
     pinned
         .as_digest_mut()
         .set_algorithm(DigestAlgorithm::Xxh128)
         .unwrap();
     assert!(pinned.as_digest_mut().set_time("event").is_err());
-    let mut widened = coupled_holder(DataType::fixed_size_binary(24).unwrap());
+    let mut widened = coupled_holder(DataType::fixed_binary(24).unwrap());
     assert!(
         widened
             .as_digest_mut()
@@ -896,16 +896,16 @@ fn coupling_refuses_the_wrong_storage_role_and_spelling() {
         .unwrap();
 
     // Twenty bytes are no coupled width.
-    let mut odd = coupled_holder(DataType::fixed_size_binary(20).unwrap());
+    let mut odd = coupled_holder(DataType::fixed_binary(20).unwrap());
     assert!(odd.as_digest_mut().set_time("event").is_err());
 
     // Not a holder at all.
-    let mut plain = Field::new("event", DataType::fixed_size_binary(16).unwrap(), false);
+    let mut plain = Field::new("event", DataType::fixed_binary(16).unwrap(), false);
     assert!(plain.as_digest_mut().set_time("event").is_err());
     assert!(plain.as_digest_mut().set_unit(TimeUnit::Second).is_err());
 
     // The unit needs the instant, and only a clock resolution is one.
-    let mut holder = coupled_holder(DataType::fixed_size_binary(12).unwrap());
+    let mut holder = coupled_holder(DataType::fixed_binary(12).unwrap());
     assert!(holder.as_digest_mut().set_unit(TimeUnit::Second).is_err());
     holder.as_digest_mut().set_time("event").unwrap();
     assert!(holder.as_digest_mut().set_unit(TimeUnit::Day).is_err());
@@ -925,12 +925,12 @@ fn coupling_refuses_the_wrong_storage_role_and_spelling() {
 
 #[test]
 fn stored_coupling_metadata_is_validated_and_canonicalized_on_write() {
-    let mut holder = coupled_holder(DataType::fixed_size_binary(16).unwrap());
+    let mut holder = coupled_holder(DataType::fixed_binary(16).unwrap());
     holder.as_digest_mut().set_time("event").unwrap();
     // The raw property route canonicalizes a unit spelling the way every
     // typed key is, and refuses what is no clock resolution.
     holder.as_digest_mut().insert("unit", "micros").unwrap();
-    assert_eq!(holder.get_metadata("digest:unit"), Some("us"));
+    assert_eq!(holder.get_metadata("DIGEST:unit"), Some("us"));
     holder
         .as_digest_mut()
         .insert("unit", "Milliseconds")
@@ -941,7 +941,7 @@ fn stored_coupling_metadata_is_validated_and_canonicalized_on_write() {
     );
     let refused = holder.as_digest_mut().insert("unit", "day").unwrap_err();
     assert!(
-        matches!(&refused, Error::InvalidMetadataValue { key, .. } if key == "digest:unit"),
+        matches!(&refused, Error::InvalidMetadataValue { key, .. } if key == "DIGEST:unit"),
         "{refused}"
     );
     assert!(holder.as_digest_mut().insert("unit", "fortnight").is_err());
@@ -951,7 +951,7 @@ fn stored_coupling_metadata_is_validated_and_canonicalized_on_write() {
     );
     let refused = holder.as_digest_mut().insert("time", "").unwrap_err();
     assert!(
-        matches!(&refused, Error::InvalidMetadataValue { key, .. } if key == "digest:time"),
+        matches!(&refused, Error::InvalidMetadataValue { key, .. } if key == "DIGEST:time"),
         "{refused}"
     );
     assert!(holder.as_digest_mut().insert("time", "*").is_err());

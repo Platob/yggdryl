@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "trdcaprptside"
+        "FIX:component": "trdcaprptside"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "trdcaprptside",
+    "FIX:counter": "552",
+    "FIX:tag": "240347",
     "description": "Required when NoSides(552) > 0.",
-    "display": "TrdCapRptSideGrp",
-    "fix:component": "trdcaprptside",
-    "fix:counter": "552",
-    "fix:tag": "240347"
+    "display": "TrdCapRptSideGrp"
   }
 }

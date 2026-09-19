@@ -2,7 +2,7 @@
 
 use yggdryl::coding::Coding;
 use yggdryl::holder::Buffer;
-use yggdryl::{Codec, Level, MimeType, Url};
+use yggdryl::{Codec, Level, MimeType, StructureType, Url};
 use yggdryl::{IOBase, IOMedia};
 
 #[derive(Debug)]
@@ -382,12 +382,12 @@ fn boxed_coding_helpers_keep_the_native_single_stream_path() {
     let encoded = Codec::Gzip.dump(&payload).unwrap();
 
     let (direct_source, direct_reads) = SharedReads::new(encoded.clone());
-    let direct = yggdryl::coding::gzip::Gzip::new(direct_source);
+    let direct = yggdryl::gzip::Gzip::new(direct_source);
     assert_eq!(direct.read_all_bytes().unwrap(), payload);
     let direct_reads = direct_reads.load(std::sync::atomic::Ordering::Relaxed);
 
     let (boxed_source, boxed_reads) = SharedReads::new(encoded);
-    let boxed_inner = yggdryl::coding::gzip::Gzip::new(boxed_source);
+    let boxed_inner = yggdryl::gzip::Gzip::new(boxed_source);
     let boxed: Box<dyn IOBase> = Box::new(boxed_inner);
     assert_eq!(boxed.read_all_bytes().unwrap(), payload);
     assert!(direct_reads > 0);
@@ -398,7 +398,6 @@ fn boxed_coding_helpers_keep_the_native_single_stream_path() {
     );
 }
 
-#[cfg(feature = "arrow")]
 #[test]
 fn a_coded_ipc_view_streams_through_its_owning_reader() {
     use std::sync::Arc;
@@ -407,7 +406,8 @@ fn a_coded_ipc_view_streams_through_its_owning_reader() {
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{DataType, MimeType};
 
-    let field = DataType::from_fields([DataType::Int64.required_field("id")])
+    let field = StructureType::from_fields([DataType::Int64.required_field("id")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let schema = field.clone().into_arrow_schema().unwrap();
@@ -417,10 +417,10 @@ fn a_coded_ipc_view_streams_through_its_owning_reader() {
     )
     .unwrap();
     let mut plain = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-    yggdryl::media::ipc::overwrite_arrow_reader(
+    yggdryl::ipc::overwrite_arrow_reader(
         &mut plain,
         yggdryl::arrow::batch_reader(schema, [batch]),
-        &yggdryl::media::ipc::IpcOptions::new(),
+        &yggdryl::ipc::IpcOptions::new(),
     )
     .unwrap();
 
@@ -560,7 +560,7 @@ mod dispatched {
 
         let inner = handle.into_handle().unwrap();
         let encoded = inner.read_all_bytes().unwrap();
-        assert_eq!(yggdryl::coding::gzip::load(&encoded).unwrap(), PAYLOAD);
+        assert_eq!(yggdryl::gzip::load(&encoded).unwrap(), PAYLOAD);
     }
 
     #[test]
@@ -637,7 +637,6 @@ mod held {
         assert_eq!(decoded.read_all_bytes().unwrap(), PLAIN);
     }
 
-    #[cfg(feature = "arrow")]
     #[test]
     fn a_coded_holder_reads_its_text_records_through_the_decoded_view() {
         use yggdryl::IOMedia as _;

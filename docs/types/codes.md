@@ -22,16 +22,17 @@ A code is an identity over a published registry, not a string with a charset: a 
 
 | | |
 | --- | --- |
-| Value | `Scalar::Code(Code)`: the text; equality, order and hash carry the identity, so `Side("BUY")` and `TimeInForce("BUY")` are two values |
+| Value | one `Scalar` variant per code - `Country`, `Currency`, `Mic`, `Cfi`, `Side`, `State`, `TimeInForce`, `Isin`, `Cusip`, `Sedol`, `Bloomberg` - holding the text; equality, order and hash carry the identity, so `Side("BUY")` and `TimeInForce("BUY")` are two values, and they sort the way their datatypes sort |
+| Family | `Code` is the eleven as one value - a variant per code, named as the `Scalar` variant is - and a `FamilyValue` beside `CodeValue`: `Scalar::as_code` narrows to it and `into_scalar` widens back ([Scalar](scalar.md#families)) |
 | Read by spelling | `side` and `state` hold explicit values of the crate's own - `BUY`, `SSHORT`, `ASDEF`; `20NEW`, `80FILLED` - and read a FIX wire code, the specification's name or the stored value onto them through `Side::from_spelling` and `State::from_spelling`; a spelling that names none is refused, never stored. FIX's `Side(54)` reaches the side values through the name its dictionary gives each code, so a dialect's own code maps as its dictionary says |
 | Storage | the text itself: nothing padded, nothing to trim, so a column dictionary-encodes and carries string statistics like any other text |
 | Identity | the extension *name*, never the storage: `yggdryl.currency` over `utf8` is a currency, and the same `utf8` under `yggdryl.string` or under no name at all is the text it is |
 | `code_width` | the most bytes one value may be, the number its standard fixes; `fixed_byte_width` is `None`, because the width bounds a value rather than laying it out |
 | `ascii_packed` | the value's bytes padded to that width and read big-endian into one `i128` - the padding is the packing's, never a column's: a fixed US-ASCII string of at most sixteen bytes or a code; everything else refused |
-| `StringEnum` | a name plus one US-ASCII value per member under `field:enum`; accepted on a fixed US-ASCII string of at most sixteen bytes or a code |
+| `StringEnum` | a name plus one US-ASCII value per member under `FIELD:enum`; accepted on a fixed US-ASCII string of at most sixteen bytes or a code |
 | Lanes | `Side::is_bid` and `Side::is_ask` say which lane of a quote a side takes - `BUY` and `BUYMINUS` the bid, `SELL`, `SELLPLUS`, `SSHORT`, `SSHORTEX` and `SELLUND` the ask, and a cross, `UNDISC`, `ASDEF`, `OPPOSITE` or `UNKNOWN` neither - which is what the FIX lift and a market element fill a lane by |
-| Merge | `CodeValue::merge_with(self, &Self) -> Self` is the better statement of two codes of one kind, and `Code::merge_with` the same over the family: a `cfi` fills every `X` from the other where the two describe one instrument, a `state` that reached none takes the other and otherwise the further along stands, a `side` `UNKNOWN`, a `currency` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is. What a [graph element](../graph.md) folds two statements of one fact with |
-| Rust only | `DataType::CODES`, the `Code` enum and its leaves, `Side::from_spelling`, `State::rank` and the lifecycle predicates, `Isin`/`Cusip`/`Sedol::{is_valid, is_canonical, closing_digit}` |
+| Merge | `CodeValue::merge_with(self, &Self) -> Self` is the better statement of two codes of one kind: a `cfi` fills every `X` from the other where the two describe one instrument, a `state` that reached none takes the other and otherwise the further along stands, a `side` `UNKNOWN`, a `currency` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is. What a [graph element](../graph.md) folds two statements of one fact with |
+| Rust only | `DataType::CODES`, the code leaf types and the `Code` family enum, `Scalar::code_storage` and `Scalar::is_code`, `Side::from_spelling`, `State::rank` and the lifecycle predicates, `Isin`/`Cusip`/`Sedol::{is_valid, is_canonical, closing_digit}` |
 
 ## Use
 
@@ -107,14 +108,14 @@ A code is an identity over a published registry, not a string with a charset: a 
 
     // A code rides its own Arrow extension, so the identity survives the trip.
     let venue = Field::new("venue", DataType::Mic, false);
-    let arrow = venue.clone().into_arrow()?;
+    let arrow = venue.clone().into_arrow_field()?;
     // The storage is the text; the name beside it is the identity.
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.mic");
-    assert_eq!(Field::from_arrow(&arrow)?, venue);
+    assert_eq!(Field::from_arrow_field(&arrow)?, venue);
     // The same storage under no name at all is plain text.
     let bare = arrow_schema::Field::new("venue", ArrowDataType::Utf8, false);
-    assert_eq!(Field::from_arrow(&bare)?.dtype(), &DataType::utf8());
+    assert_eq!(Field::from_arrow_field(&bare)?.dtype(), &DataType::utf8());
     ```
 
 === "Python"
@@ -240,12 +241,12 @@ A code is an identity over a published registry, not a string with a charset: a 
 FIX tag 35 stores complete `utf8` text, including codes such as `P Report Ack`.
 The [FIX registry](../fix/registry.md)
 owns `MsgType`: the registry's immutable message Struct definition, a component
-carrying `fix:msgtype`, obtained through registry lookup. Its wire code stays
+carrying `FIX:msgtype`, obtained through registry lookup. Its wire code stays
 intact; message definitions have no generic datatype or code field helper.
 
 ## Packed integers and the declared vocabulary
 
-`ascii_packed` is the value's bytes padded to the width and read big-endian: one integer everywhere, ordered as the text, never negative. The padding belongs to the packing - a code's column stores the text alone - which is what keeps a `field:enum` document the same integers whatever a column stores its values as. It answers for a fixed US-ASCII string of at most sixteen bytes or a code, and refuses everything else by name. `StringEnum` names those integers: one US-ASCII value per member, stored on the field under the reserved key `field:enum` ([Protocol](protocol.md)), so the width stays the field's datatype and the enum crosses Arrow, a file, and another runtime intact.
+`ascii_packed` is the value's bytes padded to the width and read big-endian: one integer everywhere, ordered as the text, never negative. The padding belongs to the packing - a code's column stores the text alone - which is what keeps a `FIELD:enum` document the same integers whatever a column stores its values as. It answers for a fixed US-ASCII string of at most sixteen bytes or a code, and refuses everything else by name. `StringEnum` names those integers: one US-ASCII value per member, stored on the field under the reserved key `FIELD:enum` ([Protocol](protocol.md)), so the width stays the field's datatype and the enum crosses Arrow, a file, and another runtime intact.
 
 === "Rust"
 
@@ -295,7 +296,7 @@ intact; message definitions have no generic datatype or code field helper.
     let side = StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?;
     let field = Field::new("side", ascii4.clone(), false).try_with_string_enum(&side)?;
     assert_eq!(side.into_members(&ascii4)?[0], ("BUY".into(), 0x4200_0000));
-    assert_eq!(Field::from_arrow(&field.into_arrow()?)?.string_enum()?, Some(side.clone()));
+    assert_eq!(Field::from_arrow_field(&field.into_arrow_field()?)?.string_enum()?, Some(side.clone()));
     // A string that does not pack is refused by name.
     let refused = Field::new("side", DataType::utf8(), false).try_with_string_enum(&side).unwrap_err().to_string();
     assert!(refused.contains("at most 16 bytes"), "{refused}");
@@ -425,7 +426,41 @@ intact; message definitions have no generic datatype or code field helper.
 | leading digit | `_` prefixed |
 | opens and closes with `_` | trailing `_` dropped |
 
-Python-only enum bases: [Python boundary](../extensions/python.md).
+Declaring a vocabulary *over* one of these widths is Python-only: `yggdryl.enums`
+builds an `IntEnum` base whose members are their own storage bytes read
+big-endian, so a member is the text and the integer at once. Rust and JavaScript
+express the same column as the datatype alone. The four registered bases -
+`Currency`, `Country`, `Mic`, `CFI` - ship declared; `fixed_ascii(width)` builds
+one over any fixed width.
+
+=== "Python"
+
+    ```python
+    from yggdryl.enums import Currency, fixed_ascii
+
+    # A member is its value's own storage bytes, read big-endian: three ASCII
+    # letters of a currency are three bytes of an integer.
+    assert int(Currency.USD) == 0x555344
+    assert str(Currency.USD) == "USD"
+
+    class Venue(fixed_ascii(4)):
+        XNAS = "XNAS"
+
+    assert int(Venue.XNAS) == 0x584E4153
+
+    # The vocabulary is open: a value nothing declared reads back as a member
+    # under its own code, and every spelling of it is that one member.
+    assert Venue("XLON") is Venue("XLON")
+    assert str(Venue("XLON")) == "XLON"
+
+    # A value the width refuses is an error, not a silent unknown member.
+    try:
+        Venue("TOOLONG")
+    except ValueError as refusal:
+        assert "at most 4 bytes" in str(refusal)
+    else:
+        raise AssertionError("a value wider than the declaration was accepted")
+    ```
 
 ## A state sorts by its lifecycle
 
@@ -474,7 +509,7 @@ answers as its ending does.
 Rust only.
 
 ```rust
-use yggdryl::types::State;
+use yggdryl::State;
 
 // Four vocabularies reach one value: the wire code an ExecutionReport
 // carries, the specification's name for it, a scheduler's word, and the
@@ -512,28 +547,28 @@ nobody published would be a guess.
 
 - A byte past `0x7F`, a NUL, or a value longer than the width -> refused naming the width (`at most 4 bytes`), and the row in a cast.
 - Stored under a code -> the text itself, so nothing is padded and nothing has to be trimmed back. A cast from a fixed-width column still trims the NUL that column's slot wrote; the padding was the slot's, never the value's. Text carrying trailing NULs canonicalizes to the trimmed value.
-- `Scalar::kind()` -> the code's id: `currency`, `side`, `state`; a plain string's kind is its layout, `string` or `fixed_string`.
-- `Code` equality, order and hash carry the identity first, then the text: `Side("1") != TimeInForce("1")`. A code and a plain string of the same bytes are two values.
+- `Scalar::kind()` -> the code's id: `currency`, `side`, `state`; a plain `utf8` string's kind is `string`, and any other leaf's is its name, `fixed_utf8` or `cp1252`.
+- A code's equality, order and hash carry the identity first, then the text: `Side("1") != TimeInForce("1")`. A code and a plain string of the same bytes are two values. The eleven share one value rank, so what separates them is the identity their datatypes sort by.
 - `utf8` under `yggdryl.currency` -> `currency`; under `yggdryl.string` with a document -> the string it describes; under no name -> `utf8`. The extension *name* is what separates them, so `yggdryl.currency` over any other storage imports as that storage.
 - `isin` -> two letters, nine alphanumerics and one digit that closes the eleven before it (ISO 6166's Luhn over the letters expanded to their alphabet positions); a check digit that does not close the number -> refused, `the check digit does not close the number`. Lower case -> the upper case it spells. `Isin::is_valid` and `Isin::closing_digit` answer the rule without building a value.
 - `cusip` -> eight alphanumerics and one digit that closes them: a letter reads as ten plus its alphabet position, every second value is doubled, the digits of every value are summed, and the digit closes the sum to a multiple of ten (modulus-10 double-add-double); a check digit that does not close it -> refused, `the check digit does not close the identifier`; the wrong length -> `expected nine characters`. Lower case -> the upper case it spells. `Cusip::issuer` and `Cusip::issue` read the six and two characters before the digit; `Cusip::is_valid` and `Cusip::closing_digit` answer the rule without building a value.
 - `sedol` -> six alphanumerics and one digit that closes them: the same letter values weighted `1, 3, 1, 7, 3, 9`, the digit closing the weighted sum to a multiple of ten; a check digit that does not close it -> refused, `the check digit does not close the identifier`; the wrong length -> `expected seven characters`. Lower case -> the upper case it spells. `Sedol::is_valid` and `Sedol::closing_digit` answer the rule without building a value.
 - An Arrow cast into `isin`, `cusip` or `sedol` is held to the canonical spelling - upper case, closed by its check digit - and refused otherwise (`canonical spelling`, naming the row and the column; null under `safe`), because a column's bytes are what every reader digests; only a scalar read folds the case. `try_cast(x as cusip)` in an [expression](../expression/terms.md) is that safe cast: an identifier the check digit closes answers, anything else is null.
 - `isin`, `cusip` and `sedol` name no vocabulary: `StringEnum::from_logical_name` answers an enum of no members for each, and no Python code class declares them.
-- Default value: a code defaults to the empty text its storage does, answered as the code's own scalar. `isin`, `cusip`, `sedol` and `state` are the exceptions, because their value door gates the space rather than holding it - a check digit closes the first three and a published vocabulary spells the last - so none has a neutral member, and `default_value` refuses naming the code rather than answering a value no registry issued.
+- Default value: a code defaults to the empty text its storage does, answered as the code's own scalar, and an empty text cell entering the column reads as that member ([Cast](cast.md#empty-text)). `isin`, `cusip`, `sedol`, `bloomberg`, `side` and `state` are the exceptions, because their value door gates the space rather than holding it - a check digit closes the first three, a securities identifier has no empty spelling, and a published vocabulary spells the last two - so none has a neutral member: `default_value` refuses naming the code rather than answering a value no registry issued, and an empty text cell entering one of them is null, as it is for a UUID.
 - A cast refusal under `safe` -> null, which a required column fills with the default; under strict -> the row and the column, for a code exactly as for a string ([Cast](cast.md)).
 - [Merged](field.md) widening: a code beside itself -> kept; beside `fixed_ascii(n)`, `ascii` or `utf8` -> that string.
 - [Merged](field.md) narrowing (`upscale=false`): a code beside any plainer shape storing it -> the code; beside narrower text -> that text.
-- `currency` beside `country` -> `ascii(3)` widening and `ascii(2)` narrowing, the bounded text both fit, never one code holding the other's values.
+- `currency` beside `country` -> `sized_ascii(3)` widening and `sized_ascii(2)` narrowing, the bounded text both fit, never one code holding the other's values.
 - A code shares no fixed width with anything, because its own width bounds variable text: beside `fixed_size_binary(n)` -> `binary` in either direction.
 - Iceberg, Spark, Polars, pandas, Avro, filter literals -> text, [rewritten](datatype.md) to `string`/`utf8`. Every registered code, not a subset: the listing each of these paths reads is `DataType::CODES`, through `DataType::is_code` and `DataType::code_width`, so a code cannot be spellable in one and unspellable in the next.
 - Parquet -> the `String` logical type and the byte-array bounds that come with it, so a planner reads statistics over the codes themselves and a reader outside this crate gets a column it can already use.
 - An Arrow cast into any code -> one text column, from a binary source of any framing or from anything Arrow renders as text; a text column already holding what the code promises is shared rather than copied; anything else -> refused naming the code and the source.
-- An Arrow cast out of a code -> every string datatype (any layout, charset or bound) and every byte framing, each reading the text the column holds; a byte width the text does not fill -> refused naming both sides and the row.
+- An Arrow cast out of a code -> every string leaf and every byte framing, each reading the text the column holds; a byte width the text does not fill -> refused naming both sides and the row.
 - `ascii_packed` on a variable string, on UTF-8, or on a width past 16 bytes -> refused, `at most 16 bytes`.
 - `ascii_packed` -> an `i32`, an `i64`, or a whole `i128` by width, and the integer a stable hash hashes.
 - A `StringEnum` on a string that is not fixed US-ASCII of at most sixteen bytes -> refused by name at `set_string_enum` and `into_members`; error kind `string-enum`.
-- `field:enum` document -> the width never enters it, so one enum is one canonical text.
+- `FIELD:enum` document -> the width never enters it, so one enum is one canonical text.
 - `from_logical_name` -> the shipped `COUNTRIES`, `CURRENCIES`, `MICS`, `SIDES`, `DIRECTIONS`, `STATES`, `TIMESINFORCE` listings, `prebuilt()` in either binding; `"Exchange"` -> `MICS`.
 - `from_logical_name("tenor")` (registered, no listing) -> an empty enum.
 - JavaScript `readRecords` -> Arrow JS rows carry no extension identity, so a code column arrives as the text it stores, under no identity.
@@ -548,8 +583,8 @@ nobody published would be a guess.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::ascii datatype::coded datatype::securities field::ascii
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::string types::tests::string_enum types::tests::vocabulary
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::ascii datatype::coded datatype::securities field::ascii string_enum:: vocabulary::
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- string::tests
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^ascii/'
     ```
 

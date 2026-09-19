@@ -17,12 +17,12 @@ pub(crate) mod bytes;
 pub(crate) mod listing;
 pub(crate) mod records;
 
-#[path = "../../../src/holder/object/tests/server.rs"]
+#[path = "../../../src/object/tests/server.rs"]
 pub(crate) mod server;
 
 use object_store::aws::{AmazonS3, AmazonS3Builder};
 use server::FakeS3;
-use yggdryl::holder::object::{Credentials, ObjectOptions};
+use yggdryl::object::{Credentials, ObjectOptions};
 
 /// The bucket every fixture writes into.
 pub(crate) const BUCKET: &str = "bench";

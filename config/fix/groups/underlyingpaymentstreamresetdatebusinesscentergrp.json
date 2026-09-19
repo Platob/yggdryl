@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingpaymentstreamresetdatebusinesscentercomponent"
+        "FIX:component": "underlyingpaymentstreamresetdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingpaymentstreamresetdatebusinesscentercomponent",
+    "FIX:counter": "40970",
+    "FIX:tag": "1046706",
     "description": "Required if NoUnderlyingPaymentStreamResetDateBusinessCenters(40970) > 0.",
-    "display": "UnderlyingPaymentStreamResetDateBusinessCenterGrp",
-    "fix:component": "underlyingpaymentstreamresetdatebusinesscentercomponent",
-    "fix:counter": "40970",
-    "fix:tag": "1046706"
+    "display": "UnderlyingPaymentStreamResetDateBusinessCenterGrp"
   }
 }

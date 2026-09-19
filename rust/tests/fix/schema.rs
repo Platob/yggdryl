@@ -6,7 +6,9 @@ use super::SoleMessage;
 use std::sync::Arc;
 
 use yggdryl::graph::MarketElement;
-use yggdryl::{DataType, Field, FixCodec, FixRegistry, Scalar, fix_column_of, fix_schema};
+use yggdryl::{
+    DataType, Field, FixCodec, FixRegistry, Scalar, StructureType, fix_column_of, fix_schema,
+};
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
@@ -44,19 +46,18 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 111);
+    assert_eq!(tags.len(), 110);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
     // groups kept whole, and last the frame.
     assert_eq!(
-        &tags[..13],
+        &tags[..12],
         [
             yggdryl::CURRUNIX_TAG_NAME.0,
-            yggdryl::CREATUNIX_TAG_NAME.0,
+            yggdryl::CREAUNIX_TAG_NAME.0,
             yggdryl::PREVUNIX_TAG_NAME.0,
             yggdryl::SNAPUNIX_TAG_NAME.0,
-            yggdryl::RECORDEDAT_TAG_NAME.0,
             52,
             122,
             60,
@@ -69,7 +70,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "when it happened, and the clocks a message stops being good at"
     );
     assert_eq!(
-        &tags[13..22],
+        &tags[12..21],
         [
             yggdryl::CURRUUID_TAG_NAME.0,
             yggdryl::CROSSUUID_TAG_NAME.0,
@@ -84,7 +85,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "which event"
     );
     assert_eq!(
-        &tags[22..29],
+        &tags[21..28],
         [8, 35, 34, 49, 56, 43, yggdryl::MSGDIRECTION_TAG_NAME.0],
         "which message"
     );
@@ -161,7 +162,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
             .index_of(name)
             .unwrap_or_else(|| panic!("a {name} column"))
     };
-    for pair in ["currunix", "creatunix", "prevunix", "snapunix"].windows(2) {
+    for pair in ["currunix", "creaunix", "prevunix", "snapunix"].windows(2) {
         assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
     }
     assert!(at("snapunix") < at("curruuid"), "the clocks open the row");
@@ -187,10 +188,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(typed(120), DataType::Currency, "SettlCurrency(120)");
     assert_eq!(typed(54), DataType::Side, "Side(54)");
     assert_eq!(typed(35), DataType::utf8(), "MsgType(35)");
-    assert!(
-        matches!(typed(60), DataType::DateTime64 { .. }),
-        "TransactTime"
-    );
+    assert!(matches!(typed(60), DataType::DateTime(_)), "TransactTime");
     // Every price and quantity is FIX's own field, exact at the one width
     // this crate keeps a number at.
     assert_eq!(typed(44), DataType::decimal128(38, 18).unwrap());
@@ -210,7 +208,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     for (tag, display) in [
         (yggdryl::CURRUNIX_TAG_NAME.0, "CurrUnix"),
         (yggdryl::MSGCTXID_TAG_NAME.0, "MsgCtxId"),
-        (yggdryl::PLUGINID_TAG_NAME.0, "PluginId"),
+        (yggdryl::MSGPLUGINID_TAG_NAME.0, "MsgPluginId"),
         (yggdryl::MSGSESSIONID_TAG_NAME.0, "MsgSessionId"),
         (yggdryl::CURRHASHCODE_TAG_NAME.0, "CurrHashCode"),
         (yggdryl::CROSSHASHCODE_TAG_NAME.0, "CrossHashCode"),
@@ -234,7 +232,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         required,
         [
             "currunix",
-            "creatunix",
+            "creaunix",
             "curruuid",
             "crossuuid",
             "currhashcode",
@@ -252,8 +250,8 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
 #[test]
 fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     use yggdryl::holder::Buffer;
+    use yggdryl::ipc::{Ipc, IpcOptions};
     use yggdryl::media::RecordOptions;
-    use yggdryl::media::ipc::{Ipc, IpcOptions};
     use yggdryl::{
         CROSSHASHCODE_TAG_NAME, CURRHASHCODE_TAG_NAME, FixMsg, IOMedia, PREVUUID_TAG_NAME,
     };
@@ -263,7 +261,7 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     let wire = b"8=FIX.4.4|35=D|11=UUID-ORDER-1|55=AAPL|10=0|";
     let mut message = codec.sole_line(wire).unwrap();
     let digest = message.digest();
-    let previous = DataType::Uuid
+    let previous = DataType::uuid()
         .scalar(Scalar::from(
             &[
                 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x86, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
@@ -305,7 +303,7 @@ fn identity_columns_keep_their_values_through_rows_and_record_writers() {
     );
     let field = &schema.fields()[column_of(&schema, PREVUUID_TAG_NAME.0)];
     assert_eq!(field.name(), PREVUUID_TAG_NAME.1);
-    assert_eq!(field.dtype(), &DataType::Uuid);
+    assert_eq!(field.dtype(), &DataType::uuid());
     assert_eq!(at(&row, &schema, PREVUUID_TAG_NAME.0), &previous);
 
     let restored = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
@@ -586,39 +584,27 @@ fn a_datatype_is_named_the_same_by_both_documents() {
         );
         let read = Field::from_json(&document)
             .unwrap_or_else(|error| panic!("{} does not read back: {error}", id.as_str()));
-        assert_eq!(read.dtype().id(), id, "{} changed identity", id.as_str());
+        assert_eq!(read.id(), id, "{} changed identity", id.as_str());
     }
 }
 
-/// The sixteen bytes an identity column holds, refusing every other value.
+/// The identity columns cross a lake in the storage their own width asks for.
 ///
-/// Only the lake round trip below reads a column this way - everywhere else
-/// an identity is compared as the scalar it is - so the helper is gated with
-/// its one caller rather than sitting unused in every other lane.
-#[cfg(feature = "iceberg")]
-#[track_caller]
-fn identity_bytes(held: &Scalar) -> [u8; 16] {
-    let Scalar::Bytes(bytes) = held else {
-        panic!("a sixteen-byte identity, got {held:?}");
-    };
-    assert_eq!(bytes.fixed(), Some(16), "{held:?}");
-    <[u8; 16]>::try_from(bytes.as_bytes()).expect("the fixed layout proved the width")
-}
-
-/// The three identity columns cross a lake as `fixed[16]`, byte for byte.
+/// Two of the three are XXH3-64 digests, so they are `uint64`, which Iceberg
+/// has no type for at all - the spec's integers are signed. The widening the
+/// refusal names is the door: a `u64` is at most twenty digits, so
+/// `decimal(20, 0)` holds every one of them losslessly. Only the previous
+/// message's UUID is sixteen bytes, and it crosses as the spec's `uuid`,
+/// which Arrow reads back as `fixed_binary(16)`.
 ///
-/// This is the whole reason they are bytes: an Iceberg table maps
-/// `fixed_size_binary(16)` to the spec's `fixed[16]`, which every engine
-/// reads, where `uuid` is read consistently by none. The round trip writes
-/// stamped messages, reads them back, and compares the bytes.
+/// The round trip writes stamped messages through the widened schema, reads
+/// them back, and compares each value to what the projected row stated.
 #[cfg(feature = "iceberg")]
 #[test]
-fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
-    use yggdryl::holder::local::Folder;
-    use yggdryl::media::iceberg::{
-        FormatVersion, PartitionSpec, PrimitiveType, Table, assign_field_ids,
-    };
-    use yggdryl::{CROSSHASHCODE_TAG_NAME, CURRHASHCODE_TAG_NAME, PREVUUID_TAG_NAME};
+fn the_identity_columns_cross_an_iceberg_table_in_the_storage_their_width_asks_for() {
+    use yggdryl::iceberg::{FormatVersion, PartitionSpec, PrimitiveType, Table, assign_field_ids};
+    use yggdryl::local::Folder;
+    use yggdryl::{CROSSHASHCODE_TAG_NAME, CURRHASHCODE_TAG_NAME, PREVUUID_TAG_NAME, Scheme};
 
     let (registry, codec) = reader();
     let codec = codec.with_separator(b'|');
@@ -637,43 +623,73 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
         .lifecycle(messages)
         .map(|held| held.unwrap())
         .collect();
-    let identities = [
-        CURRHASHCODE_TAG_NAME,
-        CROSSHASHCODE_TAG_NAME,
-        PREVUUID_TAG_NAME,
-    ];
-    // Read off the projected row, because the fixed schema is what the table
-    // holds and a projection is content: `msghash` digests the row it lands in
-    // (see `message.md#clocks-and-identity`), and the table's business is to
-    // carry those bytes back unchanged.
-    let expected: Vec<Vec<Option<[u8; 16]>>> = stamped
+
+    // The digests are unsigned, so the fixed schema is refused before a table
+    // exists, and the refusal names both the type and the way out.
+    let refused =
+        PrimitiveType::from_dtype(fixed.get_field(CURRHASHCODE_TAG_NAME.1).unwrap().dtype())
+            .map(|held| held.to_string())
+            .unwrap_err()
+            .to_string();
+    assert!(refused.contains("uint64"), "{refused}");
+    assert!(refused.contains("into_scheme_compat"), "{refused}");
+
+    // Read off the projected row, because the fixed schema is what the
+    // messages state and the table's business is to carry those values back:
+    // `msghash` digests the row it lands in (see
+    // `message.md#clocks-and-identity`).
+    let digests = [CURRHASHCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME];
+    let expected_digests: Vec<Vec<Option<u64>>> = stamped
         .iter()
         .map(|held| {
             let row = held.into_row(&fixed).unwrap();
-            identities
+            digests
                 .iter()
-                .map(|(tag, _)| {
-                    let value = at(&row, &fixed, *tag);
-                    (!value.is_null()).then(|| identity_bytes(value))
-                })
+                .map(|(tag, _)| at(&row, &fixed, *tag).as_u64())
                 .collect()
         })
         .collect();
+    let expected_uuids: Vec<Option<[u8; 16]>> = stamped
+        .iter()
+        .map(|held| {
+            let row = held.into_row(&fixed).unwrap();
+            match at(&row, &fixed, PREVUUID_TAG_NAME.0) {
+                Scalar::Uuid(uuid) => Some(uuid.into_bytes()),
+                Scalar::Null => None,
+                other => panic!("a uuid or nothing, got {other:?}"),
+            }
+        })
+        .collect();
     assert!(
-        expected[1].iter().all(Option::is_some),
-        "the second message states all three"
+        expected_digests[1].iter().all(Option::is_some),
+        "the second message states both digests"
+    );
+    assert!(
+        expected_uuids[1].is_some(),
+        "the second message follows the first, so it names its uuid"
     );
 
-    let mut schema = fixed.clone();
+    let mut schema = fixed
+        .clone()
+        .into_scheme_compat(&Scheme::ICEBERG)
+        .expect("the widening the refusal names");
     assign_field_ids(&mut schema, 1).unwrap();
-    for (_, name) in identities {
+    for (_, name) in digests {
         assert_eq!(
             PrimitiveType::from_dtype(schema.get_field(name).unwrap().dtype())
                 .unwrap()
                 .to_string(),
-            "fixed[16]",
+            "decimal(20, 0)",
+            "{name}"
         );
     }
+    assert_eq!(
+        PrimitiveType::from_dtype(schema.get_field(PREVUUID_TAG_NAME.1).unwrap().dtype())
+            .unwrap()
+            .to_string(),
+        "uuid",
+    );
+
     let path = Folder::temporary()
         .unwrap()
         .path()
@@ -687,26 +703,36 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
     let mut table = Table::create(
         Folder::new(&path).unwrap(),
         FormatVersion::V2,
-        schema,
+        schema.clone(),
         PartitionSpec::unpartitioned(),
     )
     .unwrap();
     let reader = codec
-        .arrow_reader(fixed.clone(), stamped.into_iter().map(Ok))
+        .arrow_reader(schema.clone(), stamped.into_iter().map(Ok))
         .unwrap();
     table.commit_append(reader).unwrap();
 
     let read = table.scan(None).unwrap();
-    for (_, name) in identities {
+    for (_, name) in digests {
         assert_eq!(
             read.schema().field_with_name(name).unwrap().data_type(),
-            &arrow_schema::DataType::FixedSizeBinary(16),
+            &arrow_schema::DataType::Decimal128(20, 0),
+            "{name}"
         );
     }
-    let mut rows: Vec<Vec<Option<[u8; 16]>>> = Vec::new();
+    assert_eq!(
+        read.schema()
+            .field_with_name(PREVUUID_TAG_NAME.1)
+            .unwrap()
+            .data_type(),
+        &arrow_schema::DataType::FixedSizeBinary(16),
+    );
+
+    let mut digest_rows: Vec<Vec<Option<u64>>> = Vec::new();
+    let mut uuid_rows: Vec<Option<[u8; 16]>> = Vec::new();
     for batch in read {
         let batch = batch.unwrap();
-        let columns: Vec<&arrow_array::FixedSizeBinaryArray> = identities
+        let columns: Vec<&arrow_array::Decimal128Array> = digests
             .iter()
             .map(|(_, name)| {
                 batch
@@ -714,22 +740,39 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
                     .unwrap()
                     .as_any()
                     .downcast_ref()
-                    .expect("sixteen fixed bytes, read back as they were written")
+                    .expect("twenty digits, read back as they were written")
             })
             .collect();
+        let uuids: &arrow_array::FixedSizeBinaryArray = batch
+            .column_by_name(PREVUUID_TAG_NAME.1)
+            .unwrap()
+            .as_any()
+            .downcast_ref()
+            .expect("sixteen fixed bytes, read back as they were written");
         for row in 0..batch.num_rows() {
-            rows.push(
+            digest_rows.push(
                 columns
                     .iter()
                     .map(|column| {
                         (!arrow_array::Array::is_null(*column, row))
-                            .then(|| <[u8; 16]>::try_from(column.value(row)).unwrap())
+                            .then(|| u64::try_from(column.value(row)).expect("a digest, unchanged"))
                     })
                     .collect(),
             );
+            uuid_rows.push(
+                (!arrow_array::Array::is_null(uuids, row))
+                    .then(|| <[u8; 16]>::try_from(uuids.value(row)).unwrap()),
+            );
         }
     }
-    assert_eq!(rows, expected, "the bytes come back exactly as they went");
+    assert_eq!(
+        digest_rows, expected_digests,
+        "the digests come back exactly as they went"
+    );
+    assert_eq!(
+        uuid_rows, expected_uuids,
+        "the uuid comes back exactly as it went"
+    );
     let _ = std::fs::remove_dir_all(&path);
 }
 
@@ -749,10 +792,11 @@ fn a_value_a_column_will_not_hold_is_that_columns_null() {
     // A message spelling a column's name with a value its datatype cannot
     // hold: five bytes under `SecurityExchange(207)`, which is a four-byte
     // MIC, and four letters under `Currency(15)`, which is three.
-    let root = DataType::from_fields([
+    let root = StructureType::from_fields([
         DataType::utf8().nullable_field("securityexchange"),
         DataType::utf8().nullable_field("currency"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("NewOrderSingle");
     let message = yggdryl::FixMsg::with_registry(

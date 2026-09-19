@@ -210,10 +210,10 @@ test('field HTTP metadata is canonical, typed, and HTTPS-compatible', () => {
     { key: 'location', value: '../relative' },
   ])
   assert.deepEqual(field.keys(), [
-    'http:content-encoding',
-    'http:content-length',
-    'http:content-type',
-    'http:location',
+    'HTTP:content-encoding',
+    'HTTP:content-length',
+    'HTTP:content-type',
+    'HTTP:location',
   ])
   assert.throws(() => field.httpLocation)
 
@@ -340,7 +340,7 @@ test('typed names, locations, and protocol properties share Arrow metadata', () 
     { key: 'column', value: 'close' },
     { key: 'type', value: 'numeric(18,6)' },
   ])
-  assert.equal(field.get('postgres:type'), 'numeric(18,6)')
+  assert.equal(field.get('POSTGRES:type'), 'numeric(18,6)')
 
   assert.equal(field.setProperty('postgres', 'type', 'decimal'), 'numeric(18,6)')
   assert.equal(field.removeProperty('postgres', 'type'), 'decimal')
@@ -430,8 +430,8 @@ test('a protocol view is a Map over one namespace of bare names', () => {
   assert.ok(iceberg instanceof ProtocolField)
   assert.throws(() => new ProtocolField(), /no `constructor`/)
   assert.equal(iceberg.scheme, 'iceberg')
-  assert.equal(iceberg.prefix, 'iceberg')
-  assert.equal(iceberg.key('doc'), 'iceberg:doc')
+  assert.equal(iceberg.prefix, 'ICEBERG')
+  assert.equal(iceberg.key('doc'), 'ICEBERG:doc')
   assert.equal(iceberg.size, 0)
   assert.equal(iceberg.get('doc'), null)
   assert.equal(iceberg.has('doc'), false)
@@ -490,8 +490,8 @@ test('a protocol view stays live on the field it was taken from', () => {
 
   iceberg.set('doc', 'closing price')
   assert.equal(field.getProperty('iceberg', 'doc'), 'closing price')
-  assert.equal(field.get('iceberg:doc'), 'closing price')
-  assert.equal(field.has('iceberg:doc'), true)
+  assert.equal(field.get('ICEBERG:doc'), 'closing price')
+  assert.equal(field.has('ICEBERG:doc'), true)
   assert.deepEqual(field.propertyIter('iceberg'), [
     { key: 'doc', value: 'closing price' },
   ])
@@ -500,7 +500,7 @@ test('a protocol view stays live on the field it was taken from', () => {
   field.setProperty('iceberg', 'field-id', '7')
   assert.equal(iceberg.get('field-id'), '7')
   assert.equal(iceberg.size, 2)
-  field.set('iceberg:doc', 'last trade')
+  field.set('ICEBERG:doc', 'last trade')
   assert.equal(iceberg.get('doc'), 'last trade')
 
   // Two views of one field are two windows onto the same metadata.
@@ -532,13 +532,13 @@ test('the python protocol view carries a validated class declaration', () => {
   })
 
   assert.equal(field.python.scheme, 'python')
-  assert.equal(field.python.key('qualname'), 'python:qualname')
-  assert.equal(field.get('python:qualname'), 'Book.Quote')
+  assert.equal(field.python.key('qualname'), 'PYTHON:qualname')
+  assert.equal(field.get('PYTHON:qualname'), 'Book.Quote')
   assert.deepEqual(field.python.keys(), ['kind', 'module', 'qualname'])
 
-  assert.throws(() => field.python.set('kind', 'record'), /python:kind/)
-  assert.throws(() => field.python.set('module', 'trading.'), /python:module/)
-  assert.throws(() => field.python.set('qualname', ''), /python:qualname/)
+  assert.throws(() => field.python.set('kind', 'record'), /PYTHON:kind/)
+  assert.throws(() => field.python.set('module', 'trading.'), /PYTHON:module/)
+  assert.throws(() => field.python.set('qualname', ''), /PYTHON:qualname/)
   // A refused write leaves the declaration exactly as it stood.
   assert.equal(field.python.get('kind'), 'dataclass')
 })
@@ -555,12 +555,12 @@ test('the HTTP protocol view covers HTTPS and is ASCII case-insensitive', () => 
   // HTTPS shares HTTP's one namespace, so both spell the same prefix.
   const https = field.protocol('HTTPS')
   assert.equal(https.scheme, 'https')
-  assert.equal(https.prefix, 'http')
-  assert.equal(https.key('content-type'), 'http:content-type')
+  assert.equal(https.prefix, 'HTTP')
+  assert.equal(https.key('content-type'), 'HTTP:content-type')
   assert.equal(https.get('Content-Type'), 'application/json')
 
   https.set('Cache-Control', 'public, max-age=60')
-  assert.equal(field.get('http:cache-control'), 'public, max-age=60')
+  assert.equal(field.get('HTTP:cache-control'), 'public, max-age=60')
   assert.equal(field.cacheControl, 'public, max-age=60')
   assert.deepEqual(field.http.keys(), ['cache-control', 'content-type'])
   assert.equal(field.protocol('Http').size, 2)
@@ -602,15 +602,15 @@ test('every well-known protocol has its own live field accessor', () => {
   for (const protocol of protocols) {
     const view = field[accessors[protocol] ?? protocol]
     assert.equal(view.scheme, protocol, protocol)
-    assert.equal(view.prefix, protocol, protocol)
-    assert.equal(view.key('doc'), `${protocol}:doc`, protocol)
+    assert.equal(view.prefix, protocol.toUpperCase(), protocol)
+    assert.equal(view.key('doc'), `${protocol.toUpperCase()}:doc`, protocol)
     view.set('doc', protocol)
   }
 
   assert.equal(field.size, protocols.length)
   assert.deepEqual(
     field.keys(),
-    protocols.map((protocol) => `${protocol}:doc`).sort(),
+    protocols.map((protocol) => `${protocol.toUpperCase()}:doc`).sort(),
   )
   for (const protocol of protocols) {
     assert.equal(field.getProperty(protocol, 'doc'), protocol, protocol)
@@ -637,7 +637,7 @@ test('a digest holder names its own sources and validates atomically', () => {
   )
   assert.deepEqual(holder.digest.entries(), before)
   assert.throws(
-    () => new Field('bad', 'uint64', true, { 'digest:role': 'invalid' }),
+    () => new Field('bad', 'uint64', true, { 'DIGEST:role': 'invalid' }),
     /holder/,
   )
 
@@ -661,8 +661,8 @@ test('a digest holder names its own sources and validates atomically', () => {
   // the default selection is still every child but the holder.
   const venue = new Field('venue', 'utf8', false)
   const narrowed = new Field('row_digest', 'uint64', true, {
-    'digest:role': 'holder',
-    'digest:sources': '["venue"]',
+    'DIGEST:role': 'holder',
+    'DIGEST:sources': '["venue"]',
   })
   const explicit = new Field(
     'row',
@@ -676,10 +676,10 @@ test('a digest holder names its own sources and validates atomically', () => {
   assert.throws(
     () =>
       new Field('bad', 'uint64', true, {
-        'digest:role': 'holder',
-        'digest:sources': '["*","venue"]',
+        'DIGEST:role': 'holder',
+        'DIGEST:sources': '["*","venue"]',
       }),
-    /digest:sources/,
+    /DIGEST:sources/,
   )
 
   const holdersOnly = new Field(
@@ -703,7 +703,7 @@ test('partition markers name the columns a path spells out', () => {
   const marked = year.withPartition(true)
   assert.ok(marked instanceof Field)
   assert.equal(marked.isPartition, true)
-  assert.equal(marked.get('field:partition'), 'true')
+  assert.equal(marked.get('FIELD:partition'), 'true')
   // `withPartition` copies, so the field it was called on is unchanged.
   assert.equal(year.isPartition, false)
 
@@ -711,7 +711,7 @@ test('partition markers name the columns a path spells out', () => {
   assert.equal(year.isPartition, true)
   year.setPartition(false)
   assert.equal(year.isPartition, false)
-  assert.equal(year.has('field:partition'), false)
+  assert.equal(year.has('FIELD:partition'), false)
 
   const schema = Field.from(
     'row: struct<year: int32 not null, price: float64 not null> not null',
@@ -897,5 +897,29 @@ test('unnesting flattens structs and exploding reaches inside collections', () =
   assert.deepEqual(
     row.dtype.unnestFields().map((child) => child.name),
     leaves.map((child) => child.name),
+  )
+})
+
+test('the constructor reads every metadata shape `update` reads', () => {
+  // A `Map` used to be accepted and silently produce empty metadata, and a
+  // tuple array used to throw, while `update` normalized all three. Two doors
+  // onto one field's metadata, disagreeing.
+  const expected = { venue: 'XPAR' }
+  for (const input of [
+    { venue: 'XPAR' },
+    [['venue', 'XPAR']],
+    new Map([['venue', 'XPAR']]),
+  ]) {
+    const field = new Field('price', new DataType('float64'), true, input)
+    assert.deepEqual(field.toJSON().metadata, expected)
+    const updated = new Field('price', new DataType('float64'), true)
+    updated.update(input)
+    assert.deepEqual(field.toJSON(), updated.toJSON())
+  }
+
+  // A tuple that is not a pair is still refused, by both doors.
+  assert.throws(
+    () => new Field('price', new DataType('float64'), true, [['venue']]),
+    /two items/,
   )
 })

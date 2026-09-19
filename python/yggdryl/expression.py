@@ -71,8 +71,8 @@ class UserFunction:
     call over terms or values, :meth:`where` the same call as a ``where``
     clause, and :attr:`signature` is the struct :class:`Field` the function
     is typed by, one child per parameter and the return as its
-    ``function:returns`` property. A stored column declaring
-    ``transform:function = "namespace.name"`` derives through the same
+    ``FUNCTION:returns`` property. A stored column declaring
+    ``TRANSFORM:function = "namespace.name"`` derives through the same
     registration.
     """
 

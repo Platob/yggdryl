@@ -6,9 +6,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the cash settlement provision's date. Used only to override the business day convention defined in the InstrumentLeg component.",
-      "display": "LegCashSettlDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -50,7 +48,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "42300"
+      "FIX:tag": "42300",
+      "description": "The business day convention used to adjust the cash settlement provision's date. Used only to override the business day convention defined in the InstrumentLeg component.",
+      "display": "LegCashSettlDateBusinessDayConvention"
     }
   },
   {
@@ -60,9 +60,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42301",
       "description": "Specifies the anchor date when the cash settlement date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "LegCashSettlDateRelativeTo",
-      "fix:tag": "42301"
+      "display": "LegCashSettlDateRelativeTo"
     }
   },
   {
@@ -72,9 +72,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42302",
       "description": "Time unit multiplier for the relative cash settlement date offset.",
-      "display": "LegCashSettlDateOffsetPeriod",
-      "fix:tag": "42302"
+      "display": "LegCashSettlDateOffsetPeriod"
     }
   },
   {
@@ -84,9 +84,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative cash settlement date offset.",
-      "display": "LegCashSettlDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -108,7 +106,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42303"
+      "FIX:tag": "42303",
+      "description": "Time unit associated with the relative cash settlement date offset.",
+      "display": "LegCashSettlDateOffsetUnit"
     }
   },
   {
@@ -118,9 +118,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative cash settlement date offset.",
-      "display": "LegCashSettlDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -152,7 +150,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42304"
+      "FIX:tag": "42304",
+      "description": "Specifies the day type of the relative cash settlement date offset.",
+      "display": "LegCashSettlDateOffsetDayType"
     }
   },
   {
@@ -163,9 +163,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42305",
       "description": "The adjusted cash settlement date.",
-      "display": "LegCashSettlDateAdjusted",
-      "fix:tag": "42305"
+      "display": "LegCashSettlDateAdjusted"
     }
   },
   {
@@ -175,9 +175,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42306",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegCashSettlDateBusinessCenters",
-      "fix:tag": "42306"
+      "display": "NoLegCashSettlDateBusinessCenters"
     }
   },
   {
@@ -187,9 +187,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42307",
       "description": "The business center calendar used for date adjustment of the cash settlement unadjusted or relative date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegCashSettlDateBusinessCenter",
-      "fix:tag": "42307"
+      "display": "LegCashSettlDateBusinessCenter"
     }
   },
   {
@@ -199,9 +199,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42308",
       "description": "The source from which the settlement price is to be obtained. See https://fpml.org/coding-scheme/settlement-price-source for values.",
-      "display": "LegCashSettlPriceSource",
-      "fix:tag": "42308"
+      "display": "LegCashSettlPriceSource"
     }
   },
   {
@@ -211,9 +211,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The default election for determining settlement price.",
-      "display": "LegCashSettlPriceDefault",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Close",
@@ -225,7 +223,9 @@
           "doc": "Hedge"
         }
       ],
-      "fix:tag": "42309"
+      "FIX:tag": "42309",
+      "description": "The default election for determining settlement price.",
+      "display": "LegCashSettlPriceDefault"
     }
   },
   {
@@ -235,9 +235,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42310",
       "description": "Number of entries in the LegDividendAccrualPaymentDateBusinessCenterGrp.",
-      "display": "NoLegDividendAccrualPaymentDateBusinessCenters",
-      "fix:tag": "42310"
+      "display": "NoLegDividendAccrualPaymentDateBusinessCenters"
     }
   },
   {
@@ -247,9 +247,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42311",
       "description": "The business center calendar used for date adjustment of the instrument's dividend accrual payment date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegDividendAccrualPaymentDateBusinessCenter",
-      "fix:tag": "42311"
+      "display": "LegDividendAccrualPaymentDateBusinessCenter"
     }
   },
   {
@@ -259,9 +259,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42312",
       "description": "The dividend accrual floating rate index.",
-      "display": "LegDividendFloatingRateIndex",
-      "fix:tag": "42312"
+      "display": "LegDividendFloatingRateIndex"
     }
   },
   {
@@ -271,9 +271,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42313",
       "description": "Time unit multiplier for the dividend accrual floating rate index curve.",
-      "display": "LegDividendFloatingRateIndexCurvePeriod",
-      "fix:tag": "42313"
+      "display": "LegDividendFloatingRateIndexCurvePeriod"
     }
   },
   {
@@ -283,9 +283,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the dividend accrual floating rate index curve period.",
-      "display": "LegDividendFloatingRateIndexCurveUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -307,7 +305,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42314"
+      "FIX:tag": "42314",
+      "description": "Time unit associated with the dividend accrual floating rate index curve period.",
+      "display": "LegDividendFloatingRateIndexCurveUnit"
     }
   },
   {
@@ -317,9 +317,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42315",
       "description": "A rate multiplier to apply to the floating rate. The multiplier can be less than or greater than 1 (one). This should only be included if the multiplier is not equal to 1 (one) for the term of the contract.",
-      "display": "LegDividendFloatingRateMultiplier",
-      "fix:tag": "42315"
+      "display": "LegDividendFloatingRateMultiplier"
     }
   },
   {
@@ -331,9 +331,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42316",
       "description": "The basis points spread from the index specified in LegDividendFloatingRateIndex(42312).",
-      "display": "LegDividendFloatingRateSpread",
-      "fix:tag": "42316"
+      "display": "LegDividendFloatingRateSpread"
     }
   },
   {
@@ -343,9 +343,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies whether the rate spread is applied to a long or short position.",
-      "display": "LegDividendFloatingRateSpreadPositionType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Short",
@@ -357,7 +355,9 @@
           "doc": "Long"
         }
       ],
-      "fix:tag": "42317"
+      "FIX:tag": "42317",
+      "description": "Identifies whether the rate spread is applied to a long or short position.",
+      "display": "LegDividendFloatingRateSpreadPositionType"
     }
   },
   {
@@ -367,9 +367,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the yield calculation treatment for the index.",
-      "display": "LegDividendFloatingRateTreatment",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "BondEquivalentYield",
@@ -381,7 +379,9 @@
           "doc": "Money market yield"
         }
       ],
-      "fix:tag": "42318"
+      "FIX:tag": "42318",
+      "description": "Specifies the yield calculation treatment for the index.",
+      "display": "LegDividendFloatingRateTreatment"
     }
   },
   {
@@ -391,9 +391,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42319",
       "description": "The cap rate, if any, which applies to the floating rate. It is only required where the floating rate is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as \"0.05\".",
-      "display": "LegDividendCapRate",
-      "fix:tag": "42319"
+      "display": "LegDividendCapRate"
     }
   },
   {
@@ -403,9 +403,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the buyer of the cap rate option through its trade side.",
-      "display": "LegDividendCapRateBuySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -417,7 +415,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "42320"
+      "FIX:tag": "42320",
+      "description": "Reference to the buyer of the cap rate option through its trade side.",
+      "display": "LegDividendCapRateBuySide"
     }
   },
   {
@@ -427,9 +427,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the seller of the cap rate option through its trade side.",
-      "display": "LegDividendCapRateSellSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -441,7 +439,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "42321"
+      "FIX:tag": "42321",
+      "description": "Reference to the seller of the cap rate option through its trade side.",
+      "display": "LegDividendCapRateSellSide"
     }
   },
   {
@@ -451,9 +451,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42322",
       "description": "The floor rate, if any, which applies to the floating rate. The floor rate (strike) is only required where the floating rate is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate. The rate is expressed as a decimal, e.g. 5% is represented as \"0.05\".",
-      "display": "LegDividendFloorRate",
-      "fix:tag": "42322"
+      "display": "LegDividendFloorRate"
     }
   },
   {
@@ -463,9 +463,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the buyer of the floor rate option through its trade side.",
-      "display": "LegDividendFloorRateBuySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -477,7 +475,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "42323"
+      "FIX:tag": "42323",
+      "description": "Reference to the buyer of the floor rate option through its trade side.",
+      "display": "LegDividendFloorRateBuySide"
     }
   },
   {
@@ -487,9 +487,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the seller of the floor rate option through its trade side.",
-      "display": "LegDividendFloorRateSellSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -501,7 +499,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "42324"
+      "FIX:tag": "42324",
+      "description": "Reference to the seller of the floor rate option through its trade side.",
+      "display": "LegDividendFloorRateSellSide"
     }
   },
   {
@@ -511,9 +511,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42325",
       "description": "The initial floating rate reset agreed between the principal parties involved in the trade. This is assumed to be the first required reset rate for the first regular calculation period. It should only be included when the rate is not equal to the rate published on the source implied by the floating rate index. The initial rate is expressed in decimal form, e.g. 5% is represented as \"0.05\".",
-      "display": "LegDividendInitialRate",
-      "fix:tag": "42325"
+      "display": "LegDividendInitialRate"
     }
   },
   {
@@ -523,9 +523,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the rounding direction of the final rate.",
-      "display": "LegDividendFinalRateRoundingDirection",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "RoundToNearest",
@@ -542,7 +540,9 @@
           "doc": "Round up"
         }
       ],
-      "fix:tag": "42326"
+      "FIX:tag": "42326",
+      "description": "Specifies the rounding direction of the final rate.",
+      "display": "LegDividendFinalRateRoundingDirection"
     }
   },
   {
@@ -552,9 +552,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42327",
       "description": "Specifies the rounding precision of the final rate in terms of a number of decimal places. Note how a percentage rate rounding of 5 decimal places is expressed as a rounding precision of 7.",
-      "display": "LegDividendFinalRatePrecision",
-      "fix:tag": "42327"
+      "display": "LegDividendFinalRatePrecision"
     }
   },
   {
@@ -564,9 +564,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "When averaging is applicable, used to specify whether a weighted or unweighted average method of calculation is to be used.",
-      "display": "LegDividendAveragingMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Unweighted",
@@ -578,7 +576,9 @@
           "doc": "Weighted"
         }
       ],
-      "fix:tag": "42328"
+      "FIX:tag": "42328",
+      "description": "When averaging is applicable, used to specify whether a weighted or unweighted average method of calculation is to be used.",
+      "display": "LegDividendAveragingMethod"
     }
   },
   {
@@ -588,9 +588,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The specification of any provisions for calculating payment obligations when a floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
-      "display": "LegDividendNegativeRateTreatment",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ZeroInterestRateMethod",
@@ -602,7 +600,9 @@
           "doc": "Negative interest rate method"
         }
       ],
-      "fix:tag": "42329"
+      "FIX:tag": "42329",
+      "description": "The specification of any provisions for calculating payment obligations when a floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
+      "display": "LegDividendNegativeRateTreatment"
     }
   },
   {
@@ -612,9 +612,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42330",
       "description": "Specifies the anchor date when the accrual payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "LegDividendAccrualPaymentDateRelativeTo",
-      "fix:tag": "42330"
+      "display": "LegDividendAccrualPaymentDateRelativeTo"
     }
   },
   {
@@ -624,9 +624,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42331",
       "description": "Time unit multiplier for the relative accrual payment date offset.",
-      "display": "LegDividendAccrualPaymentDateOffsetPeriod",
-      "fix:tag": "42331"
+      "display": "LegDividendAccrualPaymentDateOffsetPeriod"
     }
   },
   {
@@ -636,9 +636,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative accrual payment date offset.",
-      "display": "LegDividendAccrualPaymentDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -660,7 +658,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42332"
+      "FIX:tag": "42332",
+      "description": "Time unit associated with the relative accrual payment date offset.",
+      "display": "LegDividendAccrualPaymentDateOffsetUnit"
     }
   },
   {
@@ -670,9 +670,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative accrual payment date offset.",
-      "display": "LegDividendAccrualPaymentDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -704,7 +702,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42333"
+      "FIX:tag": "42333",
+      "description": "Specifies the day type of the relative accrual payment date offset.",
+      "display": "LegDividendAccrualPaymentDateOffsetDayType"
     }
   },
   {
@@ -715,9 +715,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42334",
       "description": "The unadjusted accrual payment date.",
-      "display": "LegDividendAccrualPaymentDateUnadjusted",
-      "fix:tag": "42334"
+      "display": "LegDividendAccrualPaymentDateUnadjusted"
     }
   },
   {
@@ -727,9 +727,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Accrual payment date adjustment business day convention.",
-      "display": "LegDividendAccrualPaymentDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -771,7 +769,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "42335"
+      "FIX:tag": "42335",
+      "description": "Accrual payment date adjustment business day convention.",
+      "display": "LegDividendAccrualPaymentDateBusinessDayConvention"
     }
   },
   {
@@ -782,9 +782,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42336",
       "description": "The adjusted accrual payment date.",
-      "display": "LegDividendAccrualPaymentDateAdjusted",
-      "fix:tag": "42336"
+      "display": "LegDividendAccrualPaymentDateAdjusted"
     }
   },
   {
@@ -794,9 +794,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42337",
       "description": "Indicates whether the dividend will be reinvested.",
-      "display": "LegDividendReinvestmentIndicator",
-      "fix:tag": "42337"
+      "display": "LegDividendReinvestmentIndicator"
     }
   },
   {
@@ -806,9 +806,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Defines the contract event which the receiver of the derivative is entitled to the dividend.",
-      "display": "LegDividendEntitlementEvent",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ExDate",
@@ -820,7 +818,9 @@
           "doc": "Record date"
         }
       ],
-      "fix:tag": "42338"
+      "FIX:tag": "42338",
+      "description": "Defines the contract event which the receiver of the derivative is entitled to the dividend.",
+      "display": "LegDividendEntitlementEvent"
     }
   },
   {
@@ -830,9 +830,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates how the gross cash dividend amount per share is determined.",
-      "display": "LegDividendAmountType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "RecordAmount",
@@ -854,7 +852,9 @@
           "doc": "As specified in master confirmation"
         }
       ],
-      "fix:tag": "42339"
+      "FIX:tag": "42339",
+      "description": "Indicates how the gross cash dividend amount per share is determined.",
+      "display": "LegDividendAmountType"
     }
   },
   {
@@ -864,9 +864,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42340",
       "description": "References the dividend underlier through the instrument's UnderlyingSecurityID(309) which must be fully specified in an instance of the UnderlyingInstrument component.",
-      "display": "LegDividendUnderlierRefID",
-      "fix:tag": "42340"
+      "display": "LegDividendUnderlierRefID"
     }
   },
   {
@@ -876,9 +876,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the party through its side in the trade who makes the determination whether dividends are extraordinary in relation to normal levels.",
-      "display": "LegExtraordinaryDividendPartySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -890,7 +888,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "42341"
+      "FIX:tag": "42341",
+      "description": "Reference to the party through its side in the trade who makes the determination whether dividends are extraordinary in relation to normal levels.",
+      "display": "LegExtraordinaryDividendPartySide"
     }
   },
   {
@@ -900,9 +900,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates how the extraordinary gross cash dividend per share is determined.",
-      "display": "LegExtraordinaryDividendAmountType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "RecordAmount",
@@ -924,7 +922,9 @@
           "doc": "As specified in master confirmation"
         }
       ],
-      "fix:tag": "42342"
+      "FIX:tag": "42342",
+      "description": "Indicates how the extraordinary gross cash dividend per share is determined.",
+      "display": "LegExtraordinaryDividendAmountType"
     }
   },
   {
@@ -934,9 +934,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42343",
       "description": "The currency in which the excess dividend is denominated. Uses ISO 4217 currency codes.",
-      "display": "LegExtraordinaryDividendCurrency",
-      "fix:tag": "42343"
+      "display": "LegExtraordinaryDividendCurrency"
     }
   },
   {
@@ -946,9 +946,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42344",
       "description": "Specifies the method in which the excess amount is determined. See https://fpml.org/coding-scheme/determination-method for values.",
-      "display": "LegExtraordinaryDividendDeterminationMethod",
-      "fix:tag": "42344"
+      "display": "LegExtraordinaryDividendDeterminationMethod"
     }
   },
   {
@@ -958,9 +958,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42345",
       "description": "The dividend accrual fixed rate per annum expressed as a decimal.",
-      "display": "LegDividendAccrualFixedRate",
-      "fix:tag": "42345"
+      "display": "LegDividendAccrualFixedRate"
     }
   },
   {
@@ -970,9 +970,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The compounding method to be used when more than one dividend period contributes to a single payment.",
-      "display": "LegDividendCompoundingMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "None",
@@ -994,7 +992,9 @@
           "doc": "Spread exclusive"
         }
       ],
-      "fix:tag": "42346"
+      "FIX:tag": "42346",
+      "description": "The compounding method to be used when more than one dividend period contributes to a single payment.",
+      "display": "LegDividendCompoundingMethod"
     }
   },
   {
@@ -1004,9 +1004,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42347",
       "description": "The number of index units applicable to dividends.",
-      "display": "LegDividendNumOfIndexUnits",
-      "fix:tag": "42347"
+      "display": "LegDividendNumOfIndexUnits"
     }
   },
   {
@@ -1016,9 +1016,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42348",
       "description": "Declared cash dividend percentage.",
-      "display": "LegDividendCashPercentage",
-      "fix:tag": "42348"
+      "display": "LegDividendCashPercentage"
     }
   },
   {
@@ -1028,9 +1028,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42349",
       "description": "Declared cash-equivalent dividend percentage.",
-      "display": "LegDividendCashEquivalentPercentage",
-      "fix:tag": "42349"
+      "display": "LegDividendCashEquivalentPercentage"
     }
   },
   {
@@ -1040,9 +1040,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Defines the treatment of non-cash dividends.",
-      "display": "LegNonCashDividendTreatment",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "PotentialAdjustment",
@@ -1054,7 +1052,9 @@
           "doc": "Cash equivalent"
         }
       ],
-      "fix:tag": "42350"
+      "FIX:tag": "42350",
+      "description": "Defines the treatment of non-cash dividends.",
+      "display": "LegNonCashDividendTreatment"
     }
   },
   {
@@ -1064,9 +1064,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Defines how the composition of dividends is to be determined.",
-      "display": "LegDividendComposition",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "EquityAmountReceiver",
@@ -1078,7 +1076,9 @@
           "doc": "Calculation agent election"
         }
       ],
-      "fix:tag": "42351"
+      "FIX:tag": "42351",
+      "description": "Defines how the composition of dividends is to be determined.",
+      "display": "LegDividendComposition"
     }
   },
   {
@@ -1088,9 +1088,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42352",
       "description": "Indicates whether special dividends are applicable.",
-      "display": "LegSpecialDividendsIndicator",
-      "fix:tag": "42352"
+      "display": "LegSpecialDividendsIndicator"
     }
   },
   {
@@ -1100,9 +1100,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42353",
       "description": "Indicates whether material non-cash dividends are applicable.",
-      "display": "LegMaterialDividendsIndicator",
-      "fix:tag": "42353"
+      "display": "LegMaterialDividendsIndicator"
     }
   },
   {
@@ -1112,9 +1112,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42354",
       "description": "Indicates whether option exchange dividends are applicable.",
-      "display": "LegOptionsExchangeDividendsIndicator",
-      "fix:tag": "42354"
+      "display": "LegOptionsExchangeDividendsIndicator"
     }
   },
   {
@@ -1124,9 +1124,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42355",
       "description": "Indicates whether additional dividends are applicable.",
-      "display": "LegAdditionalDividendsIndicator",
-      "fix:tag": "42355"
+      "display": "LegAdditionalDividendsIndicator"
     }
   },
   {
@@ -1136,9 +1136,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42356",
       "description": "Represents the European Master Confirmation value of 'All Dividends' which, when applicable, signifies that, for a given Ex-Date, the daily observed share price for that day is adjusted (reduced) by the cash dividend and/or the cash value of any non-cash dividend per share (including extraordinary dividends) declared by the issuer.",
-      "display": "LegAllDividendsIndicator",
-      "fix:tag": "42356"
+      "display": "LegAllDividendsIndicator"
     }
   },
   {
@@ -1148,9 +1148,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42357",
       "description": "Specifies the anchor date when the FX trigger date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "LegDividendFXTriggerDateRelativeTo",
-      "fix:tag": "42357"
+      "display": "LegDividendFXTriggerDateRelativeTo"
     }
   },
   {
@@ -1160,9 +1160,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42358",
       "description": "Time unit multiplier for the relative FX trigger date offset.",
-      "display": "LegDividendFXTriggerDateOffsetPeriod",
-      "fix:tag": "42358"
+      "display": "LegDividendFXTriggerDateOffsetPeriod"
     }
   },
   {
@@ -1172,9 +1172,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative FX trigger date offset.",
-      "display": "LegDividendFXTriggerDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1196,7 +1194,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42359"
+      "FIX:tag": "42359",
+      "description": "Time unit associated with the relative FX trigger date offset.",
+      "display": "LegDividendFXTriggerDateOffsetUnit"
     }
   },
   {
@@ -1206,9 +1206,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative FX trigger date offset.",
-      "display": "LegDividendFXTriggerDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -1240,7 +1238,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42360"
+      "FIX:tag": "42360",
+      "description": "Specifies the day type of the relative FX trigger date offset.",
+      "display": "LegDividendFXTriggerDateOffsetDayType"
     }
   },
   {
@@ -1251,9 +1251,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42361",
       "description": "The unadjusted FX trigger date.",
-      "display": "LegDividendFXTriggerDateUnadjusted",
-      "fix:tag": "42361"
+      "display": "LegDividendFXTriggerDateUnadjusted"
     }
   },
   {
@@ -1263,9 +1263,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used for the FX trigger date adjustment.",
-      "display": "LegDividendFXTriggerDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1307,7 +1305,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "42362"
+      "FIX:tag": "42362",
+      "description": "The business day convention used for the FX trigger date adjustment.",
+      "display": "LegDividendFXTriggerDateBusinessDayConvention"
     }
   },
   {
@@ -1318,9 +1318,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42363",
       "description": "The adjusted FX trigger date.",
-      "display": "LegDividendFXTriggerDateAdjusted",
-      "fix:tag": "42363"
+      "display": "LegDividendFXTriggerDateAdjusted"
     }
   },
   {
@@ -1330,9 +1330,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42364",
       "description": "Number of entries in the LegDividendFXTriggerDateBusinessCenterGrp.",
-      "display": "NoLegDividendFXTriggerDateBusinessCenters",
-      "fix:tag": "42364"
+      "display": "NoLegDividendFXTriggerDateBusinessCenters"
     }
   },
   {
@@ -1342,9 +1342,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42365",
       "description": "The business center calendar used for date adjustment of the instrument's FX trigger date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegDividendFXTriggerDateBusinessCenter",
-      "fix:tag": "42365"
+      "display": "LegDividendFXTriggerDateBusinessCenter"
     }
   },
   {
@@ -1354,9 +1354,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42366",
       "description": "Number of entries in the LegDividendPeriodGrp component.",
-      "display": "NoLegDividendPeriods",
-      "fix:tag": "42366"
+      "display": "NoLegDividendPeriods"
     }
   },
   {
@@ -1366,9 +1366,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42367",
       "description": "Defines the ordinal dividend period. E.g. 1 = First period, 2 = Second period, etc.",
-      "display": "LegDividendPeriodSequence",
-      "fix:tag": "42367"
+      "display": "LegDividendPeriodSequence"
     }
   },
   {
@@ -1379,9 +1379,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42368",
       "description": "The unadjusted date on which the dividend period will begin.",
-      "display": "LegDividendPeriodStartDateUnadjusted",
-      "fix:tag": "42368"
+      "display": "LegDividendPeriodStartDateUnadjusted"
     }
   },
   {
@@ -1392,9 +1392,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42369",
       "description": "The unadjusted date on which the dividend period will end.",
-      "display": "LegDividendPeriodEndDateUnadjusted",
-      "fix:tag": "42369"
+      "display": "LegDividendPeriodEndDateUnadjusted"
     }
   },
   {
@@ -1404,9 +1404,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42370",
       "description": "References the dividend underlier through the instrument's UnderlyingSecurityID(309) which must be fully specified in an instance of the UnderlyingInstrument component.",
-      "display": "LegDividendPeriodUnderlierRefID",
-      "fix:tag": "42370"
+      "display": "LegDividendPeriodUnderlierRefID"
     }
   },
   {
@@ -1418,9 +1418,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42371",
       "description": "Specifies the fixed strike price of the dividend period.",
-      "display": "LegDividendPeriodStrikePrice",
-      "fix:tag": "42371"
+      "display": "LegDividendPeriodStrikePrice"
     }
   },
   {
@@ -1430,9 +1430,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The dividend period dates business day convention.",
-      "display": "LegDividendPeriodBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1474,7 +1472,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "42372"
+      "FIX:tag": "42372",
+      "description": "The dividend period dates business day convention.",
+      "display": "LegDividendPeriodBusinessDayConvention"
     }
   },
   {
@@ -1485,9 +1485,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42373",
       "description": "The unadjusted dividend period valuation date.",
-      "display": "LegDividendPeriodValuationDateUnadjusted",
-      "fix:tag": "42373"
+      "display": "LegDividendPeriodValuationDateUnadjusted"
     }
   },
   {
@@ -1497,9 +1497,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42374",
       "description": "Specifies the anchor date when the dividend period valuation date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "LegDividendPeriodValuationDateRelativeTo",
-      "fix:tag": "42374"
+      "display": "LegDividendPeriodValuationDateRelativeTo"
     }
   },
   {
@@ -1509,9 +1509,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42375",
       "description": "Time unit multiplier for the relative dividend period valuation date offset.",
-      "display": "LegDividendPeriodValuationDateOffsetPeriod",
-      "fix:tag": "42375"
+      "display": "LegDividendPeriodValuationDateOffsetPeriod"
     }
   },
   {
@@ -1521,9 +1521,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative dividend period valuation date offset.",
-      "display": "LegDividendPeriodValuationDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1545,7 +1543,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42376"
+      "FIX:tag": "42376",
+      "description": "Time unit associated with the relative dividend period valuation date offset.",
+      "display": "LegDividendPeriodValuationDateOffsetUnit"
     }
   },
   {
@@ -1555,9 +1555,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative dividend period valuation date offset.",
-      "display": "LegDividendPeriodValuationDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -1589,7 +1587,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42377"
+      "FIX:tag": "42377",
+      "description": "Specifies the day type of the relative dividend period valuation date offset.",
+      "display": "LegDividendPeriodValuationDateOffsetDayType"
     }
   },
   {
@@ -1600,9 +1600,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42378",
       "description": "The adjusted dividend period valuation date.",
-      "display": "LegDividendPeriodValuationDateAdjusted",
-      "fix:tag": "42378"
+      "display": "LegDividendPeriodValuationDateAdjusted"
     }
   },
   {
@@ -1613,9 +1613,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42379",
       "description": "The unadjusted dividend period payment date.",
-      "display": "LegDividendPeriodPaymentDateUnadjusted",
-      "fix:tag": "42379"
+      "display": "LegDividendPeriodPaymentDateUnadjusted"
     }
   },
   {
@@ -1625,9 +1625,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42380",
       "description": "Specifies the anchor date when the dividend period payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "LegDividendPeriodPaymentDateRelativeTo",
-      "fix:tag": "42380"
+      "display": "LegDividendPeriodPaymentDateRelativeTo"
     }
   },
   {
@@ -1637,9 +1637,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42381",
       "description": "Time unit multiplier for the relative dividend period payment date offset.",
-      "display": "LegDividendPeriodPaymentDateOffsetPeriod",
-      "fix:tag": "42381"
+      "display": "LegDividendPeriodPaymentDateOffsetPeriod"
     }
   },
   {
@@ -1649,9 +1649,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative dividend period payment date offset.",
-      "display": "LegDividendPeriodPaymentDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1673,7 +1671,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42382"
+      "FIX:tag": "42382",
+      "description": "Time unit associated with the relative dividend period payment date offset.",
+      "display": "LegDividendPeriodPaymentDateOffsetUnit"
     }
   },
   {
@@ -1683,9 +1683,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative dividend period payment date offset.",
-      "display": "LegDividendPeriodPaymentDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -1717,7 +1715,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42383"
+      "FIX:tag": "42383",
+      "description": "Specifies the day type of the relative dividend period payment date offset.",
+      "display": "LegDividendPeriodPaymentDateOffsetDayType"
     }
   },
   {
@@ -1728,9 +1728,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42384",
       "description": "The adjusted dividend period payment date.",
-      "display": "LegDividendPeriodPaymentDateAdjusted",
-      "fix:tag": "42384"
+      "display": "LegDividendPeriodPaymentDateAdjusted"
     }
   },
   {
@@ -1740,9 +1740,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42385",
       "description": "Identifier for linking this stream dividend period to an underlier through an instance of RelatedInstrumentGrp.",
-      "display": "LegDividendPeriodXID",
-      "fix:tag": "42385"
+      "display": "LegDividendPeriodXID"
     }
   },
   {
@@ -1752,9 +1752,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42386",
       "description": "The number of entries in the LegDividendPeriodBusinessCentersGrp component.",
-      "display": "NoLegDividendPeriodBusinessCenters",
-      "fix:tag": "42386"
+      "display": "NoLegDividendPeriodBusinessCenters"
     }
   },
   {
@@ -1764,9 +1764,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42387",
       "description": "The business center calendar used for date adjustment of the instrument's dividend period date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegDividendPeriodBusinessCenter",
-      "fix:tag": "42387"
+      "display": "LegDividendPeriodBusinessCenter"
     }
   },
   {
@@ -1776,9 +1776,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42388",
       "description": "Number of extraordinary events in the repeating group.",
-      "display": "NoLegExtraordinaryEvents",
-      "fix:tag": "42388"
+      "display": "NoLegExtraordinaryEvents"
     }
   },
   {
@@ -1788,9 +1788,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42389",
       "description": "Identifies the type of extraordinary or disruptive event applicable to the reference entity. See https://fixtrading.org/packages/extraordinary-event-type for code list of extraordinary event types and values.",
-      "display": "LegExtraordinaryEventType",
-      "fix:tag": "42389"
+      "display": "LegExtraordinaryEventType"
     }
   },
   {
@@ -1800,9 +1800,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42390",
       "description": "The extraordinary or disruptive event value appropriate to LegExtraordinaryEventType(42389). See https://fixtrading.org/packages/extraordinary-event-type for code list of extraordinary event types and values.",
-      "display": "LegExtraordinaryEventValue",
-      "fix:tag": "42390"
+      "display": "LegExtraordinaryEventValue"
     }
   },
   {
@@ -1812,9 +1812,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Side value of the party electing the settlement method.",
-      "display": "LegSettlMethodElectingPartySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buy",
@@ -1826,7 +1824,9 @@
           "doc": "Sell"
         }
       ],
-      "fix:tag": "42391"
+      "FIX:tag": "42391",
+      "description": "Side value of the party electing the settlement method.",
+      "display": "LegSettlMethodElectingPartySide"
     }
   },
   {
@@ -1837,9 +1837,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42392",
       "description": "The date through which option cannot be exercised without penalty.",
-      "display": "LegMakeWholeDate",
-      "fix:tag": "42392"
+      "display": "LegMakeWholeDate"
     }
   },
   {
@@ -1851,9 +1851,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42393",
       "description": "Amount to be paid by the buyer of the option if the option is exercised prior to the LegMakeWholeDate(42392).",
-      "display": "LegMakeWholeAmount",
-      "fix:tag": "42393"
+      "display": "LegMakeWholeAmount"
     }
   },
   {
@@ -1863,9 +1863,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42394",
       "description": "Identifies the benchmark floating rate index.",
-      "display": "LegMakeWholeBenchmarkCurveName",
-      "fix:tag": "42394"
+      "display": "LegMakeWholeBenchmarkCurveName"
     }
   },
   {
@@ -1875,9 +1875,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42395",
       "description": "The point on the floating rate index curve.",
-      "display": "LegMakeWholeBenchmarkCurvePoint",
-      "fix:tag": "42395"
+      "display": "LegMakeWholeBenchmarkCurvePoint"
     }
   },
   {
@@ -1889,9 +1889,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42396",
       "description": "Spread over the floating rate index.",
-      "display": "LegMakeWholeRecallSpread",
-      "fix:tag": "42396"
+      "display": "LegMakeWholeRecallSpread"
     }
   },
   {
@@ -1901,9 +1901,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The quote side of the benchmark to be used for calculating the \"make whole\" amount.",
-      "display": "LegMakeWholeBenchmarkQuote",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bid",
@@ -1920,7 +1918,9 @@
           "doc": "Offer"
         }
       ],
-      "fix:tag": "42397"
+      "FIX:tag": "42397",
+      "description": "The quote side of the benchmark to be used for calculating the \"make whole\" amount.",
+      "display": "LegMakeWholeBenchmarkQuote"
     }
   },
   {
@@ -1930,9 +1930,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The method used when calculating the \"make whole\" amount. The most common is linear method.",
-      "display": "LegMakeWholeInterpolationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "None",
@@ -1944,7 +1942,9 @@
           "doc": "Linear zero yield"
         }
       ],
-      "fix:tag": "42398"
+      "FIX:tag": "42398",
+      "description": "The method used when calculating the \"make whole\" amount. The most common is linear method.",
+      "display": "LegMakeWholeInterpolationMethod"
     }
   },
   {
@@ -1954,9 +1954,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42399",
       "description": "Indicates whether cash settlement is applicable.",
-      "display": "LegPaymentStreamCashSettlIndicator",
-      "fix:tag": "42399"
+      "display": "LegPaymentStreamCashSettlIndicator"
     }
   }
 ]

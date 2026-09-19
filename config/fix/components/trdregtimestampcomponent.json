@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdregtimestamp",
-          "fix:tag": "769"
+          "FIX:field": "trdregtimestamp",
+          "FIX:tag": "769"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdregtimestamptype",
-          "fix:tag": "770"
+          "FIX:field": "trdregtimestamptype",
+          "FIX:tag": "770"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdregtimestamporigin",
-          "fix:tag": "771"
+          "FIX:field": "trdregtimestamporigin",
+          "FIX:tag": "771"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdregtimestampmanualindicator",
-          "fix:tag": "2839"
+          "FIX:field": "trdregtimestampmanualindicator",
+          "FIX:tag": "2839"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "desktype",
-          "fix:tag": "1033"
+          "FIX:field": "desktype",
+          "FIX:tag": "1033"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "desktypesource",
-          "fix:tag": "1034"
+          "FIX:field": "desktypesource",
+          "FIX:tag": "1034"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deskorderhandlinginst",
-          "fix:tag": "1035"
+          "FIX:field": "deskorderhandlinginst",
+          "FIX:tag": "1035"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "informationbarrierid",
-          "fix:tag": "1727"
+          "FIX:field": "informationbarrierid",
+          "FIX:tag": "1727"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nbboentrytype",
-          "fix:tag": "2831"
+          "FIX:field": "nbboentrytype",
+          "FIX:tag": "2831"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nbboprice",
-          "fix:tag": "2832"
+          "FIX:field": "nbboprice",
+          "FIX:tag": "2832"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nbboqty",
-          "fix:tag": "2833"
+          "FIX:field": "nbboqty",
+          "FIX:tag": "2833"
         }
       },
       {
@@ -131,15 +131,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nbbosource",
-          "fix:tag": "2834"
+          "FIX:field": "nbbosource",
+          "FIX:tag": "2834"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdRegTimestamp",
-    "fix:tag": "111648"
+    "FIX:tag": "111648",
+    "display": "TrdRegTimestamp"
   }
 }

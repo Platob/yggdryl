@@ -16,10 +16,17 @@ use arrow_array::{
     Array, ArrayRef, DictionaryArray, Int32Array, Int64Array, RecordBatch, StringArray, StructArray,
 };
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema, SchemaRef};
-use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
+use yggdryl::FieldValue as _;
+use yggdryl::SequenceType;
+use yggdryl::arrow::scalar_value;
+use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, StructureType};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    Field::new("row", DataType::from_fields(fields).unwrap(), false)
+    Field::new(
+        "row",
+        DataType::from(StructureType::from_fields(fields).unwrap()),
+        false,
+    )
 }
 
 fn strict() -> ArrowCastOptions {
@@ -161,10 +168,11 @@ fn a_nested_struct_child_is_named_by_its_whole_path() {
     .unwrap();
 
     // A required child the source struct does not carry at all.
-    let missing = root([DataType::from_fields([
+    let missing = root([StructureType::from_fields([
         DataType::utf8().nullable_field("city"),
         DataType::utf8().required_field("zip code"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("address")]);
     assert_eq!(
@@ -183,11 +191,12 @@ fn a_nested_struct_child_is_named_by_its_whole_path() {
         ))],
     )
     .unwrap();
-    let required_child = root([
-        DataType::from_fields([DataType::utf8().required_field("city")])
-            .unwrap()
-            .required_field("address"),
-    ]);
+    let required_child = root([StructureType::from_fields([
+        DataType::utf8().required_field("city")
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("address")]);
     assert_eq!(
         refusal(&required_child, null_batch),
         "required Arrow field $.address.city holds 1 null values"
@@ -208,9 +217,10 @@ fn a_required_list_item_is_named_under_its_list() {
     )]);
     let batch = RecordBatch::try_new(source, vec![values]).unwrap();
 
-    let target = root([
-        DataType::List(Arc::new(DataType::Int32.required_field("item"))).nullable_field("counts"),
-    ]);
+    let target = root([DataType::Sequence(SequenceType::List(Arc::new(
+        DataType::Int32.required_field("item"),
+    )))
+    .nullable_field("counts")]);
     assert_eq!(
         refusal(&target, batch),
         "required Arrow field $.counts[] holds 1 null values"
@@ -227,10 +237,11 @@ fn a_required_map_value_is_named_under_its_entries() {
     let source = schema(vec![ArrowField::new("tags", map.data_type().clone(), true)]);
     let batch = RecordBatch::try_new(source, vec![map]).unwrap();
 
-    let entries = DataType::from_fields([
+    let entries = StructureType::from_fields([
         DataType::utf8().required_field("keys"),
         DataType::Int32.required_field("values"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("entries");
     let target = root([DataType::map(entries, false)
@@ -291,6 +302,177 @@ fn strictness_and_conversion_safety_answer_different_questions() {
         .unwrap_err()
         .to_string();
     assert!(unsafe_message.contains("not a number"), "{unsafe_message}");
+
+    // An empty cell is not a failed conversion: it is null before `safe` is
+    // asked, so an unsafe cast passes it into a nullable column as one.
+    let source = schema(vec![ArrowField::new("id", ArrowDataType::Utf8, false)]);
+    let empty =
+        RecordBatch::try_new(source, vec![Arc::new(StringArray::from(vec!["1", ""]))]).unwrap();
+    let nullable = root([DataType::Int64.nullable_field("id")]);
+    let passed = nullable
+        .cast_arrow_batch(empty, strict().with_safe(false))
+        .unwrap();
+    assert_eq!(passed.column(0).null_count(), 1);
+    assert!(passed.column(0).is_null(1));
+}
+
+/// An empty text cell under a required declaration is a null under it: the
+/// default policy repairs it with the child's default and the strict one
+/// refuses it by the whole path, exactly as it does for a null the source
+/// carried.
+#[test]
+fn an_empty_text_cell_in_a_required_child_is_a_null_by_its_path() {
+    // A struct child.
+    let city = Fields::from(vec![ArrowField::new("zip", ArrowDataType::Utf8, true)]);
+    let source = schema(vec![ArrowField::new(
+        "address",
+        ArrowDataType::Struct(city.clone()),
+        false,
+    )]);
+    let batch = RecordBatch::try_new(
+        source,
+        vec![Arc::new(StructArray::new(
+            city,
+            vec![Arc::new(StringArray::from(vec![""])) as ArrayRef],
+            None,
+        ))],
+    )
+    .unwrap();
+    let target = root([
+        StructureType::from_fields([DataType::Int32.required_field("zip")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("address"),
+    ]);
+    let repaired = target
+        .cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
+        .unwrap();
+    let address = repaired
+        .column(0)
+        .as_any()
+        .downcast_ref::<StructArray>()
+        .unwrap();
+    assert_eq!(address.column(0).null_count(), 0);
+    assert_eq!(
+        address
+            .column(0)
+            .as_any()
+            .downcast_ref::<Int32Array>()
+            .unwrap()
+            .value(0),
+        0
+    );
+    assert_eq!(
+        refusal(&target, batch),
+        "required Arrow field $.address.zip holds 1 null values"
+    );
+
+    // A list item.
+    let mut builder = ListBuilder::new(StringBuilder::new());
+    builder.values().append_value("7");
+    builder.values().append_value("");
+    builder.append(true);
+    let values: ArrayRef = Arc::new(builder.finish());
+    let source = schema(vec![ArrowField::new(
+        "counts",
+        values.data_type().clone(),
+        true,
+    )]);
+    let batch = RecordBatch::try_new(source, vec![values]).unwrap();
+    let target = root([DataType::Sequence(SequenceType::List(Arc::new(
+        DataType::Int32.required_field("item"),
+    )))
+    .nullable_field("counts")]);
+    let repaired = target
+        .cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
+        .unwrap();
+    let counts = repaired
+        .column(0)
+        .as_any()
+        .downcast_ref::<arrow_array::ListArray>()
+        .unwrap();
+    assert_eq!(counts.values().null_count(), 0);
+    let items = counts
+        .values()
+        .as_any()
+        .downcast_ref::<Int32Array>()
+        .unwrap();
+    assert_eq!((items.value(0), items.value(1)), (7, 0));
+    assert_eq!(
+        refusal(&target, batch),
+        "required Arrow field $.counts[] holds 1 null values"
+    );
+
+    // A map value.
+    let mut builder = MapBuilder::new(None, StringBuilder::new(), StringBuilder::new());
+    builder.keys().append_value("a");
+    builder.values().append_value("");
+    builder.append(true).unwrap();
+    let map: ArrayRef = Arc::new(builder.finish());
+    let source = schema(vec![ArrowField::new("tags", map.data_type().clone(), true)]);
+    let batch = RecordBatch::try_new(source, vec![map]).unwrap();
+    let entries = StructureType::from_fields([
+        DataType::utf8().required_field("keys"),
+        DataType::Int32.required_field("values"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("entries");
+    let target = root([DataType::map(entries, false)
+        .unwrap()
+        .nullable_field("tags")]);
+    let repaired = target
+        .cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
+        .unwrap();
+    let tags = repaired
+        .column(0)
+        .as_any()
+        .downcast_ref::<arrow_array::MapArray>()
+        .unwrap();
+    assert_eq!(tags.values().null_count(), 0);
+    assert_eq!(
+        tags.values()
+            .as_any()
+            .downcast_ref::<Int32Array>()
+            .unwrap()
+            .value(0),
+        0
+    );
+    assert_eq!(
+        refusal(&target, batch),
+        "required Arrow field $.tags.entries.values holds 1 null values"
+    );
+}
+
+/// A reader that takes only a plain text layout answers a source carrying no
+/// visible value with a null column, so the null policy - never the reader's
+/// own default - decides for a required target: repaired under the default
+/// policy, refused by path under the strict one, for a source null exactly as
+/// for an empty cell.
+#[test]
+fn a_deferred_reader_hands_an_all_null_column_to_the_null_policy() {
+    let column: ArrayRef = Arc::new(DictionaryArray::<Int16Type>::from_iter([None::<&str>]));
+    let source = schema(vec![ArrowField::new(
+        "release",
+        column.data_type().clone(),
+        true,
+    )]);
+    let batch = RecordBatch::try_new(source, vec![column]).unwrap();
+    let release = DataType::Version.required_field("release");
+    let target = root([release.clone()]);
+
+    let repaired = target
+        .cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
+        .unwrap();
+    assert_eq!(repaired.column(0).null_count(), 0);
+    assert_eq!(
+        scalar_value(&release, repaired.column(0).as_ref()).unwrap(),
+        release.default_value().unwrap()
+    );
+    assert_eq!(
+        refusal(&target, batch),
+        "required Arrow field $.release holds 1 null values"
+    );
 }
 
 #[test]
@@ -298,7 +480,7 @@ fn extension_and_schema_metadata_survive_a_strict_cast() {
     let source = schema(vec![ArrowField::new("id", ArrowDataType::Int32, false)]);
     let batch = RecordBatch::try_new(source, vec![Arc::new(Int32Array::from(vec![1]))]).unwrap();
 
-    let mut identifier = DataType::Uuid.nullable_field("identifier");
+    let mut identifier = DataType::uuid().nullable_field("identifier");
     identifier.set_metadata([("owner", "trading")]).unwrap();
     let mut target = root([DataType::Int64.required_field("id"), identifier]);
     target.set_metadata([("source", "book")]).unwrap();

@@ -101,7 +101,7 @@ impl FixRegistry {
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
-    /// # use yggdryl::holder::local::Folder;
+    /// # use yggdryl::local::Folder;
     /// # use yggdryl::FixRegistry;
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// let registry = FixRegistry::from_handle(&Folder::new(root)?)?.with_default_aliases()?;

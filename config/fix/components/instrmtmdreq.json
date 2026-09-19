@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrumentextension"
+          "FIX:component": "instrumentextension"
         }
       },
       {
@@ -30,7 +30,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "financingdetails"
+          "FIX:component": "financingdetails"
         }
       },
       {
@@ -40,8 +40,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings",
-          "fix:tag": "711"
+          "FIX:field": "nounderlyings",
+          "FIX:tag": "711"
         }
       },
       {
@@ -51,7 +51,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "undinstrmtgrp"
+          "FIX:group": "undinstrmtgrp"
         }
       },
       {
@@ -61,8 +61,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs",
-          "fix:tag": "555"
+          "FIX:field": "nolegs",
+          "FIX:tag": "555"
         }
       },
       {
@@ -72,7 +72,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrmtleggrp"
+          "FIX:group": "instrmtleggrp"
         }
       },
       {
@@ -82,8 +82,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedinstruments",
-          "fix:tag": "1647"
+          "FIX:field": "norelatedinstruments",
+          "FIX:tag": "1647"
         }
       },
       {
@@ -93,7 +93,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "relatedinstrumentgrp"
+          "FIX:group": "relatedinstrumentgrp"
         }
       },
       {
@@ -103,7 +103,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "spreadorbenchmarkcurvedata"
+          "FIX:component": "spreadorbenchmarkcurvedata"
         }
       },
       {
@@ -113,8 +113,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency",
-          "fix:tag": "15"
+          "FIX:field": "currency",
+          "FIX:tag": "15"
         }
       },
       {
@@ -124,8 +124,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource",
-          "fix:tag": "2897"
+          "FIX:field": "currencycodesource",
+          "FIX:tag": "2897"
         }
       },
       {
@@ -135,8 +135,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotetype",
-          "fix:tag": "537"
+          "FIX:field": "quotetype",
+          "FIX:tag": "537"
         }
       },
       {
@@ -146,8 +146,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settltype",
-          "fix:tag": "63"
+          "FIX:field": "settltype",
+          "FIX:tag": "63"
         }
       },
       {
@@ -157,8 +157,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settldate",
-          "fix:tag": "64"
+          "FIX:field": "settldate",
+          "FIX:tag": "64"
         }
       },
       {
@@ -168,8 +168,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdentrysize",
-          "fix:tag": "271"
+          "FIX:field": "mdentrysize",
+          "FIX:tag": "271"
         }
       },
       {
@@ -179,15 +179,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstreamid",
-          "fix:tag": "1500"
+          "FIX:field": "mdstreamid",
+          "FIX:tag": "1500"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "InstrmtMDReq",
-    "fix:tag": "997532"
+    "FIX:tag": "997532",
+    "display": "InstrmtMDReq"
   }
 }

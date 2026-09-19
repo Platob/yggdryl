@@ -3,7 +3,7 @@
 //! Nothing here resolves, folds, merges, shards or validates: the registry is
 //! one [`Arc`] over the core [`FixRegistry`](CoreFixRegistry), and every
 //! accessor coerces its key once at the boundary and redirects to the most
-//! specific native method. The typed `fix:` vocabulary is not here either - it
+//! specific native method. The typed `FIX:` vocabulary is not here either - it
 //! lives on the protocol view class [`JsProtocolField`](crate::JsProtocolField),
 //! which is what `field.fix` already answers.
 //!
@@ -13,7 +13,7 @@
 //! bare tag or name uses the core's deterministic best match: a `number`
 //! there is a tag, never an identifier, and an identifier is only ever
 //! spelled through the `ById` doors. A dictionary's membership is
-//! `fix:branches` on the field it contributed to, read on the protocol view;
+//! `FIX:branches` on the field it contributed to, read on the protocol view;
 //! nothing here resolves through it.
 //!
 //! A message's typed facts - its event, its header, its capture, its text
@@ -39,7 +39,7 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 use yggdryl::graph::{Element, Event, MarketElement, MarketEventData};
-use yggdryl::types::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol};
+use yggdryl::{Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol};
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture,
     FixCodec as CoreFixCodec, FixEntry, FixHeader, FixId as CoreFixId, FixKey,
@@ -254,7 +254,7 @@ impl JsFixRegistry {
     /// Answers the dictionary and the message roots the file spelled out, in
     /// the order it spelled them. `dialect` is the membership every field,
     /// group, component and message the file produces is stamped with, on
-    /// its `fix:branches` - standard tags included, since membership means
+    /// its `FIX:branches` - standard tags included, since membership means
     /// the dictionary speaks it; with none named nothing is stamped. A
     /// dialect that is empty or carries a comma is refused.
     ///
@@ -469,7 +469,7 @@ impl JsFixRegistry {
     /// redirected to `addDefinition` under the category its shape names, and
     /// one of this crate's own tags is skipped as already held.
     ///
-    /// One mutation: a refusal - no `fix:tag`, a datatype disagreeing with
+    /// One mutation: a refusal - no `FIX:tag`, a datatype disagreeing with
     /// the stored field - leaves the dictionary exactly as it was.
     #[napi]
     pub fn add_field(&mut self, field: &JsField) -> Result<bool> {
@@ -481,7 +481,7 @@ impl JsFixRegistry {
     /// Add a field, answering the one it replaced.
     ///
     /// A definition is filed by the shape it has: a Struct inserts as a
-    /// component - a message when it carries `fix:msgtype` - a List of
+    /// component - a message when it carries `FIX:msgtype` - a List of
     /// Structs or a Map as a group, and anything else as a scalar field.
     #[napi]
     pub fn insert(&mut self, field: &JsField) -> Result<Option<JsField>> {
@@ -528,7 +528,7 @@ impl JsFixRegistry {
     }
 
     /// The distinct dictionaries any field or definition names on its
-    /// `fix:branches`, sorted.
+    /// `FIX:branches`, sorted.
     ///
     /// Membership is provenance and this is its listing; nothing resolves
     /// through it. A registry holding only the specification's own fields
@@ -767,7 +767,7 @@ pub struct FixEventView {
     pub seqnum: f64,
     /// When the chain was created, where stated.
     #[napi(ts_type = "bigint | null")]
-    pub creatunix: Either<BigInt, Null>,
+    pub creaunix: Either<BigInt, Null>,
     /// When the chain expires, where stated.
     #[napi(ts_type = "bigint | null")]
     pub expirunix: Either<BigInt, Null>,
@@ -852,7 +852,7 @@ fn or_null<T>(value: Option<T>) -> Either<T, Null> {
 /// The event's facts, read through the graph traits.
 fn event_view(event: &MarketEventData) -> Result<FixEventView> {
     let text = |held: Option<&str>| or_null(held.map(ToOwned::to_owned));
-    let decimal = |held: Option<Decimal>| or_null(held.map(|value| value.to_string()));
+    let decimal = |held: Option<Decimal18>| or_null(held.map(|value| value.to_string()));
     Ok(FixEventView {
         curruuid: event.get_curruuid().to_string(),
         crossuuid: event.get_crossuuid().to_string(),
@@ -864,7 +864,7 @@ fn event_view(event: &MarketEventData) -> Result<FixEventView> {
         currunix: instant(event.get_currunix()),
         state: event.get_state().as_str().to_owned(),
         seqnum: exact_f64(event.get_seqnum(), "seqnum")?,
-        creatunix: or_null(event.get_creatunix().map(instant)),
+        creaunix: or_null(event.get_creaunix().map(instant)),
         expirunix: or_null(event.get_expirunix().map(instant)),
         prevunix: or_null(event.get_prevunix().map(instant)),
         prevuuid: or_null(event.get_prevuuid().map(|uuid| uuid.to_string())),
@@ -992,7 +992,7 @@ pub struct FixCaptureView {
     /// The plugin that logged the line inside a bridge, as the bridge names
     /// it.
     #[napi(ts_type = "string | null")]
-    pub pluginid: Either<String, Null>,
+    pub msgpluginid: Either<String, Null>,
     /// The message context a bridge handled the line in.
     #[napi(ts_type = "string | null")]
     pub msgctxid: Either<String, Null>,
@@ -1003,7 +1003,7 @@ pub struct FixCaptureView {
 
 fn capture_view(capture: &FixCapture) -> FixCaptureView {
     FixCaptureView {
-        pluginid: or_null(capture.pluginid().map(ToOwned::to_owned)),
+        msgpluginid: or_null(capture.msgpluginid().map(ToOwned::to_owned)),
         msgctxid: or_null(capture.msgctxid().map(ToOwned::to_owned)),
         msgsessionid: or_null(capture.msgsessionid().map(ToOwned::to_owned)),
     }
@@ -1082,12 +1082,12 @@ impl JsFixMsg {
     /// through the dictionary exactly as the builder types a pair, so
     /// `intoBytes` re-emits the line the row was read from; a row without
     /// that column has the typed facts and no content. Every capture column
-    /// is read past - the two the crate tags, `sourceurl` and `recordedat`,
-    /// and every column no tag and no counter names - so nothing on the
-    /// message holds one; a column whose name holds a `.` is a bridge's own
-    /// statement and lands in the metadata. They stay the row's, and
-    /// whoever writes rows back restates them. Nothing is parsed again and
-    /// no clock is read. The process default is the registry when none is named.
+    /// is read past - the one the crate tags, `sourceurl`, and every column
+    /// no tag and no counter names - so nothing on the message holds one; a
+    /// column whose name holds a `.` is a bridge's own statement and lands
+    /// in the metadata. They stay the row's, and whoever writes rows back
+    /// restates them. Nothing is parsed again and no clock is read. The
+    /// process default is the registry when none is named.
     #[napi(factory)]
     pub fn from_row(
         schema: &JsField,
@@ -1502,9 +1502,9 @@ impl JsFixMsg {
     ///
     /// A key reaching no field and no child, or a value the field refuses,
     /// throws the core's refusal and leaves the message as it was. So does a
-    /// key reaching one of the capture's own columns - `sourceurl` (65026),
-    /// `recordedat` (65028), by tag or by name: a message holds no fact for
-    /// one, and a row child would put it on the wire.
+    /// key reaching the capture's own column - `sourceurl` (65026), by tag
+    /// or by name: a message holds no fact for it, and a row child would put
+    /// it on the wire.
     #[napi(ts_args_type = "key: number | string, value: unknown")]
     pub fn set(&mut self, env: Env, key: Unknown<'_>, value: &JsScalar) -> Result<()> {
         let key = FixKeyArg::from_js(env, &key, "key")?;
@@ -1559,11 +1559,11 @@ impl JsFixMsg {
     /// carried nothing at a column answers null there rather than shifting its
     /// neighbours. A typed fact fills its column from its holder, a group's
     /// column from the message's own occurrences, and the capture's own
-    /// columns answer null - the two the crate tags, `sourceurl` and
-    /// `recordedat`, and every column no tag and no counter names - because
-    /// a message holds no fact for any of them; the capture readers state
-    /// them on the row instead. The arrival record closes the row under
-    /// `fixentries`, unresolved keys at tag 0.
+    /// columns answer null - the one the crate tags, `sourceurl`, and every
+    /// column no tag and no counter names - because a message holds no fact
+    /// for any of them; the capture readers state them on the row instead.
+    /// The arrival record closes the row under `fixentries`, unresolved keys
+    /// at tag 0.
     ///
     /// A value a column will not hold is that column's null; a column that
     /// cannot be null keeps the refusal, and throws it located. No clock is
@@ -1890,7 +1890,7 @@ impl std::io::Write for JsSink<'_> {
 /// Every message it builds is settled as it is parsed: the typed facts are
 /// lifted off the line, a nested `XmlData` is exploded into the message,
 /// deprecated fields are restated to their latest aliases, the dictionary's
-/// `fix:derivation` rules run, the identifiers and the order lanes fill, and
+/// `FIX:derivation` rules run, the identifiers and the order lanes fill, and
 /// the identity is derived. `SendingTime` is the message's valid tag 52,
 /// else the carrier's, else `defaultSendingTime`, else UTC now read once for
 /// that new message, and it goes back on the wire only when the message
@@ -2155,7 +2155,7 @@ impl JsFixCodec {
     /// `withCaptureNames` is what decides which capture is which, once for
     /// the whole run, because a line answers its captures by position.
     ///
-    /// A `pluginid` capture fills the crate's own `pluginid` field and
+    /// A `msgpluginid` capture fills the crate's own `msgpluginid` field and
     /// selects nothing: the dictionary is one namespace.
     ///
     /// A `direction` capture is named so it cannot silently fill a field of
@@ -2192,11 +2192,11 @@ impl JsFixCodec {
     /// line door parses one, and batches close on the raw bytes of
     /// the payload column against `batchByteSize`. The source is consumed.
     ///
-    /// The capture's own columns fill nothing: the carried ones, and the two
-    /// the crate tags - a `sourceurl` column and a `recordedat` one - are
-    /// read off the source row and written straight into the row this
-    /// answers. This is the one door that can state them, and it is why
-    /// they survive a parse without a message holding one.
+    /// The capture's own columns fill nothing: the carried ones, and the one
+    /// the crate tags - a `sourceurl` column - are read off the source row
+    /// and written straight into the row this answers. This is the one door
+    /// that can state them, and it is why they survive a parse without a
+    /// message holding one.
     #[napi]
     pub fn parse_text_arrow_reader(&self, source: &mut JsBatchReader) -> Result<JsBatchReader> {
         let parsed = self
@@ -2338,7 +2338,7 @@ impl JsFixCodec {
     /// follows - the last message of its chain, under the cross identity its
     /// cross code derives, still alive - so a chained message carries its
     /// predecessor's `prevuuid` and `prevunix`, its `seqnum` in the chain,
-    /// the predecessor among its `parentuuids` and the chain's `creatunix`,
+    /// the predecessor among its `parentuuids` and the chain's `creaunix`,
     /// and is settled again around them. A message no live one precedes is
     /// answered as it came. The loader turns the iterable into the pull
     /// function this takes; a failure of the iterable throws and ends the
@@ -2461,9 +2461,9 @@ fn sending_time_from_js(value: Either<ClassInstance<'_, JsScalar>, JsDate<'_>>) 
 /// list that closes every row: `fixentries`, the whole content record,
 /// unresolved keys at tag 0. Columns are spelled by the dictionary's folded
 /// canonical names - `msgtype`, never `35` - so a row reads the way a
-/// message reads; the tag stays each column's identity, on its `fix:tag`,
+/// message reads; the tag stays each column's identity, on its `FIX:tag`,
 /// and is what fills it. `beginstring` and the settled identity - `currunix`,
-/// `creatunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - are
+/// `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - are
 /// required; every other column is nullable, because a message that carried
 /// nothing there must answer null rather than shift its neighbours.
 #[napi(js_name = "fixSchema")]
@@ -2486,7 +2486,7 @@ pub fn fix_schema(
 /// column already takes - `MsgCtxId` and `msgctxid` are one name - is dropped
 /// rather than renamed: the FIX column is the one a reader spelling it means.
 /// A bridge's own row header names every capture for the field it fills -
-/// `bridgesessionid`, `msgctxid`, `msgseqnum`, `pluginid` - for that reason,
+/// `bridgesessionid`, `msgctxid`, `msgseqnum`, `msgpluginid` - for that reason,
 /// so each value reaches its column rather than leading the row, and never
 /// over a reading the message stated itself.
 ///
@@ -2516,18 +2516,17 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// The definitions this crate owns, in tag order, above every tag FIX or a
 /// venue publishes.
 ///
-/// The event's instant `currunix` and the chain's `creatunix`, `prevunix`
+/// The event's instant `currunix` and the chain's `creaunix`, `prevunix`
 /// and `snapunix`; the identities `currhashcode`, `crosshashcode`,
 /// `curruuid`, `crossuuid`, `prevuuid` and the `parentuuids` list; the
 /// `crosscode` and the `seqnum`; the `identifiers` and `metadata` Map
-/// groups; what a bridge's capture states - `msgctxid`, `pluginid`,
-/// `msgsessionid`; the capture's own columns, `sourceurl` and `recordedat`,
-/// which whoever read the line states on the row and no message holds; and
-/// the `nofixentries` that counts the content record. Nothing about the
-/// market is here: every market fact is FIX's own field, and the graph
-/// traits answer it off those.
+/// groups; what a bridge's capture states - `msgctxid`, `msgpluginid`,
+/// `msgsessionid`; the capture's own column, `sourceurl`, which whoever read
+/// the line states on the row and no message holds; and the `nofixentries`
+/// that counts the content record. Nothing about the market is here: every
+/// market fact is FIX's own field, and the graph traits answer it off those.
 ///
-/// `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid` and
+/// `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and
 /// `crossuuid` are non-null. Every registry already holds them, so this is
 /// the listing a schema or a document walks rather than something a caller
 /// registers.

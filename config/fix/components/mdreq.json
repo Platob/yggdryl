@@ -10,15 +10,15 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdentrytype",
-          "fix:tag": "269"
+          "FIX:field": "mdentrytype",
+          "FIX:tag": "269"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MDReq",
-    "fix:tag": "609264"
+    "FIX:tag": "609264",
+    "display": "MDReq"
   }
 }

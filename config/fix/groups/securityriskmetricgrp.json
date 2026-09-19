@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "securityriskmetric"
+        "FIX:component": "securityriskmetric"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "securityriskmetric",
+    "FIX:counter": "2995",
+    "FIX:tag": "860483",
     "description": "Required when NoSecurityRiskMetrics(2995) > 0.",
-    "display": "SecurityRiskMetricGrp",
-    "fix:component": "securityriskmetric",
-    "fix:counter": "2995",
-    "fix:tag": "860483"
+    "display": "SecurityRiskMetricGrp"
   }
 }

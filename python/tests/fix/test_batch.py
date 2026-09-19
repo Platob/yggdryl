@@ -30,7 +30,7 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
 
 # The one intake clock undated test bytes take, so a parse repeats.
-CLOCK = Scalar.datetime(1_704_190_530_000_000_000, "ns", "UTC")
+CLOCK = DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000)
 
 
 def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
@@ -145,11 +145,11 @@ def test_an_item_that_is_not_bytes_is_refused_where_it_is_met(seed: FixRegistry)
 
 
 def test_parse_text_lines_pulls_one_line_at_a_time(seed: FixRegistry) -> None:
-    codec = _fixed(seed, capture_names=["pluginid"])
+    codec = _fixed(seed, capture_names=["msgpluginid"])
     lines = [TextLine(index, line, ["ULB"]) for index, line in enumerate(CARRYING)]
     read = list(codec.parse_text_lines(lines))
     assert len(read) == len(CARRYING)
-    assert all(held.capture().pluginid == "ULB" for held in read)
+    assert all(held.capture().msgpluginid == "ULB" for held in read)
     # A line's own captures are facts about the capture, never entries.
     assert all(all(tag != 65009 for tag, _, _, _ in held.entries()) for held in read)
 
@@ -207,7 +207,7 @@ def test_the_schema_is_decided_before_the_first_row_is_read(seed: FixRegistry) -
         assert names.count(named) == 1, named
     # The one record closes the row, under the counter that counts it.
     assert names[-2:] == ["nofixentries", "fixentries"]
-    assert reader.schema.field("msgtype").metadata[b"fix:tag"] == b"35"
+    assert reader.schema.field("msgtype").metadata[b"FIX:tag"] == b"35"
     # The identities cross as what a lake reads: a UUID and a 64-bit integer.
     assert reader.schema.field("curruuid").type == pa.uuid()
     assert reader.schema.field("currhashcode").type == pa.uint64()
@@ -388,10 +388,10 @@ def test_a_captures_own_columns_never_reach_the_message(seed: FixRegistry) -> No
     parsed = _one(codec, ORDER)
 
     # A parsed message has no capture columns: they are null in its row, the
-    # two the crate tags among them.
+    # one the crate tags among them.
     row = parsed.into_row(schema)
     held_row = row.as_py()
-    for carrier in ("url", "rownum", "body", "sourceurl", "recordedat"):
+    for carrier in ("url", "rownum", "body", "sourceurl"):
         assert held_row[schema.index_of(carrier)] is None, carrier
 
     # A row a reader stated them on reads back holding none of them: no
@@ -409,7 +409,7 @@ def test_a_captures_own_columns_never_reach_the_message(seed: FixRegistry) -> No
 
     # So a message alone writes them null: the readers restate them.
     written = again.into_row(schema).as_py()
-    for carrier in ("url", "rownum", "body", "sourceurl", "recordedat"):
+    for carrier in ("url", "rownum", "body", "sourceurl"):
         assert written[schema.index_of(carrier)] is None, carrier
 
 
@@ -506,7 +506,7 @@ def test_a_column_a_narrow_row_dropped_is_lifted_out_of_the_record(seed: FixRegi
         "msgtype",
         "sendingtime",
         "currunix",
-        "creatunix",
+        "creaunix",
         "currhashcode",
         "crosshashcode",
         "curruuid",

@@ -11,7 +11,7 @@ use criterion::{Criterion, Throughput};
 use futures::StreamExt as _;
 use object_store::ObjectStoreExt as _;
 use yggdryl::IOBase;
-use yggdryl::holder::object::AwsOptions;
+use yggdryl::object::AwsOptions;
 
 use super::{BUCKET, PAYLOAD, baseline, baseline_path, location, options, payload, runtime, store};
 
@@ -25,7 +25,7 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
     let store = store();
     let bytes = payload(PAYLOAD);
     store.put(BUCKET, "bench/read.bin", &bytes);
-    let handle = yggdryl::holder::object::file_with(&location("bench/read.bin"), options(&store))
+    let handle = yggdryl::object::file_with(&location("bench/read.bin"), options(&store))
         .expect("an object handle");
     let runtime = runtime();
     let external = baseline(&store);
@@ -123,13 +123,12 @@ pub(crate) fn byte_benchmarks(criterion: &mut Criterion) {
     // `object_store` uses, so the three numbers separate the client from the
     // policy rather than confusing them.
     group.bench_function("write_all/yggdryl", |bencher| {
-        let mut target =
-            yggdryl::holder::object::file_with(&location("bench/write.bin"), options(&store))
-                .expect("an object handle");
+        let mut target = yggdryl::object::file_with(&location("bench/write.bin"), options(&store))
+            .expect("an object handle");
         bencher.iter(|| target.write_all_bytes(black_box(&bytes)).expect("a write"));
     });
     group.bench_function("write_all/yggdryl_unsigned_payload", |bencher| {
-        let mut target = yggdryl::holder::object::file_with(
+        let mut target = yggdryl::object::file_with(
             &location("bench/write-unsigned.bin"),
             options(&store).with_aws(AwsOptions::default().with_payload_signing(false)),
         )

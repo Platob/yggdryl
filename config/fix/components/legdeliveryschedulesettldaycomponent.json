@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryschedulesettlday",
-          "fix:tag": "41423"
+          "FIX:field": "legdeliveryschedulesettlday",
+          "FIX:tag": "41423"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliveryschedulesettltotalhours",
-          "fix:tag": "41424"
+          "FIX:field": "legdeliveryschedulesettltotalhours",
+          "FIX:tag": "41424"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegdeliveryschedulesettltimes",
-          "fix:tag": "41425"
+          "FIX:field": "nolegdeliveryschedulesettltimes",
+          "FIX:tag": "41425"
         }
       },
       {
@@ -43,14 +43,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legdeliveryschedulesettltimegrp"
+          "FIX:group": "legdeliveryschedulesettltimegrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegDeliveryScheduleSettlDay",
-    "fix:tag": "469252"
+    "FIX:tag": "469252",
+    "display": "LegDeliveryScheduleSettlDay"
   }
 }

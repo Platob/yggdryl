@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingsettlratedisruptionfallback"
+        "FIX:component": "underlyingsettlratedisruptionfallback"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingsettlratedisruptionfallback",
+    "FIX:counter": "40659",
+    "FIX:tag": "652271",
     "description": "Required if NoUnderlyingSettlRateFallbacks(40659) > 0.",
-    "display": "UnderlyingSettlRateDisruptionFallbackGrp",
-    "fix:component": "underlyingsettlratedisruptionfallback",
-    "fix:counter": "40659",
-    "fix:tag": "652271"
+    "display": "UnderlyingSettlRateDisruptionFallbackGrp"
   }
 }

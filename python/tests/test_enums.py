@@ -221,7 +221,7 @@ def test_a_declaration_travels_on_the_field_it_names() -> None:
         AsciiCode.from_field(Field("side", DataType.fixed_ascii(4)))
     with pytest.raises(ValueError, match="a fixed US-ASCII string or a registered code"):
         AsciiCode.from_field(
-            Field("side", "utf8", metadata={"field:enum": Side.as_enum().into_json()})
+            Field("side", "utf8", metadata={"FIELD:enum": Side.as_enum().into_json()})
         )
 
 
@@ -231,7 +231,7 @@ def test_only_a_fixed_us_ascii_string_or_a_code_declares_a_vocabulary() -> None:
     declaration = StringEnum("Side", {"BUY": "B"}).into_json()
     for dtype in (DataType.fixed_utf8(4), DataType("ascii(4)"), DataType("utf8")):
         with pytest.raises(ValueError, match="fixed US-ASCII string or a registered code"):
-            AsciiCode.from_field(Field("side", dtype, metadata={"field:enum": declaration}))
+            AsciiCode.from_field(Field("side", dtype, metadata={"FIELD:enum": declaration}))
     with pytest.raises(ValueError, match="fixed US-ASCII string of at most 16 bytes"):
         Field("side", DataType.fixed_utf8(4)).set_string_enum(StringEnum("Side", {"BUY": "B"}))
 

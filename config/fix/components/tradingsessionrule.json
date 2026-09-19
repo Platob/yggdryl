@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionid",
-          "fix:tag": "336"
+          "FIX:field": "tradingsessionid",
+          "FIX:tag": "336"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid",
-          "fix:tag": "625"
+          "FIX:field": "tradingsessionsubid",
+          "FIX:tag": "625"
         }
       },
       {
@@ -32,14 +32,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "tradingsessionrules"
+          "FIX:component": "tradingsessionrules"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TradingSessionRule",
-    "fix:tag": "1018405"
+    "FIX:tag": "1018405",
+    "display": "TradingSessionRule"
   }
 }

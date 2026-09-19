@@ -9,15 +9,20 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
+use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::types::{CfiField, Code, CountryField, CurrencyField, MicField};
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar,
-    StringEnum,
+    ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StringEnum,
+    StructureType,
 };
+use yggdryl::{CfiField, CountryField, CurrencyField, MicField};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    Field::new("row", DataType::from_fields(fields).unwrap(), false)
+    Field::new(
+        "row",
+        DataType::from(StructureType::from_fields(fields).unwrap()),
+        false,
+    )
 }
 
 fn text(values: &[&str]) -> ArrayRef {
@@ -107,7 +112,7 @@ fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
         // A value is the code leaf under its own identity, and its wire
         // shape is that identity's name over the text.
         let value = dtype.scalar(Scalar::from(*sample)).unwrap();
-        assert!(matches!(value, Scalar::Code(_)), "{name}");
+        assert!(value.is_code(), "{name}");
         assert_eq!(value.id(), dtype.id(), "{name}");
         assert_eq!(value.kind(), *name, "{name}");
         assert_eq!(value.as_str(), Some(*sample), "{name}");
@@ -126,8 +131,8 @@ fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
 
         // Arrow: one type and back, losslessly, through a field.
         let field = Field::new(*name, dtype.clone(), false);
-        let arrow = field.clone().into_arrow().unwrap();
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{name}");
+        let arrow = field.clone().into_arrow_field().unwrap();
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{name}");
 
         // Merge and compatibility: with itself is itself; a number's
         // rendering does not fit a code, so absorbing one is no less than
@@ -155,7 +160,7 @@ fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
     // The value contract accepts the text, rewrites it into the declared
     // representation, and answers an unchanged value untouched.
     let side = DataType::Side.scalar(Scalar::from("BUY")).unwrap();
-    assert!(matches!(side, Scalar::Code(Code::Side(_))));
+    assert!(matches!(side, Scalar::Side(_)));
     assert_eq!(side.as_str(), Some("BUY"));
     assert_eq!(DataType::Side.scalar(side.clone()).unwrap(), side);
     // A side is read by its spelling: FIX's wire code and the
@@ -316,7 +321,7 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     let field = Field::new("side", DataType::Side, true);
     let row = Field::new(
         "row",
-        DataType::from_fields([field.clone()]).unwrap(),
+        DataType::from(StructureType::from_fields([field.clone()]).unwrap()),
         false,
     );
     let value = row
@@ -328,7 +333,9 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     // and not the datatype's.
     let required = Field::new(
         "row",
-        DataType::from_fields([Field::new("side", DataType::Side, false)]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([Field::new("side", DataType::Side, false)]).unwrap(),
+        ),
         false,
     );
     assert!(
@@ -382,7 +389,7 @@ fn a_coded_column_casts_to_text_and_back_and_refuses_a_number() {
 fn every_code_stores_as_the_text_it_is_under_its_own_extension() {
     for (name, dtype, width, sample) in &CODED {
         let field = Field::new("code", dtype.clone(), false);
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
 
         assert_eq!(arrow.data_type(), &ArrowDataType::Utf8, "{name}");
         assert_eq!(
@@ -392,7 +399,7 @@ fn every_code_stores_as_the_text_it_is_under_its_own_extension() {
         );
         assert_eq!(arrow.metadata()["ARROW:extension:metadata"], "", "{name}");
         // The identity round-trips: the same bytes come back the same code.
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{name}");
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{name}");
 
         // A value is stored as exactly its own bytes, and text cast into the
         // column becomes the same cell.
@@ -456,18 +463,18 @@ fn a_code_and_the_text_that_holds_it_are_not_the_same_column() {
 
     // Identical storage, different identity, so neither imports as the other:
     // the extension *name* is what separates them, never the storage.
-    let currency_arrow = currency.clone().into_arrow().unwrap();
-    let bounded_arrow = bounded.clone().into_arrow().unwrap();
+    let currency_arrow = currency.clone().into_arrow_field().unwrap();
+    let bounded_arrow = bounded.clone().into_arrow_field().unwrap();
     assert_eq!(currency_arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(bounded_arrow.data_type(), &ArrowDataType::Utf8);
     assert_ne!(currency_arrow.metadata(), bounded_arrow.metadata());
-    assert_eq!(Field::from_arrow(&currency_arrow).unwrap(), currency);
-    assert_eq!(Field::from_arrow(&bounded_arrow).unwrap(), bounded);
+    assert_eq!(Field::from_arrow_field(&currency_arrow).unwrap(), currency);
+    assert_eq!(Field::from_arrow_field(&bounded_arrow).unwrap(), bounded);
 
     // The same text under no extension at all stays plain text.
     let plain = arrow_schema::Field::new("ccy", ArrowDataType::Utf8, false);
     assert_eq!(
-        Field::from_arrow(&plain).unwrap().dtype(),
+        Field::from_arrow_field(&plain).unwrap().dtype(),
         &DataType::utf8()
     );
 
@@ -486,8 +493,8 @@ fn a_code_and_the_text_that_holds_it_are_not_the_same_column() {
             .collect(),
         );
     assert_eq!(
-        Field::from_arrow(&mismatched).unwrap().dtype(),
-        &DataType::fixed_size_binary(3).unwrap()
+        Field::from_arrow_field(&mismatched).unwrap().dtype(),
+        &DataType::fixed_binary(3).unwrap()
     );
 }
 
@@ -513,32 +520,30 @@ fn a_cfi_stores_the_six_characters_it_is_and_nothing_beside_them() {
 
 #[test]
 fn the_typed_field_and_scalar_aliases_name_their_code() {
-    let ccy = CurrencyField::new("ccy", false);
-    let venue = MicField::new("venue", true);
-    let iso = CountryField::new("iso", true);
-    let cfi = CfiField::new("classification", true);
+    let ccy = CurrencyField::unit("ccy", false);
+    let venue = MicField::unit("venue", true);
+    let iso = CountryField::unit("iso", true);
+    let cfi = CfiField::unit("classification", true);
 
-    assert_eq!(ccy.as_field().dtype(), &DataType::Currency);
-    assert_eq!(venue.as_field().dtype(), &DataType::Mic);
-    assert_eq!(iso.as_field().dtype(), &DataType::Country);
-    assert_eq!(cfi.as_field().dtype(), &DataType::Cfi);
+    let ccy_field = ccy.to_field();
+    let venue_field = venue.to_field();
+    assert_eq!(ccy_field.dtype(), &DataType::Currency);
+    assert_eq!(venue_field.dtype(), &DataType::Mic);
+    assert_eq!(iso.to_field().dtype(), &DataType::Country);
+    assert_eq!(cfi.to_field().dtype(), &DataType::Cfi);
 
     // The pairing is the field's value contract, so the text becomes the code
     // leaf on the way in.
-    let value = FieldScalar::new(ccy.as_field(), "USD").unwrap();
+    let value = FieldScalar::new(&ccy_field, "USD").unwrap();
     assert_eq!(value.dtype(), &DataType::Currency);
     assert_eq!(value.name(), "ccy");
     assert_eq!(value.as_str(), Some("USD"));
     assert_eq!(value.value().id(), DataTypeId::Currency);
 
-    // The marker checks the datatype, so a width is not a code.
+    // The leaf is the datatype's, so a width of the same size is not a code.
     let plain = Field::new("ccy", DataType::fixed_ascii(3).unwrap(), false);
-    assert!(
-        plain
-            .try_into_typed::<yggdryl::types::CurrencyType>()
-            .is_err()
-    );
-    assert!(FieldScalar::new(venue.as_field(), "XPARIS").is_err());
+    assert!(CurrencyField::try_from_field(plain).is_err());
+    assert!(FieldScalar::new(&venue_field, "XPARIS").is_err());
 
     // A typed field hands back the exact array its code stores as, which is
     // text: the marker names the array type at compile time, so a storage
@@ -565,14 +570,14 @@ fn a_dictionary_encoded_code_keeps_its_identity_across_arrow() {
     for (name, dtype, _) in DataType::CODES {
         let encoded = DataType::dictionary(DataType::Int32, dtype.clone()).unwrap();
         let field = Field::new("code", encoded.clone(), false);
-        let arrow = field.clone().into_arrow().unwrap();
+        let arrow = field.clone().into_arrow_field().unwrap();
 
         assert_eq!(
             arrow.metadata()["ARROW:extension:name"],
             format!("yggdryl.{name}"),
             "{name}"
         );
-        assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{name}");
+        assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field, "{name}");
     }
 
     // The width keeps its own identity the same way, and a dictionary of
@@ -583,23 +588,23 @@ fn a_dictionary_encoded_code_keeps_its_identity_across_arrow() {
         false,
     );
     assert_eq!(
-        Field::from_arrow(&width.clone().into_arrow().unwrap()).unwrap(),
+        Field::from_arrow_field(&width.clone().into_arrow_field().unwrap()).unwrap(),
         width
     );
     let plain = Field::new(
         "ccy",
-        DataType::dictionary(DataType::Int32, DataType::fixed_size_binary(3).unwrap()).unwrap(),
+        DataType::dictionary(DataType::Int32, DataType::fixed_binary(3).unwrap()).unwrap(),
         false,
     );
     assert_eq!(
-        Field::from_arrow(&plain.clone().into_arrow().unwrap()).unwrap(),
+        Field::from_arrow_field(&plain.clone().into_arrow_field().unwrap()).unwrap(),
         plain
     );
 }
 
 #[test]
 fn a_state_sorts_from_the_first_state_to_the_terminal_ones() {
-    use yggdryl::types::State;
+    use yggdryl::State;
 
     // The stored bytes, sorted by nothing but ASCII. This is the whole claim:
     // whatever sorts the column - a Parquet row group's bounds, an external
@@ -685,7 +690,7 @@ fn a_state_sorts_from_the_first_state_to_the_terminal_ones() {
 
 #[test]
 fn a_state_answers_a_fix_code_a_fix_name_and_a_scheduler_word_alike() {
-    use yggdryl::types::State;
+    use yggdryl::State;
 
     // One value, four vocabularies: the wire code an ExecutionReport carries,
     // the specification's name for it, the word a scheduler uses, and the
@@ -751,7 +756,8 @@ fn the_state_and_time_in_force_codes_are_ordinary_datatypes_everywhere_else() {
         // And it crosses Arrow as the text it is, extension name and all, so
         // a column round-trips without becoming anonymous text.
         let field = Field::new(name, dtype.clone(), true);
-        let recovered = Field::from_arrow(&field.clone().into_arrow().unwrap()).unwrap();
+        let recovered =
+            Field::from_arrow_field(&field.clone().into_arrow_field().unwrap()).unwrap();
         assert_eq!(recovered, field);
     }
 
@@ -807,7 +813,7 @@ fn a_code_column_reads_into_every_string_and_byte_datatype() {
         "binary",
         "large_binary",
         "binary_view",
-        "fixed_size_binary(3)",
+        "fixed_binary(3)",
         "binary(3)",
     ] {
         let read = into(DataType::from_str(spelling).unwrap());
@@ -821,7 +827,7 @@ fn a_code_column_reads_into_every_string_and_byte_datatype() {
     // each refusal names both sides rather than leaving Arrow's builder to
     // complain about a slice length.
     for (spelling, expected) in [
-        ("fixed_size_binary(8)", "exactly 8 bytes"),
+        ("fixed_binary(8)", "exactly 8 bytes"),
         ("binary(2)", "at most 2 bytes"),
         ("utf8(2)", "at most 2"),
     ] {
@@ -858,7 +864,7 @@ fn a_code_column_reads_into_every_string_and_byte_datatype() {
 
 #[test]
 fn a_code_merges_to_the_better_statement() {
-    use yggdryl::types::{Cfi, Code, CodeValue, Currency, Isin, Mic, Side, State};
+    use yggdryl::{Cfi, CodeValue, Currency, Isin, Mic, Side, State};
 
     // A classification fills what it left unknown from the other, and stands
     // as it is beside another instrument's.
@@ -931,18 +937,41 @@ fn a_code_merges_to_the_better_statement() {
         apple
     );
 
-    // The family enum merges one kind of code, and keeps this one beside
-    // another kind.
-    let held = Code::Currency(Currency::new("XXX").unwrap());
+    // `XXX` is the currency that states none, so the other one stands.
+    let unstated = Currency::new("XXX").unwrap();
     assert_eq!(
-        held.clone()
-            .merge_with(&Code::Currency(Currency::new("USD").unwrap()))
+        unstated
+            .clone()
+            .merge_with(&Currency::new("USD").unwrap())
             .as_str(),
         "USD"
     );
-    assert_eq!(
-        held.clone()
-            .merge_with(&Code::Mic(Mic::new("XPAR").unwrap())),
-        held
+    // A code the other states nothing better than keeps what it had.
+    let stated = Currency::new("EUR").unwrap();
+    assert_eq!(stated.clone().merge_with(&unstated), stated);
+}
+
+#[test]
+fn the_code_family_stands_for_every_registered_code() {
+    use yggdryl::{Bloomberg, Cfi, Code, Country, Currency, Cusip, Isin, Mic, Sedol};
+    use yggdryl::{Side, State, TimeInForce};
+
+    crate::scalar::assert_family_round_trip(
+        vec![
+            crate::family_leaf!(Code::Country, Country::new("US").unwrap()),
+            crate::family_leaf!(Code::Currency, Currency::new("USD").unwrap()),
+            crate::family_leaf!(Code::Mic, Mic::new("XPAR").unwrap()),
+            crate::family_leaf!(Code::Cfi, Cfi::new("ESVUFR").unwrap()),
+            crate::family_leaf!(Code::Side, Side::new("BUY").unwrap()),
+            crate::family_leaf!(Code::State, State::new("20NEW").unwrap()),
+            crate::family_leaf!(Code::TimeInForce, TimeInForce::new("0").unwrap()),
+            crate::family_leaf!(Code::Isin, Isin::new("US0378331005").unwrap()),
+            crate::family_leaf!(Code::Cusip, Cusip::new("037833100").unwrap()),
+            crate::family_leaf!(Code::Sedol, Sedol::new("B0YBKJ7").unwrap()),
+            crate::family_leaf!(Code::Bloomberg, Bloomberg::new("BBG000B9XRY4").unwrap()),
+        ],
+        DataTypeKind::Code,
+        // The text a code is made of is not the code.
+        &Scalar::from("USD"),
     );
 }

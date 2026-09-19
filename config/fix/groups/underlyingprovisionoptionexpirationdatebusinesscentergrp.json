@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingprovisionoptionexpirationdatebusinesscentercomponent"
+        "FIX:component": "underlyingprovisionoptionexpirationdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingprovisionoptionexpirationdatebusinesscentercomponent",
+    "FIX:counter": "42186",
+    "FIX:tag": "884171",
     "description": "Required if NoUnderlyingProvisionOptionExpirationDateBusinessCenters(42186) > 0.",
-    "display": "UnderlyingProvisionOptionExpirationDateBusinessCenterGrp",
-    "fix:component": "underlyingprovisionoptionexpirationdatebusinesscentercomponent",
-    "fix:counter": "42186",
-    "fix:tag": "884171"
+    "display": "UnderlyingProvisionOptionExpirationDateBusinessCenterGrp"
   }
 }

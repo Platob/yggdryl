@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablesettlratesource",
-          "fix:tag": "40371"
+          "FIX:field": "paymentstreamnondeliverablesettlratesource",
+          "FIX:tag": "40371"
         }
       },
       {
@@ -21,16 +21,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablesettlreferencepage",
-          "fix:tag": "40372"
+          "FIX:field": "paymentstreamnondeliverablesettlreferencepage",
+          "FIX:tag": "40372"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "501812",
     "description": "Conditionally required when PaymentStreamNonDeliverableSettlRateSource(40371) = 3 (ISDA Settlement Rate Option) or 99 (Other).",
-    "display": "PaymentStreamNonDeliverableSettlRateSource",
-    "fix:tag": "501812"
+    "display": "PaymentStreamNonDeliverableSettlRateSource"
   }
 }

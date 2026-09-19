@@ -18,7 +18,11 @@ use criterion::criterion_main;
 criterion_group!(
     types,
     datatype::floating::decimal_benchmarks,
-    datatype::temporal::time_builder_benchmarks,
+    datatype::temporal::date_benchmarks,
+    datatype::temporal::time_benchmarks,
+    datatype::temporal::datetime_benchmarks,
+    datatype::temporal::duration_benchmarks,
+    datatype::temporal::interval_benchmarks,
     datatype::temporal::time_unit_benchmarks,
     datatype::temporal::temporal_text_benchmarks,
     datatype::value::value_benchmarks,

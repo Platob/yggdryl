@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use yggdryl::holder::local::Folder;
+use yggdryl::local::Folder;
 use yggdryl::{DataType, Field, FixCode, FixDirection, FixId, FixRegistry};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -172,7 +172,7 @@ fn component_identifier_flags_reach_the_core_setter_and_replace_on_update() {
             "--identifiers",
             bad,
         ]);
-        assert!(output_text(&refusal).contains("fix:identifiers"));
+        assert!(output_text(&refusal).contains("FIX:identifiers"));
         assert_eq!(workspace.read("components", "Order"), before);
     }
     let document = workspace.document(&before);
@@ -568,7 +568,7 @@ fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic(
         ]
     );
     assert_eq!(
-        field.get_metadata("fix:directions"),
+        field.get_metadata("FIX:directions"),
         Some(concat!(
             r#"[{"code":"S","patterns":["(?i)^TX\\b"]},"#,
             r#"{"code":"R","patterns":["(?i)^RX\\b"]}]"#,
@@ -603,6 +603,6 @@ fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic(
     ]);
     let cleared = workspace.read("fields", "385");
     assert_eq!(cleared.as_fix().directions().count(), 0);
-    assert_eq!(cleared.get_metadata("fix:directions"), None);
+    assert_eq!(cleared.get_metadata("FIX:directions"), None);
     assert_eq!(cleared.as_fix().code_value("send"), Some("S"));
 }

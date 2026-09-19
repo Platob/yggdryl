@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "trdregtimestampcomponent"
+        "FIX:component": "trdregtimestampcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "trdregtimestampcomponent",
+    "FIX:counter": "768",
+    "FIX:tag": "763375",
     "description": "Required if NoTrdRegTimestamps(768) > 0.",
-    "display": "TrdRegTimestamps",
-    "fix:component": "trdregtimestampcomponent",
-    "fix:counter": "768",
-    "fix:tag": "763375"
+    "display": "TrdRegTimestamps"
   }
 }

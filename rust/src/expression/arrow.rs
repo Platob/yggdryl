@@ -49,7 +49,7 @@ use super::path::{FieldSegment, resolve_index, resolve_range};
 use super::{Comparison, Expression, Filter};
 use crate::arrow::value::{array_from_values, value_from_array};
 use crate::arrow::{BatchReader, Error, Result, field_from_arrow_schema};
-use crate::types::cast::{ArrowCastOptions, cast_field_array};
+use crate::cast::{ArrowCastOptions, cast_field_array};
 use crate::{Field, Scalar};
 
 /// One evaluated operand: a full column, or one value standing for every row.
@@ -564,7 +564,7 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
             let array = evaluate(inner, context)?.into_column(rows)?;
             // The operand's Field keeps its extension identity in the cast:
             // an ASCII column meets a text literal as its trimmed text.
-            let source = inner.field.clone().into_arrow_ref()?;
+            let source = inner.field.clone().into_arrow_field_ref()?;
             Ok(Vector::Column(cast_field_array(
                 &node.field,
                 Some(source.metadata()),
@@ -636,7 +636,7 @@ fn segment_array(
             }
         }
         FieldSegment::Range { start, end } => {
-            let item = reached.clone().into_arrow_ref()?;
+            let item = reached.clone().into_arrow_field_ref()?;
             let item = match item.data_type() {
                 arrow_schema::DataType::List(item) => Some(Arc::clone(item)),
                 _ => None,

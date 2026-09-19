@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "streamcommoditysettlperiod"
+        "FIX:component": "streamcommoditysettlperiod"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "streamcommoditysettlperiod",
+    "FIX:counter": "41289",
+    "FIX:tag": "236929",
     "description": "Required if NoStreamCommoditySettlPeriods(41289) > 0.",
-    "display": "StreamCommoditySettlPeriodGrp",
-    "fix:component": "streamcommoditysettlperiod",
-    "fix:counter": "41289",
-    "fix:tag": "236929"
+    "display": "StreamCommoditySettlPeriodGrp"
   }
 }

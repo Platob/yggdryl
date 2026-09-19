@@ -6,7 +6,8 @@
 //! `SKIPPED` when the external archive is absent - the driver fails on that
 //! word - so a skipped half can never read as a pass.
 
-use yggdryl::holder::{Holder, zip};
+use yggdryl::holder::Holder;
+use yggdryl::zip;
 use yggdryl::{Codec, IOBase};
 
 // CopyFile and mapped reads cannot share the exchange fixtures on Windows.

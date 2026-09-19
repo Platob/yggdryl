@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionevent",
-          "fix:tag": "41865"
+          "FIX:field": "underlyingmarketdisruptionevent",
+          "FIX:tag": "41865"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionvalue",
-          "fix:tag": "41338"
+          "FIX:field": "underlyingmarketdisruptionvalue",
+          "FIX:tag": "41338"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingMarketDisruptionEvent",
-    "fix:tag": "915596"
+    "FIX:tag": "915596",
+    "display": "UnderlyingMarketDisruptionEvent"
   }
 }

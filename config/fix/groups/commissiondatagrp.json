@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "commissiondatacomponent"
+        "FIX:component": "commissiondatacomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "commissiondatacomponent",
+    "FIX:counter": "2639",
+    "FIX:tag": "701924",
     "description": "Required if NoCommissions(2639) > 0.",
-    "display": "CommissionDataGrp",
-    "fix:component": "commissiondatacomponent",
-    "fix:counter": "2639",
-    "fix:tag": "701924"
+    "display": "CommissionDataGrp"
   }
 }

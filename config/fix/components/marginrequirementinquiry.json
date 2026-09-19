@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "marginreqmtinqid",
-          "fix:tag": "1635"
+          "FIX:field": "marginreqmtinqid",
+          "FIX:tag": "1635"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nomarginreqmtinqqualifier",
-          "fix:tag": "1636"
+          "FIX:field": "nomarginreqmtinqqualifier",
+          "FIX:tag": "1636"
         }
       },
       {
@@ -42,7 +42,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "marginreqmtinqqualgrp"
+          "FIX:group": "marginreqmtinqqualgrp"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "subscriptionrequesttype",
-          "fix:tag": "263"
+          "FIX:field": "subscriptionrequesttype",
+          "FIX:tag": "263"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "responsetransporttype",
-          "fix:tag": "725"
+          "FIX:field": "responsetransporttype",
+          "FIX:tag": "725"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "responsedestination",
-          "fix:tag": "726"
+          "FIX:field": "responsedestination",
+          "FIX:tag": "726"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -96,7 +96,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -106,8 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingbusinessdate",
-          "fix:tag": "715"
+          "FIX:field": "clearingbusinessdate",
+          "FIX:tag": "715"
         }
       },
       {
@@ -117,8 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlsessid",
-          "fix:tag": "716"
+          "FIX:field": "settlsessid",
+          "FIX:tag": "716"
         }
       },
       {
@@ -128,8 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlsesssubid",
-          "fix:tag": "717"
+          "FIX:field": "settlsesssubid",
+          "FIX:tag": "717"
         }
       },
       {
@@ -139,8 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginclass",
-          "fix:tag": "1639"
+          "FIX:field": "marginclass",
+          "FIX:tag": "1639"
         }
       },
       {
@@ -150,7 +150,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -160,8 +160,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -171,8 +171,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -182,8 +182,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -193,8 +193,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -204,16 +204,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "CH",
+    "FIX:tag": "505789",
     "description": "MsgType = CH",
-    "display": "MarginRequirementInquiry",
-    "fix:msgtype": "CH",
-    "fix:tag": "505789"
+    "display": "MarginRequirementInquiry"
   }
 }

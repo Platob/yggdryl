@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "testreqid",
-          "fix:tag": "112"
+          "FIX:field": "testreqid",
+          "FIX:tag": "112"
         }
       },
       {
@@ -31,16 +31,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "1",
+    "FIX:tag": "411962",
     "description": "MsgType = 1",
-    "display": "TestRequest",
-    "fix:msgtype": "1",
-    "fix:tag": "411962"
+    "display": "TestRequest"
   }
 }

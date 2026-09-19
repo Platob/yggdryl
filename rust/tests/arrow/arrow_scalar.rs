@@ -2,11 +2,12 @@
 
 use super::root;
 use arrow_array::RecordBatch;
+use yggdryl::DecimalType;
 use yggdryl::arrow::{batch_reader, batch_to_value};
 use yggdryl::holder::Buffer;
 use yggdryl::{
     ArrowCastOptions, ArrowScalar, ArrowShape, DataType, Field, IOBase, IOMedia, IOMode, Scalar,
-    Url,
+    StructureType, Url,
 };
 
 /// An in-memory handle whose media type is the one its name implies.
@@ -105,20 +106,21 @@ fn shaped_values() -> Vec<(ArrowShape, ArrowScalar, Field, Scalar)> {
 
 fn nested_root() -> Field {
     root([
-        DataType::from_fields([
+        StructureType::from_fields([
             DataType::utf8().required_field("mic"),
             DataType::Int64.required_field("rank"),
         ])
+        .map(DataType::from)
         .expect("the child datatype is valid")
         .required_field("venue"),
         DataType::list(DataType::Int64.required_field("item")).required_field("sizes"),
         DataType::utf8().nullable_field("note"),
-        DataType::Decimal128 {
+        DataType::Decimal(DecimalType::Decimal128 {
             precision: 12,
             scale: 2,
-        }
+        })
         .required_field("price"),
-        DataType::Date32.required_field("day"),
+        DataType::date32().required_field("day"),
     ])
 }
 
@@ -246,8 +248,8 @@ mod structured_text {
 
 mod record_encodings {
     use super::{
-        ArrowScalar, ArrowShape, DataType, IOMedia, IOMode, Scalar, declaring, handle, quote_root,
-        quote_rows, quotes, root,
+        ArrowScalar, ArrowShape, DataType, DecimalType, IOMedia, IOMode, Scalar, declaring, handle,
+        quote_root, quote_rows, quotes, root,
     };
 
     /// The rows `name` holds after `quotes()` was written to it.
@@ -315,10 +317,10 @@ mod record_encodings {
 
         let declared = root([
             DataType::utf8().required_field("symbol"),
-            DataType::Decimal128 {
+            DataType::Decimal(DecimalType::Decimal128 {
                 precision: 12,
                 scale: 4,
-            }
+            })
             .required_field("size"),
         ]);
         let read = target

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingcomplexeventschedule"
+        "FIX:component": "underlyingcomplexeventschedule"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingcomplexeventschedule",
+    "FIX:counter": "41750",
+    "FIX:tag": "724118",
     "description": "Required if NoUnderlyingComplexEventSchedules(41750) > 0.",
-    "display": "UnderlyingComplexEventScheduleGrp",
-    "fix:component": "underlyingcomplexeventschedule",
-    "fix:counter": "41750",
-    "fix:tag": "724118"
+    "display": "UnderlyingComplexEventScheduleGrp"
   }
 }

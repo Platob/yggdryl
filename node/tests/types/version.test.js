@@ -51,11 +51,24 @@ test('Version rejects numeric coercion and width overflow at the native boundary
 test('Version native parser rejects only the numeric components', () => {
   const field = fields.version('release', { nullable: false })
   for (const text of [
-    '', '.1', ' 1', '-1', '+1', 'v1', '256', '999', '1.256', '1.999', 'FIX.5.0',
+    '.1', ' 1', '-1', '+1', 'v1', '256', '999', '1.256', '1.999', 'FIX.5.0',
   ]) {
     assert.throws(() => Version.fromStr(text), /version/i)
     assert.throws(() => Scalar.from(text, { field }), /version/i)
   }
+})
+
+test('the empty text is no Version, but reads as null at the datatype', () => {
+  // A `Version` is a value, so its own parser refuses the empty text; the
+  // datatype door reads an empty text cell entering a non-text column as
+  // absence, and a required field is what refuses that.
+  assert.throws(() => Version.fromStr(''), /version/i)
+  assert.equal(new DataType('version').scalar('').kind, 'null')
+  assert.equal(Scalar.from('', { field: fields.version('release') }).kind, 'null')
+  assert.throws(
+    () => Scalar.from('', { field: fields.version('release', { nullable: false }) }),
+    /non-nullable field received null/,
+  )
 })
 
 test('Version reads a compact FIX service pack as its numeric patch', () => {
@@ -158,22 +171,30 @@ test('Version field defaults and hints expose the native value with Arrow string
 test('generic MsgType datatype and field helpers are retired', () => {
   assert.equal('msgtype' in fields, false)
   assert.equal(enums.dataTypeIds.includes('msgtype'), false)
-  // Sixty-six: `msgdirection` was retired (discriminant 58, never reused),
-  // so `url` keeps its byte 59 and sits one index earlier; `timezone`,
-  // `mimetype` and `mediatype` were appended after it, then `cusip` and
-  // `sedol` as code datatypes of their own, and
-  // `bloomberg` was appended after them - the one code whose width is only a
-  // bound, because a ticker, a market and a yellow key have no fixed length
-  // between them.
+  // Eighty-six: `msgdirection` was retired (discriminant 58, never
+  // reused), so `url` keeps its byte 59 and sits one index earlier;
+  // `timezone`, `mimetype` and `mediatype` were appended after it, then
+  // `cusip` and `sedol` as code datatypes of their own, and `bloomberg`
+  // after them - the one code whose width is only a bound, because a ticker,
+  // a market and a yellow key have no fixed length between them. The families
+  // appended the rest: three versioned uuid leaves (69-71, retired when uuid
+  // became one datatype again, never reused), `large_binary_view` and
+  // `sized_binary` when the byte family became six real leaves, and the
+  // thirteen string leaves beyond the five UTF-8 ones - `sized_utf8`, then
+  // the six US-ASCII and the six windows-1252 shapes - when the string family
+  // became eighteen; and `urn` last, the name beside the `url` location.
   assert.equal(enums.dataTypeIds.includes('msgdirection'), false)
-  assert.equal(enums.dataTypeIds.length, 66)
+  assert.equal(enums.dataTypeIds.length, 84)
   assert.equal(enums.dataTypeIds.indexOf('url'), 58)
+  assert.equal(enums.dataTypeIds.indexOf('urn'), 83)
+  assert.equal(enums.dataTypeIds.indexOf('utf8'), 27)
+  assert.equal(enums.dataTypeIds.indexOf('sized_utf8'), 70)
   assert.deepEqual(enums.dataTypeIds.slice(-5), [
-    'mimetype',
-    'mediatype',
-    'cusip',
-    'sedol',
-    'bloomberg',
+    'cp1252_view',
+    'large_cp1252_view',
+    'fixed_cp1252',
+    'sized_cp1252',
+    'urn',
   ])
   assert.throws(() => new DataType('msgtype'))
   assert.throws(() => new Field('code', 'msgtype'))

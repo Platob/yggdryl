@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingoptionexerciseexpirationdatecomponent"
+        "FIX:component": "underlyingoptionexerciseexpirationdatecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingoptionexerciseexpirationdatecomponent",
+    "FIX:counter": "41856",
+    "FIX:tag": "329406",
     "description": "Required if NoUnderlyingOptionExpirationDates(41856) > 0.",
-    "display": "UnderlyingOptionExerciseExpirationDateGrp",
-    "fix:component": "underlyingoptionexerciseexpirationdatecomponent",
-    "fix:counter": "41856",
-    "fix:tag": "329406"
+    "display": "UnderlyingOptionExerciseExpirationDateGrp"
   }
 }

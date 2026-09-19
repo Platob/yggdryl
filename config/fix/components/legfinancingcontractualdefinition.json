@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcontractualdefinition",
-          "fix:tag": "42199"
+          "FIX:field": "legcontractualdefinition",
+          "FIX:tag": "42199"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegFinancingContractualDefinition",
-    "fix:tag": "229307"
+    "FIX:tag": "229307",
+    "display": "LegFinancingContractualDefinition"
   }
 }

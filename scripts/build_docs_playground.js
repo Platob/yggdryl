@@ -475,7 +475,7 @@ function vocabulary() {
       extensionName: projected.metadata.get('ARROW:extension:name'),
       // The reserved key the declaration travels under, read off the column
       // the package projected.
-      carried: projected.metadata.get('field:enum'),
+      carried: projected.metadata.get('FIELD:enum'),
       call:
         `const ccy = ${fieldCall('currency')}\n` +
         `ccy.setStringEnum(new StringEnum(${literal(ENUM)}, ` +

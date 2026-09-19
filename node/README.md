@@ -33,13 +33,19 @@ console.assert(restored.equals(price))
 console.assert(price.kind === 'd256')
 console.assert(typeof price.stableHash() === 'bigint')
 console.assert(price.clone().compare(price) === 0)
-console.assert(price.asJsonUtf8() === '"12345678901234567890.1234"')
+console.assert(price.intoJson() === '"12345678901234567890.1234"')
 ```
 
-`Scalar.float(value, width = 64)`, `decimal(coefficient, scale = 0)`, `date`,
-`time`, `datetime`, and `duration` centralize width selection in Rust. Plain
-objects become sorted named Records; JavaScript `Map` remains a Mapping.
-Temporal factories take `(count, unit, timezone)` and default to `NAIVE`.
+The width, unit, scale and zone are named on the type, and `DataType.scalar`
+and `Field.scalar` read a value under it - `fields.datetime64('at', 'ns',
+'UTC').scalar(1700000000123456789n)`, `new DataType('date32').scalar(19723)`.
+`Scalar.from` infers when no type is named. Three factories remain, each for
+something JavaScript cannot otherwise say: `decimal(coefficient, scale = 0)`,
+because there is no decimal type; `duration(count, unit)`, which picks
+`duration32` or `duration64` from the count itself; and `float(value, width =
+64)`, because `100` and `100.0` are the same `Number`, so an integral float
+has no literal and the type would read it as an integer. Plain objects become
+sorted named Records; JavaScript `Map` remains a Mapping.
 Immutable native values expose `equals`, `compare`, `stableHash`, and `clone`
 whenever the Rust value has those semantics. JavaScript has no object hash
 protocol, so `stableHash()` is the explicit deterministic `bigint`; JavaScript
@@ -365,6 +371,7 @@ one operation-wide budget. A zero limit does not inspect the source: append is
 a synchronous no-op, overwrite publishes an explicitly typed empty value, and
 a limited merge is rejected.
 
-Use the complete [JavaScript guide](https://platob.github.io/yggdryl/extensions/javascript/)
-for field conversion, typed rows, copied IPC interoperability, and codec
-format inference.
+Every page of the [documentation](https://platob.github.io/yggdryl/) shows its
+operation in Rust, Python and JavaScript, so field conversion, typed rows,
+copied IPC interoperability and codec format inference are each documented on
+the page owning the vocabulary they belong to.

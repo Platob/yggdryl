@@ -46,14 +46,29 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "duration64": types.duration64("value", "us"),
         "interval": types.interval("value", "month_day_nano"),
         "binary": types.binary("value"),
-        "fixed_size_binary": types.fixed_size_binary("value", 16),
+        "fixed_binary": types.fixed_size_binary("value", 16),
+        "sized_binary": types.sized_binary("value", 16),
         "large_binary": types.large_binary("value"),
         "binary_view": types.binary_view("value"),
-        "string": types.utf8("value"),
-        "large_string": types.large_utf8("value"),
-        "string_view": types.utf8_view("value"),
-        "fixed_string": types.fixed_ascii("value", 4),
-        "large_string_view": types.string("value", layout="large_string_view"),
+        "large_binary_view": types.large_binary_view("value"),
+        "utf8": types.utf8("value"),
+        "large_utf8": types.large_utf8("value"),
+        "utf8_view": types.utf8_view("value"),
+        "large_utf8_view": types.large_utf8_view("value"),
+        "fixed_utf8": types.fixed_utf8("value", 8),
+        "sized_utf8": types.sized_utf8("value", 32),
+        "ascii": types.ascii("value"),
+        "large_ascii": types.large_ascii("value"),
+        "ascii_view": types.ascii_view("value"),
+        "large_ascii_view": types.large_ascii_view("value"),
+        "fixed_ascii": types.fixed_ascii("value", 4),
+        "sized_ascii": types.sized_ascii("value", 4),
+        "cp1252": types.cp1252("value"),
+        "large_cp1252": types.large_cp1252("value"),
+        "cp1252_view": types.cp1252_view("value"),
+        "large_cp1252_view": types.large_cp1252_view("value"),
+        "fixed_cp1252": types.fixed_cp1252("value", 8),
+        "sized_cp1252": types.sized_cp1252("value", 32),
         "list": types.list("value", item),
         "list_view": types.list_view("value", item),
         "fixed_size_list": types.fixed_size_list("value", item, 3),
@@ -66,7 +81,8 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "decimal64": types.decimal64("value", 18, 2),
         "decimal128": types.decimal128("value", 38, 2),
         "decimal256": types.decimal256("value", 76, 2),
-        "map": types.map("value", entries, keys_sorted=True),
+        "map": types.map("value", entries),
+        "sorted_map": types.map("value", entries, keys_sorted=True),
         "run_end_encoded": types.run_end_encoded(
             "value", run_ends, values
         ),
@@ -82,6 +98,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "uuid": types.uuid("value"),
         "version": types.version("value"),
         "url": types.url("value"),
+        "urn": types.urn("value"),
         "timezone": types.timezone("value"),
         "mimetype": types.mimetype("value"),
         "mediatype": types.mediatype("value"),
@@ -92,14 +109,16 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "geography": types.geography("value", "OGC:CRS84", "vincenty"),
     }
 
-    assert len(values_by_kind) == 64
     assert set(values_by_kind) == {
         value.dtype.id for value in values_by_kind.values()
     }
     # The factories cover every datatype Arrow has a layout for. `int128` and
     # `uint128` are the two identifiers `Scalar` stores and `DataType` cannot,
-    # so no field builds them.
-    assert set(values_by_kind) == set(enums.DATA_TYPE_IDS) - {"int128", "uint128"}
+    # so no field builds them, and `struct2` is the two-child leaf a mapping's
+    # entries have rather than a shape a caller declares.
+    unbuildable = {"int128", "uint128", "struct2"}
+    assert len(values_by_kind) == len(enums.DATA_TYPE_IDS) - len(unbuildable)
+    assert set(values_by_kind) == set(enums.DATA_TYPE_IDS) - unbuildable
     assert all(type(value) is Field for value in values_by_kind.values())
     assert types.Int32Field is Field
     assert types.VersionField is Field
@@ -112,21 +131,30 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
 
 def test_the_string_and_bytes_factories_take_the_whole_declaration() -> None:
     # One factory per family takes the layout, the charset, and the bound;
-    # the charset-named factories are that one with a layout picked once.
-    latin = types.string("name", layout="large_string", charset="cp1252", max=32)
-    assert latin.dtype == DataType.string("large_string", "windows-1252", 32)
-    assert str(latin.dtype) == "large_string(windows-1252,32)"
+    # the leaf factories are that one with a leaf picked once. A maximum is
+    # the sized leaf of the charset, so `max` beside a large layout is
+    # refused by the name of the leaf that carries one.
+    latin = types.string("name", layout="string", charset="cp1252", max=32)
+    assert latin.dtype == DataType.string("sized_cp1252", bound=32)
+    assert str(latin.dtype) == "sized_cp1252(32)"
     assert latin.dtype.string_parameters.max == 32
+    assert latin.dtype == types.sized_cp1252("name", 32).dtype
+    with pytest.raises(ValueError, match="sized_cp1252"):
+        types.string("name", layout="large_string", charset="cp1252", max=32)
     fixed = types.string("code", layout="fixed_string", charset="us-ascii", fixed=4)
     assert fixed.dtype == DataType.fixed_ascii(4)
+    assert types.string("code", layout="fixed_ascii", fixed=4).dtype == fixed.dtype
     assert types.string("text").dtype == DataType.utf8() == types.utf8("text").dtype
+    assert types.sized_utf8("text", 32).dtype == DataType("utf8(32)")
+    assert types.large_utf8_view("text").dtype == DataType("large_string_view")
+    assert types.fixed_cp1252("text", 8).dtype == DataType("fixed_string(windows-1252,8)")
     assert types.string("text", nullable=False, metadata={"k": "v"}).metadata["k"] == "v"
     assert types.StringField is Field
 
     bounded = types.bytes("blob", max=16)
     assert bounded.dtype == DataType.bytes(bound=16) == DataType("binary(16)")
     assert bounded.dtype.bytes_parameters.max == 16
-    digest = types.bytes("digest", layout="fixed_size_binary", fixed=16)
+    digest = types.bytes("digest", layout="fixed_binary", fixed=16)
     assert digest.dtype == DataType.fixed_size_binary(16)
     assert digest.dtype == types.fixed_size_binary("digest", 16).dtype
     assert types.bytes("blob").dtype == DataType.binary() == types.binary("blob").dtype
@@ -210,8 +238,10 @@ def test_typed_factory_parameters_use_native_validation() -> None:
         types.fixed_ascii("narrow", 0)
     with pytest.raises(ValueError, match="at least one byte"):
         types.fixed_size_binary("narrow", 0)
-    with pytest.raises(ValueError, match="fixed_string"):
+    with pytest.raises(ValueError, match="fixed_utf8"):
         types.string("narrow", layout="fixed_string")
+    with pytest.raises(ValueError, match="expected no charset on ascii"):
+        types.string("narrow", layout="ascii", charset="utf-8")
     with pytest.raises(TypeError, match="not both"):
         types.string("narrow", fixed=4, max=8)
     with pytest.raises(TypeError, match="not both"):
@@ -324,4 +354,4 @@ def test_dictionary_and_map_of_infer_python_and_pyarrow_type_inputs() -> None:
     assert str(dictionary.dtype) == "dictionary(int64,utf8)"
     assert mapping.dtype.id == "map"
     entries = mapping.dtype[0].dtype
-    assert [field.dtype.id for field in entries] == ["string", "int16"]
+    assert [field.dtype.id for field in entries] == ["utf8", "int16"]

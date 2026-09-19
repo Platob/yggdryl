@@ -23,7 +23,7 @@ use std::collections::VecDeque;
 use smol_str::SmolStr;
 
 use crate::arrow::{ArrowScalar, BatchReader};
-use crate::text::{Formatting, Plan, Structured};
+use crate::text::{Format, Formatting, Plan};
 use crate::{Error, Field, IOBase, Result, Scalar};
 
 /// Read a handle's structured text document as one Arrow value.
@@ -43,7 +43,7 @@ pub(crate) fn read_arrow<H: IOBase + ?Sized>(
     handle: &H,
     field: Option<&Field>,
 ) -> Result<ArrowScalar> {
-    let format = Structured::for_handle(handle)?;
+    let format = Format::from_handle(handle)?;
     let name = field.map_or(crate::media::DEFAULT_ROOT_NAME, Field::name);
     let documents = crate::text::from_io_all(handle)?;
     let rows = rows_of(documents, format, name);
@@ -90,7 +90,7 @@ pub(crate) fn write_arrow<H: IOBase + ?Sized>(
     formatting: Formatting,
 ) -> Result<()> {
     let plan = Plan::infer(handle)?;
-    let format = Structured::from_format(plan.format());
+    let format = plan.format();
     let root = value.root()?;
     let name = SmolStr::new(root.name());
     let batches = value.into_reader()?;
@@ -103,7 +103,7 @@ pub(crate) fn write_arrow<H: IOBase + ?Sized>(
         match format {
             // Document per row: the framing is per value, so the rows travel
             // as an iterator and only the current batch is ever held.
-            Structured::Jsonl | Structured::Yaml => {
+            Format::JsonLines | Format::Yaml => {
                 let mut rows = Rows::new(batches, root);
                 crate::text::into_writer_all_with_formatting(
                     &mut rows,
@@ -114,12 +114,12 @@ pub(crate) fn write_arrow<H: IOBase + ?Sized>(
                 rows.into_result()?;
             }
             // One document: the frame encloses every row, so they are held.
-            Structured::Json | Structured::Toml => {
+            Format::Json | Format::Toml => {
                 let mut rows = Rows::new(batches, root);
                 let held = rows.by_ref().collect::<Vec<_>>();
                 rows.into_result()?;
                 let document = Scalar::from_sequence(held);
-                let document = if matches!(format, Structured::Toml) {
+                let document = if matches!(format, Format::Toml) {
                     Scalar::from_record([(name, document)])?
                 } else {
                     document
@@ -138,13 +138,13 @@ pub(crate) fn write_arrow<H: IOBase + ?Sized>(
 }
 
 /// Select the rows a parsed document set holds.
-fn rows_of(documents: Vec<Scalar>, format: Structured, name: &str) -> Vec<Scalar> {
+fn rows_of(documents: Vec<Scalar>, format: Format, name: &str) -> Vec<Scalar> {
     let [document] = documents.as_slice() else {
         // Several documents are several rows, which is what a document-per-row
         // format writes.
         return documents;
     };
-    if matches!(format, Structured::Toml) {
+    if matches!(format, Format::Toml) {
         // TOML has no top-level sequence: an array of tables under the root's
         // name is the shape a table takes, and anything else is one row.
         return match document.get_key_str(name).and_then(Scalar::as_sequence) {

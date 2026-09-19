@@ -20,7 +20,7 @@ Reader iterators yield one `Result<Scalar>` at a time and writers stream to `Wri
 === "Rust"
 
     ```rust
-    use yggdryl::text::json;
+    use yggdryl::json;
 
     let rows = json::from_lines_utf8("{\"id\":1}\n{\"id\":2}\n")?;
     let mut destination = Vec::new();

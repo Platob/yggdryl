@@ -10,8 +10,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "quotesetid",
-          "fix:tag": "302"
+          "FIX:field": "quotesetid",
+          "FIX:tag": "302"
         }
       },
       {
@@ -21,7 +21,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyinginstrument"
+          "FIX:component": "underlyinginstrument"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotesetvaliduntiltime",
-          "fix:tag": "367"
+          "FIX:field": "quotesetvaliduntiltime",
+          "FIX:tag": "367"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "totnoquoteentries",
-          "fix:tag": "304"
+          "FIX:field": "totnoquoteentries",
+          "FIX:tag": "304"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment",
-          "fix:tag": "893"
+          "FIX:field": "lastfragment",
+          "FIX:tag": "893"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "noquoteentries",
-          "fix:tag": "295"
+          "FIX:field": "noquoteentries",
+          "FIX:tag": "295"
         }
       },
       {
@@ -75,14 +75,14 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "quotentrygrp"
+          "FIX:group": "quotentrygrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "QuotSet",
-    "fix:tag": "984562"
+    "FIX:tag": "984562",
+    "display": "QuotSet"
   }
 }

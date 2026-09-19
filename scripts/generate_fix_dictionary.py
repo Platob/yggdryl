@@ -11,14 +11,14 @@ and the definitions produced - so CI can test for drift, and its second half
 needs no network at all.
 
 Orchestra's fields, components and groups each have their own directory of
-native Field documents; a message is a component carrying ``fix:msgtype`` and
+native Field documents; a message is a component carrying ``FIX:msgtype`` and
 is written into ``components/`` beside the others. Only wire
 fields have tags. A group references its ordinary int32 counter and contains
 a non-null component. Each field stores its enum records directly in
-fix:codes metadata. Datatypes resolve through the crate's logical-name table.
+FIX:codes metadata. Datatypes resolve through the crate's logical-name table.
 
-The three ``fix:`` properties that hold a document - ``fix:codes``,
-``fix:replacements``, ``fix:directions`` - are written as the JSON arrays they
+The three ``FIX:`` properties that hold a document - ``FIX:codes``,
+``FIX:replacements``, ``FIX:directions`` - are written as the JSON arrays they
 are rather than as one escaped line, so an indented document renders a code set
 as a code set; the crate restates each as its canonical compact text when it
 reads the store back.
@@ -26,10 +26,10 @@ reads the store back.
 The dictionary is one reading of the protocol rather than a history of it: a
 field is written under the one name and datatype the newest source gives it,
 and every spelling an earlier version used is written beside it in its
-``fix:names`` list, so an old name still reaches the field. What a *value*
+``FIX:names`` list, so an old name still reaches the field. What a *value*
 was does travel - a code set holds every value an older version declared and
 every older spelling of a surviving one, dated - and a field whose value
-another field took over carries the fix:replacements document that says which
+another field took over carries the FIX:replacements document that says which
 and how.
 
 Usage::
@@ -474,7 +474,7 @@ def dtype_of(fix_type: str, tag: int, code_sets: dict[str, Any]) -> str:
 # `DataTypeId::is_string` over the tags `dtype_document` can write; the
 # cross-host test asserts the two hosts back-type identically.
 def codes_document(codes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """`fix:codes`, in the rank the specification gives, `value` leading each record.
+    """`FIX:codes`, in the rank the specification gives, `value` leading each record.
 
     Where a code sits in the list *is* its presentation rank, so the rank is
     the order rather than a key beside it. A code the source ranks keeps that
@@ -678,7 +678,7 @@ def replacements_document(
     dtype_of: dict[int, str],
     multi_valued: set[int],
 ) -> list[dict[str, Any]]:
-    """`fix:replacements`: one plan per entry, its `doc` beside it.
+    """`FIX:replacements`: one plan per entry, its `doc` beside it.
 
     Entries keep the order the table states them in - the first entry whose
     condition a message meets answers, so a catch-all without one comes last
@@ -886,11 +886,11 @@ def attach_replacements(
     messages, and a fill has exactly the shape the reader admits. Answers
     the number of entries written per source tag.
     """
-    by_tag = {int(field["metadata"]["fix:tag"]): field for field in catalog["fields"]}
+    by_tag = {int(field["metadata"]["FIX:tag"]): field for field in catalog["fields"]}
     name_of = {tag: field["name"] for tag, field in by_tag.items()}
     dtype_of = {tag: field["dtype"]["type"] for tag, field in by_tag.items()}
     groups = {field["name"] for field in catalog["groups"]}
-    msgtypes = {field["metadata"]["fix:msgtype"] for field in catalog["messages"]}
+    msgtypes = {field["metadata"]["FIX:msgtype"] for field in catalog["messages"]}
 
     def check_code(tag: int, value: str, where: str) -> None:
         codes = code_values.get(tag)
@@ -951,7 +951,7 @@ def attach_replacements(
             for held in entry["fills"]:
                 check_fill(held, where)
         metadata = by_tag[tag]["metadata"]
-        metadata["fix:replacements"] = replacements_document(entries, tag, name_of, dtype_of, multi_valued)
+        metadata["FIX:replacements"] = replacements_document(entries, tag, name_of, dtype_of, multi_valued)
         by_tag[tag]["metadata"] = dict(sorted(metadata.items()))
     return {tag: len(entries) for tag, entries in per_tag.items()}
 
@@ -959,7 +959,7 @@ def attach_replacements(
 # ---- Derivations: what a message implies, as expressions -------------------
 #
 # Every field a message implies but need not carry declares how it derives,
-# as one term of the crate's expression grammar in its `fix:derivation`
+# as one term of the crate's expression grammar in its `FIX:derivation`
 #: the enriching pass evaluates the terms to a fixpoint, so a
 # chain (`cficode` -> `securitytype` -> `product`) settles in whatever order
 # the fields fall. A term reads fields by their canonical folded names, a
@@ -1111,13 +1111,13 @@ def product_case(codes: list[dict[str, Any]]) -> str:
 
 
 # The crate's own registry of ISO 3166-1 alpha-2 codes, `StringEnum::COUNTRIES`
-# in `rust/src/types/string/registries.rs`: the one list of the assigned codes
+# in `rust/src/string.rs`: the one list of the assigned codes
 # this repository holds, read here rather than copied, so `CountryOfIssue`
 # answers exactly the prefixes that registry lists. The `country` datatype
 # validates width alone - a stream carrying an unassigned code registers it -
 # so the whitelist is the derivation's to state, and it states it as the
 # registry's own membership.
-COUNTRIES_SOURCE = pathlib.Path(__file__).resolve().parents[1] / "rust" / "src" / "types" / "string" / "registries.rs"
+COUNTRIES_SOURCE = pathlib.Path(__file__).resolve().parents[1] / "rust" / "src" / "string.rs"
 
 
 def crate_countries() -> tuple[str, ...]:
@@ -1288,7 +1288,7 @@ def attach_derivations(
     column the expression names is a field or a group of the dictionary. The crate parses and types the text once more when it loads
     the dictionary. Answers the text written per target tag.
     """
-    by_tag = {int(field["metadata"]["fix:tag"]): field for field in catalog["fields"]}
+    by_tag = {int(field["metadata"]["FIX:tag"]): field for field in catalog["fields"]}
     names = {field["name"] for field in catalog["fields"]}
     names.update(field["name"] for field in catalog["groups"])
     rules = list(DERIVATION_RULES)
@@ -1303,7 +1303,7 @@ def attach_derivations(
             if column not in names:
                 raise ValueError(f"tag {tag}: {column!r} is not a field or a group")
         metadata = by_tag[tag]["metadata"]
-        metadata["fix:derivation"] = text
+        metadata["FIX:derivation"] = text
         by_tag[tag]["metadata"] = dict(sorted(metadata.items()))
         written[tag] = text
     return written
@@ -1391,7 +1391,7 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     multi_valued: set[int] = set()
 
     def coded(tag: int, fix_type: str, codes: list[dict[str, Any]]) -> str | None:
-        """The field's `fix:codes`, legacy values folded in, or nothing."""
+        """The field's `FIX:codes`, legacy values folded in, or nothing."""
         folded_codes = fold_legacy_codes(tag, codes, listings.get(tag, []), latest["version"])
         if folded(fix_type) in {"multiplecharvalue", "multiplestringvalue"}:
             multi_valued.add(tag)
@@ -1414,13 +1414,13 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             for source in reversed(SOURCES)
             if source.format == "quickfix" and tag in parsed[source.source_id]["fields"]
         )
-        metadata = {"fix:tag": str(tag), "display": display}
+        metadata = {"FIX:tag": str(tag), "display": display}
         names = [entry["name"] for entry in entries if entry.get("name") not in (None, name)]
         if names:
-            metadata["fix:names"] = list(dict.fromkeys(names))
+            metadata["FIX:names"] = list(dict.fromkeys(names))
         codes = coded(tag, fix_type, [])
         if codes is not None:
-            metadata["fix:codes"] = codes
+            metadata["FIX:codes"] = codes
         fields.append(
             {
                 "name": name,
@@ -1458,7 +1458,7 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                 entries[-1] = current
             else:
                 entries.append(current)
-        metadata: dict[str, str] = {"fix:tag": str(tag)}
+        metadata: dict[str, str] = {"FIX:tag": str(tag)}
         if field["name"] != name:
             metadata["display"] = field["name"]
         if field["doc"]:
@@ -1468,7 +1468,7 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         # so a reader restates it under what replaced it and keeps no value
         # of its own for it.
         if field.get("deprecated"):
-            metadata["fix:deprecated"] = field["deprecated"]
+            metadata["FIX:deprecated"] = field["deprecated"]
         # Every spelling an earlier version gave this tag is an alternate
         # name of the one the dictionary holds it under, and the store holds
         # them as the JSON array they are. A field no version spelled
@@ -1479,7 +1479,7 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             if spelling and spelling != name and spelling not in names:
                 names.append(spelling)
         if names:
-            metadata["fix:names"] = names
+            metadata["FIX:names"] = names
         code_set_name = field["code_set"] or field["type"] or ""
         if field["code_set"] and code_set_name not in latest["code_sets"]:
             raise ValueError(f"{field['name']}: unresolved code set {code_set_name}")
@@ -1487,13 +1487,13 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             held = latest["code_sets"][code_set_name]
             codes = coded(tag, held["type"], held["codes"])
             if codes is not None:
-                metadata["fix:codes"] = codes
+                metadata["FIX:codes"] = codes
         elif listings.get(tag):
             # Latest declares no set, so every value an older version listed
             # is a legacy code: the set is what those versions said.
             codes = coded(tag, field["type"], [])
             if codes is not None:
-                metadata["fix:codes"] = codes
+                metadata["FIX:codes"] = codes
 
         fields.append(
             {
@@ -1524,14 +1524,14 @@ def build_catalog(
     """
     result = {kind: [] for kind in ("fields", "components", "groups", "messages")}
     result["fields"] = fields
-    by_tag = {int(field["metadata"]["fix:tag"]): field for field in fields}
+    by_tag = {int(field["metadata"]["FIX:tag"]): field for field in fields}
     used = {field["name"] for field in fields}
     if len(used) != len(fields):
         raise ValueError("duplicate folded FIX field name")
     used.update(
         folded(name)
         for field in fields
-        for name in field.get("metadata", {}).get("fix:names", [])
+        for name in field.get("metadata", {}).get("FIX:names", [])
     )
     source_names: dict[tuple[str, int], str] = {}
     definitions: dict[tuple[str, int], dict[str, Any]] = {}
@@ -1574,9 +1574,9 @@ def build_catalog(
         # A field reference carries the field's tag beside its name, so a
         # reader resolves it by its identity - the pair - and never by a
         # spelling alone.
-        metadata = {f"fix:{kind}": name}
+        metadata = {f"FIX:{kind}": name}
         if tag is not None:
-            metadata["fix:tag"] = str(tag)
+            metadata["FIX:tag"] = str(tag)
         return {
             "name": name,
             "dtype": {"type": "null"},
@@ -1638,7 +1638,7 @@ def build_catalog(
         children = members(key)
         identifiers = ",".join(
             child["name"] for child in children
-            if "fix:field" in child["metadata"]
+            if "FIX:field" in child["metadata"]
             and child["name"].endswith(IDENTIFIER_FAMILIES)
         )
         if category == "groups":
@@ -1652,17 +1652,17 @@ def build_catalog(
                 "metadata": {"display": entry_displays[identifier]},
             }
             if identifiers:
-                entry["metadata"]["fix:identifiers"] = identifiers
+                entry["metadata"]["FIX:identifiers"] = identifiers
             result["components"].append(entry)
             dtype = {"type": "list", "field": reference(entries[identifier], "component", True)}
-            metadata["fix:counter"] = str(counter)
-            metadata["fix:component"] = entries[identifier]
+            metadata["FIX:counter"] = str(counter)
+            metadata["FIX:component"] = entries[identifier]
         else:
             dtype = {"type": "struct", "fields": children}
             if identifiers:
-                metadata["fix:identifiers"] = identifiers
+                metadata["FIX:identifiers"] = identifiers
         if category == "messages":
-            metadata["fix:msgtype"] = next(
+            metadata["FIX:msgtype"] = next(
                 wire for wire, held in latest["messages"].items() if held["id"] == identifier
             )
         result[category].append(
@@ -1670,7 +1670,7 @@ def build_catalog(
         )
 
     for category in result:
-        result[category].sort(key=lambda field: int(field["metadata"]["fix:tag"]) if category == "fields" else field["name"])
+        result[category].sort(key=lambda field: int(field["metadata"]["FIX:tag"]) if category == "fields" else field["name"])
     return result
 
 
@@ -1722,9 +1722,9 @@ def dtype_document(name: str) -> dict[str, Any]:
         "LocalMktDate": {"type": "datetime64", "unit": "nanosecond"},
         "LocalMktDatetime": {"type": "datetime64", "unit": "nanosecond"},
         "TZTimeOnly": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
-        "MonthYear": {"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 8},
-        "Tenor": {"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 8},
-        "Language": {"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 2},
+        "MonthYear": {"type": "string", "layout": "fixed_ascii", "fixed": 8},
+        "Tenor": {"type": "string", "layout": "fixed_ascii", "fixed": 8},
+        "Language": {"type": "string", "layout": "fixed_ascii", "fixed": 2},
         "Country": {"type": "country"},
         "Currency": {"type": "currency"},
         "Exchange": {"type": "mic"},
@@ -1785,7 +1785,7 @@ def xxh32(data: bytes) -> int:
 
     Spelled here rather than imported: this script is the dictionary's own
     build step and runs on the standard library alone. The core's
-    `yggdryl::hashing::xxhash::Xxh32` is the same function, which is what lets a tag
+    `yggdryl::xxhash::Xxh32` is the same function, which is what lets a tag
     derived here equal the tag the core would derive for the same name.
     """
     one, two, three, four, five = _PRIME32
@@ -1842,9 +1842,9 @@ def assign_definition_tags(catalog: dict[str, list[dict[str, Any]]]) -> None:
     """
     span = DEFINITION_TAG_MAX - DEFINITION_TAG_MIN
     taken = {
-        int(field["metadata"]["fix:tag"])
+        int(field["metadata"]["FIX:tag"])
         for field in catalog["fields"]
-        if "fix:tag" in field.get("metadata", {})
+        if "FIX:tag" in field.get("metadata", {})
     }
     for category in ("components", "groups", "messages"):
         for field in sorted(catalog[category], key=lambda held: held["name"]):
@@ -1857,7 +1857,7 @@ def assign_definition_tags(catalog: dict[str, list[dict[str, Any]]]) -> None:
                 raise ValueError(f"no free derived tag for {field['name']!r}")
             taken.add(tag)
             metadata = field.setdefault("metadata", {})
-            metadata["fix:tag"] = str(tag)
+            metadata["FIX:tag"] = str(tag)
             field["metadata"] = dict(sorted(metadata.items()))
 
 
@@ -1865,14 +1865,14 @@ def render_tree(catalog: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
     """Render native Field documents with compact references between owners."""
     shards: dict[int, list[dict[str, Any]]] = {}
     for field in catalog["fields"]:
-        tag = int(field["metadata"]["fix:tag"])
+        tag = int(field["metadata"]["FIX:tag"])
         shards.setdefault(tag // 100, []).append(field)
     # Nine digits with leading zeros, so the shards list in tag order
     # wherever they are listed.
     documents: dict[str, Any] = {
         f"fields/{shard:09}.json": held for shard, held in sorted(shards.items())
     }
-    # A message is a component carrying `fix:msgtype`: its document lives in
+    # A message is a component carrying `FIX:msgtype`: its document lives in
     # `components/` beside every other component.
     for category, folder in (("components", "components"), ("groups", "groups"), ("messages", "components")):
         for field in catalog[category]:

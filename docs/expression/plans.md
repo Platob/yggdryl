@@ -25,8 +25,8 @@
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::expression::Plan;
-    use yggdryl::holder::local::Folder;
-    use yggdryl::{DataType, Expression, Url};
+    use yggdryl::local::Folder;
+    use yggdryl::{DataType, Expression, StructureType, Url};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-docs-plans");
     std::fs::create_dir_all(&root)?;
@@ -38,10 +38,10 @@
     created.execute()?.count();
 
     // A write shapes the stream it is given and sends it to its target.
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("name"),
-    ])?
+    ])?)
     .required_field("trades");
     let rows = RecordBatch::try_new(
         schema.into_arrow_schema()?,
@@ -116,11 +116,12 @@
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
+    const { pathToFileURL } = require('node:url')
     const arrow = require('apache-arrow')
     const { Expression, Plan } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-plans-'))
-    const url = `file://${path.join(root, 'trades.arrow')}`
+    const url = pathToFileURL(path.join(root, 'trades.arrow')).href
 
     // `create` alone writes the declared schema and no rows.
     const created = new Plan(`create '${url}' (id int64 not null, name utf8)`)

@@ -6,7 +6,7 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
 
 | | |
 | --- | --- |
-| Owns | `holder::local::{Path, Folder, File}`, the `IOPath`, `IOFolder`, `IOFile` roles of [Holder](../index.md) |
+| Owns | `yggdryl::local::{Path, Folder, File}`, the `IOPath`, `IOFolder`, `IOFile` roles of [Holder](../index.md) |
 | Bindings | Rust, and Python as `yggdryl.holder.{Path, File, Folder}`; JavaScript has one `IOBase` and no role classes |
 | Validates | Only the canonical `file:` [`Url`](../../uri/index.md), which is a `Folder`'s whole state |
 | Lazy | Constructing touches nothing; a write creates the file and every missing parent |
@@ -21,7 +21,7 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::holder::local::{File, Folder};
+    use yggdryl::local::{File, Folder};
 
     let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-lead-{}.bin", std::process::id()));
 
@@ -58,7 +58,7 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::holder::local::{File, Folder, Path};
+    use yggdryl::local::{File, Folder, Path};
     use yggdryl::IOKind;
 
     let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-roles-{}", std::process::id()));
@@ -116,7 +116,7 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
 
     let temporary = Folder::temporary()?;
     assert!(temporary.is_container());
@@ -160,7 +160,7 @@ Constructing, reading, and listing an absent location create nothing; a write cr
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::holder::local::{Folder, Path};
+    use yggdryl::local::{Folder, Path};
     use yggdryl::IOKind;
 
     let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-decide-{}", std::process::id()));
@@ -223,7 +223,7 @@ Constructing, reading, and listing an absent location create nothing; a write cr
     ```rust
     use yggdryl::holder::Holder;
     use yggdryl::IOBase;
-    use yggdryl::holder::local::{File, Folder};
+    use yggdryl::local::{File, Folder};
 
     let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-walk-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
@@ -321,7 +321,7 @@ Appends remap a logarithmic number of times, so the mapping outruns the bytes wr
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::holder::local::{File, Folder};
+    use yggdryl::local::{File, Folder};
 
     let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-growth-{}.bin", std::process::id()));
 
@@ -382,7 +382,7 @@ The mapping aliases the file's bytes, so copy them into a [`Buffer`](buffer.md) 
     ```rust
     use yggdryl::IOBase;
     use yggdryl::holder::Buffer;
-    use yggdryl::holder::local::{File, Folder};
+    use yggdryl::local::{File, Folder};
 
     let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-snapshot-{}.bin", std::process::id()));
     std::fs::write(&path, b"trade")?;
@@ -426,7 +426,7 @@ A new backend supplies the same three roles as a sibling module; see [Filesystem
     ```rust
     use yggdryl::IOBase;
     use yggdryl::holder::Buffer;
-    use yggdryl::holder::local::{File, Folder};
+    use yggdryl::local::{File, Folder};
 
     fn head(handle: &dyn IOBase) -> yggdryl::Result<Vec<u8>> {
         handle.read_range_bytes(0, 4)
@@ -475,7 +475,7 @@ A recursive listing stays out of `.git`, `.venv`, and `.DS_Store` entirely.
 
     ```rust
     use yggdryl::IOBase;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::Url;
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-private");
@@ -531,7 +531,7 @@ A recursive listing stays out of `.git`, `.venv`, and `.DS_Store` entirely.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib holder::local::
+    cargo test --features "parquet iceberg" -p yggdryl --lib local::
     cargo test --features "parquet iceberg" -p yggdryl --test holder
     cargo bench --bench holder --features parquet -- io_listing
     cargo bench --bench holder --features parquet -- 'fs_bytes/.*/local_file'

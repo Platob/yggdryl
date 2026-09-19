@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlstart",
-          "fix:tag": "41684"
+          "FIX:field": "legstreamcommoditysettlstart",
+          "FIX:tag": "41684"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlend",
-          "fix:tag": "41685"
+          "FIX:field": "legstreamcommoditysettlend",
+          "FIX:tag": "41685"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettltimetype",
-          "fix:tag": "41935"
+          "FIX:field": "legstreamcommoditysettltimetype",
+          "FIX:tag": "41935"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamCommoditySettlTime",
-    "fix:tag": "127100"
+    "FIX:tag": "127100",
+    "display": "LegStreamCommoditySettlTime"
   }
 }

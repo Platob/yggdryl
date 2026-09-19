@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeeventtype",
-          "fix:tag": "1287"
+          "FIX:field": "derivativeeventtype",
+          "FIX:tag": "1287"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeeventdate",
-          "fix:tag": "1288"
+          "FIX:field": "derivativeeventdate",
+          "FIX:tag": "1288"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeeventtime",
-          "fix:tag": "1289"
+          "FIX:field": "derivativeeventtime",
+          "FIX:tag": "1289"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeeventpx",
-          "fix:tag": "1290"
+          "FIX:field": "derivativeeventpx",
+          "FIX:tag": "1290"
         }
       },
       {
@@ -54,15 +54,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeeventtext",
-          "fix:tag": "1291"
+          "FIX:field": "derivativeeventtext",
+          "FIX:tag": "1291"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "DerivativeEvent",
-    "fix:tag": "728137"
+    "FIX:tag": "728137",
+    "display": "DerivativeEvent"
   }
 }

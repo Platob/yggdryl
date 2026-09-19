@@ -10,13 +10,14 @@ use arrow_array::{
 };
 use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema};
-use yggdryl::types::string;
-use yggdryl::types::{CfiField, CountryField, CurrencyField, MicField, StringField};
+use yggdryl::string;
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, StringEnum,
+    ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, StringEnum, StructureType,
 };
+use yggdryl::{CfiField, CountryField, CurrencyField, MicField, StringField};
 
 use super::typed::assert_typed_marker;
+use yggdryl::FieldValue as _;
 
 #[test]
 fn the_string_marker_covers_us_ascii_and_the_code_markers_their_codes() {
@@ -28,10 +29,10 @@ fn the_string_marker_covers_us_ascii_and_the_code_markers_their_codes() {
     assert_typed_marker::<string::StringType>(DataType::large_utf8());
     assert_typed_marker::<string::StringType>(DataType::utf8_view());
     assert_typed_marker::<string::StringType>(DataType::from_str("string(windows-1252)").unwrap());
-    assert_typed_marker::<string::CountryType>(DataType::Country);
-    assert_typed_marker::<string::CurrencyType>(DataType::Currency);
-    assert_typed_marker::<string::MicType>(DataType::Mic);
-    assert_typed_marker::<string::CfiType>(DataType::Cfi);
+    assert_typed_marker::<yggdryl::CountryType>(DataType::Country);
+    assert_typed_marker::<yggdryl::CurrencyType>(DataType::Currency);
+    assert_typed_marker::<yggdryl::MicType>(DataType::Mic);
+    assert_typed_marker::<yggdryl::CfiType>(DataType::Cfi);
 
     // Every string is one parameterized datatype, so the field takes it
     // through `try_new`; a code is not a string and is refused by name.
@@ -44,31 +45,32 @@ fn the_string_marker_covers_us_ascii_and_the_code_markers_their_codes() {
     // The code/width boundary is the one the markers exist for: a currency
     // and a `fixed_ascii(3)` are the same three bytes and are not each other.
     assert_eq!(
-        CurrencyField::new("ccy", false).dtype(),
+        CurrencyField::unit("ccy", false).dtype(),
         &DataType::Currency
     );
-    assert_eq!(CountryField::new("iso", true).dtype(), &DataType::Country);
-    assert_eq!(MicField::new("venue", true).dtype(), &DataType::Mic);
+    assert_eq!(CountryField::unit("iso", true).dtype(), &DataType::Country);
+    assert_eq!(MicField::unit("venue", true).dtype(), &DataType::Mic);
     assert!(CurrencyField::try_new("ccy", DataType::fixed_ascii(3).unwrap(), false).is_err());
     // Six bytes against eight: the confusion a width/code mix-up produces.
     assert!(CfiField::try_new("code", DataType::fixed_ascii(8).unwrap(), false).is_err());
 
     // The typed value is checked under the one US-ASCII rule for its width.
     let width = StringField::try_new("code", DataType::fixed_ascii(8).unwrap(), false).unwrap();
-    let code = FieldScalar::new(width.as_field(), "ABC").unwrap();
+    let width_field = width.to_field();
+    let code = FieldScalar::new(&width_field, "ABC").unwrap();
     assert_eq!(code.as_str(), Some("ABC"));
-    assert_eq!(code.value().id(), DataTypeId::FixedString);
-    assert!(FieldScalar::new(width.as_field(), "ABCDEFGHI").is_err());
+    assert_eq!(code.value().id(), DataTypeId::FixedAsciiString);
+    assert!(FieldScalar::new(&width.to_field(), "ABCDEFGHI").is_err());
 
     // A typed code value is checked at the width its own standard fixes.
-    let ccy = CurrencyField::new("ccy", false);
+    let ccy = CurrencyField::unit("ccy", false);
     assert_eq!(
-        FieldScalar::new(ccy.as_field(), "USD").unwrap().as_str(),
+        FieldScalar::new(&ccy.to_field(), "USD").unwrap().as_str(),
         Some("USD")
     );
-    assert!(FieldScalar::new(ccy.as_field(), "EURO").is_err());
-    let cfi = CfiField::new("classification", false);
-    assert!(FieldScalar::new(cfi.as_field(), "ESVUFR").is_ok());
+    assert!(FieldScalar::new(&ccy.to_field(), "EURO").is_err());
+    let cfi = CfiField::unit("classification", false);
+    assert!(FieldScalar::new(&cfi.to_field(), "ESVUFR").is_ok());
 }
 
 #[test]
@@ -76,36 +78,39 @@ fn the_value_door_judges_the_repertoire_and_the_bound() {
     // The variable layout trims nothing: NUL and a byte above 0x7F are
     // refused, and everything else is the same value `Scalar::from` builds.
     let note = StringField::try_new("note", DataType::ascii(), true).unwrap();
-    let held = FieldScalar::new(note.as_field(), "USD").unwrap();
+    let note_field = note.to_field();
+    let held = FieldScalar::new(&note_field, "USD").unwrap();
     assert_eq!(held.value(), &Scalar::from("USD"));
-    assert_eq!(held.value().id(), DataTypeId::String);
+    assert_eq!(held.value().id(), DataTypeId::AsciiString);
     for (text, fact) in [("U\0S", "NUL byte"), ("\u{20ac}", "non-ASCII byte")] {
-        let refused = FieldScalar::new(note.as_field(), text)
+        let refused = FieldScalar::new(&note.to_field(), text)
             .unwrap_err()
             .to_string();
         assert!(refused.contains(fact), "{refused}");
     }
-    assert!(FieldScalar::new(note.as_field(), "USD\0").is_err());
+    assert!(FieldScalar::new(&note.to_field(), "USD\0").is_err());
 
-    // `ascii(4)` is a maximum the value never carries.
+    // `sized_ascii(4)` is a maximum the value never carries.
     let bounded =
         StringField::try_new("ccy", DataType::from_str("ascii(4)").unwrap(), true).unwrap();
-    let held = FieldScalar::new(bounded.as_field(), "EURO").unwrap();
+    let bounded_field = bounded.to_field();
+    let held = FieldScalar::new(&bounded_field, "EURO").unwrap();
     assert_eq!(held.value().dtype().unwrap(), DataType::ascii());
-    let refused = FieldScalar::new(bounded.as_field(), "EUROS")
+    let refused = FieldScalar::new(&bounded.to_field(), "EUROS")
         .unwrap_err()
         .to_string();
     assert!(refused.contains("at most 4 bytes"), "{refused}");
 
     // The fixed layout trims the padding storage writes and carries its width.
     let fixed = StringField::try_new("ccy", DataType::fixed_ascii(4).unwrap(), true).unwrap();
-    let held = FieldScalar::new(fixed.as_field(), Scalar::from(b"USD\0")).unwrap();
+    let fixed_field = fixed.to_field();
+    let held = FieldScalar::new(&fixed_field, Scalar::from(b"USD\0")).unwrap();
     assert_eq!(held.as_str(), Some("USD"));
     assert_eq!(
         held.value().dtype().unwrap(),
         DataType::fixed_ascii(4).unwrap()
     );
-    assert!(FieldScalar::new(fixed.as_field(), Scalar::from(b"US\xC3\xA9")).is_err());
+    assert!(FieldScalar::new(&fixed.to_field(), Scalar::from(b"US\xC3\xA9")).is_err());
 }
 
 #[test]
@@ -141,7 +146,7 @@ fn a_string_enum_is_accepted_on_fixed_us_ascii_up_to_sixteen_bytes_or_a_code() {
         DataType::fixed_ascii(17).unwrap(),
         DataType::fixed_utf8(4).unwrap(),
         DataType::utf8(),
-        DataType::fixed_size_binary(4).unwrap(),
+        DataType::fixed_binary(4).unwrap(),
     ] {
         let error = refused
             .clone()
@@ -168,7 +173,11 @@ fn a_string_enum_is_accepted_on_fixed_us_ascii_up_to_sixteen_bytes_or_a_code() {
 // ---------------------------------------------------------------------------
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    Field::new("row", DataType::from_fields(fields).unwrap(), false)
+    Field::new(
+        "row",
+        DataType::from(StructureType::from_fields(fields).unwrap()),
+        false,
+    )
 }
 
 /// One column under the root's own Arrow schema, so it carries the
@@ -238,7 +247,7 @@ fn a_plain_fixed_binary_of_the_width_is_read_strictly() {
     // through the one door bytes take, and written under the target.
     let source = fixed(4, &[Some(b"USD\0"), Some(b"EUR\0")]);
     let cast = field
-        .as_field()
+        .to_field()
         .cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))
         .unwrap();
     let cast = fixed_cells(&cast);
@@ -249,7 +258,7 @@ fn a_plain_fixed_binary_of_the_width_is_read_strictly() {
     // the charset that refused it.
     let broken = fixed(4, &[Some(b"USD\0"), Some(b"US\xC3\xA9")]);
     let refused = field
-        .as_field()
+        .to_field()
         .cast_arrow_array(broken, ArrowCastOptions::new().with_safe(false))
         .unwrap_err()
         .to_string();
@@ -338,9 +347,7 @@ fn an_ascii_column_keeps_its_padding_into_a_binary_target() {
     // The fixed binary of the same width is the storage itself.
     let same = cast_column(
         batch_of(&source, Arc::clone(&stored)),
-        DataType::fixed_size_binary(4)
-            .unwrap()
-            .nullable_field("ccy"),
+        DataType::fixed_binary(4).unwrap().nullable_field("ccy"),
     )
     .unwrap();
     assert!(Arc::ptr_eq(&same, &stored));
@@ -381,7 +388,10 @@ fn a_required_ascii_field_fills_nulls_with_the_all_nul_default() {
 fn a_hidden_struct_child_is_neither_validated_nor_copied() {
     let target = root([Field::new(
         "position",
-        DataType::from_fields([DataType::fixed_ascii(4).unwrap().required_field("ccy")]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([DataType::fixed_ascii(4).unwrap().required_field("ccy")])
+                .unwrap(),
+        ),
         true,
     )]);
     // Row 1 is null at the struct level; its child slot holds a value that

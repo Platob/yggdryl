@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlmethodelectiondatebusinesscenter",
-          "fix:tag": "42776"
+          "FIX:field": "settlmethodelectiondatebusinesscenter",
+          "FIX:tag": "42776"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SettlMethodElectionDateBusinessCenter",
-    "fix:tag": "199567"
+    "FIX:tag": "199567",
+    "display": "SettlMethodElectionDateBusinessCenter"
   }
 }

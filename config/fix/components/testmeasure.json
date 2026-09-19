@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testmeasurename",
-          "fix:tag": "3053"
+          "FIX:field": "testmeasurename",
+          "FIX:tag": "3053"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testmeasuredesc",
-          "fix:tag": "3054"
+          "FIX:field": "testmeasuredesc",
+          "FIX:tag": "3054"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testmeasuretype",
-          "fix:tag": "3055"
+          "FIX:field": "testmeasuretype",
+          "FIX:tag": "3055"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testmeasureprecision",
-          "fix:tag": "3056"
+          "FIX:field": "testmeasureprecision",
+          "FIX:tag": "3056"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testmeasureresult",
-          "fix:tag": "3057"
+          "FIX:field": "testmeasureresult",
+          "FIX:tag": "3057"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testthresholdtype",
-          "fix:tag": "3058"
+          "FIX:field": "testthresholdtype",
+          "FIX:tag": "3058"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testwarninglevelvalue",
-          "fix:tag": "3059"
+          "FIX:field": "testwarninglevelvalue",
+          "FIX:tag": "3059"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testfaillevelvalue",
-          "fix:tag": "3060"
+          "FIX:field": "testfaillevelvalue",
+          "FIX:tag": "3060"
         }
       },
       {
@@ -98,15 +98,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testpeaklevelvalue",
-          "fix:tag": "3061"
+          "FIX:field": "testpeaklevelvalue",
+          "FIX:tag": "3061"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TestMeasure",
-    "fix:tag": "879969"
+    "FIX:tag": "879969",
+    "display": "TestMeasure"
   }
 }

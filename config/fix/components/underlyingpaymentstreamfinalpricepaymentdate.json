@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfinalpricepaymentdateunadjusted",
-          "fix:tag": "42949"
+          "FIX:field": "underlyingpaymentstreamfinalpricepaymentdateunadjusted",
+          "FIX:tag": "42949"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfinalpricepaymentdaterelativeto",
-          "fix:tag": "42950"
+          "FIX:field": "underlyingpaymentstreamfinalpricepaymentdaterelativeto",
+          "FIX:tag": "42950"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfinalpricepaymentdateoffsetperiod",
-          "fix:tag": "42951"
+          "FIX:field": "underlyingpaymentstreamfinalpricepaymentdateoffsetperiod",
+          "FIX:tag": "42951"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfinalpricepaymentdateoffsetunit",
-          "fix:tag": "42952"
+          "FIX:field": "underlyingpaymentstreamfinalpricepaymentdateoffsetunit",
+          "FIX:tag": "42952"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfinalpricepaymentdateoffsetdaytype",
-          "fix:tag": "42953"
+          "FIX:field": "underlyingpaymentstreamfinalpricepaymentdateoffsetdaytype",
+          "FIX:tag": "42953"
         }
       },
       {
@@ -65,16 +65,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfinalpricepaymentdateadjusted",
-          "fix:tag": "42954"
+          "FIX:field": "underlyingpaymentstreamfinalpricepaymentdateadjusted",
+          "FIX:tag": "42954"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "408025",
     "description": "Conditionally required when UnderlyingPaymentStreamFinalPricePaymentDateOffsetUnit(42952) is specified.",
-    "display": "UnderlyingPaymentStreamFinalPricePaymentDate",
-    "fix:tag": "408025"
+    "display": "UnderlyingPaymentStreamFinalPricePaymentDate"
   }
 }

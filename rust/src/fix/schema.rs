@@ -13,7 +13,7 @@
 //! on the way in - so a row reads the way a message reads, in every binding
 //! and every catalog, and a reader spelling `row["msgseqnum"]` finds the
 //! sequence number without a dictionary in hand. The tag is still the
-//! identity: each column carries its field's `fix:tag` and its code set, and
+//! identity: each column carries its field's `FIX:tag` and its code set, and
 //! the row is filled by that tag rather than by the spelling,
 //! so a venue that renames a field between versions changes nothing about
 //! where its value lands.
@@ -49,10 +49,11 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::types::nested::Fields;
 use crate::{DataType, Field, Result};
+use crate::{DateTimeType, StructureType};
 
 use super::FixRegistry;
+use crate::sequence::SequenceType;
 
 /// The standard header, in the order FIX 4.4 declares it.
 ///
@@ -160,15 +161,14 @@ const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
 #[must_use]
 pub fn fix_schema_tags() -> Vec<i32> {
     use super::crated::{
-        CREATUNIX_TAG_NAME as CREATUNIX, CROSSCODE_TAG_NAME as CROSSCODE,
+        CREAUNIX_TAG_NAME as CREAUNIX, CROSSCODE_TAG_NAME as CROSSCODE,
         CROSSHASHCODE_TAG_NAME as CROSSHASHCODE, CROSSUUID_TAG_NAME as CROSSUUID,
         CURRHASHCODE_TAG_NAME as HASHCODE, CURRUNIX_TAG_NAME as UNIX,
         CURRUUID_TAG_NAME as CURRUUID, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
         METADATA_TAG_NAME as METADATA, MSGCTXID_TAG_NAME as MSGCTXID,
-        MSGDIRECTION_TAG_NAME as MSGDIRECTION, MSGSESSIONID_TAG_NAME as MSGSESSIONID,
-        PARENTUUIDS_TAG_NAME as PARENTUUIDS, PLUGINID_TAG_NAME as PLUGINID,
-        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID,
-        RECORDEDAT_TAG_NAME as RECORDEDAT, SEQNUM_TAG_NAME as SEQNUM,
+        MSGDIRECTION_TAG_NAME as MSGDIRECTION, MSGPLUGINID_TAG_NAME as MSGPLUGINID,
+        MSGSESSIONID_TAG_NAME as MSGSESSIONID, PARENTUUIDS_TAG_NAME as PARENTUUIDS,
+        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID, SEQNUM_TAG_NAME as SEQNUM,
         SNAPUNIX_TAG_NAME as SNAPUNIX, SOURCEURL_TAG_NAME as SOURCEURL,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
@@ -184,24 +184,12 @@ pub fn fix_schema_tags() -> Vec<i32> {
         }
     };
     // When it happened: the instant itself, then the instants that instant
-    // is read against - created, followed, expiring, snapped, recorded -
+    // is read against - created, followed, expiring, snapped -
     // then the clocks the protocol states.
     band(
         &mut tags,
         &[
-            UNIX.0,
-            CREATUNIX.0,
-            PREVUNIX.0,
-            SNAPUNIX.0,
-            RECORDEDAT.0,
-            52,
-            122,
-            60,
-            64,
-            75,
-            126,
-            62,
-            432,
+            UNIX.0, CREAUNIX.0, PREVUNIX.0, SNAPUNIX.0, 52, 122, 60, 64, 75, 126, 62, 432,
         ],
     );
     // Which event: its own identity, the chain it stands in and what it
@@ -233,7 +221,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
             43,
             MSGDIRECTION.0,
             SOURCEURL.0,
-            PLUGINID.0,
+            MSGPLUGINID.0,
             MSGCTXID.0,
             MSGSESSIONID.0,
         ],
@@ -301,7 +289,7 @@ fn is_required(tag: i32) -> bool {
     tag == 8
         || [
             super::CURRUNIX_TAG_NAME.0,
-            super::CREATUNIX_TAG_NAME.0,
+            super::CREAUNIX_TAG_NAME.0,
             super::CURRHASHCODE_TAG_NAME.0,
             super::CROSSHASHCODE_TAG_NAME.0,
             super::CURRUUID_TAG_NAME.0,
@@ -358,12 +346,12 @@ pub(super) fn fixmsg_definition(registry: &FixRegistry) -> Result<Field> {
                 .as_fix()
                 .counter()?
                 .and_then(|counter| registry.get_field_by_counter(counter))
-                .filter(|group| crate::types::folds_equal(group.name(), column.name()));
+                .filter(|group| crate::folds_equal(group.name(), column.name()));
             let scalar = column
                 .as_fix()
                 .tag()?
                 .and_then(|tag| registry.get_scalar_by_tag(tag))
-                .filter(|scalar| crate::types::folds_equal(scalar.name(), column.name()));
+                .filter(|scalar| crate::folds_equal(scalar.name(), column.name()));
             if let Some(group) = group {
                 member.as_fix_mut().set_group(group.name())?;
             } else if let Some(scalar) = scalar {
@@ -374,9 +362,9 @@ pub(super) fn fixmsg_definition(registry: &FixRegistry) -> Result<Field> {
     }
     let mut root = Field::new_with_metadata(
         schema.name(),
-        DataType::from_fields(members)?,
+        DataType::from(StructureType::from_fields(members)?),
         schema.is_nullable(),
-        schema.metadata.clone(),
+        schema.as_metadata().clone(),
     );
     root.as_fix_mut().set_tag(tag)?;
     root.set_display("FixMsg")?;
@@ -407,7 +395,7 @@ pub(super) fn rooted(
             held.set_nullable(!is_required(tag));
             if !fields
                 .iter()
-                .any(|known| crate::types::folds_equal(known.name(), held.name()))
+                .any(|known| crate::folds_equal(known.name(), held.name()))
             {
                 fields.push(held);
             }
@@ -430,7 +418,7 @@ pub(super) fn rooted(
                 held.set_nullable(!is_required(tag));
                 if !fields
                     .iter()
-                    .any(|known| crate::types::folds_equal(known.name(), held.name()))
+                    .any(|known| crate::folds_equal(known.name(), held.name()))
                 {
                     fields.push(held);
                 }
@@ -442,14 +430,14 @@ pub(super) fn rooted(
             group.set_nullable(true);
             if !fields
                 .iter()
-                .any(|known| crate::types::folds_equal(known.name(), group.name()))
+                .any(|known| crate::folds_equal(known.name(), group.name()))
             {
                 fields.push(group);
             }
         }
     }
     fields.push(entries_field()?);
-    let schema = DataType::from_fields(fields)?.required_field(name);
+    let schema = DataType::from(StructureType::from_fields(fields)?).required_field(name);
     column_plan(&schema, registry)?;
     Ok(schema)
 }
@@ -486,16 +474,17 @@ pub(super) fn rooted(
 /// every one of them and never write that null.
 ///
 /// ```
+/// use yggdryl::StructureType;
 /// # fn main() -> yggdryl::Result<()> {
-/// # use yggdryl::holder::local::Folder;
+/// # use yggdryl::local::Folder;
 /// # use yggdryl::{DataType, FixRegistry, fix_schema, fix_schema_carrying};
 /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-/// let capture = DataType::from_fields([
+/// let capture = DataType::from(StructureType::from_fields([
 ///     DataType::utf8().required_field("url"),
 ///     DataType::Int64.required_field("rownum"),
 ///     DataType::utf8().required_field("body"),
-/// ])?
+/// ])?)
 /// .required_field("line");
 ///
 /// let read = fix_schema(&registry, "fix")?;
@@ -525,7 +514,7 @@ pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field> {
         })
         .collect();
     fields.extend(read.fields().iter().cloned());
-    Ok(DataType::from_fields(fields)?.required_field(read.name()))
+    Ok(DataType::from(StructureType::from_fields(fields)?).required_field(read.name()))
 }
 
 /// Where each of a capture's own columns sits, in the order they lead the row.
@@ -542,7 +531,7 @@ pub(super) fn carried(carrier: &Field, read: &Field) -> Vec<usize> {
             !read
                 .fields()
                 .iter()
-                .any(|column| crate::types::folds_equal(column.name(), held.name()))
+                .any(|column| crate::folds_equal(column.name(), held.name()))
         })
         .map(|(at, _)| at)
         .collect()
@@ -584,7 +573,7 @@ pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>> {
 
 /// What one column answers for, read off its field once per schema.
 ///
-/// A column declaring a group's `fix:counter` answers with that group; any
+/// A column declaring a group's `FIX:counter` answers with that group; any
 /// other column answers for the tag its field carries; one carrying neither
 /// is a capture's own. Both are metadata reads, and a row is filled through
 /// this so a batch of a million rows reads the schema once.
@@ -609,7 +598,7 @@ impl std::ops::Deref for Columns {
 }
 
 pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<ColumnPlan> {
-    let DataType::Struct(fields) = schema.dtype() else {
+    let DataType::Structure(fields) = schema.dtype() else {
         return Err(super::identity::refused(
             schema.name(),
             "a Struct field",
@@ -634,12 +623,12 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
 
 thread_local! {
     // One retained schema and registry: aliases belong to the resolving registry.
-    static LAST_COLUMN_PLAN: RefCell<Option<(Fields, Arc<FixRegistry>, ColumnPlan)>> = const { RefCell::new(None) };
+    static LAST_COLUMN_PLAN: RefCell<Option<(StructureType, Arc<FixRegistry>, ColumnPlan)>> = const { RefCell::new(None) };
 }
 
 /// Pointer identity is fast; equal reconstructed layouts need a structural comparison.
 pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Result<ColumnPlan> {
-    let DataType::Struct(columns) = schema.dtype() else {
+    let DataType::Structure(columns) = schema.dtype() else {
         return column_plan(schema, registry);
     };
     LAST_COLUMN_PLAN.with(|held| {
@@ -724,12 +713,12 @@ fn entry_item(level: usize) -> Result<Field> {
         field.set_display(display)?;
         Ok(field)
     };
-    Ok(DataType::from_fields([
+    Ok(DataType::from(StructureType::from_fields([
         named(DataType::Int32, TAG_COLUMN, true)?,
         named(DataType::utf8(), NAME_COLUMN, true)?,
         named(DataType::utf8(), VALUE_COLUMN, false)?,
         tail,
-    ])?
+    ])?)
     .required_field(ENTRY_COMPONENT))
 }
 
@@ -933,7 +922,7 @@ fn push_child(
     let taken = |fields: &[Field], name: &str| {
         fields
             .iter()
-            .any(|held| crate::types::folds_equal(held.name(), name))
+            .any(|held| crate::folds_equal(held.name(), name))
     };
     if let Some(counter) = field.as_fix().counter().ok().flatten() {
         if let Some(scalar) = registry.get_scalar_by_tag(counter) {
@@ -960,7 +949,7 @@ fn declares(field: &Field, entry: &super::FixEntry) -> bool {
     if entry.tag() != 0 {
         return field.as_fix().tag().ok().flatten() == Some(entry.tag());
     }
-    crate::types::folds_equal(field.name(), entry.name())
+    crate::folds_equal(field.name(), entry.name())
 }
 
 /// One group entry as the list it states: an occurrence per entry under it,
@@ -995,7 +984,7 @@ fn group_from_entry(
         for (field, value) in fields.into_iter().zip(values) {
             match union
                 .iter_mut()
-                .find(|held| crate::types::folds_equal(held.name(), field.name()))
+                .find(|held| crate::folds_equal(held.name(), field.name()))
             {
                 // Two occurrences state one member differently - a nested
                 // group one of them left out a level of - so the slot is
@@ -1034,17 +1023,17 @@ fn group_from_entry(
         },
         |item| item.name().to_owned(),
     );
-    let occurrence = DataType::from_fields(union)?.required_field(name);
+    let occurrence = DataType::from(StructureType::from_fields(union)?).required_field(name);
     let dtype = match known.dtype() {
-        DataType::LargeList(_) => DataType::large_list(occurrence),
-        DataType::Map(map) => DataType::map(occurrence, map.keys_sorted())?,
+        DataType::Sequence(SequenceType::LargeList(_)) => DataType::large_list(occurrence),
+        DataType::Mapping(map) => DataType::map(occurrence, map.keys_sorted())?,
         _ => DataType::list(occurrence),
     };
     // A group the dictionary does not declare stands under the counter's own
     // name and states no counter of its own: the builder left the count to
     // the occurrences beside it, and a counter here would put a second child
     // of that name in the row.
-    let field = Field::new_with_metadata(known.name(), dtype, true, known.metadata.clone());
+    let field = Field::new_with_metadata(known.name(), dtype, true, known.as_metadata().clone());
     Ok((field, crate::Scalar::from_sequence(rows)))
 }
 
@@ -1106,13 +1095,15 @@ fn child_from_entry(
         return group_from_entry(registry, entry, known, None);
     }
     match known.dtype() {
-        DataType::List(_) | DataType::LargeList(_) | DataType::Map(_) => {
+        DataType::Sequence(SequenceType::List(_))
+        | DataType::Sequence(SequenceType::LargeList(_))
+        | DataType::Mapping(_) => {
             let Some(item) = super::catalog::occurrence_of(known) else {
                 return Ok((known.clone(), crate::Scalar::Null));
             };
             group_from_entry(registry, entry, known, Some(item))
         }
-        DataType::Struct(_) => {
+        DataType::Structure(_) => {
             let mut fields: Vec<Field> = Vec::with_capacity(entry.entries().len());
             let mut values: Vec<crate::Scalar> = Vec::with_capacity(entry.entries().len());
             for member in entry.entries() {
@@ -1127,9 +1118,9 @@ fn child_from_entry(
                 .collect();
             let field = Field::new_with_metadata(
                 known.name(),
-                DataType::from_fields(fields)?,
+                DataType::from(StructureType::from_fields(fields)?),
                 false,
-                known.metadata.clone(),
+                known.as_metadata().clone(),
             );
             Ok((field, crate::Scalar::from_record(named)?))
         }
@@ -1161,9 +1152,8 @@ impl super::FixMsg {
     ///
     /// A column no tag and no counter names is the capture's own - the body
     /// the line was cut from, its place in the object, its media type, what
-    /// a bound dropped - and so are the two the crate does tag,
-    /// [`sourceurl`](crate::SOURCEURL_TAG_NAME) and
-    /// [`recordedat`](crate::RECORDEDAT_TAG_NAME). All of them are read
+    /// a bound dropped - and so is the one the crate does tag,
+    /// [`sourceurl`](crate::SOURCEURL_TAG_NAME). All of them are read
     /// past: a message is what parsing one line answered, and what a
     /// *reader* said about that line is not it. Nothing on the message
     /// holds them, so none can reach a digest, an entry, or a `body=` at a
@@ -1201,7 +1191,7 @@ impl super::FixMsg {
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
-    /// # use yggdryl::holder::local::Folder;
+    /// # use yggdryl::local::Folder;
     /// # use yggdryl::graph::Element;
     /// # use yggdryl::{FixCodec, FixMsg, FixRegistry, fix_schema};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -1293,7 +1283,7 @@ impl super::FixMsg {
             for (field, value) in fields.into_iter().zip(held) {
                 if members
                     .iter()
-                    .any(|known| crate::types::folds_equal(known.name(), field.name()))
+                    .any(|known| crate::folds_equal(known.name(), field.name()))
                 {
                     continue;
                 }
@@ -1303,9 +1293,9 @@ impl super::FixMsg {
         }
         let root = Field::new_with_metadata(
             schema.name(),
-            DataType::from_fields(members)?,
+            DataType::from(StructureType::from_fields(members)?),
             schema.is_nullable(),
-            schema.metadata.clone(),
+            schema.as_metadata().clone(),
         );
         Self::with_registry(registry, root, crate::Scalar::from_sequence(values))
     }
@@ -1313,17 +1303,17 @@ impl super::FixMsg {
     /// This message as the fixed row a table holds.
     ///
     /// The columns are the schema's own, in its own order, and each is filled
-    /// by its scalar tag or logical group's `fix:counter`. A message carrying
+    /// by its scalar tag or logical group's `FIX:counter`. A message carrying
     /// nothing at a column answers null there rather than shifting its neighbours, which
     /// is what makes two rows of one capture comparable at all.
     ///
     /// [The capture's own columns](Self::from_row) answer null here, because
-    /// a message holds no fact for any of them: the two the crate tags,
-    /// `sourceurl` and `recordedat`, and every column no tag and no counter
-    /// names. Whoever read the rows states them instead, each at its own
-    /// column and before the field contract runs, which is what the capture
-    /// readers do. Nothing derives one either: when a capture wrote a line
-    /// down is whoever read it to say, so a column nobody stated is null.
+    /// a message holds no fact for any of them: the one the crate tags,
+    /// `sourceurl`, and every column no tag and no counter names. Whoever
+    /// read the rows states them instead, each at its own column and before
+    /// the field contract runs, which is what the capture readers do.
+    /// Nothing derives one either: where a line was read from is whoever
+    /// read it to say, so a column nobody stated is null.
     ///
     /// The arrival record closes the row under [`FIXENTRIES_COLUMN`], so the row
     /// stays lossless whatever the columns made of it. Keys no dictionary
@@ -1332,7 +1322,7 @@ impl super::FixMsg {
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
-    /// # use yggdryl::holder::local::Folder;
+    /// # use yggdryl::local::Folder;
     /// # use yggdryl::{FixCodec, FixRegistry, fix_schema};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
@@ -1427,7 +1417,7 @@ impl super::FixMsg {
                 NOFIXENTRIES_COLUMN => {
                     crate::Scalar::from(i32::try_from(self.entries().len()).unwrap_or(i32::MAX))
                 }
-                // A column declaring a group's `fix:counter` answers with
+                // A column declaring a group's `FIX:counter` answers with
                 // that group, read from the message's own occurrences. Any
                 // other column answers for the tag its field carries; one
                 // that carries none is a capture's own column, which no
@@ -1503,7 +1493,7 @@ impl super::FixMsg {
                     .map(|member| {
                         spelled
                             .iter()
-                            .position(|name| crate::types::folds_equal(name, member.name()))
+                            .position(|name| crate::folds_equal(name, member.name()))
                             .and_then(|at| stated.get(at))
                             .cloned()
                             .unwrap_or(crate::Scalar::Null)
@@ -1524,7 +1514,7 @@ impl super::FixMsg {
     /// lane it never wrote is still true of it, and a one-sided quote implies
     /// the side it never wrote either. Then the derived facts this crate
     /// computes - `BeginString` here, and every crate column whose field
-    /// declares a `fix:derivation` through the one evaluator the
+    /// declares a `FIX:derivation` through the one evaluator the
     /// [enriching pass](super::enrich) runs, so `isincode`, `miccode` and
     /// `state` fill a row of an unenriched message exactly as the pass
     /// would fill the message.
@@ -1538,7 +1528,7 @@ impl super::FixMsg {
     /// # Errors
     ///
     /// Returns the registry's refusal of its own derivations, naming the
-    /// field whose `fix:derivation` does not compile: a dictionary whose
+    /// field whose `FIX:derivation` does not compile: a dictionary whose
     /// rules do not compile fills no row, exactly as it enriches no message.
     fn column_value(
         &self,
@@ -1678,8 +1668,7 @@ pub(super) fn narrowed(column: &Field, value: crate::Scalar) -> crate::Scalar {
     if !float || !decimal {
         return value;
     }
-    crate::types::Decimal::from_scalar(&value)
-        .map_or(value, |held| crate::Scalar::from(held.to_f64()))
+    crate::Decimal18::from_scalar(&value).map_or(value, |held| crate::Scalar::from(held.to_f64()))
 }
 
 /// One value rebuilt under one field with every leaf that will not fit nulled.
@@ -1690,7 +1679,7 @@ pub(super) fn narrowed(column: &Field, value: crate::Scalar) -> crate::Scalar {
 /// for it.
 fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
     let rebuilt = match field.dtype() {
-        DataType::Struct(members) => value.as_sequence().map(|stated| {
+        DataType::Structure(members) => value.as_sequence().map(|stated| {
             // A member the value never reached is the null the column would
             // have held anyway; one it reached is refitted in place.
             let held: Option<Vec<crate::Scalar>> = members
@@ -1703,19 +1692,21 @@ fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
                 .collect();
             held.map(crate::Scalar::from_sequence)
         }),
-        DataType::List(item)
-        | DataType::LargeList(item)
-        | DataType::ListView(item)
-        | DataType::LargeListView(item)
-        | DataType::FixedSizeList(item, _) => value.as_sequence().map(|stated| {
-            Some(crate::Scalar::from_sequence(
-                stated
-                    .iter()
-                    .filter_map(|held| refit(item, held.clone()))
-                    .collect::<Vec<_>>(),
-            ))
-        }),
-        DataType::Map(map) => value.as_mapping().map(|stated| {
+        DataType::Sequence(SequenceType::List(item))
+        | DataType::Sequence(SequenceType::LargeList(item))
+        | DataType::Sequence(SequenceType::ListView(item))
+        | DataType::Sequence(SequenceType::LargeListView(item))
+        | DataType::Sequence(SequenceType::FixedSizeList(item, _)) => {
+            value.as_sequence().map(|stated| {
+                Some(crate::Scalar::from_sequence(
+                    stated
+                        .iter()
+                        .filter_map(|held| refit(item, held.clone()))
+                        .collect::<Vec<_>>(),
+                ))
+            })
+        }
+        DataType::Mapping(map) => value.as_mapping().map(|stated| {
             // A pair whose key will not read names nothing, so it is left
             // out; one whose value will not read keeps its name and loses
             // the value, which is what every other column does.
@@ -1741,7 +1732,7 @@ fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
 }
 
 /// Exact layout shared by FIX event, creation, grid and previous clocks.
-pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime64 {
+pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime(DateTimeType::DateTime64 {
     unit: crate::TimeUnit::Nanosecond,
     timezone: crate::Timezone::UTC,
-};
+});

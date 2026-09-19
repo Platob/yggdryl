@@ -20,10 +20,10 @@
 /// is the row's clock, so it stamps the message; `msgctxid` fills the
 /// crate's own [`MsgCtxId`](super::MSGCTXID_TAG_NAME); `msgseqnum` fills
 /// FIX's own `MsgSeqNum(34)`; `msgsessionid` fills the crate's own
-/// [`MsgSessionId`](super::MSGSESSIONID_TAG_NAME); `pluginid` is the
+/// [`MsgSessionId`](super::MSGSESSIONID_TAG_NAME); `msgpluginid` is the
 /// plugin that logged the line and fills
-/// [`PluginId`](super::PLUGINID_TAG_NAME) - the session names the line moved
-/// between are what the line itself spells, never the plugin.
+/// [`MsgPluginId`](super::MSGPLUGINID_TAG_NAME) - the session names the
+/// line moved between are what the line itself spells, never the plugin.
 ///
 /// The bridge writes these three in camel case - `senderSessionId`,
 /// `msgCtxId`, `seqNum` - and they were captured that way, with a table
@@ -40,22 +40,19 @@
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
-/// let options = yggdryl::media::text::TextOptions::new()
+/// let options = yggdryl::text::TextOptions::new()
 ///     .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)?;
 /// let captures = options.source_field()?;
 /// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-/// assert!(names.ends_with(&["timestamp", "threadId", "msgsessionid", "msgctxid", "msgseqnum", "pluginid", "level"]));
+/// assert!(names.ends_with(&["timestamp", "msgthreadid", "msgsessionid", "msgctxid", "msgseqnum", "msgpluginid", "level"]));
 /// assert_eq!(captures.field("msgseqnum")?.dtype(), &yggdryl::DataType::Int64);
 /// // The bridge's own millisecond fraction is what types its stamp, so a
 /// // widened probe must leave this capture exactly where it was.
 /// assert_eq!(
 ///     captures.field("timestamp")?.dtype(),
-///     &yggdryl::DataType::DateTime64 {
-///         unit: yggdryl::TimeUnit::Millisecond,
-///         timezone: yggdryl::Timezone::NAIVE,
-///     },
+///     &yggdryl::DataType::datetime64(yggdryl::TimeUnit::Millisecond, yggdryl::Timezone::NAIVE)?,
 /// );
 /// # Ok(())
 /// # }
 /// ```
-pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<pluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
+pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<msgthreadid>[1-9]\d*)(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<msgpluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) ";

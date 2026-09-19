@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexercisefixeddate",
-          "fix:tag": "40143"
+          "FIX:field": "provisionoptionexercisefixeddate",
+          "FIX:tag": "40143"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexercisefixeddatetype",
-          "fix:tag": "40144"
+          "FIX:field": "provisionoptionexercisefixeddatetype",
+          "FIX:tag": "40144"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ProvisionOptionExerciseFixedDate",
-    "fix:tag": "184147"
+    "FIX:tag": "184147",
+    "display": "ProvisionOptionExerciseFixedDate"
   }
 }

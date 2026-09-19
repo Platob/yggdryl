@@ -1,7 +1,7 @@
 use smol_str::SmolStr;
 
 use super::{IORecordOptions, RecordOptions};
-use crate::media::ipc::IpcOptions;
+use crate::ipc::IpcOptions;
 use crate::{Field, Filter, Level, Selector};
 
 impl IORecordOptions for RecordOptions {
@@ -253,20 +253,20 @@ impl From<IpcOptions> for RecordOptions {
 }
 
 #[cfg(feature = "parquet")]
-impl From<crate::media::parquet::ParquetOptions> for RecordOptions {
-    fn from(value: crate::media::parquet::ParquetOptions) -> Self {
+impl From<crate::parquet::ParquetOptions> for RecordOptions {
+    fn from(value: crate::parquet::ParquetOptions) -> Self {
         Self::Parquet(value)
     }
 }
 
-impl From<crate::media::avro::AvroOptions> for RecordOptions {
-    fn from(value: crate::media::avro::AvroOptions) -> Self {
+impl From<crate::avro::AvroOptions> for RecordOptions {
+    fn from(value: crate::avro::AvroOptions) -> Self {
         Self::Avro(value)
     }
 }
 
-impl From<crate::media::text::TextOptions> for RecordOptions {
-    fn from(value: crate::media::text::TextOptions) -> Self {
+impl From<crate::text::TextOptions> for RecordOptions {
+    fn from(value: crate::text::TextOptions) -> Self {
         Self::Text(Box::new(value))
     }
 }

@@ -1,0 +1,664 @@
+//! The canonical byte representation of one [`Scalar`].
+//!
+//! Two spellings, for two different questions.
+//!
+//! [`Scalar::as_value_bytes`] is the **payload alone** - no tag, no length -
+//! so hashing `Scalar::from("AAPL")` equals hashing `b"AAPL"` and agrees with
+//! any other xxHash implementation given the same bytes. It borrows wherever
+//! the value already holds bytes and never allocates.
+//!
+//! [`Scalar::write_bytes`] is the **total, prefix-free feed** over every
+//! variant, and it is what a digest, a row key, and `stable_hash` all read.
+//! The sink is [`std::hash::Hasher`] because every streaming state here
+//! already implements it, so one feed serves all of them and no new trait is
+//! needed.
+
+use std::hash::Hasher;
+
+use super::Xxh3;
+use crate::code_scalars;
+use crate::decimal;
+use crate::integer::integer_parts;
+use crate::temporal::scalars::temporal_key;
+use crate::{DataType, DataTypeId, Digest, DigestAlgorithm, Scalar, i256};
+
+/// The tag byte a value nested past the shared recursion limit feeds instead
+/// of descending further.
+///
+/// [`DataTypeId`] has 50 variants, so `0xff` is not one of them and cannot
+/// collide with a real value's tag.
+const TOO_DEEP: u8 = 0xff;
+
+impl Scalar {
+    /// Return this value's payload bytes, when it has bytes of its own.
+    ///
+    /// This is the payload and nothing else: no type tag and no length, so the
+    /// answer for a string is exactly its UTF-8 and the answer for a byte
+    /// value is exactly those bytes. It borrows from the value wherever the
+    /// value already holds bytes, and is an inline fixed array otherwise, so
+    /// it never allocates and never copies a string or a byte payload.
+    ///
+    /// `None` is the answer for [`Self::Null`], which has no payload, and for
+    /// [`crate::sequence::Sequence`], [`crate::mapping::Mapping`], and
+    /// [`crate::structure::Record`], whose
+    /// bytes exist only under a framing. Use [`Self::write_bytes`] for those.
+    ///
+    /// A decimal answers its coefficient, and a temporal its stored count: the
+    /// scale, unit, and zone beside them are the value's type rather than its
+    /// payload.
+    ///
+    /// ```
+    /// use yggdryl::{Scalar, xxhash};
+    ///
+    /// let symbol = Scalar::from("AAPL");
+    /// assert_eq!(&*symbol.as_value_bytes().unwrap(), b"AAPL");
+    /// // Which is what any other xxHash implementation would be given.
+    /// assert_eq!(
+    ///     xxhash::xxh3(&symbol.as_value_bytes().unwrap()),
+    ///     xxhash::xxh3(b"AAPL"),
+    /// );
+    ///
+    /// assert_eq!(&*Scalar::from(1).as_value_bytes().unwrap(), &[1, 0, 0, 0]);
+    /// assert!(Scalar::Null.as_value_bytes().is_none());
+    /// assert!(Scalar::from_sequence([]).as_value_bytes().is_none());
+    /// ```
+    pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>> {
+        let inline = match self {
+            Self::Arrow(_) => return None,
+            Self::Null
+            | Self::Sequence(_)
+            | Self::Mapping(_)
+            | Self::Record(_)
+            | Self::Version(_)
+            | Self::Url(_)
+            | Self::Urn(_)
+            | Self::MediaType(_) => return None,
+            Self::String(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
+            code_scalars!() => {
+                return Some(ValueBytes::borrowed(
+                    self.as_str().expect("a code borrowed its text").as_bytes(),
+                ));
+            }
+            Self::Timezone(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
+            Self::MimeType(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
+            Self::Bytes(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
+            Self::Geometry(value) => {
+                return Some(ValueBytes::borrowed(value.as_bytes()));
+            }
+            Self::Geography(value) => {
+                return Some(ValueBytes::borrowed(value.as_bytes()));
+            }
+            Self::Uuid(value) => ValueBytes::inline(&value.into_bytes()),
+            Self::Boolean(value) => ValueBytes::inline(&[u8::from(value.get())]),
+            Self::Int8(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::Int16(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::Int32(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::Int64(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::Int128(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::UInt8(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::UInt16(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::UInt32(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::UInt64(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::UInt128(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::Float16(value) => ValueBytes::inline(&value.as_f16().to_bits().to_le_bytes()),
+            Self::Float32(value) => ValueBytes::inline(&value.as_f32().to_bits().to_le_bytes()),
+            Self::Float64(value) => ValueBytes::inline(&value.as_f64().to_bits().to_le_bytes()),
+            Self::Decimal32(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
+            Self::Decimal64(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
+            Self::Decimal128(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
+            Self::Decimal256(value) => ValueBytes::inline(&value.coefficient().into_le_bytes()),
+            Self::Date32(value) => ValueBytes::inline(&value.count().to_le_bytes()),
+            Self::Time32(value) => ValueBytes::inline(&value.count().to_le_bytes()),
+            Self::Duration32(value) => ValueBytes::inline(&value.count().to_le_bytes()),
+            Self::Date64(value) => ValueBytes::inline(&value.count().to_le_bytes()),
+            Self::Time64(value) => ValueBytes::inline(&value.count().to_le_bytes()),
+            Self::DateTime64(value) => ValueBytes::inline(&value.count().to_le_bytes()),
+            Self::Duration64(value) => ValueBytes::inline(&value.count().to_le_bytes()),
+            Self::Interval(value) => {
+                let mut bytes = [0_u8; 16];
+                bytes[..4].copy_from_slice(&value.months().to_le_bytes());
+                bytes[4..8].copy_from_slice(&value.days().to_le_bytes());
+                bytes[8..].copy_from_slice(&value.nanoseconds().to_le_bytes());
+                ValueBytes::inline(&bytes)
+            }
+        };
+        Some(inline)
+    }
+
+    /// Feed this value's canonical byte representation into `sink`.
+    ///
+    /// The feed is **total** - every variant has one - and **prefix-free**:
+    /// each value's bytes start with a tag that fixes how many bytes follow,
+    /// or that is followed by an explicit length, so concatenated values are
+    /// uniquely decodable and `Sequence([a, b])` can never collide with
+    /// `Sequence([ab])`.
+    ///
+    /// It is also **canonical for equality**: equal values feed identical
+    /// bytes. Because [`Scalar`] compares across widths - `I8(1)`, `I64(1)`,
+    /// and `U8(1)` are one value, and so are `F32(1.5)` and `F64(1.5)`, and
+    /// `D128(100, 2)` and `D256(1, 0)` - the feed writes each family's
+    /// canonical form rather than its storage width. A digest therefore
+    /// identifies the value, not the box it came in.
+    ///
+    /// ```
+    /// use yggdryl::{DigestAlgorithm, Scalar};
+    ///
+    /// // Equal values, different widths, one digest.
+    /// assert_eq!(Scalar::from(1), Scalar::from(1));
+    /// assert_eq!(
+    ///     Scalar::from(1).digest(DigestAlgorithm::Xxh3),
+    ///     Scalar::from(1).digest(DigestAlgorithm::Xxh3),
+    /// );
+    /// // Values that differ, across variant boundaries as much as within one.
+    /// assert_ne!(
+    ///     Scalar::from("1").digest(DigestAlgorithm::Xxh3),
+    ///     Scalar::from(0x31).digest(DigestAlgorithm::Xxh3),
+    /// );
+    /// ```
+    ///
+    /// # Encoding
+    ///
+    /// Every value begins with one tag byte, which is a [`DataTypeId`]
+    /// discriminant ([`DataTypeId::as_u8`]). That byte is a wire contract:
+    /// inserting a variant into `DataTypeId` anywhere but the end changes
+    /// stored digests, and the test pinning every value is what turns that
+    /// into a failure rather than a surprise.
+    ///
+    /// The tag is the value's own [`DataTypeId`], except where a family
+    /// compares equal across its members and one member's tag then stands for
+    /// all of them: integers feed `int128` or `uint128` by sign, floats and
+    /// decimals feed their widest member, every string feeds `utf8`
+    /// whatever leaf its column declares, and a geography feeds `geometry`. A
+    /// code feeds its own identifier, because a currency and a country whose
+    /// bytes agree are two values.
+    ///
+    /// | Variant | Tag | Feed after the tag |
+    /// | --- | --- | --- |
+    /// | `Null` | `null` | nothing |
+    /// | `Bool` | `boolean` | `0x00` or `0x01` |
+    /// | `I8`..`U128` | `uint128`, or `int128` when negative | magnitude as `u128` little-endian |
+    /// | `F16`/`F32`/`F64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
+    /// | `D32`..`D256` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte |
+    /// | `String` | `utf8` | length `u64` little-endian, then UTF-8 |
+    /// | a registered code | the code's own id | length `u64` little-endian, then the trimmed text |
+    /// | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
+    /// | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
+    /// | `Timezone` | `timezone` | length `u64` little-endian, then the canonical name |
+    /// | `MimeType` | `mimetype` | length `u64` little-endian, then the canonical name |
+    /// | `MediaType` | `mediatype` | rendered length `u64` little-endian, then the canonical rendering |
+    /// | `Bytes` | `binary` | length `u64` little-endian, then the bytes |
+    /// | `Geometry`/`Geography` | `geometry` | length `u64` little-endian, then the WKB |
+    /// | `Date32`/`Date64` | `date64` | unit class byte, normalized count as `i128` little-endian, length-prefixed timezone |
+    /// | `Time32`/`Time64` | `time64` | as above |
+    /// | `DateTime64` | `datetime64` | as above |
+    /// | `Duration32`/`Duration64` | `duration64` | as above |
+    /// | `Interval` | `interval` | months and days as `i32` little-endian, nanoseconds as `i64` little-endian, then the layout unit as one byte |
+    /// | `Sequence` | `list` | element count `u64` little-endian, then each element's feed |
+    /// | `Mapping` | `map` | entry count `u64` little-endian, then each key feed and value feed in stored order |
+    /// | `Record` | `struct` | entry count `u64` little-endian, then per sorted entry a length-prefixed name and the value's feed |
+    ///
+    /// Nesting is bounded by the shared structured-value limit
+    /// [`DataType::PARSE_RECURSION_LIMIT`]. A value nested deeper feeds a
+    /// single reserved `0xff` in place of the subtree, so the feed stays total
+    /// and allocation-free for any input; values that differ only below that
+    /// depth are indistinguishable, exactly as [`Scalar::dtype`] refuses to
+    /// name them.
+    pub fn write_bytes(&self, sink: &mut impl Hasher) {
+        self.feed(sink, 0);
+    }
+
+    /// Return this value's digest under `algorithm`.
+    ///
+    /// ```
+    /// use yggdryl::{DigestAlgorithm, Scalar};
+    ///
+    /// let digest = Scalar::from("AAPL").digest(DigestAlgorithm::Xxh3);
+    /// assert_eq!(digest.algorithm(), DigestAlgorithm::Xxh3);
+    /// ```
+    pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest {
+        let mut digester = algorithm.digester();
+        digester.write_scalar(self);
+        digester.as_digest()
+    }
+
+    /// Return the deterministic 64-bit hash used by every binding.
+    ///
+    /// This is XXH3-64 over [`Self::write_bytes`], the value's canonical byte
+    /// representation, so the value and its [`Self::digest`] have one
+    /// definition. Equal values hash identically across integer, float,
+    /// decimal, and temporal widths, because that feed writes each family's
+    /// canonical form rather than its storage width.
+    ///
+    /// ```
+    /// use yggdryl::{DigestAlgorithm, Scalar};
+    ///
+    /// assert_eq!(Scalar::from(1).stable_hash(), Scalar::from(1).stable_hash());
+    /// assert_eq!(
+    ///     Scalar::from("AAPL").stable_hash(),
+    ///     Scalar::from("AAPL").digest(DigestAlgorithm::Xxh3).as_u64().unwrap(),
+    /// );
+    /// ```
+    pub fn stable_hash(&self) -> u64 {
+        let mut state = Xxh3::new();
+        self.write_bytes(&mut state);
+        state.as_u64()
+    }
+
+    /// Feed this value at `depth`, refusing to descend past the shared limit.
+    fn feed(&self, sink: &mut impl Hasher, depth: usize) {
+        if depth >= DataType::PARSE_RECURSION_LIMIT {
+            sink.write(&[TOO_DEEP]);
+            return;
+        }
+        // Every integer width is one value, so the sign picks the tag and the
+        // magnitude is the payload: `I8(1)`, `U8(1)`, and `I64(1)` are equal
+        // and must feed identically.
+        if let Some((negative, magnitude)) = integer_parts(self) {
+            write_integer(sink, negative, magnitude);
+            return;
+        }
+        // All float widths widen exactly into binary64, which is the reading
+        // their equality and ordering already share.
+        if let Some(float) = self.as_f64() {
+            write_float(sink, float);
+            return;
+        }
+        // Decimals compare by the number they name, so the feed is the
+        // normalized coefficient and scale rather than the stored pair.
+        if let Some((unscaled, scale)) = self.as_decimal() {
+            write_decimal(sink, unscaled, scale);
+            return;
+        }
+        // Temporals compare by family, normalized count, and zone; the stored
+        // width and unit are how the count is spelled, not what it is.
+        if let Self::Interval(value) = self {
+            write_tag(sink, DataTypeId::Interval);
+            sink.write(&value.months().to_le_bytes());
+            sink.write(&value.days().to_le_bytes());
+            sink.write(&value.nanoseconds().to_le_bytes());
+            sink.write(&[value.unit() as u8]);
+            return;
+        }
+        if let (Some(family), Some(count), Some(unit), Some(zone)) = (
+            self.temporal_kind(),
+            self.temporal_count(),
+            self.temporal_unit(),
+            self.temporal_timezone(),
+        ) {
+            write_temporal(sink, family, count, unit, &zone);
+            return;
+        }
+        match self {
+            // An Arrow payload hashes as the native value it holds, so the
+            // digest of a column does not depend on which side it crossed.
+            Self::Arrow(_) => match self.into_native() {
+                Ok(native) => native.feed(sink, depth),
+                Err(_) => write_null(sink),
+            },
+            Self::Null => write_null(sink),
+            Self::Boolean(value) => write_bool(sink, value.get()),
+            Self::String(value) => write_string(sink, value.as_str()),
+            code_scalars!() => {
+                write_tag(sink, self.id());
+                write_text(sink, self.as_str().expect("a code borrowed its text"));
+            }
+            Self::Uuid(value) => {
+                write_tag(sink, DataTypeId::Uuid);
+                sink.write(&value.into_bytes());
+            }
+            Self::Version(value) => {
+                write_tag(sink, DataTypeId::Version);
+                write_len(sink, value.rendered_len());
+                let _ = std::fmt::write(&mut HasherWriter(sink), format_args!("{value}"));
+            }
+            Self::Url(value) => {
+                write_tag(sink, DataTypeId::Url);
+                let canonical = value.to_string();
+                write_len(sink, canonical.len());
+                sink.write(canonical.as_bytes());
+            }
+            Self::Urn(value) => {
+                write_tag(sink, DataTypeId::Urn);
+                let canonical = value.to_string();
+                write_len(sink, canonical.len());
+                sink.write(canonical.as_bytes());
+            }
+            Self::Timezone(value) => {
+                write_tag(sink, DataTypeId::Timezone);
+                write_text(sink, value.as_str());
+            }
+            Self::MimeType(value) => {
+                write_tag(sink, DataTypeId::MimeType);
+                write_text(sink, value.as_str());
+            }
+            // A media type renders its base, charset and codings as one
+            // canonical text, which is what a column of them holds.
+            Self::MediaType(value) => {
+                write_tag(sink, DataTypeId::MediaType);
+                let canonical = value.to_string();
+                write_len(sink, canonical.len());
+                sink.write(canonical.as_bytes());
+            }
+            Self::Bytes(value) => write_binary(sink, value.as_bytes()),
+            Self::Geometry(value) => write_geospatial(sink, value.as_bytes()),
+            Self::Geography(value) => write_geospatial(sink, value.as_bytes()),
+            Self::Sequence(values) => {
+                write_sequence_header(sink, values.as_slice().len());
+                for value in values.as_slice() {
+                    value.feed(sink, depth + 1);
+                }
+            }
+            Self::Mapping(entries) => {
+                write_tag(sink, DataTypeId::Map);
+                write_len(sink, entries.as_slice().len());
+                for (key, value) in entries.as_slice() {
+                    key.feed(sink, depth + 1);
+                    value.feed(sink, depth + 1);
+                }
+            }
+            Self::Record(entries) => {
+                write_named_bytes(
+                    sink,
+                    entries
+                        .as_map()
+                        .iter()
+                        .map(|(name, value)| (name.as_str(), value)),
+                    depth,
+                );
+            }
+            // Every remaining variant answered one of the cross-width readers
+            // above.
+            Self::Int8(_)
+            | Self::Int16(_)
+            | Self::Int32(_)
+            | Self::Int64(_)
+            | Self::UInt8(_)
+            | Self::UInt16(_)
+            | Self::UInt32(_)
+            | Self::UInt64(_)
+            | Self::Int128(_)
+            | Self::UInt128(_) => unreachable!("every integer width fed above"),
+            Self::Float16(_) | Self::Float32(_) | Self::Float64(_) => {
+                unreachable!("every float width fed above")
+            }
+            Self::Decimal32(_) | Self::Decimal64(_) | Self::Decimal128(_) | Self::Decimal256(_) => {
+                unreachable!("all decimal widths fed above")
+            }
+            Self::Date32(_)
+            | Self::Date64(_)
+            | Self::Time32(_)
+            | Self::Time64(_)
+            | Self::DateTime64(_)
+            | Self::Duration32(_)
+            | Self::Duration64(_)
+            | Self::Interval(_) => unreachable!("every temporal family fed above"),
+        }
+    }
+}
+
+/// Canonical Record framing over an already sorted, borrowed named row.
+pub(crate) fn write_named_bytes<'a>(
+    sink: &mut impl Hasher,
+    cells: impl ExactSizeIterator<Item = (&'a str, &'a Scalar)>,
+    depth: usize,
+) {
+    write_tag(sink, DataTypeId::Struct);
+    write_len(sink, cells.len());
+    for (name, value) in cells {
+        write_text(sink, name);
+        value.feed(sink, depth + 1);
+    }
+}
+
+/// A formatting sink that writes canonical text straight into a digest.
+struct HasherWriter<'a, H>(&'a mut H);
+
+impl<H: Hasher> std::fmt::Write for HasherWriter<'_, H> {
+    fn write_str(&mut self, value: &str) -> std::fmt::Result {
+        self.0.write(value.as_bytes());
+        Ok(())
+    }
+}
+
+impl crate::FieldScalar<'_> {
+    /// Return this value's digest under `algorithm`.
+    ///
+    /// The field is proof, not content: the digest is the value's, so a
+    /// `FieldScalar` and the `Scalar` inside it answer the same.
+    pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest {
+        self.value().digest(algorithm)
+    }
+}
+
+impl crate::FieldRecord<'_> {
+    /// Return this row's digest under `algorithm`.
+    ///
+    /// The row digests as the ordered sequence it canonicalizes to, so it
+    /// answers what [`crate::FieldRecord::into_scalar`] followed by
+    /// [`Scalar::digest`] answers, without building the sequence.
+    pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest {
+        let mut digester = algorithm.digester();
+        write_row_bytes(&mut digester, self.iter().map(crate::FieldScalar::value));
+        digester.as_digest()
+    }
+
+    /// Return a deterministic hash of the row.
+    ///
+    /// The row hashes as the ordered sequence it canonicalizes to, so it
+    /// answers what [`Self::into_scalar`] followed by [`Scalar::stable_hash`]
+    /// answers, without building the sequence.
+    pub fn stable_hash(&self) -> u64 {
+        let mut state = Xxh3::new();
+        write_row_bytes(&mut state, self.iter().map(crate::FieldScalar::value));
+        state.as_u64()
+    }
+}
+
+/// Feed a row's cells framed as the sequence a canonical row is.
+///
+/// A typed row holds its cells beside their fields rather than in a sequence,
+/// and this is the sequence branch of [`Scalar::write_bytes`] read over those
+/// cells, so a row digests the same whether or not the sequence was built.
+fn write_row_bytes<'a>(sink: &mut impl Hasher, cells: impl ExactSizeIterator<Item = &'a Scalar>) {
+    write_sequence_header(sink, cells.len());
+    for cell in cells {
+        cell.feed(sink, 1);
+    }
+}
+
+/// Write one [`DataTypeId`] discriminant as the value's tag.
+fn write_tag(sink: &mut impl Hasher, id: DataTypeId) {
+    sink.write(&[id.as_u8()]);
+}
+
+// The family writers below are the feed's one definition of each canonical
+// form. `xxhash::arrow` reads Arrow buffers straight into them rather than
+// materializing a `Scalar` first, so the buffer path and the value path cannot
+// drift apart: there is one encoding, reached two ways.
+
+/// Write the tag a value with no payload carries.
+pub(super) fn write_null(sink: &mut impl Hasher) {
+    write_tag(sink, DataTypeId::Null);
+}
+
+/// Write a boolean.
+pub(super) fn write_bool(sink: &mut impl Hasher, value: bool) {
+    write_tag(sink, DataTypeId::Boolean);
+    sink.write(&[u8::from(value)]);
+}
+
+/// Write any integer width in its canonical sign-and-magnitude form.
+pub(super) fn write_integer(sink: &mut impl Hasher, negative: bool, magnitude: u128) {
+    let tag = if negative {
+        DataTypeId::Int128
+    } else {
+        DataTypeId::UInt128
+    };
+    write_tag(sink, tag);
+    sink.write(&magnitude.to_le_bytes());
+}
+
+/// Write a signed integer of any width.
+pub(super) fn write_signed(sink: &mut impl Hasher, value: i128) {
+    write_integer(sink, value < 0, value.unsigned_abs());
+}
+
+/// Write an unsigned integer of any width.
+pub(super) fn write_unsigned(sink: &mut impl Hasher, value: u128) {
+    write_integer(sink, false, value);
+}
+
+/// Write any float width as its common binary64 reading.
+///
+/// A NaN is normalized here rather than at the call site, so a raw Arrow
+/// buffer holding a non-canonical NaN payload feeds what the equivalent
+/// `Scalar` feeds.
+pub(super) fn write_float(sink: &mut impl Hasher, value: f64) {
+    let value = if value.is_nan() { f64::NAN } else { value };
+    write_tag(sink, DataTypeId::Float64);
+    sink.write(&value.to_bits().to_le_bytes());
+}
+
+/// Write an exact decimal as the number it names.
+pub(super) fn write_decimal(sink: &mut impl Hasher, unscaled: i256, scale: i8) {
+    let (unscaled, scale) = decimal::normalize(unscaled, scale);
+    write_tag(sink, DataTypeId::Decimal256);
+    sink.write(&unscaled.into_le_bytes());
+    sink.write(&scale.to_le_bytes());
+}
+
+/// Write a temporal as its family, normalized count, and zone.
+pub(super) fn write_temporal(
+    sink: &mut impl Hasher,
+    family: crate::TemporalKind,
+    count: i64,
+    unit: crate::TimeUnit,
+    zone: &crate::Timezone,
+) {
+    let tag = match family {
+        crate::TemporalKind::Date => DataTypeId::Date64,
+        crate::TemporalKind::Time => DataTypeId::Time64,
+        crate::TemporalKind::DateTime => DataTypeId::DateTime64,
+        crate::TemporalKind::Duration => DataTypeId::Duration64,
+        crate::TemporalKind::Interval => DataTypeId::Interval,
+    };
+    let (class, count) = temporal_key(count, unit);
+    write_tag(sink, tag);
+    sink.write(&[class]);
+    sink.write(&count.to_le_bytes());
+    write_text(sink, zone.as_str());
+}
+
+/// Write UTF-8 text as a string value.
+pub(super) fn write_string(sink: &mut impl Hasher, text: &str) {
+    write_tag(sink, DataTypeId::Utf8String);
+    write_text(sink, text);
+}
+
+/// Write opaque bytes as a byte value.
+pub(super) fn write_binary(sink: &mut impl Hasher, bytes: &[u8]) {
+    write_tag(sink, DataTypeId::Binary);
+    write_len(sink, bytes.len());
+    sink.write(bytes);
+}
+
+/// Write Well-Known Binary as a geospatial value.
+pub(super) fn write_geospatial(sink: &mut impl Hasher, bytes: &[u8]) {
+    write_tag(sink, DataTypeId::Geometry);
+    write_len(sink, bytes.len());
+    sink.write(bytes);
+}
+
+/// Write the tag and element count an ordered sequence starts with.
+///
+/// The elements follow, each feeding itself; a row is a sequence of its
+/// columns, which is what lets a row digest be built without materializing the
+/// row.
+pub(super) fn write_sequence_header(sink: &mut impl Hasher, count: usize) {
+    write_tag(sink, DataTypeId::List);
+    write_len(sink, count);
+}
+
+/// Write a length as `u64` little-endian.
+///
+/// `Hasher`'s own `write_usize` and `write_u64` use native-endian bytes, which
+/// would make a stored digest disagree between a big-endian and a
+/// little-endian machine. Every integer in this feed goes through explicit
+/// little-endian bytes for that reason.
+fn write_len(sink: &mut impl Hasher, length: usize) {
+    sink.write(&(length as u64).to_le_bytes());
+}
+
+/// Write UTF-8 text with its byte length in front.
+fn write_text(sink: &mut impl Hasher, text: &str) {
+    write_len(sink, text.len());
+    sink.write(text.as_bytes());
+}
+
+/// One value's payload bytes, borrowed or inline.
+///
+/// Dereferences to the bytes themselves and compares as those bytes. The
+/// inline form holds the widest fixed payload a value has - a 256-bit decimal
+/// coefficient - so no width allocates.
+#[derive(Clone, Copy)]
+pub struct ValueBytes<'a>(Payload<'a>);
+
+#[derive(Clone, Copy)]
+enum Payload<'a> {
+    Borrowed(&'a [u8]),
+    Inline([u8; 32], u8),
+}
+
+impl<'a> ValueBytes<'a> {
+    /// Borrow bytes the value already holds.
+    fn borrowed(bytes: &'a [u8]) -> Self {
+        Self(Payload::Borrowed(bytes))
+    }
+
+    /// Copy a fixed-width payload into the inline buffer.
+    fn inline(bytes: &[u8]) -> Self {
+        let mut inline = [0_u8; 32];
+        inline[..bytes.len()].copy_from_slice(bytes);
+        Self(Payload::Inline(inline, bytes.len() as u8))
+    }
+}
+
+impl std::ops::Deref for ValueBytes<'_> {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        match &self.0 {
+            Payload::Borrowed(bytes) => bytes,
+            Payload::Inline(bytes, length) => &bytes[..*length as usize],
+        }
+    }
+}
+
+impl AsRef<[u8]> for ValueBytes<'_> {
+    fn as_ref(&self) -> &[u8] {
+        self
+    }
+}
+
+impl std::fmt::Debug for ValueBytes<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&**self, formatter)
+    }
+}
+
+impl PartialEq for ValueBytes<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+
+impl Eq for ValueBytes<'_> {}
+
+impl std::hash::Hash for ValueBytes<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (**self).hash(state);
+    }
+}
+
+/// The widest inline payload, so a decimal coefficient still borrows nothing.
+const _: () = assert!(size_of::<i256>() == 32);

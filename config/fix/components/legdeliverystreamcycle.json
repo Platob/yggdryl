@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamcycledesc",
-          "fix:tag": "41457"
+          "FIX:field": "legdeliverystreamcycledesc",
+          "FIX:tag": "41457"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegdeliverystreamcycledesclen",
-          "fix:tag": "41458"
+          "FIX:field": "encodedlegdeliverystreamcycledesclen",
+          "FIX:tag": "41458"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegdeliverystreamcycledesc",
-          "fix:tag": "41459"
+          "FIX:field": "encodedlegdeliverystreamcycledesc",
+          "FIX:tag": "41459"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegDeliveryStreamCycle",
-    "fix:tag": "370088"
+    "FIX:tag": "370088",
+    "display": "LegDeliveryStreamCycle"
   }
 }

@@ -38,6 +38,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::typing::{common_type, unwrap_dictionary};
 use super::{Literal, Term};
+use crate::sequence::SequenceType;
 use crate::{DataType, Error, Field, Result, Scalar};
 
 /// What a parse failure names itself as.
@@ -188,8 +189,8 @@ impl FieldSegment {
         let dtype = unwrap_dictionary(field.dtype());
         match self {
             Self::Field(name) => match dtype {
-                DataType::Struct(_) => struct_child_field(field, name),
-                DataType::Map(map) => Ok(map_value_field(map)?.with_nullable(true)),
+                DataType::Structure(_) => struct_child_field(field, name),
+                DataType::Mapping(map) => Ok(map_value_field(map)?.with_nullable(true)),
                 other => Err(typing_error(format_smolstr!(
                     "expected a struct or a map to reach .{name} through, got {other}"
                 ))),
@@ -212,7 +213,7 @@ impl FieldSegment {
                 Ok(kept_list_field(field, &element))
             }
             Self::Key(key) => match dtype {
-                DataType::Map(map) => {
+                DataType::Mapping(map) => {
                     let keys = map_key_field(map)?;
                     common_type(keys.dtype(), key.dtype()).ok_or_else(|| {
                         typing_error(format_smolstr!(
@@ -223,7 +224,7 @@ impl FieldSegment {
                     })?;
                     Ok(map_value_field(map)?.with_nullable(true))
                 }
-                DataType::Struct(_) => match key.value().as_str() {
+                DataType::Structure(_) => match key.value().as_str() {
                     Some(name) => struct_child_field(field, name),
                     None => Err(typing_error(format_smolstr!(
                         "expected a text key to reach a struct child, got {}",
@@ -418,7 +419,7 @@ fn struct_child(field: &Field, value: &Scalar, name: &str) -> Scalar {
             .map_or(Scalar::Null, |(_, held)| held.clone());
     }
     // A struct spelled as a bare sequence takes its order from the schema.
-    if let (Some(values), DataType::Struct(fields)) =
+    if let (Some(values), DataType::Structure(fields)) =
         (value.as_sequence(), unwrap_dictionary(field.dtype()))
     {
         return fields
@@ -450,23 +451,23 @@ fn struct_child_field(field: &Field, name: &str) -> Result<Field> {
 /// The item field of a list-shaped datatype, whichever layout it uses.
 pub(crate) fn list_item(dtype: &DataType) -> Option<&Field> {
     match dtype {
-        DataType::List(item)
-        | DataType::ListView(item)
-        | DataType::FixedSizeList(item, _)
-        | DataType::LargeList(item)
-        | DataType::LargeListView(item) => Some(item.as_ref()),
+        DataType::Sequence(SequenceType::List(item))
+        | DataType::Sequence(SequenceType::ListView(item))
+        | DataType::Sequence(SequenceType::FixedSizeList(item, _))
+        | DataType::Sequence(SequenceType::LargeList(item))
+        | DataType::Sequence(SequenceType::LargeListView(item)) => Some(item.as_ref()),
         _ => None,
     }
 }
 
-fn map_key_field(map: &crate::MapType) -> Result<Field> {
+fn map_key_field(map: &crate::MappingType) -> Result<Field> {
     map.entries()
         .get_field(0)
         .cloned()
         .ok_or_else(|| typing_error("expected a map whose entries carry a key field"))
 }
 
-fn map_value_field(map: &crate::MapType) -> Result<Field> {
+fn map_value_field(map: &crate::MappingType) -> Result<Field> {
     map.entries()
         .get_field(1)
         .cloned()

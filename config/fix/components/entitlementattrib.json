@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementattribtype",
-          "fix:tag": "1778"
+          "FIX:field": "entitlementattribtype",
+          "FIX:tag": "1778"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementattribdatatype",
-          "fix:tag": "1779"
+          "FIX:field": "entitlementattribdatatype",
+          "FIX:tag": "1779"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementattribvalue",
-          "fix:tag": "1780"
+          "FIX:field": "entitlementattribvalue",
+          "FIX:tag": "1780"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementattribcurrency",
-          "fix:tag": "1781"
+          "FIX:field": "entitlementattribcurrency",
+          "FIX:tag": "1781"
         }
       },
       {
@@ -54,15 +54,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "entitlementattribcurrencycodesource",
-          "fix:tag": "2940"
+          "FIX:field": "entitlementattribcurrencycodesource",
+          "FIX:tag": "2940"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "EntitlementAttrib",
-    "fix:tag": "1025970"
+    "FIX:tag": "1025970",
+    "display": "EntitlementAttrib"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clordid",
-          "fix:tag": "11"
+          "FIX:field": "clordid",
+          "FIX:tag": "11"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderid",
-          "fix:tag": "37"
+          "FIX:field": "orderid",
+          "FIX:tag": "37"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderqty",
-          "fix:tag": "38"
+          "FIX:field": "orderqty",
+          "FIX:tag": "38"
         }
       },
       {
@@ -43,16 +43,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderavgpx",
-          "fix:tag": "799"
+          "FIX:field": "orderavgpx",
+          "FIX:tag": "799"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "OrderAggregation",
-    "fix:identifiers": "clordid,orderid",
-    "fix:tag": "883544"
+    "FIX:identifiers": "clordid,orderid",
+    "FIX:tag": "883544",
+    "display": "OrderAggregation"
   }
 }

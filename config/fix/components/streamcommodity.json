@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditybase",
-          "fix:tag": "41251"
+          "FIX:field": "streamcommoditybase",
+          "FIX:tag": "41251"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditytype",
-          "fix:tag": "41252"
+          "FIX:field": "streamcommoditytype",
+          "FIX:tag": "41252"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysecurityid",
-          "fix:tag": "41253"
+          "FIX:field": "streamcommoditysecurityid",
+          "FIX:tag": "41253"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysecurityidsource",
-          "fix:tag": "41254"
+          "FIX:field": "streamcommoditysecurityidsource",
+          "FIX:tag": "41254"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostreamcommodityaltids",
-          "fix:tag": "41277"
+          "FIX:field": "nostreamcommodityaltids",
+          "FIX:tag": "41277"
         }
       },
       {
@@ -65,7 +65,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "streamcommodityaltidgrp"
+          "FIX:group": "streamcommodityaltidgrp"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditydesc",
-          "fix:tag": "41255"
+          "FIX:field": "streamcommoditydesc",
+          "FIX:tag": "41255"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedstreamcommoditydesclen",
-          "fix:tag": "41256"
+          "FIX:field": "encodedstreamcommoditydesclen",
+          "FIX:tag": "41256"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedstreamcommoditydesc",
-          "fix:tag": "41257"
+          "FIX:field": "encodedstreamcommoditydesc",
+          "FIX:tag": "41257"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditydeliverypricingregion",
-          "fix:tag": "42587"
+          "FIX:field": "streamcommoditydeliverypricingregion",
+          "FIX:tag": "42587"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostreamassetattributes",
-          "fix:tag": "41237"
+          "FIX:field": "nostreamassetattributes",
+          "FIX:tag": "41237"
         }
       },
       {
@@ -130,7 +130,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "streamassetattributegrp"
+          "FIX:group": "streamassetattributegrp"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommodityunitofmeasure",
-          "fix:tag": "41258"
+          "FIX:field": "streamcommodityunitofmeasure",
+          "FIX:tag": "41258"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditycurrency",
-          "fix:tag": "41259"
+          "FIX:field": "streamcommoditycurrency",
+          "FIX:tag": "41259"
         }
       },
       {
@@ -162,8 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommodityexchange",
-          "fix:tag": "41260"
+          "FIX:field": "streamcommodityexchange",
+          "FIX:tag": "41260"
         }
       },
       {
@@ -173,8 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommodityratesource",
-          "fix:tag": "41261"
+          "FIX:field": "streamcommodityratesource",
+          "FIX:tag": "41261"
         }
       },
       {
@@ -184,8 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommodityratereferencepage",
-          "fix:tag": "41262"
+          "FIX:field": "streamcommodityratereferencepage",
+          "FIX:tag": "41262"
         }
       },
       {
@@ -195,8 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommodityratereferencepageheading",
-          "fix:tag": "41263"
+          "FIX:field": "streamcommodityratereferencepageheading",
+          "FIX:tag": "41263"
         }
       },
       {
@@ -206,8 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamdataprovider",
-          "fix:tag": "41264"
+          "FIX:field": "streamdataprovider",
+          "FIX:tag": "41264"
         }
       },
       {
@@ -217,8 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostreamcommoditydatasources",
-          "fix:tag": "41280"
+          "FIX:field": "nostreamcommoditydatasources",
+          "FIX:tag": "41280"
         }
       },
       {
@@ -228,7 +228,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "streamcommoditydatasourcegrp"
+          "FIX:group": "streamcommoditydatasourcegrp"
         }
       },
       {
@@ -238,8 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditypricingtype",
-          "fix:tag": "41265"
+          "FIX:field": "streamcommoditypricingtype",
+          "FIX:tag": "41265"
         }
       },
       {
@@ -249,8 +249,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditynearbysettldayperiod",
-          "fix:tag": "41266"
+          "FIX:field": "streamcommoditynearbysettldayperiod",
+          "FIX:tag": "41266"
         }
       },
       {
@@ -260,8 +260,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditynearbysettldayunit",
-          "fix:tag": "41267"
+          "FIX:field": "streamcommoditynearbysettldayunit",
+          "FIX:tag": "41267"
         }
       },
       {
@@ -271,8 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettldateunadjusted",
-          "fix:tag": "41268"
+          "FIX:field": "streamcommoditysettldateunadjusted",
+          "FIX:tag": "41268"
         }
       },
       {
@@ -282,8 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettldatebusinessdayconvention",
-          "fix:tag": "41269"
+          "FIX:field": "streamcommoditysettldatebusinessdayconvention",
+          "FIX:tag": "41269"
         }
       },
       {
@@ -293,8 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostreamcommoditysettlbusinesscenters",
-          "fix:tag": "41249"
+          "FIX:field": "nostreamcommoditysettlbusinesscenters",
+          "FIX:tag": "41249"
         }
       },
       {
@@ -304,7 +304,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "streamcommoditysettlbusinesscentergrp"
+          "FIX:group": "streamcommoditysettlbusinesscentergrp"
         }
       },
       {
@@ -314,8 +314,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettldateadjusted",
-          "fix:tag": "41270"
+          "FIX:field": "streamcommoditysettldateadjusted",
+          "FIX:tag": "41270"
         }
       },
       {
@@ -325,8 +325,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlmonth",
-          "fix:tag": "41271"
+          "FIX:field": "streamcommoditysettlmonth",
+          "FIX:tag": "41271"
         }
       },
       {
@@ -336,8 +336,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettldaterollperiod",
-          "fix:tag": "41272"
+          "FIX:field": "streamcommoditysettldaterollperiod",
+          "FIX:tag": "41272"
         }
       },
       {
@@ -347,8 +347,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettldaterollunit",
-          "fix:tag": "41273"
+          "FIX:field": "streamcommoditysettldaterollunit",
+          "FIX:tag": "41273"
         }
       },
       {
@@ -358,8 +358,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettldaytype",
-          "fix:tag": "41274"
+          "FIX:field": "streamcommoditysettldaytype",
+          "FIX:tag": "41274"
         }
       },
       {
@@ -369,8 +369,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostreamcommoditysettlperiods",
-          "fix:tag": "41289"
+          "FIX:field": "nostreamcommoditysettlperiods",
+          "FIX:tag": "41289"
         }
       },
       {
@@ -380,7 +380,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "streamcommoditysettlperiodgrp"
+          "FIX:group": "streamcommoditysettlperiodgrp"
         }
       },
       {
@@ -390,8 +390,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommodityxid",
-          "fix:tag": "41275"
+          "FIX:field": "streamcommodityxid",
+          "FIX:tag": "41275"
         }
       },
       {
@@ -401,16 +401,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommodityxidref",
-          "fix:tag": "41276"
+          "FIX:field": "streamcommodityxidref",
+          "FIX:tag": "41276"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "121681",
     "description": "Conditionally required when StreamCommoditySecurityIDSource(41254) is specified.",
-    "display": "StreamCommodity",
-    "fix:tag": "121681"
+    "display": "StreamCommodity"
   }
 }

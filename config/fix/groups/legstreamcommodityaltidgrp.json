@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legstreamcommodityaltidcomponent"
+        "FIX:component": "legstreamcommodityaltidcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legstreamcommodityaltidcomponent",
+    "FIX:counter": "41674",
+    "FIX:tag": "749996",
     "description": "Required if NoLegStreamCommodityAltIDs(41674) > 0.",
-    "display": "LegStreamCommodityAltIDGrp",
-    "fix:component": "legstreamcommodityaltidcomponent",
-    "fix:counter": "41674",
-    "fix:tag": "749996"
+    "display": "LegStreamCommodityAltIDGrp"
   }
 }

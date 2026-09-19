@@ -214,16 +214,31 @@ test('typed field factories cover every native datatype variant', () => {
     ['duration64', fields.duration64('value', 'us')],
     ['interval', fields.interval('value', 'month_day_nano')],
     ['binary', fields.binary('value')],
-    ['fixed_size_binary', fields.fixedSizeBinary('value', 16)],
+    ['fixed_binary', fields.fixedSizeBinary('value', 16)],
+    ['sized_binary', fields.sizedBinary('value', 16)],
     ['large_binary', fields.largeBinary('value')],
     ['binary_view', fields.binaryView('value')],
-    // One string datatype, five layouts: the identity is the layout, and
-    // the charset-named factories pick a layout and a charset once.
-    ['string', fields.utf8('value')],
-    ['fixed_string', fields.fixedAscii('value', 4)],
-    ['string_view', fields.utf8View('value')],
-    ['large_string', fields.largeUtf8('value')],
-    ['large_string_view', fields.string('value', { layout: 'large_string_view' })],
+    ['large_binary_view', fields.largeBinaryView('value')],
+    // The string family: six shapes in each of three charsets, one factory
+    // per leaf, and the leaf is the identity.
+    ['utf8', fields.utf8('value')],
+    ['large_utf8', fields.largeUtf8('value')],
+    ['utf8_view', fields.utf8View('value')],
+    ['large_utf8_view', fields.largeUtf8View('value')],
+    ['fixed_utf8', fields.fixedUtf8('value', 8)],
+    ['sized_utf8', fields.sizedUtf8('value', 32)],
+    ['ascii', fields.ascii('value')],
+    ['large_ascii', fields.largeAscii('value')],
+    ['ascii_view', fields.asciiView('value')],
+    ['large_ascii_view', fields.largeAsciiView('value')],
+    ['fixed_ascii', fields.fixedAscii('value', 4)],
+    ['sized_ascii', fields.sizedAscii('value', 4)],
+    ['cp1252', fields.cp1252('value')],
+    ['large_cp1252', fields.largeCp1252('value')],
+    ['cp1252_view', fields.cp1252View('value')],
+    ['large_cp1252_view', fields.largeCp1252View('value')],
+    ['fixed_cp1252', fields.fixedCp1252('value', 8)],
+    ['sized_cp1252', fields.sizedCp1252('value', 32)],
     ['country', fields.country('value')],
     ['currency', fields.currency('value')],
     ['mic', fields.mic('value')],
@@ -238,6 +253,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['uuid', fields.uuid('value')],
     ['version', fields.version('value')],
     ['url', fields.url('value')],
+    ['urn', fields.urn('value')],
     ['timezone', fields.timezone('value')],
     ['mimetype', fields.mimetype('value')],
     ['mediatype', fields.mediatype('value')],
@@ -253,7 +269,8 @@ test('typed field factories cover every native datatype variant', () => {
     ['decimal64', fields.decimal64('value', 18, 2)],
     ['decimal128', fields.decimal128('value', 38, 2)],
     ['decimal256', fields.decimal256('value', 76, 2)],
-    ['map', fields.map('value', entries, true)],
+    ['map', fields.map('value', entries)],
+    ['sorted_map', fields.map('value', entries, true)],
     ['run_end_encoded', fields.runEndEncoded('value', runEnds, values)],
     ['variant', fields.variant('value')],
     ['geometry', fields.geometry('value')],
@@ -262,11 +279,13 @@ test('typed field factories cover every native datatype variant', () => {
 
   // The factories cover every datatype Arrow has a layout for. `int128` and
   // `uint128` are the two identifiers `Scalar` stores and `DataType` cannot,
-  // so no field builds them.
-  assert.equal(byId.size, 64)
+  // so no field builds them, and `struct2` is the two-child leaf a mapping's
+  // entries have rather than a shape a caller declares.
+  const unbuildable = ['int128', 'uint128', 'struct2']
+  assert.equal(byId.size, binding.enums.dataTypeIds.length - unbuildable.length)
   assert.deepEqual(
     [...byId.keys()].sort(),
-    binding.enums.dataTypeIds.filter((id) => id !== 'int128' && id !== 'uint128').sort(),
+    binding.enums.dataTypeIds.filter((id) => !unbuildable.includes(id)).sort(),
   )
   assert.ok([...byId.values()].every((value) => value instanceof Field))
   // Every factory above was called without a nullable option, and the Python
@@ -276,16 +295,10 @@ test('typed field factories cover every native datatype variant', () => {
     assert.equal(value.nullable, true, id)
   }
   // Canonical display opens with the variant id and appends its parameters.
-  // A string is the exception: its identity is the layout, and it renders
-  // under the name its charset earns - `utf8` for UTF-8, `ascii` for
-  // US-ASCII - with the bound as the parameter.
-  const spellings = new Map([
-    ['string', 'utf8'],
-    ['fixed_string', 'fixed_ascii'],
-    ['string_view', 'utf8_view'],
-    ['large_string', 'large_utf8'],
-    ['large_string_view', 'large_utf8_view'],
-  ])
+  // A mapping is the one exception: it renders under `map` whichever leaf it
+  // is, with the promise about its keys as a parameter, so the sorted leaf's
+  // spelling is `map`.
+  const spellings = new Map([['sorted_map', 'map']])
   for (const [id, value] of byId) {
     assert.equal(value.dtype.toString().split(/[(<]/, 1)[0], spellings.get(id) ?? id, id)
   }
@@ -308,17 +321,17 @@ test('typed field factories cover every native datatype variant', () => {
   )
 })
 
-test('the ascii factories build the variable form and one fixed width', () => {
+test('the ascii factories build the plain leaf and the fixed one', () => {
   const free = fields.ascii('note')
   const currency = fields.fixedAscii('ccy', 3, { nullable: false })
 
-  // Both are the one string datatype in US-ASCII: the variable layout has
-  // no width to answer, the fixed layout answers its own.
-  assert.equal(free.dtype.id, 'string')
+  // Both are US-ASCII leaves: the plain one has no width to answer, the
+  // fixed one answers its own.
+  assert.equal(free.dtype.id, 'ascii')
   assert.equal(free.dtype.charset, 'us-ascii')
   assert.equal(free.dtype.fixedByteWidth, null)
   assert.equal(free.nullable, true)
-  assert.equal(currency.dtype.id, 'fixed_string')
+  assert.equal(currency.dtype.id, 'fixed_ascii')
   assert.equal(currency.dtype.charset, 'us-ascii')
   assert.equal(currency.dtype.fixedByteWidth, 3)
   assert.equal(currency.nullable, false)
@@ -344,44 +357,59 @@ test('the ascii factories build the variable form and one fixed width', () => {
 test('the string and bytes factories declare the datatype beside the field', () => {
   // The parameter keys build the datatype; every other key is a field
   // option, checked as one.
+  // A charset beside a charset-free spelling moves the shape into that
+  // charset's family, and a maximum makes it the sized leaf, so the
+  // declaration lands on `sized_cp1252` and that leaf is the identity.
   const latin = fields.string('note', {
     charset: 'windows-1252',
     max: 32,
     nullable: false,
   })
-  assert.equal(latin.dtype.toString(), 'string(windows-1252,32)')
+  assert.equal(latin.dtype.toString(), 'sized_cp1252(32)')
   assert.deepEqual(latin.dtype.stringParameters, {
-    layout: 'string',
+    layout: 'sized_cp1252',
     charset: 'windows-1252',
     bound: 32,
     max: 32,
   })
   assert.equal(latin.nullable, false)
+  assert.ok(latin.dtype.equals(fields.sizedCp1252('note', 32).dtype))
   assert.ok(fields.string('note').dtype.equals(DataType.utf8()))
   assert.ok(
     fields.string('code', { layout: 'fixed_utf8', fixed: 8 }).dtype.equals(DataType.fixedUtf8(8)),
   )
-  assert.equal(
-    fields
-      .string('code', {
-        layout: 'large_string',
-        charset: 'us-ascii',
-        metadata: { role: 'ticker' },
-      })
-      .get('role'),
-    'ticker',
-  )
+  const ticker = fields.string('code', {
+    layout: 'large_string',
+    charset: 'us-ascii',
+    metadata: { role: 'ticker' },
+  })
+  assert.equal(ticker.get('role'), 'ticker')
+  assert.ok(ticker.dtype.equals(fields.largeAscii('code').dtype))
+  // The per-leaf factories: the number is the leaf's own.
+  assert.equal(fields.sizedUtf8('note', 16).dtype.toString(), 'sized_utf8(16)')
+  assert.equal(fields.sizedAscii('code', 4).dtype.toString(), 'sized_ascii(4)')
+  assert.equal(fields.fixedCp1252('code', 8).dtype.toString(), 'fixed_cp1252(8)')
+  assert.equal(fields.fixedCp1252('code', 8).dtype.fixedByteWidth, 8)
+  assert.equal(fields.largeCp1252View('note').dtype.charset, 'windows-1252')
   assert.throws(
     () => fields.string('note', { fixed: 4 }),
     /expected a maximum on a variable layout/,
   )
-  assert.throws(() => fields.string('note', { layout: 'fixed_string' }), /width/)
+  assert.throws(() => fields.string('note', { layout: 'fixed_string' }), /got none/)
+  assert.throws(() => fields.sizedUtf8('note', 0), /at least one byte, got 0/)
+  assert.throws(
+    () => fields.string('note', { layout: 'cp1252', charset: 'utf-8' }),
+    /string is the spelling that takes one/,
+  )
   assert.throws(() => fields.string('note', 'utf8'), /field options must be a plain object/)
 
+  // A maximum is its own leaf now: plain binary is the storage a bounded
+  // column fills, so `max` answers `sized_binary` rather than a bound
+  // carried beside `binary`.
   const blob = fields.bytes('payload', { max: 16, nullable: false })
-  assert.equal(blob.dtype.toString(), 'binary(16)')
+  assert.equal(blob.dtype.toString(), 'sized_binary(16)')
   assert.deepEqual(blob.dtype.bytesParameters, {
-    layout: 'binary',
+    layout: 'sized_binary',
     bound: 16,
     max: 16,
   })
@@ -389,7 +417,7 @@ test('the string and bytes factories declare the datatype beside the field', () 
   assert.ok(fields.bytes('payload').dtype.equals(DataType.binary()))
   assert.ok(
     fields
-      .bytes('key', { layout: 'fixed_size_binary', fixed: 16 })
+      .bytes('key', { layout: 'fixed_binary', fixed: 16 })
       .dtype.equals(DataType.fixedSizeBinary(16)),
   )
   assert.equal(fields.bytes('key', { layout: 'fixed_binary', bound: 16 }).dtype.fixedByteWidth, 16)
@@ -398,6 +426,18 @@ test('the string and bytes factories declare the datatype beside the field', () 
     /expected a maximum on a variable layout/,
   )
   assert.throws(() => fields.bytes('payload', { bound: 4, max: 4 }), /got more than one/)
+})
+
+test('the urn factory builds a validated, canonical name column', () => {
+  const name = fields.urn('name')
+
+  assert.equal(name.dtype.id, 'urn')
+  assert.equal(name.dtype.kind, 'text')
+  assert.equal(name.nullable, true)
+  assert.equal(fields.urn('name', { nullable: false }).nullable, false)
+  assert.equal(fields.urn('name', { metadata: { role: 'name' } }).get('role'), 'name')
+  assert.equal(name.scalar('URN:isbn:0451450523').asJs(), 'urn:isbn:0451450523')
+  assert.equal(fields.urn('name', { nullable: false }).defaultJSValue(), 'urn:nil:nil')
 })
 
 test('the url factory builds a validated, canonical location column', () => {
@@ -427,14 +467,26 @@ test('the url factory builds a validated, canonical location column', () => {
   )
 
   // Relative text names no location, so it is refused rather than stored as
-  // itself - and the empty string is refused with the rest of it.
-  for (const relative of ['./rel', 'example.com/x', '']) {
+  // itself.
+  for (const relative of ['./rel', 'example.com/x']) {
     assert.throws(
       () => declared.castArrowArray(arrow.vectorFromArray([relative], new arrow.Utf8())),
       /does not read as url/,
       relative,
     )
   }
+  // The empty text names nothing at all, so it is not a spelling to refuse
+  // but an absence: null before the reader runs, which the required column
+  // repairs with its default, or refuses by path when strict; the nullable
+  // column keeps the null.
+  const empty = () => arrow.vectorFromArray([''], new arrow.Utf8())
+  assert.deepEqual(Array.from(declared.castArrowArray(empty())), ['file:///'])
+  assert.throws(
+    () => declared.castArrowArray(empty(), { nullability: 'strict' }),
+    /required Arrow field \$\.location holds 1 null values/,
+  )
+  assert.deepEqual(Array.from(location.castArrowArray(empty())), [null])
+  assert.equal(location.scalar('').kind, 'null')
 
   // Absence is still absence: a nullable location column holds nulls, which
   // is what an unlocated handle writes instead of an empty string.
@@ -661,4 +713,41 @@ test('difference output retains physical layout checks without metadata', () => 
   assert.ok(lines.some((line) => line.includes('$.nullable')))
   assert.ok(lines.some((line) => line.includes('$.dtype')))
   assert.equal(left.showDiff(right, false), lines.join('\n'))
+})
+
+test('an empty text cell is null before safe is asked', () => {
+  const empty = () => arrow.vectorFromArray([''], new arrow.Utf8())
+
+  // A zero-length text cell entering a column that does not hold text is no
+  // value: it is null before any spelling is read, so `safe` never sees it
+  // and both policies answer the same null.
+  const nullable = fields.int32('quantity')
+  assert.deepEqual([...nullable.castArrowArray(empty(), { safe: false })], [null])
+  assert.deepEqual([...nullable.castArrowArray(empty(), { safe: true })], [null])
+
+  // A required column then answers its nullability, exactly as it does for a
+  // null the source carried: the default repairs it, strictness refuses it
+  // naming the path and the count.
+  const required = fields.int32('quantity', { nullable: false })
+  assert.deepEqual([...required.castArrowArray(empty())], [0])
+  assert.throws(
+    () => required.castArrowArray(empty(), { nullability: 'strict' }),
+    /required Arrow field \$\.quantity holds 1 null values/,
+  )
+
+  // Text is text: into a string column the empty cell is the value it is.
+  assert.deepEqual([...fields.utf8('symbol').castArrowArray(empty())], [''])
+  assert.deepEqual(
+    [
+      ...fields
+        .utf8('symbol', { nullable: false })
+        .castArrowArray(empty(), { nullability: 'strict' }),
+    ],
+    [''],
+  )
+
+  // The scalar door reads the same rule.
+  assert.equal(new DataType('int32').scalar('').kind, 'null')
+  assert.equal(new DataType('utf8').scalar('').asJs(), '')
+  assert.throws(() => required.scalar(''), /non-nullable field received null/)
 })

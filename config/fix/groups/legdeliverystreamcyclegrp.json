@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legdeliverystreamcycle"
+        "FIX:component": "legdeliverystreamcycle"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legdeliverystreamcycle",
+    "FIX:counter": "41456",
+    "FIX:tag": "819408",
     "description": "Required if NoLegDeliveryStreamCycles(41456) > 0.",
-    "display": "LegDeliveryStreamCycleGrp",
-    "fix:component": "legdeliverystreamcycle",
-    "fix:counter": "41456",
-    "fix:tag": "819408"
+    "display": "LegDeliveryStreamCycleGrp"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackunderliertype",
-          "fix:tag": "41097"
+          "FIX:field": "marketdisruptionfallbackunderliertype",
+          "FIX:tag": "41097"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackunderliersecurityid",
-          "fix:tag": "41098"
+          "FIX:field": "marketdisruptionfallbackunderliersecurityid",
+          "FIX:tag": "41098"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackunderliersecurityidsource",
-          "fix:tag": "41099"
+          "FIX:field": "marketdisruptionfallbackunderliersecurityidsource",
+          "FIX:tag": "41099"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackunderliersecuritydesc",
-          "fix:tag": "41100"
+          "FIX:field": "marketdisruptionfallbackunderliersecuritydesc",
+          "FIX:tag": "41100"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmarketdisruptionfallbackunderliersecuritydesclen",
-          "fix:tag": "41101"
+          "FIX:field": "encodedmarketdisruptionfallbackunderliersecuritydesclen",
+          "FIX:tag": "41101"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmarketdisruptionfallbackunderliersecuritydesc",
-          "fix:tag": "41102"
+          "FIX:field": "encodedmarketdisruptionfallbackunderliersecuritydesc",
+          "FIX:tag": "41102"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackopenunits",
-          "fix:tag": "41103"
+          "FIX:field": "marketdisruptionfallbackopenunits",
+          "FIX:tag": "41103"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackbasketcurrency",
-          "fix:tag": "41104"
+          "FIX:field": "marketdisruptionfallbackbasketcurrency",
+          "FIX:tag": "41104"
         }
       },
       {
@@ -98,15 +98,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackbasketdivisor",
-          "fix:tag": "41105"
+          "FIX:field": "marketdisruptionfallbackbasketdivisor",
+          "FIX:tag": "41105"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MarketDisruptionFallbackReferencePrice",
-    "fix:tag": "785194"
+    "FIX:tag": "785194",
+    "display": "MarketDisruptionFallbackReferencePrice"
   }
 }

@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "throttlemsgtype",
-          "fix:tag": "1619"
+          "FIX:field": "throttlemsgtype",
+          "FIX:tag": "1619"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ThrottleMsgType",
-    "fix:tag": "405547"
+    "FIX:tag": "405547",
+    "display": "ThrottleMsgType"
   }
 }

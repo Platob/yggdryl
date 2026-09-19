@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "provisionoptionexpirationdatebusinesscentercomponent"
+        "FIX:component": "provisionoptionexpirationdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "provisionoptionexpirationdatebusinesscentercomponent",
+    "FIX:counter": "40955",
+    "FIX:tag": "440265",
     "description": "Required if NoProvisionOptionExpirationDateBusinessCenters(40955) > 0.",
-    "display": "ProvisionOptionExpirationDateBusinessCenterGrp",
-    "fix:component": "provisionoptionexpirationdatebusinesscentercomponent",
-    "fix:counter": "40955",
-    "fix:tag": "440265"
+    "display": "ProvisionOptionExpirationDateBusinessCenterGrp"
   }
 }

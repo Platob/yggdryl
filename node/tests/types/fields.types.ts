@@ -8,7 +8,11 @@ import {
   type BytesField,
   type CurrencyField,
   type FixedAsciiField,
+  type FixedCp1252Field,
   type FixedUtf8Field,
+  type LargeCp1252ViewField,
+  type SizedAsciiField,
+  type SizedUtf8Field,
   type StringDataTypeId,
   type StringField,
   type GeographyField,
@@ -92,13 +96,21 @@ const currencyId: 'currency' = currency.dtype.id
 const currencyKind: 'code' = currency.dtype.kind
 const currencyValue: string = currency.defaultJSValue()
 const note: AsciiField = fields.ascii('note', { nullable: false })
-const noteId: 'string' = note.dtype.id
+const noteId: 'ascii' = note.dtype.id
 const noteKind: 'text' = note.dtype.kind
 const sized: FixedAsciiField = fields.fixedAscii('code', 12, { nullable: false })
-const sizedId: 'fixed_string' = sized.dtype.id
+const sizedId: 'fixed_ascii' = sized.dtype.id
 const nullableCode: string | null = fields.fixedAscii('code', 3).defaultJSValue()
 const padded: FixedUtf8Field = fields.fixedUtf8('label', 8, { nullable: false })
-// The whole family: the parameters ride the options beside the field's own.
+// One factory per leaf: the number is the leaf's own.
+const bounded: SizedUtf8Field = fields.sizedUtf8('label', 32, { nullable: false })
+const boundedId: 'sized_utf8' = bounded.dtype.id
+const ticker: SizedAsciiField = fields.sizedAscii('ticker', 12, { nullable: false })
+const legacy: FixedCp1252Field = fields.fixedCp1252('legacy', 8, { nullable: false })
+const wide: LargeCp1252ViewField = fields.largeCp1252View('wide', { nullable: false })
+const wideId: 'large_cp1252_view' = wide.dtype.id
+// The whole family: the parameters ride the options beside the field's own,
+// and a charset beside a charset-free spelling lands on that charset's leaf.
 const latin: StringField = fields.string('latin', {
   charset: 'windows-1252',
   max: 32,
@@ -121,6 +133,12 @@ void sized
 void sizedId
 void nullableCode
 void padded
+void bounded
+void boundedId
+void ticker
+void legacy
+void wide
+void wideId
 void latin
 void latinId
 void latinKind

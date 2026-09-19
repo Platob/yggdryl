@@ -11,7 +11,7 @@
 //! `YGGDRYL_GCS_ENDPOINT` is what turns the suite on; without it every test
 //! prints `SKIPPED` and passes, and the driver fails on that word.
 
-use yggdryl::holder::object::{GoogleOptions, ObjectOptions, Provider};
+use yggdryl::object::{GoogleOptions, ObjectOptions, Provider};
 use yggdryl::{IOBase, IOFolder, IOKind};
 
 /// The bucket both sides exchange through.
@@ -42,14 +42,14 @@ fn options() -> ObjectOptions {
 }
 
 /// The object `key` names in the exchange bucket.
-fn object(key: &str) -> yggdryl::holder::object::File {
-    yggdryl::holder::object::file_at_with(Provider::Google, BUCKET, key, options())
+fn object(key: &str) -> yggdryl::object::File {
+    yggdryl::object::file_at_with(Provider::Google, BUCKET, key, options())
         .expect("an object handle")
 }
 
 /// The prefix `key` names in the exchange bucket.
-fn prefix(key: &str) -> yggdryl::holder::object::Folder {
-    yggdryl::holder::object::folder_at_with(Provider::Google, BUCKET, key, options())
+fn prefix(key: &str) -> yggdryl::object::Folder {
+    yggdryl::object::folder_at_with(Provider::Google, BUCKET, key, options())
         .expect("a prefix handle")
 }
 
@@ -59,8 +59,8 @@ fn skipped(what: &str) {
 }
 
 /// The bucket the exchange runs in, created if the driver did not.
-fn bucket() -> yggdryl::holder::object::Folder {
-    let root = yggdryl::holder::object::folder_at_with(Provider::Google, BUCKET, "", options())
+fn bucket() -> yggdryl::object::Folder {
+    let root = yggdryl::object::folder_at_with(Provider::Google, BUCKET, "", options())
         .expect("a bucket handle");
     if !root.folder_exists() {
         root.create_folder().expect("a bucket");
@@ -127,7 +127,7 @@ fn a_large_object_is_sent_as_a_resumable_session_of_chunks() {
     let bytes: Vec<u8> = (0..9 * 1024 * 1024)
         .map(|index| (index % 251) as u8)
         .collect();
-    let mut handle = yggdryl::holder::object::file_at_with(
+    let mut handle = yggdryl::object::file_at_with(
         Provider::Google,
         BUCKET,
         &format!("{FROM_RUST}/large.bin"),

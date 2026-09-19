@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityreportid",
-          "fix:tag": "964"
+          "FIX:field": "securityreportid",
+          "FIX:tag": "964"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitylistid",
-          "fix:tag": "1465"
+          "FIX:field": "securitylistid",
+          "FIX:tag": "1465"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitylistrefid",
-          "fix:tag": "1466"
+          "FIX:field": "securitylistrefid",
+          "FIX:tag": "1466"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitylistdesc",
-          "fix:tag": "1467"
+          "FIX:field": "securitylistdesc",
+          "FIX:tag": "1467"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedsecuritylistdesclen",
-          "fix:tag": "1468"
+          "FIX:field": "encodedsecuritylistdesclen",
+          "FIX:tag": "1468"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedsecuritylistdesc",
-          "fix:tag": "1469"
+          "FIX:field": "encodedsecuritylistdesc",
+          "FIX:tag": "1469"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitylisttype",
-          "fix:tag": "1470"
+          "FIX:field": "securitylisttype",
+          "FIX:tag": "1470"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitylisttypesource",
-          "fix:tag": "1471"
+          "FIX:field": "securitylisttypesource",
+          "FIX:tag": "1471"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityreqid",
-          "fix:tag": "320"
+          "FIX:field": "securityreqid",
+          "FIX:tag": "320"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityresponseid",
-          "fix:tag": "322"
+          "FIX:field": "securityresponseid",
+          "FIX:tag": "322"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityrequestresult",
-          "fix:tag": "560"
+          "FIX:field": "securityrequestresult",
+          "FIX:tag": "560"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnorelatedsym",
-          "fix:tag": "393"
+          "FIX:field": "totnorelatedsym",
+          "FIX:tag": "393"
         }
       },
       {
@@ -162,8 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingbusinessdate",
-          "fix:tag": "715"
+          "FIX:field": "clearingbusinessdate",
+          "FIX:tag": "715"
         }
       },
       {
@@ -173,8 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityupdateaction",
-          "fix:tag": "980"
+          "FIX:field": "securityupdateaction",
+          "FIX:tag": "980"
         }
       },
       {
@@ -184,8 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "corporateaction",
-          "fix:tag": "292"
+          "FIX:field": "corporateaction",
+          "FIX:tag": "292"
         }
       },
       {
@@ -195,8 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid",
-          "fix:tag": "1301"
+          "FIX:field": "marketid",
+          "FIX:tag": "1301"
         }
       },
       {
@@ -206,8 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid",
-          "fix:tag": "1300"
+          "FIX:field": "marketsegmentid",
+          "FIX:tag": "1300"
         }
       },
       {
@@ -217,8 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -228,8 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment",
-          "fix:tag": "893"
+          "FIX:field": "lastfragment",
+          "FIX:tag": "893"
         }
       },
       {
@@ -239,8 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedsym",
-          "fix:tag": "146"
+          "FIX:field": "norelatedsym",
+          "FIX:tag": "146"
         }
       },
       {
@@ -250,7 +250,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "seclstupdrelsymgrp"
+          "FIX:group": "seclstupdrelsymgrp"
         }
       },
       {
@@ -260,17 +260,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "securitylistid",
+    "FIX:msgtype": "BK",
+    "FIX:tag": "664955",
     "description": "MsgType = BK",
-    "display": "SecurityListUpdateReport",
-    "fix:identifiers": "securitylistid",
-    "fix:msgtype": "BK",
-    "fix:tag": "664955"
+    "display": "SecurityListUpdateReport"
   }
 }

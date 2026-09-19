@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "partydetailslistrequestid",
-          "fix:tag": "1505"
+          "FIX:field": "partydetailslistrequestid",
+          "FIX:tag": "1505"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norequestingpartyids",
-          "fix:tag": "1657"
+          "FIX:field": "norequestingpartyids",
+          "FIX:tag": "1657"
         }
       },
       {
@@ -42,7 +42,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "requestingpartygrp"
+          "FIX:group": "requestingpartygrp"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -63,7 +63,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -73,8 +73,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norequestedpartyroles",
-          "fix:tag": "1508"
+          "FIX:field": "norequestedpartyroles",
+          "FIX:tag": "1508"
         }
       },
       {
@@ -84,7 +84,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "requestedpartyrolegrp"
+          "FIX:group": "requestedpartyrolegrp"
         }
       },
       {
@@ -94,8 +94,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyrelationships",
-          "fix:tag": "1514"
+          "FIX:field": "nopartyrelationships",
+          "FIX:tag": "1514"
         }
       },
       {
@@ -105,7 +105,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "partyrelationshipgrp"
+          "FIX:group": "partyrelationshipgrp"
         }
       },
       {
@@ -115,8 +115,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "subscriptionrequesttype",
-          "fix:tag": "263"
+          "FIX:field": "subscriptionrequesttype",
+          "FIX:tag": "263"
         }
       },
       {
@@ -126,8 +126,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -137,8 +137,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -148,8 +148,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -159,16 +159,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "CF",
+    "FIX:tag": "270673",
     "description": "MsgType = CF",
-    "display": "PartyDetailsListRequest",
-    "fix:msgtype": "CF",
-    "fix:tag": "270673"
+    "display": "PartyDetailsListRequest"
   }
 }

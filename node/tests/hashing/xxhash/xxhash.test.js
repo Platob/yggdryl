@@ -219,8 +219,8 @@ test('streaming states fill default digest holders without changing themselves',
     state.writeBytes('existing stream')
     const before = state.asDigest().toString()
     const holder = new Field('row_digest', dtype, false, {
-      'digest:role': 'holder',
-      'digest:sources': '[ "symbol" ]',
+      'DIGEST:role': 'holder',
+      'DIGEST:sources': '[ "symbol" ]',
     })
     const root = new Field(
       'row',
@@ -265,7 +265,7 @@ test('streaming states fill default digest holders without changing themselves',
 test('batch filling preserves populated holders and resolves holder algorithms', () => {
   const symbol = new Field('symbol', 'utf8', false)
   const holder = new Field('row_digest', 'uint64', false, {
-    'digest:role': 'holder',
+    'DIGEST:role': 'holder',
   })
   const root = new Field('row', DataType.fromFields([symbol, holder]), false)
   const source = new arrow.Table({
@@ -294,8 +294,8 @@ test('batch filling preserves populated holders and resolves holder algorithms',
   )
 
   const mismatchedHolder = new Field('row_digest', 'uint64', false, {
-    'digest:role': 'holder',
-    'digest:algorithm': 'xxh32',
+    'DIGEST:role': 'holder',
+    'DIGEST:algorithm': 'xxh32',
   })
   const mismatched = new Field(
     'row',
@@ -315,10 +315,10 @@ test('batch filling preserves populated holders and resolves holder algorithms',
 test('signed holders retain the complete digest bits', () => {
   const symbol = new Field('symbol', 'utf8', false)
   const signed32 = new Field('signed32', 'int32', false, {
-    'digest:role': 'holder',
+    'DIGEST:role': 'holder',
   })
   const signed64 = new Field('signed64', 'int64', false, {
-    'digest:role': 'holder',
+    'DIGEST:role': 'holder',
   })
   const root = new Field(
     'row',

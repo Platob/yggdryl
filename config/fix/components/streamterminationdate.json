@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdateunadjusted",
-          "fix:tag": "40065"
+          "FIX:field": "streamterminationdateunadjusted",
+          "FIX:tag": "40065"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdatebusinessdayconvention",
-          "fix:tag": "40066"
+          "FIX:field": "streamterminationdatebusinessdayconvention",
+          "FIX:tag": "40066"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostreamterminationdatebusinesscenters",
-          "fix:tag": "40961"
+          "FIX:field": "nostreamterminationdatebusinesscenters",
+          "FIX:tag": "40961"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "streamterminationdatebusinesscentergrp"
+          "FIX:group": "streamterminationdatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdaterelativeto",
-          "fix:tag": "40068"
+          "FIX:field": "streamterminationdaterelativeto",
+          "FIX:tag": "40068"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdateoffsetperiod",
-          "fix:tag": "40069"
+          "FIX:field": "streamterminationdateoffsetperiod",
+          "FIX:tag": "40069"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdateoffsetunit",
-          "fix:tag": "40070"
+          "FIX:field": "streamterminationdateoffsetunit",
+          "FIX:tag": "40070"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdateoffsetdaytype",
-          "fix:tag": "40071"
+          "FIX:field": "streamterminationdateoffsetdaytype",
+          "FIX:tag": "40071"
         }
       },
       {
@@ -97,16 +97,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamterminationdateadjusted",
-          "fix:tag": "40072"
+          "FIX:field": "streamterminationdateadjusted",
+          "FIX:tag": "40072"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "947696",
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of the termination date of the stream.",
-    "display": "StreamTerminationDate",
-    "fix:tag": "947696"
+    "display": "StreamTerminationDate"
   }
 }

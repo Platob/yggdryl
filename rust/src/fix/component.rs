@@ -3,6 +3,7 @@
 //! Catalog definitions carry resolved names. CBlock input without a declared
 //! group name uses the published Parties family, then the counter's noun stem.
 
+use crate::sequence::SequenceType;
 use smol_str::SmolStr;
 
 const LATIN: [(&str, &str); 4] = [
@@ -82,7 +83,9 @@ pub(crate) fn entry_name(group: &str) -> SmolStr {
 }
 
 pub(crate) fn occurrence_name(group: &crate::Field) -> SmolStr {
-    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = group.dtype() {
+    if let crate::DataType::Sequence(SequenceType::List(item))
+    | crate::DataType::Sequence(SequenceType::LargeList(item)) = group.dtype()
+    {
         return SmolStr::new(item.name());
     }
     entry_name(&group_name(group))

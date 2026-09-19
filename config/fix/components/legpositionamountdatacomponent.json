@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legposamt",
-          "fix:tag": "1587"
+          "FIX:field": "legposamt",
+          "FIX:tag": "1587"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legposamttype",
-          "fix:tag": "1588"
+          "FIX:field": "legposamttype",
+          "FIX:tag": "1588"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legposcurrency",
-          "fix:tag": "1589"
+          "FIX:field": "legposcurrency",
+          "FIX:tag": "1589"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legposcurrencycodesource",
-          "fix:tag": "2938"
+          "FIX:field": "legposcurrencycodesource",
+          "FIX:tag": "2938"
         }
       },
       {
@@ -54,15 +54,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legposamtreason",
-          "fix:tag": "1590"
+          "FIX:field": "legposamtreason",
+          "FIX:tag": "1590"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPositionAmountData",
-    "fix:tag": "734496"
+    "FIX:tag": "734496",
+    "display": "LegPositionAmountData"
   }
 }

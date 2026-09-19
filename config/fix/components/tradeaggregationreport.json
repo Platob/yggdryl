@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "tradeaggregationreportid",
-          "fix:tag": "2792"
+          "FIX:field": "tradeaggregationreportid",
+          "FIX:tag": "2792"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeaggregationrequestid",
-          "fix:tag": "2786"
+          "FIX:field": "tradeaggregationrequestid",
+          "FIX:tag": "2786"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "tradeaggregationrequeststatus",
-          "fix:tag": "2790"
+          "FIX:field": "tradeaggregationrequeststatus",
+          "FIX:tag": "2790"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeid",
-          "fix:tag": "1003"
+          "FIX:field": "tradeid",
+          "FIX:tag": "1003"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeaggregationrejectreason",
-          "fix:tag": "2791"
+          "FIX:field": "tradeaggregationrejectreason",
+          "FIX:tag": "2791"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "aggregatedqty",
-          "fix:tag": "2789"
+          "FIX:field": "aggregatedqty",
+          "FIX:tag": "2789"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "avgpx",
-          "fix:tag": "6"
+          "FIX:field": "avgpx",
+          "FIX:tag": "6"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "avgspotrate",
-          "fix:tag": "2793"
+          "FIX:field": "avgspotrate",
+          "FIX:tag": "2793"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "avgforwardpoints",
-          "fix:tag": "2794"
+          "FIX:field": "avgforwardpoints",
+          "FIX:tag": "2794"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settldate",
-          "fix:tag": "64"
+          "FIX:field": "settldate",
+          "FIX:tag": "64"
         }
       },
       {
@@ -130,7 +130,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "side",
-          "fix:tag": "54"
+          "FIX:field": "side",
+          "FIX:tag": "54"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext",
-          "fix:tag": "1328"
+          "FIX:field": "rejecttext",
+          "FIX:tag": "1328"
         }
       },
       {
@@ -162,8 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen",
-          "fix:tag": "1664"
+          "FIX:field": "encodedrejecttextlen",
+          "FIX:tag": "1664"
         }
       },
       {
@@ -173,8 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext",
-          "fix:tag": "1665"
+          "FIX:field": "encodedrejecttext",
+          "FIX:tag": "1665"
         }
       },
       {
@@ -184,17 +184,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "tradeid",
+    "FIX:msgtype": "DX",
+    "FIX:tag": "978335",
     "description": "MsgType = DX",
-    "display": "TradeAggregationReport",
-    "fix:identifiers": "tradeid",
-    "fix:msgtype": "DX",
-    "fix:tag": "978335"
+    "display": "TradeAggregationReport"
   }
 }

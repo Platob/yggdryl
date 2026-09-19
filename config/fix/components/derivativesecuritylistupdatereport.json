@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityreqid",
-          "fix:tag": "320"
+          "FIX:field": "securityreqid",
+          "FIX:tag": "320"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityresponseid",
-          "fix:tag": "322"
+          "FIX:field": "securityresponseid",
+          "FIX:tag": "322"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityrequestresult",
-          "fix:tag": "560"
+          "FIX:field": "securityrequestresult",
+          "FIX:tag": "560"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityupdateaction",
-          "fix:tag": "980"
+          "FIX:field": "securityupdateaction",
+          "FIX:tag": "980"
         }
       },
       {
@@ -74,7 +74,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyinginstrument"
+          "FIX:component": "underlyinginstrument"
         }
       },
       {
@@ -84,7 +84,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "derivativesecuritydefinition"
+          "FIX:component": "derivativesecuritydefinition"
         }
       },
       {
@@ -94,8 +94,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastupdatetime",
-          "fix:tag": "779"
+          "FIX:field": "lastupdatetime",
+          "FIX:tag": "779"
         }
       },
       {
@@ -105,8 +105,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -116,8 +116,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnorelatedsym",
-          "fix:tag": "393"
+          "FIX:field": "totnorelatedsym",
+          "FIX:tag": "393"
         }
       },
       {
@@ -127,8 +127,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment",
-          "fix:tag": "893"
+          "FIX:field": "lastfragment",
+          "FIX:tag": "893"
         }
       },
       {
@@ -138,8 +138,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedsym",
-          "fix:tag": "146"
+          "FIX:field": "norelatedsym",
+          "FIX:tag": "146"
         }
       },
       {
@@ -149,7 +149,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "relsymderivsecupdgrp"
+          "FIX:group": "relsymderivsecupdgrp"
         }
       },
       {
@@ -159,16 +159,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "BR",
+    "FIX:tag": "892323",
     "description": "MsgType = BR",
-    "display": "DerivativeSecurityListUpdateReport",
-    "fix:msgtype": "BR",
-    "fix:tag": "892323"
+    "display": "DerivativeSecurityListUpdateReport"
   }
 }

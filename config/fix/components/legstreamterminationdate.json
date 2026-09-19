@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdateunadjusted",
-          "fix:tag": "40257"
+          "FIX:field": "legstreamterminationdateunadjusted",
+          "FIX:tag": "40257"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdatebusinessdayconvention",
-          "fix:tag": "40258"
+          "FIX:field": "legstreamterminationdatebusinessdayconvention",
+          "FIX:tag": "40258"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamterminationdatebusinesscenters",
-          "fix:tag": "40943"
+          "FIX:field": "nolegstreamterminationdatebusinesscenters",
+          "FIX:tag": "40943"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legstreamterminationdatebusinesscentergrp"
+          "FIX:group": "legstreamterminationdatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdaterelativeto",
-          "fix:tag": "40260"
+          "FIX:field": "legstreamterminationdaterelativeto",
+          "FIX:tag": "40260"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdateoffsetperiod",
-          "fix:tag": "40261"
+          "FIX:field": "legstreamterminationdateoffsetperiod",
+          "FIX:tag": "40261"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdateoffsetunit",
-          "fix:tag": "40262"
+          "FIX:field": "legstreamterminationdateoffsetunit",
+          "FIX:tag": "40262"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdateoffsetdaytype",
-          "fix:tag": "40263"
+          "FIX:field": "legstreamterminationdateoffsetdaytype",
+          "FIX:tag": "40263"
         }
       },
       {
@@ -97,16 +97,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamterminationdateadjusted",
-          "fix:tag": "40264"
+          "FIX:field": "legstreamterminationdateadjusted",
+          "FIX:tag": "40264"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "1028685",
     "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of the leg stream termination date.",
-    "display": "LegStreamTerminationDate",
-    "fix:tag": "1028685"
+    "display": "LegStreamTerminationDate"
   }
 }

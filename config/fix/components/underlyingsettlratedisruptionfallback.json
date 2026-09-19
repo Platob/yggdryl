@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlratepostponementmaximumdays",
-          "fix:tag": "40660"
+          "FIX:field": "underlyingsettlratepostponementmaximumdays",
+          "FIX:tag": "40660"
         }
       },
       {
@@ -21,7 +21,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingsettlratefallbackratesourcecomponent"
+          "FIX:component": "underlyingsettlratefallbackratesourcecomponent"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlratepostponementsurvey",
-          "fix:tag": "40662"
+          "FIX:field": "underlyingsettlratepostponementsurvey",
+          "FIX:tag": "40662"
         }
       },
       {
@@ -42,15 +42,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlratepostponementcalculationagent",
-          "fix:tag": "40663"
+          "FIX:field": "underlyingsettlratepostponementcalculationagent",
+          "FIX:tag": "40663"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingSettlRateDisruptionFallback",
-    "fix:tag": "739619"
+    "FIX:tag": "739619",
+    "display": "UnderlyingSettlRateDisruptionFallback"
   }
 }

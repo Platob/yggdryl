@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legevnt"
+        "FIX:component": "legevnt"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legevnt",
+    "FIX:counter": "2059",
+    "FIX:tag": "169274",
     "description": "Required if NoLegEvents(2059) > 0.",
-    "display": "LegEvntGrp",
-    "fix:component": "legevnt",
-    "fix:counter": "2059",
-    "fix:tag": "169274"
+    "display": "LegEvntGrp"
   }
 }

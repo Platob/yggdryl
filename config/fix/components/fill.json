@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fillexecid",
-          "fix:tag": "1363"
+          "FIX:field": "fillexecid",
+          "FIX:tag": "1363"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fillpx",
-          "fix:tag": "1364"
+          "FIX:field": "fillpx",
+          "FIX:tag": "1364"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fillqty",
-          "fix:tag": "1365"
+          "FIX:field": "fillqty",
+          "FIX:tag": "1365"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fillmatchid",
-          "fix:tag": "2673"
+          "FIX:field": "fillmatchid",
+          "FIX:tag": "2673"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fillmatchsubid",
-          "fix:tag": "2674"
+          "FIX:field": "fillmatchsubid",
+          "FIX:tag": "2674"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fillliquidityind",
-          "fix:tag": "1443"
+          "FIX:field": "fillliquidityind",
+          "FIX:tag": "1443"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fillyieldtype",
-          "fix:tag": "1622"
+          "FIX:field": "fillyieldtype",
+          "FIX:tag": "1622"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fillyield",
-          "fix:tag": "1623"
+          "FIX:field": "fillyield",
+          "FIX:tag": "1623"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonested4partyids",
-          "fix:tag": "1414"
+          "FIX:field": "nonested4partyids",
+          "FIX:tag": "1414"
         }
       },
       {
@@ -109,15 +109,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "nestedparties4"
+          "FIX:group": "nestedparties4"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "Fill",
-    "fix:identifiers": "fillexecid",
-    "fix:tag": "174061"
+    "FIX:identifiers": "fillexecid",
+    "FIX:tag": "174061",
+    "display": "Fill"
   }
 }

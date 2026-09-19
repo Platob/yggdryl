@@ -8,7 +8,7 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
-use yggdryl::holder::fs::File as FsFile;
+use yggdryl::fs::File as FsFile;
 use yggdryl::media::IORecordOptions;
 use yggdryl::{IOBase, IOMedia};
 

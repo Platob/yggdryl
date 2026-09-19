@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeeamt",
-          "fix:tag": "137"
+          "FIX:field": "miscfeeamt",
+          "FIX:tag": "137"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeecurr",
-          "fix:tag": "138"
+          "FIX:field": "miscfeecurr",
+          "FIX:tag": "138"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeetype",
-          "fix:tag": "139"
+          "FIX:field": "miscfeetype",
+          "FIX:tag": "139"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeequalifier",
-          "fix:tag": "2712"
+          "FIX:field": "miscfeequalifier",
+          "FIX:tag": "2712"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomiscfeesubtypes",
-          "fix:tag": "2633"
+          "FIX:field": "nomiscfeesubtypes",
+          "FIX:tag": "2633"
         }
       },
       {
@@ -65,7 +65,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "miscfeessubgrp"
+          "FIX:group": "miscfeessubgrp"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeebasis",
-          "fix:tag": "891"
+          "FIX:field": "miscfeebasis",
+          "FIX:tag": "891"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeerate",
-          "fix:tag": "2216"
+          "FIX:field": "miscfeerate",
+          "FIX:tag": "2216"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeeamountdue",
-          "fix:tag": "2217"
+          "FIX:field": "miscfeeamountdue",
+          "FIX:tag": "2217"
         }
       },
       {
@@ -108,15 +108,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "miscfeedesc",
-          "fix:tag": "2713"
+          "FIX:field": "miscfeedesc",
+          "FIX:tag": "2713"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MiscFee",
-    "fix:tag": "648749"
+    "FIX:tag": "648749",
+    "display": "MiscFee"
   }
 }

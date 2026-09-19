@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloctrdregtimestamp",
-          "fix:tag": "3009"
+          "FIX:field": "alloctrdregtimestamp",
+          "FIX:tag": "3009"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloctrdregtimestamptype",
-          "fix:tag": "3010"
+          "FIX:field": "alloctrdregtimestamptype",
+          "FIX:tag": "3010"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "alloctrdregtimestampsrc",
-          "fix:tag": "3011"
+          "FIX:field": "alloctrdregtimestampsrc",
+          "FIX:tag": "3011"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "AllocTrdRegTimestamp",
-    "fix:tag": "620864"
+    "FIX:tag": "620864",
+    "display": "AllocTrdRegTimestamp"
   }
 }

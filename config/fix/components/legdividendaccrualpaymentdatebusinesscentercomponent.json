@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendaccrualpaymentdatebusinesscenter",
-          "fix:tag": "42311"
+          "FIX:field": "legdividendaccrualpaymentdatebusinesscenter",
+          "FIX:tag": "42311"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegDividendAccrualPaymentDateBusinessCenter",
-    "fix:tag": "821703"
+    "FIX:tag": "821703",
+    "display": "LegDividendAccrualPaymentDateBusinessCenter"
   }
 }

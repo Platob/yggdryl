@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clordid",
-          "fix:tag": "11"
+          "FIX:field": "clordid",
+          "FIX:tag": "11"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderid",
-          "fix:tag": "37"
+          "FIX:field": "orderid",
+          "FIX:tag": "37"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryclordid",
-          "fix:tag": "526"
+          "FIX:field": "secondaryclordid",
+          "FIX:tag": "526"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "cumqty",
-          "fix:tag": "14"
+          "FIX:field": "cumqty",
+          "FIX:tag": "14"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "ordstatus",
-          "fix:tag": "39"
+          "FIX:field": "ordstatus",
+          "FIX:tag": "39"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "workingindicator",
-          "fix:tag": "636"
+          "FIX:field": "workingindicator",
+          "FIX:tag": "636"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "leavesqty",
-          "fix:tag": "151"
+          "FIX:field": "leavesqty",
+          "FIX:tag": "151"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "cxlqty",
-          "fix:tag": "84"
+          "FIX:field": "cxlqty",
+          "FIX:tag": "84"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "avgpx",
-          "fix:tag": "6"
+          "FIX:field": "avgpx",
+          "FIX:tag": "6"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordrejreason",
-          "fix:tag": "103"
+          "FIX:field": "ordrejreason",
+          "FIX:tag": "103"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -142,16 +142,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "OrdListStat",
-    "fix:identifiers": "clordid,orderid,secondaryclordid",
-    "fix:tag": "610418"
+    "FIX:identifiers": "clordid,orderid,secondaryclordid",
+    "FIX:tag": "610418",
+    "display": "OrdListStat"
   }
 }

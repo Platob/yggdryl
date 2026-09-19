@@ -6,9 +6,7 @@
 //! their representation implements specially.
 
 use crate::IOBase;
-#[cfg(feature = "arrow")]
 use crate::Result;
-#[cfg(feature = "arrow")]
 use crate::media::RecordOptions;
 
 /// Record-oriented operations every [`IOBase`] handle exposes.
@@ -39,13 +37,12 @@ pub trait IOMedia: Send {
     /// # Errors
     ///
     /// Returns a metadata, listing, decoding, or row-count overflow failure.
-    #[cfg(feature = "arrow")]
     fn row_size(&self) -> Result<u64> {
         let options = dimension_options(self)?;
         let handle = self.as_io_base();
         if handle.is_container() {
             #[cfg(feature = "iceberg")]
-            if let Some(table) = crate::media::iceberg::located(handle)? {
+            if let Some(table) = crate::iceberg::located(handle)? {
                 return table.row_size();
             }
             let encoding = options.mime_type();
@@ -72,7 +69,6 @@ pub trait IOMedia: Send {
     /// # Errors
     ///
     /// Returns a metadata, schema, or listing failure.
-    #[cfg(feature = "arrow")]
     fn column_size(&self) -> Result<usize> {
         use crate::media::IORecordOptions;
 
@@ -86,7 +82,7 @@ pub trait IOMedia: Send {
         let container = handle.is_container();
         #[cfg(feature = "iceberg")]
         if container {
-            if let Some(table) = crate::media::iceberg::located(handle)? {
+            if let Some(table) = crate::iceberg::located(handle)? {
                 return table.column_size();
             }
         }
@@ -115,12 +111,11 @@ pub trait IOMedia: Send {
     ///
     /// Returns an error when no record encoding in this build covers the
     /// handle's media type, or the media type of anything below it.
-    #[cfg(feature = "arrow")]
     fn record_options(&self) -> Result<RecordOptions> {
         let handle = self.as_io_base();
         if handle.is_container() {
             #[cfg(feature = "iceberg")]
-            if let Some(table) = crate::media::iceberg::located(handle)? {
+            if let Some(table) = crate::iceberg::located(handle)? {
                 return table.record_options();
             }
             // The listing is lazy, so a lake costs the walk to its first
@@ -155,9 +150,9 @@ pub trait IOMedia: Send {
     ///
     /// Returns an encoding, footer, or positional-read failure.
     #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::media::parquet::FileStatistics> {
+    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
         let handle = parquet_leaf(self)?;
-        Ok(crate::media::parquet::read_statistics(handle)?)
+        Ok(crate::parquet::read_statistics(handle)?)
     }
 
     /// Recompute one Parquet geospatial column's statistics from stored WKB.
@@ -174,11 +169,9 @@ pub trait IOMedia: Send {
     fn read_parquet_geospatial_statistics(
         &self,
         column: &str,
-    ) -> Result<crate::media::parquet::GeospatialStatistics> {
+    ) -> Result<crate::parquet::GeospatialStatistics> {
         let handle = parquet_leaf(self)?;
-        Ok(crate::media::parquet::read_geospatial_statistics(
-            handle, column,
-        )?)
+        Ok(crate::parquet::read_geospatial_statistics(handle, column)?)
     }
 
     /// Read the canonical non-null Struct root Field of this resource.
@@ -190,7 +183,6 @@ pub trait IOMedia: Send {
     /// # Errors
     ///
     /// Returns a read, decoding, or schema-projection failure.
-    #[cfg(feature = "arrow")]
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field> {
         use crate::media::IORecordOptions;
 
@@ -247,14 +239,13 @@ pub trait IOMedia: Send {
     /// # Errors
     ///
     /// Returns a listing, read, decoding, or cast failure.
-    #[cfg(feature = "arrow")]
     fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
         use crate::media::IORecordOptions;
 
         let handle = self.as_io_base();
         let reader = if handle.is_container() {
             #[cfg(feature = "iceberg")]
-            if let Some(table) = crate::media::iceberg::located(handle)? {
+            if let Some(table) = crate::iceberg::located(handle)? {
                 // The table pushes the clauses into its scan plan and wraps
                 // the selector and the limit itself: the reader is complete.
                 return table.read(options);
@@ -302,12 +293,11 @@ pub trait IOMedia: Send {
     /// Returns a read, decoding, parse, inference, or cast failure, or an
     /// error naming the media type when it is neither a record encoding this
     /// build implements nor a structured text format.
-    #[cfg(feature = "arrow")]
     fn read_arrow(&self, options: Option<&RecordOptions>) -> Result<crate::arrow::ArrowScalar> {
         use crate::media::IORecordOptions;
 
         let handle = self.as_io_base();
-        if crate::text::Structured::for_media_type(handle.media_type()).is_ok() {
+        if crate::text::Format::from_media_type(handle.media_type()).is_ok() {
             let field = options.and_then(IORecordOptions::field);
             return crate::media::structured::read_arrow(handle, field.as_ref());
         }
@@ -338,14 +328,13 @@ pub trait IOMedia: Send {
     /// the media type when it names no format, or an error naming the mode
     /// when a structured text document is asked for anything but an
     /// overwrite.
-    #[cfg(feature = "arrow")]
     fn write_arrow(
         &mut self,
         value: crate::arrow::ArrowScalar,
         mode: crate::IOMode,
         options: Option<&RecordOptions>,
     ) -> Result<()> {
-        if crate::text::Structured::for_media_type(self.as_io_base().media_type()).is_ok() {
+        if crate::text::Format::from_media_type(self.as_io_base().media_type()).is_ok() {
             if mode != crate::IOMode::Overwrite {
                 return Err(crate::Error::InvalidRecord {
                     path: smol_str::SmolStr::new_static("$.mode"),
@@ -387,7 +376,6 @@ pub trait IOMedia: Send {
     /// Returns the selected primitive's validation, cast, read, or publication
     /// failure. In particular, merge requires non-empty match keys while the
     /// other modes refuse them.
-    #[cfg(feature = "arrow")]
     fn write_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -443,7 +431,6 @@ pub trait IOMedia: Send {
     /// # Errors
     ///
     /// Returns a listing, read, schema, cast, encoding, or write failure.
-    #[cfg(feature = "arrow")]
     fn overwrite_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -462,7 +449,6 @@ pub trait IOMedia: Send {
     /// # Errors
     ///
     /// Returns an encoding or publication failure.
-    #[cfg(feature = "arrow")]
     #[doc(hidden)]
     fn overwrite_prepared_arrow_reader(
         &mut self,
@@ -482,7 +468,6 @@ pub trait IOMedia: Send {
     ///
     /// Returns the same field, cast, encoding, and write failures as the
     /// reader primitive.
-    #[cfg(feature = "arrow")]
     fn overwrite_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
@@ -502,7 +487,6 @@ pub trait IOMedia: Send {
     ///
     /// Returns the selected held-batch adapter's validation, cast, encoding,
     /// or publication failure.
-    #[cfg(feature = "arrow")]
     fn write_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
@@ -556,7 +540,6 @@ pub trait IOMedia: Send {
     /// Returns a listing, read, cast, encoding, or write failure. With no
     /// commit cadence the resource stays unchanged until the replacement is
     /// complete; with a positive cadence, completed prefixes stay published.
-    #[cfg(feature = "arrow")]
     fn append_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -574,7 +557,6 @@ pub trait IOMedia: Send {
     ///
     /// Returns the same intent, cast, encoding, and write failures as the
     /// reader primitive.
-    #[cfg(feature = "arrow")]
     fn append_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
@@ -599,7 +581,6 @@ pub trait IOMedia: Send {
     /// key is refused: use overwrite or append when rows have no identity.
     /// `commit_row_size` retains merge intent for every bounded publication;
     /// successful prefixes remain visible after a later failure.
-    #[cfg(feature = "arrow")]
     fn merge_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -617,7 +598,6 @@ pub trait IOMedia: Send {
     ///
     /// Returns the same key, cast, merge, encoding, and write failures as the
     /// reader primitive.
-    #[cfg(feature = "arrow")]
     fn merge_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
@@ -645,7 +625,7 @@ pub trait IOMedia: Send {
     ///
     /// ```
     /// use yggdryl::media::IORecordOptions;
-    /// use yggdryl::{IOMedia, holder::Buffer};
+    /// use yggdryl::{IOMedia, StructureType, holder::Buffer};
     /// use yggdryl::{DataType, MimeType, Scalar};
     ///
     /// struct Quote {
@@ -660,10 +640,10 @@ pub trait IOMedia: Send {
     /// }
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let field = DataType::from_fields([
+    /// let field = DataType::from(StructureType::from_fields([
     ///     DataType::Int32.required_field("id"),
     ///     DataType::utf8().required_field("symbol"),
-    /// ])?
+    /// ])?)
     /// .required_field("quote");
     /// let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
     /// let options = handle.record_options()?.with_field(field);
@@ -683,7 +663,6 @@ pub trait IOMedia: Send {
     /// absent or not a non-null Struct root. A pulled row can fail its
     /// `TryInto<Scalar>` conversion, field validation, Arrow materialization,
     /// or the delegated overwrite.
-    #[cfg(feature = "arrow")]
     fn overwrite_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()>
     where
         Self: Sized,
@@ -720,7 +699,6 @@ pub trait IOMedia: Send {
     /// Returns the same field, row-conversion, intent, cast, encoding, and
     /// write failures as [`overwrite_records`](Self::overwrite_records) and
     /// [`append_arrow_reader`](Self::append_arrow_reader).
-    #[cfg(feature = "arrow")]
     fn append_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()>
     where
         Self: Sized,
@@ -757,7 +735,6 @@ pub trait IOMedia: Send {
     /// Returns the same field, row-conversion, key, cast, encoding, and write
     /// failures as [`overwrite_records`](Self::overwrite_records) and
     /// [`merge_arrow_reader`](Self::merge_arrow_reader).
-    #[cfg(feature = "arrow")]
     fn merge_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()>
     where
         Self: Sized,
@@ -793,7 +770,6 @@ pub trait IOMedia: Send {
     ///
     /// Returns a missing field, row conversion, validation, cast, or selected
     /// publication failure.
-    #[cfg(feature = "arrow")]
     fn write_records<I, R>(
         &mut self,
         records: I,
@@ -823,7 +799,6 @@ pub trait IOMedia: Send {
 }
 
 /// Remove settings that narrow a read before computing whole-media dimensions.
-#[cfg(feature = "arrow")]
 fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<RecordOptions> {
     use crate::media::IORecordOptions;
 
@@ -836,7 +811,6 @@ fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<RecordOptions> {
 }
 
 /// Add one metadata row count without allowing an aggregate to wrap.
-#[cfg(feature = "arrow")]
 fn add_rows(total: u64, rows: u64) -> Result<u64> {
     total
         .checked_add(rows)
@@ -876,7 +850,6 @@ fn parquet_leaf<M: IOMedia + ?Sized>(media: &M) -> Result<&dyn IOBase> {
 /// Use this inside an `impl IOMedia for Type` block when record operations
 /// should run on the value itself rather than being forwarded to an inner
 /// handle.
-#[cfg(feature = "arrow")]
 #[macro_export]
 macro_rules! impl_default_iomedia {
     () => {
@@ -898,23 +871,7 @@ macro_rules! impl_default_iomedia {
     };
 }
 
-/// Schema-only form of [`impl_default_iomedia!`].
-#[cfg(not(feature = "arrow"))]
-#[macro_export]
-macro_rules! impl_default_iomedia {
-    () => {
-        fn as_io_base(&self) -> &dyn $crate::IOBase {
-            self
-        }
-
-        fn as_io_base_mut(&mut self) -> &mut dyn $crate::IOBase {
-            self
-        }
-    };
-}
-
 /// Feature-selected media forwarding bodies used by [`delegate_iomedia!`].
-#[cfg(feature = "arrow")]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __delegate_iomedia_arrow {
@@ -1048,30 +1005,20 @@ macro_rules! __delegate_iomedia_arrow {
     };
 }
 
-/// Schema-only media forwarding bodies.
-#[cfg(not(feature = "arrow"))]
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __delegate_iomedia_arrow {
-    ($handle:ident) => {};
-}
-
 /// Parquet-selected media forwarding bodies used by [`delegate_iomedia!`].
 #[cfg(feature = "parquet")]
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __delegate_iomedia_parquet {
     ($handle:ident) => {
-        fn read_parquet_statistics(
-            &self,
-        ) -> $crate::Result<$crate::media::parquet::FileStatistics> {
+        fn read_parquet_statistics(&self) -> $crate::Result<$crate::parquet::FileStatistics> {
             $crate::IOMedia::read_parquet_statistics(&self.$handle)
         }
 
         fn read_parquet_geospatial_statistics(
             &self,
             column: &str,
-        ) -> $crate::Result<$crate::media::parquet::GeospatialStatistics> {
+        ) -> $crate::Result<$crate::parquet::GeospatialStatistics> {
             $crate::IOMedia::read_parquet_geospatial_statistics(&self.$handle, column)
         }
     };

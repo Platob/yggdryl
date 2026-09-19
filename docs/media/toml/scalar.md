@@ -19,7 +19,7 @@ Rust `from_utf8`, `from_bytes`, `from_reader` decode one document; `into_utf8`, 
 === "Rust"
 
     ```rust
-    use yggdryl::text::toml;
+    use yggdryl::toml;
 
     let value = toml::from_utf8("id = 1\n")?;
     let mut destination = Vec::new();
@@ -79,7 +79,7 @@ Rust `from_utf8`, `from_bytes`, `from_reader` decode one document; `into_utf8`, 
 
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --test text toml::
-    cargo test --features "parquet iceberg" -p yggdryl --lib text::toml::
+    cargo test --features "parquet iceberg" -p yggdryl --lib toml::
     cargo bench -p yggdryl --bench text -- codec/toml
     ```
 

@@ -504,15 +504,14 @@ fn clearing_and_removing_drop_the_cache_before_they_reach_the_handle() {
     assert_eq!(handle.cached_pages(), 0);
 }
 
-#[cfg(feature = "arrow")]
 #[test]
 fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
-    use yggdryl::media::text::TextOptions;
+    use yggdryl::text::TextOptions;
 
     // A located leaf, because that is the case the projection gets wrong: it
     // reopens a handle's *location*, which for a coding view holds the
     // compressed form rather than the bytes the view presents.
-    let root = yggdryl::holder::local::Folder::temporary()
+    let root = yggdryl::local::Folder::temporary()
         .unwrap()
         .path()
         .unwrap()
@@ -525,7 +524,7 @@ fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
     std::fs::create_dir_all(&root).unwrap();
     let path = root.join("app.log.gz");
     let plain = b"2024-02-01T10:00:00 [INFO] alpha\n2024-02-01T10:00:01 [WARN] beta\n";
-    std::fs::write(&path, yggdryl::coding::gzip::dump(plain).unwrap()).unwrap();
+    std::fs::write(&path, yggdryl::gzip::dump(plain).unwrap()).unwrap();
 
     let options: yggdryl::media::RecordOptions = TextOptions::new()
         .try_with_rowheader(r"^(?<stamp>\S+) \[(?<level>[A-Z]+)\]")
@@ -536,7 +535,7 @@ fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
     };
     let coded = || {
         yggdryl::coding::Coding::new(
-            yggdryl::holder::local::File::new(&path).unwrap(),
+            yggdryl::local::File::new(&path).unwrap(),
             yggdryl::Codec::Gzip,
         )
     };
@@ -544,13 +543,13 @@ fn a_cache_over_a_coding_view_projects_the_decoded_bytes() {
     // Four ways to the same two records. The last is the one that read the
     // gzip header as text before the cache learned to defer.
     let plain_file = rows(
-        yggdryl::holder::local::File::new(&path)
+        yggdryl::local::File::new(&path)
             .unwrap()
             .read_arrow_reader(&options)
             .unwrap(),
     );
     let cached_file = rows(
-        yggdryl::holder::local::File::new(&path)
+        yggdryl::local::File::new(&path)
             .unwrap()
             .buffered(BufferedOptions::default())
             .read_arrow_reader(&options)

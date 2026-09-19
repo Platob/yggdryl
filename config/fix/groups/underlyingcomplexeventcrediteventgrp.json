@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingcomplexeventcreditevent"
+        "FIX:component": "underlyingcomplexeventcreditevent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingcomplexeventcreditevent",
+    "FIX:counter": "41716",
+    "FIX:tag": "953408",
     "description": "Required if NoUnderlyingComplexEventCreditEvents(41716) > 0.",
-    "display": "UnderlyingComplexEventCreditEventGrp",
-    "fix:component": "underlyingcomplexeventcreditevent",
-    "fix:counter": "41716",
-    "fix:tag": "953408"
+    "display": "UnderlyingComplexEventCreditEventGrp"
   }
 }

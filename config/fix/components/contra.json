@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contrabroker",
-          "fix:tag": "375"
+          "FIX:field": "contrabroker",
+          "FIX:tag": "375"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contratrader",
-          "fix:tag": "337"
+          "FIX:field": "contratrader",
+          "FIX:tag": "337"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contratradeqty",
-          "fix:tag": "437"
+          "FIX:field": "contratradeqty",
+          "FIX:tag": "437"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contratradetime",
-          "fix:tag": "438"
+          "FIX:field": "contratradetime",
+          "FIX:tag": "438"
         }
       },
       {
@@ -54,15 +54,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contralegrefid",
-          "fix:tag": "655"
+          "FIX:field": "contralegrefid",
+          "FIX:tag": "655"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "Contra",
-    "fix:tag": "531526"
+    "FIX:tag": "531526",
+    "display": "Contra"
   }
 }

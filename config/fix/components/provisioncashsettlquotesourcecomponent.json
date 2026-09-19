@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisioncashsettlquotesource",
-          "fix:tag": "40112"
+          "FIX:field": "provisioncashsettlquotesource",
+          "FIX:tag": "40112"
         }
       },
       {
@@ -21,16 +21,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisioncashsettlquotereferencepage",
-          "fix:tag": "41406"
+          "FIX:field": "provisioncashsettlquotereferencepage",
+          "FIX:tag": "41406"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "556638",
     "description": "The ProvisionCashSettlQuoteSource is a subcomponent of the ProvisionGrp component used to specify the reference source for currency or rate quote for cash settlement purposes.",
-    "display": "ProvisionCashSettlQuoteSource",
-    "fix:tag": "556638"
+    "display": "ProvisionCashSettlQuoteSource"
   }
 }

@@ -60,11 +60,11 @@ PROTOCOL_FIELD = Field(
     "float64",
     nullable=False,
     metadata={
-        "iceberg:doc": "closing price",
-        "iceberg:field-id": "7",
-        "iceberg:schema-id": "3",
-        "postgres:column": "close",
-        "postgres:type": "numeric(18,6)",
+        "ICEBERG:doc": "closing price",
+        "ICEBERG:field-id": "7",
+        "ICEBERG:schema-id": "3",
+        "POSTGRES:column": "close",
+        "POSTGRES:type": "numeric(18,6)",
         "venue": "XPAR",
     },
 )
@@ -160,8 +160,9 @@ def _build_fixed_ascii_field() -> Field:
 
 
 def _build_string_datatype() -> DataType:
-    # The general constructor: a layout, a charset, and a bound read once.
-    return DataType.string("large_string", "windows-1252", 32)
+    # The general constructor: a spelling, a charset, and a bound read once
+    # into one leaf - sized_cp1252(32).
+    return DataType.string("string", "windows-1252", 32)
 
 
 def _build_string_field() -> Field:
@@ -291,7 +292,7 @@ def _read_through_get_property() -> object:
 
 
 def _read_through_metadata_key() -> object:
-    return PROTOCOL_FIELD.metadata["iceberg:doc"]
+    return PROTOCOL_FIELD.metadata["ICEBERG:doc"]
 
 
 def _protocol_view_items() -> object:
@@ -365,7 +366,7 @@ def _write_python_class_metadata() -> None:
 
 CURRENCY = DataType("currency")
 CURRENCIES = StringEnum.from_logical_name("currency")
-LATIN = DataType.string("large_string", "windows-1252", 32)
+LATIN = DataType.string("string", "windows-1252", 32)
 BOUNDED_BYTES = DataType.bytes("binary", 16)
 
 

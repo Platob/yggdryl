@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliverystreamcommoditysource",
-          "fix:tag": "41809"
+          "FIX:field": "underlyingdeliverystreamcommoditysource",
+          "FIX:tag": "41809"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingDeliveryStreamCommoditySource",
-    "fix:tag": "236280"
+    "FIX:tag": "236280",
+    "display": "UnderlyingDeliveryStreamCommoditySource"
   }
 }

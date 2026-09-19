@@ -78,7 +78,7 @@ Totals are checked before allocation and cover validity bitmaps, offsets, union 
 
     ```rust
     use yggdryl::arrow::{scalar_array, scalar_value};
-    use yggdryl::{DataType, Field, Scalar, UnionMode};
+    use yggdryl::{DataType, Field, Scalar, StructureType, UnionMode};
 
     // One logical null, one million and one mandatory physical child slots.
     let items = Field::new(
@@ -92,10 +92,10 @@ Totals are checked before allocation and cover validity bitmaps, offsets, union 
     assert!(message.contains("got 1000001"), "{message}");
 
     // Fixed width is counted across siblings, not per column.
-    let wide = DataType::from_fields([
-        Field::new("left", DataType::fixed_size_binary(40 * 1024 * 1024)?, false),
-        Field::new("right", DataType::fixed_size_binary(40 * 1024 * 1024)?, false),
-    ])?;
+    let wide = DataType::from(StructureType::from_fields([
+        Field::new("left", DataType::fixed_binary(40 * 1024 * 1024)?, false),
+        Field::new("right", DataType::fixed_binary(40 * 1024 * 1024)?, false),
+    ])?);
     let message = scalar_array(&Field::new("wide", wide, true), &Scalar::Null)
         .unwrap_err()
         .to_string();
@@ -110,7 +110,7 @@ Totals are checked before allocation and cover validity bitmaps, offsets, union 
                 1,
                 Field::new(
                     "inactive",
-                    DataType::fixed_size_binary(64 * 1024 * 1024 + 1)?,
+                    DataType::fixed_binary(64 * 1024 * 1024 + 1)?,
                     false,
                 ),
             ),
@@ -138,9 +138,8 @@ The same accounting runs behind `ArrowCast`; see [Cast](../types/cast.md).
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib arrow::value::
-    cargo test --features "parquet iceberg" -p yggdryl --lib types::typed::tests::arrow::
-    cargo test --features "parquet iceberg" -p yggdryl --test types value_bounds::
+    cargo test --features "parquet iceberg" -p yggdryl --test arrow -- scalars:: arrow_scalar::
+    cargo test --features "parquet iceberg" -p yggdryl --test types -- typed::arrow value_bounds::
     ```
 
 === "Python"

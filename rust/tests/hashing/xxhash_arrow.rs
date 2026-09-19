@@ -8,19 +8,22 @@ use arrow_array::{
 };
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 
-use yggdryl::hashing::xxhash::arrow::{column_digests, row_digests};
-use yggdryl::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use yggdryl::{DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::xxhash::arrow::{column_digests, row_digests};
+use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
+use yggdryl::{
+    DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, StructureType, TimeUnit, Timezone,
+};
+use yggdryl::{DateTimeType, DurationType};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    DataType::from_fields(fields).unwrap().required_field("row")
+    DataType::from(StructureType::from_fields(fields).unwrap()).required_field("row")
 }
 
 fn batch(fields: &[Field], columns: Vec<ArrayRef>) -> RecordBatch {
     let fields = fields
         .iter()
         .cloned()
-        .map(Field::into_arrow)
+        .map(Field::into_arrow_field)
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap()
@@ -199,55 +202,70 @@ fn columns() -> Vec<(Field, Scalar)> {
                 Scalar::Null,
             ]),
         ),
-        // The five string layouts, each declaring something Arrow cannot:
-        // a charset, a width, or which view layout it is.
+        // The fifteen string leaves beside the three above, each declaring
+        // something Arrow cannot: a charset, a width, a maximum, or which
+        // view width it is.
         (
-            Field::new(
-                "string",
-                DataType::from_str("string(windows-1252)").unwrap(),
-                true,
-            ),
-            Scalar::from_sequence([Scalar::from("Grüße"), Scalar::from("AAPL"), Scalar::Null]),
+            Field::new("large_utf8_view", DataType::large_utf8_view(), true),
+            Scalar::from_sequence([Scalar::from("a short one"), Scalar::Null]),
         ),
         (
-            Field::new(
-                "fixed_string",
-                DataType::from_str("fixedstring(windows-1252,8)").unwrap(),
-                true,
-            ),
+            Field::new("fixed_utf8", DataType::fixed_utf8(8).unwrap(), true),
             Scalar::from_sequence([Scalar::from("café"), Scalar::Null]),
         ),
         (
-            Field::new(
-                "string_view",
-                DataType::from_str("utf8view(32)").unwrap(),
-                true,
-            ),
+            Field::new("sized_utf8", DataType::sized_utf8(32).unwrap(), true),
+            // A maximum is the column's rule; the digest reads the payload
+            // the plain leaf underneath it holds.
             Scalar::from_sequence([Scalar::from("a short one"), Scalar::Null]),
-        ),
-        (
-            Field::new(
-                "large_string",
-                DataType::from_str("largestring(iso-8859-15)").unwrap(),
-                true,
-            ),
-            Scalar::from_sequence([Scalar::from("20 €"), Scalar::Null]),
-        ),
-        (
-            Field::new(
-                "large_string_view",
-                DataType::from_str("largeutf8view").unwrap(),
-                true,
-            ),
-            Scalar::from_sequence([Scalar::from("a short one"), Scalar::Null]),
-        ),
-        (
-            Field::new("fixed_ascii(4)", DataType::fixed_ascii(4).unwrap(), true),
-            Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from("F"), Scalar::Null]),
         ),
         (
             Field::new("ascii", DataType::ascii(), true),
             Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(""), Scalar::Null]),
+        ),
+        (
+            Field::new("large_ascii", DataType::large_ascii(), true),
+            Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]),
+        ),
+        (
+            Field::new("ascii_view", DataType::ascii_view(), true),
+            Scalar::from_sequence([Scalar::from("a short one"), Scalar::Null]),
+        ),
+        (
+            Field::new("large_ascii_view", DataType::large_ascii_view(), true),
+            Scalar::from_sequence([Scalar::from("a short one"), Scalar::Null]),
+        ),
+        (
+            Field::new("fixed_ascii", DataType::fixed_ascii(4).unwrap(), true),
+            Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from("F"), Scalar::Null]),
+        ),
+        (
+            Field::new("sized_ascii", DataType::sized_ascii(8).unwrap(), true),
+            Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(""), Scalar::Null]),
+        ),
+        (
+            Field::new("cp1252", DataType::cp1252(), true),
+            Scalar::from_sequence([Scalar::from("Grüße"), Scalar::from("AAPL"), Scalar::Null]),
+        ),
+        (
+            Field::new("large_cp1252", DataType::large_cp1252(), true),
+            Scalar::from_sequence([Scalar::from("20 €"), Scalar::Null]),
+        ),
+        (
+            Field::new("cp1252_view", DataType::cp1252_view(), true),
+            Scalar::from_sequence([Scalar::from("Grüße"), Scalar::Null]),
+        ),
+        (
+            Field::new("large_cp1252_view", DataType::large_cp1252_view(), true),
+            Scalar::from_sequence([Scalar::from("Grüße"), Scalar::Null]),
+        ),
+        (
+            Field::new("fixed_cp1252", DataType::fixed_cp1252(8).unwrap(), true),
+            Scalar::from_sequence([Scalar::from("café"), Scalar::Null]),
+        ),
+        (
+            Field::new("sized_cp1252", DataType::sized_cp1252(32).unwrap(), true),
+            Scalar::from_sequence([Scalar::from("Grüße"), Scalar::from(""), Scalar::Null]),
         ),
         (
             Field::new("country", DataType::Country, true),
@@ -304,7 +322,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new("uuid", DataType::Uuid, true),
             Scalar::from_sequence([
-                DataType::Uuid
+                DataType::uuid()
                     .scalar("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
                     .unwrap(),
                 Scalar::Null,
@@ -319,10 +337,18 @@ fn columns() -> Vec<(Field, Scalar)> {
             ]),
         ),
         (
-            Field::new("url", DataType::Url, true),
+            Field::new("url", DataType::url(), true),
             Scalar::from_sequence([
-                DataType::Url.scalar("https://example.com/a").unwrap(),
-                DataType::Url.scalar("file:///lake/part.txt").unwrap(),
+                DataType::url().scalar("https://example.com/a").unwrap(),
+                DataType::url().scalar("file:///lake/part.txt").unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new("urn", DataType::urn(), true),
+            Scalar::from_sequence([
+                DataType::urn().scalar("urn:isbn:0451450523").unwrap(),
+                DataType::urn().scalar("URN:example:a%20b").unwrap(),
                 Scalar::Null,
             ]),
         ),
@@ -371,20 +397,20 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "fixed_size_binary",
-                DataType::fixed_size_binary(4).unwrap(),
+                DataType::fixed_binary(4).unwrap(),
                 true,
             ),
             Scalar::from_sequence([Scalar::from(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
         ),
         (
-            Field::new("date32", DataType::Date32, true),
+            Field::new("date32", DataType::date32(), true),
             Scalar::from_sequence([
                 Scalar::date32_in(20_000, TimeUnit::Day, Timezone::NAIVE).unwrap(),
                 Scalar::Null,
             ]),
         ),
         (
-            Field::new("date64", DataType::Date64, true),
+            Field::new("date64", DataType::date64(), true),
             Scalar::from_sequence([
                 Scalar::date64_in(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
                 Scalar::Null,
@@ -433,10 +459,10 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "timestamp_utc",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Microsecond,
                     timezone: utc,
-                },
+                }),
                 true,
             ),
             Scalar::from_sequence([
@@ -447,10 +473,10 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "timestamp_naive",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Nanosecond,
                     timezone: Timezone::NAIVE,
-                },
+                }),
                 true,
             ),
             Scalar::from_sequence([
@@ -461,10 +487,10 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "timestamp_second",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Second,
                     timezone: utc,
-                },
+                }),
                 true,
             ),
             Scalar::from_sequence([
@@ -475,10 +501,10 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "timestamp_millisecond_offset",
-                DataType::DateTime64 {
+                DataType::DateTime(DateTimeType::DateTime64 {
                     unit: TimeUnit::Millisecond,
                     timezone: offset,
-                },
+                }),
                 true,
             ),
             Scalar::from_sequence([
@@ -487,7 +513,11 @@ fn columns() -> Vec<(Field, Scalar)> {
             ]),
         ),
         (
-            Field::new("duration64", DataType::Duration64(TimeUnit::Second), true),
+            Field::new(
+                "duration64",
+                DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
+                true,
+            ),
             Scalar::from_sequence([
                 Scalar::duration64_in(90, TimeUnit::Second, Timezone::NAIVE).unwrap(),
                 Scalar::Null,
@@ -496,7 +526,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "duration64_millisecond",
-                DataType::Duration64(TimeUnit::Millisecond),
+                DataType::Duration(DurationType::Duration64(TimeUnit::Millisecond)),
                 true,
             ),
             Scalar::from_sequence([
@@ -507,7 +537,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "duration64_microsecond",
-                DataType::Duration64(TimeUnit::Microsecond),
+                DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
                 true,
             ),
             Scalar::from_sequence([
@@ -518,7 +548,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "duration64_nanosecond",
-                DataType::Duration64(TimeUnit::Nanosecond),
+                DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
                 true,
             ),
             Scalar::from_sequence([
@@ -540,25 +570,23 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "interval_year_month",
-                DataType::Interval(TimeUnit::YearMonth),
+                DataType::interval(TimeUnit::YearMonth).unwrap(),
                 true,
             ),
             Scalar::from_sequence([
-                Scalar::Interval(
-                    yggdryl::types::Interval::new(14, 0, 0, TimeUnit::YearMonth).unwrap(),
-                ),
+                Scalar::Interval(yggdryl::Interval::new(14, 0, 0, TimeUnit::YearMonth).unwrap()),
                 Scalar::Null,
             ]),
         ),
         (
             Field::new(
                 "interval_day_time",
-                DataType::Interval(TimeUnit::DayTime),
+                DataType::interval(TimeUnit::DayTime).unwrap(),
                 true,
             ),
             Scalar::from_sequence([
                 Scalar::Interval(
-                    yggdryl::types::Interval::new(0, 3, 1_500_000_000, TimeUnit::DayTime).unwrap(),
+                    yggdryl::Interval::new(0, 3, 1_500_000_000, TimeUnit::DayTime).unwrap(),
                 ),
                 Scalar::Null,
             ]),
@@ -566,12 +594,12 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "interval_month_day_nano",
-                DataType::Interval(TimeUnit::MonthDayNano),
+                DataType::interval(TimeUnit::MonthDayNano).unwrap(),
                 true,
             ),
             Scalar::from_sequence([
                 Scalar::Interval(
-                    yggdryl::types::Interval::new(14, 3, 1_000, TimeUnit::MonthDayNano).unwrap(),
+                    yggdryl::Interval::new(14, 3, 1_000, TimeUnit::MonthDayNano).unwrap(),
                 ),
                 Scalar::Null,
             ]),
@@ -639,10 +667,11 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "struct",
-                DataType::from_fields([
+                StructureType::from_fields([
                     Field::new("symbol", DataType::utf8(), false),
                     Field::new("quantity", DataType::Int64, true),
                 ])
+                .map(DataType::from)
                 .unwrap(),
                 true,
             ),
@@ -661,6 +690,60 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([
                 Scalar::from_mapping([(Scalar::from("AAPL"), Scalar::from(100))]).unwrap(),
                 Scalar::from_mapping([]).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new("large_binary_view", DataType::large_binary_view(), true),
+            // Arrow has one view width where this crate declares two, so the
+            // two hash the same bytes out of the same array.
+            Scalar::from_sequence([
+                Scalar::from(&b"AAPL"[..]),
+                Scalar::from(&b""[..]),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new("sized_binary", DataType::sized_binary(8).unwrap(), true),
+            // A maximum is the column's rule; the digest reads the payload
+            // the plain binary underneath it holds.
+            Scalar::from_sequence([
+                Scalar::from(&b"AAPL"[..]),
+                Scalar::from(&b""[..]),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "sorted_map",
+                DataType::map_of(DataType::utf8(), DataType::Int64, true).unwrap(),
+                true,
+            ),
+            // The sorted leaf hashes its rows exactly as the unsorted one
+            // does: the promise is about key order within a row, and a digest
+            // reads the entries in the order the row stores them.
+            Scalar::from_sequence([
+                Scalar::from_mapping([
+                    (Scalar::from("AAPL"), Scalar::from(100)),
+                    (Scalar::from("MSFT"), Scalar::from(200)),
+                ])
+                .unwrap(),
+                Scalar::from_mapping([]).unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new(
+                "struct2",
+                DataType::struct2(
+                    Field::new("key", DataType::utf8(), false),
+                    Field::new("value", DataType::Int64, true),
+                ),
+                true,
+            ),
+            Scalar::from_sequence([
+                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(100)]),
+                Scalar::from_sequence([Scalar::from("MSFT"), Scalar::Null]),
                 Scalar::Null,
             ]),
         ),
@@ -715,7 +798,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([
                 // A minimal little-endian WKB point.
                 Scalar::Geometry(
-                    yggdryl::types::Geometry::new([
+                    yggdryl::Geometry::new([
                         1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     ])
                     .unwrap(),
@@ -727,7 +810,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             Field::new("geography", DataType::from_str("geography").unwrap(), true),
             Scalar::from_sequence([
                 Scalar::Geography(
-                    yggdryl::types::Geography::new([
+                    yggdryl::Geography::new([
                         1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     ])
                     .unwrap(),
@@ -798,13 +881,13 @@ fn a_row_digest_equals_the_row_value_feed_on_every_datatype_family() {
         fields.push(field);
         arrays.push(array);
     }
-    let root = DataType::from_fields(fields).unwrap().required_field("row");
+    let root = DataType::from(StructureType::from_fields(fields).unwrap()).required_field("row");
     let arrow_fields: Vec<ArrowField> = root
         .dtype()
         .as_fields()
         .expect("a struct root")
         .iter()
-        .map(|field| field.clone().into_arrow())
+        .map(|field| field.clone().into_arrow_field())
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     let batch = RecordBatch::try_new(Arc::new(Schema::new(arrow_fields)), arrays).unwrap();
@@ -831,10 +914,8 @@ fn the_corpus_names_every_datatype_a_column_can_hold() {
     // The corpus is the contract the two tests above check, so it has to name
     // every datatype rather than a selection of them: a family absent here is
     // a family whose buffer arm and fallback were never compared.
-    let covered: std::collections::HashSet<DataTypeId> = columns()
-        .iter()
-        .map(|(field, _)| field.dtype().id())
-        .collect();
+    let covered: std::collections::HashSet<DataTypeId> =
+        columns().iter().map(|(field, _)| field.id()).collect();
     let missing: Vec<&str> = DataTypeId::ALL
         .into_iter()
         .filter(|id| {
@@ -860,7 +941,7 @@ fn a_variant_column_refuses_by_name_rather_than_hashing_its_storage() {
     // other column; it answers the boundary's refusal rather than silently
     // hashing the two binaries its storage happens to lay out.
     let field = DataType::Variant.nullable_field("payload");
-    let arrow = field.clone().into_arrow().unwrap();
+    let arrow = field.clone().into_arrow_field().unwrap();
     let ArrowDataType::Struct(children) = arrow.data_type().clone() else {
         panic!("a variant lays out as the canonical metadata-and-value struct");
     };
@@ -938,10 +1019,11 @@ fn a_column_digest_reconciles_the_array_to_the_field_it_is_given() {
         ],
         None,
     ));
-    let declared = DataType::from_fields([
+    let declared = StructureType::from_fields([
         DataType::Int64.required_field("a"),
         DataType::Int64.required_field("b"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("pair");
     assert_eq!(
@@ -961,7 +1043,7 @@ fn a_column_digest_still_refuses_what_no_cast_can_reconcile() {
     // completes with: a value the declaration cannot hold is named, because a
     // null is a value here and two unconvertible cells must not become one.
     let array: ArrayRef = Arc::new(StringArray::from(vec!["AAPL", "MSFT"]));
-    let field = Field::new("when", DataType::Date32, false);
+    let field = Field::new("when", DataType::date32(), false);
     let error =
         column_digests(array, &field, DigestAlgorithm::Xxh3).expect_err("a symbol is not a date");
     assert!(
@@ -1016,7 +1098,7 @@ fn row_digest_roles_exclude_holders_and_nothing_else_narrows_the_input() {
         Arc::new(Schema::new(vec![
             ArrowField::new("symbol", ArrowDataType::Utf8, false),
             ArrowField::new("quantity", ArrowDataType::Int64, false),
-            holder.into_arrow().unwrap(),
+            holder.into_arrow_field().unwrap(),
         ])),
         vec![
             Arc::clone(&symbol),
@@ -1040,7 +1122,7 @@ fn rows_with_only_digest_holders_hash_as_empty_sequences() {
     let mut holder = Field::new("row_digest", DataType::Int64, false);
     holder.as_digest_mut().set_holder().unwrap();
     let batch = RecordBatch::try_new(
-        Arc::new(Schema::new(vec![holder.into_arrow().unwrap()])),
+        Arc::new(Schema::new(vec![holder.into_arrow_field().unwrap()])),
         vec![Arc::new(Int64Array::from(vec![11, 22]))],
     )
     .unwrap();
@@ -1249,7 +1331,8 @@ fn holder_sources_are_ordered_and_preserve_explicit_empty() {
 fn nested_holders_fill_bottom_up_and_hidden_rows_stay_untouched() {
     let inner_value = DataType::Int64.required_field("value");
     let inner_digest = holder("digest", DataType::Int64);
-    let nested = DataType::from_fields([inner_value, inner_digest])
+    let nested = StructureType::from_fields([inner_value, inner_digest])
+        .map(DataType::from)
         .unwrap()
         .nullable_field("nested");
     let outer_digest = holder("digest", DataType::UInt64);
@@ -1395,7 +1478,7 @@ fn mixed_holder_widths_resolve_algorithms_per_holder() {
         .as_digest_mut()
         .set_algorithm(DigestAlgorithm::Xxh3)
         .unwrap();
-    let h128 = holder("h128", DataType::fixed_size_binary(16).unwrap());
+    let h128 = holder("h128", DataType::fixed_binary(16).unwrap());
     let root = root([value.clone(), h32, h64, explicit, h128]);
     let source = batch(
         std::slice::from_ref(&value),
@@ -1483,10 +1566,11 @@ fn a_holder_under_a_collection_is_refused_rather_than_left_unfilled() {
     // planned by nobody and left at its default, and a containing holder would
     // then hash that default as though it were an answer - so the schema is
     // refused where the declaration is.
-    let element = DataType::from_fields([
+    let element = StructureType::from_fields([
         DataType::Int64.nullable_field("value"),
         holder("inner_digest", DataType::UInt64),
     ])
+    .map(DataType::from)
     .unwrap();
     let item = element.clone().required_field("item");
 
@@ -1520,17 +1604,19 @@ fn a_holder_under_a_collection_is_refused_rather_than_left_unfilled() {
 
 #[test]
 fn digest_metadata_under_a_collection_is_refused_with_the_same_reach() {
-    // The same reach decides the metadata-ownership rules: `digest:sources` on
+    // The same reach decides the metadata-ownership rules: `DIGEST:sources` on
     // a field that is not a holder is refused at the top level, so it cannot
     // be accepted one layout down.
     let source = Field::from_parts(
         "value",
         DataType::Int64,
         true,
-        [("digest:sources", "[\"other\"]")],
+        [("DIGEST:sources", "[\"other\"]")],
     )
     .unwrap();
-    let element = DataType::from_fields([source, DataType::Int64.nullable_field("other")]).unwrap();
+    let element = DataType::from(
+        StructureType::from_fields([source, DataType::Int64.nullable_field("other")]).unwrap(),
+    );
     let root = root([
         DataType::list(element.required_field("item")).nullable_field("events"),
         holder("row_digest", DataType::UInt64),
@@ -1567,32 +1653,32 @@ fn invalid_holder_algorithms_and_metadata_ownership_are_rejected() {
         "digest",
         DataType::UInt32,
         false,
-        [("digest:role", "holder"), ("digest:algorithm", "xxh3-64")],
+        [("DIGEST:role", "holder"), ("DIGEST:algorithm", "xxh3-64")],
     )
     .unwrap();
     let error = Xxh3::new()
         .apply_arrow_batch(&root([wrong_width]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:algorithm", "$.digest");
+    assert_metadata_error(error, "DIGEST:algorithm", "$.digest");
 
     let non_holder_algorithm = Field::from_parts(
         "value",
         DataType::UInt64,
         false,
-        [("digest:algorithm", "xxh3-64")],
+        [("DIGEST:algorithm", "xxh3-64")],
     )
     .unwrap();
     let error = Xxh3::new()
         .apply_arrow_batch(&root([non_holder_algorithm]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:algorithm", "$.value");
+    assert_metadata_error(error, "DIGEST:algorithm", "$.value");
 
     let non_holder_paths =
-        Field::from_parts("value", DataType::UInt64, false, [("digest:sources", "[]")]).unwrap();
+        Field::from_parts("value", DataType::UInt64, false, [("DIGEST:sources", "[]")]).unwrap();
     let error = Xxh3::new()
         .apply_arrow_batch(&root([non_holder_paths]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:sources", "$.value");
+    assert_metadata_error(error, "DIGEST:sources", "$.value");
 
     let non_struct_root = DataType::Int64.required_field("value");
     let error = Xxh3::new()
@@ -1615,11 +1701,12 @@ fn digest_sources_reject_peer_outputs_ambiguity_duplicates_and_collection_descen
     let error = Xxh3::new()
         .apply_arrow_batch(&root([peer, selecting_peer]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:sources", "$.digest");
+    assert_metadata_error(error, "DIGEST:sources", "$.digest");
 
     let nested_value = DataType::Int64.required_field("value");
     let nested_holder = holder("digest", DataType::UInt64);
-    let nested = DataType::from_fields([nested_value, nested_holder])
+    let nested = StructureType::from_fields([nested_value, nested_holder])
+        .map(DataType::from)
         .unwrap()
         .required_field("nested");
     let mut duplicate = holder("digest", DataType::UInt64);
@@ -1630,12 +1717,13 @@ fn digest_sources_reject_peer_outputs_ambiguity_duplicates_and_collection_descen
     let error = Xxh3::new()
         .apply_arrow_batch(&root([nested.clone(), duplicate]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:sources", "$.digest");
+    assert_metadata_error(error, "DIGEST:sources", "$.digest");
 
-    let nested = DataType::from_fields([
+    let nested = StructureType::from_fields([
         holder("left", DataType::UInt64),
         holder("right", DataType::UInt64),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("nested");
     let mut ambiguous = holder("digest", DataType::UInt64);
@@ -1643,7 +1731,7 @@ fn digest_sources_reject_peer_outputs_ambiguity_duplicates_and_collection_descen
     let error = Xxh3::new()
         .apply_arrow_batch(&root([nested, ambiguous]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:sources", "$.digest");
+    assert_metadata_error(error, "DIGEST:sources", "$.digest");
 
     let items = DataType::from_str("array<struct<value:int64>>")
         .unwrap()
@@ -1656,13 +1744,14 @@ fn digest_sources_reject_peer_outputs_ambiguity_duplicates_and_collection_descen
     let error = Xxh3::new()
         .apply_arrow_batch(&root([items, collection]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:sources", "$.digest");
+    assert_metadata_error(error, "DIGEST:sources", "$.digest");
 }
 
 #[test]
 fn digest_sources_try_later_literal_prefixes_and_allow_terminal_collections() {
     let scalar_prefix = DataType::Int64.required_field("a");
-    let dotted_prefix = DataType::from_fields([DataType::Int64.required_field("c")])
+    let dotted_prefix = StructureType::from_fields([DataType::Int64.required_field("c")])
+        .map(DataType::from)
         .unwrap()
         .required_field("a.b");
     let items = DataType::from_str("array<int64>")
@@ -1697,13 +1786,14 @@ fn digest_sources_try_later_literal_prefixes_and_allow_terminal_collections() {
 fn the_digest_view_answers_the_seedless_state_and_walks_nested_holders() {
     let inner_value = DataType::Int64.required_field("value");
     let inner_digest = holder("inner_digest", DataType::UInt64);
-    let nested = DataType::from_fields([inner_value.clone(), inner_digest])
+    let nested = StructureType::from_fields([inner_value.clone(), inner_digest])
+        .map(DataType::from)
         .unwrap()
         .required_field("nested");
     let root = root([nested, holder("row_digest", DataType::UInt64)]);
 
     let inner = StructArray::from(vec![(
-        Arc::new(inner_value.into_arrow().unwrap()),
+        Arc::new(inner_value.into_arrow_field().unwrap()),
         Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
     )]);
     let source = RecordBatch::try_from_iter([("nested", Arc::new(inner) as ArrayRef)]).unwrap();
@@ -1782,13 +1872,14 @@ fn a_nested_struct_holder_is_read_rather_than_recomputed() {
     // value instead of hashing the whole Struct a second time.
     let inner_value = DataType::Int64.required_field("value");
     let inner_digest = holder("inner_digest", DataType::UInt64);
-    let nested = DataType::from_fields([inner_value.clone(), inner_digest])
+    let nested = StructureType::from_fields([inner_value.clone(), inner_digest])
+        .map(DataType::from)
         .unwrap()
         .required_field("nested");
     let root = root([nested, holder("row_digest", DataType::UInt64)]);
 
     let inner = StructArray::from(vec![(
-        Arc::new(inner_value.into_arrow().unwrap()),
+        Arc::new(inner_value.into_arrow_field().unwrap()),
         Arc::new(Int64Array::from(vec![7])) as ArrayRef,
     )]);
     let source = RecordBatch::try_from_iter([("nested", Arc::new(inner) as ArrayRef)]).unwrap();

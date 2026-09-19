@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisioncashsettlpaymentdatebusinesscenter",
-          "fix:tag": "40517"
+          "FIX:field": "legprovisioncashsettlpaymentdatebusinesscenter",
+          "FIX:tag": "40517"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProvisionCashSettlPaymentDateBusinessCenter",
-    "fix:tag": "900997"
+    "FIX:tag": "900997",
+    "display": "LegProvisionCashSettlPaymentDateBusinessCenter"
   }
 }

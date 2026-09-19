@@ -8,16 +8,16 @@
 | --- | --- |
 | Owner | `yggdryl-cli` parses arguments and renders results; the Rust registry owns schema validation, references, mutations, and persistence |
 | Root | `--root`, default `config/fix`; relative locations resolve against the working directory; a folder holding no catalog opens with the crate's built-in definitions rather than failing |
-| Categories | `fields`, `components`, `groups`; a message is a component carrying `fix:msgtype` |
+| Categories | `fields`, `components`, `groups`; a message is a component carrying `FIX:msgtype` |
 | Operations | Every category supports `list`, `read`, `create`, `update`, and `delete` |
 | Writes | Successful one-shot mutations save automatically; an interactive session saves only with `save` |
 | Keys | A field key is a decimal tag or a name; a named category's key is its definition name. The registry is one namespace: a key resolves the same way whatever dictionaries a definition belongs to, and no key spells an identity |
-| Dialect | `--dialect NAME` stamps membership (`fix:branches`) on `ingest`, `sync`, `create`, and `update`; on `list` it is a filter; `read` and `delete` take none |
+| Dialect | `--dialect NAME` stamps membership (`FIX:branches`) on `ingest`, `sync`, `create`, and `update`; on `list` it is a filter; `read` and `delete` take none |
 | Create | Refuses an existing name or field identity |
 | Update | Replaces an existing definition completely, preserving identity; omitted metadata is removed |
 | Delete | Refuses absence and live references |
-| Enums | Scalar `fix:codes` metadata; `--codes` accepts its canonical JSON document |
-| Direction rules | Tag 385's `fix:directions` metadata; `--directions` accepts its canonical JSON document |
+| Enums | Scalar `FIX:codes` metadata; `--codes` accepts its canonical JSON document |
+| Direction rules | Tag 385's `FIX:directions` metadata; `--directions` accepts its canonical JSON document |
 | Identifiers | A component's direct scalar members; repeat `--identifiers` for names, aliases or decimal tags, resolved by the native setter into member order |
 | Output | Plain stable text when redirected; terminal styling only when supported and `NO_COLOR` is unset |
 | Workflow | `--annotate`, also enabled by `GITHUB_ACTIONS`, prints workflow findings; failed checks and refused commands exit nonzero |
@@ -34,7 +34,7 @@ ygg fix --root config/fix components read Party
 ygg fix --root config/fix components list Order
 ```
 
-`NoPartyIDs(453)` is an `int32` scalar; `Parties` is a separate List definition whose occurrence component is `Party`. Message reads show the native non-null Struct and its full `fix:msgtype` wire code.
+`NoPartyIDs(453)` is an `int32` scalar; `Parties` is a separate List definition whose occurrence component is `Party`. Message reads show the native non-null Struct and its full `FIX:msgtype` wire code.
 
 ## Install
 
@@ -57,7 +57,7 @@ maturin build --manifest-path python/Cargo.toml --out dist
 
 | Operation | Arguments and behavior |
 | --- | --- |
-| `<category> list [filter]` | Match name or decimal tag text, ignoring case; `--dialect NAME` keeps only definitions whose `fix:branches` names that dictionary; `--limit` defaults to 40 |
+| `<category> list [filter]` | Match name or decimal tag text, ignoring case; `--dialect NAME` keeps only definitions whose `FIX:branches` names that dictionary; `--limit` defaults to 40 |
 | `<category> read <key>` | Display one definition; `--json` emits a complete native `Field` document |
 | `<category> create <name> <type>` | Create from the native datatype grammar and metadata flags |
 | `<category> create --input <file>` | Create from one complete native `Field` JSON document |
@@ -77,8 +77,8 @@ A field key is a decimal tag or a name; named categories use their definition na
 | `--msgtype CODE` | Components; makes the component a message; full nonempty wire text, including spaces |
 | `--identifiers MEMBER` | Components; repeat for each direct scalar identifier. Canonical names, aliases and decimal tags resolve once; input order does not change member order |
 | `--codes JSON` | Scalar inline enum metadata |
-| `--directions JSON` | Tag 385's scalar; its [direction rules](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) as `fix:directions`, one entry per code of the set; an empty list removes the property so the crate's defaults read again |
-| `--dialect NAME` | Membership: a dictionary this definition belongs to, recorded in `fix:branches`; repeat the flag for several. Names are lowercased, deduplicated and sorted; an empty name or one carrying a comma is refused |
+| `--directions JSON` | Tag 385's scalar; its [direction rules](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) as `FIX:directions`, one entry per code of the set; an empty list removes the property so the crate's defaults read again |
+| `--dialect NAME` | Membership: a dictionary this definition belongs to, recorded in `FIX:branches`; repeat the flag for several. Names are lowercased, deduplicated and sorted; an empty name or one carrying a comma is refused |
 | `--description TEXT` | Definition metadata |
 | `--required` | Non-null definition; message roots are always non-null |
 
@@ -104,7 +104,7 @@ A datatype expression embeds its child definitions. To preserve explicit canonic
 Identifier selection follows the [component declaration](registry.md): missing,
 nested, ambiguous or duplicate members are refused atomically. Repeated flags
 replace the declaration as a whole, and a positional `update` without them
-removes it. `--input` takes the document's `fix:identifiers` instead and cannot
+removes it. `--input` takes the document's `FIX:identifiers` instead and cannot
 be combined with `--identifiers`.
 
 ## Review and update a complete definition
@@ -130,7 +130,7 @@ ygg fix --root scratch/catalog fields delete 453
 
 ## Ingest and sync
 
-`ingest` reads an Ullink CBlock into all three categories, replacing matching definitions by default; `--merge` uses the native metadata fold. `sync` always folds a catalog directory or `.cfb` file, and refuses other location types. Both take `--dialect NAME`: the dictionary name stamped into `fix:branches` on every field, group, component and message the file produces, standard tags included, because membership means "this dictionary speaks it".
+`ingest` reads an Ullink CBlock into all three categories, replacing matching definitions by default; `--merge` uses the native metadata fold. `sync` always folds a catalog directory or `.cfb` file, and refuses other location types. Both take `--dialect NAME`: the dictionary name stamped into `FIX:branches` on every field, group, component and message the file produces, standard tags included, because membership means "this dictionary speaks it".
 
 ```bash
 ygg fix --root scratch/catalog ingest cblocks/venue.cfb --dialect venue
@@ -177,7 +177,7 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 - `sync` of a location that is neither a folder nor a `.cfb` is refused, naming the location and the role it turned out to be; a location that does not exist yet is `unknown` and refused the same way.
 - `sync` of a `.cfb` whose stem does not read as a name - empty, or not opening with a letter - stamps no membership, exactly as [`FixField::from_cfb_file`](registry.md#folding-a-second-source-in) stamps none; a `--dialect` that is empty or carries a comma is refused before a byte is folded, on `ingest` and `sync` alike.
 - Two fields may hold one tag under two names; the bare tag answers the first holder, the store writes the holder first so it survives a reload, and a listing filtered on that tag shows both. Deleting the holder leaves the other alone on the tag.
-- `fix:branches` is written inside each field's document; the store keeps no manifest and no per-dialect folder, so a `--dialect` on `create` changes one shard and nothing else.
+- `FIX:branches` is written inside each field's document; the store keeps no manifest and no per-dialect folder, so a `--dialect` on `create` changes one shard and nothing else.
 - Every location this tool is given resolves against the working directory before it becomes a URL, so a bare relative name works wherever a path is taken.
 - Invalid inline enums or direction rules, unresolved references, a dialect name that cannot be a membership, and malformed native documents carry native located errors.
 - A registry mutation is atomic; persistence publishes separate documents and follows the backend's write semantics.

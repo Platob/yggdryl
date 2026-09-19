@@ -6,7 +6,7 @@
 //! `tests/expression/grammar.rs`.
 
 use crate::expression::Safety;
-use crate::{DataType, DataTypeId, Scalar, Version};
+use crate::{DataType, DataTypeId, Scalar, StructureType, Version};
 
 #[test]
 fn scalar_casts_return_the_exact_target_leaf() {
@@ -29,12 +29,12 @@ fn scalar_casts_return_the_exact_target_leaf() {
         (
             DataType::large_utf8(),
             Scalar::from("value"),
-            DataTypeId::LargeString,
+            DataTypeId::LargeUtf8String,
         ),
         (
             DataType::utf8_view(),
             Scalar::from("value"),
-            DataTypeId::StringView,
+            DataTypeId::Utf8StringView,
         ),
         (
             DataType::large_binary(),
@@ -49,7 +49,7 @@ fn scalar_casts_return_the_exact_target_leaf() {
         (
             DataType::fixed_ascii(4).unwrap(),
             Scalar::from("FIX"),
-            DataTypeId::FixedString,
+            DataTypeId::FixedAsciiString,
         ),
         (
             DataType::Currency,
@@ -92,7 +92,8 @@ fn versions_do_not_fall_through_text_or_numeric_expression_paths() {
         Some(std::cmp::Ordering::Less)
     );
 
-    let schema = DataType::from_fields([DataType::Version.required_field("v")])
+    let schema = StructureType::from_fields([DataType::Version.required_field("v")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let row = Scalar::from_sequence([patch2]);

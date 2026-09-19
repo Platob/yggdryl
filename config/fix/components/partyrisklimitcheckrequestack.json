@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitcheckrequestid",
-          "fix:tag": "2318"
+          "FIX:field": "risklimitcheckrequestid",
+          "FIX:tag": "2318"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitcheckid",
-          "fix:tag": "2319"
+          "FIX:field": "risklimitcheckid",
+          "FIX:tag": "2319"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "risklimitcheckrequeststatus",
-          "fix:tag": "2325"
+          "FIX:field": "risklimitcheckrequeststatus",
+          "FIX:tag": "2325"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitcheckrequestresult",
-          "fix:tag": "2326"
+          "FIX:field": "risklimitcheckrequestresult",
+          "FIX:tag": "2326"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "risklimitchecktranstype",
-          "fix:tag": "2320"
+          "FIX:field": "risklimitchecktranstype",
+          "FIX:tag": "2320"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "risklimitchecktype",
-          "fix:tag": "2321"
+          "FIX:field": "risklimitchecktype",
+          "FIX:tag": "2321"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitcheckrequestrefid",
-          "fix:tag": "2322"
+          "FIX:field": "risklimitcheckrequestrefid",
+          "FIX:tag": "2322"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext",
-          "fix:tag": "1328"
+          "FIX:field": "rejecttext",
+          "FIX:tag": "1328"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen",
-          "fix:tag": "1664"
+          "FIX:field": "encodedrejecttextlen",
+          "FIX:tag": "1664"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext",
-          "fix:tag": "1665"
+          "FIX:field": "encodedrejecttext",
+          "FIX:tag": "1665"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "reforderid",
-          "fix:tag": "1080"
+          "FIX:field": "reforderid",
+          "FIX:tag": "1080"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "reforderidsource",
-          "fix:tag": "1081"
+          "FIX:field": "reforderidsource",
+          "FIX:tag": "1081"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "side",
-          "fix:tag": "54"
+          "FIX:field": "side",
+          "FIX:tag": "54"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitapprovedamount",
-          "fix:tag": "2327"
+          "FIX:field": "risklimitapprovedamount",
+          "FIX:tag": "2327"
         }
       },
       {
@@ -174,8 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitcheckamount",
-          "fix:tag": "2324"
+          "FIX:field": "risklimitcheckamount",
+          "FIX:tag": "2324"
         }
       },
       {
@@ -185,8 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitid",
-          "fix:tag": "1670"
+          "FIX:field": "risklimitid",
+          "FIX:tag": "1670"
         }
       },
       {
@@ -196,8 +196,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency",
-          "fix:tag": "15"
+          "FIX:field": "currency",
+          "FIX:tag": "15"
         }
       },
       {
@@ -207,8 +207,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource",
-          "fix:tag": "2897"
+          "FIX:field": "currencycodesource",
+          "FIX:tag": "2897"
         }
       },
       {
@@ -218,8 +218,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "expiretime",
-          "fix:tag": "126"
+          "FIX:field": "expiretime",
+          "FIX:tag": "126"
         }
       },
       {
@@ -229,8 +229,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norequestingpartyids",
-          "fix:tag": "1657"
+          "FIX:field": "norequestingpartyids",
+          "FIX:tag": "1657"
         }
       },
       {
@@ -240,7 +240,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "requestingpartygrp"
+          "FIX:group": "requestingpartygrp"
         }
       },
       {
@@ -250,8 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -261,7 +261,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -271,8 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedpartydetailid",
-          "fix:tag": "1562"
+          "FIX:field": "norelatedpartydetailid",
+          "FIX:tag": "1562"
         }
       },
       {
@@ -282,7 +282,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "relatedpartydetailgrp"
+          "FIX:group": "relatedpartydetailgrp"
         }
       },
       {
@@ -292,7 +292,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -302,8 +302,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs",
-          "fix:tag": "555"
+          "FIX:field": "nolegs",
+          "FIX:tag": "555"
         }
       },
       {
@@ -313,7 +313,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legordgrp"
+          "FIX:group": "legordgrp"
         }
       },
       {
@@ -323,8 +323,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings",
-          "fix:tag": "711"
+          "FIX:field": "nounderlyings",
+          "FIX:tag": "711"
         }
       },
       {
@@ -334,7 +334,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "undinstrmtgrp"
+          "FIX:group": "undinstrmtgrp"
         }
       },
       {
@@ -344,8 +344,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -355,8 +355,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -366,8 +366,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -377,8 +377,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -388,17 +388,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "reforderid",
+    "FIX:msgtype": "DG",
+    "FIX:tag": "424918",
     "description": "MsgType = DG",
-    "display": "PartyRiskLimitCheckRequestAck",
-    "fix:identifiers": "reforderid",
-    "fix:msgtype": "DG",
-    "fix:tag": "424918"
+    "display": "PartyRiskLimitCheckRequestAck"
   }
 }

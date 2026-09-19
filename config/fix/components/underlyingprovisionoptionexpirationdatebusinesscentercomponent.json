@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprovisionoptionexpirationdatebusinesscenter",
-          "fix:tag": "42187"
+          "FIX:field": "underlyingprovisionoptionexpirationdatebusinesscenter",
+          "FIX:tag": "42187"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingProvisionOptionExpirationDateBusinessCenter",
-    "fix:tag": "191667"
+    "FIX:tag": "191667",
+    "display": "UnderlyingProvisionOptionExpirationDateBusinessCenter"
   }
 }

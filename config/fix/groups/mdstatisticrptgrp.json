@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "mdstatisticrpt"
+        "FIX:component": "mdstatisticrpt"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "mdstatisticrpt",
+    "FIX:counter": "2474",
+    "FIX:tag": "312190",
     "description": "Required if NoMDStatistics(2474) > 0.",
-    "display": "MDStatisticRptGrp",
-    "fix:component": "mdstatisticrpt",
-    "fix:counter": "2474",
-    "fix:tag": "312190"
+    "display": "MDStatisticRptGrp"
   }
 }

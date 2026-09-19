@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsuiteparametername",
-          "fix:tag": "3127"
+          "FIX:field": "testsuiteparametername",
+          "FIX:tag": "3127"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsuiteparametertype",
-          "fix:tag": "3128"
+          "FIX:field": "testsuiteparametertype",
+          "FIX:tag": "3128"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsuiteparametervalue",
-          "fix:tag": "3129"
+          "FIX:field": "testsuiteparametervalue",
+          "FIX:tag": "3129"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TestSuiteParameter",
-    "fix:tag": "714131"
+    "FIX:tag": "714131",
+    "display": "TestSuiteParameter"
   }
 }

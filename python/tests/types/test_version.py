@@ -10,6 +10,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, Scalar, Version, enums, field, scalar, types
+from yggdryl.arrow import ArrowScalar
 from yggdryl.text import json
 
 
@@ -37,13 +38,25 @@ def test_native_parts_and_canonical_numeric_text(text, parts, canonical):
 
 @pytest.mark.parametrize(
     "text",
-    ["", ".1", " 1", "-1", "+1", "v1", "256", "999", "1.256", "1.999", "FIX.5.0"],
+    [".1", " 1", "-1", "+1", "v1", "256", "999", "1.256", "1.999", "FIX.5.0"],
 )
 def test_only_the_numeric_components_fail_at_the_native_parser(text):
     with pytest.raises(ValueError, match="version"):
         Version.from_str(text)
     with pytest.raises(ValueError, match="version"):
         DataType("version").scalar(text)
+
+
+def test_the_empty_text_is_no_version_but_reads_as_null_at_the_datatype():
+    # A `Version` is a value, so its own parser refuses the empty text; the
+    # datatype door reads an empty text cell entering a non-text column as
+    # absence, and a required field is what refuses that.
+    with pytest.raises(ValueError, match="version"):
+        Version.from_str("")
+    assert DataType("version").scalar("").is_null()
+    assert Field("release", "version").scalar("").is_null()
+    with pytest.raises(ValueError, match="non-nullable field received null"):
+        Field("release", "version", nullable=False).scalar("")
 
 
 @pytest.mark.parametrize(
@@ -144,7 +157,7 @@ def test_arrow_keeps_string_storage_and_declared_field_restores_version():
     scalar = Scalar.from_(Version(5, 0, 300))
     assert scalar.into_arrow_scalar(field).as_py() == "5.0.300"
     batch = pa.record_batch([array], schema=pa.schema([arrow_field]))
-    native = Scalar.from_arrow_batch(batch)
+    native = ArrowScalar.from_(batch).into_scalar()
     assert [row[0].as_py() for row in native] == [Version(5, 0, 300), Version(5), Version(255, 255, 65535)]
 
 
@@ -152,22 +165,31 @@ def test_retired_msgtype_datatype_is_absent_and_url_keeps_its_new_index():
     assert not hasattr(types, "msgtype")
     assert not hasattr(types, "MsgTypeField")
     assert "msgtype" not in enums.DATA_TYPE_IDS
-    # Sixty-six: `msgdirection` was retired (discriminant 58, never reused),
-    # so `url` keeps its byte 59 and sits one index earlier; `timezone`,
-    # `mimetype` and `mediatype` were appended after it, then `cusip` and
-    # `sedol` as code datatypes of their own, and
-    # `bloomberg` was appended after them - the one code whose width is only a
-    # bound, because a ticker, a market and a yellow key have no fixed length
-    # between them.
+    # Eighty-six: `msgdirection` was retired (discriminant 58, never
+    # reused), so `url` keeps its byte 59 and sits one index earlier;
+    # `timezone`, `mimetype` and `mediatype` were appended after it, then
+    # `cusip` and `sedol` as code datatypes of their own, and `bloomberg`
+    # after them - the one code whose width is only a bound, because a
+    # ticker, a market and a yellow key have no fixed length between them.
+    # The families appended the rest: three versioned uuid leaves (69-71,
+    # retired when uuid became one datatype again, never reused), then
+    # `large_binary_view` and `sized_binary` when the byte family became six
+    # real leaves, then the thirteen string leaves - `sized_utf8`, the six
+    # US-ASCII ones and the six windows-1252 ones - when the string family
+    # became eighteen; the five UTF-8 leaves kept the slots of the layouts
+    # they replaced - and `urn` last, the name beside the `url` location. An
+    # identifier is a wire contract, so nothing ever moves.
     assert "msgdirection" not in enums.DATA_TYPE_IDS
-    assert len(enums.DATA_TYPE_IDS) == 66
+    assert len(enums.DATA_TYPE_IDS) == 84
     assert enums.DATA_TYPE_IDS.index("url") == 58
+    assert enums.DATA_TYPE_IDS.index("urn") == 83
+    assert enums.DATA_TYPE_IDS.index("sized_utf8") == 70
     assert list(enums.DATA_TYPE_IDS[-5:]) == [
-        "mimetype",
-        "mediatype",
-        "cusip",
-        "sedol",
-        "bloomberg",
+        "cp1252_view",
+        "large_cp1252_view",
+        "fixed_cp1252",
+        "sized_cp1252",
+        "urn",
     ]
     with pytest.raises(ValueError):
         DataType("msgtype")

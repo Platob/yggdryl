@@ -2,9 +2,10 @@ use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
+use yggdryl::TimeType;
 use yggdryl::{
     DataType, DigestAlgorithm, Error, Field, MediaType, Metadata, MimeType, PythonKind,
-    PythonMetadata, Scheme, TimeUnit, Url,
+    PythonMetadata, Scheme, StructureType, TimeUnit, Url,
 };
 
 #[test]
@@ -52,7 +53,7 @@ fn parser_accepts_flexible_sql_whitespace_and_doubled_quotes() {
 
     let single_quoted = Field::from_str("'owner''s code'   VARCHAR(32)").unwrap();
     assert_eq!(single_quoted.name(), "owner's code");
-    assert_eq!(single_quoted.dtype().to_string(), "utf8(32)");
+    assert_eq!(single_quoted.dtype().to_string(), "sized_utf8(32)");
 
     let double_quoted = Field::from_str(r#""desk""label" STRING"#).unwrap();
     assert_eq!(double_quoted.name(), "desk\"label");
@@ -181,18 +182,21 @@ fn borrowed_and_consuming_arrow_paths_are_lossless() {
         r#"field("items",array<struct<id:bigint,name:string>>,nullable=false,metadata={"source":"test"})"#,
     )
     .unwrap();
-    let first = Arc::new(field.clone().into_arrow().unwrap());
-    let field = Field::from_arrow_ref(Arc::clone(&first)).unwrap();
-    let second = field.clone().into_arrow_ref().unwrap();
+    let first = Arc::new(field.clone().into_arrow_field().unwrap());
+    let field = Field::from_arrow_field_ref(Arc::clone(&first)).unwrap();
+    let second = field.clone().into_arrow_field_ref().unwrap();
     assert!(Arc::ptr_eq(&first, &second));
-    assert_eq!(Field::from_arrow(first.as_ref()).unwrap(), field);
+    assert_eq!(Field::from_arrow_field(first.as_ref()).unwrap(), field);
 
-    let owned = field.clone().into_arrow().unwrap();
+    let owned = field.clone().into_arrow_field().unwrap();
     assert_eq!(Field::try_from(owned).unwrap(), field);
-    let shared = field.clone().into_arrow_ref().unwrap();
-    let imported = Field::from_arrow_ref(Arc::clone(&shared)).unwrap();
+    let shared = field.clone().into_arrow_field_ref().unwrap();
+    let imported = Field::from_arrow_field_ref(Arc::clone(&shared)).unwrap();
     assert_eq!(imported, field);
-    assert!(Arc::ptr_eq(&shared, &imported.into_arrow_ref().unwrap()));
+    assert!(Arc::ptr_eq(
+        &shared,
+        &imported.into_arrow_field_ref().unwrap()
+    ));
 }
 
 #[test]
@@ -208,18 +212,18 @@ fn arrow_dictionary_options_survive_parsing_and_cache_invalidation() {
         41,
         true,
     );
-    let mut field = Field::from_arrow(&arrow).unwrap();
+    let mut field = Field::from_arrow_field(&arrow).unwrap();
 
     assert_eq!(field.dictionary_id(), Some(41));
     assert_eq!(field.dictionary_is_ordered(), Some(true));
     assert_eq!(Field::from_str(&field.to_string()).unwrap(), field);
     assert_eq!(Field::from_str(&arrow.to_string()).unwrap(), field);
 
-    let nested = DataType::from_fields([field.clone()]).unwrap();
+    let nested = DataType::from(StructureType::from_fields([field.clone()]).unwrap());
     assert_eq!(DataType::from_str(&nested.to_string()).unwrap(), nested);
     let mut different_field = field.clone();
     different_field.set_dictionary_options(42, false).unwrap();
-    let different = DataType::from_fields([different_field]).unwrap();
+    let different = DataType::from(StructureType::from_fields([different_field]).unwrap());
     assert_ne!(nested, different);
     assert_ne!(nested.cmp(&different), std::cmp::Ordering::Equal);
 
@@ -228,9 +232,9 @@ fn arrow_dictionary_options_survive_parsing_and_cache_invalidation() {
     assert_eq!(json["dictionary_id"], "41");
     assert_eq!(Field::from_json(&json.to_string()).unwrap(), field);
 
-    let cached = field.clone().into_arrow_ref().unwrap();
+    let cached = field.clone().into_arrow_field_ref().unwrap();
     field.set_name("renamed_codes");
-    let rebuilt = field.clone().into_arrow_ref().unwrap();
+    let rebuilt = field.clone().into_arrow_field_ref().unwrap();
     assert!(!Arc::ptr_eq(&cached, &rebuilt));
     assert_eq!(rebuilt.dict_id(), Some(41));
     assert_eq!(rebuilt.dict_is_ordered(), Some(true));
@@ -241,16 +245,16 @@ fn no_op_metadata_update_retains_arrow_cache_effective_update_invalidates_it() {
     let field = Field::new("id", DataType::Int64, false)
         .try_with_metadata("source", "one")
         .unwrap();
-    let original = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&original)).unwrap();
+    let original = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&original)).unwrap();
     field.insert_metadata("source", "one").unwrap();
     assert!(Arc::ptr_eq(
         &original,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     field.insert_metadata("source", "two").unwrap();
-    let changed = field.clone().into_arrow_ref().unwrap();
+    let changed = field.clone().into_arrow_field_ref().unwrap();
     assert!(!Arc::ptr_eq(&original, &changed));
 }
 
@@ -259,7 +263,7 @@ fn invalid_dtype_replacement_is_transactional() {
     let mut field = Field::new("value", DataType::utf8(), true);
     assert!(
         field
-            .set_dtype(DataType::Time32(TimeUnit::Nanosecond))
+            .set_dtype(DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)))
             .is_err()
     );
     assert_eq!(field.dtype(), &DataType::utf8());
@@ -287,8 +291,8 @@ fn metadata_is_a_deterministic_shared_native_value() {
     );
     assert_eq!(metadata.stable_hash(), metadata.clone().stable_hash());
 
-    let arrow = metadata.clone().into_arrow();
-    assert_eq!(Metadata::from_arrow(&arrow).unwrap(), metadata);
+    let arrow = metadata.clone().into_arrow_metadata();
+    assert_eq!(Metadata::from_arrow_metadata(&arrow).unwrap(), metadata);
 }
 
 #[test]
@@ -346,8 +350,8 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
         Some(("ddl", "CREATE TABLE trades"))
     );
 
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     field.set_alias("latest_trade").unwrap();
     field
         .set_property(&Scheme::POSTGRES, "ddl", "CREATE TABLE trades")
@@ -355,7 +359,7 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
     field.set_location(location);
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     field.clear_properties(&Scheme::POSTGRES);
@@ -366,7 +370,7 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
     );
     assert!(!Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     assert_eq!(field.remove_alias().as_deref(), Some("latest_trade"));
@@ -396,10 +400,10 @@ fn http_metadata_is_canonical_typed_and_cache_aware() {
     assert_eq!(field.as_http().content_length().unwrap(), Some(42));
     assert_eq!(field.as_http().etag(), Some("\"revision-1\""));
     assert_eq!(field.get_metadata("HTTP:CONTENT-LENGTH"), Some("42"));
-    assert_eq!(field.get_metadata("http:content-length"), Some("42"));
+    assert_eq!(field.get_metadata("HTTP:content-length"), Some("42"));
 
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     field
         .as_http_mut()
         .set_content_type("text/plain; charset=utf-8")
@@ -407,7 +411,7 @@ fn http_metadata_is_canonical_typed_and_cache_aware() {
     field.as_http_mut().set_content_length(42);
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     field
@@ -417,12 +421,12 @@ fn http_metadata_is_canonical_typed_and_cache_aware() {
     assert_eq!(field.as_http().cache_control(), Some("public, max-age=60"));
     assert!(!Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     let unchanged = field.clone();
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     assert!(
         field
             .as_http_mut()
@@ -432,7 +436,7 @@ fn http_metadata_is_canonical_typed_and_cache_aware() {
     assert_eq!(field, unchanged);
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     assert_eq!(
@@ -451,20 +455,20 @@ fn http_case_collisions_and_typed_location_are_transactional() {
     let mut field = Field::new("payload", DataType::binary(), false);
     field.as_http_mut().set_accept("application/json").unwrap();
     let snapshot = field.clone();
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     assert!(
         field
             .set_metadata([
                 ("HTTP:Accept", "application/json"),
-                ("http:accept", "text/csv"),
+                ("HTTP:accept", "text/csv"),
             ])
             .is_err()
     );
     assert_eq!(field, snapshot);
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     field
@@ -472,7 +476,7 @@ fn http_case_collisions_and_typed_location_are_transactional() {
         .unwrap();
     assert!(field.as_http().location().is_err());
     assert_eq!(
-        field.get_metadata("http:location"),
+        field.get_metadata("HTTP:location"),
         Some("../relative/resource")
     );
     let before_remove = field.clone();
@@ -515,8 +519,8 @@ fn https_properties_share_the_canonical_http_namespace() {
         [("content-type", "application/json")]
     );
 
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     let snapshot = field.clone();
     assert!(
         field
@@ -526,7 +530,7 @@ fn https_properties_share_the_canonical_http_namespace() {
     assert_eq!(field, snapshot);
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     assert_eq!(
@@ -620,12 +624,12 @@ fn typed_http_media_pair_updates_once_and_rejects_unmappable_encodings() {
     );
     assert_eq!(field.as_http().media_type().unwrap(), media);
 
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     field.as_http_mut().set_media_type(media).unwrap();
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     let unsupported = MediaType::from_parts(MimeType::JSON, [MimeType::BZIP2]).unwrap();
@@ -634,7 +638,7 @@ fn typed_http_media_pair_updates_once_and_rejects_unmappable_encodings() {
     assert_eq!(field, unchanged);
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     field.as_http_mut().set_mime_type(MimeType::JSON);
@@ -667,27 +671,27 @@ fn malformed_typed_http_media_removal_is_transactional() {
         DataType::binary(),
         false,
         [
-            ("http:content-type", "application/json; charset=utf-8"),
-            ("http:content-encoding", "identity"),
+            ("HTTP:content-type", "application/json; charset=utf-8"),
+            ("HTTP:content-encoding", "identity"),
         ],
     )
     .unwrap();
     let snapshot = field.clone();
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     assert!(field.as_http().media_type().is_err());
     assert!(field.as_http_mut().remove_media_type().is_err());
     assert_eq!(field, snapshot);
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     let duplicate = Field::from_parts(
         "duplicate",
         DataType::binary(),
         false,
-        [("http:content-encoding", " gzip ,\tGZIP ")],
+        [("HTTP:content-encoding", " gzip ,\tGZIP ")],
     )
     .unwrap();
     assert_eq!(
@@ -704,7 +708,7 @@ fn malformed_typed_http_media_removal_is_transactional() {
             "invalid",
             DataType::binary(),
             false,
-            [("http:content-encoding", coding)],
+            [("HTTP:content-encoding", coding)],
         )
         .unwrap();
         assert_eq!(raw.as_http().content_encoding(), Some(coding));
@@ -722,9 +726,9 @@ fn typed_field_id_uses_canonical_arrow_parquet_metadata() {
             std::collections::HashMap::from([("PARQUET:field_id".to_owned(), "+00017".to_owned())]),
         ),
     );
-    let imported = Field::from_arrow_ref(Arc::clone(&imported_arrow)).unwrap();
+    let imported = Field::from_arrow_field_ref(Arc::clone(&imported_arrow)).unwrap();
     assert_eq!(imported.parquet_field_id().unwrap(), Some(17));
-    let canonical_arrow = imported.into_arrow_ref().unwrap();
+    let canonical_arrow = imported.into_arrow_field_ref().unwrap();
     assert!(!Arc::ptr_eq(&imported_arrow, &canonical_arrow));
     assert_eq!(
         canonical_arrow
@@ -734,7 +738,7 @@ fn typed_field_id_uses_canonical_arrow_parquet_metadata() {
         Some("17")
     );
     assert_eq!(
-        Field::from_arrow(canonical_arrow.as_ref())
+        Field::from_arrow_field(canonical_arrow.as_ref())
             .unwrap()
             .parquet_field_id()
             .unwrap(),
@@ -751,24 +755,24 @@ fn typed_field_id_uses_canonical_arrow_parquet_metadata() {
     assert_eq!(field.parquet_field_id().unwrap(), Some(17));
     assert_eq!(field.get_metadata("PARQUET:field_id"), Some("17"));
 
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     field.set_parquet_field_id(17);
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     field.set_parquet_field_id(i32::MIN);
     assert_eq!(field.parquet_field_id().unwrap(), Some(i32::MIN));
     assert!(!Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
     assert_eq!(
         field
             .clone()
-            .into_arrow_ref()
+            .into_arrow_field_ref()
             .unwrap()
             .metadata()
             .get("PARQUET:field_id")
@@ -799,7 +803,7 @@ fn typed_field_id_rejects_non_i32_metadata_transactionally() {
         );
     }
     assert!(Metadata::from_json(r#"{"PARQUET:field_id":"2147483648"}"#).is_err());
-    let metadata = Metadata::from_arrow(&std::collections::HashMap::from([(
+    let metadata = Metadata::from_arrow_metadata(&std::collections::HashMap::from([(
         "PARQUET:field_id".to_owned(),
         "-0007".to_owned(),
     )]))
@@ -827,7 +831,7 @@ fn typed_field_id_rejects_non_i32_metadata_transactionally() {
             "not-an-integer".to_owned(),
         )]),
     );
-    assert!(Field::from_arrow(&arrow).is_err());
+    assert!(Field::from_arrow_field(&arrow).is_err());
 }
 
 #[test]
@@ -857,7 +861,7 @@ fn reserved_metadata_is_transactional_and_arbitrary_arrow_keys_are_preserved() {
     let arrow = ArrowField::new("id", ArrowDataType::Int64, false).with_metadata(
         std::collections::HashMap::from([("location".to_owned(), "invalid".to_owned())]),
     );
-    assert!(Field::from_arrow(&arrow).is_err());
+    assert!(Field::from_arrow_field(&arrow).is_err());
 }
 
 #[test]
@@ -870,13 +874,13 @@ fn arrow_cache_is_rebuilt_when_typed_metadata_is_canonicalized() {
             )]),
         ),
     );
-    let field = Field::from_arrow_ref(Arc::clone(&arrow)).unwrap();
+    let field = Field::from_arrow_field_ref(Arc::clone(&arrow)).unwrap();
     assert_eq!(
         field.location().unwrap().map(|url| url.to_string()),
         Some("https://example.com/table".to_owned())
     );
 
-    let projected = field.into_arrow_ref().unwrap();
+    let projected = field.into_arrow_field_ref().unwrap();
     assert!(!Arc::ptr_eq(&arrow, &projected));
     assert_eq!(
         projected.metadata().get("location").map(String::as_str),
@@ -910,8 +914,8 @@ fn nested_location(field: &ArrowField) -> Option<&str> {
 #[test]
 fn borrowed_arrow_import_rebuilds_parent_for_nested_canonicalization() {
     let arrow = arrow_field_with_nested_noncanonical_location();
-    let field = Field::from_arrow(&arrow).unwrap();
-    let projected = field.into_arrow().unwrap();
+    let field = Field::from_arrow_field(&arrow).unwrap();
+    let projected = field.into_arrow_field().unwrap();
 
     assert_eq!(nested_location(&arrow), Some("HTTPS://example.com/table"));
     assert_eq!(
@@ -923,8 +927,8 @@ fn borrowed_arrow_import_rebuilds_parent_for_nested_canonicalization() {
 #[test]
 fn shared_arrow_import_rebuilds_parent_for_nested_canonicalization() {
     let arrow = Arc::new(arrow_field_with_nested_noncanonical_location());
-    let field = Field::from_arrow_ref(Arc::clone(&arrow)).unwrap();
-    let projected = field.into_arrow_ref().unwrap();
+    let field = Field::from_arrow_field_ref(Arc::clone(&arrow)).unwrap();
+    let projected = field.into_arrow_field_ref().unwrap();
 
     assert!(!Arc::ptr_eq(&arrow, &projected));
     assert_eq!(
@@ -932,17 +936,17 @@ fn shared_arrow_import_rebuilds_parent_for_nested_canonicalization() {
         Some("https://example.com/table")
     );
 
-    let canonical = Field::from_arrow_ref(Arc::clone(&projected)).unwrap();
+    let canonical = Field::from_arrow_field_ref(Arc::clone(&projected)).unwrap();
     assert!(Arc::ptr_eq(
         &projected,
-        &canonical.into_arrow_ref().unwrap()
+        &canonical.into_arrow_field_ref().unwrap()
     ));
 }
 
 #[test]
 fn owned_arrow_import_rebuilds_parent_for_nested_canonicalization() {
     let field = Field::try_from(arrow_field_with_nested_noncanonical_location()).unwrap();
-    let projected = field.into_arrow().unwrap();
+    let projected = field.into_arrow_field().unwrap();
 
     assert_eq!(
         nested_location(&projected),
@@ -954,7 +958,7 @@ fn owned_arrow_import_rebuilds_parent_for_nested_canonicalization() {
 fn field_parser_validates_typed_metadata_and_round_trips_protocol_values() {
     for invalid in [
         r#"field("id",int64,nullable=false,metadata={"alias":""})"#,
-        r#"field("id",int64,nullable=false,metadata={"postgres:":"value"})"#,
+        r#"field("id",int64,nullable=false,metadata={"POSTGRES:":"value"})"#,
         r#"field("id",int64,nullable=false,metadata={"location":"invalid"})"#,
     ] {
         assert!(
@@ -970,7 +974,7 @@ fn field_parser_validates_typed_metadata_and_round_trips_protocol_values() {
     }
 
     let field = Field::from_str(
-        r#"field("id",int64,nullable=false,metadata={"postgres:comment":"line one\nline two","postgres:empty":""})"#,
+        r#"field("id",int64,nullable=false,metadata={"POSTGRES:comment":"line one\nline two","POSTGRES:empty":""})"#,
     )
     .unwrap();
     assert_eq!(
@@ -987,17 +991,17 @@ fn the_init_flag_defaults_to_true_and_stores_only_when_false() {
 
     // An ordinary field participates in initialization and carries no key.
     assert!(field.is_init().unwrap());
-    assert!(!field.has_metadata("field:init"));
+    assert!(!field.has_metadata("FIELD:init"));
 
     // Marking it derived stores exactly one canonical value.
     field.set_init(false);
     assert!(!field.is_init().unwrap());
-    assert_eq!(field.get_metadata("field:init"), Some("false"));
+    assert_eq!(field.get_metadata("FIELD:init"), Some("false"));
 
     // Restoring the default removes the key rather than storing `true`.
     field.set_init(true);
     assert!(field.is_init().unwrap());
-    assert!(!field.has_metadata("field:init"));
+    assert!(!field.has_metadata("FIELD:init"));
 
     // The consuming form mirrors the setter.
     let derived = Field::new("total", DataType::Int64, true).with_init(false);
@@ -1006,7 +1010,7 @@ fn the_init_flag_defaults_to_true_and_stores_only_when_false() {
 
 #[test]
 fn the_init_flag_rejects_a_non_boolean_spelling() {
-    let error = Field::from_parts("total", DataType::Int64, true, [("field:init", "yes")])
+    let error = Field::from_parts("total", DataType::Int64, true, [("FIELD:init", "yes")])
         .unwrap_err()
         .to_string();
     assert!(error.contains("expected true or false"), "{error}");
@@ -1015,7 +1019,7 @@ fn the_init_flag_rejects_a_non_boolean_spelling() {
     // The canonical spellings are accepted and round-trip.
     for (text, expected) in [("true", true), ("false", false)] {
         let field =
-            Field::from_parts("total", DataType::Int64, true, [("field:init", text)]).unwrap();
+            Field::from_parts("total", DataType::Int64, true, [("FIELD:init", text)]).unwrap();
         assert_eq!(field.is_init().unwrap(), expected, "{text}");
     }
 }
@@ -1042,10 +1046,11 @@ fn datatype_builds_fields_in_schema_reading_order() {
 
 #[test]
 fn a_struct_field_is_usable_as_a_schema_root() {
-    let root = DataType::from_fields([
+    let root = StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
 
@@ -1070,7 +1075,8 @@ fn a_root_must_be_a_non_null_struct_and_says_why() {
     assert!(message.contains("expected a struct root"), "{message}");
     assert!(message.contains("int64"), "{message}");
 
-    let nullable = DataType::from_fields([DataType::Int64.required_field("id")])
+    let nullable = StructureType::from_fields([DataType::Int64.required_field("id")])
+        .map(DataType::from)
         .unwrap()
         .nullable_field("row");
     let message = nullable.validate_struct_root().unwrap_err().to_string();
@@ -1167,11 +1173,11 @@ fn a_protocol_view_reads_and_writes_by_bare_name_over_one_shared_map() {
     field.as_postgres_mut().insert("comment", "trades").unwrap();
 
     // The view spells the key once, so a caller never assembles one.
-    assert_eq!(field.as_iceberg().key("doc"), "iceberg:doc");
-    assert_eq!(field.as_iceberg().prefix(), "iceberg");
+    assert_eq!(field.as_iceberg().key("doc"), "ICEBERG:doc");
+    assert_eq!(field.as_iceberg().prefix(), "ICEBERG");
     assert_eq!(field.as_iceberg().scheme(), &Scheme::ICEBERG);
     assert_eq!(field.as_iceberg().get("doc"), Some("closing price"));
-    assert_eq!(field.get_metadata("iceberg:doc"), Some("closing price"));
+    assert_eq!(field.get_metadata("ICEBERG:doc"), Some("closing price"));
     assert_eq!(&field.as_iceberg()["schema-id"], "3");
     assert!(field.as_iceberg().contains_key("field-id"));
     assert!(!field.as_iceberg().contains_key("comment"));
@@ -1240,15 +1246,15 @@ fn identity_and_partition_views_hold_independent_generic_metadata() {
         field.as_partition().iter().collect::<Vec<_>>(),
         [("null", "last"), ("transform", "year")]
     );
-    assert_eq!(field.get_metadata("identity:source"), Some("exchange"));
-    assert_eq!(field.get_metadata("partition:transform"), Some("year"));
-    // `identity:` stays inert text; the two typed `partition:` properties do
+    assert_eq!(field.get_metadata("IDENTITY:source"), Some("exchange"));
+    assert_eq!(field.get_metadata("PARTITION:transform"), Some("year"));
+    // `IDENTITY:` stays inert text; the two typed `PARTITION:` properties do
     // not, and a dialect alias resolves to the one name the grammar owns.
     field
         .as_partition_mut()
         .insert("transform", "dayofmonth")
         .unwrap();
-    assert_eq!(field.get_metadata("partition:transform"), Some("day"));
+    assert_eq!(field.get_metadata("PARTITION:transform"), Some("day"));
     assert!(
         field
             .as_partition_mut()
@@ -1264,7 +1270,7 @@ fn identity_and_partition_views_hold_independent_generic_metadata() {
 
     // Protocol annotations do not replace the field-owned path-layout mark.
     assert!(!field.is_partition());
-    assert!(!field.has_metadata("field:partition"));
+    assert!(!field.has_metadata("FIELD:partition"));
 
     field.as_partition_mut().clear();
     assert!(field.as_partition().is_empty());
@@ -1275,8 +1281,8 @@ fn identity_and_partition_views_hold_independent_generic_metadata() {
     assert!(restored.as_partition().is_empty());
 
     let metadata = Metadata::from_entries([
-        ("identity:codec", "uuid"),
-        ("partition:sources", r#" [ "venue" ] "#),
+        ("IDENTITY:codec", "uuid"),
+        ("PARTITION:sources", r#" [ "venue" ] "#),
     ])
     .unwrap();
     assert_eq!(metadata.as_identity().get("codec"), Some("uuid"));
@@ -1295,28 +1301,28 @@ fn digest_view_owns_one_validated_exclusive_role_and_generic_metadata() {
         .unwrap();
     field.as_digest_mut().set_holder().unwrap();
     assert!(field.as_digest().is_holder());
-    assert_eq!(field.get_metadata("digest:role"), Some("holder"));
+    assert_eq!(field.get_metadata("DIGEST:role"), Some("holder"));
     assert_eq!(field.as_digest().get("note"), Some("materialized"));
 
     // `holder` is the only role: a digest states what a field holds, never
     // what another field contributes, which is named on the holder instead.
-    assert!(Metadata::from_entries([("digest:role", "component")]).is_err());
+    assert!(Metadata::from_entries([("DIGEST:role", "component")]).is_err());
 
     let snapshot = field.clone();
     let error = field.as_digest_mut().insert("role", "input").unwrap_err();
-    assert!(error.to_string().contains("digest:role"), "{error}");
+    assert!(error.to_string().contains("DIGEST:role"), "{error}");
     assert_eq!(
         field, snapshot,
         "a rejected role leaves the field unchanged"
     );
-    assert!(Metadata::from_entries([("digest:role", "output")]).is_err());
+    assert!(Metadata::from_entries([("DIGEST:role", "output")]).is_err());
 
-    let arrow = field.clone().into_arrow().unwrap();
-    let restored = Field::from_arrow(&arrow).unwrap();
+    let arrow = field.clone().into_arrow_field().unwrap();
+    let restored = Field::from_arrow_field(&arrow).unwrap();
     assert!(restored.as_digest().is_holder());
     assert_eq!(restored.as_digest().get("note"), Some("materialized"));
     let metadata =
-        Metadata::from_entries([("digest:role", "holder"), ("digest:note", "materialized")])
+        Metadata::from_entries([("DIGEST:role", "holder"), ("DIGEST:note", "materialized")])
             .unwrap();
     assert_eq!(metadata.as_digest().get("role"), Some("holder"));
     assert_eq!(metadata.as_digest().get("note"), Some("materialized"));
@@ -1332,12 +1338,12 @@ fn digest_view_owns_one_validated_exclusive_role_and_generic_metadata() {
 #[test]
 fn digest_holder_sources_are_canonical_ordered_and_role_owned() {
     let metadata = Metadata::from_entries([(
-        "digest:sources",
+        "DIGEST:sources",
         r#" [ "id", "line.price", "name,\"quoted\"", "\u6771\u4eac" ] "#,
     )])
     .unwrap();
     assert_eq!(
-        metadata.get("digest:sources"),
+        metadata.get("DIGEST:sources"),
         Some(r#"["id","line.price","name,\"quoted\"","東京"]"#)
     );
 
@@ -1347,7 +1353,7 @@ fn digest_holder_sources_are_canonical_ordered_and_role_owned() {
         .as_digest_mut()
         .set_sources(["id", "line.price"])
         .unwrap_err();
-    assert!(error.to_string().contains("digest:sources"), "{error}");
+    assert!(error.to_string().contains("DIGEST:sources"), "{error}");
     assert_eq!(holder, unchanged, "a non-holder source write is atomic");
 
     holder.as_digest_mut().set_holder().unwrap();
@@ -1365,7 +1371,7 @@ fn digest_holder_sources_are_canonical_ordered_and_role_owned() {
         ])
     );
 
-    let restored = Field::from_arrow(&holder.clone().into_arrow().unwrap()).unwrap();
+    let restored = Field::from_arrow_field(&holder.clone().into_arrow_field().unwrap()).unwrap();
     assert_eq!(restored, holder);
     assert_eq!(
         restored.as_digest().sources().unwrap(),
@@ -1375,12 +1381,12 @@ fn digest_holder_sources_are_canonical_ordered_and_role_owned() {
     let unchanged = holder.clone();
     for paths in [vec!["id", ""], vec!["id", "id"]] {
         let error = holder.as_digest_mut().set_sources(paths).unwrap_err();
-        assert!(error.to_string().contains("digest:sources"), "{error}");
+        assert!(error.to_string().contains("DIGEST:sources"), "{error}");
         assert_eq!(holder, unchanged, "a rejected source list is atomic");
     }
 
     let error = holder.as_digest_mut().remove_role().unwrap_err();
-    assert!(error.to_string().contains("digest:role"), "{error}");
+    assert!(error.to_string().contains("DIGEST:role"), "{error}");
     assert_eq!(holder, unchanged);
 
     assert_eq!(
@@ -1402,7 +1408,7 @@ fn digest_sources_preserve_explicit_empty_and_reject_every_invalid_shape() {
         .as_digest_mut()
         .set_sources(Vec::<&str>::new())
         .unwrap();
-    assert_eq!(holder.get_metadata("digest:sources"), Some("[]"));
+    assert_eq!(holder.get_metadata("DIGEST:sources"), Some("[]"));
     assert_eq!(holder.as_digest().sources().unwrap(), Some(Vec::new()));
 
     for value in [
@@ -1414,8 +1420,8 @@ fn digest_sources_preserve_explicit_empty_and_reject_every_invalid_shape() {
         r#"["id","id"]"#,
         "[",
     ] {
-        let error = Metadata::from_entries([("digest:sources", value)]).unwrap_err();
-        assert!(error.to_string().contains("digest:sources"), "{error}");
+        let error = Metadata::from_entries([("DIGEST:sources", value)]).unwrap_err();
+        assert!(error.to_string().contains("DIGEST:sources"), "{error}");
     }
 
     let unchanged = holder.clone();
@@ -1423,7 +1429,7 @@ fn digest_sources_preserve_explicit_empty_and_reject_every_invalid_shape() {
         .as_digest_mut()
         .insert("sources", r#"["id","id"]"#)
         .unwrap_err();
-    assert!(error.to_string().contains("digest:sources"), "{error}");
+    assert!(error.to_string().contains("DIGEST:sources"), "{error}");
     assert_eq!(
         holder, unchanged,
         "generic mutation uses the same validator"
@@ -1438,15 +1444,15 @@ fn digest_holder_algorithm_is_canonical_typed_and_role_owned() {
         (" xxh3 ", "xxh3-64", DigestAlgorithm::Xxh3),
         ("xxh128", "xxh3-128", DigestAlgorithm::Xxh128),
     ] {
-        let metadata = Metadata::from_entries([("digest:algorithm", input)]).unwrap();
-        assert_eq!(metadata.get("digest:algorithm"), Some(canonical));
+        let metadata = Metadata::from_entries([("DIGEST:algorithm", input)]).unwrap();
+        assert_eq!(metadata.get("DIGEST:algorithm"), Some(canonical));
 
         let field = Field::from_parts("digest", DataType::UInt64, false, metadata.iter()).unwrap();
         assert_eq!(field.as_digest().algorithm().unwrap(), Some(algorithm));
     }
     for invalid in ["", "xxh3-256", "sha256"] {
-        let error = Metadata::from_entries([("digest:algorithm", invalid)]).unwrap_err();
-        assert!(error.to_string().contains("digest:algorithm"), "{error}");
+        let error = Metadata::from_entries([("DIGEST:algorithm", invalid)]).unwrap_err();
+        assert!(error.to_string().contains("DIGEST:algorithm"), "{error}");
     }
 
     let mut holder = DataType::UInt64.required_field("row_digest");
@@ -1455,7 +1461,7 @@ fn digest_holder_algorithm_is_canonical_typed_and_role_owned() {
         .as_digest_mut()
         .set_algorithm(DigestAlgorithm::Xxh3)
         .unwrap_err();
-    assert!(error.to_string().contains("digest:algorithm"), "{error}");
+    assert!(error.to_string().contains("DIGEST:algorithm"), "{error}");
     assert_eq!(holder, unchanged, "a non-holder algorithm write is atomic");
 
     holder.as_digest_mut().set_holder().unwrap();
@@ -1474,7 +1480,7 @@ fn digest_holder_algorithm_is_canonical_typed_and_role_owned() {
         .as_digest_mut()
         .set_algorithm(DigestAlgorithm::Xxh3)
         .unwrap();
-    assert_eq!(holder.get_metadata("digest:algorithm"), Some("xxh3-64"));
+    assert_eq!(holder.get_metadata("DIGEST:algorithm"), Some("xxh3-64"));
     assert_eq!(
         holder.as_digest().algorithm().unwrap(),
         Some(DigestAlgorithm::Xxh3)
@@ -1482,7 +1488,7 @@ fn digest_holder_algorithm_is_canonical_typed_and_role_owned() {
 
     let unchanged = holder.clone();
     let error = holder.as_digest_mut().remove_role().unwrap_err();
-    assert!(error.to_string().contains("digest:role"), "{error}");
+    assert!(error.to_string().contains("DIGEST:role"), "{error}");
     assert_eq!(holder, unchanged);
 
     assert_eq!(
@@ -1495,7 +1501,7 @@ fn digest_holder_algorithm_is_canonical_typed_and_role_owned() {
         Some("holder")
     );
 
-    let mut wide = DataType::fixed_size_binary(16)
+    let mut wide = DataType::fixed_binary(16)
         .unwrap()
         .required_field("wide_digest");
     wide.as_digest_mut().set_holder().unwrap();
@@ -1526,9 +1532,11 @@ fn digest_field_selection_defaults_to_every_non_holder_then_honors_components() 
     let mut holder = DataType::UInt64.required_field("row_digest");
     holder.as_digest_mut().set_holder().unwrap();
 
-    let mut fallback = DataType::from_fields([symbol.clone(), holder.clone(), quantity.clone()])
-        .unwrap()
-        .required_field("row");
+    let mut fallback =
+        StructureType::from_fields([symbol.clone(), holder.clone(), quantity.clone()])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
     fallback.set_comment("trade row").unwrap();
     assert_eq!(
         fallback.digest_field_names().collect::<Vec<_>>(),
@@ -1549,7 +1557,8 @@ fn digest_field_selection_defaults_to_every_non_holder_then_honors_components() 
     // ordinary columns, and the default selection is still every non-holder.
     let mut narrowed = holder.clone();
     narrowed.as_digest_mut().set_sources(["quantity"]).unwrap();
-    let explicit = DataType::from_fields([symbol, narrowed.clone(), quantity])
+    let explicit = StructureType::from_fields([symbol, narrowed.clone(), quantity])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     assert_eq!(
@@ -1564,7 +1573,8 @@ fn digest_field_selection_defaults_to_every_non_holder_then_honors_components() 
 
     let mut other_holder = DataType::UInt32.required_field("narrow_digest");
     other_holder.as_digest_mut().set_holder().unwrap();
-    let holders = DataType::from_fields([holder, other_holder])
+    let holders = StructureType::from_fields([holder, other_holder])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     assert_eq!(holders.digest_field_len(), 0);
@@ -1585,14 +1595,14 @@ fn a_protocol_view_shares_http_between_the_two_schemes_and_stays_case_insensitiv
 
     assert_eq!(field.as_http().get("content-type"), Some("text/plain"));
     assert_eq!(field.as_http().get("CONTENT-TYPE"), Some("text/plain"));
-    assert_eq!(field.as_http().key("Content-Type"), "http:Content-Type");
+    assert_eq!(field.as_http().key("Content-Type"), "HTTP:Content-Type");
     assert_eq!(
         field.protocol(&Scheme::HTTPS).get("Content-Type"),
         Some("text/plain")
     );
-    assert_eq!(field.protocol(&Scheme::HTTPS).prefix(), "http");
+    assert_eq!(field.protocol(&Scheme::HTTPS).prefix(), "HTTP");
     assert_eq!(field.as_http().content_type(), Some("text/plain"));
-    assert_eq!(field.get_metadata("http:content-type"), Some("text/plain"));
+    assert_eq!(field.get_metadata("HTTP:content-type"), Some("text/plain"));
 
     // The view is a borrow of the field's own snapshot, not a copy of it.
     let metadata = field.as_metadata().clone();
@@ -1602,7 +1612,7 @@ fn a_protocol_view_shares_http_between_the_two_schemes_and_stays_case_insensitiv
             .as_http()
             .into_metadata()
             .unwrap()
-            .get("http:content-type"),
+            .get("HTTP:content-type"),
         Some("text/plain")
     );
 }
@@ -1610,27 +1620,27 @@ fn a_protocol_view_shares_http_between_the_two_schemes_and_stays_case_insensitiv
 #[test]
 fn a_protocol_write_invalidates_the_arrow_cache_exactly_once() {
     let field = DataType::Int64.required_field("price");
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     field.as_iceberg_mut().insert("doc", "close").unwrap();
     assert!(!Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
     field.as_iceberg_mut().insert("doc", "close").unwrap();
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     // A rejected value leaves the field, and its cache, untouched.
     assert!(field.as_iceberg_mut().insert("", "no name").is_err());
     assert!(Arc::ptr_eq(
         &cached,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
     assert_eq!(field.as_iceberg().len(), 1);
 }
@@ -1659,10 +1669,11 @@ fn a_typed_read_outlives_the_view_it_was_read_through() {
 
 #[test]
 fn indexing_a_view_reads_a_property_where_indexing_a_field_reads_a_child() {
-    let mut row = DataType::from_fields([
+    let mut row = StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     row.as_iceberg_mut().insert("doc", "one row").unwrap();
@@ -1688,39 +1699,39 @@ fn indexing_a_view_reads_a_property_where_indexing_a_field_reads_a_child() {
 fn a_typed_protocol_write_invalidates_a_populated_projection_exactly_once() {
     let media = MediaType::from_parts(MimeType::CSV, [MimeType::GZIP]).unwrap();
     let field = Field::new("payload", DataType::binary(), false);
-    let cached = Arc::new(field.clone().into_arrow().unwrap());
-    let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+    let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
 
     // The two-key media write is effective, so the projection it invalidated
     // is gone and the next ask rebuilds one.
     field.as_http_mut().set_media_type(media.clone()).unwrap();
-    let rebuilt = field.clone().into_arrow_ref().unwrap();
+    let rebuilt = field.clone().into_arrow_field_ref().unwrap();
     assert!(!Arc::ptr_eq(&cached, &rebuilt));
 
     // Once, though: the rebuilt projection survives writing the same value
     // again, so the invalidation belongs to the change and not to the call.
-    let mut field = Field::from_arrow_ref(Arc::clone(&rebuilt)).unwrap();
+    let mut field = Field::from_arrow_field_ref(Arc::clone(&rebuilt)).unwrap();
     field.as_http_mut().set_media_type(media.clone()).unwrap();
     field.as_http_mut().set_media_type(media).unwrap();
     assert!(Arc::ptr_eq(
         &rebuilt,
-        &field.clone().into_arrow_ref().unwrap()
+        &field.clone().into_arrow_field_ref().unwrap()
     ));
 
     #[cfg(feature = "iceberg")]
     {
         let field = DataType::Int64.required_field("price");
-        let cached = Arc::new(field.clone().into_arrow().unwrap());
-        let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
+        let cached = Arc::new(field.clone().into_arrow_field().unwrap());
+        let mut field = Field::from_arrow_field_ref(Arc::clone(&cached)).unwrap();
         field.as_iceberg_mut().set_doc("closing price").unwrap();
-        let rebuilt = field.clone().into_arrow_ref().unwrap();
+        let rebuilt = field.clone().into_arrow_field_ref().unwrap();
         assert!(!Arc::ptr_eq(&cached, &rebuilt));
 
-        let mut field = Field::from_arrow_ref(Arc::clone(&rebuilt)).unwrap();
+        let mut field = Field::from_arrow_field_ref(Arc::clone(&rebuilt)).unwrap();
         field.as_iceberg_mut().set_doc("closing price").unwrap();
         assert!(Arc::ptr_eq(
             &rebuilt,
-            &field.clone().into_arrow_ref().unwrap()
+            &field.clone().into_arrow_field_ref().unwrap()
         ));
         assert_eq!(field.as_iceberg().doc(), Some("closing price"));
     }
@@ -1728,11 +1739,12 @@ fn a_typed_protocol_write_invalidates_a_populated_projection_exactly_once() {
 
 #[test]
 fn a_field_can_act_as_a_partition_column_and_a_root_reports_only_those() {
-    let schema = DataType::from_fields([
+    let schema = StructureType::from_fields([
         DataType::Int32.required_field("year"),
         DataType::utf8().required_field("venue"),
         DataType::Int64.required_field("price"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
     .with_partition_fields(&["year", "venue"])
@@ -1777,7 +1789,7 @@ fn a_field_can_act_as_a_partition_column_and_a_root_reports_only_those() {
         schema
             .get_field_by_path("year")
             .unwrap()
-            .get_metadata("field:partition"),
+            .get_metadata("FIELD:partition"),
         Some("true")
     );
 }
@@ -1792,7 +1804,8 @@ fn unmarking_a_partition_column_removes_the_marker_rather_than_storing_a_default
     assert!(plain.without_partition_fields().is_err());
 
     // A field that never partitions anything answers the accessors anyway.
-    let root = DataType::from_fields([DataType::Int64.required_field("price")])
+    let root = StructureType::from_fields([DataType::Int64.required_field("price")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     assert!(!root.has_partition_fields());
@@ -1809,14 +1822,14 @@ fn unmarking_a_partition_column_removes_the_marker_rather_than_storing_a_default
 
     // Only the canonical booleans are accepted for the reserved marker.
     assert!(
-        Field::from_parts("year", DataType::Int32, false, [("field:partition", "yes")]).is_err()
+        Field::from_parts("year", DataType::Int32, false, [("FIELD:partition", "yes")]).is_err()
     );
     assert!(
         !Field::from_parts(
             "year",
             DataType::Int32,
             false,
-            [("field:partition", "false")]
+            [("FIELD:partition", "false")]
         )
         .unwrap()
         .is_partition()
@@ -1825,13 +1838,15 @@ fn unmarking_a_partition_column_removes_the_marker_rather_than_storing_a_default
 
 #[test]
 fn one_walk_numbers_finds_and_bounds_every_identifier_in_a_tree() {
-    let mut schema = DataType::from_fields([
+    let mut schema = StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::list(DataType::utf8().nullable_field("item")).nullable_field("tags"),
-        DataType::from_fields([DataType::Int32.required_field("depth")])
+        StructureType::from_fields([DataType::Int32.required_field("depth")])
+            .map(DataType::from)
             .unwrap()
             .nullable_field("book"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
 
@@ -1858,13 +1873,14 @@ fn one_walk_numbers_finds_and_bounds_every_identifier_in_a_tree() {
     let mut evolved = schema
         .clone()
         .try_with_dtype(
-            DataType::from_fields(
+            StructureType::from_fields(
                 schema
                     .fields()
                     .iter()
                     .cloned()
                     .chain([DataType::utf8().nullable_field("venue")]),
             )
+            .map(DataType::from)
             .unwrap(),
         )
         .unwrap();
@@ -1930,13 +1946,14 @@ fn a_datatype_rebuilds_any_layout_from_replacement_children() {
 
 #[test]
 fn subscripting_a_schema_node_reaches_a_nested_child() {
-    let line = DataType::from_fields([
+    let line = StructureType::from_fields([
         DataType::Float64.required_field("price"),
         DataType::Int64.required_field("qty"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("line");
-    let mut order = DataType::from_fields([
+    let mut order = StructureType::from_fields([
         DataType::Int64.required_field("id"),
         line.clone(),
         DataType::list(DataType::utf8().nullable_field("tag")).nullable_field("tags"),
@@ -1944,6 +1961,7 @@ fn subscripting_a_schema_node_reaches_a_nested_child() {
             .unwrap()
             .nullable_field("counts"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("order");
     order.insert_metadata("owner", "trading").unwrap();
@@ -1970,7 +1988,8 @@ fn subscripting_a_schema_node_reaches_a_nested_child() {
 #[test]
 #[should_panic(expected = "is not a child of the field")]
 fn subscripting_an_absent_child_panics_by_name() {
-    let row = DataType::from_fields([DataType::Int64.required_field("id")])
+    let row = StructureType::from_fields([DataType::Int64.required_field("id")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let _ = &row["absent"];
@@ -1979,7 +1998,8 @@ fn subscripting_an_absent_child_panics_by_name() {
 #[test]
 #[should_panic(expected = "so position 3 is out of range")]
 fn subscripting_an_absent_child_panics_by_position() {
-    let row = DataType::from_fields([DataType::Int64.required_field("id")])
+    let row = StructureType::from_fields([DataType::Int64.required_field("id")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let _ = &row[3];
@@ -1993,10 +2013,11 @@ fn subscripting_a_scalar_datatype_panics() {
 
 #[test]
 fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
-    let mut row = DataType::from_fields([
+    let mut row = StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("venue"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
 
@@ -2042,10 +2063,11 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
 
 #[test]
 fn child_mutation_invalidates_the_arrow_cache_exactly_once() {
-    let mut row = DataType::from_fields([DataType::Int64.required_field("id")])
+    let mut row = StructureType::from_fields([DataType::Int64.required_field("id")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
-    let before = row.clone().into_arrow().unwrap();
+    let before = row.clone().into_arrow_field().unwrap();
     assert!(before.data_type().to_string().contains("id"));
     assert!(!before.data_type().to_string().contains("venue"));
 
@@ -2053,7 +2075,7 @@ fn child_mutation_invalidates_the_arrow_cache_exactly_once() {
         .unwrap();
 
     // The projection is rebuilt from the mutated field, never served stale.
-    let after = row.into_arrow().unwrap();
+    let after = row.into_arrow_field().unwrap();
     assert!(
         after.data_type().to_string().contains("venue"),
         "{}",
@@ -2098,8 +2120,8 @@ fn a_protocol_view_merges_under_its_own_namespace() {
         .unwrap();
 
     let merged = held.as_iceberg().merge_with(&other.as_iceberg()).unwrap();
-    assert_eq!(merged.get("iceberg:doc"), Some("held"));
-    assert_eq!(merged.get("iceberg:id"), Some("7"));
+    assert_eq!(merged.get("ICEBERG:doc"), Some("held"));
+    assert_eq!(merged.get("ICEBERG:id"), Some("7"));
 
     // Both views contribute bare names, and the result is keyed under the
     // receiver's protocol, so merging across two namespaces still answers one.
@@ -2109,8 +2131,8 @@ fn a_protocol_view_merges_under_its_own_namespace() {
         .unwrap();
 
     let crossed = held.as_iceberg().merge_with(&glue.as_glue()).unwrap();
-    assert_eq!(crossed.get("iceberg:comment"), Some("from glue"));
-    assert!(crossed.get("glue:comment").is_none());
+    assert_eq!(crossed.get("ICEBERG:comment"), Some("from glue"));
+    assert!(crossed.get("GLUE:comment").is_none());
 }
 
 #[test]
@@ -2153,7 +2175,7 @@ fn the_star_source_may_not_travel_beside_a_named_one() {
     let mut holder = DataType::UInt64.required_field("row_digest");
     holder.as_digest_mut().set_holder().unwrap();
     holder.as_digest_mut().set_sources(["*"]).unwrap();
-    assert_eq!(holder.get_metadata("digest:sources"), Some(r#"["*"]"#));
+    assert_eq!(holder.get_metadata("DIGEST:sources"), Some(r#"["*"]"#));
     assert_eq!(
         holder.as_digest().sources().unwrap(),
         Some(vec!["*".to_owned()])
@@ -2161,10 +2183,10 @@ fn the_star_source_may_not_travel_beside_a_named_one() {
 
     let unchanged = holder.clone();
     let error = holder.as_digest_mut().set_sources(["*", "id"]).unwrap_err();
-    assert!(error.to_string().contains("digest:sources"), "{error}");
+    assert!(error.to_string().contains("DIGEST:sources"), "{error}");
     assert_eq!(holder, unchanged, "a rejected source list is atomic");
     // The generic mutation path runs the same validator.
-    assert!(Metadata::from_entries([("digest:sources", r#"["id","*"]"#)]).is_err());
+    assert!(Metadata::from_entries([("DIGEST:sources", r#"["id","*"]"#)]).is_err());
 }
 
 #[test]
@@ -2195,7 +2217,7 @@ fn a_python_declaration_is_written_and_read_as_one_value() {
     );
 
     // The declaration crosses Arrow with the column and comes back identical.
-    let projected = Field::from_arrow(&field.clone().into_arrow().unwrap()).unwrap();
+    let projected = Field::from_arrow_field(&field.clone().into_arrow_field().unwrap()).unwrap();
     assert_eq!(projected.as_python().class().unwrap(), Some(declared));
     assert_eq!(Field::from_str(&field.to_string()).unwrap(), field);
 }
@@ -2203,13 +2225,13 @@ fn a_python_declaration_is_written_and_read_as_one_value() {
 #[test]
 fn a_python_declaration_is_validated_on_every_write_path() {
     for (key, value) in [
-        ("python:module", "trading."),
-        ("python:module", "1trading"),
-        ("python:module", "trading book"),
-        ("python:module", "class"),
-        ("python:qualname", ""),
-        ("python:qualname", "Book..Quote"),
-        ("python:kind", "record"),
+        ("PYTHON:module", "trading."),
+        ("PYTHON:module", "1trading"),
+        ("PYTHON:module", "trading book"),
+        ("PYTHON:module", "class"),
+        ("PYTHON:qualname", ""),
+        ("PYTHON:qualname", "Book..Quote"),
+        ("PYTHON:kind", "record"),
     ] {
         // The snapshot constructor, the field constructor and the protocol
         // write are one validator seen from three places.
@@ -2224,7 +2246,7 @@ fn a_python_declaration_is_validated_on_every_write_path() {
 
         let mut field = DataType::Int64.required_field("quote");
         let unchanged = field.clone();
-        let name = key.strip_prefix("python:").unwrap();
+        let name = key.strip_prefix("PYTHON:").unwrap();
         assert!(field.as_python_mut().insert(name, value).is_err(), "{key}");
         assert_eq!(field, unchanged, "a rejected property is atomic");
     }
@@ -2236,9 +2258,9 @@ fn a_python_declaration_is_validated_on_every_write_path() {
         DataType::Int64,
         false,
         [
-            ("python:kind", "dataclass"),
-            ("python:module", "app"),
-            ("python:qualname", "build.<locals>.Row"),
+            ("PYTHON:kind", "dataclass"),
+            ("PYTHON:module", "app"),
+            ("PYTHON:qualname", "build.<locals>.Row"),
         ],
     )
     .unwrap();

@@ -30,7 +30,7 @@ dictionary derived for it behind the ones that arrived; the frame states its
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::local::Folder;
     use yggdryl::{FixCodec, FixRegistry};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");

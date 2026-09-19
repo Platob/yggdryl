@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermeventnewssource",
-          "fix:tag": "41615"
+          "FIX:field": "legprotectiontermeventnewssource",
+          "FIX:tag": "41615"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProtectionTermEventNewsSource",
-    "fix:tag": "630463"
+    "FIX:tag": "630463",
+    "display": "LegProtectionTermEventNewsSource"
   }
 }

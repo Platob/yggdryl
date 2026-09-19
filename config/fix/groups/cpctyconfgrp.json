@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "cpctyconf"
+        "FIX:component": "cpctyconf"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "cpctyconf",
+    "FIX:counter": "862",
+    "FIX:tag": "596785",
     "description": "Specifies the capacity of the firm executing the order(s)",
-    "display": "CpctyConfGrp",
-    "fix:component": "cpctyconf",
-    "fix:counter": "862",
-    "fix:tag": "596785"
+    "display": "CpctyConfGrp"
   }
 }

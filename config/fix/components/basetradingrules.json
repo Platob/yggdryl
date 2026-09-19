@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notickrules",
-          "fix:tag": "1205"
+          "FIX:field": "notickrules",
+          "FIX:tag": "1205"
         }
       },
       {
@@ -21,7 +21,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "tickrules"
+          "FIX:group": "tickrules"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolottyperules",
-          "fix:tag": "1234"
+          "FIX:field": "nolottyperules",
+          "FIX:tag": "1234"
         }
       },
       {
@@ -42,7 +42,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "lottyperules"
+          "FIX:group": "lottyperules"
         }
       },
       {
@@ -52,7 +52,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "pricelimits"
+          "FIX:component": "pricelimits"
         }
       },
       {
@@ -62,8 +62,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopricerangerules",
-          "fix:tag": "2550"
+          "FIX:field": "nopricerangerules",
+          "FIX:tag": "2550"
         }
       },
       {
@@ -73,7 +73,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "pricerangerulegrp"
+          "FIX:group": "pricerangerulegrp"
         }
       },
       {
@@ -83,8 +83,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noquotesizerules",
-          "fix:tag": "2558"
+          "FIX:field": "noquotesizerules",
+          "FIX:tag": "2558"
         }
       },
       {
@@ -94,7 +94,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "quotesizerulegrp"
+          "FIX:group": "quotesizerulegrp"
         }
       },
       {
@@ -104,8 +104,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "expirationcycle",
-          "fix:tag": "827"
+          "FIX:field": "expirationcycle",
+          "FIX:tag": "827"
         }
       },
       {
@@ -115,8 +115,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradevoltype",
-          "fix:tag": "1786"
+          "FIX:field": "tradevoltype",
+          "FIX:tag": "1786"
         }
       },
       {
@@ -126,8 +126,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mintradevol",
-          "fix:tag": "562"
+          "FIX:field": "mintradevol",
+          "FIX:tag": "562"
         }
       },
       {
@@ -137,8 +137,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "maxtradevol",
-          "fix:tag": "1140"
+          "FIX:field": "maxtradevol",
+          "FIX:tag": "1140"
         }
       },
       {
@@ -148,8 +148,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "maxpricevariation",
-          "fix:tag": "1143"
+          "FIX:field": "maxpricevariation",
+          "FIX:tag": "1143"
         }
       },
       {
@@ -159,8 +159,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "impliedmarketindicator",
-          "fix:tag": "1144"
+          "FIX:field": "impliedmarketindicator",
+          "FIX:tag": "1144"
         }
       },
       {
@@ -170,8 +170,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingcurrency",
-          "fix:tag": "1245"
+          "FIX:field": "tradingcurrency",
+          "FIX:tag": "1245"
         }
       },
       {
@@ -181,8 +181,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingcurrencycodesource",
-          "fix:tag": "2934"
+          "FIX:field": "tradingcurrencycodesource",
+          "FIX:tag": "2934"
         }
       },
       {
@@ -192,8 +192,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "roundlot",
-          "fix:tag": "561"
+          "FIX:field": "roundlot",
+          "FIX:tag": "561"
         }
       },
       {
@@ -203,8 +203,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "multilegmodel",
-          "fix:tag": "1377"
+          "FIX:field": "multilegmodel",
+          "FIX:tag": "1377"
         }
       },
       {
@@ -214,8 +214,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "multilegpricemethod",
-          "fix:tag": "1378"
+          "FIX:field": "multilegpricemethod",
+          "FIX:tag": "1378"
         }
       },
       {
@@ -225,8 +225,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricetype",
-          "fix:tag": "423"
+          "FIX:field": "pricetype",
+          "FIX:tag": "423"
         }
       },
       {
@@ -236,8 +236,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fastmarketpercentage",
-          "fix:tag": "2557"
+          "FIX:field": "fastmarketpercentage",
+          "FIX:tag": "2557"
         }
       },
       {
@@ -247,16 +247,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quotesideindicator",
-          "fix:tag": "2559"
+          "FIX:field": "quotesideindicator",
+          "FIX:tag": "2559"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "419982",
     "description": "Specifies price tick rules for the security.",
-    "display": "BaseTradingRules",
-    "fix:tag": "419982"
+    "display": "BaseTradingRules"
   }
 }

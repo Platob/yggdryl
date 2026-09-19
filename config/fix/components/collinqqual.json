@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collinquiryqualifier",
-          "fix:tag": "896"
+          "FIX:field": "collinquiryqualifier",
+          "FIX:tag": "896"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "CollInqQual",
-    "fix:tag": "658118"
+    "FIX:tag": "658118",
+    "display": "CollInqQual"
   }
 }

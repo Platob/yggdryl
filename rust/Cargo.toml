@@ -10,26 +10,16 @@ keywords = ["arrow", "schema", "field", "uri", "codec"]
 categories = ["data-structures", "encoding"]
 
 [features]
-default = ["arrow"]
-arrow = [
-    "dep:arrow-array",
-    "dep:arrow-buffer",
-    "dep:arrow-cast",
-    "dep:arrow-data",
-    "dep:arrow-ipc",
-    "dep:arrow-ord",
-    "dep:arrow-row",
-    "dep:arrow-select",
-]
+default = []
 # Apache Parquet data files. Not default: the codec is version-locked to the
 # pinned Arrow release and pulls a thrift/compression stack a schema-only
 # consumer does not need. `snap` rides here because the parquet crate already
 # compiles it, so Avro's snappy blocks cost no crate a build was not paying.
-parquet = ["arrow", "dep:bytes", "dep:parquet", "dep:snap"]
+parquet = ["dep:bytes", "dep:parquet", "dep:snap"]
 # Iceberg tables. Official Iceberg 0.10.1 owns metadata serde and validation;
 # its Rust 1.94/Arrow 58 stack stays private. Public records use Yggdryl's
 # Arrow 59/IOBase path, and schema-only builds do not compile this feature.
-iceberg = ["arrow", "parquet", "dep:iceberg-official", "dep:uuid"]
+iceberg = ["parquet", "dep:iceberg-official", "dep:uuid"]
 # Object stores behind `IOBase`: Amazon S3, Google Cloud Storage, Azure Blob
 # Storage. Not default: the signed HTTPS client and its TLS stack are a cost a
 # local or schema-only consumer never pays. Every protocol is spoken directly -
@@ -38,15 +28,15 @@ iceberg = ["arrow", "parquet", "dep:iceberg-official", "dep:uuid"]
 object = ["dep:hmac", "dep:md-5", "dep:ring", "dep:sha2", "dep:ureq"]
 
 [dependencies]
-arrow-array = { workspace = true, optional = true }
-arrow-buffer = { workspace = true, optional = true }
-arrow-cast = { workspace = true, optional = true }
-arrow-data = { workspace = true, optional = true }
-arrow-ipc = { workspace = true, optional = true }
-arrow-ord = { workspace = true, optional = true }
-arrow-row = { workspace = true, optional = true }
+arrow-array.workspace = true
+arrow-buffer.workspace = true
+arrow-cast.workspace = true
+arrow-data.workspace = true
+arrow-ipc.workspace = true
+arrow-ord.workspace = true
+arrow-row.workspace = true
 arrow-schema.workspace = true
-arrow-select = { workspace = true, optional = true }
+arrow-select.workspace = true
 base64.workspace = true
 bytes = { version = "1", optional = true }
 # zlib-rs is the fastest pure-Rust DEFLATE; still no C toolchain needed.
@@ -213,14 +203,11 @@ harness = false
 
 [[test]]
 name = "types"
-required-features = ["arrow"]
 
 [[test]]
 name = "arrow"
-required-features = ["arrow"]
 
 # The landing-page example materializes Arrow values, so it does not compile
 # in a schema-only build.
 [[test]]
 name = "docs_index"
-required-features = ["arrow"]

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventtype",
-          "fix:tag": "1982"
+          "FIX:field": "underlyingeventtype",
+          "FIX:tag": "1982"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventdate",
-          "fix:tag": "1983"
+          "FIX:field": "underlyingeventdate",
+          "FIX:tag": "1983"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventtime",
-          "fix:tag": "1984"
+          "FIX:field": "underlyingeventtime",
+          "FIX:tag": "1984"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventtimeunit",
-          "fix:tag": "1985"
+          "FIX:field": "underlyingeventtimeunit",
+          "FIX:tag": "1985"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventtimeperiod",
-          "fix:tag": "1986"
+          "FIX:field": "underlyingeventtimeperiod",
+          "FIX:tag": "1986"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventmonthyear",
-          "fix:tag": "2342"
+          "FIX:field": "underlyingeventmonthyear",
+          "FIX:tag": "2342"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventpx",
-          "fix:tag": "1987"
+          "FIX:field": "underlyingeventpx",
+          "FIX:tag": "1987"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingeventtext",
-          "fix:tag": "2071"
+          "FIX:field": "underlyingeventtext",
+          "FIX:tag": "2071"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingeventtextlen",
-          "fix:tag": "2072"
+          "FIX:field": "encodedunderlyingeventtextlen",
+          "FIX:tag": "2072"
         }
       },
       {
@@ -109,15 +109,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingeventtext",
-          "fix:tag": "2073"
+          "FIX:field": "encodedunderlyingeventtext",
+          "FIX:tag": "2073"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingEvnt",
-    "fix:tag": "561056"
+    "FIX:tag": "561056",
+    "display": "UnderlyingEvnt"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "affectedmarketsegment"
+        "FIX:component": "affectedmarketsegment"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "affectedmarketsegment",
+    "FIX:counter": "1791",
+    "FIX:tag": "282496",
     "description": "Required when NoAffectedMarketSegments(1791) > 0.",
-    "display": "AffectedMarketSegmentGrp",
-    "fix:component": "affectedmarketsegment",
-    "fix:counter": "1791",
-    "fix:tag": "282496"
+    "display": "AffectedMarketSegmentGrp"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "routing"
+        "FIX:component": "routing"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "routing",
+    "FIX:counter": "215",
+    "FIX:tag": "878515",
     "description": "Indicates type of RoutingID. Required if NoRoutingIDs is > 0.",
-    "display": "RoutingGrp",
-    "fix:component": "routing",
-    "fix:counter": "215",
-    "fix:tag": "878515"
+    "display": "RoutingGrp"
   }
 }

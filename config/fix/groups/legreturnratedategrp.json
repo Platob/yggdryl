@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legreturnratedate"
+        "FIX:component": "legreturnratedate"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legreturnratedate",
+    "FIX:counter": "42508",
+    "FIX:tag": "115624",
     "description": "Required if NoLegReturnRateDates(42508) > 0.",
-    "display": "LegReturnRateDateGrp",
-    "fix:component": "legreturnratedate",
-    "fix:counter": "42508",
-    "fix:tag": "115624"
+    "display": "LegReturnRateDateGrp"
   }
 }

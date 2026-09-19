@@ -5,11 +5,12 @@ use std::sync::Arc;
 use arrow_array::{Array, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 
+use yggdryl::DataType;
+use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::types::DataType;
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Timezone,
-    TimezoneField,
+    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StructureType,
+    Timezone, TimezoneField,
 };
 
 fn zone(text: &str) -> Scalar {
@@ -17,7 +18,8 @@ fn zone(text: &str) -> Scalar {
 }
 
 fn root(field: Field) -> Field {
-    DataType::from_fields([field])
+    StructureType::from_fields([field])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
 }
@@ -74,7 +76,8 @@ fn a_value_is_canonicalized_and_refuses_what_names_no_zone() {
     let once = zone("Asia/Calcutta");
     assert_eq!(zone(&text_of(&once)), once);
 
-    assert!(DataType::Timezone.scalar("").is_err());
+    // An empty text cell entering a non-text column is no value.
+    assert_eq!(DataType::Timezone.scalar("").unwrap(), Scalar::Null);
     assert!(DataType::Timezone.scalar("+99:00").is_err());
     assert_eq!(
         DataType::Timezone.scalar(Scalar::Null).unwrap(),
@@ -109,7 +112,7 @@ fn structured_text_round_trips_the_canonical_spelling() {
 #[test]
 fn arrow_stores_canonical_utf8_under_an_extension_name_that_survives_a_round_trip() {
     let field = Field::new("zone", DataType::Timezone, true);
-    let arrow = field.clone().into_arrow().unwrap();
+    let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(
         arrow
@@ -119,7 +122,7 @@ fn arrow_stores_canonical_utf8_under_an_extension_name_that_survives_a_round_tri
         Some("yggdryl.timezone")
     );
     assert_eq!(
-        Field::from_arrow(&arrow).unwrap().dtype(),
+        Field::from_arrow_field(&arrow).unwrap().dtype(),
         &DataType::Timezone
     );
 
@@ -196,11 +199,12 @@ fn defaults_merges_and_typed_fields_do_not_fall_through() {
         .to_string();
     assert!(refused.contains("timezone"), "{refused}");
 
-    let typed = TimezoneField::new("zone", true);
+    let typed = TimezoneField::unit("zone", true);
     assert_eq!(typed.dtype(), &DataType::Timezone);
-    let scalar = FieldScalar::new(typed.as_field(), zone("UTC")).unwrap();
+    let typed_field = typed.to_field();
+    let scalar = FieldScalar::new(&typed_field, zone("UTC")).unwrap();
     assert_eq!(scalar.dtype(), &DataType::Timezone);
-    assert!(FieldScalar::new(typed.as_field(), 7_i64).is_err());
+    assert!(FieldScalar::new(&typed.to_field(), 7_i64).is_err());
 }
 
 #[test]

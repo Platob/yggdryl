@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "execinstvalue",
-          "fix:tag": "1308"
+          "FIX:field": "execinstvalue",
+          "FIX:tag": "1308"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ExecInstRule",
-    "fix:tag": "757813"
+    "FIX:tag": "757813",
+    "display": "ExecInstRule"
   }
 }

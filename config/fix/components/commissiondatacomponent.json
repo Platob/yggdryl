@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissionamount",
-          "fix:tag": "2640"
+          "FIX:field": "commissionamount",
+          "FIX:tag": "2640"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissionamounttype",
-          "fix:tag": "2641"
+          "FIX:field": "commissionamounttype",
+          "FIX:tag": "2641"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissionamountsubtype",
-          "fix:tag": "2725"
+          "FIX:field": "commissionamountsubtype",
+          "FIX:tag": "2725"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissionbasis",
-          "fix:tag": "2642"
+          "FIX:field": "commissionbasis",
+          "FIX:tag": "2642"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissioncurrency",
-          "fix:tag": "2643"
+          "FIX:field": "commissioncurrency",
+          "FIX:tag": "2643"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissioncurrencycodesource",
-          "fix:tag": "2923"
+          "FIX:field": "commissioncurrencycodesource",
+          "FIX:tag": "2923"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissionunitofmeasure",
-          "fix:tag": "2644"
+          "FIX:field": "commissionunitofmeasure",
+          "FIX:tag": "2644"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissionunitofmeasurecurrency",
-          "fix:tag": "2645"
+          "FIX:field": "commissionunitofmeasurecurrency",
+          "FIX:tag": "2645"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissionunitofmeasurecurrencycodesource",
-          "fix:tag": "2924"
+          "FIX:field": "commissionunitofmeasurecurrencycodesource",
+          "FIX:tag": "2924"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissionrate",
-          "fix:tag": "2646"
+          "FIX:field": "commissionrate",
+          "FIX:tag": "2646"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissionsharedindicator",
-          "fix:tag": "2647"
+          "FIX:field": "commissionsharedindicator",
+          "FIX:tag": "2647"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissionamountshared",
-          "fix:tag": "2648"
+          "FIX:field": "commissionamountshared",
+          "FIX:tag": "2648"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissionlegrefid",
-          "fix:tag": "2649"
+          "FIX:field": "commissionlegrefid",
+          "FIX:tag": "2649"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commissiondesc",
-          "fix:tag": "2650"
+          "FIX:field": "commissiondesc",
+          "FIX:tag": "2650"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedcommissiondesclen",
-          "fix:tag": "2651"
+          "FIX:field": "encodedcommissiondesclen",
+          "FIX:tag": "2651"
         }
       },
       {
@@ -175,15 +175,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedcommissiondesc",
-          "fix:tag": "2652"
+          "FIX:field": "encodedcommissiondesc",
+          "FIX:tag": "2652"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "CommissionData",
-    "fix:tag": "266580"
+    "FIX:tag": "266580",
+    "display": "CommissionData"
   }
 }

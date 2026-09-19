@@ -1,7 +1,10 @@
 //! The character encodings Yggdryl reads and writes, and how to apply them.
 //!
 //! One [`Charset`] vocabulary names every encoding the way [`Codec`] names
-//! every content coding, and the modules beside it own the implementations.
+//! every content coding, and the implementations sit beside it: UTF-8,
+//! US-ASCII and windows-1252 in the root modules that also own their string
+//! leaves - [`crate::utf8`], [`crate::ascii`], [`crate::cp1252`] - and
+//! UTF-16 and the other single-byte pages in the modules under this one.
 //! Every charset exposes the same four operations: `decode`/`encode` for whole
 //! buffers and `reader`/`writer` for streams, with [`Decoder`] underneath them
 //! for callers that already hold their bytes in chunks.
@@ -49,25 +52,20 @@ use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::format_smolstr;
 
-mod ascii;
 mod bom;
 mod decoder;
 mod reader;
 mod single_byte;
-mod sink;
-mod tables;
+pub(crate) mod sink;
+pub(crate) mod tables;
 mod transcoded;
-mod unicode;
+mod utf16;
 mod writer;
 
 pub use decoder::Decoder;
 pub use reader::Reader;
 pub use transcoded::Transcoded;
 pub use writer::Writer;
-
-pub(crate) use ascii::ascii_len;
-use ascii::text;
-pub(crate) use unicode::utf8_transcribe_into;
 
 /// How many bytes `SmolStr` holds without reaching the heap.
 ///
@@ -77,6 +75,7 @@ pub(crate) use unicode::utf8_transcribe_into;
 const INLINE_CAPACITY: usize = 23;
 use single_byte::SingleByte;
 
+use crate::ascii::{ascii_len, text};
 use crate::{Error, MediaType, Result, Url};
 
 /// The longest byte-order mark, which bounds what an intake reads to find one.
@@ -255,16 +254,16 @@ impl Charset {
     /// Return the canonical IANA name without allocating.
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::Utf8 => unicode::UTF8,
-            Self::Utf16Le => unicode::UTF16LE,
-            Self::Utf16Be => unicode::UTF16BE,
-            Self::Ascii => ascii::NAME,
+            Self::Utf8 => crate::utf8::NAME,
+            Self::Utf16Le => utf16::UTF16LE,
+            Self::Utf16Be => utf16::UTF16BE,
+            Self::Ascii => crate::ascii::NAME,
             Self::Latin1 => tables::LATIN1.name,
             Self::Latin2 => tables::LATIN2.name,
             Self::Latin9 => tables::LATIN9.name,
             Self::Cp1250 => tables::CP1250.name,
             Self::Cp1251 => tables::CP1251.name,
-            Self::Cp1252 => tables::CP1252.name,
+            Self::Cp1252 => crate::cp1252::name(),
             Self::Cp437 => tables::CP437.name,
             Self::Cp850 => tables::CP850.name,
             Self::MacRoman => tables::MAC_ROMAN.name,
@@ -377,10 +376,10 @@ impl Charset {
     /// byte of a charset whose scalars are not one byte wide - UTF-8 and
     /// UTF-16 have no per-byte answer to give.
     pub fn scalar_of(self, byte: u8) -> Option<char> {
-        match self.table() {
-            Some(table) => table.scalar_of(byte),
-            None if matches!(self, Self::Ascii) => byte.is_ascii().then(|| char::from(byte)),
-            None => None,
+        match self {
+            Self::Ascii => crate::ascii::scalar_of(byte),
+            Self::Cp1252 => crate::cp1252::scalar_of(byte),
+            _ => self.table().and_then(|table| table.scalar_of(byte)),
         }
     }
 
@@ -389,10 +388,10 @@ impl Charset {
     /// Answers `None` where the charset has no byte for the scalar, and for
     /// the Unicode encoding forms, whose scalars are not one byte wide.
     pub fn byte_of(self, scalar: char) -> Option<u8> {
-        match self.table() {
-            Some(table) => table.byte_of(scalar),
-            None if matches!(self, Self::Ascii) => scalar.is_ascii().then_some(scalar as u8),
-            None => None,
+        match self {
+            Self::Ascii => crate::ascii::byte_of(scalar),
+            Self::Cp1252 => crate::cp1252::byte_of(scalar),
+            _ => self.table().and_then(|table| table.byte_of(scalar)),
         }
     }
 
@@ -408,13 +407,14 @@ impl Charset {
     /// what was found there.
     pub fn decode(self, input: &[u8]) -> Result<Cow<'_, str>> {
         match self {
-            Self::Utf8 => unicode::utf8_decode(input),
-            Self::Utf16Le => unicode::utf16_decode::<false>(input),
-            Self::Utf16Be => unicode::utf16_decode::<true>(input),
-            Self::Ascii => ascii::decode(input),
+            Self::Utf8 => crate::utf8::decode(input),
+            Self::Utf16Le => utf16::decode::<false>(input),
+            Self::Utf16Be => utf16::decode::<true>(input),
+            Self::Ascii => crate::ascii::decode(input),
+            Self::Cp1252 => crate::cp1252::decode(input),
             _ => match self.table() {
                 Some(table) => table.decode(input),
-                None => unicode::utf8_decode(input),
+                None => crate::utf8::decode(input),
             },
         }
     }
@@ -426,19 +426,14 @@ impl Charset {
     /// never the one a stored column wants, which is [`Charset::decode`].
     pub fn decode_lossy(self, input: &[u8]) -> Cow<'_, str> {
         match self {
-            Self::Utf8 => String::from_utf8_lossy(input),
-            Self::Utf16Le => unicode::utf16_decode_lossy::<false>(input),
-            Self::Utf16Be => unicode::utf16_decode_lossy::<true>(input),
-            Self::Ascii => {
-                let mut target = String::new();
-                match ascii::decode_into::<true>(input, &mut target) {
-                    Ok(()) => Cow::Owned(target),
-                    Err(_) => Cow::Owned(String::from(REPLACEMENT)),
-                }
-            }
+            Self::Utf8 => crate::utf8::decode_lossy(input),
+            Self::Utf16Le => utf16::decode_lossy::<false>(input),
+            Self::Utf16Be => utf16::decode_lossy::<true>(input),
+            Self::Ascii => crate::ascii::decode_lossy(input),
+            Self::Cp1252 => crate::cp1252::decode_lossy(input),
             _ => match self.table() {
                 Some(table) => table.decode_lossy(input),
-                None => String::from_utf8_lossy(input),
+                None => crate::utf8::decode_lossy(input),
             },
         }
     }
@@ -496,37 +491,17 @@ impl Charset {
             // Valid UTF-8 is itself under both, since a US-ASCII declaration
             // is a UTF-8 declaration with a narrower promise; anything else
             // is the per-run reading, the layer's one rule for a stray byte.
-            Self::Utf8 | Self::Ascii => match std::str::from_utf8(input) {
-                Ok(borrowed) => Cow::Borrowed(borrowed),
-                Err(_) => {
-                    let mut target = String::new();
-                    unicode::utf8_transcribe_into(input, &mut target);
-                    Cow::Owned(target)
-                }
-            },
+            Self::Utf8 | Self::Ascii => crate::utf8::transcribe(input),
             // A lone surrogate is not a scalar anywhere, so there is nothing
             // to transcribe it to.
             Self::Utf16Le | Self::Utf16Be => self.decode_lossy(input),
+            Self::Cp1252 => crate::cp1252::transcribe(input),
             _ => match self.table() {
                 Some(table) if table.is_complete() => self.decode_lossy(input),
-                Some(table) => {
-                    // The three incomplete tables are the only charsets with a
-                    // byte to transcribe, and they are still ASCII-compatible,
-                    // so an all-ASCII payload is already its own answer. This
-                    // is the borrow `decode`, `decode_lossy` and `encode` all
-                    // take at their first line; without it this door was the
-                    // one that allocated for text it did not have to touch.
-                    if let Ok(borrowed) = text(input) {
-                        if ascii_len(input) == input.len() {
-                            return Cow::Borrowed(borrowed);
-                        }
-                    }
-                    let mut target = String::new();
-                    match table.transcribe_into(input, &mut target) {
-                        Ok(()) => Cow::Owned(target),
-                        Err(_) => self.decode_lossy(input),
-                    }
-                }
+                // The incomplete tables are the only charsets with a byte to
+                // transcribe, and the table's own door borrows an all-ASCII
+                // payload rather than allocating for text it need not touch.
+                Some(table) => table.transcribe(input),
                 None => self.decode_lossy(input),
             },
         }
@@ -601,8 +576,9 @@ impl Charset {
     /// brought.
     fn transcribe_sink(self, input: &[u8], target: &mut impl sink::Utf8Sink) -> Result<()> {
         match self {
-            Self::Utf8 | Self::Ascii => unicode::utf8_transcribe_sink(input, target).map(drop),
+            Self::Utf8 | Self::Ascii => crate::utf8::transcribe_sink(input, target).map(drop),
             Self::Utf16Le | Self::Utf16Be => self.decode_sink::<true>(input, target),
+            Self::Cp1252 => crate::cp1252::transcribe_sink(input, target),
             _ => match self.table() {
                 Some(table) if table.is_complete() => self.decode_sink::<true>(input, target),
                 Some(table) => table.transcribe_sink(input, target),
@@ -637,13 +613,14 @@ impl Charset {
         target: &mut impl sink::Utf8Sink,
     ) -> Result<()> {
         match self {
-            Self::Utf8 => unicode::utf8_decode_into::<LOSSY>(input, target),
-            Self::Utf16Le => unicode::utf16_decode_into::<false, LOSSY>(input, target),
-            Self::Utf16Be => unicode::utf16_decode_into::<true, LOSSY>(input, target),
-            Self::Ascii => ascii::decode_into::<LOSSY>(input, target),
+            Self::Utf8 => crate::utf8::decode_into::<LOSSY>(input, target),
+            Self::Utf16Le => utf16::decode_into::<false, LOSSY>(input, target),
+            Self::Utf16Be => utf16::decode_into::<true, LOSSY>(input, target),
+            Self::Ascii => crate::ascii::decode_into::<LOSSY>(input, target),
+            Self::Cp1252 => crate::cp1252::decode_into::<LOSSY>(input, target),
             _ => match self.table() {
                 Some(table) => table.decode_into::<LOSSY>(input, target),
-                None => unicode::utf8_decode_into::<LOSSY>(input, target),
+                None => crate::utf8::decode_into::<LOSSY>(input, target),
             },
         }
     }
@@ -660,16 +637,17 @@ impl Charset {
     /// scalar it has no byte for.
     pub fn encode(self, input: &str) -> Result<Cow<'_, [u8]>> {
         match self {
-            Self::Utf8 => Ok(Cow::Borrowed(input.as_bytes())),
+            Self::Utf8 => Ok(Cow::Borrowed(crate::utf8::encode(input))),
             Self::Utf16Le | Self::Utf16Be => {
                 let mut target = Vec::new();
                 self.encode_into(input, &mut target)?;
                 Ok(Cow::Owned(target))
             }
-            Self::Ascii => ascii::encode(input),
+            Self::Ascii => crate::ascii::encode(input),
+            Self::Cp1252 => crate::cp1252::encode(input),
             _ => match self.table() {
                 Some(table) => table.encode(input),
-                None => Ok(Cow::Borrowed(input.as_bytes())),
+                None => Ok(Cow::Borrowed(crate::utf8::encode(input))),
             },
         }
     }
@@ -720,22 +698,23 @@ impl Charset {
     pub fn encode_into(self, input: &str, target: &mut Vec<u8>) -> Result<()> {
         match self {
             Self::Utf8 => {
-                target.extend_from_slice(input.as_bytes());
+                crate::utf8::encode_into(input, target);
                 Ok(())
             }
             Self::Utf16Le => {
-                unicode::utf16_encode_into::<false>(input, target);
+                utf16::encode_into::<false>(input, target);
                 Ok(())
             }
             Self::Utf16Be => {
-                unicode::utf16_encode_into::<true>(input, target);
+                utf16::encode_into::<true>(input, target);
                 Ok(())
             }
-            Self::Ascii => ascii::encode_into(input, target),
+            Self::Ascii => crate::ascii::encode_into(input, target),
+            Self::Cp1252 => crate::cp1252::encode_into(input, target),
             _ => match self.table() {
                 Some(table) => table.encode_into(input, target),
                 None => {
-                    target.extend_from_slice(input.as_bytes());
+                    crate::utf8::encode_into(input, target);
                     Ok(())
                 }
             },
@@ -810,15 +789,20 @@ impl Charset {
     /// that cannot fix it.
     pub(crate) fn pending(self, input: &[u8]) -> usize {
         match self {
-            Self::Utf8 => unicode::utf8_pending(input),
-            Self::Utf16Le => unicode::utf16_pending::<false>(input),
-            Self::Utf16Be => unicode::utf16_pending::<true>(input),
+            Self::Utf8 => crate::utf8::pending(input),
+            Self::Utf16Le => utf16::pending::<false>(input),
+            Self::Utf16Be => utf16::pending::<true>(input),
             // One byte is one scalar, so a chunk boundary splits nothing.
             _ => 0,
         }
     }
 
     /// The generated table behind a single-byte charset.
+    ///
+    /// windows-1252 answers its table too, so the single-byte fallback of
+    /// every door still reads that page's bytes; the arm above each
+    /// fallback routes the page through [`crate::cp1252`], which reads the
+    /// same table.
     const fn table(self) -> Option<&'static SingleByte> {
         match self {
             Self::Latin1 => Some(&tables::LATIN1),

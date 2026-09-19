@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "newsid",
-          "fix:tag": "1472"
+          "FIX:field": "newsid",
+          "FIX:tag": "1472"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonewsrefids",
-          "fix:tag": "1475"
+          "FIX:field": "nonewsrefids",
+          "FIX:tag": "1475"
         }
       },
       {
@@ -52,7 +52,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "newsrefgrp"
+          "FIX:group": "newsrefgrp"
         }
       },
       {
@@ -62,8 +62,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "newscategory",
-          "fix:tag": "1473"
+          "FIX:field": "newscategory",
+          "FIX:tag": "1473"
         }
       },
       {
@@ -73,8 +73,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "languagecode",
-          "fix:tag": "1474"
+          "FIX:field": "languagecode",
+          "FIX:tag": "1474"
         }
       },
       {
@@ -84,8 +84,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "origtime",
-          "fix:tag": "42"
+          "FIX:field": "origtime",
+          "FIX:tag": "42"
         }
       },
       {
@@ -95,8 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "urgency",
-          "fix:tag": "61"
+          "FIX:field": "urgency",
+          "FIX:tag": "61"
         }
       },
       {
@@ -106,8 +106,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "headline",
-          "fix:tag": "148"
+          "FIX:field": "headline",
+          "FIX:tag": "148"
         }
       },
       {
@@ -117,8 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedheadlinelen",
-          "fix:tag": "358"
+          "FIX:field": "encodedheadlinelen",
+          "FIX:tag": "358"
         }
       },
       {
@@ -128,8 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedheadline",
-          "fix:tag": "359"
+          "FIX:field": "encodedheadline",
+          "FIX:tag": "359"
         }
       },
       {
@@ -139,8 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noroutingids",
-          "fix:tag": "215"
+          "FIX:field": "noroutingids",
+          "FIX:tag": "215"
         }
       },
       {
@@ -150,7 +150,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "routinggrp"
+          "FIX:group": "routinggrp"
         }
       },
       {
@@ -160,8 +160,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid",
-          "fix:tag": "1301"
+          "FIX:field": "marketid",
+          "FIX:tag": "1301"
         }
       },
       {
@@ -171,8 +171,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid",
-          "fix:tag": "1300"
+          "FIX:field": "marketsegmentid",
+          "FIX:tag": "1300"
         }
       },
       {
@@ -182,8 +182,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedsym",
-          "fix:tag": "146"
+          "FIX:field": "norelatedsym",
+          "FIX:tag": "146"
         }
       },
       {
@@ -193,7 +193,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrmtgrp"
+          "FIX:group": "instrmtgrp"
         }
       },
       {
@@ -203,8 +203,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs",
-          "fix:tag": "555"
+          "FIX:field": "nolegs",
+          "FIX:tag": "555"
         }
       },
       {
@@ -214,7 +214,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrmtleggrp"
+          "FIX:group": "instrmtleggrp"
         }
       },
       {
@@ -224,8 +224,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings",
-          "fix:tag": "711"
+          "FIX:field": "nounderlyings",
+          "FIX:tag": "711"
         }
       },
       {
@@ -235,7 +235,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "undinstrmtgrp"
+          "FIX:group": "undinstrmtgrp"
         }
       },
       {
@@ -245,8 +245,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nolinesoftext",
-          "fix:tag": "33"
+          "FIX:field": "nolinesoftext",
+          "FIX:tag": "33"
         }
       },
       {
@@ -256,7 +256,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "linesoftextgrp"
+          "FIX:group": "linesoftextgrp"
         }
       },
       {
@@ -266,8 +266,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "urllink",
-          "fix:tag": "149"
+          "FIX:field": "urllink",
+          "FIX:tag": "149"
         }
       },
       {
@@ -277,8 +277,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rawdatalength",
-          "fix:tag": "95"
+          "FIX:field": "rawdatalength",
+          "FIX:tag": "95"
         }
       },
       {
@@ -288,8 +288,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rawdata",
-          "fix:tag": "96"
+          "FIX:field": "rawdata",
+          "FIX:tag": "96"
         }
       },
       {
@@ -299,16 +299,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "B",
+    "FIX:tag": "718303",
     "description": "MsgType = B",
-    "display": "News",
-    "fix:msgtype": "B",
-    "fix:tag": "718303"
+    "display": "News"
   }
 }

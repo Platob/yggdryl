@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "yieldtype",
-          "fix:tag": "235"
+          "FIX:field": "yieldtype",
+          "FIX:tag": "235"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "yield",
-          "fix:tag": "236"
+          "FIX:field": "yield",
+          "FIX:tag": "236"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "yieldcalcdate",
-          "fix:tag": "701"
+          "FIX:field": "yieldcalcdate",
+          "FIX:tag": "701"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "yieldredemptiondate",
-          "fix:tag": "696"
+          "FIX:field": "yieldredemptiondate",
+          "FIX:tag": "696"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "yieldredemptionprice",
-          "fix:tag": "697"
+          "FIX:field": "yieldredemptionprice",
+          "FIX:tag": "697"
         }
       },
       {
@@ -65,16 +65,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "yieldredemptionpricetype",
-          "fix:tag": "698"
+          "FIX:field": "yieldredemptionpricetype",
+          "FIX:tag": "698"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "214346",
     "description": "The YieldData component block conveys yield information for a given Fixed Income security.",
-    "display": "YieldData",
-    "fix:tag": "214346"
+    "display": "YieldData"
   }
 }

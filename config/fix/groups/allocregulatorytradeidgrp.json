@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "allocregulatorytradeidcomponent"
+        "FIX:component": "allocregulatorytradeidcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "allocregulatorytradeidcomponent",
+    "FIX:counter": "1908",
+    "FIX:tag": "184658",
     "description": "Required if NoAllocRegulatoryTradeIDs(1908) > 0.",
-    "display": "AllocRegulatoryTradeIDGrp",
-    "fix:component": "allocregulatorytradeidcomponent",
-    "fix:counter": "1908",
-    "fix:tag": "184658"
+    "display": "AllocRegulatoryTradeIDGrp"
   }
 }

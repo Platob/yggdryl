@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "businessdaytype",
-          "fix:tag": "2581"
+          "FIX:field": "businessdaytype",
+          "FIX:tag": "2581"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingpriceoffset",
-          "fix:tag": "2582"
+          "FIX:field": "clearingpriceoffset",
+          "FIX:tag": "2582"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "vegamultiplier",
-          "fix:tag": "2583"
+          "FIX:field": "vegamultiplier",
+          "FIX:tag": "2583"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "annualtradingbusinessdays",
-          "fix:tag": "2584"
+          "FIX:field": "annualtradingbusinessdays",
+          "FIX:tag": "2584"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totaltradingbusinessdays",
-          "fix:tag": "2585"
+          "FIX:field": "totaltradingbusinessdays",
+          "FIX:tag": "2585"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingbusinessdays",
-          "fix:tag": "2586"
+          "FIX:field": "tradingbusinessdays",
+          "FIX:tag": "2586"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "standardvariance",
-          "fix:tag": "2588"
+          "FIX:field": "standardvariance",
+          "FIX:tag": "2588"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "realizedvariance",
-          "fix:tag": "2587"
+          "FIX:field": "realizedvariance",
+          "FIX:tag": "2587"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedcloseprice",
-          "fix:tag": "2589"
+          "FIX:field": "relatedcloseprice",
+          "FIX:tag": "2589"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "riskfreerate",
-          "fix:tag": "1190"
+          "FIX:field": "riskfreerate",
+          "FIX:tag": "1190"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "overnightinterestrate",
-          "fix:tag": "2590"
+          "FIX:field": "overnightinterestrate",
+          "FIX:tag": "2590"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "accumulatedreturnmodifiedvariationmargin",
-          "fix:tag": "2591"
+          "FIX:field": "accumulatedreturnmodifiedvariationmargin",
+          "FIX:tag": "2591"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discountfactor",
-          "fix:tag": "1592"
+          "FIX:field": "discountfactor",
+          "FIX:tag": "1592"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "volatility",
-          "fix:tag": "1188"
+          "FIX:field": "volatility",
+          "FIX:tag": "1188"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingsettlprice",
-          "fix:tag": "2528"
+          "FIX:field": "clearingsettlprice",
+          "FIX:tag": "2528"
         }
       },
       {
@@ -175,15 +175,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "calculationmethod",
-          "fix:tag": "2592"
+          "FIX:field": "calculationmethod",
+          "FIX:tag": "2592"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ClearingPriceParameter",
-    "fix:tag": "114182"
+    "FIX:tag": "114182",
+    "display": "ClearingPriceParameter"
   }
 }

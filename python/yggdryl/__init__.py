@@ -1,7 +1,7 @@
 """Allocation-conscious types, storage, media, and protocols.
 
 The native core reports what it does through `logging`, under this package's
-own logger: `yggdryl.media.iceberg.table` and its siblings are the Rust module
+own logger: `yggdryl.iceberg.table` and its siblings are the Rust module
 paths the work happens in, so `logging.getLogger("yggdryl")` is the one switch.
 Debug is an operation starting, info is one done and carries the counts a
 monitor watches - a table opened, a scan planned and what its filters pruned,

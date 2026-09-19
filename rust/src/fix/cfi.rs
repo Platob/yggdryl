@@ -2,7 +2,7 @@
 //!
 //! What a CFI code *is* - its six positions, which letters each accepts, how
 //! two statements merge - belongs to the value and lives beside it in
-//! [`types::Cfi`](crate::types::Cfi). This module is the other half: which
+//! [`crate::Cfi`]. This module is the other half: which
 //! FIX tags say something about a classification, and what each of them says.
 //!
 //! That split is the point. `Cfi::merged` is the same fold whether the two
@@ -15,7 +15,7 @@
 
 use smol_str::SmolStr;
 
-use crate::types::Cfi;
+use crate::Cfi;
 
 /// The tag FIX publishes the ISO 10962 classification under, since FIX 4.3.
 ///
@@ -122,7 +122,7 @@ impl super::FixMsg {
     /// The instrument's classification, filled to the maximum the message
     /// licenses.
     ///
-    /// The chain, each step merged into the last through [`Cfi::merged`](crate::types::string::Cfi::merged)
+    /// The chain, each step merged into the last through [`Cfi::merged`](crate::Cfi::merged)
     /// so a later step can only *fill* what an earlier one left unknown:
     ///
     /// 1. a stated `CFICode(461)`, which is the instrument's classification
@@ -139,7 +139,7 @@ impl super::FixMsg {
     ///
     /// A step that names a different instrument than the one established -
     /// a different category or group - does not overwrite it and does not
-    /// merge: [`Cfi::merged`](crate::types::string::Cfi::merged) answers `None` and the step is dropped,
+    /// merge: [`Cfi::merged`](crate::Cfi::merged) answers `None` and the step is dropped,
     /// because a message stating `CFICode=ESXXXX` and `SecurityType=FUT` has
     /// disagreed with itself and the stated classification is the one of
     /// record.
@@ -150,7 +150,7 @@ impl super::FixMsg {
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
-    /// # use yggdryl::holder::local::Folder;
+    /// # use yggdryl::local::Folder;
     /// # use yggdryl::{FixCodec, FixRegistry};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);

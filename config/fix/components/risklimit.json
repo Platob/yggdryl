@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norisklimittypes",
-          "fix:tag": "1529"
+          "FIX:field": "norisklimittypes",
+          "FIX:tag": "1529"
         }
       },
       {
@@ -21,7 +21,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "risklimittypesgrp"
+          "FIX:group": "risklimittypesgrp"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noriskinstrumentscopes",
-          "fix:tag": "1534"
+          "FIX:field": "noriskinstrumentscopes",
+          "FIX:tag": "1534"
         }
       },
       {
@@ -42,14 +42,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "riskinstrumentscopegrp"
+          "FIX:group": "riskinstrumentscopegrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "RiskLimit",
-    "fix:tag": "186489"
+    "FIX:tag": "186489",
+    "display": "RiskLimit"
   }
 }

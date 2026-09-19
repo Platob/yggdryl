@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermobligationtype",
-          "fix:tag": "42088"
+          "FIX:field": "underlyingprotectiontermobligationtype",
+          "FIX:tag": "42088"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermobligationvalue",
-          "fix:tag": "42089"
+          "FIX:field": "underlyingprotectiontermobligationvalue",
+          "FIX:tag": "42089"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingProtectionTermObligation",
-    "fix:tag": "533542"
+    "FIX:tag": "533542",
+    "display": "UnderlyingProtectionTermObligation"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditybase",
-          "fix:tag": "41648"
+          "FIX:field": "legstreamcommoditybase",
+          "FIX:tag": "41648"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditytype",
-          "fix:tag": "41649"
+          "FIX:field": "legstreamcommoditytype",
+          "FIX:tag": "41649"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysecurityid",
-          "fix:tag": "41650"
+          "FIX:field": "legstreamcommoditysecurityid",
+          "FIX:tag": "41650"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysecurityidsource",
-          "fix:tag": "41651"
+          "FIX:field": "legstreamcommoditysecurityidsource",
+          "FIX:tag": "41651"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamcommodityaltids",
-          "fix:tag": "41674"
+          "FIX:field": "nolegstreamcommodityaltids",
+          "FIX:tag": "41674"
         }
       },
       {
@@ -65,7 +65,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legstreamcommodityaltidgrp"
+          "FIX:group": "legstreamcommodityaltidgrp"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditydesc",
-          "fix:tag": "41652"
+          "FIX:field": "legstreamcommoditydesc",
+          "FIX:tag": "41652"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegstreamcommoditydesclen",
-          "fix:tag": "41653"
+          "FIX:field": "encodedlegstreamcommoditydesclen",
+          "FIX:tag": "41653"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlegstreamcommoditydesc",
-          "fix:tag": "41654"
+          "FIX:field": "encodedlegstreamcommoditydesc",
+          "FIX:tag": "41654"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditydeliverypricingregion",
-          "fix:tag": "42588"
+          "FIX:field": "legstreamcommoditydeliverypricingregion",
+          "FIX:tag": "42588"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamassetattributes",
-          "fix:tag": "41452"
+          "FIX:field": "nolegstreamassetattributes",
+          "FIX:tag": "41452"
         }
       },
       {
@@ -130,7 +130,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legstreamassetattributegrp"
+          "FIX:group": "legstreamassetattributegrp"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityunitofmeasure",
-          "fix:tag": "41655"
+          "FIX:field": "legstreamcommodityunitofmeasure",
+          "FIX:tag": "41655"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditycurrency",
-          "fix:tag": "41656"
+          "FIX:field": "legstreamcommoditycurrency",
+          "FIX:tag": "41656"
         }
       },
       {
@@ -162,8 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityexchange",
-          "fix:tag": "41657"
+          "FIX:field": "legstreamcommodityexchange",
+          "FIX:tag": "41657"
         }
       },
       {
@@ -173,8 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityratesource",
-          "fix:tag": "41658"
+          "FIX:field": "legstreamcommodityratesource",
+          "FIX:tag": "41658"
         }
       },
       {
@@ -184,8 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityratereferencepage",
-          "fix:tag": "41659"
+          "FIX:field": "legstreamcommodityratereferencepage",
+          "FIX:tag": "41659"
         }
       },
       {
@@ -195,8 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityratereferencepageheading",
-          "fix:tag": "41660"
+          "FIX:field": "legstreamcommodityratereferencepageheading",
+          "FIX:tag": "41660"
         }
       },
       {
@@ -206,8 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamdataprovider",
-          "fix:tag": "41661"
+          "FIX:field": "legstreamdataprovider",
+          "FIX:tag": "41661"
         }
       },
       {
@@ -217,8 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamcommoditydatasources",
-          "fix:tag": "41677"
+          "FIX:field": "nolegstreamcommoditydatasources",
+          "FIX:tag": "41677"
         }
       },
       {
@@ -228,7 +228,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legstreamcommoditydatasourcegrp"
+          "FIX:group": "legstreamcommoditydatasourcegrp"
         }
       },
       {
@@ -238,8 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditypricingtype",
-          "fix:tag": "41662"
+          "FIX:field": "legstreamcommoditypricingtype",
+          "FIX:tag": "41662"
         }
       },
       {
@@ -249,8 +249,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditynearbysettldayperiod",
-          "fix:tag": "41663"
+          "FIX:field": "legstreamcommoditynearbysettldayperiod",
+          "FIX:tag": "41663"
         }
       },
       {
@@ -260,8 +260,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditynearbysettldayunit",
-          "fix:tag": "41664"
+          "FIX:field": "legstreamcommoditynearbysettldayunit",
+          "FIX:tag": "41664"
         }
       },
       {
@@ -271,8 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettldateunadjusted",
-          "fix:tag": "41665"
+          "FIX:field": "legstreamcommoditysettldateunadjusted",
+          "FIX:tag": "41665"
         }
       },
       {
@@ -282,8 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettldatebusinessdayconvention",
-          "fix:tag": "41666"
+          "FIX:field": "legstreamcommoditysettldatebusinessdayconvention",
+          "FIX:tag": "41666"
         }
       },
       {
@@ -293,8 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamcommoditysettlbusinesscenters",
-          "fix:tag": "41646"
+          "FIX:field": "nolegstreamcommoditysettlbusinesscenters",
+          "FIX:tag": "41646"
         }
       },
       {
@@ -304,7 +304,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legstreamcommoditysettlbusinesscentergrp"
+          "FIX:group": "legstreamcommoditysettlbusinesscentergrp"
         }
       },
       {
@@ -314,8 +314,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettldateadjusted",
-          "fix:tag": "41667"
+          "FIX:field": "legstreamcommoditysettldateadjusted",
+          "FIX:tag": "41667"
         }
       },
       {
@@ -325,8 +325,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlmonth",
-          "fix:tag": "41668"
+          "FIX:field": "legstreamcommoditysettlmonth",
+          "FIX:tag": "41668"
         }
       },
       {
@@ -336,8 +336,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettldaterollperiod",
-          "fix:tag": "41669"
+          "FIX:field": "legstreamcommoditysettldaterollperiod",
+          "FIX:tag": "41669"
         }
       },
       {
@@ -347,8 +347,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettldaterollunit",
-          "fix:tag": "41670"
+          "FIX:field": "legstreamcommoditysettldaterollunit",
+          "FIX:tag": "41670"
         }
       },
       {
@@ -358,8 +358,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettldaytype",
-          "fix:tag": "41671"
+          "FIX:field": "legstreamcommoditysettldaytype",
+          "FIX:tag": "41671"
         }
       },
       {
@@ -369,8 +369,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamcommoditysettlperiods",
-          "fix:tag": "41686"
+          "FIX:field": "nolegstreamcommoditysettlperiods",
+          "FIX:tag": "41686"
         }
       },
       {
@@ -380,7 +380,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legstreamcommoditysettlperiodgrp"
+          "FIX:group": "legstreamcommoditysettlperiodgrp"
         }
       },
       {
@@ -390,8 +390,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityxid",
-          "fix:tag": "41672"
+          "FIX:field": "legstreamcommodityxid",
+          "FIX:tag": "41672"
         }
       },
       {
@@ -401,16 +401,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityxidref",
-          "fix:tag": "41673"
+          "FIX:field": "legstreamcommodityxidref",
+          "FIX:tag": "41673"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "571976",
     "description": "Conditionally required when LegStreamCommoditySecurityIDSource(41651) is specified.",
-    "display": "LegStreamCommodity",
-    "fix:tag": "571976"
+    "display": "LegStreamCommodity"
   }
 }

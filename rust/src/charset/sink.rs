@@ -10,7 +10,7 @@ use crate::Result;
 /// wants its pre-encoded bytes, and both want the run copied whole, so each
 /// codec is written once against this trait and each target spells the two
 /// operations the cheapest way its representation allows.
-pub(super) trait Utf8Sink {
+pub(crate) trait Utf8Sink {
     /// Append a run of bytes the caller proved to be UTF-8 already.
     ///
     /// # Errors
@@ -28,7 +28,7 @@ pub(super) trait Utf8Sink {
 
 impl Utf8Sink for String {
     fn push_utf8(&mut self, run: &[u8]) -> Result<()> {
-        self.push_str(super::ascii::text(run)?);
+        self.push_str(crate::ascii::text(run)?);
         Ok(())
     }
 
@@ -58,7 +58,7 @@ impl Utf8Sink for Vec<u8> {
 
 impl Utf8Sink for smol_str::SmolStrBuilder {
     fn push_utf8(&mut self, run: &[u8]) -> Result<()> {
-        self.push_str(super::ascii::text(run)?);
+        self.push_str(crate::ascii::text(run)?);
         Ok(())
     }
 

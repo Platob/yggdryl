@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "sidecrossordcxl"
+        "FIX:component": "sidecrossordcxl"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "sidecrossordcxl",
+    "FIX:counter": "552",
+    "FIX:tag": "532253",
     "description": "Must be 1 or 2",
-    "display": "SideCrossOrdCxlGrp",
-    "fix:component": "sidecrossordcxl",
-    "fix:counter": "552",
-    "fix:tag": "532253"
+    "display": "SideCrossOrdCxlGrp"
   }
 }

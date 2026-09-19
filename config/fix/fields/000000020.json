@@ -6,9 +6,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of reference entity for first-to-default CDS basket contracts.",
-      "display": "UnderlyingReferenceEntityType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Asian",
@@ -60,7 +58,9 @@
           "doc": "Western European insurance"
         }
       ],
-      "fix:tag": "2000"
+      "FIX:tag": "2000",
+      "description": "Specifies the type of reference entity for first-to-default CDS basket contracts.",
+      "display": "UnderlyingReferenceEntityType"
     }
   },
   {
@@ -72,9 +72,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2001",
       "description": "Specifies the strike price offset from the named index.",
-      "display": "StrikeIndexSpread",
-      "fix:tag": "2001"
+      "display": "StrikeIndexSpread"
     }
   },
   {
@@ -84,9 +84,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2002",
       "description": "Specifies the source of trade valuation data.",
-      "display": "ValuationSource",
-      "fix:tag": "2002"
+      "display": "ValuationSource"
     }
   },
   {
@@ -96,9 +96,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2003",
       "description": "The series identifier of a credit default swap index.",
-      "display": "UnderlyingIndexSeries",
-      "fix:tag": "2003"
+      "display": "UnderlyingIndexSeries"
     }
   },
   {
@@ -108,9 +108,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2004",
       "description": "The version identifier of a credit default swap index annex.",
-      "display": "UnderlyingIndexAnnexVersion",
-      "fix:tag": "2004"
+      "display": "UnderlyingIndexAnnexVersion"
     }
   },
   {
@@ -121,9 +121,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2005",
       "description": "The date of a credit default swap index series annex.",
-      "display": "UnderlyingIndexAnnexDate",
-      "fix:tag": "2005"
+      "display": "UnderlyingIndexAnnexDate"
     }
   },
   {
@@ -133,9 +133,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2006",
       "description": "The source of a credit default swap index series annex.",
-      "display": "UnderlyingIndexAnnexSource",
-      "fix:tag": "2006"
+      "display": "UnderlyingIndexAnnexSource"
     }
   },
   {
@@ -145,9 +145,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2007",
       "description": "Identifies an entire suite of products for a given market. In Futures this may be \"interest rates\", \"agricultural\", \"equity indexes\", etc",
-      "display": "UnderlyingProductComplex",
-      "fix:tag": "2007"
+      "display": "UnderlyingProductComplex"
     }
   },
   {
@@ -157,9 +157,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2008",
       "description": "An exchange specific name assigned to a group of related securities which may be concurrently affected by market events and actions.",
-      "display": "UnderlyingSecurityGroup",
-      "fix:tag": "2008"
+      "display": "UnderlyingSecurityGroup"
     }
   },
   {
@@ -169,9 +169,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2009",
       "description": "Indicator to determine if Instrument is Settle on Open.",
-      "display": "UnderlyingSettleOnOpenFlag",
-      "fix:tag": "2009"
+      "display": "UnderlyingSettleOnOpenFlag"
     }
   },
   {
@@ -181,9 +181,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Method under which assignment was conducted",
-      "display": "UnderlyingAssignmentMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "P",
           "name": "ProRata",
@@ -195,7 +193,9 @@
           "doc": "Random"
         }
       ],
-      "fix:tag": "2010"
+      "FIX:tag": "2010",
+      "description": "Method under which assignment was conducted",
+      "display": "UnderlyingAssignmentMethod"
     }
   },
   {
@@ -205,9 +205,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the current state of the underlying instrument.",
-      "display": "UnderlyingSecurityStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Active",
@@ -264,7 +262,9 @@
           "doc": "Pending Deletion"
         }
       ],
-      "fix:tag": "2011"
+      "FIX:tag": "2011",
+      "description": "Indicates the current state of the underlying instrument.",
+      "display": "UnderlyingSecurityStatus"
     }
   },
   {
@@ -274,9 +274,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of reference obligation for credit derivatives contracts.",
-      "display": "UnderlyingObligationType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bond",
@@ -298,7 +296,9 @@
           "doc": "Loan"
         }
       ],
-      "fix:tag": "2012"
+      "FIX:tag": "2012",
+      "description": "Type of reference obligation for credit derivatives contracts.",
+      "display": "UnderlyingObligationType"
     }
   },
   {
@@ -308,9 +308,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The broad asset category for assessing risk exposure.",
-      "display": "UnderlyingAssetClass",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "InterestRate",
@@ -367,7 +365,9 @@
           "doc": "Index"
         }
       ],
-      "fix:tag": "2013"
+      "FIX:tag": "2013",
+      "description": "The broad asset category for assessing risk exposure.",
+      "display": "UnderlyingAssetClass"
     }
   },
   {
@@ -377,9 +377,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "An indication of the general description of the asset class.",
-      "display": "UnderlyingAssetSubClass",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "SingleCurrency",
@@ -669,7 +667,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2014"
+      "FIX:tag": "2014",
+      "description": "An indication of the general description of the asset class.",
+      "display": "UnderlyingAssetSubClass"
     }
   },
   {
@@ -679,9 +679,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2015",
       "description": "Used to provide more specific description of the asset specified in UnderlyingAssetSubClass(2082). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
-      "display": "UnderlyingAssetType",
-      "fix:tag": "2015"
+      "display": "UnderlyingAssetType"
     }
   },
   {
@@ -691,9 +691,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The type or classification of swap. Additional values may be used by mutual agreement of the counterparties.",
-      "display": "UnderlyingSwapClass",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "BS",
           "name": "BasisSwap",
@@ -715,7 +713,9 @@
           "doc": "Basket swap"
         }
       ],
-      "fix:tag": "2016"
+      "FIX:tag": "2016",
+      "description": "The type or classification of swap. Additional values may be used by mutual agreement of the counterparties.",
+      "display": "UnderlyingSwapClass"
     }
   },
   {
@@ -725,9 +725,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2017",
       "description": "The Nth reference obligation to default in a CDS reference basket. If specified without UnderlyingMthToDefault(2018) the default will trigger a CDS payout. If UnderlyingMthToDefault(2018) is also present then payout occurs between the Nth and Mth obligations to default.",
-      "display": "UnderlyingNthToDefault",
-      "fix:tag": "2017"
+      "display": "UnderlyingNthToDefault"
     }
   },
   {
@@ -737,9 +737,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2018",
       "description": "The Mth reference obligation to default in a CDS reference basket. When UnderlyingNthToDefault(2017) and UnderlyingMthToDefault(2018) are represented then the CDS payout occurs between the Nth and Mth obligations to default.",
-      "display": "UnderlyingMthToDefault",
-      "fix:tag": "2018"
+      "display": "UnderlyingMthToDefault"
     }
   },
   {
@@ -749,9 +749,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2019",
       "description": "Relevant settled entity matrix source.",
-      "display": "UnderlyingSettledEntityMatrixSource",
-      "fix:tag": "2019"
+      "display": "UnderlyingSettledEntityMatrixSource"
     }
   },
   {
@@ -762,9 +762,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2020",
       "description": "Specifies the publication date of the applicable version of the matrix. If not specified, the Standard Terms Supplement defines rules for which version of the matrix is applicable.",
-      "display": "UnderlyingSettledEntityMatrixPublicationDate",
-      "fix:tag": "2020"
+      "display": "UnderlyingSettledEntityMatrixPublicationDate"
     }
   },
   {
@@ -774,9 +774,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2021",
       "description": "Used for derivatives. Multiplier applied to the strike price for the purpose of calculating the settlement value.",
-      "display": "UnderlyingStrikeMultiplier",
-      "fix:tag": "2021"
+      "display": "UnderlyingStrikeMultiplier"
     }
   },
   {
@@ -786,9 +786,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2022",
       "description": "Used for derivatives. The number of shares/units for the financial instrument involved in the option trade.",
-      "display": "UnderlyingStrikeValue",
-      "fix:tag": "2022"
+      "display": "UnderlyingStrikeValue"
     }
   },
   {
@@ -798,9 +798,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies how the strike price is determined at the point of option exercise. The strike may be fixed throughout the life of the option, set at expiration to the value of the underlying, set to the average value of the underlying , or set to the optimal value of the underlying.",
-      "display": "UnderlyingStrikePriceDeterminationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FixedStrike",
@@ -822,7 +820,9 @@
           "doc": "Strike set to optimal value"
         }
       ],
-      "fix:tag": "2023"
+      "FIX:tag": "2023",
+      "description": "Specifies how the strike price is determined at the point of option exercise. The strike may be fixed throughout the life of the option, set at expiration to the value of the underlying, set to the average value of the underlying , or set to the optimal value of the underlying.",
+      "display": "UnderlyingStrikePriceDeterminationMethod"
     }
   },
   {
@@ -832,9 +832,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the boundary condition to be used for the strike price relative to the underlying price at the point of option exercise.",
-      "display": "UnderlyingStrikePriceBoundaryMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "LessThan",
@@ -861,7 +859,9 @@
           "doc": "Greater than underlying is in-the-money(ITM)"
         }
       ],
-      "fix:tag": "2024"
+      "FIX:tag": "2024",
+      "description": "Specifies the boundary condition to be used for the strike price relative to the underlying price at the point of option exercise.",
+      "display": "UnderlyingStrikePriceBoundaryMethod"
     }
   },
   {
@@ -871,9 +871,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2025",
       "description": "Used in combination with StrikePriceBoundaryMethod(1479) to specify the percentage of the strike price in relation to the underlying price. The percentage is generally 100 or greater for puts and 100 or less for calls.",
-      "display": "UnderlyingStrikePriceBoundaryPrecision",
-      "fix:tag": "2025"
+      "display": "UnderlyingStrikePriceBoundaryPrecision"
     }
   },
   {
@@ -883,9 +883,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2026",
       "description": "Minimum price increment for the instrument. Could also be used to represent tick value.",
-      "display": "UnderlyingMinPriceIncrement",
-      "fix:tag": "2026"
+      "display": "UnderlyingMinPriceIncrement"
     }
   },
   {
@@ -897,9 +897,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2027",
       "description": "Minimum price increment amount associated with the UnderlyingMinPriceIncrement(2026). For listed derivatives, the value can be calculated by multiplying UnderlyingMinPriceIncrement(2026) by UnderlyingContractMultiplier(436).",
-      "display": "UnderlyingMinPriceIncrementAmount",
-      "fix:tag": "2027"
+      "display": "UnderlyingMinPriceIncrementAmount"
     }
   },
   {
@@ -909,9 +909,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the type of valuation method or payout trigger for an in-the-money option.",
-      "display": "UnderlyingOptPayoutType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Vanilla",
@@ -958,7 +956,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2028"
+      "FIX:tag": "2028",
+      "description": "Indicates the type of valuation method or payout trigger for an in-the-money option.",
+      "display": "UnderlyingOptPayoutType"
     }
   },
   {
@@ -970,9 +970,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2029",
       "description": "Cash amount indicating the pay out associated with an option. For binary options this is a fixed amount.",
-      "display": "UnderlyingOptPayoutAmount",
-      "fix:tag": "2029"
+      "display": "UnderlyingOptPayoutAmount"
     }
   },
   {
@@ -982,9 +982,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Method for price quotation.",
-      "display": "UnderlyingPriceQuoteMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "STD",
           "name": "Standard",
@@ -1006,7 +1004,9 @@
           "doc": "Percent of Par"
         }
       ],
-      "fix:tag": "2030"
+      "FIX:tag": "2030",
+      "description": "Method for price quotation.",
+      "display": "UnderlyingPriceQuoteMethod"
     }
   },
   {
@@ -1016,9 +1016,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates type of valuation method used.",
-      "display": "UnderlyingValuationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "EQTY",
           "name": "PremiumStyle",
@@ -1045,7 +1043,9 @@
           "doc": "CDS in delivery - use recovery rate to calculate obligation"
         }
       ],
-      "fix:tag": "2031"
+      "FIX:tag": "2031",
+      "description": "Indicates type of valuation method used.",
+      "display": "UnderlyingValuationMethod"
     }
   },
   {
@@ -1055,9 +1055,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether the instruments are pre-listed only or can also be defined via user request.",
-      "display": "UnderlyingListMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "PreListedOnly",
@@ -1069,7 +1067,9 @@
           "doc": "user requested"
         }
       ],
-      "fix:tag": "2032"
+      "FIX:tag": "2032",
+      "description": "Indicates whether the instruments are pre-listed only or can also be defined via user request.",
+      "display": "UnderlyingListMethod"
     }
   },
   {
@@ -1081,9 +1081,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2033",
       "description": "Used to express the ceiling price of a capped call.",
-      "display": "UnderlyingCapPrice",
-      "fix:tag": "2033"
+      "display": "UnderlyingCapPrice"
     }
   },
   {
@@ -1095,9 +1095,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2034",
       "description": "Used to express the floor price of a capped put.",
-      "display": "UnderlyingFloorPrice",
-      "fix:tag": "2034"
+      "display": "UnderlyingFloorPrice"
     }
   },
   {
@@ -1107,9 +1107,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2035",
       "description": "Used to indicate if a security has been defined as flexible according to \"non-standard\" means. Analog to CFICode Standard/Non-standard indicator.",
-      "display": "UnderlyingFlexibleIndicator",
-      "fix:tag": "2035"
+      "display": "UnderlyingFlexibleIndicator"
     }
   },
   {
@@ -1119,9 +1119,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2036",
       "description": "Used to indicate if a product or group of product supports the creation of flexible securities.",
-      "display": "UnderlyingFlexProductEligibilityIndicator",
-      "fix:tag": "2036"
+      "display": "UnderlyingFlexProductEligibilityIndicator"
     }
   },
   {
@@ -1131,9 +1131,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2037",
       "description": "Position limit for the instrument.",
-      "display": "UnderlyingPositionLimit",
-      "fix:tag": "2037"
+      "display": "UnderlyingPositionLimit"
     }
   },
   {
@@ -1143,9 +1143,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2038",
       "description": "Position Limit in the near-term contract for a given exchange-traded product.",
-      "display": "UnderlyingNTPositionLimit",
-      "fix:tag": "2038"
+      "display": "UnderlyingNTPositionLimit"
     }
   },
   {
@@ -1155,24 +1155,23 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2039",
       "description": "Identifies the mortgage backed security (MBS) / asset backed security (ABS) pool.",
-      "display": "UnderlyingPool",
-      "fix:tag": "2039"
+      "display": "UnderlyingPool"
     }
   },
   {
     "name": "underlyingcontractsettlmonth",
     "dtype": {
       "type": "string",
-      "layout": "fixed_string",
-      "charset": "us-ascii",
+      "layout": "fixed_ascii",
       "fixed": 8
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2040",
       "description": "Specifies when the contract (i.e. MBS/TBA) will settle. Must be present for MBS/TBA.",
-      "display": "UnderlyingContractSettlMonth",
-      "fix:tag": "2040"
+      "display": "UnderlyingContractSettlMonth"
     }
   },
   {
@@ -1183,9 +1182,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2041",
       "description": "If different from IssueDate()",
-      "display": "UnderlyingDatedDate",
-      "fix:tag": "2041"
+      "display": "UnderlyingDatedDate"
     }
   },
   {
@@ -1196,9 +1195,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2042",
       "description": "If different from IssueDate and DatedDate",
-      "display": "UnderlyingInterestAccrualDate",
-      "fix:tag": "2042"
+      "display": "UnderlyingInterestAccrualDate"
     }
   },
   {
@@ -1208,9 +1207,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether a restriction applies to short selling a security.",
-      "display": "UnderlyingShortSaleRestriction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NoRestrictions",
@@ -1232,7 +1229,9 @@
           "doc": "Security is not shortable without pre-borrow"
         }
       ],
-      "fix:tag": "2043"
+      "FIX:tag": "2043",
+      "description": "Indicates whether a restriction applies to short selling a security.",
+      "display": "UnderlyingShortSaleRestriction"
     }
   },
   {
@@ -1242,9 +1241,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2044",
       "description": "Spread table code referred by the security or symbol.",
-      "display": "UnderlyingRefTickTableID",
-      "fix:tag": "2044"
+      "display": "UnderlyingRefTickTableID"
     }
   },
   {
@@ -1254,9 +1253,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2045",
       "description": "Number of complex events in the repeating group.",
-      "display": "NoUnderlyingComplexEvents",
-      "fix:tag": "2045"
+      "display": "NoUnderlyingComplexEvents"
     }
   },
   {
@@ -1266,9 +1265,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of complex event.",
-      "display": "UnderlyingComplexEventType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Capped",
@@ -1385,7 +1382,9 @@
           "doc": "Dividend valuation"
         }
       ],
-      "fix:tag": "2046"
+      "FIX:tag": "2046",
+      "description": "Identifies the type of complex event.",
+      "display": "UnderlyingComplexEventType"
     }
   },
   {
@@ -1397,9 +1396,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2047",
       "description": "Cash amount indicating the pay out associated with an event. For binary options this is a fixed amount.",
-      "display": "UnderlyingComplexOptPayoutAmount",
-      "fix:tag": "2047"
+      "display": "UnderlyingComplexOptPayoutAmount"
     }
   },
   {
@@ -1411,9 +1410,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2048",
       "description": "Specifies the price at which the complex event takes effect. Impact of the event price is determined by the UnderlyingComplexEventType(2046).",
-      "display": "UnderlyingComplexEventPrice",
-      "fix:tag": "2048"
+      "display": "UnderlyingComplexEventPrice"
     }
   },
   {
@@ -1423,9 +1422,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the boundary condition to be used for the event price relative to the UnderlyingComplexEventPrice(2048) at the point the complex event outcome takes effect as determined by the UnderlyingComplexEventPriceTimeType(2051).",
-      "display": "UnderlyingComplexEventPriceBoundaryMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "LessThanComplexEventPrice",
@@ -1452,7 +1449,9 @@
           "doc": "Greater than ComplexEventPrice(1486)"
         }
       ],
-      "fix:tag": "2049"
+      "FIX:tag": "2049",
+      "description": "Specifies the boundary condition to be used for the event price relative to the UnderlyingComplexEventPrice(2048) at the point the complex event outcome takes effect as determined by the UnderlyingComplexEventPriceTimeType(2051).",
+      "display": "UnderlyingComplexEventPriceBoundaryMethod"
     }
   },
   {
@@ -1462,9 +1461,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2050",
       "description": "Used in combination with UnderlyingComplexEventPriceBoundaryMethod(2049) to specify the percentage of the strike price in relation to the underlying price. The percentage is generally 100 or greater for puts and 100 or less for calls.",
-      "display": "UnderlyingComplexEventPriceBoundaryPrecision",
-      "fix:tag": "2050"
+      "display": "UnderlyingComplexEventPriceBoundaryPrecision"
     }
   },
   {
@@ -1474,9 +1473,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies when the complex event outcome takes effect. The outcome of a complex event is a payout or barrier action as specified by the UnderlyingComplexEventType(2046).",
-      "display": "UnderlyingComplexEventPriceTimeType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Expiration",
@@ -1518,7 +1515,9 @@
           "doc": "As specified in Master Confirmation"
         }
       ],
-      "fix:tag": "2051"
+      "FIX:tag": "2051",
+      "description": "Specifies when the complex event outcome takes effect. The outcome of a complex event is a payout or barrier action as specified by the UnderlyingComplexEventType(2046).",
+      "display": "UnderlyingComplexEventPriceTimeType"
     }
   },
   {
@@ -1528,9 +1527,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the condition between complex events when more than one event is specified.",
-      "display": "UnderlyingComplexEventCondition",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "And",
@@ -1542,7 +1539,9 @@
           "doc": "Or"
         }
       ],
-      "fix:tag": "2052"
+      "FIX:tag": "2052",
+      "description": "Specifies the condition between complex events when more than one event is specified.",
+      "display": "UnderlyingComplexEventCondition"
     }
   },
   {
@@ -1552,9 +1551,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2053",
       "description": "Number of underlying complex event dates in the repeating group.",
-      "display": "NoUnderlyingComplexEventDates",
-      "fix:tag": "2053"
+      "display": "NoUnderlyingComplexEventDates"
     }
   },
   {
@@ -1566,9 +1565,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2054",
       "description": "The start date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options.",
-      "display": "UnderlyingComplexEventStartDate",
-      "fix:tag": "2054"
+      "display": "UnderlyingComplexEventStartDate"
     }
   },
   {
@@ -1580,9 +1579,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2055",
       "description": "The end date of the date range on which a complex event is effective. The start date will be set equal to the end date for single day events such as Bermuda options.",
-      "display": "UnderlyingComplexEventEndDate",
-      "fix:tag": "2055"
+      "display": "UnderlyingComplexEventEndDate"
     }
   },
   {
@@ -1592,9 +1591,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2056",
       "description": "Number of complex event times in the repeating group.",
-      "display": "NoUnderlyingComplexEventTimes",
-      "fix:tag": "2056"
+      "display": "NoUnderlyingComplexEventTimes"
     }
   },
   {
@@ -1605,9 +1604,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2057",
       "description": "The start time of the time range on which a complex event date is effective.",
-      "display": "UnderlyingComplexEventStartTime",
-      "fix:tag": "2057"
+      "display": "UnderlyingComplexEventStartTime"
     }
   },
   {
@@ -1618,9 +1617,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2058",
       "description": "The end time of the time range on which a complex event date is effective.",
-      "display": "UnderlyingComplexEventEndTime",
-      "fix:tag": "2058"
+      "display": "UnderlyingComplexEventEndTime"
     }
   },
   {
@@ -1630,9 +1629,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2059",
       "description": "Number of events in the repeating group",
-      "display": "NoLegEvents",
-      "fix:tag": "2059"
+      "display": "NoLegEvents"
     }
   },
   {
@@ -1642,9 +1641,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to represent the type of event.",
-      "display": "LegEventType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Put",
@@ -1796,7 +1793,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2060"
+      "FIX:tag": "2060",
+      "description": "Code to represent the type of event.",
+      "display": "LegEventType"
     }
   },
   {
@@ -1807,9 +1806,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2061",
       "description": "The date of the event.",
-      "display": "LegEventDate",
-      "fix:tag": "2061"
+      "display": "LegEventDate"
     }
   },
   {
@@ -1821,9 +1820,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2062",
       "description": "Specific time of event. To be used in combination with LegEventDate(2061).",
-      "display": "LegEventTime",
-      "fix:tag": "2062"
+      "display": "LegEventTime"
     }
   },
   {
@@ -1833,9 +1832,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the event.",
-      "display": "LegEventTimeUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "H",
           "name": "Hour",
@@ -1872,7 +1869,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "2063"
+      "FIX:tag": "2063",
+      "description": "Time unit associated with the event.",
+      "display": "LegEventTimeUnit"
     }
   },
   {
@@ -1882,9 +1881,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2064",
       "description": "Time unit multiplier for the event.",
-      "display": "LegEventTimePeriod",
-      "fix:tag": "2064"
+      "display": "LegEventTimePeriod"
     }
   },
   {
@@ -1896,9 +1895,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2065",
       "description": "Predetermined price of issue at event, if applicable.",
-      "display": "LegEventPx",
-      "fix:tag": "2065"
+      "display": "LegEventPx"
     }
   },
   {
@@ -1908,9 +1907,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2066",
       "description": "Free form text to specify additional information or enumeration description when a standard value does not apply.",
-      "display": "LegEventText",
-      "fix:tag": "2066"
+      "display": "LegEventText"
     }
   },
   {
@@ -1920,9 +1919,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The broad asset category for assessing risk exposure.",
-      "display": "LegAssetClass",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "InterestRate",
@@ -1979,7 +1976,9 @@
           "doc": "Index"
         }
       ],
-      "fix:tag": "2067"
+      "FIX:tag": "2067",
+      "description": "The broad asset category for assessing risk exposure.",
+      "display": "LegAssetClass"
     }
   },
   {
@@ -1989,9 +1988,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The general subcategory description of the asset class.",
-      "display": "LegAssetSubClass",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "SingleCurrency",
@@ -2281,7 +2278,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2068"
+      "FIX:tag": "2068",
+      "description": "The general subcategory description of the asset class.",
+      "display": "LegAssetSubClass"
     }
   },
   {
@@ -2291,9 +2290,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2069",
       "description": "Used to provide more specific description of the asset specified in LegAssetSubClass(2068). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
-      "display": "LegAssetType",
-      "fix:tag": "2069"
+      "display": "LegAssetType"
     }
   },
   {
@@ -2303,9 +2302,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Swap type.",
-      "display": "LegSwapClass",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "BS",
           "name": "BasisSwap",
@@ -2327,7 +2324,9 @@
           "doc": "Basket swap"
         }
       ],
-      "fix:tag": "2070"
+      "FIX:tag": "2070",
+      "description": "Swap type.",
+      "display": "LegSwapClass"
     }
   },
   {
@@ -2337,9 +2336,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2071",
       "description": "Free form text to specify comments related to the event.",
-      "display": "UnderlyingEventText",
-      "fix:tag": "2071"
+      "display": "UnderlyingEventText"
     }
   },
   {
@@ -2349,9 +2348,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2072",
       "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingEventText(2073) field.",
-      "display": "EncodedUnderlyingEventTextLen",
-      "fix:tag": "2072"
+      "display": "EncodedUnderlyingEventTextLen"
     }
   },
   {
@@ -2361,9 +2360,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2073",
       "description": "Encoded (non-ASCII characters) representation of the UnderlyingEventText(2071) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingEventText(2071) field.",
-      "display": "EncodedUnderlyingEventText",
-      "fix:tag": "2073"
+      "display": "EncodedUnderlyingEventText"
     }
   },
   {
@@ -2373,9 +2372,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2074",
       "description": "Byte length of encoded (non-ASCII characters) EncodedLegEventText(2075) field.",
-      "display": "EncodedLegEventTextLen",
-      "fix:tag": "2074"
+      "display": "EncodedLegEventTextLen"
     }
   },
   {
@@ -2385,9 +2384,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2075",
       "description": "Encoded (non-ASCII characters) representation of the LegEventText(2066) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegEventText(2066) field.",
-      "display": "EncodedLegEventText",
-      "fix:tag": "2075"
+      "display": "EncodedLegEventText"
     }
   },
   {
@@ -2397,9 +2396,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2076",
       "description": "Number of secondary asset classes in the repeating group.",
-      "display": "NoLegSecondaryAssetClasses",
-      "fix:tag": "2076"
+      "display": "NoLegSecondaryAssetClasses"
     }
   },
   {
@@ -2409,9 +2408,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The broad asset category for assessing risk exposure for a multi-asset trade.",
-      "display": "LegSecondaryAssetClass",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "InterestRate",
@@ -2468,7 +2465,9 @@
           "doc": "Index"
         }
       ],
-      "fix:tag": "2077"
+      "FIX:tag": "2077",
+      "description": "The broad asset category for assessing risk exposure for a multi-asset trade.",
+      "display": "LegSecondaryAssetClass"
     }
   },
   {
@@ -2478,9 +2477,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "An indication of the general description of the asset class.",
-      "display": "LegSecondaryAssetSubClass",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "SingleCurrency",
@@ -2770,7 +2767,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2078"
+      "FIX:tag": "2078",
+      "description": "An indication of the general description of the asset class.",
+      "display": "LegSecondaryAssetSubClass"
     }
   },
   {
@@ -2780,9 +2779,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2079",
       "description": "Used to provide more specific description of the asset specified in LegSecondaryAssetSubClass(2078). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
-      "display": "LegSecondaryAssetType",
-      "fix:tag": "2079"
+      "display": "LegSecondaryAssetType"
     }
   },
   {
@@ -2792,9 +2791,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2080",
       "description": "Number of secondary asset classes in the repeating group.",
-      "display": "NoUnderlyingSecondaryAssetClasses",
-      "fix:tag": "2080"
+      "display": "NoUnderlyingSecondaryAssetClasses"
     }
   },
   {
@@ -2804,9 +2803,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The broad asset category for assessing risk exposure for a multi-asset trade.",
-      "display": "UnderlyingSecondaryAssetClass",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "InterestRate",
@@ -2863,7 +2860,9 @@
           "doc": "Index"
         }
       ],
-      "fix:tag": "2081"
+      "FIX:tag": "2081",
+      "description": "The broad asset category for assessing risk exposure for a multi-asset trade.",
+      "display": "UnderlyingSecondaryAssetClass"
     }
   },
   {
@@ -2873,9 +2872,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "An indication of the general description of the asset class.",
-      "display": "UnderlyingSecondaryAssetSubClass",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "SingleCurrency",
@@ -3165,7 +3162,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2082"
+      "FIX:tag": "2082",
+      "description": "An indication of the general description of the asset class.",
+      "display": "UnderlyingSecondaryAssetSubClass"
     }
   },
   {
@@ -3175,9 +3174,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2083",
       "description": "Used to provide more specific description of the asset specified in UnderlyingSecondaryAssetSubClass(2082). See https://fixtrading.org/packages/asset-type for code list of applicable values. ISO 4721 Currency Code values are to be used when specific currency as an asset type is to be expressed. Other values may be used by mutual agreement of the counterparties.",
-      "display": "UnderlyingSecondaryAssetType",
-      "fix:tag": "2083"
+      "display": "UnderlyingSecondaryAssetType"
     }
   },
   {
@@ -3188,9 +3187,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2084",
       "description": "The date of the previous clearing business day.",
-      "display": "PreviousClearingBusinessDate",
-      "fix:tag": "2084"
+      "display": "PreviousClearingBusinessDate"
     }
   },
   {
@@ -3201,9 +3200,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2085",
       "description": "The valuation date of the trade.",
-      "display": "ValuationDate",
-      "fix:tag": "2085"
+      "display": "ValuationDate"
     }
   },
   {
@@ -3214,9 +3213,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2086",
       "description": "The valuation time of the trade.",
-      "display": "ValuationTime",
-      "fix:tag": "2086"
+      "display": "ValuationTime"
     }
   },
   {
@@ -3226,9 +3225,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2087",
       "description": "Identifies the business center whose calendar is used for valuation, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "ValuationBusinessCenter",
-      "fix:tag": "2087"
+      "display": "ValuationBusinessCenter"
     }
   },
   {
@@ -3238,9 +3237,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2088",
       "description": "Foreign exchange rate used to compute the MarginAmt(1645) from the MarginAmtCcy(1646) and the Currency(15).",
-      "display": "MarginAmtFXRate",
-      "fix:tag": "2088"
+      "display": "MarginAmtFXRate"
     }
   },
   {
@@ -3250,9 +3249,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies whether or not MarginAmtFXRate(2088) should be multipled or divided.",
-      "display": "MarginAmtFXRateCalc",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Divide",
@@ -3264,7 +3261,9 @@
           "doc": "Multiply"
         }
       ],
-      "fix:tag": "2089"
+      "FIX:tag": "2089",
+      "description": "Specifies whether or not MarginAmtFXRate(2088) should be multipled or divided.",
+      "display": "MarginAmtFXRateCalc"
     }
   },
   {
@@ -3274,9 +3273,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2090",
       "description": "Foreign exchange rate used to compute the CurrentCollateralAmount(1704) from the CollateralCurrency(1646) and the Currency(15).",
-      "display": "CollateralFXRate",
-      "fix:tag": "2090"
+      "display": "CollateralFXRate"
     }
   },
   {
@@ -3286,9 +3285,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies whether or not CollateralFXRate(2090) should be multipled or divided.",
-      "display": "CollateralFXRateCalc",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Divide",
@@ -3300,7 +3297,9 @@
           "doc": "Multiply"
         }
       ],
-      "fix:tag": "2091"
+      "FIX:tag": "2091",
+      "description": "Specifies whether or not CollateralFXRate(2090) should be multipled or divided.",
+      "display": "CollateralFXRateCalc"
     }
   },
   {
@@ -3310,9 +3309,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2092",
       "description": "Market segment associated with the collateral amount.",
-      "display": "CollateralAmountMarketSegmentID",
-      "fix:tag": "2092"
+      "display": "CollateralAmountMarketSegmentID"
     }
   },
   {
@@ -3322,9 +3321,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2093",
       "description": "Market associated with the collateral amount.",
-      "display": "CollateralAmountMarketID",
-      "fix:tag": "2093"
+      "display": "CollateralAmountMarketID"
     }
   },
   {
@@ -3334,9 +3333,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2094",
       "description": "Foreign exchange rate used to compute the PayAmount(1710) or CollectAmount(1711) from the PayCollectCurrency(1709) and the Currency(15).",
-      "display": "PayCollectFXRate",
-      "fix:tag": "2094"
+      "display": "PayCollectFXRate"
     }
   },
   {
@@ -3346,9 +3345,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies whether or not PayCollectFXRate(2094) should be multipled or divided.",
-      "display": "PayCollectFXRateCalc",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Divide",
@@ -3360,7 +3357,9 @@
           "doc": "Multiply"
         }
       ],
-      "fix:tag": "2095"
+      "FIX:tag": "2095",
+      "description": "Specifies whether or not PayCollectFXRate(2094) should be multipled or divided.",
+      "display": "PayCollectFXRateCalc"
     }
   },
   {
@@ -3370,9 +3369,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2096",
       "description": "Corresponds to the value in StreamDesc(40051) in the StreamGrp component.",
-      "display": "PosAmtStreamDesc",
-      "fix:tag": "2096"
+      "display": "PosAmtStreamDesc"
     }
   },
   {
@@ -3382,9 +3381,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2097",
       "description": "Foreign exchange rate used to compute the PosAmt(708) from the PositionCurrency(1055) and the Currency (15).",
-      "display": "PositionFXRate",
-      "fix:tag": "2097"
+      "display": "PositionFXRate"
     }
   },
   {
@@ -3394,9 +3393,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies whether or not PositionFXRate(2097) should be multipled or divided.",
-      "display": "PositionFXRateCalc",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Divide",
@@ -3408,7 +3405,9 @@
           "doc": "Multiply"
         }
       ],
-      "fix:tag": "2098"
+      "FIX:tag": "2098",
+      "description": "Specifies whether or not PositionFXRate(2097) should be multipled or divided.",
+      "display": "PositionFXRateCalc"
     }
   },
   {
@@ -3418,9 +3417,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2099",
       "description": "Market segment associated with the position amount.",
-      "display": "PosAmtMarketSegmentID",
-      "fix:tag": "2099"
+      "display": "PosAmtMarketSegmentID"
     }
   }
 ]

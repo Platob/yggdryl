@@ -1,25 +1,18 @@
 //! Per-row digest columns and holder filling.
 
-#[cfg(feature = "arrow")]
 use std::hint::black_box;
-#[cfg(feature = "arrow")]
 use std::sync::Arc;
 
 use criterion::Criterion;
 
-#[cfg(feature = "arrow")]
 use arrow_array::{ArrayRef, Float64Array, Int64Array, RecordBatch, StringArray, UInt64Array};
-#[cfg(feature = "arrow")]
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-#[cfg(feature = "arrow")]
-use yggdryl::{DataType, DigestAlgorithm, Field};
+use yggdryl::{DataType, DigestAlgorithm, Field, StructureType};
 
 /// Rows per fixture, enough that the per-row cost dominates the setup.
-#[cfg(feature = "arrow")]
 const ROWS: usize = crate::bench_profile::corpus(65_536, 4_096);
 
 /// A four-column batch whose columns all take the buffer path.
-#[cfg(feature = "arrow")]
 fn buffered_batch() -> RecordBatch {
     let ids: Int64Array = (0..ROWS as i64).collect::<Vec<_>>().into();
     let symbols: StringArray = (0..ROWS)
@@ -53,7 +46,6 @@ fn buffered_batch() -> RecordBatch {
 /// buffer arm and reads through the shared scalar boundary. The shape is
 /// otherwise identical to [`buffered_batch`], which is what makes the two rows
 /// a like-for-like comparison of the two paths rather than of two schemas.
-#[cfg(feature = "arrow")]
 fn fallback_batch() -> RecordBatch {
     use yggdryl::Scalar;
 
@@ -92,13 +84,16 @@ fn fallback_batch() -> RecordBatch {
         arrays.push(
             yggdryl::arrow::array_from_value(&field, &values).expect("a valid column fixture"),
         );
-        fields.push(field.into_arrow().expect("the field projects to Arrow"));
+        fields.push(
+            field
+                .into_arrow_field()
+                .expect("the field projects to Arrow"),
+        );
     }
     RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).expect("a valid batch fixture")
 }
 
 /// One target root and the three source shapes holder filling distinguishes.
-#[cfg(feature = "arrow")]
 fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatch) {
     let symbol = Field::new("symbol", DataType::utf8(), false);
     let mut digest = Field::new(
@@ -118,7 +113,8 @@ fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatc
         .as_digest_mut()
         .set_sources(["symbol"])
         .expect("a valid holder path");
-    let root = DataType::from_fields([symbol.clone(), digest.clone()])
+    let root = StructureType::from_fields([symbol.clone(), digest.clone()])
+        .map(DataType::from)
         .expect("a valid Struct")
         .required_field("row");
 
@@ -129,7 +125,7 @@ fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatc
     ) as ArrayRef;
     let missing = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
-            symbol.clone().into_arrow().expect("Arrow field"),
+            symbol.clone().into_arrow_field().expect("Arrow field"),
         ])),
         vec![Arc::clone(&symbols)],
     )
@@ -141,8 +137,8 @@ fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatc
     };
     let defaults = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
-            symbol.clone().into_arrow().expect("Arrow field"),
-            digest.clone().into_arrow().expect("Arrow field"),
+            symbol.clone().into_arrow_field().expect("Arrow field"),
+            digest.clone().into_arrow_field().expect("Arrow field"),
         ])),
         vec![Arc::clone(&symbols), default_values],
     )
@@ -154,8 +150,8 @@ fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatc
     };
     let populated = RecordBatch::try_new(
         Arc::new(Schema::new(vec![
-            symbol.into_arrow().expect("Arrow field"),
-            digest.into_arrow().expect("Arrow field"),
+            symbol.into_arrow_field().expect("Arrow field"),
+            digest.into_arrow_field().expect("Arrow field"),
         ])),
         vec![symbols, populated_values],
     )
@@ -169,7 +165,6 @@ fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatc
 /// row as a `Scalar`, then digest each - so the gap is what reading the
 /// buffers directly is worth. The fallback row is the same work through the
 /// shared scalar boundary, which every layout without a buffer arm takes.
-#[cfg(feature = "arrow")]
 pub(crate) fn row_digest_benchmarks(criterion: &mut Criterion) {
     use criterion::Throughput;
 
@@ -180,20 +175,14 @@ pub(crate) fn row_digest_benchmarks(criterion: &mut Criterion) {
     group.throughput(Throughput::Elements(ROWS as u64));
     group.bench_function("buffer_path", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::xxhash::arrow::row_digests(
-                black_box(&buffered),
-                DigestAlgorithm::Xxh3,
-            )
-            .expect("the batch digests")
+            yggdryl::xxhash::arrow::row_digests(black_box(&buffered), DigestAlgorithm::Xxh3)
+                .expect("the batch digests")
         });
     });
     group.bench_function("scalar_fallback", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::xxhash::arrow::row_digests(
-                black_box(&fallback),
-                DigestAlgorithm::Xxh3,
-            )
-            .expect("the batch digests")
+            yggdryl::xxhash::arrow::row_digests(black_box(&fallback), DigestAlgorithm::Xxh3)
+                .expect("the batch digests")
         });
     });
     group.bench_function("materialized_rows", |bencher| {
@@ -209,21 +198,17 @@ pub(crate) fn row_digest_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("buffer_path_128", |bencher| {
         bencher.iter(|| {
-            yggdryl::hashing::xxhash::arrow::row_digests(
-                black_box(&buffered),
-                DigestAlgorithm::Xxh128,
-            )
-            .expect("the batch digests")
+            yggdryl::xxhash::arrow::row_digests(black_box(&buffered), DigestAlgorithm::Xxh128)
+                .expect("the batch digests")
         });
     });
     group.finish();
 }
 
 /// Fill insertion, conditional recomputation, preservation, and force paths.
-#[cfg(feature = "arrow")]
 pub(crate) fn holder_fill_benchmarks(criterion: &mut Criterion) {
     use criterion::Throughput;
-    use yggdryl::hashing::xxhash::Xxh3;
+    use yggdryl::xxhash::Xxh3;
 
     let (root, missing, defaults, populated) = holder_fixtures(false);
     let (signed_root, signed_missing, _, _) = holder_fixtures(true);
@@ -271,11 +256,3 @@ pub(crate) fn holder_fill_benchmarks(criterion: &mut Criterion) {
     });
     group.finish();
 }
-
-/// Row digests need the Arrow runtime; a schema-only build has no batch.
-#[cfg(not(feature = "arrow"))]
-pub(crate) fn row_digest_benchmarks(_criterion: &mut Criterion) {}
-
-/// Holder filling needs the Arrow runtime too.
-#[cfg(not(feature = "arrow"))]
-pub(crate) fn holder_fill_benchmarks(_criterion: &mut Criterion) {}

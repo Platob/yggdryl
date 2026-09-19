@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamtype",
-          "fix:tag": "40279"
+          "FIX:field": "legpaymentstreamtype",
+          "FIX:tag": "40279"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreammarketrate",
-          "fix:tag": "40280"
+          "FIX:field": "legpaymentstreammarketrate",
+          "FIX:tag": "40280"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamdelayindicator",
-          "fix:tag": "40281"
+          "FIX:field": "legpaymentstreamdelayindicator",
+          "FIX:tag": "40281"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcashsettlindicator",
-          "fix:tag": "42399"
+          "FIX:field": "legpaymentstreamcashsettlindicator",
+          "FIX:tag": "42399"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamsettlcurrency",
-          "fix:tag": "40282"
+          "FIX:field": "legpaymentstreamsettlcurrency",
+          "FIX:tag": "40282"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamdaycount",
-          "fix:tag": "40283"
+          "FIX:field": "legpaymentstreamdaycount",
+          "FIX:tag": "40283"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamotherdaycount",
-          "fix:tag": "43108"
+          "FIX:field": "legpaymentstreamotherdaycount",
+          "FIX:tag": "43108"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamaccrualdays",
-          "fix:tag": "40284"
+          "FIX:field": "legpaymentstreamaccrualdays",
+          "FIX:tag": "40284"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamdiscounttype",
-          "fix:tag": "40285"
+          "FIX:field": "legpaymentstreamdiscounttype",
+          "FIX:tag": "40285"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamdiscountrate",
-          "fix:tag": "40286"
+          "FIX:field": "legpaymentstreamdiscountrate",
+          "FIX:tag": "40286"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamdiscountratedaycount",
-          "fix:tag": "40287"
+          "FIX:field": "legpaymentstreamdiscountratedaycount",
+          "FIX:tag": "40287"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingmethod",
-          "fix:tag": "40288"
+          "FIX:field": "legpaymentstreamcompoundingmethod",
+          "FIX:tag": "40288"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingxidref",
-          "fix:tag": "42400"
+          "FIX:field": "legpaymentstreamcompoundingxidref",
+          "FIX:tag": "42400"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingspread",
-          "fix:tag": "42401"
+          "FIX:field": "legpaymentstreamcompoundingspread",
+          "FIX:tag": "42401"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreaminterpolationmethod",
-          "fix:tag": "42402"
+          "FIX:field": "legpaymentstreaminterpolationmethod",
+          "FIX:tag": "42402"
         }
       },
       {
@@ -175,8 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreaminterpolationperiod",
-          "fix:tag": "42403"
+          "FIX:field": "legpaymentstreaminterpolationperiod",
+          "FIX:tag": "42403"
         }
       },
       {
@@ -186,8 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreaminitialprincipalexchangeindicator",
-          "fix:tag": "40289"
+          "FIX:field": "legpaymentstreaminitialprincipalexchangeindicator",
+          "FIX:tag": "40289"
         }
       },
       {
@@ -197,8 +197,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreaminterimprincipalexchangeindicator",
-          "fix:tag": "40290"
+          "FIX:field": "legpaymentstreaminterimprincipalexchangeindicator",
+          "FIX:tag": "40290"
         }
       },
       {
@@ -208,8 +208,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfinalprincipalexchangeindicator",
-          "fix:tag": "40291"
+          "FIX:field": "legpaymentstreamfinalprincipalexchangeindicator",
+          "FIX:tag": "40291"
         }
       },
       {
@@ -219,8 +219,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamflatrateindicator",
-          "fix:tag": "41549"
+          "FIX:field": "legpaymentstreamflatrateindicator",
+          "FIX:tag": "41549"
         }
       },
       {
@@ -230,8 +230,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamflatrateamount",
-          "fix:tag": "41550"
+          "FIX:field": "legpaymentstreamflatrateamount",
+          "FIX:tag": "41550"
         }
       },
       {
@@ -241,8 +241,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamflatratecurrency",
-          "fix:tag": "41551"
+          "FIX:field": "legpaymentstreamflatratecurrency",
+          "FIX:tag": "41551"
         }
       },
       {
@@ -252,8 +252,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreammaximumpaymentamount",
-          "fix:tag": "41552"
+          "FIX:field": "legstreammaximumpaymentamount",
+          "FIX:tag": "41552"
         }
       },
       {
@@ -263,8 +263,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreammaximumpaymentcurrency",
-          "fix:tag": "41553"
+          "FIX:field": "legstreammaximumpaymentcurrency",
+          "FIX:tag": "41553"
         }
       },
       {
@@ -274,8 +274,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreammaximumtransactionamount",
-          "fix:tag": "41554"
+          "FIX:field": "legstreammaximumtransactionamount",
+          "FIX:tag": "41554"
         }
       },
       {
@@ -285,8 +285,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreammaximumtransactioncurrency",
-          "fix:tag": "41555"
+          "FIX:field": "legstreammaximumtransactioncurrency",
+          "FIX:tag": "41555"
         }
       },
       {
@@ -296,7 +296,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legpaymentstreampaymentdates"
+          "FIX:component": "legpaymentstreampaymentdates"
         }
       },
       {
@@ -306,7 +306,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legpaymentstreamresetdates"
+          "FIX:component": "legpaymentstreamresetdates"
         }
       },
       {
@@ -316,7 +316,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legpaymentstreamfixedrate"
+          "FIX:component": "legpaymentstreamfixedrate"
         }
       },
       {
@@ -326,7 +326,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legpaymentstreamfloatingrate"
+          "FIX:component": "legpaymentstreamfloatingrate"
         }
       },
       {
@@ -336,8 +336,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingfixedrate",
-          "fix:tag": "42404"
+          "FIX:field": "legpaymentstreamcompoundingfixedrate",
+          "FIX:tag": "42404"
         }
       },
       {
@@ -347,7 +347,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legpaymentstreamcompoundingfloatingrate"
+          "FIX:component": "legpaymentstreamcompoundingfloatingrate"
         }
       },
       {
@@ -357,7 +357,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legpaymentstreamcompoundingdates"
+          "FIX:component": "legpaymentstreamcompoundingdates"
         }
       },
       {
@@ -367,15 +367,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legpaymentstreamnondeliverablesettlterms"
+          "FIX:component": "legpaymentstreamnondeliverablesettlterms"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "799194",
     "description": "May be used to specify a count method not listed in LegPaymentStreamDayCount(40283).",
-    "display": "LegPaymentStream",
-    "fix:tag": "799194"
+    "display": "LegPaymentStream"
   }
 }

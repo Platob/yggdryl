@@ -5,7 +5,7 @@ use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
 use yggdryl::DigestAlgorithm;
-use yggdryl::hashing::xxhash::{self, Xxh3, Xxh32, Xxh64, Xxh128};
+use yggdryl::xxhash::{self, Xxh3, Xxh32, Xxh64, Xxh128};
 
 use super::super::payload;
 use super::{SIZES, label};

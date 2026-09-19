@@ -31,7 +31,7 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
 === "Rust"
 
     ```rust
-    use yggdryl::text::toml;
+    use yggdryl::toml;
     use yggdryl::{from_toml_scalar, into_toml_scalar, Scalar};
 
     let source = "title = \"yggdryl\"\ncount = 3\n\n[owner]\nname = \"Ada\"\n";
@@ -114,13 +114,13 @@ A Struct Field yields a row `Sequence` in Rust; bindings restore field names, an
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Scalar};
-    use yggdryl::text::toml;
+    use yggdryl::{DataType, Field, Scalar, StructureType};
+    use yggdryl::toml;
 
     let amount = Field::new("amount", DataType::decimal128(8, 2)?, false);
     let row = Field::new(
         "row",
-        DataType::from_fields([amount])?,
+        DataType::from(StructureType::from_fields([amount])?),
         false,
     );
     let decoded = toml::from_utf8_with_field("amount = '12.50'\n", &row)?;
@@ -166,7 +166,7 @@ A Struct Field yields a row `Sequence` in Rust; bindings restore field names, an
 
 ### Dates and times
 
-Every native temporal carries a `TimeUnit` and a non-null [`Timezone`](../../types/numeric.md).
+Every native temporal carries a `TimeUnit` and a non-null [`Timezone`](../../types/temporal.md#timezone).
 
 | value | TOML behavior |
 | --- | --- |
@@ -195,7 +195,7 @@ Opt-in, inside quoted strings, substituted after parsing and before Field interp
 
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --test text toml::
-    cargo test --features "parquet iceberg" -p yggdryl --lib text::toml::
+    cargo test --features "parquet iceberg" -p yggdryl --lib toml::
     cargo bench -p yggdryl --bench text -- codec/toml
     ```
 

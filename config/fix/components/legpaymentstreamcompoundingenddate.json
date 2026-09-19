@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingenddateunadjusted",
-          "fix:tag": "42421"
+          "FIX:field": "legpaymentstreamcompoundingenddateunadjusted",
+          "FIX:tag": "42421"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingenddaterelativeto",
-          "fix:tag": "42422"
+          "FIX:field": "legpaymentstreamcompoundingenddaterelativeto",
+          "FIX:tag": "42422"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingenddateoffsetperiod",
-          "fix:tag": "42423"
+          "FIX:field": "legpaymentstreamcompoundingenddateoffsetperiod",
+          "FIX:tag": "42423"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingenddateoffsetunit",
-          "fix:tag": "42424"
+          "FIX:field": "legpaymentstreamcompoundingenddateoffsetunit",
+          "FIX:tag": "42424"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingenddateoffsetdaytype",
-          "fix:tag": "42425"
+          "FIX:field": "legpaymentstreamcompoundingenddateoffsetdaytype",
+          "FIX:tag": "42425"
         }
       },
       {
@@ -65,16 +65,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingenddateadjusted",
-          "fix:tag": "42426"
+          "FIX:field": "legpaymentstreamcompoundingenddateadjusted",
+          "FIX:tag": "42426"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "148096",
     "description": "Conditionally required when LegPaymentStreamCompoundingEndDateOffsetUnit(42424) is specified.",
-    "display": "LegPaymentStreamCompoundingEndDate",
-    "fix:tag": "148096"
+    "display": "LegPaymentStreamCompoundingEndDate"
   }
 }

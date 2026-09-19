@@ -10,14 +10,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyinginstrument"
+          "FIX:component": "underlyinginstrument"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UndInstrmt",
-    "fix:tag": "1013139"
+    "FIX:tag": "1013139",
+    "display": "UndInstrmt"
   }
 }

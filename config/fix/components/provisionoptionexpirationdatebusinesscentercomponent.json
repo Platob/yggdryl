@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionoptionexpirationdatebusinesscenter",
-          "fix:tag": "40147"
+          "FIX:field": "provisionoptionexpirationdatebusinesscenter",
+          "FIX:tag": "40147"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ProvisionOptionExpirationDateBusinessCenter",
-    "fix:tag": "880563"
+    "FIX:tag": "880563",
+    "display": "ProvisionOptionExpirationDateBusinessCenter"
   }
 }

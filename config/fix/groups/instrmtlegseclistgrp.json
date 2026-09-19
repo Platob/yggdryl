@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "instrmtlegseclist"
+        "FIX:component": "instrmtlegseclist"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "instrmtlegseclist",
+    "FIX:counter": "555",
+    "FIX:tag": "365197",
     "description": "Number of legs that make up the Security",
-    "display": "InstrmtLegSecListGrp",
-    "fix:component": "instrmtlegseclist",
-    "fix:counter": "555",
-    "fix:tag": "365197"
+    "display": "InstrmtLegSecListGrp"
   }
 }

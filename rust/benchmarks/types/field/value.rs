@@ -5,7 +5,8 @@ use arrow_array::{ArrayRef, Date32Array, RecordBatch};
 use criterion::{BatchSize, Criterion};
 use yggdryl::expression::Function;
 use yggdryl::{
-    DataType, Field, MediaType, Metadata, MimeType, PythonKind, PythonMetadata, Scalar, Scheme, Url,
+    DataType, Field, MediaType, Metadata, MimeType, PythonKind, PythonMetadata, Scalar, Scheme,
+    StructureType, Url,
 };
 
 use super::nested_field;
@@ -48,7 +49,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         (0..1_024)
             .map(|index| (format!("key-{index:04}"), index.to_string()))
             .chain(std::iter::once((
-                "postgres:table".to_owned(),
+                "POSTGRES:table".to_owned(),
                 "trades".to_owned(),
             ))),
     )
@@ -63,7 +64,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         "value",
         DataType::utf8(),
         true,
-        (0..1_024).map(|index| (format!("postgres:key-{index:04}"), index.to_string())),
+        (0..1_024).map(|index| (format!("POSTGRES:key-{index:04}"), index.to_string())),
     )
     .expect("the generated protocol metadata is valid");
     group.bench_function("protocol_property_iter_1024", |bencher| {
@@ -110,7 +111,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     let partitioned = Field::new(
         "row",
-        DataType::from_fields((0..64).map(|index| {
+        StructureType::from_fields((0..64).map(|index| {
             let column = DataType::Int64.required_field(format!("column-{index:02}"));
             if index % 8 == 0 {
                 column.with_partition(true)
@@ -118,6 +119,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 column
             }
         }))
+        .map(DataType::from)
         .expect("the generated columns are unique"),
         false,
     );
@@ -150,7 +152,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .expect("a transform of one argument");
     let declaring = Field::new(
         "row",
-        DataType::from_fields([DataType::Date32.required_field("event"), derived])
+        StructureType::from_fields([DataType::date32().required_field("event"), derived])
+            .map(DataType::from)
             .expect("the two columns are unique"),
         false,
     );
@@ -201,15 +204,15 @@ pub fn benchmarks(criterion: &mut Criterion) {
         DataType::binary(),
         false,
         [
-            ("http:content-type", "application/json"),
-            ("http:content-encoding", "gzip, br, zstd"),
-            ("http:content-length", "18446744073709551615"),
+            ("HTTP:content-type", "application/json"),
+            ("HTTP:content-encoding", "gzip, br, zstd"),
+            ("HTTP:content-length", "18446744073709551615"),
         ],
     )
     .expect("the static HTTP metadata is valid");
     http_field
         .clone()
-        .into_arrow_ref()
+        .into_arrow_field_ref()
         .expect("the static HTTP field projects to Arrow");
     group.bench_function("http_content_type_exact", |bencher| {
         bencher.iter(|| black_box(&http_field).as_http().content_type());
@@ -317,7 +320,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
 
     #[cfg(feature = "iceberg")]
     {
-        use yggdryl::media::iceberg::Transform;
+        use yggdryl::iceberg::Transform;
 
         let mut iceberg_field = DataType::Int64.required_field("id");
         let mut view = iceberg_field.as_iceberg_mut();
@@ -335,7 +338,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .expect("the static transform is valid");
         iceberg_field
             .clone()
-            .into_arrow_ref()
+            .into_arrow_field_ref()
             .expect("the static Iceberg field projects to Arrow");
 
         group.bench_function("iceberg_doc_exact", |bencher| {
@@ -408,10 +411,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("metadata_into_arrow_unique", |bencher| {
         bencher.iter_batched(
             || {
-                Metadata::from_entries([("comment", "analytics"), ("postgres:table", "trades")])
+                Metadata::from_entries([("comment", "analytics"), ("POSTGRES:table", "trades")])
                     .expect("the static metadata is valid")
             },
-            |metadata| black_box(metadata.into_arrow()),
+            |metadata| black_box(metadata.into_arrow_metadata()),
             BatchSize::SmallInput,
         );
     });
@@ -462,18 +465,20 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // sizes: a value already in its declared representation must cost the
     // same at both, because deciding a row is canonical never reads or copies
     // what it holds, while a layout rewrite shares the storage it retags.
-    let payload_root = DataType::from_fields([
+    let payload_root = StructureType::from_fields([
         Field::new("symbol", DataType::utf8(), false),
         Field::new("payload", DataType::binary(), false),
         Field::new("ccy", DataType::Currency, false),
     ])
+    .map(DataType::from)
     .expect("the payload row schema is valid")
     .required_field("row");
-    let large_root = DataType::from_fields([
+    let large_root = StructureType::from_fields([
         Field::new("symbol", DataType::large_utf8(), false),
         Field::new("payload", DataType::large_binary(), false),
         Field::new("ccy", DataType::Currency, false),
     ])
+    .map(DataType::from)
     .expect("the wide-layout row schema is valid")
     .required_field("row");
     for bytes in [64_usize, 64 * 1024] {

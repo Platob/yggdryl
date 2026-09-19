@@ -28,10 +28,7 @@
 //! assert_eq!(Scalar::d128(1_050, 2).dtype()?, DataType::decimal128(4, 2)?);
 //! assert_eq!(
 //!     Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::NAIVE)?.dtype()?,
-//!     DataType::DateTime64 {
-//!         unit: TimeUnit::Microsecond,
-//!         timezone: Timezone::NAIVE,
-//!     },
+//!     DataType::datetime64(TimeUnit::Microsecond, Timezone::NAIVE)?,
 //! );
 //! assert_eq!(
 //!     Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]).dtype()?,
@@ -43,7 +40,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, i256};
+use crate::{DataType, Error, Field, Result, Scalar, StructureType, i256};
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
 const MAX_DECIMAL_PRECISION: usize = 76;
@@ -186,31 +183,35 @@ impl Scalar {
             // is rather than a guess over its characters; a code is its own
             // identity.
             Self::String(text) => text.dtype(),
-            Self::Code(code) => Ok(code.datatype()),
+            Self::Country(_) => Ok(DataType::Country),
+            Self::Currency(_) => Ok(DataType::Currency),
+            Self::Mic(_) => Ok(DataType::Mic),
+            Self::Cfi(_) => Ok(DataType::Cfi),
+            Self::Side(_) => Ok(DataType::Side),
+            Self::State(_) => Ok(DataType::State),
+            Self::TimeInForce(_) => Ok(DataType::TimeInForce),
+            Self::Isin(_) => Ok(DataType::Isin),
+            Self::Cusip(_) => Ok(DataType::Cusip),
+            Self::Sedol(_) => Ok(DataType::Sedol),
+            Self::Bloomberg(_) => Ok(DataType::Bloomberg),
             Self::Version(_) => Ok(DataType::Version),
-            Self::Url(_) => Ok(DataType::Url),
+            Self::Url(_) => Ok(DataType::url()),
+            Self::Urn(_) => Ok(DataType::urn()),
             Self::Timezone(_) => Ok(DataType::Timezone),
             Self::MimeType(_) => Ok(DataType::MimeType),
             Self::MediaType(_) => Ok(DataType::MediaType),
             Self::Uuid(_) => Ok(DataType::Uuid),
-            Self::Enum(_) => Ok(DataType::utf8()),
             Self::Bytes(bytes) => bytes.dtype(),
             Self::Geometry(_) => DataType::geometry(None),
             Self::Geography(_) => DataType::geography(None, None),
-            Self::Date32(_) => Ok(DataType::Date32),
-            Self::Date64(_) => Ok(DataType::Date64),
+            Self::Date32(_) => Ok(DataType::date32()),
+            Self::Date64(_) => Ok(DataType::date64()),
             Self::Time32(value) => DataType::time32(value.unit()),
             Self::Time64(value) => DataType::time64(value.unit()),
-            Self::DateTime64(value) => {
-                resolution(value.unit(), "datetime64")?;
-                Ok(DataType::DateTime64 {
-                    unit: value.unit(),
-                    timezone: value.timezone(),
-                })
-            }
-            Self::Duration32(value) => Ok(DataType::Duration32(value.unit())),
-            Self::Duration64(value) => Ok(DataType::Duration64(value.unit())),
-            Self::Interval(value) => Ok(DataType::Interval(value.unit())),
+            Self::DateTime64(value) => DataType::datetime64(value.unit(), value.timezone()),
+            Self::Duration32(value) => DataType::duration32(value.unit()),
+            Self::Duration64(value) => DataType::duration64(value.unit()),
+            Self::Interval(value) => DataType::interval(value.unit()),
             Self::Sequence(values) => {
                 let (dtype, nullable) = agreed(values.as_slice().iter(), "sequence item", depth)?;
                 Ok(DataType::list(Field::new("item", dtype, nullable)))
@@ -218,7 +219,6 @@ impl Scalar {
             // An Arrow payload already carries its exact field: one pinned
             // row is that field's datatype, and every wider shape is a list
             // of it - of items for a column, of rows for a table or a stream.
-            #[cfg(feature = "arrow")]
             Self::Arrow(value) => {
                 if value.is_scalar() {
                     return Ok(value.dtype().clone());
@@ -242,7 +242,7 @@ impl Scalar {
                 let (value, _) = agreed(values, "mapping value", depth)?;
                 DataType::map_of(key, value, false)
             }
-            Self::Record(entries) => DataType::from_fields(
+            Self::Record(entries) => StructureType::from_fields(
                 entries
                     .as_map()
                     .iter()
@@ -253,7 +253,8 @@ impl Scalar {
                             .map(|dtype| Field::new(name.as_str(), dtype, nullable))
                     })
                     .collect::<Result<Vec<_>>>()?,
-            ),
+            )
+            .map(DataType::from),
         }
     }
 }
@@ -295,7 +296,7 @@ fn merge_inferred(left: &DataType, right: &DataType) -> Option<DataType> {
     // Inference widens: two sampled rows meet at the type that holds both.
     // The rule table is [`DataType::merge_with`]'s, so an inferred schema and
     // a declared one are reconciled by exactly the same rules.
-    left.merge_exact(right, crate::types::Widening::Up).ok()
+    left.merge_exact(right, crate::Widening::Up).ok()
 }
 
 /// Return the exact decimal a coefficient and scale name.
@@ -335,17 +336,6 @@ fn decimal_precision(unscaled: i256, scale: i8) -> Result<u8> {
 /// Return the exact decimal a 128-bit integer of `digits` digits needs.
 fn integer_decimal(digits: u32) -> Result<DataType> {
     DataType::decimal(u8::try_from(digits.max(1)).unwrap_or(1), 0)
-}
-
-/// Reject a calendar interval layout where a temporal resolution is required.
-fn resolution(unit: TimeUnit, kind: &'static str) -> Result<()> {
-    if unit.is_arrow_time() {
-        Ok(())
-    } else {
-        Err(unnameable(format_smolstr!(
-            "a {kind} unit must be a temporal resolution, got {unit}"
-        )))
-    }
 }
 
 /// Return how many decimal digits a magnitude is written with.

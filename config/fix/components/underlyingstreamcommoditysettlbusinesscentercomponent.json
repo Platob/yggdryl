@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcommoditysettlbusinesscenter",
-          "fix:tag": "41963"
+          "FIX:field": "underlyingstreamcommoditysettlbusinesscenter",
+          "FIX:tag": "41963"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingStreamCommoditySettlBusinessCenter",
-    "fix:tag": "106412"
+    "FIX:tag": "106412",
+    "display": "UnderlyingStreamCommoditySettlBusinessCenter"
   }
 }

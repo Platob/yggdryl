@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingratespreadstep"
+        "FIX:component": "underlyingratespreadstep"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingratespreadstep",
+    "FIX:counter": "43005",
+    "FIX:tag": "234176",
     "description": "Required if NoUnderlyingRateSpreadSteps(43005) > 0.",
-    "display": "UnderlyingRateSpreadStepGrp",
-    "fix:component": "underlyingratespreadstep",
-    "fix:counter": "43005",
-    "fix:tag": "234176"
+    "display": "UnderlyingRateSpreadStepGrp"
   }
 }

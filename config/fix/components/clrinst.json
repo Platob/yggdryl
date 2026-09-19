@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearinginstruction",
-          "fix:tag": "577"
+          "FIX:field": "clearinginstruction",
+          "FIX:tag": "577"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ClrInst",
-    "fix:tag": "766334"
+    "FIX:tag": "766334",
+    "display": "ClrInst"
   }
 }

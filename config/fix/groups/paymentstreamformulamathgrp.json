@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "paymentstreamformulamath"
+        "FIX:component": "paymentstreamformulamath"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "paymentstreamformulamath",
+    "FIX:counter": "42683",
+    "FIX:tag": "916380",
     "description": "Required if NoPaymentStreamFormulas(42683) > 0.",
-    "display": "PaymentStreamFormulaMathGrp",
-    "fix:component": "paymentstreamformulamath",
-    "fix:counter": "42683",
-    "fix:tag": "916380"
+    "display": "PaymentStreamFormulaMathGrp"
   }
 }

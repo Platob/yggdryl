@@ -18,7 +18,8 @@ use std::time::{Duration, Instant};
 use arrow_array::{ArrayRef, Int32Array, RecordBatch, StringArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 use criterion::{Criterion, Throughput};
-use yggdryl::{ArrowCast, ArrowCastOptions, ArrowCastPlan, DataType, Field};
+use yggdryl::FieldValue as _;
+use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, StructureType};
 
 /// Rows per batch: small on purpose, so the per-batch plan is what is timed.
 const ROWS: usize = crate::bench_profile::corpus(64, 8);
@@ -36,11 +37,12 @@ fn stored() -> SchemaRef {
 fn target() -> Field {
     Field::new(
         "row",
-        DataType::from_fields([
+        StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
             DataType::utf8().required_field("venue"),
         ])
+        .map(DataType::from)
         .expect("the benchmark root is valid"),
         false,
     )

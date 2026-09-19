@@ -4,7 +4,6 @@ use std::io::{Read, Write};
 
 use super::IOBase;
 use crate::holder::Holder;
-#[cfg(feature = "arrow")]
 use crate::media::RecordOptions;
 use crate::{ByteStream, IOKind, IOMedia, Listing, MediaType, Result, Url};
 
@@ -231,7 +230,7 @@ macro_rules! delegate_iobase {
     };
 
     (@method $handle:ident, bound_location) => {
-        fn bound_location(&self) -> Option<&$crate::holder::fs::BoundLocation> {
+        fn bound_location(&self) -> Option<&$crate::fs::BoundLocation> {
             $crate::IOBase::bound_location(&self.$handle)
         }
     };
@@ -406,23 +405,20 @@ impl IOMedia for Box<dyn IOBase> {
         self.as_mut()
     }
 
-    #[cfg(feature = "arrow")]
     fn row_size(&self) -> Result<u64> {
         IOMedia::row_size(self.as_ref())
     }
 
-    #[cfg(feature = "arrow")]
     fn column_size(&self) -> Result<usize> {
         IOMedia::column_size(self.as_ref())
     }
 
-    #[cfg(feature = "arrow")]
     fn record_options(&self) -> Result<RecordOptions> {
         IOMedia::record_options(self.as_ref())
     }
 
     #[cfg(feature = "parquet")]
-    fn read_parquet_statistics(&self) -> Result<crate::media::parquet::FileStatistics> {
+    fn read_parquet_statistics(&self) -> Result<crate::parquet::FileStatistics> {
         IOMedia::read_parquet_statistics(self.as_ref())
     }
 
@@ -430,21 +426,18 @@ impl IOMedia for Box<dyn IOBase> {
     fn read_parquet_geospatial_statistics(
         &self,
         column: &str,
-    ) -> Result<crate::media::parquet::GeospatialStatistics> {
+    ) -> Result<crate::parquet::GeospatialStatistics> {
         IOMedia::read_parquet_geospatial_statistics(self.as_ref(), column)
     }
 
-    #[cfg(feature = "arrow")]
     fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field> {
         IOMedia::read_arrow_field(self.as_ref(), options)
     }
 
-    #[cfg(feature = "arrow")]
     fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
         IOMedia::read_arrow_reader(self.as_ref(), options)
     }
 
-    #[cfg(feature = "arrow")]
     fn overwrite_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -453,7 +446,6 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::overwrite_arrow_reader(self.as_mut(), batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn overwrite_prepared_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -462,7 +454,6 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::overwrite_prepared_arrow_reader(self.as_mut(), batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn overwrite_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
@@ -471,7 +462,6 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::overwrite_arrow_batch(self.as_mut(), batch, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn append_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -480,7 +470,6 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::append_arrow_reader(self.as_mut(), batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn append_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
@@ -489,7 +478,6 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::append_arrow_batch(self.as_mut(), batch, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn merge_arrow_reader(
         &mut self,
         batches: crate::arrow::BatchReader,
@@ -498,7 +486,6 @@ impl IOMedia for Box<dyn IOBase> {
         IOMedia::merge_arrow_reader(self.as_mut(), batches, options)
     }
 
-    #[cfg(feature = "arrow")]
     fn merge_arrow_batch(
         &mut self,
         batch: arrow_array::RecordBatch,
@@ -570,7 +557,7 @@ impl IOBase for Box<dyn IOBase> {
         self.as_ref().url()
     }
 
-    fn bound_location(&self) -> Option<&crate::holder::fs::BoundLocation> {
+    fn bound_location(&self) -> Option<&crate::fs::BoundLocation> {
         self.as_ref().bound_location()
     }
 

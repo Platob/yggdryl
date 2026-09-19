@@ -8,18 +8,18 @@ use arrow_array::{Int64Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::ArrowError;
 use parquet::basic::Compression;
 use yggdryl::holder::Buffer;
-use yggdryl::media::parquet::{Parquet, ParquetOptions};
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{DataType, Field, MediaType, Url};
+use yggdryl::parquet::{Parquet, ParquetOptions};
+use yggdryl::{DataType, Field, MediaType, StructureType, Url};
 use yggdryl::{IOBase, IOMedia};
 
 #[test]
 fn statistics_snapshots_have_total_value_traits() {
     fn assert_traits<T: Clone + Eq + Hash + Ord>() {}
-    assert_traits::<yggdryl::media::parquet::GeospatialStatistics>();
-    assert_traits::<yggdryl::media::parquet::ColumnStatistics>();
-    assert_traits::<yggdryl::media::parquet::RowGroupStatistics>();
-    assert_traits::<yggdryl::media::parquet::FileStatistics>();
+    assert_traits::<yggdryl::parquet::GeospatialStatistics>();
+    assert_traits::<yggdryl::parquet::ColumnStatistics>();
+    assert_traits::<yggdryl::parquet::RowGroupStatistics>();
+    assert_traits::<yggdryl::parquet::FileStatistics>();
     assert_traits::<ParquetOptions>();
 
     let mut gzip = ParquetOptions::new();
@@ -96,7 +96,7 @@ impl IOBase for Shared {
 
 /// A root carrying explicit Iceberg-style field identifiers.
 fn root() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64
             .required_field("id")
             .with_parquet_field_id(1),
@@ -104,6 +104,7 @@ fn root() -> Field {
             .nullable_field("symbol")
             .with_parquet_field_id(2),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
 }
@@ -243,7 +244,8 @@ fn an_empty_open_parquet_file_has_explicit_lifecycle_and_dimensions() {
     assert_eq!(media.row_size().unwrap(), 0);
     assert_eq!(media.column_size().unwrap(), field.field_len());
 
-    let narrowed = DataType::from_fields([DataType::Int64.required_field("id")])
+    let narrowed = StructureType::from_fields([DataType::Int64.required_field("id")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     media.options_mut().set_field(narrowed);
@@ -301,7 +303,7 @@ fn mismatched_options_are_rejected_before_any_write_pulls_input() {
     for operation in ["overwrite", "append", "merge"] {
         let pulls = Arc::new(AtomicUsize::new(0));
         let mut media = Parquet::new(Buffer::new()).with_field(field.clone());
-        let mut options = RecordOptions::Ipc(yggdryl::media::ipc::IpcOptions::new());
+        let mut options = RecordOptions::Ipc(yggdryl::ipc::IpcOptions::new());
         if operation == "merge" {
             options.set_merge_by(yggdryl::expression::Selector::from_columns(["id"]));
         }
@@ -544,7 +546,8 @@ fn a_coded_location_is_rejected_with_the_reason() {
 #[test]
 fn a_mismatched_batch_reports_which_index_disagreed() {
     let field = root();
-    let other = DataType::from_fields([DataType::utf8().required_field("unrelated")])
+    let other = StructureType::from_fields([DataType::utf8().required_field("unrelated")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let mut media = Parquet::new(handle("mismatch.parquet"));
@@ -722,7 +725,9 @@ fn a_bounded_batch_row_size_splits_the_read() {
 /// Column pushdown: a schema naming fewer columns becomes a projection mask,
 /// which is the format's own way of not reading a column chunk.
 mod pushdown {
+
     use std::sync::Arc;
+    use yggdryl::StructureType;
 
     use arrow_array::{
         Array, Float64Array, Int64Array, RecordBatch, RecordBatchReader, StringArray,
@@ -731,27 +736,29 @@ mod pushdown {
     use super::handle;
     use yggdryl::IOMedia;
     use yggdryl::media::IORecordOptions;
-    use yggdryl::media::parquet::Parquet;
+    use yggdryl::parquet::Parquet;
     use yggdryl::{DataType, Field};
 
     /// Four columns, so a two-column read is a genuine subset.
     fn wide() -> Field {
-        DataType::from_fields([
+        StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
             DataType::Float64.required_field("price"),
             DataType::utf8().nullable_field("venue"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
     }
 
     /// The two columns a caller actually wants.
     fn narrow() -> Field {
-        DataType::from_fields([
+        StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::Float64.required_field("price"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
     }
@@ -857,10 +864,11 @@ mod pushdown {
 
         // A mask can only drop columns, so the encoding reads what is present
         // and the canonical declared-Field cast supplies the absent column.
-        let invented = DataType::from_fields([
+        let invented = StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("nowhere"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
 
@@ -896,8 +904,8 @@ mod limits {
 
     use super::{batch, handle, reader, root};
     use yggdryl::holder::Buffer;
-    use yggdryl::media::parquet::{Parquet, ParquetOptions};
     use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::parquet::{Parquet, ParquetOptions};
     use yggdryl::{IOBase, IOMedia};
 
     /// The total rows a handle yields under `options`.

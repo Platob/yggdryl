@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablerefcurrency",
-          "fix:tag": "40359"
+          "FIX:field": "legpaymentstreamnondeliverablerefcurrency",
+          "FIX:tag": "40359"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablefixingdatesbusinessdayconvention",
-          "fix:tag": "40360"
+          "FIX:field": "legpaymentstreamnondeliverablefixingdatesbusinessdayconvention",
+          "FIX:tag": "40360"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentstreamnondeliverablefixingdatebusinesscenters",
-          "fix:tag": "40929"
+          "FIX:field": "nolegpaymentstreamnondeliverablefixingdatebusinesscenters",
+          "FIX:tag": "40929"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legpaymentstreamnondeliverablefixingdatesbusinesscentergrp"
+          "FIX:group": "legpaymentstreamnondeliverablefixingdatesbusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablefixingdatesrelativeto",
-          "fix:tag": "40362"
+          "FIX:field": "legpaymentstreamnondeliverablefixingdatesrelativeto",
+          "FIX:tag": "40362"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablefixingdatesoffsetperiod",
-          "fix:tag": "40363"
+          "FIX:field": "legpaymentstreamnondeliverablefixingdatesoffsetperiod",
+          "FIX:tag": "40363"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablefixingdatesoffsetunit",
-          "fix:tag": "40364"
+          "FIX:field": "legpaymentstreamnondeliverablefixingdatesoffsetunit",
+          "FIX:tag": "40364"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablefixingdatesoffsetdaytype",
-          "fix:tag": "40365"
+          "FIX:field": "legpaymentstreamnondeliverablefixingdatesoffsetdaytype",
+          "FIX:tag": "40365"
         }
       },
       {
@@ -97,7 +97,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legpaymentstreamnondeliverablesettlratesourcecomponent"
+          "FIX:component": "legpaymentstreamnondeliverablesettlratesourcecomponent"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegnondeliverablefixingdates",
-          "fix:tag": "40367"
+          "FIX:field": "nolegnondeliverablefixingdates",
+          "FIX:tag": "40367"
         }
       },
       {
@@ -118,7 +118,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legpaymentstreamnondeliverablefixingdategrp"
+          "FIX:group": "legpaymentstreamnondeliverablefixingdategrp"
         }
       },
       {
@@ -128,8 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegsettlratefallbacks",
-          "fix:tag": "40902"
+          "FIX:field": "nolegsettlratefallbacks",
+          "FIX:tag": "40902"
         }
       },
       {
@@ -139,15 +139,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legsettlratedisruptionfallbackgrp"
+          "FIX:group": "legsettlratedisruptionfallbackgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "596166",
     "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of the non-deliverable currency's fixing date.",
-    "display": "LegPaymentStreamNonDeliverableSettlTerms",
-    "fix:tag": "596166"
+    "display": "LegPaymentStreamNonDeliverableSettlTerms"
   }
 }

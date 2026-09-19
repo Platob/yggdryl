@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partydetailid",
-          "fix:tag": "1691"
+          "FIX:field": "partydetailid",
+          "FIX:tag": "1691"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partydetailidsource",
-          "fix:tag": "1692"
+          "FIX:field": "partydetailidsource",
+          "FIX:tag": "1692"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partydetailrole",
-          "fix:tag": "1693"
+          "FIX:field": "partydetailrole",
+          "FIX:tag": "1693"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partydetailrolequalifier",
-          "fix:tag": "1674"
+          "FIX:field": "partydetailrolequalifier",
+          "FIX:tag": "1674"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartydetailsubids",
-          "fix:tag": "1694"
+          "FIX:field": "nopartydetailsubids",
+          "FIX:tag": "1694"
         }
       },
       {
@@ -65,7 +65,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "partydetailsubgrp"
+          "FIX:group": "partydetailsubgrp"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartydetailaltid",
-          "fix:tag": "1516"
+          "FIX:field": "nopartydetailaltid",
+          "FIX:tag": "1516"
         }
       },
       {
@@ -86,7 +86,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "partydetailaltidgrp"
+          "FIX:group": "partydetailaltidgrp"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedpartydetailid",
-          "fix:tag": "1562"
+          "FIX:field": "norelatedpartydetailid",
+          "FIX:tag": "1562"
         }
       },
       {
@@ -107,7 +107,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "relatedpartydetailgrp"
+          "FIX:group": "relatedpartydetailgrp"
         }
       },
       {
@@ -117,15 +117,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partydetailstatus",
-          "fix:tag": "1672"
+          "FIX:field": "partydetailstatus",
+          "FIX:tag": "1672"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyDetail",
-    "fix:tag": "575364"
+    "FIX:tag": "575364",
+    "display": "PartyDetail"
   }
 }

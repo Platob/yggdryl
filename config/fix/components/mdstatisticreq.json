@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticid",
-          "fix:tag": "2475"
+          "FIX:field": "mdstatisticid",
+          "FIX:tag": "2475"
         }
       },
       {
@@ -21,14 +21,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "mdstatisticparameters"
+          "FIX:component": "mdstatisticparameters"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MDStatisticReq",
-    "fix:tag": "148453"
+    "FIX:tag": "148453",
+    "display": "MDStatisticReq"
   }
 }

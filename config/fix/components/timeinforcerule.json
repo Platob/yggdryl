@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "timeinforce",
-          "fix:tag": "59"
+          "FIX:field": "timeinforce",
+          "FIX:tag": "59"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TimeInForceRule",
-    "fix:tag": "164771"
+    "FIX:tag": "164771",
+    "display": "TimeInForceRule"
   }
 }

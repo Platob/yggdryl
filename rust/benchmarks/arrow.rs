@@ -20,12 +20,14 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Decimal128Array, RecordBatch};
 use arrow_schema::SchemaRef;
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
+use yggdryl::DateTimeType;
+use yggdryl::FieldValue as _;
 use yggdryl::arrow::{BatchReader, batch_reader, cast_reader};
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, ArrowScalar, DataType, Field, IOBase, IOMedia, IOMode, MediaType,
-    MimeType, Scalar, TimeUnit, Timezone, Url,
+    ArrowCastOptions, ArrowScalar, DataType, Field, IOBase, IOMedia, IOMode, MediaType, MimeType,
+    Scalar, StructureType, TimeUnit, Timezone, Url,
 };
 
 /// Rows per fixture: one small enough to stay warm, one at the size a
@@ -56,18 +58,19 @@ const EPOCH: i64 = 1_767_225_600_000_000;
 
 /// The trade root: what one commodity tick carries.
 fn root() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::utf8().required_field("symbol"),
         DataType::decimal128(12, 4)
             .expect("the price width is valid")
             .required_field("price"),
         DataType::Int64.required_field("size"),
-        DataType::DateTime64 {
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        }
+        })
         .required_field("timestamp"),
     ])
+    .map(DataType::from)
     .expect("the trade root is valid")
     .required_field("row")
 }
@@ -364,11 +367,11 @@ fn collect_benchmarks(criterion: &mut Criterion) {
 /// The root a cast reshapes trades onto: reordered, with the price restated at
 /// a wider scale so the cast is a cast rather than an identity.
 fn cast_target() -> Field {
-    DataType::from_fields([
-        DataType::DateTime64 {
+    StructureType::from_fields([
+        DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        }
+        })
         .required_field("timestamp"),
         DataType::utf8().required_field("symbol"),
         DataType::decimal128(18, 6)
@@ -376,13 +379,14 @@ fn cast_target() -> Field {
             .required_field("price"),
         DataType::Int64.required_field("size"),
     ])
+    .map(DataType::from)
     .expect("the cast target is valid")
     .required_field("row")
 }
 
 /// Casting, against the bare call the family wraps.
 ///
-/// A batch cast is `ArrowCast::cast_arrow_batch` plus one Field clone; a
+/// A batch cast is `FieldValue::cast_arrow_batch` plus one Field clone; a
 /// stream cast is `arrow::cast_reader`, which compiles one plan for the whole
 /// stream and applies it per batch. Each family arm sits next to the bare call
 /// over the same rows, so the wrapper's own overhead is what separates them.

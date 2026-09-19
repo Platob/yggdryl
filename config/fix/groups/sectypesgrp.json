@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "sectype"
+        "FIX:component": "sectype"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "sectype",
+    "FIX:counter": "558",
+    "FIX:tag": "747506",
     "description": "Required if NoSecurityTypes > 0",
-    "display": "SecTypesGrp",
-    "fix:component": "sectype",
-    "fix:counter": "558",
-    "fix:tag": "747506"
+    "display": "SecTypesGrp"
   }
 }

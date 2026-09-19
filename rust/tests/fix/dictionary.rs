@@ -5,10 +5,11 @@
 
 use std::collections::BTreeSet;
 
-use yggdryl::holder::local::Folder;
+use yggdryl::SequenceType;
+use yggdryl::local::Folder;
 use yggdryl::{
-    DataType, Field, FixCategory, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, Scalar,
-    TimeUnit, Timezone,
+    DataType, DateTimeType, Field, FixCategory, FixRegistry, STANDARD_HEADER_TAGS,
+    STANDARD_TRAILER_TAGS, Scalar, TimeType, TimeUnit, Timezone,
 };
 
 fn seed() -> FixRegistry {
@@ -26,7 +27,7 @@ fn definitions(registry: &FixRegistry, category: FixCategory) -> impl Iterator<I
 
 fn category_of(field: &Field) -> FixCategory {
     match field.dtype() {
-        DataType::Struct(_) => FixCategory::Components,
+        DataType::Structure(_) => FixCategory::Components,
         dtype if dtype.is_nested() => FixCategory::Groups,
         _ => FixCategory::Fields,
     }
@@ -92,7 +93,7 @@ fn the_committed_dictionary_is_no_dialects_member_and_a_field_is_its_tag_and_its
     assert_ne!(id, yggdryl::FixId::of(35, "MsgSeqNum").unwrap());
     assert_eq!(registry.field_by_id(id).unwrap().name(), "msgtype");
     assert!(
-        msgtype.as_metadata().get("fix:id").is_none(),
+        msgtype.as_metadata().get("FIX:id").is_none(),
         "an id is derived, never stored"
     );
 }
@@ -194,11 +195,11 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
     let source = registry.field_by_tag(22).expect("SecurityIDSource");
     let alternative = registry.field_by_tag(456).expect("SecurityAltIDSource");
     assert_eq!(
-        source.as_metadata().get("fix:codes"),
-        alternative.as_metadata().get("fix:codes")
+        source.as_metadata().get("FIX:codes"),
+        alternative.as_metadata().get("FIX:codes")
     );
-    assert!(source.as_metadata().get("fix:codes").is_some());
-    assert!(source.as_metadata().get("fix:codeset").is_none());
+    assert!(source.as_metadata().get("FIX:codes").is_some());
+    assert!(source.as_metadata().get("FIX:codeset").is_none());
 
     // A price, a quantity, a price offset and an amount are exact numbers,
     // at the one decimal width this crate keeps them at; a percentage and
@@ -235,7 +236,7 @@ fn a_repeating_group_has_a_scalar_counter_and_a_separately_named_component() {
     let derived = parties.as_fix().tag().unwrap().expect("a derived tag");
     assert!(yggdryl::FixId::is_definition_tag(derived), "{derived}");
     assert_ne!(derived, 453);
-    let DataType::List(item) = parties.dtype() else {
+    let DataType::Sequence(SequenceType::List(item)) = parties.dtype() else {
         panic!("a list, got {}", parties.dtype());
     };
     assert_eq!(item.name(), "party");
@@ -325,8 +326,8 @@ fn every_stored_document_walks_to_its_end() {
         codes += seen;
     }
     for field in registry.iter() {
-        assert!(field.as_metadata().get("fix:codeset").is_none());
-        assert!(field.as_metadata().get("fix:lineage").is_none());
+        assert!(field.as_metadata().get("FIX:codeset").is_none());
+        assert!(field.as_metadata().get("FIX:lineage").is_none());
     }
     // A dictionary this size is the point: a truncation that hides one code
     // in twenty thousand is exactly what nobody notices by reading.
@@ -346,8 +347,9 @@ fn every_field(registry: &FixRegistry) -> Vec<Field> {
     fn walk(field: &Field, out: &mut Vec<Field>) {
         out.push(field.clone());
         match field.dtype() {
-            DataType::List(item) | DataType::LargeList(item) => walk(item, out),
-            DataType::Struct(fields) => {
+            DataType::Sequence(SequenceType::List(item))
+            | DataType::Sequence(SequenceType::LargeList(item)) => walk(item, out),
+            DataType::Structure(fields) => {
                 for held in fields.iter() {
                     walk(held, out);
                 }
@@ -371,12 +373,16 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     // `LocalMktTime` and `UTCTimeOnly` are one type for the same reason.
     for field in every_field(&registry) {
         match field.dtype() {
-            DataType::Date32 | DataType::Date64 => {
+            DataType::Date(_) => {
                 panic!("{} is still a day rather than an instant", field.name())
             }
-            DataType::Time32(_) => panic!("{} is still typed to a second", field.name()),
-            DataType::Time64(unit) => assert_eq!(*unit, TimeUnit::Nanosecond, "{}", field.name()),
-            DataType::DateTime64 { unit, timezone } => {
+            DataType::Time(TimeType::Time32(_)) => {
+                panic!("{} is still typed to a second", field.name())
+            }
+            DataType::Time(TimeType::Time64(unit)) => {
+                assert_eq!(*unit, TimeUnit::Nanosecond, "{}", field.name())
+            }
+            DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
                 assert_eq!(*unit, TimeUnit::Nanosecond, "{}", field.name());
                 // Two zones, and only two: what the datatype's own name says.
                 // A `UTCTimestamp` is UTC and a `LocalMktDate` states no zone,
@@ -392,25 +398,29 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
 
     // The registry's own entries, where each field is counted once.
-    let clock = DataType::DateTime64 {
+    let clock = DataType::DateTime(DateTimeType::DateTime64 {
         unit: TimeUnit::Nanosecond,
         timezone: Timezone::UTC,
-    };
+    });
     let mut times = 0_usize;
     let mut naive = 0_usize;
     let mut utc = 0_usize;
     for field in registry.iter() {
         match field.dtype() {
-            DataType::Time64(_) => times += 1,
-            DataType::DateTime64 { timezone, .. } if timezone.is_naive() => naive += 1,
-            DataType::DateTime64 { .. } => utc += 1,
+            DataType::Time(TimeType::Time64(_)) => times += 1,
+            DataType::DateTime(DateTimeType::DateTime64 { timezone, .. })
+                if timezone.is_naive() =>
+            {
+                naive += 1
+            }
+            DataType::DateTime(_) => utc += 1,
             _ => {}
         }
     }
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
-    // Sixty-eight shipped fields, plus the crate's six clocks: `currunix`,
-    // `creatunix`, `prevunix`, `snapunix`, `recordedat` and `expirunix`.
+    // Sixty-eight shipped fields, plus the crate's four clocks: `currunix`,
+    // `creaunix`, `prevunix` and `snapunix`.
     let crated = registry
         .iter()
         .filter(|field| {
@@ -423,7 +433,7 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
                     .is_some_and(yggdryl::is_crate_tag)
         })
         .count();
-    assert_eq!(crated, 5, "the crate's own clocks");
+    assert_eq!(crated, 4, "the crate's own clocks");
     assert_eq!(utc, 68 + crated, "instants stated in UTC");
 }
 
@@ -484,11 +494,11 @@ fn a_member_reference_carries_the_field_and_its_tag() {
         .and_then(|member| member.get_key_str("metadata"))
         .expect("the first member's metadata");
     assert_eq!(
-        member.get_key_str("fix:field").and_then(Scalar::as_str),
+        member.get_key_str("FIX:field").and_then(Scalar::as_str),
         Some("partyid")
     );
     assert_eq!(
-        member.get_key_str("fix:tag").and_then(Scalar::as_str),
+        member.get_key_str("FIX:tag").and_then(Scalar::as_str),
         Some("448")
     );
     // A field's shard is its tag over a hundred, named nine digits wide:
@@ -503,17 +513,28 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// The registry hash walks scalar fields, then the components and the groups
 /// in name order, so a change to that walk or to any shipped document moves
 /// this number on purpose, in the commit that says why. It last moved when
+/// every protocol key took its scheme upper case - `FIX:tag`, `FIX:codes`
+/// and `FIX:branches` beside `ARROW:extension:name` and `PARQUET:field_id` -
+/// so every stored key the dictionary hashes changed its spelling. It last
+/// moved when
+/// the capture's clock stopped being a crate field: `recordedat` (65028) is
+/// retired, a message's instant being what it states - `SendingTime(52)` and
+/// the settled `currunix` - and the plugin that logged a line is
+/// `msgpluginid` (`MsgPluginId`, tag 65009 unchanged), spelled like
+/// `msgctxid` and `msgsessionid`, and the instant a message was created is
+/// `creaunix` (`CreaUnix`, tag 65023 unchanged), spelled like `currunix`,
+/// `prevunix` and `snapunix`. It last moved when
 /// the message became a typed market event: the crate's columns are the
-/// event's facts - `currunix`, `creatunix`, `currhashcode`, `crosshashcode`,
+/// event's facts - `currunix`, `creaunix`, `currhashcode`, `crosshashcode`,
 /// `crosscode`, the identities as UUIDs, the lanes, the two Map groups
 /// `identifiers` and `metadata` - the shards are named nine digits wide,
-/// every member reference carries its `fix:tag`, and a field FIX Latest
-/// removed is marked `fix:deprecated`. It last moved when the market numbers
+/// every member reference carries its `FIX:tag`, and a field FIX Latest
+/// removed is marked `FIX:deprecated`. It last moved when the market numbers
 /// merged onto the event: `Price(44)`, `OrderQty(38)` and `Quantity(53)` stop
 /// being columns of their own and the crate's `px` and `qty` answer for them,
 /// and `prevpx`, `prevqty`, `tradable` and `symbolticker` join the block. It
 /// last moved when the capture's own columns stopped being facts of a
-/// message: `recordedat` states no `fix:derivation`, because when a capture
+/// message: `recordedat` states no `FIX:derivation`, because when a capture
 /// wrote a line down is whoever read it to say and never the message's own
 /// `SendingTime`. It last moved when the event's instant and its own digest
 /// took the names their columns carry: `unix` became `currunix` and
@@ -530,10 +551,40 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// it could trade and the ticker - because every one of them restated a FIX
 /// field the traits now read, and the two rules that read `isincode` read
 /// `SecurityID(48)` under its source and the `SecurityAltID` group instead.
+/// It last moved when the nested datatypes became families: `DataType` derives
+/// its hash, so a family variant contributes its leaf's discriminant too, and
+/// every sequence, struct and mapping in the dictionary hashes one level
+/// deeper than it did. `identifiers` and `metadata` also declare sorted keys, so they are
+/// `sorted_map` rather than `map` beside a flag, and their entries are the
+/// `struct2` pair rather than a struct that happens to hold two children. It
+/// last moved when a field became an enum over its leaves and the dictionary
+/// sidecar moved onto the one leaf that has it: a field hashes the datatype
+/// its leaf holds rather than the `DataType` it widens to, and it hashes one
+/// sidecar - nothing at all for a field that is not dictionary-encoded -
+/// rather than an identifier and a flag every field carried. It last moved
+/// when the four decimal widths became one `Decimal` family variant: every
+/// datatype declared after them in the enum shifted by three discriminants,
+/// and a decimal hashes its leaf one level deeper. It last moved when uuid
+/// became a family: a uuid column hashes the leaf that says which RFC 9562
+/// versions it admits, where it used to hash a variant with nothing in it. It
+/// last moved when the byte family became six leaves: a byte column hashes
+/// one leaf that already carries its count, where it used to hash a layout
+/// and an optional bound beside it. It last moved when the two sets of moves
+/// above met: the families hash the dictionary main settled on, so neither
+/// side's pinned number survives the merge and this one is what the merged
+/// tree answers. It last moved when the string family became eighteen
+/// leaves: a string column hashes one leaf that already carries its charset
+/// and its count, where it used to hash a layout, a charset and an optional
+/// bound beside them. It last moved when the eight temporal variants became
+/// five families: a temporal column hashes its family's leaf one level
+/// deeper, where it used to hash a variant of its own. It last moved when
+/// uuid became one parameter-free datatype again: a uuid column hashes a
+/// variant with nothing in it, where it used to hash the leaf that said which
+/// RFC 9562 versions it admitted.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 16_003_086_087_026_197_915);
+    assert_eq!(registry.stable_hash(), 12_108_555_590_315_433_617);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

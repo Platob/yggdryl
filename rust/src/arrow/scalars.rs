@@ -50,8 +50,9 @@ use super::{
     batch_from_value, batch_reader, batch_to_value, field_from_arrow_schema, scalar_array,
     scalar_value,
 };
+use crate::FieldValue as _;
 use crate::media::DEFAULT_ROOT_NAME;
-use crate::{ArrowCast, ArrowCastOptions, DataType, Field, Scalar};
+use crate::{ArrowCastOptions, DataType, Field, Scalar, StructureType};
 
 /// Which of Arrow's four payload shapes an [`ArrowScalar`] holds.
 ///
@@ -729,7 +730,8 @@ fn root_of(field: &Field) -> Result<Field> {
     if is_own_root(field) {
         return Ok(field.clone());
     }
-    Ok(DataType::from_fields([field.clone()])?.required_field(DEFAULT_ROOT_NAME))
+    Ok(DataType::from(StructureType::from_fields([field.clone()])?)
+        .required_field(DEFAULT_ROOT_NAME))
 }
 
 /// Refuse an array whose physical layout is not the one the Field declares.
@@ -737,7 +739,7 @@ fn require_layout(field: &Field, array: &dyn Array) -> Result<()> {
     // A caller-built DataType can be arbitrarily deep, so bound the shape
     // before Arrow's recursive projection walks it.
     field.dtype().validate_bounded()?;
-    let expected = field.clone().into_arrow_ref()?.data_type().clone();
+    let expected = field.clone().into_arrow_field_ref()?.data_type().clone();
     if array.data_type() == &expected {
         return Ok(());
     }

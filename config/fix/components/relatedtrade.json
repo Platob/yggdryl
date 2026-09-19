@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtradeid",
-          "fix:tag": "1856"
+          "FIX:field": "relatedtradeid",
+          "FIX:tag": "1856"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtradeidsource",
-          "fix:tag": "1857"
+          "FIX:field": "relatedtradeidsource",
+          "FIX:tag": "1857"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedregulatorytradeidsource",
-          "fix:tag": "2103"
+          "FIX:field": "relatedregulatorytradeidsource",
+          "FIX:tag": "2103"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtradedate",
-          "fix:tag": "1858"
+          "FIX:field": "relatedtradedate",
+          "FIX:tag": "1858"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtrademarketid",
-          "fix:tag": "1859"
+          "FIX:field": "relatedtrademarketid",
+          "FIX:tag": "1859"
         }
       },
       {
@@ -65,16 +65,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedtradequantity",
-          "fix:tag": "1860"
+          "FIX:field": "relatedtradequantity",
+          "FIX:tag": "1860"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "RelatedTrade",
-    "fix:identifiers": "relatedtradeid",
-    "fix:tag": "909958"
+    "FIX:identifiers": "relatedtradeid",
+    "FIX:tag": "909958",
+    "display": "RelatedTrade"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "postype",
-          "fix:tag": "703"
+          "FIX:field": "postype",
+          "FIX:tag": "703"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "longqty",
-          "fix:tag": "704"
+          "FIX:field": "longqty",
+          "FIX:tag": "704"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "shortqty",
-          "fix:tag": "705"
+          "FIX:field": "shortqty",
+          "FIX:tag": "705"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "coveredqty",
-          "fix:tag": "1654"
+          "FIX:field": "coveredqty",
+          "FIX:tag": "1654"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posqtystatus",
-          "fix:tag": "706"
+          "FIX:field": "posqtystatus",
+          "FIX:tag": "706"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quantitydate",
-          "fix:tag": "976"
+          "FIX:field": "quantitydate",
+          "FIX:tag": "976"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posqtyunitofmeasure",
-          "fix:tag": "1836"
+          "FIX:field": "posqtyunitofmeasure",
+          "FIX:tag": "1836"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posqtyunitofmeasurecurrency",
-          "fix:tag": "1835"
+          "FIX:field": "posqtyunitofmeasurecurrency",
+          "FIX:tag": "1835"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posqtyunitofmeasurecurrencycodesource",
-          "fix:tag": "2936"
+          "FIX:field": "posqtyunitofmeasurecurrencycodesource",
+          "FIX:tag": "2936"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedpartyids",
-          "fix:tag": "539"
+          "FIX:field": "nonestedpartyids",
+          "FIX:tag": "539"
         }
       },
       {
@@ -120,14 +120,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "nestedparties"
+          "FIX:group": "nestedparties"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PositionQty",
-    "fix:tag": "999003"
+    "FIX:tag": "999003",
+    "display": "PositionQty"
   }
 }

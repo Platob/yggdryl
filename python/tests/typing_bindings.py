@@ -66,6 +66,7 @@ from yggdryl._native import (
     BytesParameters,
 )
 from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
+from yggdryl.types import temporal
 from yggdryl.types import (
     BytesField,
     StringField,
@@ -348,9 +349,9 @@ byte_handle.read_range(0, 6, cls=int)  # type: ignore[arg-type]
 
 native_json_value: Scalar = json.loads("1.5", cls=Scalar)
 typed_struct_dtype_default_scalar: Scalar = typed_struct.dtype.default_scalar()
-native_instant = Scalar.datetime(0, "us", "UTC")
+native_instant = DataType('datetime64(us,"UTC")').scalar(0)
 native_decimal = Scalar.decimal("1234567890123456789012345678901234567890", 2)
-native_enum = Scalar.from_enum("io_mode", "append")
+native_enum_text: str | None = Scalar.from_enum("IOMode", "append").as_str()
 native_scalar_id: str = native_instant.id
 native_scalar_family: str = native_instant.family
 native_scalar_field: Field = Scalar.from_(1).into_field()
@@ -361,9 +362,6 @@ temporal_unit: str | None = native_instant.unit
 temporal_zone: str | None = native_instant.zone
 decimal_coefficient: int | None = native_decimal.unscaled
 decimal_scale: int | None = native_decimal.scale
-enum_kind: str | None = native_enum.enum_kind
-enum_value: str | None = native_enum.enum_value
-enum_ordinal: int | None = native_enum.enum_ordinal
 dense_union_dtype: DataType = DataType.variant(
     [
         types.int64("integer", nullable=False),
@@ -395,13 +393,13 @@ ascii_dtype: DataType = DataType.fixed_ascii(3)
 ascii_width: int | None = ascii_dtype.fixed_byte_width
 ascii_parameters: StringParameters | None = ascii_dtype.string_parameters
 ascii_charset: str | None = ascii_dtype.charset
-string_parameters: StringParameters = StringParameters("large_string", "windows-1252", 32)
+string_parameters: StringParameters = StringParameters("large_string", "windows-1252")
 string_parameters_layout: str = string_parameters.layout
 string_parameters_charset: str = string_parameters.charset
 string_parameters_bound: int | None = string_parameters.bound
 string_parameters_fixed: int | None = string_parameters.fixed
 string_parameters_max: int | None = string_parameters.max
-string_dtype: DataType = DataType.string("string_view", "utf-8", 16)
+string_dtype: DataType = DataType.string("string", "utf-8", 16)
 utf8_dtype: DataType = DataType.utf8()
 large_utf8_dtype: DataType = DataType.large_utf8()
 utf8_view_dtype: DataType = DataType.utf8_view()
@@ -424,21 +422,44 @@ prebuilt_lists: dict[str, list[str]] = StringEnum.prebuilt()
 prebuilt_mics: StringEnum = StringEnum.from_logical_name("mic")
 typed_ascii: StringField = types.ascii("note", nullable=False)
 typed_ascii_kind: Literal[
-    "string", "fixed_string", "string_view", "large_string", "large_string_view"
+    "utf8", "large_utf8", "utf8_view", "large_utf8_view", "fixed_utf8", "sized_utf8",
+    "ascii", "large_ascii", "ascii_view", "large_ascii_view", "fixed_ascii", "sized_ascii",
+    "cp1252", "large_cp1252", "cp1252_view", "large_cp1252_view", "fixed_cp1252",
+    "sized_cp1252",
 ] = typed_ascii.dtype.id
 typed_ascii_fixed: StringField = types.fixed_ascii("ccy", 3, nullable=False)
 typed_ascii_fixed_kind: Literal[
-    "string", "fixed_string", "string_view", "large_string", "large_string_view"
+    "utf8", "large_utf8", "utf8_view", "large_utf8_view", "fixed_utf8", "sized_utf8",
+    "ascii", "large_ascii", "ascii_view", "large_ascii_view", "fixed_ascii", "sized_ascii",
+    "cp1252", "large_cp1252", "cp1252_view", "large_cp1252_view", "fixed_cp1252",
+    "sized_cp1252",
 ] = typed_ascii_fixed.dtype.id
 typed_string: StringField = types.string(
-    "name", layout="large_string", charset="windows-1252", max=32, nullable=False
+    "name", layout="string", charset="windows-1252", max=32, nullable=False
 )
 typed_fixed_utf8: StringField = types.fixed_utf8("name", 8)
+typed_large_utf8_view: StringField = types.large_utf8_view("name")
+typed_sized_utf8: StringField = types.sized_utf8("name", 32)
+typed_large_ascii: StringField = types.large_ascii("name")
+typed_ascii_view: StringField = types.ascii_view("name")
+typed_large_ascii_view: StringField = types.large_ascii_view("name")
+typed_sized_ascii: StringField = types.sized_ascii("name", 4)
+typed_cp1252: StringField = types.cp1252("name")
+typed_large_cp1252: StringField = types.large_cp1252("name")
+typed_cp1252_view: StringField = types.cp1252_view("name")
+typed_large_cp1252_view: StringField = types.large_cp1252_view("name")
+typed_fixed_cp1252: StringField = types.fixed_cp1252("name", 8)
+typed_sized_cp1252: StringField = types.sized_cp1252("name", 32)
 typed_bytes: BytesField = types.bytes("blob", layout="binary_view", max=64)
-typed_fixed_bytes: BytesField = types.bytes("digest", layout="fixed_size_binary", fixed=16)
+typed_fixed_bytes: BytesField = types.bytes("digest", layout="fixed_binary", fixed=16)
 typed_binary: BytesField = types.binary("payload", nullable=False)
 typed_binary_kind: Literal[
-    "binary", "fixed_size_binary", "large_binary", "binary_view"
+    "binary",
+    "large_binary",
+    "binary_view",
+    "large_binary_view",
+    "fixed_binary",
+    "sized_binary",
 ] = typed_binary.dtype.id
 typed_country: CountryField = types.country("iso", nullable=False)
 typed_country_kind: Literal["country"] = typed_country.dtype.id
@@ -655,7 +676,7 @@ assert partition_properties is not None
 assert postgres_properties
 assert protocol_scheme == "iceberg"
 assert protocol_prefix == "iceberg"
-assert protocol_key == "iceberg:doc"
+assert protocol_key == "ICEBERG:doc"
 assert protocol_names == ["doc", "schema-id", "snapshot"]
 assert protocol_values
 assert protocol_entries
@@ -1445,7 +1466,7 @@ fix_header_stated: bool = fix_message_header.stated_sendingtime
 fix_header_possdupflag: bool | None = fix_message_header.possdupflag
 fix_header_msgdirection: str | None = fix_message_header.msgdirection
 
-fix_capture_pluginid: str | None = fix_message_capture.pluginid
+fix_capture_msgpluginid: str | None = fix_message_capture.msgpluginid
 fix_capture_msgctxid: str | None = fix_message_capture.msgctxid
 fix_capture_msgsessionid: str | None = fix_message_capture.msgsessionid
 
@@ -1459,7 +1480,7 @@ fix_event_parentuuids: list[Scalar] = fix_message_event.parentuuids
 fix_event_currunix: int = fix_message_event.currunix
 fix_event_state: Scalar = fix_message_event.state
 fix_event_seqnum: int = fix_message_event.seqnum
-fix_event_creatunix: int | None = fix_message_event.creatunix
+fix_event_creaunix: int | None = fix_message_event.creaunix
 fix_event_expirunix: int | None = fix_message_event.expirunix
 fix_event_prevunix: int | None = fix_message_event.prevunix
 fix_event_prevuuid: Scalar | None = fix_message_event.prevuuid
@@ -1503,7 +1524,7 @@ fix_reader_batch_byte_size: int = fix_reader_pinned.batch_byte_size
 fix_reader_default_sending_time: Scalar | None = fix_reader_pinned.default_sending_time
 fix_reader_native_clock: fix.FixCodec = fix.FixCodec(
     fix_registry_from_fields,
-    default_sending_time=Scalar.datetime(1_704_190_530_000_000_000, "ns", "UTC"),
+    default_sending_time=DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000),
 )
 fix_reader_unpinned_clock: fix.FixCodec = fix.FixCodec(default_sending_time=None)
 fix_read_messages: fix.FixMessages = fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0|")
@@ -1642,7 +1663,7 @@ assert python_declared_module == "trading.book" and python_declared_kind == "cla
 assert python_declared_qualname == python_declared_class_name == "Quote"
 assert python_declared_path == "trading.book.Quote" and python_declared_importable
 assert not python_declared_keyword and python_declared_hash
-assert python_declared_properties["python:module"] == "trading.book"
+assert python_declared_properties["PYTHON:module"] == "trading.book"
 assert python_from_type.class_name == "Field"
 assert python_properties.scheme == "python"
 assert fix_by_id and fix_maybe_by_id
@@ -1678,13 +1699,13 @@ assert fix_header_targetcompid is None or fix_header_targetcompid
 assert fix_header_msgseqnum is None or fix_header_msgseqnum
 assert fix_header_possdupflag is None or fix_header_possdupflag
 assert fix_header_msgdirection is None or fix_header_msgdirection
-assert fix_capture_pluginid is None or fix_capture_pluginid
+assert fix_capture_msgpluginid is None or fix_capture_msgpluginid
 assert fix_capture_msgctxid is None or fix_capture_msgctxid
 assert fix_capture_msgsessionid is None or fix_capture_msgsessionid
 assert isinstance(fix_event_currunix, int) and isinstance(fix_event_crosscode, str)
 assert isinstance(fix_event_currhashcode, int) and isinstance(fix_event_crosshashcode, int)
 assert isinstance(fix_event_seqnum, int) and isinstance(fix_event_unit, str)
-assert fix_event_creatunix is None or fix_event_creatunix
+assert fix_event_creaunix is None or fix_event_creaunix
 assert fix_event_expirunix is None or fix_event_expirunix
 assert fix_event_prevunix is None or fix_event_prevunix
 assert fix_event_snapunix is None or fix_event_snapunix
@@ -1734,3 +1755,15 @@ assert role_cached is not None
 assert coding_roles and encoding_roles and storage_roles
 assert role_fs_path is not None and role_fs_file is not None
 assert role_fs_folder is not None and role_created is not None
+
+# The typed door for a value. A typed field alias already names the width,
+# unit, scale and zone, so `.scalar(value)` is how a caller reaches an exact
+# temporal without a second constructor vocabulary - and it has to narrow, not
+# just execute.
+typed_instant_field = temporal.datetime64("at", "ns", "UTC")
+typed_instant: Scalar = typed_instant_field.scalar(
+    datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+)
+typed_instant_dtype: Scalar = typed_instant_field.dtype.scalar(1)
+assert typed_instant.kind == "datetime64"
+assert typed_instant_dtype.kind == "datetime64"

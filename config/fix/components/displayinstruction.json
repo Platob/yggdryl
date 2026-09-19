@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "displayqty",
-          "fix:tag": "1138"
+          "FIX:field": "displayqty",
+          "FIX:tag": "1138"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondarydisplayqty",
-          "fix:tag": "1082"
+          "FIX:field": "secondarydisplayqty",
+          "FIX:tag": "1082"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "initialdisplayqty",
-          "fix:tag": "1608"
+          "FIX:field": "initialdisplayqty",
+          "FIX:tag": "1608"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currentdisplayprice",
-          "fix:tag": "2828"
+          "FIX:field": "currentdisplayprice",
+          "FIX:tag": "2828"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "displaywhen",
-          "fix:tag": "1083"
+          "FIX:field": "displaywhen",
+          "FIX:tag": "1083"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "displaymethod",
-          "fix:tag": "1084"
+          "FIX:field": "displaymethod",
+          "FIX:tag": "1084"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "displaylowqty",
-          "fix:tag": "1085"
+          "FIX:field": "displaylowqty",
+          "FIX:tag": "1085"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "displayhighqty",
-          "fix:tag": "1086"
+          "FIX:field": "displayhighqty",
+          "FIX:tag": "1086"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "displayminincr",
-          "fix:tag": "1087"
+          "FIX:field": "displayminincr",
+          "FIX:tag": "1087"
         }
       },
       {
@@ -109,16 +109,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refreshqty",
-          "fix:tag": "1088"
+          "FIX:field": "refreshqty",
+          "FIX:tag": "1088"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "850294",
     "description": "Only to be used in the ExecutionReport",
-    "display": "DisplayInstruction",
-    "fix:tag": "850294"
+    "display": "DisplayInstruction"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "stipulationtype",
-          "fix:tag": "233"
+          "FIX:field": "stipulationtype",
+          "FIX:tag": "233"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "stipulationvalue",
-          "fix:tag": "234"
+          "FIX:field": "stipulationvalue",
+          "FIX:tag": "234"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "Stipulation",
-    "fix:tag": "535028"
+    "FIX:tag": "535028",
+    "display": "Stipulation"
   }
 }

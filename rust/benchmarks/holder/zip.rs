@@ -10,8 +10,8 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::holder::zip::{Archive, Node};
 use yggdryl::holder::{Buffer, Holder};
+use yggdryl::zip::{Archive, Node};
 use yggdryl::{Codec, IOBase};
 
 /// The member size the read legs are measured at.

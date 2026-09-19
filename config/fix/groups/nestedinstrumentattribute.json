@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "nestedinstrumentattributecomponent"
+        "FIX:component": "nestedinstrumentattributecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "nestedinstrumentattributecomponent",
+    "FIX:counter": "1312",
+    "FIX:tag": "943736",
     "description": "Code to represent the type of instrument attribute",
-    "display": "NestedInstrumentAttribute",
-    "fix:component": "nestedinstrumentattributecomponent",
-    "fix:counter": "1312",
-    "fix:tag": "943736"
+    "display": "NestedInstrumentAttribute"
   }
 }

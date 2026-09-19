@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "floatingrateindexid",
-          "fix:tag": "2731"
+          "FIX:field": "floatingrateindexid",
+          "FIX:tag": "2731"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "floatingrateindexidsource",
-          "fix:tag": "2732"
+          "FIX:field": "floatingrateindexidsource",
+          "FIX:tag": "2732"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "floatingrateindexcurveunit",
-          "fix:tag": "2730"
+          "FIX:field": "floatingrateindexcurveunit",
+          "FIX:tag": "2730"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "floatingrateindexcurveperiod",
-          "fix:tag": "2728"
+          "FIX:field": "floatingrateindexcurveperiod",
+          "FIX:tag": "2728"
         }
       },
       {
@@ -54,16 +54,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "floatingrateindexcurvespread",
-          "fix:tag": "2729"
+          "FIX:field": "floatingrateindexcurvespread",
+          "FIX:tag": "2729"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "575584",
     "description": "Conditionally required when FloatingRateIndexIDSource(2732) is specified.",
-    "display": "FloatingRateIndex",
-    "fix:tag": "575584"
+    "display": "FloatingRateIndex"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliverystreamcycledesc",
-          "fix:tag": "41082"
+          "FIX:field": "deliverystreamcycledesc",
+          "FIX:tag": "41082"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodeddeliverystreamcycledesclen",
-          "fix:tag": "41083"
+          "FIX:field": "encodeddeliverystreamcycledesclen",
+          "FIX:tag": "41083"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodeddeliverystreamcycledesc",
-          "fix:tag": "41084"
+          "FIX:field": "encodeddeliverystreamcycledesc",
+          "FIX:tag": "41084"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "DeliveryStreamCycle",
-    "fix:tag": "577152"
+    "FIX:tag": "577152",
+    "display": "DeliveryStreamCycle"
   }
 }

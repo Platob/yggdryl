@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "derivativeinstrumentattributecomponent"
+        "FIX:component": "derivativeinstrumentattributecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "DerivativeInstrumentAttribute",
-    "fix:component": "derivativeinstrumentattributecomponent",
-    "fix:counter": "1311",
-    "fix:tag": "702118"
+    "FIX:component": "derivativeinstrumentattributecomponent",
+    "FIX:counter": "1311",
+    "FIX:tag": "702118",
+    "display": "DerivativeInstrumentAttribute"
   }
 }

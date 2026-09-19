@@ -3,8 +3,8 @@
 use std::io::{Read, Write};
 use yggdryl::IOBase;
 use yggdryl::Level;
-use yggdryl::coding::zlib::{Zlib, dump, dump_with_level, load, reader, writer, writer_with_level};
 use yggdryl::holder::Buffer;
+use yggdryl::zlib::{Zlib, dump, dump_with_level, load, reader, writer, writer_with_level};
 
 /// Long enough that framing overhead cannot hide the compression.
 const PAYLOAD: &[u8] = b"symbol,price

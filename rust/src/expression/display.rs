@@ -27,6 +27,7 @@ use smol_str::SmolStr;
 use super::path::write_segments;
 use super::selector::{Projection, Selector};
 use super::{Comparison, Expression, Filter, Function, Literal, Operator, Safety, Term};
+use crate::code_scalars;
 use crate::{DataType, Scalar};
 
 /// Binding strength, low to high. Only the levels the grammar distinguishes.
@@ -487,17 +488,17 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_) => value.into_decimal_utf8().map(SmolStr::new),
         Scalar::String(held) => Some(held.storage().clone()),
-        Scalar::Code(held) => Some(held.storage().clone()),
+        code_scalars!() => value.code_storage().cloned(),
         Scalar::Version(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Url(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::Urn(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Timezone(held) => Some(SmolStr::new(held.as_str())),
         Scalar::MimeType(held) => Some(SmolStr::new(held.as_str())),
         Scalar::MediaType(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Uuid(held) => {
-            let mut slot = [0_u8; crate::types::Uuid::TEXT_LEN];
+            let mut slot = [0_u8; crate::Uuid::TEXT_LEN];
             Some(SmolStr::new(held.render(&mut slot)))
         }
-        Scalar::Enum(held) => Some(SmolStr::new_static(held.as_str())),
         // A geometry literal spells its WKB the way a bytes literal does: the
         // expression grammar reads hex back losslessly, which WKT is not.
         Scalar::Bytes(held) => Some(SmolStr::new(hex_text(held.as_bytes()))),
@@ -515,7 +516,6 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         | Scalar::Interval(_) => value.into_temporal_text(),
         Scalar::Null => matches!(dtype, DataType::Null).then(|| SmolStr::new_static("null")),
         Scalar::Sequence(_) | Scalar::Mapping(_) | Scalar::Record(_) => None,
-        #[cfg(feature = "arrow")]
         Scalar::Arrow(_) => None,
     }
 }

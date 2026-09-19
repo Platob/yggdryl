@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "stipulation"
+        "FIX:component": "stipulation"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "stipulation",
+    "FIX:counter": "232",
+    "FIX:tag": "799968",
     "description": "Required if NoStipulations(232) > 0.",
-    "display": "Stipulations",
-    "fix:component": "stipulation",
-    "fix:counter": "232",
-    "fix:tag": "799968"
+    "display": "Stipulations"
   }
 }

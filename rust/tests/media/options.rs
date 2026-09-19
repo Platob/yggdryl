@@ -8,13 +8,14 @@ use arrow_schema::{ArrowError, SchemaRef};
 use yggdryl::IOMedia;
 use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Buffer;
-use yggdryl::media::ipc::IpcOptions;
+use yggdryl::ipc::IpcOptions;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{DataType, Field, Url};
+use yggdryl::{DataType, Field, StructureType, Url};
 
 /// A struct field is the schema of the batches it describes.
 fn schema() -> Field {
-    DataType::from_fields([DataType::Int64.required_field("id")])
+    StructureType::from_fields([DataType::Int64.required_field("id")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
 }
@@ -82,15 +83,15 @@ fn the_declared_field_is_one_section_of_the_plan() {
 
     // Column metadata rides the declaration, spelled and read back.
     let mut child = declared.fields()[0].clone();
-    child.insert_metadata("field:comment", "the key").unwrap();
+    child.insert_metadata("FIELD:comment", "the key").unwrap();
     let sourced = declared
         .clone()
-        .try_with_dtype(DataType::from_fields([child]).unwrap())
+        .try_with_dtype(DataType::from(StructureType::from_fields([child]).unwrap()))
         .unwrap();
     let with_metadata = IpcOptions::new().with_field(sourced.clone());
     assert_eq!(
         with_metadata.plan().to_string(),
-        "create (id int64 not null with (\"field:comment\" = 'the key'))"
+        "create (id int64 not null with (\"FIELD:comment\" = 'the key'))"
     );
     assert_eq!(with_metadata.field(), Some(sourced.clone()));
     let respelled = IpcOptions::new()
@@ -151,7 +152,7 @@ fn the_declared_field_is_one_section_of_the_plan() {
 fn record_options_have_complete_value_traits_and_stable_hashes() {
     fn assert_traits<T: Clone + Eq + Ord + std::hash::Hash>(_: &T) {}
 
-    let text = yggdryl::media::text::TextOptions::new()
+    let text = yggdryl::text::TextOptions::new()
         .try_with_rowheader(r"^(?<id>\d+)")
         .unwrap();
     let options = RecordOptions::from(text.clone());
@@ -392,10 +393,10 @@ fn every_concrete_options_type_carries_the_same_commit_cadence() {
     }
 
     assert_cadence(IpcOptions::new());
-    assert_cadence(yggdryl::media::avro::AvroOptions::new());
-    assert_cadence(yggdryl::media::text::TextOptions::new());
+    assert_cadence(yggdryl::avro::AvroOptions::new());
+    assert_cadence(yggdryl::text::TextOptions::new());
     #[cfg(feature = "parquet")]
-    assert_cadence(yggdryl::media::parquet::ParquetOptions::new());
+    assert_cadence(yggdryl::parquet::ParquetOptions::new());
 
     let options = RecordOptions::Ipc(IpcOptions::new()).with_commit_row_size(5);
     assert_eq!(options.commit_row_size(), Some(5));
