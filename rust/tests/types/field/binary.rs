@@ -7,7 +7,6 @@ use yggdryl::{ArrowCastOptions, DataType, DataTypeId, FieldScalar, Scalar};
 use yggdryl::{Bytes, BytesField, BytesType, bytes};
 
 use super::typed::assert_typed_marker;
-use yggdryl::UuidType;
 
 #[test]
 fn the_bytes_marker_covers_every_layout_and_bound() {
@@ -23,7 +22,7 @@ fn the_bytes_marker_covers_every_layout_and_bound() {
     let digest = BytesField::try_new("digest", DataType::fixed_binary(32).unwrap(), false).unwrap();
     assert_eq!(digest.dtype(), &DataType::fixed_binary(32).unwrap());
     assert!(BytesField::try_new("digest", DataType::utf8(), false).is_err());
-    assert!(BytesField::try_new("digest", DataType::Uuid(UuidType::Uuid), false).is_err());
+    assert!(BytesField::try_new("digest", DataType::Uuid, false).is_err());
     assert!(BytesField::try_new("digest", DataType::geometry(None).unwrap(), false).is_err());
 
     // A bound of zero is refused wherever it is stated.

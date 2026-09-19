@@ -566,11 +566,14 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// and its count, where it used to hash a layout, a charset and an optional
 /// bound beside them. It last moved when the eight temporal variants became
 /// five families: a temporal column hashes its family's leaf one level
-/// deeper, where it used to hash a variant of its own.
+/// deeper, where it used to hash a variant of its own. It last moved when
+/// uuid became one parameter-free datatype again: a uuid column hashes a
+/// variant with nothing in it, where it used to hash the leaf that said which
+/// RFC 9562 versions it admitted.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 6_481_707_078_094_394_546);
+    assert_eq!(registry.stable_hash(), 7_419_238_164_786_729_799);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

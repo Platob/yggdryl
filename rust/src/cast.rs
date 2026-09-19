@@ -1740,10 +1740,7 @@ impl ArrayCastPlan {
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Code(source)) if source == field.dtype()
             ),
-            DataType::Uuid(_) => !matches!(
-                source_extension.as_ref(),
-                Some(RecognizedExtension::Uuid(_))
-            ),
+            DataType::Uuid => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Uuid)),
             DataType::Version => !matches!(
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Version)
@@ -1921,7 +1918,7 @@ impl ArrayCastPlan {
             // width as the spelling that slot holds, and every text spelling
             // through one Utf8 temporary; the one UUID rule runs per value
             // whichever it was.
-            (DataType::Uuid(_), source) => {
+            (DataType::Uuid, source) => {
                 if matches!(source, ArrowDataType::FixedSizeBinary(_))
                     || can_cast_types(source, &ArrowDataType::Utf8)
                 {
@@ -1979,7 +1976,7 @@ impl ArrayCastPlan {
                         Some(
                             RecognizedExtension::String(_)
                                 | RecognizedExtension::Code(_)
-                                | RecognizedExtension::Uuid(_)
+                                | RecognizedExtension::Uuid
                         )
                     )) =>
             {
@@ -2005,7 +2002,7 @@ impl ArrayCastPlan {
                             StringSource::String(*parameters)
                         }
                         Some(RecognizedExtension::Code(code)) => StringSource::Code(code.clone()),
-                        Some(RecognizedExtension::Uuid(_)) => StringSource::Uuid,
+                        Some(RecognizedExtension::Uuid) => StringSource::Uuid,
                         _ => StringSource::Bare,
                     },
                 }
@@ -2772,7 +2769,7 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         (_, RecognizedExtension::Code(_) | RecognizedExtension::String(_)) => Ok(()),
         // A UUID source is sixteen bytes: a UUID target re-validates them,
         // text renders them, and bytes keep them.
-        (_, RecognizedExtension::Uuid(_)) => Ok(()),
+        (_, RecognizedExtension::Uuid) => Ok(()),
         // A bounded byte source is its storage with a rule already checked:
         // another byte target re-measures it, and every other target reads
         // the bytes as it reads bare storage.

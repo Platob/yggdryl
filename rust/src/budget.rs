@@ -363,7 +363,7 @@ mod limits {
                 | DataType::Sequence(SequenceType::ListView(_)) => self.add_fixed_rows(rows, 8)?,
                 DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano))
                 | DataType::Decimal(DecimalType::Decimal128 { .. })
-                | DataType::Uuid(_)
+                | DataType::Uuid
                 | DataType::Sequence(SequenceType::LargeListView(_)) => {
                     self.add_fixed_rows(rows, 16)?;
                 }
@@ -478,7 +478,7 @@ mod limits {
                 | DataType::Sequence(SequenceType::ListView(_)) => self.add_fixed_rows(rows, 8)?,
                 DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano))
                 | DataType::Decimal(DecimalType::Decimal128 { .. })
-                | DataType::Uuid(_)
+                | DataType::Uuid
                 | DataType::Sequence(SequenceType::LargeListView(_)) => self.add_fixed_rows(rows, 16)?,
                 DataType::Decimal(DecimalType::Decimal256 { .. }) => self.add_fixed_rows(rows, 32)?,
                 DataType::Interval(_) => {

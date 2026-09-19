@@ -26,7 +26,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{DataType, Limits, Result, Scalar, TimeUnit, Timezone};
 
 use super::datum::invalid;
-use crate::{DateTimeType, TimeType, UuidType};
+use crate::{DateTimeType, TimeType};
 
 /// Maximum structural nesting accepted by the recursive schema parser.
 ///
@@ -417,7 +417,7 @@ impl Node {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::NAIVE,
             }),
-            Self::Uuid | Self::UuidFixed(_) => DataType::Uuid(UuidType::Uuid),
+            Self::Uuid | Self::UuidFixed(_) => DataType::Uuid,
             Self::Decimal(decimal) => DataType::decimal(
                 u8::try_from(decimal.precision).map_err(|_| {
                     invalid(format_smolstr!(

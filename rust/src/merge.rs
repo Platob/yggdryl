@@ -559,7 +559,7 @@ const fn variable_bytes_shape(view: bool, large: bool) -> BytesType {
 /// width is a maximum over variable text rather than a layout.
 fn fixed_width(dtype: &DataType) -> Option<usize> {
     match dtype {
-        DataType::Bytes(_) | DataType::String(_) | DataType::Uuid(_) => dtype.fixed_byte_width(),
+        DataType::Bytes(_) | DataType::String(_) | DataType::Uuid => dtype.fixed_byte_width(),
         _ => None,
     }
 }

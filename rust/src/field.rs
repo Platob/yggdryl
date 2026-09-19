@@ -1905,8 +1905,8 @@ mod arrow {
     use crate::{
         BYTES_EXTENSION_NAME, BytesType, GEOARROW_WKB_EXTENSION_NAME, MEDIATYPE_EXTENSION_NAME,
         MIMETYPE_EXTENSION_NAME, STRING_EXTENSION_NAME, StringType, TIMEZONE_EXTENSION_NAME,
-        URL_EXTENSION_NAME, UUID_EXTENSION_NAME, UUID_VERSION_EXTENSION_NAME, UuidType,
-        VARIANT_EXTENSION_NAME, VERSION_EXTENSION_NAME, code_for_extension, is_variant_storage,
+        URL_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME, VERSION_EXTENSION_NAME,
+        code_for_extension, is_variant_storage,
     };
     use crate::{DataType, Error, GeospatialParameters, Metadata, Result};
     use crate::{Field, FieldRef};
@@ -2331,9 +2331,8 @@ mod arrow {
         /// The `yggdryl.bytes` extension: a layout and a bound over the Arrow
         /// storage that layout is.
         Bytes(DataType),
-        /// An identifier over `FixedSizeBinary(16)`: the canonical
-        /// `arrow.uuid`, or `yggdryl.uuid` with the version it admits.
-        Uuid(UuidType),
+        /// The canonical `arrow.uuid` identifier over `FixedSizeBinary(16)`.
+        Uuid,
         /// The canonical version text over Utf8.
         Version,
         /// The canonical URL text over Utf8.
@@ -2359,7 +2358,7 @@ mod arrow {
                     }
                 }
                 Self::Code(dtype) | Self::String(dtype) | Self::Bytes(dtype) => dtype,
-                Self::Uuid(family) => DataType::Uuid(family),
+                Self::Uuid => DataType::Uuid,
                 Self::Version => DataType::Version,
                 Self::Url => DataType::Url,
                 Self::Timezone => DataType::Timezone,
@@ -2463,20 +2462,7 @@ mod arrow {
             }
             UUID_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
                 Ok(matches!(storage, ArrowDataType::FixedSizeBinary(16))
-                    .then_some(RecognizedExtension::Uuid(UuidType::Uuid)))
-            }
-            // A version is what the document states, and the storage must be
-            // the sixteen bytes every identifier is: our name over anything
-            // else is a foreign field wearing it, and imports as its storage.
-            UUID_VERSION_EXTENSION_NAME => {
-                let Some(document) = document else {
-                    return Ok(None);
-                };
-                let Some(family) = UuidType::from_extension_json(document) else {
-                    return Ok(None);
-                };
-                Ok(matches!(storage, ArrowDataType::FixedSizeBinary(16))
-                    .then_some(RecognizedExtension::Uuid(family)))
+                    .then_some(RecognizedExtension::Uuid))
             }
             VERSION_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
                 Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Version))

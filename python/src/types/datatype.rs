@@ -138,7 +138,7 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
 pub(crate) fn is_parsed_text(dtype: &CoreDataType) -> bool {
     matches!(
         dtype,
-        CoreDataType::Uuid(_)
+        CoreDataType::Uuid
             | CoreDataType::Version
             | CoreDataType::Url
             | CoreDataType::Timezone
@@ -478,9 +478,6 @@ impl PyDataType {
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,
             "uuid" => CoreDataType::uuid(),
-            "uuidv4" => CoreDataType::uuidv4(),
-            "uuidv7" => CoreDataType::uuidv7(),
-            "uuidv8" => CoreDataType::uuidv8(),
             "version" => CoreDataType::Version,
             "url" => CoreDataType::Url,
             "timezone" => CoreDataType::Timezone,

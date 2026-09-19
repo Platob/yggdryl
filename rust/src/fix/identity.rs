@@ -847,7 +847,7 @@ pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Optio
 pub(super) fn validate_value(name: &str, dtype: &DataType, value: &Scalar) -> Result<()> {
     let exact = match dtype {
         DataType::UInt64 => matches!(value, Scalar::UInt64(_)),
-        DataType::Uuid(_) => matches!(value, Scalar::Uuid(_)),
+        DataType::Uuid => matches!(value, Scalar::Uuid(_)),
         dtype if dtype == &CLOCK_DATATYPE => {
             matches!(value.as_datetime64(), Some((_, TimeUnit::Nanosecond, zone)) if *zone == Timezone::UTC)
         }

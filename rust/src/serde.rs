@@ -4,7 +4,6 @@ use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::UuidType;
 use crate::enums::EnumType;
 use crate::sequence::SequenceType;
 use crate::{DataType, TimeUnit, UnionFields, UnionMode};
@@ -597,9 +596,6 @@ enum DataTypeRef<'a> {
     #[serde(rename = "timeinforce")]
     TimeInForce {},
     Uuid {},
-    Uuidv4 {},
-    Uuidv7 {},
-    Uuidv8 {},
     Version {},
     Url {},
     Timezone {},
@@ -748,10 +744,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Side => Self::Side {},
             D::State => Self::State {},
             D::TimeInForce => Self::TimeInForce {},
-            D::Uuid(UuidType::Uuid) => Self::Uuid {},
-            D::Uuid(UuidType::Uuidv4) => Self::Uuidv4 {},
-            D::Uuid(UuidType::Uuidv7) => Self::Uuidv7 {},
-            D::Uuid(UuidType::Uuidv8) => Self::Uuidv8 {},
+            D::Uuid => Self::Uuid {},
             D::Version => Self::Version {},
             D::Url => Self::Url {},
             D::Timezone => Self::Timezone {},
@@ -894,9 +887,6 @@ enum DataTypeWire {
     #[serde(rename = "timeinforce")]
     TimeInForce {},
     Uuid {},
-    Uuidv4 {},
-    Uuidv7 {},
-    Uuidv8 {},
     Version {},
     Url {},
     Timezone {},
@@ -1021,10 +1011,7 @@ impl TryFrom<DataTypeWire> for DataType {
             DataTypeWire::Side {} => Self::Side,
             DataTypeWire::State {} => Self::State,
             DataTypeWire::TimeInForce {} => Self::TimeInForce,
-            DataTypeWire::Uuid {} => Self::Uuid(UuidType::Uuid),
-            DataTypeWire::Uuidv4 {} => Self::Uuid(UuidType::Uuidv4),
-            DataTypeWire::Uuidv7 {} => Self::Uuid(UuidType::Uuidv7),
-            DataTypeWire::Uuidv8 {} => Self::Uuid(UuidType::Uuidv8),
+            DataTypeWire::Uuid {} => Self::Uuid,
             DataTypeWire::Version {} => Self::Version,
             DataTypeWire::Url {} => Self::Url,
             DataTypeWire::Timezone {} => Self::Timezone,
@@ -1155,7 +1142,7 @@ impl DataType {
             D::Side => tag("side"),
             D::State => tag("state"),
             D::TimeInForce => tag("timeinforce"),
-            D::Uuid(family) => tag(family.id().as_str()),
+            D::Uuid => tag("uuid"),
             D::Version => tag("version"),
             D::Url => tag("url"),
             D::Timezone => tag("timezone"),
@@ -1429,10 +1416,7 @@ impl DataType {
             "side" => Self::Side,
             "state" => Self::State,
             "timeinforce" => Self::TimeInForce,
-            "uuid" => Self::Uuid(UuidType::Uuid),
-            "uuidv4" => Self::Uuid(UuidType::Uuidv4),
-            "uuidv7" => Self::Uuid(UuidType::Uuidv7),
-            "uuidv8" => Self::Uuid(UuidType::Uuidv8),
+            "uuid" => Self::Uuid,
             "version" => Self::Version,
             "url" => Self::Url,
             "timezone" => Self::Timezone,

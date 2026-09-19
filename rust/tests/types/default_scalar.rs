@@ -6,7 +6,7 @@ use arrow_array::types::Int8Type;
 use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, Int32Array, StringArray};
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{DataType, DataTypeId, Field, FieldScalar, Scalar, TimeUnit, Timezone, UnionMode};
-use yggdryl::{DateTimeType, DurationType, TimeType, UuidType};
+use yggdryl::{DateTimeType, DurationType, TimeType};
 
 fn representative_types() -> Vec<DataType> {
     let item = || Field::new("item", DataType::Int32, true);
@@ -144,7 +144,7 @@ fn leaf_defaults_keep_their_declared_physical_identity() {
         (DataType::Currency, DataTypeId::Currency),
         (DataType::Mic, DataTypeId::Mic),
         (DataType::Cfi, DataTypeId::Cfi),
-        (DataType::Uuid(UuidType::Uuid), DataTypeId::Uuid),
+        (DataType::Uuid, DataTypeId::Uuid),
         (
             DataType::interval(TimeUnit::YearMonth).unwrap(),
             DataTypeId::Interval,

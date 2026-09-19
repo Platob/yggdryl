@@ -423,7 +423,7 @@ pub(crate) mod casts {
             // A byte payload is measured by the framing the array is in: a
             // string, a code and a UUID each project onto one of the byte
             // layouts, and the array says which.
-            bytes if bytes.kind().is_bytes() || matches!(bytes, DataType::Uuid(_)) => {
+            bytes if bytes.kind().is_bytes() || matches!(bytes, DataType::Uuid) => {
                 byte_cell_len(array, index)?
             }
             DataType::Enum(EnumType::Dictionary(dictionary)) => {
@@ -585,7 +585,7 @@ pub(crate) mod casts {
                     && null_buffers_ptr_eq(left.nulls(), right.nulls())
             }};
         }
-        if !(dtype.kind().is_bytes() || matches!(dtype, DataType::Uuid(_))) {
+        if !(dtype.kind().is_bytes() || matches!(dtype, DataType::Uuid)) {
             return Ok(false);
         }
         // The framing is the array's: a string, a code and a UUID each project

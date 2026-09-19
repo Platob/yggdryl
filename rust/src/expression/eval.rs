@@ -966,7 +966,7 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
                 narrowed => Ok(narrowed),
             }
         }
-        DataType::Uuid(_) => {
+        DataType::Uuid => {
             if matches!(value, Scalar::Uuid(_)) {
                 return Ok(value.clone());
             }

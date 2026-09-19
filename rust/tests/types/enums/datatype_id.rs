@@ -34,7 +34,7 @@ fn every_kind_is_reachable() {
 
 #[test]
 fn the_strings_and_the_codes_are_text() {
-    assert_eq!(DataTypeId::ALL.len(), 86);
+    assert_eq!(DataTypeId::ALL.len(), 83);
     for id in [
         DataTypeId::Utf8String,
         DataTypeId::FixedUtf8String,
@@ -194,9 +194,7 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::Bloomberg, 66),
         (DataTypeId::SortedMap, 67),
         (DataTypeId::Struct2, 68),
-        (DataTypeId::Uuidv4, 69),
-        (DataTypeId::Uuidv7, 70),
-        (DataTypeId::Uuidv8, 71),
+        // 69 to 71 were the versioned uuid leaves, retired and never reused.
         (DataTypeId::LargeBinaryView, 72),
         (DataTypeId::SizedBinary, 73),
         (DataTypeId::SizedUtf8String, 74),

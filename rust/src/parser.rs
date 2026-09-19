@@ -12,7 +12,6 @@ use crate::BytesType;
 use crate::DecimalType;
 use crate::StringType;
 use crate::UnionMode;
-use crate::UuidType;
 use crate::{DataType, TimeUnit};
 use crate::{EdgeAlgorithm, Error, Field, Result};
 
@@ -878,7 +877,7 @@ impl fmt::Display for DataType {
             | D::Side
             | D::State
             | D::TimeInForce
-            | D::Uuid(_)
+            | D::Uuid
             | D::Version
             | D::Timezone
             | D::MimeType
@@ -1189,12 +1188,7 @@ impl<'a> Parser<'a> {
                 self.parse_string(leaf, StringType::general_spelling(&keyword).is_some())?
             }
 
-            "uuid" => DataType::Uuid(UuidType::Uuid),
-            // A version names the leaf that admits it; bare `uuid` admits
-            // every one, so the three are spellings beside it, not under it.
-            "uuidv4" => DataType::Uuid(UuidType::Uuidv4),
-            "uuidv7" => DataType::Uuid(UuidType::Uuidv7),
-            "uuidv8" => DataType::Uuid(UuidType::Uuidv8),
+            "uuid" => DataType::Uuid,
             "version" => DataType::Version,
             "timezone" | "timezonename" | "tz" => DataType::Timezone,
             "mimetype" | "mime" => DataType::MimeType,

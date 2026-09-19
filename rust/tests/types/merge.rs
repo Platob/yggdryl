@@ -2,7 +2,6 @@
 //! walks, in both directions.
 use yggdryl::DataType;
 use yggdryl::DecimalType;
-use yggdryl::UuidType;
 
 #[test]
 fn bytes_win_over_text_and_keep_only_an_identical_fixed_width() {
@@ -106,10 +105,7 @@ fn narrowing_keeps_the_type_that_constrains_a_shared_fixed_width() {
             DataType::fixed_ascii(4).unwrap(),
             DataType::fixed_binary(4).unwrap(),
         ),
-        (
-            DataType::Uuid(UuidType::Uuid),
-            DataType::fixed_binary(16).unwrap(),
-        ),
+        (DataType::Uuid, DataType::fixed_binary(16).unwrap()),
     ] {
         assert_eq!(
             left.merge_with(&right, false).unwrap(),

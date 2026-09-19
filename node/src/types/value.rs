@@ -99,7 +99,7 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::Side
         | D::State
         | D::TimeInForce
-        | D::Uuid(_)
+        | D::Uuid
         | D::Url
         | D::Timezone
         | D::MimeType
@@ -316,7 +316,7 @@ fn text_or_binary_to_js<'env>(
             .ok_or_else(|| napi_error("invalid native string record value"))?
             .to_owned()
             .into_unknown(env)?,
-        D::Uuid(_) => match value {
+        D::Uuid => match value {
             Scalar::Uuid(value) => value.to_string().into_unknown(env)?,
             _ => return Err(napi_error("invalid native uuid record value")),
         },

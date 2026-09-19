@@ -1215,7 +1215,7 @@ fn feed_cell(
         | DataType::Side
         | DataType::State
         | DataType::TimeInForce
-        | DataType::Uuid(_)
+        | DataType::Uuid
         | DataType::Version
         | DataType::Url
         | DataType::Timezone

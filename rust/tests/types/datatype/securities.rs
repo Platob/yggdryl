@@ -373,7 +373,7 @@ fn the_identifiers_are_appended_after_every_earlier_datatype() {
     assert_eq!(DataTypeId::Sedol.as_u8(), 65);
     assert_eq!(DataTypeId::Bloomberg.as_u8(), 66);
     assert_eq!(
-        &DataTypeId::ALL[DataTypeId::ALL.len() - 24..],
+        &DataTypeId::ALL[DataTypeId::ALL.len() - 21..],
         &[
             DataTypeId::MediaType,
             DataTypeId::Cusip,
@@ -381,9 +381,6 @@ fn the_identifiers_are_appended_after_every_earlier_datatype() {
             DataTypeId::Bloomberg,
             DataTypeId::SortedMap,
             DataTypeId::Struct2,
-            DataTypeId::Uuidv4,
-            DataTypeId::Uuidv7,
-            DataTypeId::Uuidv8,
             DataTypeId::LargeBinaryView,
             DataTypeId::SizedBinary,
             DataTypeId::SizedUtf8String,

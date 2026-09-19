@@ -83,7 +83,7 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
                 unit: TimeUnit::Microsecond | TimeUnit::Nanosecond,
                 ..
             })
-            | DataType::Uuid(_)
+            | DataType::Uuid
             | DataType::Bytes(_)
     )
 }
@@ -130,7 +130,7 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
         code if code.is_code() => OfficialDatum::string(value.as_str()?),
         // An identifier is a `uuid` datum, built from the sixteen bytes the
         // canonical spelling parses to.
-        DataType::Uuid(_) => {
+        DataType::Uuid => {
             let bytes = match value {
                 Scalar::Uuid(value) => value.into_bytes(),
                 _ => crate::uuid_parse(crate::uuid_bytes(value)?).ok()?,
@@ -199,7 +199,7 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
         (code, OfficialPrimitiveLiteral::String(value)) if code.is_code() => {
             code.scalar(value.as_str()).ok()?
         }
-        (DataType::Uuid(_), OfficialPrimitiveLiteral::UInt128(value)) => {
+        (DataType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => {
             Scalar::from(crate::uuid_text(&value.to_be_bytes()))
         }
         (DataType::Bytes(_), OfficialPrimitiveLiteral::Binary(value)) => {
@@ -247,7 +247,7 @@ fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
             OfficialPrimitiveType::String
         }
         code if code.is_code() => OfficialPrimitiveType::String,
-        DataType::Uuid(_) => OfficialPrimitiveType::Uuid,
+        DataType::Uuid => OfficialPrimitiveType::Uuid,
         DataType::Bytes(parameters) => match parameters.fixed() {
             None => OfficialPrimitiveType::Binary,
             Some(width) if usize::try_from(width).ok() == Some(bytes.len()) => {
@@ -289,7 +289,6 @@ pub(super) fn compare_single(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::UuidType;
 
     #[test]
     fn promoted_bounds_decode_under_the_current_type() {
@@ -374,7 +373,7 @@ mod tests {
             (Scalar::from("USD"), DataType::Currency),
             (
                 Scalar::from("00112233-4455-6677-8899-aabbccddeeff"),
-                DataType::Uuid(UuidType::Uuid),
+                DataType::Uuid,
             ),
             (
                 Scalar::from([1_u8, 2, 3].as_slice()),

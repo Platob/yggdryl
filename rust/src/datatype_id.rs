@@ -188,18 +188,6 @@ pub enum DataTypeId {
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
     Struct2 = 68,
-    /// A random RFC 9562 identifier: version 4.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    Uuidv4 = 69,
-    /// A time-ordered RFC 9562 identifier: version 7.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    Uuidv7 = 70,
-    /// A custom RFC 9562 identifier: version 8.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    Uuidv8 = 71,
     /// The viewed byte layout over 64-bit offsets.
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
@@ -264,7 +252,7 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 86] = [
+    pub const ALL: [Self; 83] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -333,9 +321,6 @@ impl DataTypeId {
         Self::Bloomberg,
         Self::SortedMap,
         Self::Struct2,
-        Self::Uuidv4,
-        Self::Uuidv7,
-        Self::Uuidv8,
         Self::LargeBinaryView,
         Self::SizedBinary,
         Self::SizedUtf8String,
@@ -409,9 +394,6 @@ impl DataTypeId {
             Self::State => "state",
             Self::TimeInForce => "timeinforce",
             Self::Uuid => "uuid",
-            Self::Uuidv4 => "uuidv4",
-            Self::Uuidv7 => "uuidv7",
-            Self::Uuidv8 => "uuidv8",
             Self::LargeBinaryView => "large_binary_view",
             Self::SizedBinary => "sized_binary",
             Self::List => "list",
@@ -464,8 +446,9 @@ impl DataTypeId {
     /// Every variant states its discriminant, and it is a wire contract:
     /// [`crate::Scalar::write_bytes`] writes it as the tag of every value, so
     /// a number is never reused and never moves. A retired variant leaves its
-    /// number unused - 58 was `msgdirection`, since retired - so
-    /// the byte is no longer the variant's position in [`Self::ALL`]; the
+    /// number unused - 58 was `msgdirection` and 69 to 71 were the versioned
+    /// `uuidv4`, `uuidv7` and `uuidv8` leaves, all since retired - so the
+    /// byte is no longer the variant's position in [`Self::ALL`]; the
     /// test pinning every value is what makes a moved number a failure rather
     /// than a surprise.
     ///
@@ -549,7 +532,7 @@ impl DataTypeId {
             | Self::Side
             | Self::State
             | Self::TimeInForce => DataTypeKind::Code,
-            Self::Uuid | Self::Uuidv4 | Self::Uuidv7 | Self::Uuidv8 => DataTypeKind::Uuid,
+            Self::Uuid => DataTypeKind::Uuid,
             Self::List
             | Self::ListView
             | Self::FixedSizeList
@@ -717,13 +700,7 @@ impl DataTypeId {
             | Self::DateTime64
             | Self::Decimal64 => Some(8),
             Self::Duration32 => Some(4),
-            Self::Int128
-            | Self::UInt128
-            | Self::Decimal128
-            | Self::Uuid
-            | Self::Uuidv4
-            | Self::Uuidv7
-            | Self::Uuidv8 => Some(16),
+            Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Uuid => Some(16),
             Self::Decimal256 => Some(32),
             _ => None,
         }

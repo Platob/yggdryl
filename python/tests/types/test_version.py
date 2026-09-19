@@ -171,17 +171,17 @@ def test_retired_msgtype_datatype_is_absent_and_url_keeps_its_new_index():
     # `cusip` and `sedol` as code datatypes of their own, and `bloomberg`
     # after them - the one code whose width is only a bound, because a
     # ticker, a market and a yellow key have no fixed length between them.
-    # The families appended the rest: `uuidv4`, `uuidv7` and `uuidv8` when
-    # uuid became a family with a leaf per RFC 9562 version, then
+    # The families appended the rest: three versioned uuid leaves (69-71,
+    # retired when uuid became one datatype again, never reused), then
     # `large_binary_view` and `sized_binary` when the byte family became six
     # real leaves, then the thirteen string leaves - `sized_utf8`, the six
     # US-ASCII ones and the six windows-1252 ones - when the string family
     # became eighteen; the five UTF-8 leaves kept the slots of the layouts
     # they replaced. An identifier is a wire contract, so nothing ever moves.
     assert "msgdirection" not in enums.DATA_TYPE_IDS
-    assert len(enums.DATA_TYPE_IDS) == 86
+    assert len(enums.DATA_TYPE_IDS) == 83
     assert enums.DATA_TYPE_IDS.index("url") == 58
-    assert enums.DATA_TYPE_IDS.index("sized_utf8") == 73
+    assert enums.DATA_TYPE_IDS.index("sized_utf8") == 70
     assert list(enums.DATA_TYPE_IDS[-5:]) == [
         "large_cp1252",
         "cp1252_view",

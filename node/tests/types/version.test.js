@@ -177,17 +177,17 @@ test('generic MsgType datatype and field helpers are retired', () => {
   // `cusip` and `sedol` as code datatypes of their own, and `bloomberg`
   // after them - the one code whose width is only a bound, because a ticker,
   // a market and a yellow key have no fixed length between them. The families
-  // appended the rest: `uuidv4`, `uuidv7` and `uuidv8` when uuid became a
-  // family with a leaf per RFC 9562 version, `large_binary_view` and
+  // appended the rest: three versioned uuid leaves (69-71, retired when uuid
+  // became one datatype again, never reused), `large_binary_view` and
   // `sized_binary` when the byte family became six real leaves, and the
   // thirteen string leaves beyond the five UTF-8 ones - `sized_utf8`, then
   // the six US-ASCII and the six windows-1252 shapes - when the string family
   // became eighteen.
   assert.equal(enums.dataTypeIds.includes('msgdirection'), false)
-  assert.equal(enums.dataTypeIds.length, 86)
+  assert.equal(enums.dataTypeIds.length, 83)
   assert.equal(enums.dataTypeIds.indexOf('url'), 58)
   assert.equal(enums.dataTypeIds.indexOf('utf8'), 27)
-  assert.equal(enums.dataTypeIds.indexOf('sized_utf8'), 73)
+  assert.equal(enums.dataTypeIds.indexOf('sized_utf8'), 70)
   assert.deepEqual(enums.dataTypeIds.slice(-5), [
     'large_cp1252',
     'cp1252_view',

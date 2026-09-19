@@ -10,7 +10,6 @@ const POINT_EMPTY_WKB: [u8; 21] = [
 
 use std::sync::Arc;
 
-use yggdryl::UuidType;
 use yggdryl::floating::FloatingValue;
 use yggdryl::{DataType, DataTypeId, DataTypeKind, TimeUnit, Timezone, Value, i256};
 use yggdryl::{Float16, Float32, Float64, Scalar};
@@ -571,7 +570,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(Value::dtype(&sequence).unwrap().id(), DataTypeId::List);
 
     let uuid = uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
-    assert_eq!(Value::dtype(&uuid).unwrap(), DataType::Uuid(UuidType::Uuid));
+    assert_eq!(Value::dtype(&uuid).unwrap(), DataType::Uuid);
 
     let scalar = Value::into_scalar(text);
     assert_eq!(scalar.id(), DataTypeId::LargeUtf8String);

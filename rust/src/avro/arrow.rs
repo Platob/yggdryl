@@ -207,7 +207,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         dtype if spells_string(dtype) => plain("string"),
         // Avro's `uuid` annotates a string with the hyphenated spelling,
         // which is what a UUID value already is.
-        DataType::Uuid(_) => logical("string", "uuid"),
+        DataType::Uuid => logical("string", "uuid"),
         // Avro's `bytes` has no maximum, so a bound is dropped here; the cast
         // on the way in already held every value to it.
         DataType::Bytes(parameters) if !parameters.is_fixed() => plain("bytes"),

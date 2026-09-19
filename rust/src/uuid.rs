@@ -1,11 +1,19 @@
-//! Globally unique identifier datatypes.
+//! The UUID datatype: one 128-bit identifier over sixteen fixed bytes.
+//!
+//! [`DataType::Uuid`] carries no parameter. A column is `FixedSizeBinary(16)`
+//! under Arrow's canonical `arrow.uuid` extension with an empty document, and
+//! the value [`Uuid`] is those sixteen bytes read big-endian. One rule reads
+//! every spelling a value arrives in - the 36-character hyphenated text, the
+//! bare 32 hexadecimal digits, or the sixteen bytes themselves - and every
+//! rendering is the canonical lowercase hyphenated text.
 
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, DataTypeId, Error, Result, Scalar, Value};
+use crate::typed::define_field_types;
+use crate::{DataType, Error, Result, Scalar, Value};
 
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
@@ -153,14 +161,6 @@ pub(crate) mod casts {
 /// empty string: the width says everything the type carries.
 pub(crate) const UUID_EXTENSION_NAME: &str = "arrow.uuid";
 
-/// The extension name a versioned UUID column rides.
-///
-/// The canonical `arrow.uuid` says "sixteen bytes are an identifier" and
-/// carries no document; which RFC 9562 version a column admits is one fact
-/// beyond that, so it rides this crate's own name rather than overloading
-/// Arrow's with a document Arrow does not define.
-pub(crate) const UUID_VERSION_EXTENSION_NAME: &str = "yggdryl.uuid";
-
 /// The number of bytes one identifier is.
 pub(crate) const UUID_BYTES: usize = 16;
 
@@ -173,39 +173,19 @@ pub(crate) const UUID_TEXT_LEN: usize = UUID_BYTES * 2 + GROUPS.len() - 1;
 impl DataType {
     /// Creates the UUID type.
     ///
-    /// It takes no width: an identifier is 128 bits and nothing else. What a
-    /// leaf does select is which RFC 9562 versions the column admits, and
-    /// this one admits every version.
+    /// It takes no parameter: an identifier is sixteen bytes and nothing
+    /// else, whichever RFC 9562 version wrote it.
     ///
     /// ```
-    /// use yggdryl::UuidType;
     /// use yggdryl::DataType;
     ///
-    /// assert_eq!(DataType::uuid(), DataType::Uuid(UuidType::Uuid));
+    /// assert_eq!(DataType::uuid(), DataType::Uuid);
     /// assert_eq!(DataType::uuid().to_string(), "uuid");
-    /// assert_eq!(DataType::uuidv7().to_string(), "uuidv7");
+    /// assert_eq!(DataType::uuid().fixed_byte_width(), Some(16));
     /// ```
     #[must_use]
     pub const fn uuid() -> Self {
-        Self::Uuid(UuidType::Uuid)
-    }
-
-    /// Creates the UUID type a column admits only version 4 in.
-    #[must_use]
-    pub const fn uuidv4() -> Self {
-        Self::Uuid(UuidType::Uuidv4)
-    }
-
-    /// Creates the UUID type a column admits only version 7 in.
-    #[must_use]
-    pub const fn uuidv7() -> Self {
-        Self::Uuid(UuidType::Uuidv7)
-    }
-
-    /// Creates the UUID type a column admits only version 8 in.
-    #[must_use]
-    pub const fn uuidv8() -> Self {
-        Self::Uuid(UuidType::Uuidv8)
+        Self::Uuid
     }
 
     /// The 128-bit integer one UUID value is: its storage bytes, big-endian.
@@ -254,7 +234,7 @@ impl DataType {
     }
 
     fn ensure_uuid(&self) -> Result<()> {
-        if matches!(self, Self::Uuid(_)) {
+        if matches!(self, Self::Uuid) {
             Ok(())
         } else {
             Err(Error::InvalidDataType {
@@ -403,158 +383,7 @@ fn uuid_refusal(value: &[u8], actual: SmolStr) -> Error {
 // UUID field markers.
 // ------------------------------------------------------------------------
 
-/// The uuid family's datatype payload.
-///
-/// Every leaf is the same sixteen bytes; what differs is which versions a
-/// column admits. [`Self::Uuid`] admits every RFC 9562 identifier, and the
-/// three versioned leaves admit exactly the version they name - so a column
-/// that is meant to be time-ordered refuses one that is not, at the boundary
-/// rather than in a reader's head.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, Ord, PartialOrd)]
-#[non_exhaustive]
-pub enum UuidType {
-    /// Any RFC 9562 identifier, whichever version wrote it.
-    #[default]
-    Uuid,
-    /// A random identifier: version 4.
-    Uuidv4,
-    /// A time-ordered identifier: version 7.
-    Uuidv7,
-    /// A custom identifier: version 8.
-    Uuidv8,
-}
-
-impl UuidType {
-    /// Return the exact datatype identifier.
-    #[must_use]
-    pub const fn id(self) -> DataTypeId {
-        match self {
-            Self::Uuid => DataTypeId::Uuid,
-            Self::Uuidv4 => DataTypeId::Uuidv4,
-            Self::Uuidv7 => DataTypeId::Uuidv7,
-            Self::Uuidv8 => DataTypeId::Uuidv8,
-        }
-    }
-
-    /// The version this leaf admits, `None` where every version stands.
-    #[must_use]
-    pub const fn version(self) -> Option<u8> {
-        match self {
-            Self::Uuid => None,
-            Self::Uuidv4 => Some(4),
-            Self::Uuidv7 => Some(7),
-            Self::Uuidv8 => Some(8),
-        }
-    }
-
-    /// The leaf one version names, `None` for a version no leaf declares.
-    #[must_use]
-    pub const fn from_version(version: u8) -> Option<Self> {
-        match version {
-            4 => Some(Self::Uuidv4),
-            7 => Some(Self::Uuidv7),
-            8 => Some(Self::Uuidv8),
-            _ => None,
-        }
-    }
-
-    /// Whether one identifier may stand in a column of this leaf.
-    #[must_use]
-    pub const fn admits(self, value: Uuid) -> bool {
-        match self.version() {
-            None => true,
-            Some(version) => value.version() == version,
-        }
-    }
-
-    /// The extension metadata an Arrow field carries this leaf in.
-    ///
-    /// Arrow has nowhere to put a version: sixteen bytes are sixteen bytes,
-    /// and the canonical `arrow.uuid` document is defined to be empty. So a
-    /// versioned leaf rides `yggdryl.uuid` with the version written whole.
-    #[must_use]
-    pub fn extension_json(self) -> String {
-        match self.version() {
-            None => String::new(),
-            Some(version) => format!("{{\"version\":{version}}}"),
-        }
-    }
-
-    /// The leaf one `yggdryl.uuid` document declares.
-    ///
-    /// A document that is not one this crate writes leaves the column the
-    /// storage it is, exactly as a foreign `yggdryl.string` document does.
-    #[must_use]
-    pub fn from_extension_json(document: &str) -> Option<Self> {
-        let trimmed = document.trim();
-        let inner = trimmed.strip_prefix('{')?.strip_suffix('}')?.trim();
-        let (key, value) = inner.split_once(':')?;
-        if key.trim().trim_matches('"') != "version" {
-            return None;
-        }
-        Self::from_version(value.trim().parse::<u8>().ok()?)
-    }
-
-    /// Refuse an identifier whose version this leaf does not admit.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the version the column declares and the one
-    /// the value carries.
-    pub fn accept(self, value: Uuid) -> Result<()> {
-        if self.admits(value) {
-            return Ok(());
-        }
-        Err(Error::InvalidRecord {
-            path: "$".into(),
-            reason: crate::text::expected_got(
-                format_args!("a {} identifier", self.id().as_str()),
-                format_args!("version {}", value.version()),
-            ),
-        })
-    }
-}
-
-impl crate::family::DataTypeValue for UuidType {
-    const FAMILY: &'static str = "uuid";
-
-    type Sidecar = ();
-
-    fn id(&self) -> DataTypeId {
-        Self::id(*self)
-    }
-
-    fn kind(&self) -> crate::DataTypeKind {
-        crate::DataTypeKind::Uuid
-    }
-
-    fn validate(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn into_dtype(self) -> DataType {
-        DataType::Uuid(self)
-    }
-
-    fn from_dtype(dtype: &DataType) -> Option<Self> {
-        match dtype {
-            DataType::Uuid(family) => Some(*family),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for UuidType {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.id().as_str())
-    }
-}
-
-impl From<UuidType> for DataType {
-    fn from(value: UuidType) -> Self {
-        Self::Uuid(value)
-    }
-}
+define_field_types!(UuidType, Uuid);
 
 // ------------------------------------------------------------------------
 // UUID values and the typed scalar alias.
@@ -659,8 +488,8 @@ impl Uuid {
     /// The RFC 9562 version nibble this identifier carries.
     ///
     /// Four bits, so every value answers one: an identifier written by no
-    /// version scheme answers whatever those bits hold, and a versioned
-    /// column is what refuses it.
+    /// version scheme answers whatever those bits hold. The column never
+    /// asks; the version is a fact about the value alone.
     ///
     /// ```
     /// use yggdryl::Uuid;
@@ -711,7 +540,7 @@ impl fmt::Display for Uuid {
 
 impl Value for Uuid {
     fn dtype(&self) -> Result<DataType> {
-        Ok(DataType::Uuid(UuidType::Uuid))
+        Ok(DataType::Uuid)
     }
 
     fn into_scalar(self) -> Scalar {

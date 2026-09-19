@@ -82,9 +82,6 @@ from .geospatial import (
     geography,
     geometry,
     uuid,
-    uuidv4,
-    uuidv7,
-    uuidv8,
     variant,
 )
 from .integer import (
@@ -336,9 +333,6 @@ __all__ = [
     "utf8",
     "utf8_view",
     "uuid",
-    "uuidv4",
-    "uuidv7",
-    "uuidv8",
     "variant",
     "url",
     "version",

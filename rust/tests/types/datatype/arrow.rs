@@ -3,7 +3,6 @@ use std::sync::Arc;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::BytesType;
 use yggdryl::SequenceType;
-use yggdryl::UuidType;
 use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
 use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
@@ -216,7 +215,7 @@ fn extension_datatypes() -> Vec<DataType> {
         DataType::Currency,
         DataType::Mic,
         DataType::Cfi,
-        DataType::Uuid(UuidType::Uuid),
+        DataType::Uuid,
         DataType::Version,
         DataType::Variant,
         DataType::geometry(Some("EPSG:4326")).unwrap(),
@@ -454,7 +453,7 @@ fn every_extension_typed_datatype_keeps_its_identity_across_the_c_interface() {
         DataType::Side,
         DataType::State,
         DataType::TimeInForce,
-        DataType::Uuid(UuidType::Uuid),
+        DataType::Uuid,
         DataType::Version,
         DataType::Url,
         DataType::Variant,

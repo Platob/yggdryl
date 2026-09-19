@@ -5,7 +5,6 @@ use super::SoleMessage;
 
 use std::sync::Arc;
 
-use yggdryl::UuidType;
 use yggdryl::graph::MarketElement;
 use yggdryl::{DataType, Field, FixCodec, FixRegistry, Scalar, fix_column_of, fix_schema};
 
@@ -198,14 +197,8 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         typed(yggdryl::PREVUNIX_TAG_NAME.0),
         typed(yggdryl::CURRUNIX_TAG_NAME.0)
     );
-    assert_eq!(
-        typed(yggdryl::PREVUUID_TAG_NAME.0),
-        DataType::Uuid(UuidType::Uuid)
-    );
-    assert_eq!(
-        typed(yggdryl::CURRUUID_TAG_NAME.0),
-        DataType::Uuid(UuidType::Uuid)
-    );
+    assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), DataType::Uuid);
+    assert_eq!(typed(yggdryl::CURRUUID_TAG_NAME.0), DataType::Uuid);
     assert_eq!(typed(yggdryl::CURRHASHCODE_TAG_NAME.0), DataType::UInt64);
 
     // Crate-owned columns follow the same contract as FIX's: the stable

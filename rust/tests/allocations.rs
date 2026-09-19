@@ -1414,16 +1414,9 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         .scalar("application/json; charset=utf-8")
         .expect("the text is a media type");
     values.push((DataTypeId::MediaType, media));
-    // Every prebuilt id is either pinned here or one no value ever names.
-    // A variant is the one datatype with no value of its own; the versioned
-    // uuid leaves are the others, because an identifier answers the open leaf
-    // and the column is what narrows it to a version.
-    let unnamed = [
-        DataTypeId::Variant,
-        DataTypeId::Uuidv4,
-        DataTypeId::Uuidv7,
-        DataTypeId::Uuidv8,
-    ];
+    // Every prebuilt id is either pinned here or one no value ever names:
+    // a variant is the one datatype with no value of its own.
+    let unnamed = [DataTypeId::Variant];
     let pinned: std::collections::HashSet<DataTypeId> = values.iter().map(|(id, _)| *id).collect();
     for id in DataTypeId::ALL {
         let prebuilt = !id.is_parameterized()

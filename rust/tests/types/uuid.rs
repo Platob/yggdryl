@@ -1,8 +1,7 @@
-//! UUID layouts belong to the UUID value, not a protocol.
+//! One identifier datatype over sixteen fixed bytes, and the value it holds.
 
 use yggdryl::FieldValue as _;
 use yggdryl::Uuid;
-use yggdryl::UuidType;
 use yggdryl::{DataType, Error, Scalar};
 
 fn assert_round_trips(value: Uuid, version: u8, text: &str) {
@@ -162,7 +161,7 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
 
     let strict = || ArrowCastOptions::new().with_safe(false);
     let row = |field: Field| Field::new("row", DataType::from_fields([field]).unwrap(), false);
-    let id = Field::new("id", DataType::Uuid(UuidType::Uuid), false);
+    let id = Field::new("id", DataType::Uuid, false);
     let stored = id
         .cast_arrow_array(
             Arc::new(StringArray::from(vec![TEXT])) as ArrayRef,
@@ -199,7 +198,7 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
     ] {
         let target = DataType::from_str(spelling).unwrap();
         let read = into(target.clone());
-        let back = Field::new("id", DataType::Uuid(UuidType::Uuid), false)
+        let back = Field::new("id", DataType::Uuid, false)
             .cast_arrow_array(read, strict())
             .unwrap_or_else(|error| panic!("{spelling} does not read back: {error}"));
         assert_eq!(back.as_ref(), stored.as_ref(), "{spelling}");
@@ -227,7 +226,7 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
         "binary(16)",
     ] {
         let read = into(DataType::from_str(spelling).unwrap());
-        let back = Field::new("id", DataType::Uuid(UuidType::Uuid), false)
+        let back = Field::new("id", DataType::Uuid, false)
             .cast_arrow_array(read, strict())
             .unwrap_or_else(|error| panic!("{spelling} does not read back: {error}"));
         assert_eq!(back.as_ref(), stored.as_ref(), "{spelling}");
@@ -274,8 +273,7 @@ mod value {
     use arrow_array::{Array, FixedSizeBinaryArray};
     use arrow_schema::DataType as ArrowDataType;
 
-    use yggdryl::{DataType, UuidType};
-    use yggdryl::{DataTypeId, DataTypeKind};
+    use yggdryl::{DataType, DataTypeId, DataTypeKind};
     use yggdryl::{Field, Scalar};
 
     const TEXT: &str = "01912d68-783e-7c9a-b1f2-0123456789ab";
@@ -284,7 +282,7 @@ mod value {
     #[test]
     fn the_identity_is_the_sixteen_bytes_and_the_spelling_is_a_rendering() {
         let uuid = DataType::uuid();
-        assert_eq!(uuid, DataType::Uuid(UuidType::Uuid));
+        assert_eq!(uuid, DataType::Uuid);
         assert_eq!(uuid.id(), DataTypeId::Uuid);
         assert_eq!(uuid.kind(), DataTypeKind::Uuid);
         assert_eq!(uuid.name(), "uuid");
@@ -339,7 +337,7 @@ mod value {
 
     #[test]
     fn storage_is_the_canonical_arrow_uuid_extension_over_sixteen_bytes() {
-        let field = Field::new("id", DataType::Uuid(UuidType::Uuid), false);
+        let field = Field::new("id", DataType::Uuid, false);
         let arrow = field.clone().into_arrow_field().unwrap();
 
         assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(16));
@@ -390,136 +388,40 @@ mod value {
     }
 }
 
-/// The versioned leaves: one family, four columns, and the one fact that
-/// separates them.
-mod versions {
+/// The datatype carries no parameter: a version is a fact about a value,
+/// which the value answers, and never about a column.
+mod parameters {
+    use std::collections::HashMap;
+
     use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
-    use yggdryl::{DataType, DataTypeId, DataTypeKind, Field, Scalar};
-    use yggdryl::{Uuid, UuidType};
-
-    fn v4() -> Uuid {
-        Uuid::new(0x6ba7_b810_9dad_41d1_80b4_00c0_4fd4_30c8)
-    }
-
-    fn v7() -> Uuid {
-        Uuid::from_v7(1_645_557_742_000_456, 0xfedc_ba98_7654_3210).unwrap()
-    }
-
-    fn v8() -> Uuid {
-        Uuid::from_v8(0x5c14_6b14_3c52_4afd_938a_375d_0df1_fbf6)
-    }
+    use yggdryl::{DataType, DataTypeId, Field, Scalar, Uuid};
 
     #[test]
-    fn a_leaf_names_the_version_it_admits_and_the_open_one_admits_every_version() {
-        for (family, dtype, id, name, version) in [
-            (
-                UuidType::Uuid,
-                DataType::uuid(),
-                DataTypeId::Uuid,
-                "uuid",
-                None,
-            ),
-            (
-                UuidType::Uuidv4,
-                DataType::uuidv4(),
-                DataTypeId::Uuidv4,
-                "uuidv4",
-                Some(4),
-            ),
-            (
-                UuidType::Uuidv7,
-                DataType::uuidv7(),
-                DataTypeId::Uuidv7,
-                "uuidv7",
-                Some(7),
-            ),
-            (
-                UuidType::Uuidv8,
-                DataType::uuidv8(),
-                DataTypeId::Uuidv8,
-                "uuidv8",
-                Some(8),
-            ),
-        ] {
-            assert_eq!(DataType::Uuid(family), dtype, "{name}");
-            assert_eq!(dtype.id(), id, "{name}");
-            assert_eq!(dtype.kind(), DataTypeKind::Uuid, "{name}");
-            assert_eq!(dtype.name(), name, "{name}");
-            assert_eq!(family.version(), version, "{name}");
-            // The grammar reads every leaf back, however it is punctuated.
-            assert_eq!(DataType::from_str(name).unwrap(), dtype, "{name}");
+    fn every_version_stands_in_the_one_column_and_the_value_answers_which() {
+        let v4 = Uuid::new(0x6ba7_b810_9dad_41d1_80b4_00c0_4fd4_30c8);
+        let v7 = Uuid::from_v7(1_645_557_742_000_456, 0xfedc_ba98_7654_3210).unwrap();
+        let v8 = Uuid::from_v8(0x5c14_6b14_3c52_4afd_938a_375d_0df1_fbf6);
+        for (value, version) in [(v4, 4), (v7, 7), (v8, 8)] {
+            assert_eq!(value.version(), version);
             assert_eq!(
-                DataType::from_str(&name.to_uppercase()).unwrap(),
-                dtype,
-                "{name}"
+                DataType::uuid().scalar(Scalar::Uuid(value)).unwrap(),
+                Scalar::Uuid(value)
             );
-            // Both serde doors carry the leaf, not just the family.
-            let json = dtype.clone().into_json().unwrap();
-            assert_eq!(DataType::from_json(&json).unwrap(), dtype, "{name}");
             assert_eq!(
-                DataType::from_value(dtype.clone().into_value()).unwrap(),
-                dtype,
-                "{name}"
+                DataType::uuid()
+                    .scalar(Scalar::from(value.to_string()))
+                    .unwrap(),
+                Scalar::Uuid(value)
             );
-            // Every leaf is the same sixteen bytes.
-            assert_eq!(dtype.fixed_byte_width(), Some(16), "{name}");
         }
-
-        // The open leaf is the family's default, and a version names its leaf.
-        assert_eq!(UuidType::default(), UuidType::Uuid);
-        assert_eq!(UuidType::from_version(7), Some(UuidType::Uuidv7));
-        assert_eq!(UuidType::from_version(1), None);
-    }
-
-    #[test]
-    fn a_versioned_column_refuses_an_identifier_another_version_wrote() {
-        assert_eq!(v4().version(), 4);
-        assert_eq!(v7().version(), 7);
-        assert_eq!(v8().version(), 8);
-
-        // The open leaf takes all three; each versioned leaf takes its own.
-        for value in [v4(), v7(), v8()] {
-            assert!(UuidType::Uuid.admits(value));
-            DataType::uuid().scalar(Scalar::Uuid(value)).unwrap();
-        }
-        DataType::uuidv4().scalar(Scalar::Uuid(v4())).unwrap();
-        DataType::uuidv7().scalar(Scalar::Uuid(v7())).unwrap();
-        DataType::uuidv8().scalar(Scalar::Uuid(v8())).unwrap();
-
-        // And refuses the others, naming both the column and the value.
-        let refused = DataType::uuidv7()
-            .scalar(Scalar::Uuid(v4()))
-            .unwrap_err()
-            .to_string();
-        assert!(refused.contains("uuidv7"), "{refused}");
-        assert!(refused.contains("version 4"), "{refused}");
-        assert!(DataType::uuidv4().scalar(Scalar::Uuid(v7())).is_err());
-        assert!(DataType::uuidv8().scalar(Scalar::Uuid(v4())).is_err());
-
-        // The rule reaches a value spelled as text, because the column checks
-        // what the value *is* rather than how it arrived.
-        assert!(
-            DataType::uuidv7()
-                .scalar(Scalar::from(v4().to_string()))
-                .is_err()
-        );
-        let promoted = DataType::uuidv7()
-            .scalar(Scalar::from(v7().to_string()))
-            .unwrap();
-        assert_eq!(promoted, Scalar::Uuid(v7()));
-
-        // A field says the same: it adds nullability to the leaf's rule and
-        // changes nothing else about which identifiers may stand.
-        let column = DataType::uuidv7().required_field("id");
-        assert_eq!(
-            column.scalar(Scalar::Uuid(v7())).unwrap(),
-            Scalar::Uuid(v7())
-        );
-        assert!(column.scalar(Scalar::Uuid(v8())).is_err());
+        // A field adds nullability to the datatype's rule and nothing else.
+        let column = DataType::uuid().required_field("id");
+        assert_eq!(column.scalar(Scalar::Uuid(v7)).unwrap(), Scalar::Uuid(v7));
         assert!(column.scalar(Scalar::Null).is_err());
         assert!(
-            DataType::uuidv7()
+            DataType::uuid()
                 .nullable_field("id")
                 .scalar(Scalar::Null)
                 .is_ok()
@@ -527,52 +429,58 @@ mod versions {
     }
 
     #[test]
-    fn a_versioned_column_rides_its_own_extension_and_reimports_itself() {
-        // The open leaf keeps Arrow's canonical name and its empty document,
-        // so nothing that already exists on the wire changes.
-        let open = Field::new("id", DataType::uuid(), false)
+    fn a_versioned_spelling_is_no_datatype_at_any_door() {
+        for spelling in ["uuidv4", "uuidv7", "uuidv8", "UUIDV7", "uuid(7)"] {
+            assert!(DataType::from_str(spelling).is_err(), "{spelling}");
+            assert!(spelling.parse::<DataTypeId>().is_err(), "{spelling}");
+            assert!(
+                DataType::from_json(&format!("{{\"type\":{spelling:?}}}")).is_err(),
+                "{spelling}"
+            );
+            let mapping = DataType::uuid()
+                .into_value()
+                .with_key("type", Scalar::from(spelling))
+                .unwrap();
+            assert!(DataType::from_value(mapping).is_err(), "{spelling}");
+        }
+        // The identifier numbers the retired leaves held stay unused.
+        assert_eq!(DataTypeId::ALL.len(), 83);
+        assert!(
+            DataTypeId::ALL
+                .iter()
+                .all(|id| !(69..=71).contains(&id.as_u8()))
+        );
+    }
+
+    #[test]
+    fn only_the_canonical_extension_imports_as_an_identifier() {
+        // Sixteen bytes under a name this crate does not write are the
+        // storage they are, exactly as any foreign extension is.
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            EXTENSION_TYPE_NAME_KEY.to_string(),
+            "yggdryl.uuid".to_string(),
+        );
+        metadata.insert(
+            EXTENSION_TYPE_METADATA_KEY.to_string(),
+            "{\"version\":7}".to_string(),
+        );
+        let foreign = ArrowField::new("id", ArrowDataType::FixedSizeBinary(16), false)
+            .with_metadata(metadata);
+        assert_eq!(
+            Field::from_arrow_field(&foreign).unwrap().dtype(),
+            &DataType::fixed_binary(16).unwrap()
+        );
+
+        // The canonical name with its empty document is the identifier.
+        let arrow = Field::new("id", DataType::uuid(), false)
             .into_arrow_field()
             .unwrap();
+        assert_eq!(arrow.metadata()[EXTENSION_TYPE_NAME_KEY], "arrow.uuid");
+        assert_eq!(arrow.metadata()[EXTENSION_TYPE_METADATA_KEY], "");
         assert_eq!(
-            open.data_type(),
-            &arrow_schema::DataType::FixedSizeBinary(16)
-        );
-        assert_eq!(open.metadata()[EXTENSION_TYPE_NAME_KEY], "arrow.uuid");
-        assert_eq!(open.metadata()[EXTENSION_TYPE_METADATA_KEY], "");
-        assert_eq!(
-            Field::from_arrow_field(&open).unwrap().dtype(),
+            Field::from_arrow_field(&arrow).unwrap().dtype(),
             &DataType::uuid()
         );
-
-        // A version is a fact Arrow has nowhere to put, so it rides this
-        // crate's own name with the version written whole.
-        for (dtype, version) in [
-            (DataType::uuidv4(), 4),
-            (DataType::uuidv7(), 7),
-            (DataType::uuidv8(), 8),
-        ] {
-            let field = Field::new("id", dtype.clone(), false);
-            let arrow = field.clone().into_arrow_field().unwrap();
-            assert_eq!(
-                arrow.data_type(),
-                &arrow_schema::DataType::FixedSizeBinary(16)
-            );
-            assert_eq!(arrow.metadata()[EXTENSION_TYPE_NAME_KEY], "yggdryl.uuid");
-            assert_eq!(
-                arrow.metadata()[EXTENSION_TYPE_METADATA_KEY],
-                format!("{{\"version\":{version}}}")
-            );
-            assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
-        }
-
-        // A `yggdryl.uuid` document this crate does not write leaves the
-        // column the storage it is, exactly as a foreign string document does.
-        assert_eq!(
-            UuidType::from_extension_json("{\"version\":7}"),
-            Some(UuidType::Uuidv7)
-        );
-        assert_eq!(UuidType::from_extension_json("{\"version\":1}"), None);
-        assert_eq!(UuidType::from_extension_json("{}"), None);
-        assert_eq!(UuidType::from_extension_json(""), None);
     }
 }

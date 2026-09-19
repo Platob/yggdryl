@@ -65,7 +65,6 @@
 
 use std::sync::LazyLock;
 
-use crate::UuidType;
 use crate::{DataType, Field, Result};
 
 /// The first tag this crate claims.
@@ -364,7 +363,7 @@ fn build() -> Result<Vec<Field>> {
         crated(
             PREVUUID_TAG_NAME,
             "PrevUuid",
-            DataType::Uuid(UuidType::Uuid),
+            DataType::Uuid,
             "The identity of the message this one follows, where it follows one.",
         )?,
         crated(
@@ -439,20 +438,20 @@ fn build() -> Result<Vec<Field>> {
         crated(
             CURRUUID_TAG_NAME,
             "CurrUuid",
-            DataType::Uuid(UuidType::Uuid),
+            DataType::Uuid,
             "The message's identity: the UUIDv7 its instant and its code derive.",
         )?,
         crated(
             CROSSUUID_TAG_NAME,
             "CrossUuid",
-            DataType::Uuid(UuidType::Uuid),
+            DataType::Uuid,
             "The identity every message of one lifecycle shares, derived from \
              the identifier they share; the message's own where it names none.",
         )?,
         crated(
             PARENTUUIDS_TAG_NAME,
             "ParentUuids",
-            DataType::list(DataType::Uuid(UuidType::Uuid).required_field("parentuuid")),
+            DataType::list(DataType::Uuid.required_field("parentuuid")),
             "The identities of the messages this one descends from, in the \
              order it states them.",
         )?,
