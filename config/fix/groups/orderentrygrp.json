@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "orderentry"
+        "FIX:component": "orderentry"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "orderentry",
+    "FIX:counter": "2428",
+    "FIX:tag": "339018",
     "description": "Required if NoOrderEntries(2428) > 0.",
-    "display": "OrderEntryGrp",
-    "fix:component": "orderentry",
-    "fix:counter": "2428",
-    "fix:tag": "339018"
+    "display": "OrderEntryGrp"
   }
 }

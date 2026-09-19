@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegsecurityaltid",
-          "fix:tag": "1335"
+          "FIX:field": "underlyinglegsecurityaltid",
+          "FIX:tag": "1335"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinglegsecurityaltidsource",
-          "fix:tag": "1336"
+          "FIX:field": "underlyinglegsecurityaltidsource",
+          "FIX:tag": "1336"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingLegSecurityAltID",
-    "fix:tag": "650401"
+    "FIX:tag": "650401",
+    "display": "UnderlyingLegSecurityAltID"
   }
 }

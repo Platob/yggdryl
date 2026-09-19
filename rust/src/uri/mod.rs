@@ -1,4 +1,9 @@
-//! Resource identifiers and their shared component model.
+//! Resource identifiers, their shared component model, and the `uri` and
+//! `url` datatypes a column declares over them.
+//!
+//! [`Uri`] is every identifier; [`Url`] and [`Urn`] narrow it by what the
+//! scheme decides. `datatype` holds the `uri` family a column declares - its
+//! two leaves `url` and `urn`, the one field over them and their scalars.
 
 use std::borrow::Cow;
 use std::fmt;
@@ -17,6 +22,7 @@ use crate::{Error, Result, hashing::stable_hash_display};
 use crate::{MediaType, MimeType, Scheme};
 
 mod authority;
+mod datatype;
 mod extensions;
 mod glob;
 mod hive;
@@ -28,6 +34,8 @@ mod url;
 mod urn;
 
 pub use authority::Authority;
+pub use datatype::UriType;
+pub(crate) use datatype::{URL_EXTENSION_NAME, URN_EXTENSION_NAME, casts};
 pub use extensions::Extensions;
 pub(crate) use hive::hive_partitions_of;
 pub use parameters::Parameters;
@@ -453,8 +461,8 @@ impl Uri {
     /// carry - which is what makes [`fragment(true)`](Self::fragment) read
     /// back exactly what was set, for a value that was never URI text to begin
     /// with. [`set_query`](Self::set_query) takes formed query text instead,
-    /// because a query is that composite and [`Parameters`](crate::uri::Parameters)
-    /// is how its parts are set.
+    /// because a query is that composite and [`Parameters`] is how its parts
+    /// are set.
     ///
     /// # Errors
     ///

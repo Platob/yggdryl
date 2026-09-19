@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsettlpartyid",
-          "fix:tag": "40234"
+          "FIX:field": "paymentsettlpartyid",
+          "FIX:tag": "40234"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsettlpartyidsource",
-          "fix:tag": "40235"
+          "FIX:field": "paymentsettlpartyidsource",
+          "FIX:tag": "40235"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsettlpartyrole",
-          "fix:tag": "40236"
+          "FIX:field": "paymentsettlpartyrole",
+          "FIX:tag": "40236"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentsettlpartyrolequalifier",
-          "fix:tag": "40237"
+          "FIX:field": "paymentsettlpartyrolequalifier",
+          "FIX:tag": "40237"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentsettlpartysubids",
-          "fix:tag": "40238"
+          "FIX:field": "nopaymentsettlpartysubids",
+          "FIX:tag": "40238"
         }
       },
       {
@@ -65,14 +65,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "paymentsettlptyssubgrp"
+          "FIX:group": "paymentsettlptyssubgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentSettlParty",
-    "fix:tag": "383696"
+    "FIX:tag": "383696",
+    "display": "PaymentSettlParty"
   }
 }

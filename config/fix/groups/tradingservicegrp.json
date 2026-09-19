@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "tradingservice"
+        "FIX:component": "tradingservice"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "tradingservice",
+    "FIX:counter": "3134",
+    "FIX:tag": "257543",
     "description": "Conditionally required when NoTradingServices(3134) > 0.",
-    "display": "TradingServiceGrp",
-    "fix:component": "tradingservice",
-    "fix:counter": "3134",
-    "fix:tag": "257543"
+    "display": "TradingServiceGrp"
   }
 }

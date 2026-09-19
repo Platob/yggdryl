@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingprovisioncashsettlvaluedatebusinesscentercomponent"
+        "FIX:component": "underlyingprovisioncashsettlvaluedatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingprovisioncashsettlvaluedatebusinesscentercomponent",
+    "FIX:counter": "42182",
+    "FIX:tag": "1053171",
     "description": "Required if NoUnderlyingProvisionCashSettlValueDateBusinessCenters(42182) > 0.",
-    "display": "UnderlyingProvisionCashSettlValueDateBusinessCenterGrp",
-    "fix:component": "underlyingprovisioncashsettlvaluedatebusinesscentercomponent",
-    "fix:counter": "42182",
-    "fix:tag": "1053171"
+    "display": "UnderlyingProvisionCashSettlValueDateBusinessCenterGrp"
   }
 }

@@ -15,7 +15,7 @@ use yggdryl::graph::{
     Element, Event, MarketElement, MarketElementData, MarketEvent, MarketEventData,
 };
 use yggdryl::xxhash::Xxh3;
-use yggdryl::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, Side, State, Uuid};
+use yggdryl::{Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol, Side, State, Uuid};
 
 /// One report as a foreign caller would hold it: every fact the two traits
 /// name, an identity assigned rather than derived, and nothing the graph
@@ -32,7 +32,7 @@ struct Report {
     unix: i64,
     state: State,
     seqnum: u64,
-    creatunix: Option<i64>,
+    creaunix: Option<i64>,
     expirunix: Option<i64>,
     prevunix: Option<i64>,
     prevuuid: Option<Uuid>,
@@ -55,7 +55,7 @@ impl Report {
             unix,
             state: State::from_spelling("New").expect("a shipped state"),
             seqnum: 0,
-            creatunix: None,
+            creaunix: None,
             expirunix: None,
             prevunix: None,
             prevuuid: None,
@@ -171,12 +171,12 @@ impl Event for Report {
         self.seqnum = seqnum;
     }
 
-    fn get_creatunix(&self) -> Option<i64> {
-        self.creatunix
+    fn get_creaunix(&self) -> Option<i64> {
+        self.creaunix
     }
 
-    fn set_creatunix(&mut self, unix: Option<i64>) {
-        self.creatunix = unix;
+    fn set_creaunix(&mut self, unix: Option<i64>) {
+        self.creaunix = unix;
     }
 
     fn get_expirunix(&self) -> Option<i64> {
@@ -245,9 +245,9 @@ fn crosshash(crosscode: &str) -> u64 {
 /// empty and a case about filling them starts from nothing.
 fn stated(ms: i64) -> MarketEventData {
     let mut trade = MarketEventData::at(at(ms));
-    trade.set_px(Decimal::parse("82.5").expect("a decimal"));
+    trade.set_px(Decimal18::parse("82.5").expect("a decimal"));
     trade.set_currency(Currency::new("USD").expect("a currency"));
-    trade.set_qty(Decimal::from_int(1_000));
+    trade.set_qty(Decimal18::from_int(1_000));
     trade.set_unit("bbl".to_owned());
     trade.set_side(Side::read("Buy").expect("a side"));
     trade
@@ -449,19 +449,19 @@ fn an_event_answers_its_instant_state_and_place_and_is_still_an_element() {
 #[test]
 fn the_optional_lifecycle_facts_are_stated_only_where_known() {
     let mut event = MarketEventData::at(40);
-    assert_eq!(event.get_creatunix(), None);
+    assert_eq!(event.get_creaunix(), None);
     assert_eq!(event.get_expirunix(), None);
     assert_eq!(event.get_prevunix(), None);
     assert_eq!(event.get_prevuuid(), None);
     assert_eq!(event.get_snapunix(), None);
 
-    event.set_creatunix(Some(35));
+    event.set_creaunix(Some(35));
     event.set_expirunix(Some(100));
     event.set_prevunix(Some(30));
     event.set_prevuuid(Some(Uuid::from_v8(3)));
     event.set_snapunix(Some(40));
     assert_eq!(event.get_snapunix(), Some(40));
-    assert_eq!(event.get_creatunix(), Some(35));
+    assert_eq!(event.get_creaunix(), Some(35));
     assert_eq!(event.get_expirunix(), Some(100));
     assert_eq!(event.get_prevunix(), Some(30));
     assert_eq!(event.get_prevuuid(), Some(Uuid::from_v8(3)));
@@ -469,7 +469,7 @@ fn the_optional_lifecycle_facts_are_stated_only_where_known() {
     // Each fact is unsaid on its own.
     event.set_expirunix(None);
     assert_eq!(event.get_expirunix(), None);
-    assert_eq!(event.get_creatunix(), Some(35));
+    assert_eq!(event.get_creaunix(), Some(35));
 }
 
 #[test]
@@ -520,16 +520,16 @@ fn following_carries_the_lifecycle_forward() {
     // The earliest creation, the latest expiration, the furthest state; and
     // each where only one side states it is that side's.
     let mut previous = Report::at(1, 10);
-    previous.set_creatunix(Some(5));
+    previous.set_creaunix(Some(5));
     previous.set_expirunix(Some(200));
     previous.set_state(filled());
     let mut next = Report::at(2, 20);
-    next.set_creatunix(Some(8));
+    next.set_creaunix(Some(8));
     next.set_expirunix(Some(100));
     let next = next
         .with_previous(&previous)
         .expect("the later one follows");
-    assert_eq!(next.get_creatunix(), Some(5));
+    assert_eq!(next.get_creaunix(), Some(5));
     assert_eq!(next.get_expirunix(), Some(200));
     assert!(
         next.get_state().is_done(),
@@ -538,11 +538,11 @@ fn following_carries_the_lifecycle_forward() {
 
     // A previous that knows less leaves what the next one knows alone.
     let mut next = Report::at(3, 30);
-    next.set_creatunix(Some(25));
+    next.set_creaunix(Some(25));
     next.set_expirunix(Some(300));
     let bare = Report::at(4, 20);
     let next = next.with_previous(&bare).expect("follows");
-    assert_eq!(next.get_creatunix(), Some(25));
+    assert_eq!(next.get_creaunix(), Some(25));
     assert_eq!(next.get_expirunix(), Some(300));
     assert!(
         next.get_state().is_live(),
@@ -551,7 +551,7 @@ fn following_carries_the_lifecycle_forward() {
 
     // And one that knows more fills what the next one did not state.
     let next = Report::at(5, 40).with_previous(&previous).expect("follows");
-    assert_eq!(next.get_creatunix(), Some(5));
+    assert_eq!(next.get_creaunix(), Some(5));
     assert_eq!(next.get_expirunix(), Some(200));
 
     // What the next element itself says moves nowhere: its instant, its
@@ -651,7 +651,7 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
     live.set_crosscode("O-100".to_owned());
     live.set_identifiers(identifiers([("ClOrdID", "C-1")]));
     live.set_parentuuids(vec![Uuid::from_v8(9)]);
-    live.set_creatunix(Some(5));
+    live.set_creaunix(Some(5));
     live.set_state(filled());
     let mut live = live.with_previous(&first).expect("follows");
     live.set_snapunix(Some(20));
@@ -662,7 +662,7 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
     twin.set_crosscode("O-999".to_owned());
     twin.set_identifiers(identifiers([("ExecID", "E-2"), ("ClOrdID", "C-9")]));
     twin.set_parentuuids(vec![Uuid::from_v8(8), Uuid::from_v8(9)]);
-    twin.set_creatunix(Some(8));
+    twin.set_creaunix(Some(8));
     twin.set_expirunix(Some(99));
     let twin = twin.restating(&live);
     // The place the live one holds is the twin's: the chain grows by nothing.
@@ -681,7 +681,7 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
     assert_eq!(twin.get_parentuuids(), [Uuid::from_v8(8), Uuid::from_v8(9)]);
     // The lifecycle folds: the earliest creation, the latest expiration,
     // the furthest state. What it says of itself - its instant - is its own.
-    assert_eq!(twin.get_creatunix(), Some(5));
+    assert_eq!(twin.get_creaunix(), Some(5));
     assert_eq!(twin.get_expirunix(), Some(99));
     assert!(twin.get_state().is_done());
     assert_eq!(twin.get_currunix(), 20);
@@ -708,7 +708,7 @@ fn merging_folds_another_statement_of_the_same_element() {
     let mut first = Report::at(1, 10);
     first.set_currhashcode(0xA);
     first.set_parentuuids(vec![Uuid::from_v8(7)]);
-    first.set_creatunix(Some(9));
+    first.set_creaunix(Some(9));
     first.set_prevuuid(Some(Uuid::from_v8(0)));
     first.set_prevunix(Some(1));
 
@@ -716,7 +716,7 @@ fn merging_folds_another_statement_of_the_same_element() {
     later.set_currhashcode(0xB);
     later.set_crosscode("O-10".to_owned());
     later.set_parentuuids(vec![Uuid::from_v8(8), Uuid::from_v8(7)]);
-    later.set_creatunix(Some(4));
+    later.set_creaunix(Some(4));
     later.set_expirunix(Some(99));
     later.set_state(filled());
     later.set_prevuuid(Some(Uuid::from_v8(5)));
@@ -744,7 +744,7 @@ fn merging_folds_another_statement_of_the_same_element() {
         [Uuid::from_v8(7), Uuid::from_v8(8)]
     );
     // The lifecycle folds as following folds it.
-    assert_eq!(merged.get_creatunix(), Some(4));
+    assert_eq!(merged.get_creaunix(), Some(4));
     assert_eq!(merged.get_expirunix(), Some(99));
     assert!(merged.get_state().is_done());
     // The predecessor is this element's where it names one.
@@ -775,7 +775,7 @@ fn merging_folds_another_statement_of_the_same_element() {
         "the later statement's code stands"
     );
     assert_eq!(merged.get_prevuuid(), Some(Uuid::from_v8(0)));
-    assert_eq!(merged.get_creatunix(), Some(9));
+    assert_eq!(merged.get_creaunix(), Some(9));
 }
 
 #[test]
@@ -911,18 +911,18 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
     let mut held = trade(10);
     assert_eq!(held.get_px().to_string(), "82.5");
     assert_eq!(held.get_currency().as_str(), "USD");
-    assert_eq!(held.get_qty(), Decimal::from_int(1_000));
+    assert_eq!(held.get_qty(), Decimal18::from_int(1_000));
     assert_eq!(held.get_unit(), "bbl");
     assert_eq!(held.get_side().as_str(), "BUY");
 
-    held.set_px(Decimal::from_int(83));
+    held.set_px(Decimal18::from_int(83));
     held.set_currency(Currency::new("EUR").expect("a currency"));
-    held.set_qty(Decimal::ZERO);
+    held.set_qty(Decimal18::ZERO);
     held.set_unit("MWh".to_owned());
     held.set_side(Side::read("2").expect("a side"));
-    assert_eq!(held.get_px(), Decimal::from_int(83));
+    assert_eq!(held.get_px(), Decimal18::from_int(83));
     assert_eq!(held.get_currency().as_str(), "EUR");
-    assert_eq!(held.get_qty(), Decimal::ZERO);
+    assert_eq!(held.get_qty(), Decimal18::ZERO);
     assert_eq!(held.get_unit(), "MWh");
     assert_eq!(held.get_side().as_str(), "SELL");
 
@@ -930,7 +930,7 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
     let bare = MarketElementData::default();
     assert_eq!(
         (bare.get_px(), bare.get_qty()),
-        (Decimal::ZERO, Decimal::ZERO)
+        (Decimal18::ZERO, Decimal18::ZERO)
     );
     assert_eq!(bare.get_currency(), &Currency::none());
     assert_eq!(bare.get_unit(), "");
@@ -968,8 +968,8 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     // and the facts restated.
     let mut later = first.clone();
     later.set_currunix(at(20));
-    later.set_px(Decimal::from_int(83));
-    later.set_qty(Decimal::from_int(5));
+    later.set_px(Decimal18::from_int(83));
+    later.set_qty(Decimal18::from_int(5));
     later.set_unit("MWh".to_owned());
     later.set_currency(Currency::new("EUR").expect("a currency"));
     later.set_side(Side::read("2").expect("a side"));
@@ -983,7 +983,7 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     assert_eq!(merged.get_currunix(), at(20));
     assert_eq!(
         (merged.get_px(), merged.get_qty(), merged.get_unit()),
-        (Decimal::from_int(83), Decimal::from_int(5), "MWh")
+        (Decimal18::from_int(83), Decimal18::from_int(5), "MWh")
     );
     assert_eq!(merged.get_currency().as_str(), "EUR");
     assert_eq!(merged.get_side().as_str(), "SELL");
@@ -1005,7 +1005,7 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     let merged = later.clone().merge_with(&first).expect("the same trade");
     assert_eq!(
         (merged.get_px(), merged.get_currency().as_str()),
-        (Decimal::from_int(83), "EUR")
+        (Decimal18::from_int(83), "EUR")
     );
     assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
     assert_eq!(
@@ -1033,12 +1033,12 @@ fn merging_a_market_element_lets_this_statement_lead() {
     // the two with this one first.
     let mut this = MarketElementData::default();
     this.set_crosscode("T-1".to_owned());
-    this.set_px(Decimal::parse("82.5").expect("a decimal"));
-    this.set_qty(Decimal::from_int(1_000));
+    this.set_px(Decimal18::parse("82.5").expect("a decimal"));
+    this.set_qty(Decimal18::from_int(1_000));
     this.set_cficode(Some(Cfi::new("ESXXXR").expect("a CFI")));
     this.finalize();
     let mut other = this.clone();
-    other.set_px(Decimal::from_int(83));
+    other.set_px(Decimal18::from_int(83));
     other.set_unit("bbl".to_owned());
     other.set_currency(Currency::new("USD").expect("a currency"));
     other.set_side(Side::read("1").expect("a side"));
@@ -1134,10 +1134,10 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
     buy.fill_lanes();
     assert_eq!(
         buy.get_bidpx(),
-        Some(Decimal::parse("82.5").expect("a decimal"))
+        Some(Decimal18::parse("82.5").expect("a decimal"))
     );
     assert_eq!(buy.get_bidcurrency().map(Currency::as_str), Some("USD"));
-    assert_eq!(buy.get_bidqty(), Some(Decimal::from_int(1_000)));
+    assert_eq!(buy.get_bidqty(), Some(Decimal18::from_int(1_000)));
     assert_eq!(buy.get_bidunit(), Some("bbl"));
     assert_eq!((buy.get_askpx(), buy.get_askqty()), (None, None));
     assert!(buy.get_askcurrency().is_none() && buy.get_askunit().is_none());
@@ -1145,10 +1145,10 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
     // A sell short is an ask, and what the lane already states stands.
     let mut sell = stated(20);
     sell.set_side(Side::read("SellShort").expect("a side"));
-    sell.set_askpx(Some(Decimal::from_int(90)));
+    sell.set_askpx(Some(Decimal18::from_int(90)));
     sell.fill_lanes();
-    assert_eq!(sell.get_askpx(), Some(Decimal::from_int(90)));
-    assert_eq!(sell.get_askqty(), Some(Decimal::from_int(1_000)));
+    assert_eq!(sell.get_askpx(), Some(Decimal18::from_int(90)));
+    assert_eq!(sell.get_askqty(), Some(Decimal18::from_int(1_000)));
     assert_eq!(sell.get_askunit(), Some("bbl"));
     assert_eq!(sell.get_bidpx(), None);
 
@@ -1171,22 +1171,22 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
     unstated.fill_lanes();
     assert_eq!((unstated.get_bidpx(), unstated.get_bidqty()), (None, None));
     assert!(unstated.get_bidcurrency().is_none() && unstated.get_bidunit().is_none());
-    unstated.set_qty(Decimal::from_int(5));
+    unstated.set_qty(Decimal18::from_int(5));
     unstated.fill_lanes();
-    assert_eq!(unstated.get_bidqty(), Some(Decimal::from_int(5)));
+    assert_eq!(unstated.get_bidqty(), Some(Decimal18::from_int(5)));
     assert_eq!(unstated.get_bidpx(), None, "still no price to state");
 
     // Lanes merge as the market's facts do: the later statement's where it
     // states one, else this one's.
     let mut quoted = trade(40);
-    quoted.set_bidpx(Some(Decimal::from_int(80)));
+    quoted.set_bidpx(Some(Decimal18::from_int(80)));
     let mut later = quoted.clone();
     later.set_currunix(at(50));
     later.set_bidpx(None);
-    later.set_askpx(Some(Decimal::from_int(85)));
+    later.set_askpx(Some(Decimal18::from_int(85)));
     let merged = quoted.merge_with(&later).expect("the same quote");
-    assert_eq!(merged.get_bidpx(), Some(Decimal::from_int(80)));
-    assert_eq!(merged.get_askpx(), Some(Decimal::from_int(85)));
+    assert_eq!(merged.get_bidpx(), Some(Decimal18::from_int(80)));
+    assert_eq!(merged.get_askpx(), Some(Decimal18::from_int(85)));
 }
 
 #[test]
@@ -1202,7 +1202,7 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
     moved.set_curruuid(Uuid::from_v8(7));
     moved.set_currhashcode(0xAB);
     moved.set_crosshashcode(0xCD);
-    moved.set_creatunix(Some(1));
+    moved.set_creaunix(Some(1));
     moved.set_expirunix(Some(200));
     moved.set_snapunix(Some(10));
     assert_eq!(code(&event), code(&moved));
@@ -1235,7 +1235,7 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
     // and the event's digest continues the element's with its own.
     let trade = trade(10);
     let mut repriced = trade.clone();
-    repriced.set_px(Decimal::from_int(90));
+    repriced.set_px(Decimal18::from_int(90));
     assert_ne!(
         trade.digest_market_event().as_u64(),
         repriced.digest_market_event().as_u64()
@@ -1261,7 +1261,7 @@ fn the_crates_own_holders_derive_their_identity_from_what_they_state() {
     // code, so two elements stating the same things are one identity.
     let mut element = MarketElementData::default();
     element.set_crosscode("O-100".to_owned());
-    element.set_px(Decimal::parse("82.5").expect("a decimal"));
+    element.set_px(Decimal18::parse("82.5").expect("a decimal"));
     element.set_side(Side::read("Buy").expect("a side"));
     element.finalize();
     assert_ne!(element.get_currhashcode(), 0);
@@ -1308,7 +1308,7 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     event.set_parentuuids(vec![Uuid::from_v8(9)]);
     event.set_state(filled());
     event.set_seqnum(3);
-    event.set_creatunix(Some(at(5)));
+    event.set_creaunix(Some(at(5)));
     event.set_expirunix(Some(at(99)));
     event.set_prevuuid(Some(Uuid::from_v8(8)));
     event.set_prevunix(Some(at(8)));
@@ -1346,7 +1346,7 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     assert_eq!(back.get_currunix(), 0);
     assert_eq!(back.get_state(), &State::unknown());
     assert_eq!(back.get_seqnum(), 0);
-    assert_eq!((back.get_creatunix(), back.get_expirunix()), (None, None));
+    assert_eq!((back.get_creaunix(), back.get_expirunix()), (None, None));
     assert_eq!((back.get_prevuuid(), back.get_prevunix()), (None, None));
     assert_eq!(back.get_snapunix(), None);
     assert_eq!(back.get_curruuid(), element.get_curruuid());
@@ -1377,56 +1377,56 @@ fn filling_settles_the_price_and_the_quantity_down_one_ladder_each() {
     // quantity it traded.
     let mut fill = MarketEventData::at(at(10));
     fill.set_side(Side::read("Buy").expect("a side"));
-    fill.set_lastpx(Some(Decimal::parse("82.5").expect("a decimal")));
-    fill.set_lastqty(Some(Decimal::from_int(300)));
-    fill.set_avgpx(Some(Decimal::parse("82.25").expect("a decimal")));
+    fill.set_lastpx(Some(Decimal18::parse("82.5").expect("a decimal")));
+    fill.set_lastqty(Some(Decimal18::from_int(300)));
+    fill.set_avgpx(Some(Decimal18::parse("82.25").expect("a decimal")));
     fill.fill_market();
-    assert_eq!(fill.get_px(), Decimal::parse("82.5").expect("a decimal"));
-    assert_eq!(fill.get_qty(), Decimal::from_int(300));
+    assert_eq!(fill.get_px(), Decimal18::parse("82.5").expect("a decimal"));
+    assert_eq!(fill.get_qty(), Decimal18::from_int(300));
     // And what it settled on reaches the lane its side implies.
-    assert_eq!(fill.get_bidpx(), Some(Decimal::parse("82.5").unwrap()));
-    assert_eq!(fill.get_bidqty(), Some(Decimal::from_int(300)));
+    assert_eq!(fill.get_bidpx(), Some(Decimal18::parse("82.5").unwrap()));
+    assert_eq!(fill.get_bidqty(), Some(Decimal18::from_int(300)));
 
     // The average stands in where nothing traded under this message.
     let mut averaged = MarketEventData::at(at(20));
-    averaged.set_avgpx(Some(Decimal::from_int(99)));
+    averaged.set_avgpx(Some(Decimal18::from_int(99)));
     averaged.fill_market();
-    assert_eq!(averaged.get_px(), Decimal::from_int(99));
+    assert_eq!(averaged.get_px(), Decimal18::from_int(99));
 
     // How much is done and how much is left are not on the quantity's
     // ladder: together they are the quantity ordered, which is a rule the
     // dictionary states and this never restates.
     let mut working = MarketEventData::at(at(30));
-    working.set_cumqty(Some(Decimal::from_int(40)));
-    working.set_leavesqty(Some(Decimal::from_int(60)));
+    working.set_cumqty(Some(Decimal18::from_int(40)));
+    working.set_leavesqty(Some(Decimal18::from_int(60)));
     working.fill_market();
-    assert_eq!(working.get_qty(), Decimal::ZERO);
+    assert_eq!(working.get_qty(), Decimal18::ZERO);
 
     // A quote states only its lanes, and the side says which one it is
     // about. Nothing is invented for a side that takes neither.
     let mut quote = MarketEventData::at(at(40));
     quote.set_side(Side::read("Sell").expect("a side"));
-    quote.set_askpx(Some(Decimal::from_int(85)));
-    quote.set_askqty(Some(Decimal::from_int(7)));
+    quote.set_askpx(Some(Decimal18::from_int(85)));
+    quote.set_askqty(Some(Decimal18::from_int(7)));
     quote.set_askcurrency(Some(Currency::new("EUR").expect("a currency")));
     quote.set_askunit(Some("mt".to_owned()));
     quote.fill_market();
-    assert_eq!(quote.get_px(), Decimal::from_int(85));
-    assert_eq!(quote.get_qty(), Decimal::from_int(7));
+    assert_eq!(quote.get_px(), Decimal18::from_int(85));
+    assert_eq!(quote.get_qty(), Decimal18::from_int(7));
     assert_eq!(quote.get_currency().as_str(), "EUR");
     assert_eq!(quote.get_unit(), "mt");
 
     // Filling twice changes nothing the first run did not, and a fact the
     // element stated is never overwritten.
     let mut once = trade(50);
-    once.set_lastpx(Some(Decimal::from_int(1)));
+    once.set_lastpx(Some(Decimal18::from_int(1)));
     once.fill_market();
     let twice = {
         let mut held = once.clone();
         held.fill_market();
         held
     };
-    assert_eq!(once.get_px(), Decimal::parse("82.5").expect("a decimal"));
+    assert_eq!(once.get_px(), Decimal18::parse("82.5").expect("a decimal"));
     assert_eq!(once, twice);
 }
 
@@ -1447,8 +1447,8 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     // a quantity of its own.
     let mut report = MarketEventData::at(at(20));
     report.set_crosscode("O-100".to_owned());
-    report.set_px(Decimal::from_int(83));
-    report.set_qty(Decimal::from_int(400));
+    report.set_px(Decimal18::from_int(83));
+    report.set_qty(Decimal18::from_int(400));
     report.finalize();
 
     let followed = report.with_previous(&order).expect("the step after");
@@ -1456,9 +1456,9 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     // moved from.
     assert_eq!(
         followed.get_prevpx(),
-        Some(Decimal::parse("82.5").expect("a decimal"))
+        Some(Decimal18::parse("82.5").expect("a decimal"))
     );
-    assert_eq!(followed.get_prevqty(), Some(Decimal::from_int(1_000)));
+    assert_eq!(followed.get_prevqty(), Some(Decimal18::from_int(1_000)));
     // And what the chain is about, where this report said nothing.
     assert_eq!(followed.get_tif(), Some("GoodTillCancel"));
     assert_eq!(followed.get_tradable(), Some(true));
@@ -1473,8 +1473,8 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     assert_eq!(followed.get_miccode().map(Mic::as_str), Some("XLON"));
     // What this report does say is its own: the price it states is not the
     // one it followed.
-    assert_eq!(followed.get_px(), Decimal::from_int(83));
-    assert_eq!(followed.get_qty(), Decimal::from_int(400));
+    assert_eq!(followed.get_px(), Decimal18::from_int(83));
+    assert_eq!(followed.get_qty(), Decimal18::from_int(400));
     assert_eq!(followed.get_seqnum(), 1);
 
     // A statement of its own never gives way to the chain's.
@@ -1483,38 +1483,38 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     own.set_tif(Some("ImmediateOrCancel".to_owned()));
     own.set_tradable(Some(false));
     own.set_symbolticker(Some("WTI".to_owned()));
-    own.set_prevpx(Some(Decimal::from_int(1)));
+    own.set_prevpx(Some(Decimal18::from_int(1)));
     own.finalize();
     let followed = own.with_previous(&order).expect("the step after");
     assert_eq!(followed.get_tif(), Some("ImmediateOrCancel"));
     assert_eq!(followed.get_tradable(), Some(false));
     assert_eq!(followed.get_symbolticker(), Some("WTI"));
-    assert_eq!(followed.get_prevpx(), Some(Decimal::from_int(1)));
+    assert_eq!(followed.get_prevpx(), Some(Decimal18::from_int(1)));
 
     // Merging folds the same facts the other way: two statements of one
     // event, the later leading where both state one and the other filling
     // what it leaves out.
     let mut first = trade(30);
-    first.set_lastpx(Some(Decimal::from_int(80)));
-    first.set_cumqty(Some(Decimal::from_int(100)));
+    first.set_lastpx(Some(Decimal18::from_int(80)));
+    first.set_cumqty(Some(Decimal18::from_int(100)));
     first.set_tif(Some("Day".to_owned()));
     first.finalize();
     let mut later = first.clone();
     later.set_currunix(at(40));
-    later.set_lastpx(Some(Decimal::from_int(81)));
+    later.set_lastpx(Some(Decimal18::from_int(81)));
     later.set_cumqty(None);
-    later.set_leavesqty(Some(Decimal::from_int(900)));
-    later.set_avgpx(Some(Decimal::parse("80.5").expect("a decimal")));
+    later.set_leavesqty(Some(Decimal18::from_int(900)));
+    later.set_avgpx(Some(Decimal18::parse("80.5").expect("a decimal")));
     later.set_tif(None);
     later.set_tradable(Some(true));
     later.set_symbolticker(Some("BRN".to_owned()));
     let merged = first.merge_with(&later).expect("the same event");
-    assert_eq!(merged.get_lastpx(), Some(Decimal::from_int(81)));
-    assert_eq!(merged.get_cumqty(), Some(Decimal::from_int(100)));
-    assert_eq!(merged.get_leavesqty(), Some(Decimal::from_int(900)));
+    assert_eq!(merged.get_lastpx(), Some(Decimal18::from_int(81)));
+    assert_eq!(merged.get_cumqty(), Some(Decimal18::from_int(100)));
+    assert_eq!(merged.get_leavesqty(), Some(Decimal18::from_int(900)));
     assert_eq!(
         merged.get_avgpx(),
-        Some(Decimal::parse("80.5").expect("a decimal"))
+        Some(Decimal18::parse("80.5").expect("a decimal"))
     );
     assert_eq!(merged.get_tif(), Some("Day"));
     assert_eq!(merged.get_tradable(), Some(true));

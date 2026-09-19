@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "compidreq"
+        "FIX:component": "compidreq"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "compidreq",
+    "FIX:counter": "936",
+    "FIX:tag": "605652",
     "description": "Used to restrict updates/request to a list of specific CompID/SubID/LocationID/DeskID combinations.",
-    "display": "CompIDReqGrp",
-    "fix:component": "compidreq",
-    "fix:counter": "936",
-    "fix:tag": "605652"
+    "display": "CompIDReqGrp"
   }
 }

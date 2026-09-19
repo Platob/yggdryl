@@ -414,7 +414,8 @@ fn an_ascii_field_round_trips_through_the_embedded_arrow_schema() {
         .next()
         .unwrap()
         .unwrap();
-    let text = crate::DataType::from_fields([crate::DataType::utf8().nullable_field("ccy")])
+    let text = crate::StructureType::from_fields([crate::DataType::utf8().nullable_field("ccy")])
+        .map(crate::DataType::from)
         .unwrap()
         .required_field("row")
         .cast_arrow_batch(stored, ArrowCastOptions::new().with_safe(false))
@@ -523,7 +524,7 @@ fn a_field_declared_schema_drives_the_logical_types_end_to_end() {
     // The schema comes from the Field layer's own projection rather than
     // hand-spelled metadata, so the two layers are proven to agree; rows
     // stay out because a variant value cannot cross an Arrow array yet.
-    let root = crate::DataType::from_fields([
+    let root = crate::StructureType::from_fields([
         crate::DataType::Int64.required_field("id"),
         crate::DataType::geometry(Some("EPSG:3857"))
             .unwrap()
@@ -533,6 +534,7 @@ fn a_field_declared_schema_drives_the_logical_types_end_to_end() {
             .nullable_field("route"),
         crate::DataType::variant().nullable_field("payload"),
     ])
+    .map(crate::DataType::from)
     .unwrap()
     .required_field("row");
     let schema = root.clone().into_arrow_schema().unwrap();

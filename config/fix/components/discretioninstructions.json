@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretioninst",
-          "fix:tag": "388"
+          "FIX:field": "discretioninst",
+          "FIX:tag": "388"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretionoffsetvalue",
-          "fix:tag": "389"
+          "FIX:field": "discretionoffsetvalue",
+          "FIX:tag": "389"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretionmovetype",
-          "fix:tag": "841"
+          "FIX:field": "discretionmovetype",
+          "FIX:tag": "841"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretionoffsettype",
-          "fix:tag": "842"
+          "FIX:field": "discretionoffsettype",
+          "FIX:tag": "842"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretionlimittype",
-          "fix:tag": "843"
+          "FIX:field": "discretionlimittype",
+          "FIX:tag": "843"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretionrounddirection",
-          "fix:tag": "844"
+          "FIX:field": "discretionrounddirection",
+          "FIX:tag": "844"
         }
       },
       {
@@ -76,16 +76,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "discretionscope",
-          "fix:tag": "846"
+          "FIX:field": "discretionscope",
+          "FIX:tag": "846"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "1018100",
     "description": "What the discretionary price is related to (e.g. primary price, display price etc)",
-    "display": "DiscretionInstructions",
-    "fix:tag": "1018100"
+    "display": "DiscretionInstructions"
   }
 }

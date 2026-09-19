@@ -143,6 +143,7 @@ fn constant_column(value: &str, rows: usize, child: Option<&Field>) -> Result<Ar
 ///
 /// use arrow_array::{ArrayRef, Int64Array, RecordBatch};
 /// use yggdryl::media::partition::with_partitions;
+/// use yggdryl::StructureType;
 /// use yggdryl::DataType;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -150,7 +151,7 @@ fn constant_column(value: &str, rows: usize, child: Option<&Field>) -> Result<Ar
 ///     "price",
 ///     Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
 /// )])?;
-/// let schema = DataType::from_fields([DataType::Int32.required_field("year")])?
+/// let schema = DataType::from(StructureType::from_fields([DataType::Int32.required_field("year")])?)
 ///     .required_field("row");
 ///
 /// let restored = with_partitions(&batch, &[("year".into(), "2024".into())], Some(&schema))?;
@@ -631,7 +632,9 @@ pub(crate) fn folder_reader(
         // The same predicate a listing answers, asked of each leaf's own path.
         // A leaf that does not name a filtered column is unknown rather than
         // false, so it stays and the row filter answers for it.
-        let bound = filter.bind(&crate::DataType::from_fields([])?.required_field("holder"))?;
+        let bound = filter.bind(
+            &crate::DataType::from(crate::StructureType::from_fields([])?).required_field("holder"),
+        )?;
         parts = Listing::new(parts.filter_map(move |part| match part {
             Err(error) => Some(Err(error)),
             Ok(part) => match bound.matches_holder(&crate::expression::Handle(&part)) {

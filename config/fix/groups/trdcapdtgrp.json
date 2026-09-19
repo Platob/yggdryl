@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "trdcapdt"
+        "FIX:component": "trdcapdt"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "trdcapdt",
+    "FIX:counter": "580",
+    "FIX:tag": "958794",
     "description": "Number of date ranges provided (must be 1 or 2 if specified)",
-    "display": "TrdCapDtGrp",
-    "fix:component": "trdcapdt",
-    "fix:counter": "580",
-    "fix:tag": "958794"
+    "display": "TrdCapDtGrp"
   }
 }

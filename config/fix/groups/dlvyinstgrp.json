@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "dlvyinstcomponent"
+        "FIX:component": "dlvyinstcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "DlvyInstGrp",
-    "fix:component": "dlvyinstcomponent",
-    "fix:counter": "85",
-    "fix:tag": "592201"
+    "FIX:component": "dlvyinstcomponent",
+    "FIX:counter": "85",
+    "FIX:tag": "592201",
+    "display": "DlvyInstGrp"
   }
 }

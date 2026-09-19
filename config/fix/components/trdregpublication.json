@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdregpublicationtype",
-          "fix:tag": "2669"
+          "FIX:field": "trdregpublicationtype",
+          "FIX:tag": "2669"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdregpublicationreason",
-          "fix:tag": "2670"
+          "FIX:field": "trdregpublicationreason",
+          "FIX:tag": "2670"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdRegPublication",
-    "fix:tag": "867614"
+    "FIX:tag": "867614",
+    "display": "TrdRegPublication"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currentcollateralamount",
-          "fix:tag": "1704"
+          "FIX:field": "currentcollateralamount",
+          "FIX:tag": "1704"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralcurrency",
-          "fix:tag": "1705"
+          "FIX:field": "collateralcurrency",
+          "FIX:tag": "1705"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralcurrencycodesource",
-          "fix:tag": "2929"
+          "FIX:field": "collateralcurrencycodesource",
+          "FIX:tag": "2929"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralamounttype",
-          "fix:tag": "2632"
+          "FIX:field": "collateralamounttype",
+          "FIX:tag": "2632"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralfxrate",
-          "fix:tag": "2090"
+          "FIX:field": "collateralfxrate",
+          "FIX:tag": "2090"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralfxratecalc",
-          "fix:tag": "2091"
+          "FIX:field": "collateralfxratecalc",
+          "FIX:tag": "2091"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateraltype",
-          "fix:tag": "1706"
+          "FIX:field": "collateraltype",
+          "FIX:tag": "1706"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralamountmarketsegmentid",
-          "fix:tag": "2092"
+          "FIX:field": "collateralamountmarketsegmentid",
+          "FIX:tag": "2092"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralamountmarketid",
-          "fix:tag": "2093"
+          "FIX:field": "collateralamountmarketid",
+          "FIX:tag": "2093"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "haircutindicator",
-          "fix:tag": "1902"
+          "FIX:field": "haircutindicator",
+          "FIX:tag": "1902"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralportfolioid",
-          "fix:tag": "2350"
+          "FIX:field": "collateralportfolioid",
+          "FIX:tag": "2350"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralpercentoverage",
-          "fix:tag": "2690"
+          "FIX:field": "collateralpercentoverage",
+          "FIX:tag": "2690"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralmarketprice",
-          "fix:tag": "2689"
+          "FIX:field": "collateralmarketprice",
+          "FIX:tag": "2689"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralreinvestmentrate",
-          "fix:tag": "2840"
+          "FIX:field": "collateralreinvestmentrate",
+          "FIX:tag": "2840"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocollateralreinvestments",
-          "fix:tag": "2845"
+          "FIX:field": "nocollateralreinvestments",
+          "FIX:tag": "2845"
         }
       },
       {
@@ -175,7 +175,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "collateralreinvestmentgrp"
+          "FIX:group": "collateralreinvestmentgrp"
         }
       },
       {
@@ -185,15 +185,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingrefid",
-          "fix:tag": "2841"
+          "FIX:field": "underlyingrefid",
+          "FIX:tag": "2841"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "CollateralAmount",
-    "fix:tag": "159134"
+    "FIX:tag": "159134",
+    "display": "CollateralAmount"
   }
 }

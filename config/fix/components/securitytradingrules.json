@@ -10,7 +10,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "basetradingrules"
+          "FIX:component": "basetradingrules"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notradingsessionrules",
-          "fix:tag": "1309"
+          "FIX:field": "notradingsessionrules",
+          "FIX:tag": "1309"
         }
       },
       {
@@ -31,7 +31,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "tradingsessionrulesgrp"
+          "FIX:group": "tradingsessionrulesgrp"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedinstrattrib",
-          "fix:tag": "1312"
+          "FIX:field": "nonestedinstrattrib",
+          "FIX:tag": "1312"
         }
       },
       {
@@ -52,15 +52,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "nestedinstrumentattribute"
+          "FIX:group": "nestedinstrumentattribute"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "750047",
     "description": "This block contains the base trading rules",
-    "display": "SecurityTradingRules",
-    "fix:tag": "750047"
+    "display": "SecurityTradingRules"
   }
 }

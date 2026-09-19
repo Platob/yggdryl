@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listupdateaction",
-          "fix:tag": "1324"
+          "FIX:field": "listupdateaction",
+          "FIX:tag": "1324"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitstatus",
-          "fix:tag": "1763"
+          "FIX:field": "risklimitstatus",
+          "FIX:tag": "1763"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitresult",
-          "fix:tag": "1764"
+          "FIX:field": "risklimitresult",
+          "FIX:tag": "1764"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartydetails",
-          "fix:tag": "1671"
+          "FIX:field": "nopartydetails",
+          "FIX:tag": "1671"
         }
       },
       {
@@ -54,7 +54,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "partydetailgrp"
+          "FIX:group": "partydetailgrp"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norisklimits",
-          "fix:tag": "1669"
+          "FIX:field": "norisklimits",
+          "FIX:tag": "1669"
         }
       },
       {
@@ -75,7 +75,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "risklimitsgrp"
+          "FIX:group": "risklimitsgrp"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitid",
-          "fix:tag": "1670"
+          "FIX:field": "risklimitid",
+          "FIX:tag": "1670"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitcheckmodeltype",
-          "fix:tag": "2339"
+          "FIX:field": "risklimitcheckmodeltype",
+          "FIX:tag": "2339"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext",
-          "fix:tag": "1328"
+          "FIX:field": "rejecttext",
+          "FIX:tag": "1328"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen",
-          "fix:tag": "1664"
+          "FIX:field": "encodedrejecttextlen",
+          "FIX:tag": "1664"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext",
-          "fix:tag": "1665"
+          "FIX:field": "encodedrejecttext",
+          "FIX:tag": "1665"
         }
       },
       {
@@ -140,15 +140,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "partyrisklimitstatus",
-          "fix:tag": "2355"
+          "FIX:field": "partyrisklimitstatus",
+          "FIX:tag": "2355"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyRiskLimitsAck",
-    "fix:tag": "503581"
+    "FIX:tag": "503581",
+    "display": "PartyRiskLimitsAck"
   }
 }

@@ -1,4 +1,4 @@
-use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DataType, Field, StructureType, TimeUnit, Timezone, UnionMode};
 use yggdryl::{DateTimeType, DurationType, TimeType};
 
 #[test]
@@ -91,13 +91,15 @@ fn differences_without_metadata_do_not_render_nested_metadata_as_context() {
     let private_child =
         Field::from_parts("private", DataType::utf8(), true, [("secret", "left")]).unwrap();
     let left = DataType::list(private_child);
-    let right = DataType::from_fields([Field::new("public", DataType::utf8(), true)]).unwrap();
+    let right = DataType::from(
+        StructureType::from_fields([Field::new("public", DataType::utf8(), true)]).unwrap(),
+    );
     let changed_kind = left.show_diff(&right, false, true);
     assert_eq!(changed_kind, "≠ $.kind: list → struct");
     assert!(!changed_kind.contains("secret"));
 
-    let left = DataType::from_fields(std::iter::empty()).unwrap();
-    let right = DataType::from_fields([Field::from_parts(
+    let left = DataType::from(StructureType::from_fields(std::iter::empty()).unwrap());
+    let right = StructureType::from_fields([Field::from_parts(
         "added",
         DataType::list(
             Field::from_parts("item", DataType::utf8(), true, [("secret", "right")]).unwrap(),
@@ -106,6 +108,7 @@ fn differences_without_metadata_do_not_render_nested_metadata_as_context() {
         [("secret", "root")],
     )
     .unwrap()])
+    .map(DataType::from)
     .unwrap();
     let added = left.show_diff(&right, false, true);
     assert!(added.contains("+ $.fields[0]: field(name=\"added\",dtype=list,nullable=true)"));

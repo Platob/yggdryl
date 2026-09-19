@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "secaltid"
+        "FIX:component": "secaltid"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "SecAltIDGrp",
-    "fix:component": "secaltid",
-    "fix:counter": "454",
-    "fix:tag": "589472"
+    "FIX:component": "secaltid",
+    "FIX:counter": "454",
+    "FIX:tag": "589472",
+    "display": "SecAltIDGrp"
   }
 }

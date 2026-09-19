@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdatebusinesscenter",
-          "fix:tag": "41388"
+          "FIX:field": "legcomplexeventdatebusinesscenter",
+          "FIX:tag": "41388"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEventDateBusinessCenter",
-    "fix:tag": "840532"
+    "FIX:tag": "840532",
+    "display": "LegComplexEventDateBusinessCenter"
   }
 }

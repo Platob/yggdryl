@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseexpirationdate",
-          "fix:tag": "41528"
+          "FIX:field": "legoptionexerciseexpirationdate",
+          "FIX:tag": "41528"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexerciseexpirationdatetype",
-          "fix:tag": "41529"
+          "FIX:field": "legoptionexerciseexpirationdatetype",
+          "FIX:tag": "41529"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegOptionExerciseExpirationDate",
-    "fix:tag": "532581"
+    "FIX:tag": "532581",
+    "display": "LegOptionExerciseExpirationDate"
   }
 }

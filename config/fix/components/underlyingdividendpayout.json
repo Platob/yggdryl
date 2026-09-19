@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendpayoutratio",
-          "fix:tag": "42860"
+          "FIX:field": "underlyingdividendpayoutratio",
+          "FIX:tag": "42860"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdividendpayoutconditions",
-          "fix:tag": "42861"
+          "FIX:field": "underlyingdividendpayoutconditions",
+          "FIX:tag": "42861"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingdividendpayments",
-          "fix:tag": "42855"
+          "FIX:field": "nounderlyingdividendpayments",
+          "FIX:tag": "42855"
         }
       },
       {
@@ -43,15 +43,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingdividendpaymentgrp"
+          "FIX:group": "underlyingdividendpaymentgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "1041497",
     "description": "UnderlyingDividendPayout is a subcomponent of UnderlyingInstrument used to specify the dividend or coupon payout parameters of an equity or bond underlier.",
-    "display": "UnderlyingDividendPayout",
-    "fix:tag": "1041497"
+    "display": "UnderlyingDividendPayout"
   }
 }

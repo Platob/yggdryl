@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpricingdatebusinesscenter",
-          "fix:tag": "41608"
+          "FIX:field": "legpricingdatebusinesscenter",
+          "FIX:tag": "41608"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPricingDateBusinessCenter",
-    "fix:tag": "272932"
+    "FIX:tag": "272932",
+    "display": "LegPricingDateBusinessCenter"
   }
 }

@@ -420,9 +420,9 @@ use std::sync::Arc;
 use arrow_array::{Int64Array, RecordBatch};
 
 use yggdryl::{holder::{Buffer, Holder}, zip};
-use yggdryl::{DataType, IOBase, IOMedia};
+use yggdryl::{DataType, IOBase, IOMedia, StructureType};
 
-let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
     .required_field("row");
 let arrow_schema = schema.clone().into_arrow_schema()?;
 let batch = RecordBatch::try_new(

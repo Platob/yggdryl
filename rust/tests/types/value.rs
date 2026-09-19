@@ -1,10 +1,10 @@
 //! The value a datatype accepts: canonicalization, readings, and absence.
 
-use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::{DataType, Field, Scalar, StructureType, TimeUnit, Timezone};
 use yggdryl::{DateTimeType, DurationType, TimeType};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    DataType::from_fields(fields).unwrap().required_field("row")
+    DataType::from(StructureType::from_fields(fields).unwrap()).required_field("row")
 }
 
 #[test]

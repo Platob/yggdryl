@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "partyentitlementack"
+        "FIX:component": "partyentitlementack"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "partyentitlementack",
+    "FIX:counter": "1772",
+    "FIX:tag": "152799",
     "description": "Required if NoPartyEntitlements(1772).",
-    "display": "PartyEntitlementAckGrp",
-    "fix:component": "partyentitlementack",
-    "fix:counter": "1772",
-    "fix:tag": "152799"
+    "display": "PartyEntitlementAckGrp"
   }
 }

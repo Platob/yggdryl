@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodsequence",
-          "fix:tag": "42367"
+          "FIX:field": "legdividendperiodsequence",
+          "FIX:tag": "42367"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodstartdateunadjusted",
-          "fix:tag": "42368"
+          "FIX:field": "legdividendperiodstartdateunadjusted",
+          "FIX:tag": "42368"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodenddateunadjusted",
-          "fix:tag": "42369"
+          "FIX:field": "legdividendperiodenddateunadjusted",
+          "FIX:tag": "42369"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodunderlierrefid",
-          "fix:tag": "42370"
+          "FIX:field": "legdividendperiodunderlierrefid",
+          "FIX:tag": "42370"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodstrikeprice",
-          "fix:tag": "42371"
+          "FIX:field": "legdividendperiodstrikeprice",
+          "FIX:tag": "42371"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodbusinessdayconvention",
-          "fix:tag": "42372"
+          "FIX:field": "legdividendperiodbusinessdayconvention",
+          "FIX:tag": "42372"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegdividendperiodbusinesscenters",
-          "fix:tag": "42386"
+          "FIX:field": "nolegdividendperiodbusinesscenters",
+          "FIX:tag": "42386"
         }
       },
       {
@@ -87,7 +87,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legdividendperiodbusinesscentergrp"
+          "FIX:group": "legdividendperiodbusinesscentergrp"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodvaluationdateunadjusted",
-          "fix:tag": "42373"
+          "FIX:field": "legdividendperiodvaluationdateunadjusted",
+          "FIX:tag": "42373"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodvaluationdaterelativeto",
-          "fix:tag": "42374"
+          "FIX:field": "legdividendperiodvaluationdaterelativeto",
+          "FIX:tag": "42374"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodvaluationdateoffsetperiod",
-          "fix:tag": "42375"
+          "FIX:field": "legdividendperiodvaluationdateoffsetperiod",
+          "FIX:tag": "42375"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodvaluationdateoffsetunit",
-          "fix:tag": "42376"
+          "FIX:field": "legdividendperiodvaluationdateoffsetunit",
+          "FIX:tag": "42376"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodvaluationdateoffsetdaytype",
-          "fix:tag": "42377"
+          "FIX:field": "legdividendperiodvaluationdateoffsetdaytype",
+          "FIX:tag": "42377"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodvaluationdateadjusted",
-          "fix:tag": "42378"
+          "FIX:field": "legdividendperiodvaluationdateadjusted",
+          "FIX:tag": "42378"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodpaymentdateunadjusted",
-          "fix:tag": "42379"
+          "FIX:field": "legdividendperiodpaymentdateunadjusted",
+          "FIX:tag": "42379"
         }
       },
       {
@@ -174,8 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodpaymentdaterelativeto",
-          "fix:tag": "42380"
+          "FIX:field": "legdividendperiodpaymentdaterelativeto",
+          "FIX:tag": "42380"
         }
       },
       {
@@ -185,8 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodpaymentdateoffsetperiod",
-          "fix:tag": "42381"
+          "FIX:field": "legdividendperiodpaymentdateoffsetperiod",
+          "FIX:tag": "42381"
         }
       },
       {
@@ -196,8 +196,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodpaymentdateoffsetunit",
-          "fix:tag": "42382"
+          "FIX:field": "legdividendperiodpaymentdateoffsetunit",
+          "FIX:tag": "42382"
         }
       },
       {
@@ -207,8 +207,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodpaymentdateoffsetdaytype",
-          "fix:tag": "42383"
+          "FIX:field": "legdividendperiodpaymentdateoffsetdaytype",
+          "FIX:tag": "42383"
         }
       },
       {
@@ -218,8 +218,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodpaymentdateadjusted",
-          "fix:tag": "42384"
+          "FIX:field": "legdividendperiodpaymentdateadjusted",
+          "FIX:tag": "42384"
         }
       },
       {
@@ -229,15 +229,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodxid",
-          "fix:tag": "42385"
+          "FIX:field": "legdividendperiodxid",
+          "FIX:tag": "42385"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegDividendPeriod",
-    "fix:tag": "507502"
+    "FIX:tag": "507502",
+    "display": "LegDividendPeriod"
   }
 }

@@ -23,7 +23,7 @@ use iceberg_official::transform::{BoxedTransformFunction, create_transform_funct
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::DecimalType;
-use crate::{DataType, Error, Field, Result, Scalar};
+use crate::{DataType, Error, Field, Result, Scalar, StructureType};
 
 /// The identifier Iceberg assigns to the first partition field of a table.
 pub const FIRST_PARTITION_ID: i32 = 1000;
@@ -561,7 +561,11 @@ impl PartitionSpec {
             child.as_iceberg_mut().set_transform(&field.transform)?;
             children.push(child);
         }
-        let mut partition = Field::new("partition", DataType::from_fields(children)?, false);
+        let mut partition = Field::new(
+            "partition",
+            DataType::from(StructureType::from_fields(children)?),
+            false,
+        );
         partition.as_iceberg_mut().set_spec_id(self.spec_id)?;
         Ok(partition)
     }

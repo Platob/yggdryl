@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionstatusreportid",
-          "fix:tag": "3112"
+          "FIX:field": "tradingsessionstatusreportid",
+          "FIX:tag": "3112"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesreqid",
-          "fix:tag": "335"
+          "FIX:field": "tradsesreqid",
+          "FIX:tag": "335"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid",
-          "fix:tag": "1301"
+          "FIX:field": "marketid",
+          "FIX:tag": "1301"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid",
-          "fix:tag": "1300"
+          "FIX:field": "marketsegmentid",
+          "FIX:tag": "1300"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "venuetype",
-          "fix:tag": "1430"
+          "FIX:field": "venuetype",
+          "FIX:tag": "1430"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradedate",
-          "fix:tag": "75"
+          "FIX:field": "tradedate",
+          "FIX:tag": "75"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "tradingsessionid",
-          "fix:tag": "336"
+          "FIX:field": "tradingsessionid",
+          "FIX:tag": "336"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid",
-          "fix:tag": "625"
+          "FIX:field": "tradingsessionsubid",
+          "FIX:tag": "625"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesmethod",
-          "fix:tag": "338"
+          "FIX:field": "tradsesmethod",
+          "FIX:tag": "338"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesmode",
-          "fix:tag": "339"
+          "FIX:field": "tradsesmode",
+          "FIX:tag": "339"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionenvironment",
-          "fix:tag": "3139"
+          "FIX:field": "tradingsessionenvironment",
+          "FIX:tag": "3139"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notradingservices",
-          "fix:tag": "3134"
+          "FIX:field": "notradingservices",
+          "FIX:tag": "3134"
         }
       },
       {
@@ -162,7 +162,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "tradingservicegrp"
+          "FIX:group": "tradingservicegrp"
         }
       },
       {
@@ -172,8 +172,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "unsolicitedindicator",
-          "fix:tag": "325"
+          "FIX:field": "unsolicitedindicator",
+          "FIX:tag": "325"
         }
       },
       {
@@ -183,8 +183,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "tradsesstatus",
-          "fix:tag": "340"
+          "FIX:field": "tradsesstatus",
+          "FIX:tag": "340"
         }
       },
       {
@@ -194,8 +194,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesevent",
-          "fix:tag": "1368"
+          "FIX:field": "tradsesevent",
+          "FIX:tag": "1368"
         }
       },
       {
@@ -205,8 +205,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "haltreason",
-          "fix:tag": "327"
+          "FIX:field": "haltreason",
+          "FIX:tag": "327"
         }
       },
       {
@@ -216,8 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "haltactiontype",
-          "fix:tag": "3138"
+          "FIX:field": "haltactiontype",
+          "FIX:tag": "3138"
         }
       },
       {
@@ -227,8 +227,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "outagereason",
-          "fix:tag": "3137"
+          "FIX:field": "outagereason",
+          "FIX:tag": "3137"
         }
       },
       {
@@ -238,8 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fastmarketindicator",
-          "fix:tag": "2447"
+          "FIX:field": "fastmarketindicator",
+          "FIX:tag": "2447"
         }
       },
       {
@@ -249,8 +249,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesstatusrejreason",
-          "fix:tag": "567"
+          "FIX:field": "tradsesstatusrejreason",
+          "FIX:tag": "567"
         }
       },
       {
@@ -260,8 +260,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesstarttime",
-          "fix:tag": "341"
+          "FIX:field": "tradsesstarttime",
+          "FIX:tag": "341"
         }
       },
       {
@@ -271,8 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesopentime",
-          "fix:tag": "342"
+          "FIX:field": "tradsesopentime",
+          "FIX:tag": "342"
         }
       },
       {
@@ -282,8 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsespreclosetime",
-          "fix:tag": "343"
+          "FIX:field": "tradsespreclosetime",
+          "FIX:tag": "343"
         }
       },
       {
@@ -293,8 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesclosetime",
-          "fix:tag": "344"
+          "FIX:field": "tradsesclosetime",
+          "FIX:tag": "344"
         }
       },
       {
@@ -304,8 +304,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesendtime",
-          "fix:tag": "345"
+          "FIX:field": "tradsesendtime",
+          "FIX:tag": "345"
         }
       },
       {
@@ -315,8 +315,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsescontrol",
-          "fix:tag": "1785"
+          "FIX:field": "tradsescontrol",
+          "FIX:tag": "1785"
         }
       },
       {
@@ -326,8 +326,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totalvolumetraded",
-          "fix:tag": "387"
+          "FIX:field": "totalvolumetraded",
+          "FIX:tag": "387"
         }
       },
       {
@@ -337,8 +337,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -348,8 +348,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "effectivetime",
-          "fix:tag": "168"
+          "FIX:field": "effectivetime",
+          "FIX:tag": "168"
         }
       },
       {
@@ -359,8 +359,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -370,8 +370,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -381,8 +381,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -392,8 +392,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -403,7 +403,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -413,8 +413,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notargetpartyids",
-          "fix:tag": "1461"
+          "FIX:field": "notargetpartyids",
+          "FIX:tag": "1461"
         }
       },
       {
@@ -424,7 +424,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "targetparties"
+          "FIX:group": "targetparties"
         }
       },
       {
@@ -434,7 +434,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -444,16 +444,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "h",
+    "FIX:tag": "932324",
     "description": "MsgType = h (lowercase H)",
-    "display": "TradingSessionStatus",
-    "fix:msgtype": "h",
-    "fix:tag": "932324"
+    "display": "TradingSessionStatus"
   }
 }

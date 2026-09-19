@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "streamcalculationperiodbusinesscentercomponent"
+        "FIX:component": "streamcalculationperiodbusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "streamcalculationperiodbusinesscentercomponent",
+    "FIX:counter": "40958",
+    "FIX:tag": "267280",
     "description": "Required if NoStreamCalculationPeriodBusinessCenters(40958) > 0.",
-    "display": "StreamCalculationPeriodBusinessCenterGrp",
-    "fix:component": "streamcalculationperiodbusinesscentercomponent",
-    "fix:counter": "40958",
-    "fix:tag": "267280"
+    "display": "StreamCalculationPeriodBusinessCenterGrp"
   }
 }

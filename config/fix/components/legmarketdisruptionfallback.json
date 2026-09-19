@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionfallbacktype",
-          "fix:tag": "41470"
+          "FIX:field": "legmarketdisruptionfallbacktype",
+          "FIX:tag": "41470"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionfallbackvalue",
-          "fix:tag": "40990"
+          "FIX:field": "legmarketdisruptionfallbackvalue",
+          "FIX:tag": "40990"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegMarketDisruptionFallback",
-    "fix:tag": "789047"
+    "FIX:tag": "789047",
+    "display": "LegMarketDisruptionFallback"
   }
 }

@@ -31,12 +31,12 @@ Read the footer of a file written with two row groups and one key/value entry.
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
     use yggdryl::parquet::{Parquet, ParquetOptions};
-    use yggdryl::{DataType, MimeType, Scalar};
+    use yggdryl::{DataType, MimeType, Scalar, StructureType};
 
-    let field = DataType::from_fields([
+    let field = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
-    ])?.required_field("row");
+    ])?).required_field("row");
     let schema = field.into_arrow_schema()?;
     let batch = RecordBatch::try_new(
         Arc::clone(&schema),
@@ -136,12 +136,12 @@ Projecting the root to Arrow before the write carries the ids into the file; rea
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
     use yggdryl::parquet::Parquet;
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
-    let field = DataType::from_fields([
+    let field = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id").with_parquet_field_id(1),
         DataType::utf8().nullable_field("symbol").with_parquet_field_id(2),
-    ])?
+    ])?)
     .required_field("row");
 
     let arrow_schema = field.into_arrow_schema()?;
@@ -250,7 +250,7 @@ A [geometry or geography](../../types/geospatial.md) field writes Parquet's `GEO
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
     use yggdryl::parquet::Parquet;
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
     fn wkb_point(x: f64, y: f64) -> Vec<u8> {
         let mut bytes = vec![1u8];
@@ -260,10 +260,10 @@ A [geometry or geography](../../types/geospatial.md) field writes Parquet's `GEO
         bytes
     }
 
-    let field = DataType::from_fields([
+    let field = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::geometry(None)?.nullable_field("shape"),
-    ])?
+    ])?)
     .required_field("row");
     let schema = field.into_arrow_schema()?;
     let batch = RecordBatch::try_new(
@@ -384,12 +384,12 @@ use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch};
 use yggdryl::arrow;
-use yggdryl::{IOBase, IOMedia};
+use yggdryl::{IOBase, IOMedia, StructureType};
 use yggdryl::holder::Buffer;
 use yggdryl::parquet::{self, Parquet, ParquetOptions};
 use yggdryl::{DataType, MimeType};
 
-let field = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+let field = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
 let arrow_schema = field.into_arrow_schema()?;
 let batch = RecordBatch::try_new(
     Arc::clone(&arrow_schema),
@@ -437,9 +437,9 @@ assert!(!media.opened());
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
     use yggdryl::parquet::Parquet;
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
-    let field = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+    let field = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
 
     // Nothing has been written, so there is nothing to read.
     let empty = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()))

@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40700",
       "description": "Time unit multiplier for the relative interim exchange date offset.",
-      "display": "UnderlyingPaymentScheduleInterimExchangeDatesOffsetPeriod",
-      "fix:tag": "40700"
+      "display": "UnderlyingPaymentScheduleInterimExchangeDatesOffsetPeriod"
     }
   },
   {
@@ -18,9 +18,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative interim exchange date offset.",
-      "display": "UnderlyingPaymentScheduleInterimExchangeDatesOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -42,7 +40,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40701"
+      "FIX:tag": "40701",
+      "description": "Time unit associated with the relative interim exchange date offset.",
+      "display": "UnderlyingPaymentScheduleInterimExchangeDatesOffsetUnit"
     }
   },
   {
@@ -52,9 +52,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative interim exchange date offset.",
-      "display": "UnderlyingPaymentScheduleInterimExchangeDatesOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -86,7 +84,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "40702"
+      "FIX:tag": "40702",
+      "description": "Specifies the day type of the relative interim exchange date offset.",
+      "display": "UnderlyingPaymentScheduleInterimExchangeDatesOffsetDayType"
     }
   },
   {
@@ -97,9 +97,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40703",
       "description": "The adjusted interim exchange date.",
-      "display": "UnderlyingPaymentScheduleInterimExchangeDateAdjusted",
-      "fix:tag": "40703"
+      "display": "UnderlyingPaymentScheduleInterimExchangeDateAdjusted"
     }
   },
   {
@@ -109,9 +109,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40704",
       "description": "Number of rate sources in the repeating group",
-      "display": "NoUnderlyingPaymentScheduleRateSources",
-      "fix:tag": "40704"
+      "display": "NoUnderlyingPaymentScheduleRateSources"
     }
   },
   {
@@ -121,9 +121,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source of rate information.",
-      "display": "UnderlyingPaymentScheduleRateSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bloomberg",
@@ -150,7 +148,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "40705"
+      "FIX:tag": "40705",
+      "description": "Identifies the source of rate information.",
+      "display": "UnderlyingPaymentScheduleRateSource"
     }
   },
   {
@@ -160,9 +160,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Rate source type.",
-      "display": "UnderlyingPaymentScheduleRateSourceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Primary",
@@ -174,7 +172,9 @@
           "doc": "Secondary"
         }
       ],
-      "fix:tag": "40706"
+      "FIX:tag": "40706",
+      "description": "Rate source type.",
+      "display": "UnderlyingPaymentScheduleRateSourceType"
     }
   },
   {
@@ -184,9 +184,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40707",
       "description": "Identifies the reference \"page\" from the rate source. For FX, the reference page to the spot rate to be used for the reference FX spot rate. When RateSource(1446) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
-      "display": "UnderlyingPaymentScheduleReferencePage",
-      "fix:tag": "40707"
+      "display": "UnderlyingPaymentScheduleReferencePage"
     }
   },
   {
@@ -196,9 +196,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40708",
       "description": "Number of stubs in the repeating group",
-      "display": "NoUnderlyingPaymentStubs",
-      "fix:tag": "40708"
+      "display": "NoUnderlyingPaymentStubs"
     }
   },
   {
@@ -208,9 +208,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Stub type.",
-      "display": "UnderlyingPaymentStubType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Initial",
@@ -232,7 +230,9 @@
           "doc": "Compounding final"
         }
       ],
-      "fix:tag": "40709"
+      "FIX:tag": "40709",
+      "description": "Stub type.",
+      "display": "UnderlyingPaymentStubType"
     }
   },
   {
@@ -242,9 +242,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Optional indication whether stub is shorter or longer than the regular swap period.",
-      "display": "UnderlyingPaymentStubLength",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Short",
@@ -256,7 +254,9 @@
           "doc": "Long"
         }
       ],
-      "fix:tag": "40710"
+      "FIX:tag": "40710",
+      "description": "Optional indication whether stub is shorter or longer than the regular swap period.",
+      "display": "UnderlyingPaymentStubLength"
     }
   },
   {
@@ -266,9 +266,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40711",
       "description": "The agreed upon fixed rate for this stub.",
-      "display": "UnderlyingPaymentStubRate",
-      "fix:tag": "40711"
+      "display": "UnderlyingPaymentStubRate"
     }
   },
   {
@@ -280,9 +280,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40712",
       "description": "A fixed payment amount for the stub.",
-      "display": "UnderlyingPaymentStubFixedAmount",
-      "fix:tag": "40712"
+      "display": "UnderlyingPaymentStubFixedAmount"
     }
   },
   {
@@ -292,9 +292,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40713",
       "description": "The currency of the fixed payment amount. Uses ISO 4217 currency codes.",
-      "display": "UnderlyingPaymentStubFixedCurrency",
-      "fix:tag": "40713"
+      "display": "UnderlyingPaymentStubFixedCurrency"
     }
   },
   {
@@ -304,9 +304,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40714",
       "description": "The stub floating rate index.",
-      "display": "UnderlyingPaymentStubIndex",
-      "fix:tag": "40714"
+      "display": "UnderlyingPaymentStubIndex"
     }
   },
   {
@@ -316,9 +316,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The source for the underlying payment stub floating rate index.",
-      "display": "UnderlyingPaymentStubIndexSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bloomberg",
@@ -340,7 +338,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "40715"
+      "FIX:tag": "40715",
+      "description": "The source for the underlying payment stub floating rate index.",
+      "display": "UnderlyingPaymentStubIndexSource"
     }
   },
   {
@@ -350,9 +350,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40716",
       "description": "Time unit multiplier for the underlying payment stub floating rate index.",
-      "display": "UnderlyingPaymentStubIndexCurvePeriod",
-      "fix:tag": "40716"
+      "display": "UnderlyingPaymentStubIndexCurvePeriod"
     }
   },
   {
@@ -362,9 +362,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the underlying payment stub floating rate index.",
-      "display": "UnderlyingPaymentStubIndexCurveUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -386,7 +384,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40717"
+      "FIX:tag": "40717",
+      "description": "Time unit associated with the underlying payment stub floating rate index.",
+      "display": "UnderlyingPaymentStubIndexCurveUnit"
     }
   },
   {
@@ -396,9 +396,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40718",
       "description": "A rate multiplier to apply to the floating rate. The multiplier can be less than or greater than 1 (one). This element should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
-      "display": "UnderlyingPaymentStubIndexRateMultiplier",
-      "fix:tag": "40718"
+      "display": "UnderlyingPaymentStubIndexRateMultiplier"
     }
   },
   {
@@ -410,9 +410,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40719",
       "description": "Spread from floating rate index.",
-      "display": "UnderlyingPaymentStubIndexRateSpread",
-      "fix:tag": "40719"
+      "display": "UnderlyingPaymentStubIndexRateSpread"
     }
   },
   {
@@ -422,9 +422,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies whether the rate spread is applied to a long or short position.",
-      "display": "UnderlyingPaymentStubIndexRateSpreadPositionType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Short",
@@ -436,7 +434,9 @@
           "doc": "Long"
         }
       ],
-      "fix:tag": "40720"
+      "FIX:tag": "40720",
+      "description": "Identifies whether the rate spread is applied to a long or short position.",
+      "display": "UnderlyingPaymentStubIndexRateSpreadPositionType"
     }
   },
   {
@@ -446,9 +446,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the yield calculation treatment for the stub index.",
-      "display": "UnderlyingPaymentStubIndexRateTreatment",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "BondEquivalentYield",
@@ -460,7 +458,9 @@
           "doc": "Money market yield"
         }
       ],
-      "fix:tag": "40721"
+      "FIX:tag": "40721",
+      "description": "Specifies the yield calculation treatment for the stub index.",
+      "display": "UnderlyingPaymentStubIndexRateTreatment"
     }
   },
   {
@@ -470,9 +470,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40722",
       "description": "The cap rate, if any, which applies to the floating rate. The cap rate (strike) is only required where the floating rate on a swap stream is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as 0.05.",
-      "display": "UnderlyingPaymentStubIndexCapRate",
-      "fix:tag": "40722"
+      "display": "UnderlyingPaymentStubIndexCapRate"
     }
   },
   {
@@ -482,9 +482,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the buyer of the cap rate option through its trade side.",
-      "display": "UnderlyingPaymentStubIndexCapRateBuySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -496,7 +494,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "40723"
+      "FIX:tag": "40723",
+      "description": "Reference to the buyer of the cap rate option through its trade side.",
+      "display": "UnderlyingPaymentStubIndexCapRateBuySide"
     }
   },
   {
@@ -506,9 +506,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the seller of the cap rate option through its trade side.",
-      "display": "UnderlyingPaymentStubIndexCapRateSellSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -520,7 +518,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "40724"
+      "FIX:tag": "40724",
+      "description": "Reference to the seller of the cap rate option through its trade side.",
+      "display": "UnderlyingPaymentStubIndexCapRateSellSide"
     }
   },
   {
@@ -530,9 +530,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40725",
       "description": "The floor rate, if any, which applies to the floating rate. The floor rate (strike) is only required where the floating rate on a swap stream is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A floor rate of 5% would be represented as 0.05.",
-      "display": "UnderlyingPaymentStubIndexFloorRate",
-      "fix:tag": "40725"
+      "display": "UnderlyingPaymentStubIndexFloorRate"
     }
   },
   {
@@ -542,9 +542,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the buyer of the floor rate option through its trade side.",
-      "display": "UnderlyingPaymentStubIndexFloorRateBuySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -556,7 +554,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "40726"
+      "FIX:tag": "40726",
+      "description": "Reference to the buyer of the floor rate option through its trade side.",
+      "display": "UnderlyingPaymentStubIndexFloorRateBuySide"
     }
   },
   {
@@ -566,9 +566,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the seller of the floor rate option through its trade side.",
-      "display": "UnderlyingPaymentStubIndexFloorRateSellSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -580,7 +578,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "40727"
+      "FIX:tag": "40727",
+      "description": "Reference to the seller of the floor rate option through its trade side.",
+      "display": "UnderlyingPaymentStubIndexFloorRateSellSide"
     }
   },
   {
@@ -590,9 +590,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40728",
       "description": "The second stub floating rate index.",
-      "display": "UnderlyingPaymentStubIndex2",
-      "fix:tag": "40728"
+      "display": "UnderlyingPaymentStubIndex2"
     }
   },
   {
@@ -602,9 +602,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The source of the second stub floating rate index.",
-      "display": "UnderlyingPaymentStubIndex2Source",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bloomberg",
@@ -626,7 +624,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "40729"
+      "FIX:tag": "40729",
+      "description": "The source of the second stub floating rate index.",
+      "display": "UnderlyingPaymentStubIndex2Source"
     }
   },
   {
@@ -636,9 +636,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40730",
       "description": "Secondary time unit multiplier for the stub floating rate index curve.",
-      "display": "UnderlyingPaymentStubIndex2CurvePeriod",
-      "fix:tag": "40730"
+      "display": "UnderlyingPaymentStubIndex2CurvePeriod"
     }
   },
   {
@@ -648,9 +648,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Secondary time unit associated with the stub floating rate index curve.",
-      "display": "UnderlyingPaymentStubIndex2CurveUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -672,7 +670,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40731"
+      "FIX:tag": "40731",
+      "description": "Secondary time unit associated with the stub floating rate index curve.",
+      "display": "UnderlyingPaymentStubIndex2CurveUnit"
     }
   },
   {
@@ -682,9 +682,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40732",
       "description": "A rate multiplier to apply to the second floating rate. The multiplier can be less than or greater than 1 (one). This element should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
-      "display": "UnderlyingPaymentStubIndex2RateMultiplier",
-      "fix:tag": "40732"
+      "display": "UnderlyingPaymentStubIndex2RateMultiplier"
     }
   },
   {
@@ -696,9 +696,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40733",
       "description": "Spread from the second floating rate index.",
-      "display": "UnderlyingPaymentStubIndex2RateSpread",
-      "fix:tag": "40733"
+      "display": "UnderlyingPaymentStubIndex2RateSpread"
     }
   },
   {
@@ -708,9 +708,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies whether the rate spread is applied to a long or short position.",
-      "display": "UnderlyingPaymentStubIndex2RateSpreadPositionType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Short",
@@ -722,7 +720,9 @@
           "doc": "Long"
         }
       ],
-      "fix:tag": "40734"
+      "FIX:tag": "40734",
+      "description": "Identifies whether the rate spread is applied to a long or short position.",
+      "display": "UnderlyingPaymentStubIndex2RateSpreadPositionType"
     }
   },
   {
@@ -732,9 +732,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the yield calculation treatment for the second stub index.",
-      "display": "UnderlyingPaymentStubIndex2RateTreatment",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "BondEquivalentYield",
@@ -746,7 +744,9 @@
           "doc": "Money market yield"
         }
       ],
-      "fix:tag": "40735"
+      "FIX:tag": "40735",
+      "description": "Specifies the yield calculation treatment for the second stub index.",
+      "display": "UnderlyingPaymentStubIndex2RateTreatment"
     }
   },
   {
@@ -756,9 +756,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40736",
       "description": "The cap rate, if any, which applies to the second floating rate. The cap rate (strike) is only required where the floating rate on a swap stream is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as 0.05.",
-      "display": "UnderlyingPaymentStubIndex2CapRate",
-      "fix:tag": "40736"
+      "display": "UnderlyingPaymentStubIndex2CapRate"
     }
   },
   {
@@ -768,9 +768,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40737",
       "description": "The floor rate, if any, which applies to the second floating rate. The floor rate (strike) is only required where the floating rate on a swap stream is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A floor rate of 5% would be represented as 0.05.",
-      "display": "UnderlyingPaymentStubIndex2FloorRate",
-      "fix:tag": "40737"
+      "display": "UnderlyingPaymentStubIndex2FloorRate"
     }
   },
   {
@@ -780,9 +780,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of payment stream associated with the swap.",
-      "display": "PaymentStreamType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Periodic",
@@ -834,7 +832,9 @@
           "doc": "Correlation"
         }
       ],
-      "fix:tag": "40738"
+      "FIX:tag": "40738",
+      "description": "Identifies the type of payment stream associated with the swap.",
+      "display": "PaymentStreamType"
     }
   },
   {
@@ -844,9 +844,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40739",
       "description": "Used only for credit index trade. This contains the credit spread (\"fair value\") at which the trade was executed. The market rate varies over the life of the index depending on market conditions. This is the price of the index as quoted by trading desks.",
-      "display": "PaymentStreamMarketRate",
-      "fix:tag": "40739"
+      "display": "PaymentStreamMarketRate"
     }
   },
   {
@@ -856,9 +856,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40740",
       "description": "Applicable to credit default swaps on mortgage backed securities to specify whether payment delays are applicable to the fixed amount.",
-      "display": "PaymentStreamDelayIndicator",
-      "fix:tag": "40740"
+      "display": "PaymentStreamDelayIndicator"
     }
   },
   {
@@ -868,9 +868,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40741",
       "description": "Specifies the currency that the stream settles in (to support swaps that settle in a currency different from the notional currency). Uses ISO 4217 currency codes.",
-      "display": "PaymentStreamSettlCurrency",
-      "fix:tag": "40741"
+      "display": "PaymentStreamSettlCurrency"
     }
   },
   {
@@ -880,9 +880,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The day count convention used in the payment stream calculations.",
-      "display": "PaymentStreamDayCount",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OneOne",
@@ -1004,7 +1002,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "40742"
+      "FIX:tag": "40742",
+      "description": "The day count convention used in the payment stream calculations.",
+      "display": "PaymentStreamDayCount"
     }
   },
   {
@@ -1014,9 +1014,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40743",
       "description": "The number of days from the adjusted calculation period start date to the adjusted value date, calculated in accordance with the applicable day count fraction.",
-      "display": "PaymentStreamAccrualDays",
-      "fix:tag": "40743"
+      "display": "PaymentStreamAccrualDays"
     }
   },
   {
@@ -1026,9 +1026,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The method of calculating discounted payment amounts",
-      "display": "PaymentStreamDiscountType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Standard",
@@ -1040,7 +1038,9 @@
           "doc": "Forward Rate Agreement (FRA)"
         }
       ],
-      "fix:tag": "40744"
+      "FIX:tag": "40744",
+      "description": "The method of calculating discounted payment amounts",
+      "display": "PaymentStreamDiscountType"
     }
   },
   {
@@ -1050,9 +1050,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40745",
       "description": "Discount rate. The rate is expressed in decimal, e.g. 5% is expressed as 0.05.",
-      "display": "PaymentStreamDiscountRate",
-      "fix:tag": "40745"
+      "display": "PaymentStreamDiscountRate"
     }
   },
   {
@@ -1062,9 +1062,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The day count convention applied to the PaymentStreamDiscountRate(40745).",
-      "display": "PaymentStreamDiscountRateDayCount",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OneOne",
@@ -1186,7 +1184,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "40746"
+      "FIX:tag": "40746",
+      "description": "The day count convention applied to the PaymentStreamDiscountRate(40745).",
+      "display": "PaymentStreamDiscountRateDayCount"
     }
   },
   {
@@ -1196,9 +1196,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Compounding method.",
-      "display": "PaymentStreamCompoundingMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "None",
@@ -1220,7 +1218,9 @@
           "doc": "Spread exclusive"
         }
       ],
-      "fix:tag": "40747"
+      "FIX:tag": "40747",
+      "description": "Compounding method.",
+      "display": "PaymentStreamCompoundingMethod"
     }
   },
   {
@@ -1230,9 +1230,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40748",
       "description": "Indicates whether there is an initial exchange of principal on the effective date.",
-      "display": "PaymentStreamInitialPrincipalExchangeIndicator",
-      "fix:tag": "40748"
+      "display": "PaymentStreamInitialPrincipalExchangeIndicator"
     }
   },
   {
@@ -1242,9 +1242,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40749",
       "description": "Indicates whether there are intermediate or interim exchanges of principal during the term of the swap.",
-      "display": "PaymentStreamInterimPrincipalExchangeIndicator",
-      "fix:tag": "40749"
+      "display": "PaymentStreamInterimPrincipalExchangeIndicator"
     }
   },
   {
@@ -1254,9 +1254,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40750",
       "description": "Indicates whether there is a final exchange of principal on the termination date.",
-      "display": "PaymentStreamFinalPrincipalExchangeIndicator",
-      "fix:tag": "40750"
+      "display": "PaymentStreamFinalPrincipalExchangeIndicator"
     }
   },
   {
@@ -1266,9 +1266,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the payment stream's payment date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "PaymentStreamPaymentDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1310,7 +1308,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40751"
+      "FIX:tag": "40751",
+      "description": "The business day convention used to adjust the payment stream's payment date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "PaymentStreamPaymentDateBusinessDayConvention"
     }
   },
   {
@@ -1320,9 +1320,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40752",
       "description": "The business center calendar used to adjust the payment stream's payment date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "PaymentStreamPaymentDateBusinessCenter",
-      "fix:tag": "40752"
+      "display": "PaymentStreamPaymentDateBusinessCenter"
     }
   },
   {
@@ -1332,9 +1332,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40753",
       "description": "Time unit multiplier for the frequency of payments.",
-      "display": "PaymentStreamPaymentFrequencyPeriod",
-      "fix:tag": "40753"
+      "display": "PaymentStreamPaymentFrequencyPeriod"
     }
   },
   {
@@ -1344,9 +1344,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the frequency of payments.",
-      "display": "PaymentStreamPaymentFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1373,7 +1371,9 @@
           "doc": "Term"
         }
       ],
-      "fix:tag": "40754"
+      "FIX:tag": "40754",
+      "description": "Time unit associated with the frequency of payments.",
+      "display": "PaymentStreamPaymentFrequencyUnit"
     }
   },
   {
@@ -1383,9 +1383,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "PaymentStreamPaymentRollConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FirstDay",
@@ -1617,7 +1615,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "40755"
+      "FIX:tag": "40755",
+      "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "PaymentStreamPaymentRollConvention"
     }
   },
   {
@@ -1628,9 +1628,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40756",
       "description": "The unadjusted first payment date.",
-      "display": "PaymentStreamFirstPaymentDateUnadjusted",
-      "fix:tag": "40756"
+      "display": "PaymentStreamFirstPaymentDateUnadjusted"
     }
   },
   {
@@ -1641,9 +1641,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40757",
       "description": "The unadjusted last regular payment date.",
-      "display": "PaymentStreamLastRegularPaymentDateUnadjusted",
-      "fix:tag": "40757"
+      "display": "PaymentStreamLastRegularPaymentDateUnadjusted"
     }
   },
   {
@@ -1653,9 +1653,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40758",
       "description": "Specifies the anchor date when payment dates are relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "PaymentStreamPaymentDateRelativeTo",
-      "fix:tag": "40758"
+      "display": "PaymentStreamPaymentDateRelativeTo"
     }
   },
   {
@@ -1665,9 +1665,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40759",
       "description": "Time unit multiplier for the relative payment date offset.",
-      "display": "PaymentStreamPaymentDateOffsetPeriod",
-      "fix:tag": "40759"
+      "display": "PaymentStreamPaymentDateOffsetPeriod"
     }
   },
   {
@@ -1677,9 +1677,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit multiplier for the relative initial fixing date offset.",
-      "display": "PaymentStreamPaymentDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1701,7 +1699,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40760"
+      "FIX:tag": "40760",
+      "description": "Time unit multiplier for the relative initial fixing date offset.",
+      "display": "PaymentStreamPaymentDateOffsetUnit"
     }
   },
   {
@@ -1711,9 +1711,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40761",
       "description": "Specifies the anchor date when the reset dates are relative to an anchor date. If the reset frequency is specified as daily this element must not be included. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "PaymentStreamResetDateRelativeTo",
-      "fix:tag": "40761"
+      "display": "PaymentStreamResetDateRelativeTo"
     }
   },
   {
@@ -1723,9 +1723,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the payment stream's reset date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "PaymentStreamResetDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1767,7 +1765,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40762"
+      "FIX:tag": "40762",
+      "description": "The business day convention used to adjust the payment stream's reset date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "PaymentStreamResetDateBusinessDayConvention"
     }
   },
   {
@@ -1777,9 +1777,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40763",
       "description": "The business center calendar used to adjust the payment stream's reset date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "PaymentStreamResetDateBusinessCenter",
-      "fix:tag": "40763"
+      "display": "PaymentStreamResetDateBusinessCenter"
     }
   },
   {
@@ -1789,9 +1789,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40764",
       "description": "Time unit multiplier for the frequency of resets.",
-      "display": "PaymentStreamResetFrequencyPeriod",
-      "fix:tag": "40764"
+      "display": "PaymentStreamResetFrequencyPeriod"
     }
   },
   {
@@ -1801,9 +1801,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the frequency of resets.",
-      "display": "PaymentStreamResetFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1845,7 +1843,9 @@
           "doc": "Term"
         }
       ],
-      "fix:tag": "40765"
+      "FIX:tag": "40765",
+      "description": "Time unit associated with the frequency of resets.",
+      "display": "PaymentStreamResetFrequencyUnit"
     }
   },
   {
@@ -1855,9 +1855,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to specify the day of the week in which the reset occurs for payments that reset on a weekly basis.",
-      "display": "PaymentStreamResetWeeklyRollConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "MON",
           "name": "Monday",
@@ -1894,7 +1892,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "40766"
+      "FIX:tag": "40766",
+      "description": "Used to specify the day of the week in which the reset occurs for payments that reset on a weekly basis.",
+      "display": "PaymentStreamResetWeeklyRollConvention"
     }
   },
   {
@@ -1904,9 +1904,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40767",
       "description": "Specifies the anchor date when the initial fixing date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "PaymentStreamInitialFixingDateRelativeTo",
-      "fix:tag": "40767"
+      "display": "PaymentStreamInitialFixingDateRelativeTo"
     }
   },
   {
@@ -1916,9 +1916,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the payment stream's initial fixing date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "PaymentStreamInitialFixingDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1960,7 +1958,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40768"
+      "FIX:tag": "40768",
+      "description": "The business day convention used to adjust the payment stream's initial fixing date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "PaymentStreamInitialFixingDateBusinessDayConvention"
     }
   },
   {
@@ -1970,9 +1970,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40769",
       "description": "The business center calendar used to adjust the payment stream's initial fixing date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "PaymentStreamInitialFixingDateBusinessCenter",
-      "fix:tag": "40769"
+      "display": "PaymentStreamInitialFixingDateBusinessCenter"
     }
   },
   {
@@ -1982,9 +1982,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40770",
       "description": "Time unit multiplier for the relative initial fixing date offset.",
-      "display": "PaymentStreamInitialFixingDateOffsetPeriod",
-      "fix:tag": "40770"
+      "display": "PaymentStreamInitialFixingDateOffsetPeriod"
     }
   },
   {
@@ -1994,9 +1994,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative initial fixing date offset.",
-      "display": "PaymentStreamInitialFixingDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -2018,7 +2016,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40771"
+      "FIX:tag": "40771",
+      "description": "Time unit associated with the relative initial fixing date offset.",
+      "display": "PaymentStreamInitialFixingDateOffsetUnit"
     }
   },
   {
@@ -2028,9 +2028,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative initial fixing date offset.",
-      "display": "PaymentStreamInitialFixingDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -2062,7 +2060,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "40772"
+      "FIX:tag": "40772",
+      "description": "Specifies the day type of the relative initial fixing date offset.",
+      "display": "PaymentStreamInitialFixingDateOffsetDayType"
     }
   },
   {
@@ -2073,9 +2073,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40773",
       "description": "The adjusted initial fixing date.",
-      "display": "PaymentStreamInitialFixingDateAdjusted",
-      "fix:tag": "40773"
+      "display": "PaymentStreamInitialFixingDateAdjusted"
     }
   },
   {
@@ -2085,9 +2085,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40774",
       "description": "Specifies the anchor date when the fixing date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "PaymentStreamFixingDateRelativeTo",
-      "fix:tag": "40774"
+      "display": "PaymentStreamFixingDateRelativeTo"
     }
   },
   {
@@ -2097,9 +2097,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the payment stream's fixing date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "PaymentStreamFixingDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -2141,7 +2139,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40775"
+      "FIX:tag": "40775",
+      "description": "The business day convention used to adjust the payment stream's fixing date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "PaymentStreamFixingDateBusinessDayConvention"
     }
   },
   {
@@ -2151,9 +2151,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40776",
       "description": "The business center calendar used to adjust the payment stream's fixing date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "PaymentStreamFixingDateBusinessCenter",
-      "fix:tag": "40776"
+      "display": "PaymentStreamFixingDateBusinessCenter"
     }
   },
   {
@@ -2163,9 +2163,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40777",
       "description": "Time unit multiplier for the relative fixing date offset.",
-      "display": "PaymentStreamFixingDateOffsetPeriod",
-      "fix:tag": "40777"
+      "display": "PaymentStreamFixingDateOffsetPeriod"
     }
   },
   {
@@ -2175,9 +2175,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative fixing date offset.",
-      "display": "PaymentStreamFixingDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -2199,7 +2197,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40778"
+      "FIX:tag": "40778",
+      "description": "Time unit associated with the relative fixing date offset.",
+      "display": "PaymentStreamFixingDateOffsetUnit"
     }
   },
   {
@@ -2209,9 +2209,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative fixing date offset.",
-      "display": "PaymentStreamFixingDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -2243,7 +2241,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "40779"
+      "FIX:tag": "40779",
+      "description": "Specifies the day type of the relative fixing date offset.",
+      "display": "PaymentStreamFixingDateOffsetDayType"
     }
   },
   {
@@ -2254,9 +2254,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40780",
       "description": "The adjusted fixing date.",
-      "display": "PaymentStreamFixingDateAdjusted",
-      "fix:tag": "40780"
+      "display": "PaymentStreamFixingDateAdjusted"
     }
   },
   {
@@ -2266,9 +2266,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40781",
       "description": "Time unit multiplier for the relative rate cut-off date offset.",
-      "display": "PaymentStreamRateCutoffDateOffsetPeriod",
-      "fix:tag": "40781"
+      "display": "PaymentStreamRateCutoffDateOffsetPeriod"
     }
   },
   {
@@ -2278,9 +2278,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative rate cut-off date offset.",
-      "display": "PaymentStreamRateCutoffDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -2302,7 +2300,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40782"
+      "FIX:tag": "40782",
+      "description": "Time unit associated with the relative rate cut-off date offset.",
+      "display": "PaymentStreamRateCutoffDateOffsetUnit"
     }
   },
   {
@@ -2312,9 +2312,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative rate cut-off date offset.",
-      "display": "PaymentStreamRateCutoffDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -2346,7 +2344,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "40783"
+      "FIX:tag": "40783",
+      "description": "Specifies the day type of the relative rate cut-off date offset.",
+      "display": "PaymentStreamRateCutoffDateOffsetDayType"
     }
   },
   {
@@ -2356,9 +2356,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40784",
       "description": "The rate applicable to the fixed rate payment stream.",
-      "display": "PaymentStreamRate",
-      "fix:tag": "40784"
+      "display": "PaymentStreamRate"
     }
   },
   {
@@ -2370,9 +2370,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40785",
       "description": "The payment stream's fixed payment amount. In CDS an alternative to PaymentStreamRate(40784).",
-      "display": "PaymentStreamFixedAmount",
-      "fix:tag": "40785"
+      "display": "PaymentStreamFixedAmount"
     }
   },
   {
@@ -2382,9 +2382,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40786",
       "description": "Specifies the currency in which PaymentStreamFixedAmount(40785) or PaymentStreamRate(40784) is denominated. Uses ISO 4271 currency codes.",
-      "display": "PaymentStreamRateOrAmountCurrency",
-      "fix:tag": "40786"
+      "display": "PaymentStreamRateOrAmountCurrency"
     }
   },
   {
@@ -2396,9 +2396,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40787",
       "description": "The future value notional is normally only required for certain non-deliverable interest rate swaps (e.g. Brazillian Real (BRL) vs. CETIP Interbank Deposit Rate (CDI)). The value is calculated as follows: Future Value Notional = Notional Amount * (1 + Fixed Rate) ^ (Fixed Rate Day Count Fraction). The currency is the same as the stream notional.",
-      "display": "PaymentStreamFutureValueNotional",
-      "fix:tag": "40787"
+      "display": "PaymentStreamFutureValueNotional"
     }
   },
   {
@@ -2409,9 +2409,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40788",
       "description": "The adjusted value date of the future value amount.",
-      "display": "PaymentStreamFutureValueDateAdjusted",
-      "fix:tag": "40788"
+      "display": "PaymentStreamFutureValueDateAdjusted"
     }
   },
   {
@@ -2421,9 +2421,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40789",
       "description": "The payment stream floating rate index.",
-      "display": "PaymentStreamRateIndex",
-      "fix:tag": "40789"
+      "display": "PaymentStreamRateIndex"
     }
   },
   {
@@ -2433,9 +2433,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The source of the payment stream floating rate index.",
-      "display": "PaymentStreamRateIndexSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bloomberg",
@@ -2457,7 +2455,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "40790"
+      "FIX:tag": "40790",
+      "description": "The source of the payment stream floating rate index.",
+      "display": "PaymentStreamRateIndexSource"
     }
   },
   {
@@ -2467,9 +2467,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the floating rate index.",
-      "display": "PaymentStreamRateIndexCurveUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -2491,7 +2489,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40791"
+      "FIX:tag": "40791",
+      "description": "Time unit associated with the floating rate index.",
+      "display": "PaymentStreamRateIndexCurveUnit"
     }
   },
   {
@@ -2501,9 +2501,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40792",
       "description": "Time unit multiplier for the floating rate index.",
-      "display": "PaymentStreamRateIndexCurvePeriod",
-      "fix:tag": "40792"
+      "display": "PaymentStreamRateIndexCurvePeriod"
     }
   },
   {
@@ -2513,9 +2513,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40793",
       "description": "A rate multiplier to apply to the floating rate. A multiplier schedule is expressed as explicit multipliers and dates. In the case of a schedule, the step dates may be subject to adjustment in accordance with any adjustments specified in the calculationPeriodDatesAdjustments. The multiplier can be less than or greater than 1 (one). This element should only be included if the multiplier is not equal to 1 (one) for the term of the stream.",
-      "display": "PaymentStreamRateMultiplier",
-      "fix:tag": "40793"
+      "display": "PaymentStreamRateMultiplier"
     }
   },
   {
@@ -2527,9 +2527,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40794",
       "description": "Spread from floating rate index.",
-      "display": "PaymentStreamRateSpread",
-      "fix:tag": "40794"
+      "display": "PaymentStreamRateSpread"
     }
   },
   {
@@ -2539,9 +2539,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies whether the rate spread is applied to a long or short position.",
-      "display": "PaymentStreamRateSpreadPositionType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Short",
@@ -2553,7 +2551,9 @@
           "doc": "Long"
         }
       ],
-      "fix:tag": "40795"
+      "FIX:tag": "40795",
+      "description": "Identifies whether the rate spread is applied to a long or short position.",
+      "display": "PaymentStreamRateSpreadPositionType"
     }
   },
   {
@@ -2563,9 +2563,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the yield calculation treatment for the index.",
-      "display": "PaymentStreamRateTreatment",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "BondEquivalentYield",
@@ -2577,7 +2575,9 @@
           "doc": "Money market yield"
         }
       ],
-      "fix:tag": "40796"
+      "FIX:tag": "40796",
+      "description": "Specifies the yield calculation treatment for the index.",
+      "display": "PaymentStreamRateTreatment"
     }
   },
   {
@@ -2587,9 +2587,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40797",
       "description": "The cap rate, if any, which applies to the floating rate. The cap rate (strike) is only required where the floating rate on a swap stream is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as 0.05.",
-      "display": "PaymentStreamCapRate",
-      "fix:tag": "40797"
+      "display": "PaymentStreamCapRate"
     }
   },
   {
@@ -2599,9 +2599,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the buyer of the cap rate option through its trade side.",
-      "display": "PaymentStreamCapRateBuySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -2613,7 +2611,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "40798"
+      "FIX:tag": "40798",
+      "description": "Reference to the buyer of the cap rate option through its trade side.",
+      "display": "PaymentStreamCapRateBuySide"
     }
   },
   {
@@ -2623,9 +2623,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the seller of the cap rate option through its trade side.",
-      "display": "PaymentStreamCapRateSellSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -2637,7 +2635,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "40799"
+      "FIX:tag": "40799",
+      "description": "Reference to the seller of the cap rate option through its trade side.",
+      "display": "PaymentStreamCapRateSellSide"
     }
   }
 ]

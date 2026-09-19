@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "testorder"
+        "FIX:component": "testorder"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "testorder",
+    "FIX:counter": "3082",
+    "FIX:tag": "118455",
     "description": "Required if NoTestOrders(3082) > 0.",
-    "display": "TestOrderGrp",
-    "fix:component": "testorder",
-    "fix:counter": "3082",
-    "fix:tag": "118455"
+    "display": "TestOrderGrp"
   }
 }

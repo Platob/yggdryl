@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamresetdaterelativeto",
-          "fix:tag": "40761"
+          "FIX:field": "paymentstreamresetdaterelativeto",
+          "FIX:tag": "40761"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamresetdatebusinessdayconvention",
-          "fix:tag": "40762"
+          "FIX:field": "paymentstreamresetdatebusinessdayconvention",
+          "FIX:tag": "40762"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstreamresetdatebusinesscenters",
-          "fix:tag": "40948"
+          "FIX:field": "nopaymentstreamresetdatebusinesscenters",
+          "FIX:tag": "40948"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "paymentstreamresetdatebusinesscentergrp"
+          "FIX:group": "paymentstreamresetdatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamresetfrequencyperiod",
-          "fix:tag": "40764"
+          "FIX:field": "paymentstreamresetfrequencyperiod",
+          "FIX:tag": "40764"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamresetfrequencyunit",
-          "fix:tag": "40765"
+          "FIX:field": "paymentstreamresetfrequencyunit",
+          "FIX:tag": "40765"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamresetweeklyrollconvention",
-          "fix:tag": "40766"
+          "FIX:field": "paymentstreamresetweeklyrollconvention",
+          "FIX:tag": "40766"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreaminitialfixingdaterelativeto",
-          "fix:tag": "40767"
+          "FIX:field": "paymentstreaminitialfixingdaterelativeto",
+          "FIX:tag": "40767"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreaminitialfixingdatebusinessdayconvention",
-          "fix:tag": "40768"
+          "FIX:field": "paymentstreaminitialfixingdatebusinessdayconvention",
+          "FIX:tag": "40768"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstreaminitialfixingdatebusinesscenters",
-          "fix:tag": "40949"
+          "FIX:field": "nopaymentstreaminitialfixingdatebusinesscenters",
+          "FIX:tag": "40949"
         }
       },
       {
@@ -119,7 +119,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "paymentstreaminitialfixingdatebusinesscentergrp"
+          "FIX:group": "paymentstreaminitialfixingdatebusinesscentergrp"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreaminitialfixingdateoffsetperiod",
-          "fix:tag": "40770"
+          "FIX:field": "paymentstreaminitialfixingdateoffsetperiod",
+          "FIX:tag": "40770"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreaminitialfixingdateoffsetunit",
-          "fix:tag": "40771"
+          "FIX:field": "paymentstreaminitialfixingdateoffsetunit",
+          "FIX:tag": "40771"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreaminitialfixingdateoffsetdaytype",
-          "fix:tag": "40772"
+          "FIX:field": "paymentstreaminitialfixingdateoffsetdaytype",
+          "FIX:tag": "40772"
         }
       },
       {
@@ -162,8 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreaminitialfixingdateadjusted",
-          "fix:tag": "40773"
+          "FIX:field": "paymentstreaminitialfixingdateadjusted",
+          "FIX:tag": "40773"
         }
       },
       {
@@ -173,8 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfixingdaterelativeto",
-          "fix:tag": "40774"
+          "FIX:field": "paymentstreamfixingdaterelativeto",
+          "FIX:tag": "40774"
         }
       },
       {
@@ -184,8 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfixingdatebusinessdayconvention",
-          "fix:tag": "40775"
+          "FIX:field": "paymentstreamfixingdatebusinessdayconvention",
+          "FIX:tag": "40775"
         }
       },
       {
@@ -195,8 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstreamfixingdatebusinesscenters",
-          "fix:tag": "40950"
+          "FIX:field": "nopaymentstreamfixingdatebusinesscenters",
+          "FIX:tag": "40950"
         }
       },
       {
@@ -206,7 +206,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "paymentstreamfixingdatebusinesscentergrp"
+          "FIX:group": "paymentstreamfixingdatebusinesscentergrp"
         }
       },
       {
@@ -216,8 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfixingdateoffsetperiod",
-          "fix:tag": "40777"
+          "FIX:field": "paymentstreamfixingdateoffsetperiod",
+          "FIX:tag": "40777"
         }
       },
       {
@@ -227,8 +227,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfixingdateoffsetunit",
-          "fix:tag": "40778"
+          "FIX:field": "paymentstreamfixingdateoffsetunit",
+          "FIX:tag": "40778"
         }
       },
       {
@@ -238,8 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfixingdateoffsetdaytype",
-          "fix:tag": "40779"
+          "FIX:field": "paymentstreamfixingdateoffsetdaytype",
+          "FIX:tag": "40779"
         }
       },
       {
@@ -249,8 +249,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamfixingdateadjusted",
-          "fix:tag": "40780"
+          "FIX:field": "paymentstreamfixingdateadjusted",
+          "FIX:tag": "40780"
         }
       },
       {
@@ -260,8 +260,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamratecutoffdateoffsetperiod",
-          "fix:tag": "40781"
+          "FIX:field": "paymentstreamratecutoffdateoffsetperiod",
+          "FIX:tag": "40781"
         }
       },
       {
@@ -271,8 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamratecutoffdateoffsetunit",
-          "fix:tag": "40782"
+          "FIX:field": "paymentstreamratecutoffdateoffsetunit",
+          "FIX:tag": "40782"
         }
       },
       {
@@ -282,8 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamratecutoffdateoffsetdaytype",
-          "fix:tag": "40783"
+          "FIX:field": "paymentstreamratecutoffdateoffsetdaytype",
+          "FIX:tag": "40783"
         }
       },
       {
@@ -293,8 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstreamfixingdates",
-          "fix:tag": "42660"
+          "FIX:field": "nopaymentstreamfixingdates",
+          "FIX:tag": "42660"
         }
       },
       {
@@ -304,15 +304,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "paymentstreamfixingdategrp"
+          "FIX:group": "paymentstreamfixingdategrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "1023157",
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of the payment stream's reset dates.",
-    "display": "PaymentStreamResetDates",
-    "fix:tag": "1023157"
+    "display": "PaymentStreamResetDates"
   }
 }

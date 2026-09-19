@@ -261,7 +261,7 @@ export declare class Catalog {
    *
    * `updates` is a mapping of properties to set and `removes` lists the
    * keys to drop, in that order. Passing neither writes nothing at all.
-   * Keys under the reserved `iceberg:` prefix are refused by name.
+   * Keys under the reserved `ICEBERG:` prefix are refused by name.
    */
   updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
 }
@@ -864,7 +864,7 @@ export declare class Field {
   /**
    * The enum this field's string values name, `null` when it declares none.
    *
-   * The declaration is one `field:enum` document, so it reaches Arrow, a
+   * The declaration is one `FIELD:enum` document, so it reaches Arrow, a
    * file, and another runtime as ordinary field metadata and comes back the
    * enum that was written.
    */
@@ -1299,7 +1299,7 @@ export type JsFilter = Filter
  * Every message it builds is settled as it is parsed: the typed facts are
  * lifted off the line, a nested `XmlData` is exploded into the message,
  * deprecated fields are restated to their latest aliases, the dictionary's
- * `fix:derivation` rules run, the identifiers and the order lanes fill, and
+ * `FIX:derivation` rules run, the identifiers and the order lanes fill, and
  * the identity is derived. `SendingTime` is the message's valid tag 52,
  * else the carrier's, else `defaultSendingTime`, else UTC now read once for
  * that new message, and it goes back on the wire only when the message
@@ -1395,7 +1395,7 @@ export declare class FixCodec {
    * `withCaptureNames` is what decides which capture is which, once for
    * the whole run, because a line answers its captures by position.
    *
-   * A `pluginid` capture fills the crate's own `pluginid` field and
+   * A `msgpluginid` capture fills the crate's own `msgpluginid` field and
    * selects nothing: the dictionary is one namespace.
    *
    * A `direction` capture is named so it cannot silently fill a field of
@@ -1411,11 +1411,11 @@ export declare class FixCodec {
    * line door parses one, and batches close on the raw bytes of
    * the payload column against `batchByteSize`. The source is consumed.
    *
-   * The capture's own columns fill nothing: the carried ones, and the two
-   * the crate tags - a `sourceurl` column and a `recordedat` one - are
-   * read off the source row and written straight into the row this
-   * answers. This is the one door that can state them, and it is why
-   * they survive a parse without a message holding one.
+   * The capture's own columns fill nothing: the carried ones, and the one
+   * the crate tags - a `sourceurl` column - are read off the source row
+   * and written straight into the row this answers. This is the one door
+   * that can state them, and it is why they survive a parse without a
+   * message holding one.
    */
   parseTextArrowReader(source: JsBatchReader): JsBatchReader
   /**
@@ -1579,12 +1579,12 @@ export declare class FixMsg {
    * through the dictionary exactly as the builder types a pair, so
    * `intoBytes` re-emits the line the row was read from; a row without
    * that column has the typed facts and no content. Every capture column
-   * is read past - the two the crate tags, `sourceurl` and `recordedat`,
-   * and every column no tag and no counter names - so nothing on the
-   * message holds one; a column whose name holds a `.` is a bridge's own
-   * statement and lands in the metadata. They stay the row's, and
-   * whoever writes rows back restates them. Nothing is parsed again and
-   * no clock is read. The process default is the registry when none is named.
+   * is read past - the one the crate tags, `sourceurl`, and every column
+   * no tag and no counter names - so nothing on the message holds one; a
+   * column whose name holds a `.` is a bridge's own statement and lands
+   * in the metadata. They stay the row's, and whoever writes rows back
+   * restates them. Nothing is parsed again and no clock is read. The
+   * process default is the registry when none is named.
    */
   static fromRow(schema: JsField, row: JsScalar, registry?: FixRegistry | undefined | null): FixMsg
   /** The registry this message resolves against, sharing it. */
@@ -1790,9 +1790,9 @@ export declare class FixMsg {
    *
    * A key reaching no field and no child, or a value the field refuses,
    * throws the core's refusal and leaves the message as it was. So does a
-   * key reaching one of the capture's own columns - `sourceurl` (65026),
-   * `recordedat` (65028), by tag or by name: a message holds no fact for
-   * one, and a row child would put it on the wire.
+   * key reaching the capture's own column - `sourceurl` (65026), by tag
+   * or by name: a message holds no fact for it, and a row child would put
+   * it on the wire.
    */
   set(key: number | string, value: unknown): void
   /**
@@ -1831,11 +1831,11 @@ export declare class FixMsg {
    * carried nothing at a column answers null there rather than shifting its
    * neighbours. A typed fact fills its column from its holder, a group's
    * column from the message's own occurrences, and the capture's own
-   * columns answer null - the two the crate tags, `sourceurl` and
-   * `recordedat`, and every column no tag and no counter names - because
-   * a message holds no fact for any of them; the capture readers state
-   * them on the row instead. The arrival record closes the row under
-   * `fixentries`, unresolved keys at tag 0.
+   * columns answer null - the one the crate tags, `sourceurl`, and every
+   * column no tag and no counter names - because a message holds no fact
+   * for any of them; the capture readers state them on the row instead.
+   * The arrival record closes the row under `fixentries`, unresolved keys
+   * at tag 0.
    *
    * A value a column will not hold is that column's null; a column that
    * cannot be null keeps the refusal, and throws it located. No clock is
@@ -1943,7 +1943,7 @@ export declare class FixRegistry {
    * Answers the dictionary and the message roots the file spelled out, in
    * the order it spelled them. `dialect` is the membership every field,
    * group, component and message the file produces is stamped with, on
-   * its `fix:branches` - standard tags included, since membership means
+   * its `FIX:branches` - standard tags included, since membership means
    * the dictionary speaks it; with none named nothing is stamped. A
    * dialect that is empty or carries a comma is refused.
    *
@@ -2048,7 +2048,7 @@ export declare class FixRegistry {
    * redirected to `addDefinition` under the category its shape names, and
    * one of this crate's own tags is skipped as already held.
    *
-   * One mutation: a refusal - no `fix:tag`, a datatype disagreeing with
+   * One mutation: a refusal - no `FIX:tag`, a datatype disagreeing with
    * the stored field - leaves the dictionary exactly as it was.
    */
   addField(field: JsField): boolean
@@ -2056,7 +2056,7 @@ export declare class FixRegistry {
    * Add a field, answering the one it replaced.
    *
    * A definition is filed by the shape it has: a Struct inserts as a
-   * component - a message when it carries `fix:msgtype` - a List of
+   * component - a message when it carries `FIX:msgtype` - a List of
    * Structs or a Map as a group, and anything else as a scalar field.
    */
   insert(field: JsField): JsField | null
@@ -2084,7 +2084,7 @@ export declare class FixRegistry {
   removeById(id: number): JsField | null
   /**
    * The distinct dictionaries any field or definition names on its
-   * `fix:branches`, sorted.
+   * `FIX:branches`, sorted.
    *
    * Membership is provenance and this is its listing; nothing resolves
    * through it. A registry holding only the specification's own fields
@@ -3070,7 +3070,7 @@ export declare class Namespace {
    *
    * `updates` is a mapping of properties to set and `removes` lists the
    * keys to drop, in that order. Passing neither writes nothing at all.
-   * Keys under the reserved `iceberg:` prefix are refused by name.
+   * Keys under the reserved `ICEBERG:` prefix are refused by name.
    */
   updateProperties(updates?: PropertyUpdates | undefined | null, removes?: Array<string> | undefined | null): void
 }
@@ -3365,7 +3365,7 @@ export declare class ProtocolField {
   /**
    * The dictionaries that contributed this field, on the `fix` view.
    *
-   * `fix:branches` read as an array: sorted, ASCII lowercase, and empty
+   * `FIX:branches` read as an array: sorted, ASCII lowercase, and empty
    * where the field states none - every field the specification alone
    * defines. Membership is provenance a caller filters on; no lookup
    * consults it. Assigning an array replaces the list - folded once,
@@ -3393,7 +3393,7 @@ export declare class ProtocolField {
    * The signed 32-bit digest of the canonical tag and the field's name
    * under the one fold - so `MsgType`, `msg_type` and `msgtype` under tag
    * 35 are one identity - derived on every read and never stored, so it
-   * is `null` exactly when `fix:tag` is absent. It is what `fieldById`
+   * is `null` exactly when `FIX:tag` is absent. It is what `fieldById`
    * and `getById` take, and it cannot be assigned: the tag and the name
    * are what it is made of.
    */
@@ -3401,7 +3401,7 @@ export declare class ProtocolField {
   /**
    * The canonical FIX tag, on the `fix` view.
    *
-   * Reads and writes `fix:tag` through the core's own typed accessors, so
+   * Reads and writes `FIX:tag` through the core's own typed accessors, so
    * the property name is never spelled at a call site. `view.delete('tag')`
    * removes it, the way every other property is removed.
    */
@@ -3963,7 +3963,7 @@ export declare class SchemaUpdate {
   dropColumn(path: string): void
   /** Record a rename of the column at `path`; its identifier is kept. */
   renameColumn(path: string, name: string): void
-  /** Record a new `iceberg:doc` documentation string on the column at `path`. */
+  /** Record a new `ICEBERG:doc` documentation string on the column at `path`. */
   updateDoc(path: string, doc: string): void
   /** Record that the column at `path` becomes optional. */
   makeNullable(path: string): void
@@ -3991,7 +3991,7 @@ export declare class Selector {
   static fromColumns(names: Array<string>): Selector
   /**
    * The selector a struct root declares: one column per child, with its
-   * datatype, nullability, metadata, and any `transform:` it carries.
+   * datatype, nullability, metadata, and any `TRANSFORM:` it carries.
    */
   static fromField(field: JsField): Selector
   /** Each projection, as its canonical text. */
@@ -4024,7 +4024,7 @@ export declare class Selector {
   applyField(root: JsField): JsField
   /**
    * The struct root this selector publishes from `root`, carrying the
-   * selector itself as each column's `transform:` declaration, so
+   * selector itself as each column's `TRANSFORM:` declaration, so
    * `Selector.fromField` of the answer is this selector again.
    */
   intoField(root: JsField): JsField
@@ -4119,7 +4119,7 @@ export type JsSnapshotRef = SnapshotRef
  *
  * A dictionary is a vocabulary and derives its member names; this is the
  * vocabulary a declaration named itself, and it is what a `Field` stores
- * under `field:enum` so the enum crosses Arrow, a file, and another runtime
+ * under `FIELD:enum` so the enum crosses Arrow, a file, and another runtime
  * intact. The width lives in the field's datatype - a fixed US-ASCII string
  * of at most sixteen bytes or a code - so a member's code is its packed
  * ASCII value under that width and never a position.
@@ -4127,9 +4127,9 @@ export type JsSnapshotRef = SnapshotRef
 export declare class StringEnum {
   /** Create an enum from its members, one ASCII value per member name. */
   constructor(name: string, members?: Record<string, string> | undefined | null)
-  /** Parse the `field:enum` document. */
+  /** Parse the `FIELD:enum` document. */
   static fromJson(document: string): StringEnum
-  /** Render the `field:enum` document, which is one text per enum. */
+  /** Render the `FIELD:enum` document, which is one text per enum. */
   intoJson(): string
   /** The enum's own name, which is not the field's name. */
   get name(): string
@@ -4160,7 +4160,7 @@ export declare class StringEnum {
   equals(other: StringEnum): boolean
   /** Make a native clone that changes independently of this enum. */
   clone(): StringEnum
-  /** The `field:enum` document, which is the enum's one canonical text. */
+  /** The `FIELD:enum` document, which is the enum's one canonical text. */
   toString(): string
 }
 export type JsStringEnum = StringEnum
@@ -5816,7 +5816,7 @@ export interface FixCaptureView {
    * The plugin that logged the line inside a bridge, as the bridge names
    * it.
    */
-  pluginid: string | null
+  msgpluginid: string | null
   /** The message context a bridge handled the line in. */
   msgctxid: string | null
   /** The session instance a bridge handled the line on. */
@@ -5874,18 +5874,17 @@ export interface FixCodecOptions {
  * The definitions this crate owns, in tag order, above every tag FIX or a
  * venue publishes.
  *
- * The event's instant `currunix` and the chain's `creatunix`, `prevunix`
+ * The event's instant `currunix` and the chain's `creaunix`, `prevunix`
  * and `snapunix`; the identities `currhashcode`, `crosshashcode`,
  * `curruuid`, `crossuuid`, `prevuuid` and the `parentuuids` list; the
  * `crosscode` and the `seqnum`; the `identifiers` and `metadata` Map
- * groups; what a bridge's capture states - `msgctxid`, `pluginid`,
- * `msgsessionid`; the capture's own columns, `sourceurl` and `recordedat`,
- * which whoever read the line states on the row and no message holds; and
- * the `nofixentries` that counts the content record. Nothing about the
- * market is here: every market fact is FIX's own field, and the graph
- * traits answer it off those.
+ * groups; what a bridge's capture states - `msgctxid`, `msgpluginid`,
+ * `msgsessionid`; the capture's own column, `sourceurl`, which whoever read
+ * the line states on the row and no message holds; and the `nofixentries`
+ * that counts the content record. Nothing about the market is here: every
+ * market fact is FIX's own field, and the graph traits answer it off those.
  *
- * `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid` and
+ * `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and
  * `crossuuid` are non-null. Every registry already holds them, so this is
  * the listing a schema or a document walks rather than something a caller
  * registers.
@@ -5975,7 +5974,7 @@ export interface FixEventView {
   /** The message's place in its chain, `0` until a lifecycle states it. */
   seqnum: number
   /** When the chain was created, where stated. */
-  creatunix: bigint | null
+  creaunix: bigint | null
   /** When the chain expires, where stated. */
   expirunix: bigint | null
   /**
@@ -6086,9 +6085,9 @@ export interface FixHeaderView {
  * list that closes every row: `fixentries`, the whole content record,
  * unresolved keys at tag 0. Columns are spelled by the dictionary's folded
  * canonical names - `msgtype`, never `35` - so a row reads the way a
- * message reads; the tag stays each column's identity, on its `fix:tag`,
+ * message reads; the tag stays each column's identity, on its `FIX:tag`,
  * and is what fills it. `beginstring` and the settled identity - `currunix`,
- * `creatunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - are
+ * `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - are
  * required; every other column is nullable, because a message that carried
  * nothing there must answer null rather than shift its neighbours.
  */
@@ -6103,7 +6102,7 @@ export declare function fixSchema(registry?: FixRegistry | undefined | null, nam
  * column already takes - `MsgCtxId` and `msgctxid` are one name - is dropped
  * rather than renamed: the FIX column is the one a reader spelling it means.
  * A bridge's own row header names every capture for the field it fills -
- * `bridgesessionid`, `msgctxid`, `msgseqnum`, `pluginid` - for that reason,
+ * `bridgesessionid`, `msgctxid`, `msgseqnum`, `msgpluginid` - for that reason,
  * so each value reaches its column rather than leading the row, and never
  * over a reading the message stated itself.
  *

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldateunadjusted",
-          "fix:tag": "42207"
+          "FIX:field": "cashsettldateunadjusted",
+          "FIX:tag": "42207"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldatebusinessdayconvention",
-          "fix:tag": "42208"
+          "FIX:field": "cashsettldatebusinessdayconvention",
+          "FIX:tag": "42208"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocashsettldatebusinesscenters",
-          "fix:tag": "42214"
+          "FIX:field": "nocashsettldatebusinesscenters",
+          "FIX:tag": "42214"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "cashsettldatebusinesscentergrp"
+          "FIX:group": "cashsettldatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldaterelativeto",
-          "fix:tag": "42209"
+          "FIX:field": "cashsettldaterelativeto",
+          "FIX:tag": "42209"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldateoffsetperiod",
-          "fix:tag": "42210"
+          "FIX:field": "cashsettldateoffsetperiod",
+          "FIX:tag": "42210"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldateoffsetunit",
-          "fix:tag": "42211"
+          "FIX:field": "cashsettldateoffsetunit",
+          "FIX:tag": "42211"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldateoffsetdaytype",
-          "fix:tag": "42212"
+          "FIX:field": "cashsettldateoffsetdaytype",
+          "FIX:tag": "42212"
         }
       },
       {
@@ -97,16 +97,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettldateadjusted",
-          "fix:tag": "42213"
+          "FIX:field": "cashsettldateadjusted",
+          "FIX:tag": "42213"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "1039306",
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in the Instrument component. The specified value would be specific to this instance of the cash settlement provision.",
-    "display": "CashSettlDate",
-    "fix:tag": "1039306"
+    "display": "CashSettlDate"
   }
 }

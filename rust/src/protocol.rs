@@ -13,6 +13,7 @@
 //! under - [`Field::is_init`], [`Field::is_partition`], `alias`, `comment`,
 //! `display`, `location` and `PARQUET:field_id` - stays on [`Field`].
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -35,7 +36,7 @@ use crate::metadata::{
 use crate::{Charset, Error, MediaType, Metadata, MimeType, Result, Scheme, Url};
 
 // ------------------------------------------------------------------------
-// The `http:` vocabulary, on the field views that own it.
+// The `HTTP:` vocabulary, on the field views that own it.
 //
 // One type reads each header key and one type writes it. The typed pairs -
 // `Content-Length`, the MIME and media projections, and `Location` - parse
@@ -170,13 +171,13 @@ impl<'field> HttpField<'field> {
 
     /// Parses HTTP `Location` as an absolute URL.
     ///
-    /// This is `http:location`, a different key from the namespace-free
+    /// This is `HTTP:location`, a different key from the namespace-free
     /// [`Field::location`](crate::Field::location) the field carries; the
     /// receiver is what says which one is meant.
     ///
     /// # Errors
     ///
-    /// Raw `http:location` metadata may be relative or opaque; such a value is
+    /// Raw `HTTP:location` metadata may be relative or opaque; such a value is
     /// retained by generic access and reported as an error here.
     pub fn location(&self) -> Result<Option<Url>> {
         self.as_field()
@@ -201,7 +202,7 @@ impl HttpFieldMut<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error when the value fails the validation its `http:` key
+    /// Returns an error when the value fails the validation its `HTTP:` key
     /// carries, leaving the field unchanged. Every other raw setter here
     /// fails the same way.
     pub fn set_accept(&mut self, value: impl Into<String>) -> Result<()> {
@@ -605,14 +606,14 @@ impl HttpFieldMut<'_> {
 }
 
 // ------------------------------------------------------------------------
-// The `partition:` declaration: how a column derives its value, in the shape
+// The `PARTITION:` declaration: how a column derives its value, in the shape
 // an Iceberg partition spec has.
 //
-// A partition column declares its derivation as the pair `partition:sources`
-// and `partition:transform` - one function over one source path. The pair is
+// A partition column declares its derivation as the pair `PARTITION:sources`
+// and `PARTITION:transform` - one function over one source path. The pair is
 // what a spec is read from and written to; the derivation itself is read
 // through the [`transform`](crate::TransformField::term) protocol, which
-// answers this pair where no `transform:expression` is declared, so a column
+// answers this pair where no `TRANSFORM:expression` is declared, so a column
 // derives one way whichever protocol declared it.
 // ------------------------------------------------------------------------
 
@@ -637,7 +638,7 @@ impl<'field> PartitionField<'field> {
     ///
     /// # Errors
     ///
-    /// Returns an error naming `partition:sources` when the stored text is not
+    /// Returns an error naming `PARTITION:sources` when the stored text is not
     /// that array.
     pub fn sources(&self) -> Result<Option<Vec<String>>> {
         self.get(SOURCES)
@@ -664,10 +665,10 @@ impl<'field> PartitionField<'field> {
 
     /// Returns the term that fills this column, if it declares one.
     ///
-    /// `None` is a column no `partition:sources` names, which is every column
+    /// `None` is a column no `PARTITION:sources` names, which is every column
     /// a directory spells out rather than derives. The
     /// [`transform`](crate::TransformField::term) protocol reads this, so a
-    /// partition column derives exactly as a `transform:expression` does.
+    /// partition column derives exactly as a `TRANSFORM:expression` does.
     ///
     /// ```
     /// use yggdryl::DataType;
@@ -679,8 +680,8 @@ impl<'field> PartitionField<'field> {
     /// year.as_partition_mut().set_transform(Function::Year)?;
     ///
     /// assert_eq!(year.as_partition().sources()?, Some(vec!["event".to_owned()]));
-    /// assert_eq!(year.get_metadata("partition:sources"), Some(r#"["event"]"#));
-    /// assert_eq!(year.get_metadata("partition:transform"), Some("year"));
+    /// assert_eq!(year.get_metadata("PARTITION:sources"), Some(r#"["event"]"#));
+    /// assert_eq!(year.get_metadata("PARTITION:transform"), Some("year"));
     /// assert_eq!(
     ///     year.as_partition().term()?.map(|value| value.to_string()),
     ///     Some("year(event)".to_owned()),
@@ -781,7 +782,7 @@ impl PartitionFieldMut<'_> {
 }
 
 // ------------------------------------------------------------------------
-// The `python:` vocabulary, on the field views that carry it.
+// The `PYTHON:` vocabulary, on the field views that carry it.
 //
 // A Python runtime declares a schema by writing a class: a dataclass, a
 // `TypedDict`, a `NamedTuple`, an enumeration, a `NewType`, a type alias, or
@@ -793,21 +794,21 @@ impl PartitionFieldMut<'_> {
 // [`PythonMetadata`] is the whole declaration as one validated value: it is
 // parsed once at the boundary, travels typed, and is written back atomically.
 // The property names are private to this module, so a caller writes
-// `set_class`, never `"python:qualname"`.
+// `set_class`, never `"PYTHON:qualname"`.
 // ------------------------------------------------------------------------
 
 /// Where the declaring class lives, as a dotted module path.
 const MODULE: &str = "module";
 /// The full key the module is stored under, spelled once.
-pub(crate) const PYTHON_MODULE_KEY: &str = "python:module";
+pub(crate) const PYTHON_MODULE_KEY: &str = "PYTHON:module";
 /// What the class is called inside its module, dots and all.
 const QUALNAME: &str = "qualname";
 /// The full key the qualified name is stored under.
-pub(crate) const PYTHON_QUALNAME_KEY: &str = "python:qualname";
+pub(crate) const PYTHON_QUALNAME_KEY: &str = "PYTHON:qualname";
 /// Which Python form the declaration takes.
 const KIND: &str = "kind";
 /// The full key the form is stored under.
-pub(crate) const PYTHON_KIND_KEY: &str = "python:kind";
+pub(crate) const PYTHON_KIND_KEY: &str = "PYTHON:kind";
 
 /// The segment a qualified name carries for a class declared in a function.
 ///
@@ -899,7 +900,7 @@ impl PythonKind {
     ///
     /// # Errors
     ///
-    /// Returns an error naming the full `python:kind` key when the text is not
+    /// Returns an error naming the full `PYTHON:kind` key when the text is not
     /// one of [`Self::ALL`].
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(value: &str) -> Result<Self> {
@@ -941,7 +942,7 @@ impl AsRef<str> for PythonKind {
     }
 }
 
-/// The Python class a field's `python:` properties name.
+/// The Python class a field's `PYTHON:` properties name.
 ///
 /// One value carries the whole declaration, so the three properties are
 /// validated together, written together, and never read back half-set. The
@@ -961,7 +962,7 @@ impl AsRef<str> for PythonKind {
 /// field.as_python_mut().set_class(&quote)?;
 ///
 /// assert_eq!(field.as_python().class()?, Some(quote));
-/// assert_eq!(field.get_metadata("python:qualname"), Some("Quote"));
+/// assert_eq!(field.get_metadata("PYTHON:qualname"), Some("Quote"));
 /// # Ok(())
 /// # }
 /// ```
@@ -977,7 +978,7 @@ impl PythonMetadata {
     ///
     /// # Errors
     ///
-    /// Returns an error naming the full `python:module` or `python:qualname`
+    /// Returns an error naming the full `PYTHON:module` or `PYTHON:qualname`
     /// key when either is not the dotted name it must be.
     pub fn new(
         module: impl Into<SmolStr>,
@@ -997,7 +998,7 @@ impl PythonMetadata {
 
     /// Assembles a declaration out of properties a field already stores.
     ///
-    /// Every write path canonicalizes `python:module` and `python:qualname`
+    /// Every write path canonicalizes `PYTHON:module` and `PYTHON:qualname`
     /// through [`validate_python_module`] and [`validate_python_qualname`], so a stored pair
     /// is proven before it is read. Re-validating here would spend the read on
     /// a question the edge already answered.
@@ -1110,7 +1111,7 @@ impl<'field> PythonField<'field> {
     ///
     /// # Errors
     ///
-    /// Returns an error naming the full `python:kind` key when the stored text
+    /// Returns an error naming the full `PYTHON:kind` key when the stored text
     /// is not one of [`PythonKind::ALL`]: every write canonicalizes it, so
     /// this can only come from externally edited state.
     pub fn kind(&self) -> Result<Option<PythonKind>> {
@@ -1166,7 +1167,7 @@ impl PythonFieldMut<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error naming the full `python:module` key when the text is
+    /// Returns an error naming the full `PYTHON:module` key when the text is
     /// not a dotted module path, leaving the field unchanged.
     pub fn set_module(&mut self, value: &str) -> Result<()> {
         self.insert(MODULE, value)?;
@@ -1177,7 +1178,7 @@ impl PythonFieldMut<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error naming the full `python:qualname` key when the text is
+    /// Returns an error naming the full `PYTHON:qualname` key when the text is
     /// not a dotted qualified name, leaving the field unchanged.
     pub fn set_qualname(&mut self, value: &str) -> Result<()> {
         self.insert(QUALNAME, value)?;
@@ -1252,7 +1253,7 @@ fn is_refused_in_identifier(character: char) -> bool {
 ///
 /// # Errors
 ///
-/// Returns an error naming the full `python:module` key.
+/// Returns an error naming the full `PYTHON:module` key.
 pub(crate) fn validate_python_module(value: &str) -> Result<()> {
     if !value.is_empty() && value.split('.').all(is_identifier) {
         return Ok(());
@@ -1273,7 +1274,7 @@ pub(crate) fn validate_python_module(value: &str) -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns an error naming the full `python:qualname` key.
+/// Returns an error naming the full `PYTHON:qualname` key.
 pub(crate) fn validate_python_qualname(value: &str) -> Result<()> {
     if !value.is_empty()
         && value
@@ -1386,7 +1387,7 @@ mod python_tests {
 /// A protocol property is stored under a `scheme:name` key, and code that
 /// spells that key by hand has to spell it right in every branch it appears
 /// in. This view remembers the protocol once, so a caller writes `doc` where
-/// it used to write `"iceberg:doc"`. Constructing one costs a `Scheme` clone
+/// it used to write `"ICEBERG:doc"`. Constructing one costs a `Scheme` clone
 /// of a known protocol - which allocates nothing - and no map walk, so it is
 /// built per call rather than stored.
 ///
@@ -1401,7 +1402,7 @@ mod python_tests {
 /// supersets of [`Field::comment`] and [`Field::display`]; [`Self::merge_with`]
 /// takes one argument where [`Field::merge_with`] takes two, so a wrong pick is
 /// a compile error rather than a silent one; and `HttpField::location` reads
-/// `http:location` where [`Field::location`] reads the namespace-free
+/// `HTTP:location` where [`Field::location`] reads the namespace-free
 /// `location`.
 ///
 /// ```
@@ -1453,8 +1454,8 @@ impl<'field> ProtocolField<'field> {
 
     /// Returns the canonical key prefix this view applies.
     ///
-    /// [`ProtocolMetadata::prefix`] carries the HTTPS folding.
-    pub fn prefix(&self) -> &str {
+    /// [`ProtocolMetadata::prefix`] carries the spelling.
+    pub fn prefix(&self) -> Cow<'_, str> {
         protocol_metadata_prefix(&self.scheme)
     }
 
@@ -1649,7 +1650,7 @@ impl<'view, 'field> IntoIterator for &'view ProtocolField<'field> {
 /// field.as_iceberg_mut().insert("schema-id", "3")?;
 ///
 /// assert_eq!(field.as_iceberg().get("doc"), Some("closing price"));
-/// assert_eq!(field.get_metadata("iceberg:doc"), Some("closing price"));
+/// assert_eq!(field.get_metadata("ICEBERG:doc"), Some("closing price"));
 ///
 /// assert_eq!(
 ///     field.as_iceberg_mut().remove("doc").as_deref(),
@@ -1698,8 +1699,8 @@ impl<'field> ProtocolFieldMut<'field> {
 
     /// Returns the canonical key prefix this view applies.
     ///
-    /// [`ProtocolMetadata::prefix`] carries the HTTPS folding.
-    pub fn prefix(&self) -> &str {
+    /// [`ProtocolMetadata::prefix`] carries the spelling.
+    pub fn prefix(&self) -> Cow<'_, str> {
         protocol_metadata_prefix(&self.scheme)
     }
 
@@ -1806,7 +1807,7 @@ impl<'field> ProtocolFieldMut<'field> {
         let mut replacement: Vec<(String, String)> = self
             .field
             .metadata_iter()
-            .filter(|(key, _)| property_name(key, prefix).is_none())
+            .filter(|(key, _)| property_name(key, &prefix).is_none())
             .map(|(key, value)| (key.to_owned(), value.to_owned()))
             .collect();
         for (name, value) in entries {
@@ -2059,15 +2060,18 @@ mod tests {
     macro_rules! assert_protocol_prefix {
         ($name:ident, $mutable:ident, $constant:ident, $view:ident, $view_mut:ident, $label:literal) => {
             let mut field = DataType::Int64.required_field("probe");
-            let key = format!("{}:x", Scheme::$constant.as_str());
+            let key = format!("{}:x", Scheme::$constant.metadata_prefix());
 
             field.$mutable().insert("x", "1").unwrap();
             // The literal key is what proves the accessor, the newtype and the
             // scheme constant of one list entry agree; both `prefix` calls
             // would still agree if all three drifted together.
             assert_eq!(field.get_metadata(&key), Some("1"));
-            assert_eq!(field.$name().prefix(), Scheme::$constant.as_str());
-            assert_eq!(field.$mutable().prefix(), Scheme::$constant.as_str());
+            assert_eq!(field.$name().prefix(), Scheme::$constant.metadata_prefix());
+            assert_eq!(
+                field.$mutable().prefix(),
+                Scheme::$constant.metadata_prefix()
+            );
             assert_eq!(field.$name().key("x"), key);
 
             let view = field.$name();

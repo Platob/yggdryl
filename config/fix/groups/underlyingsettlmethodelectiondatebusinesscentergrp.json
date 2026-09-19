@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingsettlmethodelectiondatebusinesscentercomponent"
+        "FIX:component": "underlyingsettlmethodelectiondatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingsettlmethodelectiondatebusinesscentercomponent",
+    "FIX:counter": "43074",
+    "FIX:tag": "562686",
     "description": "Required if NoUnderlyingSettlMethodElectionDateBusinessCenters(43074) > 0.",
-    "display": "UnderlyingSettlMethodElectionDateBusinessCenterGrp",
-    "fix:component": "underlyingsettlmethodelectiondatebusinesscentercomponent",
-    "fix:counter": "43074",
-    "fix:tag": "562686"
+    "display": "UnderlyingSettlMethodElectionDateBusinessCenterGrp"
   }
 }

@@ -47,6 +47,7 @@ pub use plan::ArrowCastPlan;
 use smol_str::SmolStr;
 pub use typed::ArrowFieldType;
 
+use crate::UriType;
 use crate::arrow::{Error, Result};
 use crate::budget::MaterializationBudget;
 use crate::bytes::casts::{bridges_through_binary, ingest_bytes_array};
@@ -584,10 +585,10 @@ mod plan {
     /// use std::sync::Arc;
     ///
     /// use arrow_array::{ArrayRef, Int32Array, RecordBatch};
-    /// use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType};
+    /// use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, StructureType};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let root = DataType::from_fields([DataType::Int64.required_field("id")])?
+    /// let root = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
     ///     .required_field("row");
     /// let source = RecordBatch::try_from_iter([(
     ///     "id",
@@ -1424,9 +1425,9 @@ enum StructPolicy {
 /// done.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Deferred {
-    /// A `transform:` or partition declaration derives the column from others.
+    /// A `TRANSFORM:` or partition declaration derives the column from others.
     pub(crate) transform: bool,
-    /// `digest:role=holder` says the column holds the row's hash.
+    /// `DIGEST:role=holder` says the column holds the row's hash.
     pub(crate) digest: bool,
 }
 
@@ -1553,6 +1554,8 @@ enum ArrayCastKind {
     VersionIngest,
     /// Text entering a URL is parsed and rewritten to its canonical text.
     UrlIngest,
+    /// Text entering a URN is parsed and rewritten to its canonical text.
+    UrnIngest,
     TimezoneIngest,
     MimeTypeIngest,
     MediaTypeIngest,
@@ -1745,7 +1748,12 @@ impl ArrayCastPlan {
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Version)
             ),
-            DataType::Url => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Url)),
+            DataType::Uri(UriType::Url) => {
+                !matches!(source_extension.as_ref(), Some(RecognizedExtension::Url))
+            }
+            DataType::Uri(UriType::Urn) => {
+                !matches!(source_extension.as_ref(), Some(RecognizedExtension::Urn))
+            }
             DataType::Timezone => !matches!(
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Timezone)
@@ -1933,9 +1941,17 @@ impl ArrayCastPlan {
             (DataType::Version, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to version is not supported"),
             },
-            (DataType::Url, source) if is_text_layout(source) => ArrayCastKind::UrlIngest,
-            (DataType::Url, source) => ArrayCastKind::DeferredUnsupported {
+            (DataType::Uri(UriType::Url), source) if is_text_layout(source) => {
+                ArrayCastKind::UrlIngest
+            }
+            (DataType::Uri(UriType::Url), source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to url is not supported"),
+            },
+            (DataType::Uri(UriType::Urn), source) if is_text_layout(source) => {
+                ArrayCastKind::UrnIngest
+            }
+            (DataType::Uri(UriType::Urn), source) => ArrayCastKind::DeferredUnsupported {
+                reason: format!("casting {source:?} to urn is not supported"),
             },
             (DataType::Timezone, source) if is_text_layout(source) => ArrayCastKind::TimezoneIngest,
             (DataType::Timezone, source) => ArrayCastKind::DeferredUnsupported {
@@ -2444,7 +2460,10 @@ impl ArrayCastPlan {
                 ingest_version_array(&array, &self.field, exposure, budget)?
             }
             ArrayCastKind::UrlIngest => {
-                crate::url::casts::ingest_url_array(&array, &self.field, exposure, budget)?
+                crate::uri::casts::ingest_url_array(&array, &self.field, exposure, budget)?
+            }
+            ArrayCastKind::UrnIngest => {
+                crate::uri::casts::ingest_urn_array(&array, &self.field, exposure, budget)?
             }
             ArrayCastKind::TimezoneIngest => crate::timezone::casts::ingest_timezone_array(
                 &array,
@@ -2784,8 +2803,14 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
             kind: "version",
             reason: format!("casting version to {} is not supported", other.name()),
         }),
-        (DataType::Url, RecognizedExtension::Url) => Ok(()),
+        (DataType::Uri(UriType::Url), RecognizedExtension::Url) => Ok(()),
         (DataType::String(parameters), RecognizedExtension::Url)
+            if is_text_storage(*parameters) =>
+        {
+            Ok(())
+        }
+        (DataType::Uri(UriType::Urn), RecognizedExtension::Urn) => Ok(()),
+        (DataType::String(parameters), RecognizedExtension::Urn)
             if is_text_storage(*parameters) =>
         {
             Ok(())
@@ -2793,6 +2818,10 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         (other, RecognizedExtension::Url) => Err(Error::Unsupported {
             kind: "url",
             reason: format!("casting url to {} is not supported", other.name()),
+        }),
+        (other, RecognizedExtension::Urn) => Err(Error::Unsupported {
+            kind: "urn",
+            reason: format!("casting urn to {} is not supported", other.name()),
         }),
         // A canonical text source crosses to its own target and to text; every
         // other target would have to re-read a spelling it does not model.

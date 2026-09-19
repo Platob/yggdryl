@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listupdateaction",
-          "fix:tag": "1324"
+          "FIX:field": "listupdateaction",
+          "FIX:tag": "1324"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartydetails",
-          "fix:tag": "1671"
+          "FIX:field": "nopartydetails",
+          "FIX:tag": "1671"
         }
       },
       {
@@ -32,14 +32,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "partydetailgrp"
+          "FIX:group": "partydetailgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PartyDetailsUpdate",
-    "fix:tag": "121601"
+    "FIX:tag": "121601",
+    "display": "PartyDetailsUpdate"
   }
 }

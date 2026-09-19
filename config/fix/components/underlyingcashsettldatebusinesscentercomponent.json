@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcashsettldatebusinesscenter",
-          "fix:tag": "42789"
+          "FIX:field": "underlyingcashsettldatebusinesscenter",
+          "FIX:tag": "42789"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingCashSettlDateBusinessCenter",
-    "fix:tag": "747382"
+    "FIX:tag": "747382",
+    "display": "UnderlyingCashSettlDateBusinessCenter"
   }
 }

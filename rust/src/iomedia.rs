@@ -625,7 +625,7 @@ pub trait IOMedia: Send {
     ///
     /// ```
     /// use yggdryl::media::IORecordOptions;
-    /// use yggdryl::{IOMedia, holder::Buffer};
+    /// use yggdryl::{IOMedia, StructureType, holder::Buffer};
     /// use yggdryl::{DataType, MimeType, Scalar};
     ///
     /// struct Quote {
@@ -640,10 +640,10 @@ pub trait IOMedia: Send {
     /// }
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let field = DataType::from_fields([
+    /// let field = DataType::from(StructureType::from_fields([
     ///     DataType::Int32.required_field("id"),
     ///     DataType::utf8().required_field("symbol"),
-    /// ])?
+    /// ])?)
     /// .required_field("quote");
     /// let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
     /// let options = handle.record_options()?.with_field(field);

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "settlementamountcomponent"
+        "FIX:component": "settlementamountcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "settlementamountcomponent",
+    "FIX:counter": "1700",
+    "FIX:tag": "1078036",
     "description": "Required if NoSettlementAmounts > 0.",
-    "display": "SettlementAmountGrp",
-    "fix:component": "settlementamountcomponent",
-    "fix:counter": "1700",
-    "fix:tag": "1078036"
+    "display": "SettlementAmountGrp"
   }
 }

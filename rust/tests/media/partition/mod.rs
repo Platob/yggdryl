@@ -9,14 +9,15 @@ use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, RecordBatch, StringAr
 use yggdryl::FieldValue as _;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::partition::{partitioned_reader, with_partitions, without_partitions};
-use yggdryl::{ArrowCastOptions, DataType, Field, IOBase};
+use yggdryl::{ArrowCastOptions, DataType, Field, IOBase, StructureType};
 
 fn schema() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64.required_field("price"),
         DataType::Int32.required_field("year"),
         DataType::utf8().required_field("month"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
 }
@@ -64,10 +65,11 @@ fn restored_columns_take_the_type_the_schema_declares() {
 
 #[test]
 fn an_ascii_partition_column_is_restored_padded_with_its_identity() {
-    let declared = DataType::from_fields([
+    let declared = StructureType::from_fields([
         DataType::Int64.required_field("price"),
         DataType::fixed_ascii(4).unwrap().required_field("ccy"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
 
@@ -182,7 +184,8 @@ fn derived_schema() -> Field {
     year.as_partition_mut()
         .set_transform(yggdryl::expression::Function::Year)
         .unwrap();
-    DataType::from_fields([DataType::date32().required_field("event"), year])
+    StructureType::from_fields([DataType::date32().required_field("event"), year])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
 }
@@ -221,7 +224,7 @@ fn a_derived_column_is_not_marked_as_one_a_path_spells_out() {
         .apply_arrow_batch(&events())
         .unwrap();
 
-    // `field:partition` says a directory carries the column. This one is
+    // `FIELD:partition` says a directory carries the column. This one is
     // computed from the rows, so the declaration travels unchanged.
     let declared = Field::from_arrow_field(filled.schema().field(1)).unwrap();
     assert!(!declared.is_partition());
@@ -287,7 +290,8 @@ fn a_column_holding_nothing_but_nulls_is_filled_from_the_batchs_own_schema() {
 fn an_absent_transform_copies_the_source_value_unchanged() {
     let mut day = DataType::date32().nullable_field("event_day");
     day.as_partition_mut().set_sources(["event"]).unwrap();
-    let root = DataType::from_fields([DataType::date32().required_field("event"), day])
+    let root = StructureType::from_fields([DataType::date32().required_field("event"), day])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
 
@@ -305,10 +309,12 @@ fn a_source_path_reaches_a_struct_child() {
     year.as_partition_mut()
         .set_transform(yggdryl::expression::Function::Year)
         .unwrap();
-    let trade = DataType::from_fields([DataType::date32().required_field("event")])
+    let trade = StructureType::from_fields([DataType::date32().required_field("event")])
+        .map(DataType::from)
         .unwrap()
         .required_field("trade");
-    let root = DataType::from_fields([trade, year])
+    let root = StructureType::from_fields([trade, year])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
 
@@ -378,7 +384,7 @@ fn a_transform_without_sources_beside_it_is_refused() {
         .unwrap();
 
     let error = year.as_partition().term().unwrap_err().to_string();
-    assert!(error.contains("partition:sources"), "{error}");
+    assert!(error.contains("PARTITION:sources"), "{error}");
 }
 
 #[test]
@@ -397,7 +403,7 @@ fn a_transform_that_is_not_a_function_of_one_argument_is_refused() {
         .insert("transform", "epoch")
         .unwrap_err()
         .to_string();
-    assert!(error.contains("partition:transform"), "{error}");
+    assert!(error.contains("PARTITION:transform"), "{error}");
     assert!(year.as_partition().is_empty());
 }
 
@@ -452,12 +458,15 @@ fn a_nested_declaration_is_filled_before_the_level_above_reads_it() {
         .unwrap();
     // A source path is relative to the Struct that declares it, so the nested
     // column names `event`, and the level above names `trade.year`.
-    let trade = DataType::from_fields([DataType::date32().required_field("event"), inner_year])
-        .unwrap()
-        .required_field("trade");
+    let trade =
+        StructureType::from_fields([DataType::date32().required_field("event"), inner_year])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("trade");
     let mut top = DataType::Int32.nullable_field("top_year");
     top.as_partition_mut().set_sources(["trade.year"]).unwrap();
-    let root = DataType::from_fields([trade, top])
+    let root = StructureType::from_fields([trade, top])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
 
@@ -516,10 +525,13 @@ fn a_nested_struct_keeps_its_own_null_mask_through_a_fill() {
         .as_partition_mut()
         .set_transform(yggdryl::expression::Function::Year)
         .unwrap();
-    let trade = DataType::from_fields([DataType::date32().required_field("event"), inner_year])
-        .unwrap()
-        .nullable_field("trade");
-    let root = DataType::from_fields([trade])
+    let trade =
+        StructureType::from_fields([DataType::date32().required_field("event"), inner_year])
+            .map(DataType::from)
+            .unwrap()
+            .nullable_field("trade");
+    let root = StructureType::from_fields([trade])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
 
@@ -555,7 +567,8 @@ fn a_required_column_still_holding_its_canonical_default_is_filled() {
     year.as_partition_mut()
         .set_transform(yggdryl::expression::Function::Year)
         .unwrap();
-    let root = DataType::from_fields([DataType::date32().required_field("event"), year])
+    let root = StructureType::from_fields([DataType::date32().required_field("event"), year])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
 
@@ -637,10 +650,11 @@ fn every_temporal_family_survives_the_directory_name_it_spells() {
     ] {
         let spelled = yggdryl::media::partition::partition_text(&value)
             .unwrap_or_else(|error| panic!("{dtype} has no partition name: {error}"));
-        let schema = DataType::from_fields([
+        let schema = StructureType::from_fields([
             DataType::Int64.required_field("price"),
             Field::new("at", dtype.clone(), false),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
         let restored = with_partitions(

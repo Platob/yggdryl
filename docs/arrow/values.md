@@ -61,12 +61,12 @@ A held container keeps the length it knows; a stream keeps its laziness.
 === "Rust"
 
     ```rust
-    use yggdryl::{ArrowShape, ArrowScalar, DataType, Field, Scalar};
+    use yggdryl::{ArrowShape, ArrowScalar, DataType, Field, Scalar, StructureType};
 
-    let root = DataType::from_fields([
+    let root = DataType::from(StructureType::from_fields([
         DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("size"),
-    ])?
+    ])?)
     .required_field("row");
 
     let rows = Scalar::from_sequence([
@@ -163,15 +163,15 @@ support `ArrowScalar`; JavaScript uses its separate copied-IPC `BatchReader`.
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::{ArrowScalar, DataType, Scalar};
+    use yggdryl::{ArrowScalar, DataType, Scalar, StructureType};
 
-    let entries = DataType::from_fields([
+    let entries = DataType::from(StructureType::from_fields([
         DataType::utf8().required_field("key"),
         DataType::utf8().nullable_field("value"),
-    ])?.required_field("entries");
+    ])?).required_field("entries");
     let lookup = DataType::map(entries, true)?.nullable_field("lookup");
-    let nested = DataType::from_fields([lookup])?.required_field("nested");
-    let root = DataType::from_fields([nested])?.required_field("row");
+    let nested = DataType::from(StructureType::from_fields([lookup])?).required_field("nested");
+    let root = DataType::from(StructureType::from_fields([nested])?).required_field("row");
     let mapping = Scalar::from_mapping([
         (Scalar::from("first"), Scalar::from("one")),
         (Scalar::from("second"), Scalar::Null),
@@ -239,12 +239,12 @@ declared `field` off them.
     ```rust
     use yggdryl::holder::Buffer;
     use yggdryl::media::{IORecordOptions, RecordOptions};
-    use yggdryl::{ArrowShape, ArrowScalar, DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Url};
+    use yggdryl::{ArrowShape, ArrowScalar, DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, StructureType, Url};
 
-    let root = DataType::from_fields([
+    let root = DataType::from(StructureType::from_fields([
         DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("size"),
-    ])?
+    ])?)
     .required_field("row");
 
     let rows = Scalar::from_sequence([Scalar::from_sequence([

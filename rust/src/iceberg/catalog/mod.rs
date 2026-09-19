@@ -37,16 +37,17 @@
 //!
 //! ```no_run
 //! use yggdryl::DataType;
+//! use yggdryl::StructureType;
 //! use yggdryl::iceberg::Catalog;
 //! use yggdryl::local::Folder;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let catalog = Catalog::new(Folder::new(Folder::temporary()?.path()?.join("warehouse"))?);
 //!
-//! let schema = DataType::from_fields([
+//! let schema = DataType::from(StructureType::from_fields([
 //!     DataType::Int64.required_field("id"),
 //!     DataType::utf8().nullable_field("venue").with_partition(true),
-//! ])?
+//! ])?)
 //! .required_field("row");
 //!
 //! // The namespaces come into being because the metadata document was
@@ -119,10 +120,10 @@ const CATALOG_DOCUMENT: &str = "metadata/catalog.json";
 
 /// The property prefix the format reserves for itself.
 ///
-/// Protocol metadata is inert `<scheme>:<property>` strings, and `iceberg:` is
+/// Protocol metadata is inert `<scheme>:<property>` strings, and `ICEBERG:` is
 /// the format's own scheme - a caller writing under it could silently change
 /// what the format later reads, so the update path refuses it by name.
-const RESERVED_PREFIX: &str = "iceberg:";
+const RESERVED_PREFIX: &str = "ICEBERG:";
 
 /// The names of one collection level, yielded one at a time.
 ///

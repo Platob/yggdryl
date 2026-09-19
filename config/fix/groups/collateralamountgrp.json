@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "collateralamount"
+        "FIX:component": "collateralamount"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "collateralamount",
+    "FIX:counter": "1703",
+    "FIX:tag": "485329",
     "description": "Required if NoCollateralAmounts(1703) > 0.",
-    "display": "CollateralAmountGrp",
-    "fix:component": "collateralamount",
-    "fix:counter": "1703",
-    "fix:tag": "485329"
+    "display": "CollateralAmountGrp"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "rgstdtl"
+        "FIX:component": "rgstdtl"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "rgstdtl",
+    "FIX:counter": "473",
+    "FIX:tag": "696576",
     "description": "Number of registration details in this message (number of repeating groups to follow)",
-    "display": "RgstDtlsGrp",
-    "fix:component": "rgstdtl",
-    "fix:counter": "473",
-    "fix:tag": "696576"
+    "display": "RgstDtlsGrp"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingrateindex",
-          "fix:tag": "42628"
+          "FIX:field": "paymentstreamcompoundingrateindex",
+          "FIX:tag": "42628"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingrateindexcurveperiod",
-          "fix:tag": "42629"
+          "FIX:field": "paymentstreamcompoundingrateindexcurveperiod",
+          "FIX:tag": "42629"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingrateindexcurveunit",
-          "fix:tag": "42630"
+          "FIX:field": "paymentstreamcompoundingrateindexcurveunit",
+          "FIX:tag": "42630"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingratemultiplier",
-          "fix:tag": "42631"
+          "FIX:field": "paymentstreamcompoundingratemultiplier",
+          "FIX:tag": "42631"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingratespread",
-          "fix:tag": "42632"
+          "FIX:field": "paymentstreamcompoundingratespread",
+          "FIX:tag": "42632"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingratespreadpositiontype",
-          "fix:tag": "42633"
+          "FIX:field": "paymentstreamcompoundingratespreadpositiontype",
+          "FIX:tag": "42633"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingratetreatment",
-          "fix:tag": "42634"
+          "FIX:field": "paymentstreamcompoundingratetreatment",
+          "FIX:tag": "42634"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingcaprate",
-          "fix:tag": "42635"
+          "FIX:field": "paymentstreamcompoundingcaprate",
+          "FIX:tag": "42635"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingcapratebuyside",
-          "fix:tag": "42636"
+          "FIX:field": "paymentstreamcompoundingcapratebuyside",
+          "FIX:tag": "42636"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingcapratesellside",
-          "fix:tag": "42637"
+          "FIX:field": "paymentstreamcompoundingcapratesellside",
+          "FIX:tag": "42637"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingfloorrate",
-          "fix:tag": "42638"
+          "FIX:field": "paymentstreamcompoundingfloorrate",
+          "FIX:tag": "42638"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingfloorratebuyside",
-          "fix:tag": "42639"
+          "FIX:field": "paymentstreamcompoundingfloorratebuyside",
+          "FIX:tag": "42639"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingfloorratesellside",
-          "fix:tag": "42640"
+          "FIX:field": "paymentstreamcompoundingfloorratesellside",
+          "FIX:tag": "42640"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundinginitialrate",
-          "fix:tag": "42641"
+          "FIX:field": "paymentstreamcompoundinginitialrate",
+          "FIX:tag": "42641"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingfinalrateroundingdirection",
-          "fix:tag": "42642"
+          "FIX:field": "paymentstreamcompoundingfinalrateroundingdirection",
+          "FIX:tag": "42642"
         }
       },
       {
@@ -175,8 +175,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingfinalrateprecision",
-          "fix:tag": "42643"
+          "FIX:field": "paymentstreamcompoundingfinalrateprecision",
+          "FIX:tag": "42643"
         }
       },
       {
@@ -186,8 +186,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingaveragingmethod",
-          "fix:tag": "42644"
+          "FIX:field": "paymentstreamcompoundingaveragingmethod",
+          "FIX:tag": "42644"
         }
       },
       {
@@ -197,16 +197,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingnegativeratetreatment",
-          "fix:tag": "42645"
+          "FIX:field": "paymentstreamcompoundingnegativeratetreatment",
+          "FIX:tag": "42645"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "731315",
     "description": "Conditionally required if PaymentStreamCompoundingRateIndexCurveUnit(42630) is specified.",
-    "display": "PaymentStreamCompoundingFloatingRate",
-    "fix:tag": "731315"
+    "display": "PaymentStreamCompoundingFloatingRate"
   }
 }

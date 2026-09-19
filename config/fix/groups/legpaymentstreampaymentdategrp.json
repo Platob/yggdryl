@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legpaymentstreampaymentdatecomponent"
+        "FIX:component": "legpaymentstreampaymentdatecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legpaymentstreampaymentdatecomponent",
+    "FIX:counter": "41589",
+    "FIX:tag": "612595",
     "description": "Required if NoLegPaymentStreamPaymentDates(41589) > 0.",
-    "display": "LegPaymentStreamPaymentDateGrp",
-    "fix:component": "legpaymentstreampaymentdatecomponent",
-    "fix:counter": "41589",
-    "fix:tag": "612595"
+    "display": "LegPaymentStreamPaymentDateGrp"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityaltid",
-          "fix:tag": "455"
+          "FIX:field": "securityaltid",
+          "FIX:tag": "455"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityaltidsource",
-          "fix:tag": "456"
+          "FIX:field": "securityaltidsource",
+          "FIX:tag": "456"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "symbolpositionnumber",
-          "fix:tag": "2957"
+          "FIX:field": "symbolpositionnumber",
+          "FIX:tag": "2957"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SecAltID",
-    "fix:tag": "243988"
+    "FIX:tag": "243988",
+    "display": "SecAltID"
   }
 }

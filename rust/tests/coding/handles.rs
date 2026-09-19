@@ -2,7 +2,7 @@
 
 use yggdryl::coding::Coding;
 use yggdryl::holder::Buffer;
-use yggdryl::{Codec, Level, MimeType, Url};
+use yggdryl::{Codec, Level, MimeType, StructureType, Url};
 use yggdryl::{IOBase, IOMedia};
 
 #[derive(Debug)]
@@ -406,7 +406,8 @@ fn a_coded_ipc_view_streams_through_its_owning_reader() {
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{DataType, MimeType};
 
-    let field = DataType::from_fields([DataType::Int64.required_field("id")])
+    let field = StructureType::from_fields([DataType::Int64.required_field("id")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let schema = field.clone().into_arrow_schema().unwrap();

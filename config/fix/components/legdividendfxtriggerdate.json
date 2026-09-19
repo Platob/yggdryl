@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdaterelativeto",
-          "fix:tag": "42357"
+          "FIX:field": "legdividendfxtriggerdaterelativeto",
+          "FIX:tag": "42357"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdateoffsetperiod",
-          "fix:tag": "42358"
+          "FIX:field": "legdividendfxtriggerdateoffsetperiod",
+          "FIX:tag": "42358"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdateoffsetunit",
-          "fix:tag": "42359"
+          "FIX:field": "legdividendfxtriggerdateoffsetunit",
+          "FIX:tag": "42359"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdateoffsetdaytype",
-          "fix:tag": "42360"
+          "FIX:field": "legdividendfxtriggerdateoffsetdaytype",
+          "FIX:tag": "42360"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdateunadjusted",
-          "fix:tag": "42361"
+          "FIX:field": "legdividendfxtriggerdateunadjusted",
+          "FIX:tag": "42361"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdatebusinessdayconvention",
-          "fix:tag": "42362"
+          "FIX:field": "legdividendfxtriggerdatebusinessdayconvention",
+          "FIX:tag": "42362"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegdividendfxtriggerdatebusinesscenters",
-          "fix:tag": "42364"
+          "FIX:field": "nolegdividendfxtriggerdatebusinesscenters",
+          "FIX:tag": "42364"
         }
       },
       {
@@ -87,7 +87,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legdividendfxtriggerdatebusinesscentergrp"
+          "FIX:group": "legdividendfxtriggerdatebusinesscentergrp"
         }
       },
       {
@@ -97,16 +97,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendfxtriggerdateadjusted",
-          "fix:tag": "42363"
+          "FIX:field": "legdividendfxtriggerdateadjusted",
+          "FIX:tag": "42363"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "980784",
     "description": "Conditionally required when LegDividendFXTriggerDateOffsetUnit(42359) is specified.",
-    "display": "LegDividendFXTriggerDate",
-    "fix:tag": "980784"
+    "display": "LegDividendFXTriggerDate"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "ordalloc"
+        "FIX:component": "ordalloc"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "ordalloc",
+    "FIX:counter": "73",
+    "FIX:tag": "626252",
     "description": "Indicates number of orders to be combined for allocation. If order(s) were manually delivered set to 1 (one).Required when AllocNoOrdersType = 1",
-    "display": "OrdAllocGrp",
-    "fix:component": "ordalloc",
-    "fix:counter": "73",
-    "fix:tag": "626252"
+    "display": "OrdAllocGrp"
   }
 }

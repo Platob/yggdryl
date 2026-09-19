@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "strikerule"
+        "FIX:component": "strikerule"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "strikerule",
+    "FIX:counter": "1201",
+    "FIX:tag": "795899",
     "description": "Number of strike rule entries. This block specifies the rules for determining how new strikes should be listed within the stated price range of the underlying instrument",
-    "display": "StrikeRules",
-    "fix:component": "strikerule",
-    "fix:counter": "1201",
-    "fix:tag": "795899"
+    "display": "StrikeRules"
   }
 }

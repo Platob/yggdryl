@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventdatebusinesscenter",
-          "fix:tag": "41738"
+          "FIX:field": "underlyingcomplexeventdatebusinesscenter",
+          "FIX:tag": "41738"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEventDateBusinessCenter",
-    "fix:tag": "650853"
+    "FIX:tag": "650853",
+    "display": "UnderlyingComplexEventDateBusinessCenter"
   }
 }

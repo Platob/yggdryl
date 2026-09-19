@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "registid",
-          "fix:tag": "513"
+          "FIX:field": "registid",
+          "FIX:tag": "513"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingbusinessdate",
-          "fix:tag": "715"
+          "FIX:field": "clearingbusinessdate",
+          "FIX:tag": "715"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "registtranstype",
-          "fix:tag": "514"
+          "FIX:field": "registtranstype",
+          "FIX:tag": "514"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "registrefid",
-          "fix:tag": "508"
+          "FIX:field": "registrefid",
+          "FIX:tag": "508"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clordid",
-          "fix:tag": "11"
+          "FIX:field": "clordid",
+          "FIX:tag": "11"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -86,7 +86,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "account",
-          "fix:tag": "1"
+          "FIX:field": "account",
+          "FIX:tag": "1"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "acctidsource",
-          "fix:tag": "660"
+          "FIX:field": "acctidsource",
+          "FIX:tag": "660"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "registaccttype",
-          "fix:tag": "493"
+          "FIX:field": "registaccttype",
+          "FIX:tag": "493"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "taxadvantagetype",
-          "fix:tag": "495"
+          "FIX:field": "taxadvantagetype",
+          "FIX:tag": "495"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ownershiptype",
-          "fix:tag": "517"
+          "FIX:field": "ownershiptype",
+          "FIX:tag": "517"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noregistdtls",
-          "fix:tag": "473"
+          "FIX:field": "noregistdtls",
+          "FIX:tag": "473"
         }
       },
       {
@@ -162,7 +162,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "rgstdtlsgrp"
+          "FIX:group": "rgstdtlsgrp"
         }
       },
       {
@@ -172,8 +172,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nodistribinsts",
-          "fix:tag": "510"
+          "FIX:field": "nodistribinsts",
+          "FIX:tag": "510"
         }
       },
       {
@@ -183,7 +183,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "rgstdistinstgrp"
+          "FIX:group": "rgstdistinstgrp"
         }
       },
       {
@@ -193,17 +193,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "clordid",
+    "FIX:msgtype": "o",
+    "FIX:tag": "619440",
     "description": "MsgType = o (lowercase O)",
-    "display": "RegistrationInstructions",
-    "fix:identifiers": "clordid",
-    "fix:msgtype": "o",
-    "fix:tag": "619440"
+    "display": "RegistrationInstructions"
   }
 }

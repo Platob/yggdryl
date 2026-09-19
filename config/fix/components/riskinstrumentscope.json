@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentscopeoperator",
-          "fix:tag": "1535"
+          "FIX:field": "instrumentscopeoperator",
+          "FIX:tag": "1535"
         }
       },
       {
@@ -21,7 +21,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrumentscope"
+          "FIX:component": "instrumentscope"
         }
       },
       {
@@ -31,15 +31,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "riskinstrumentmultiplier",
-          "fix:tag": "1558"
+          "FIX:field": "riskinstrumentmultiplier",
+          "FIX:tag": "1558"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "RiskInstrumentScope",
-    "fix:tag": "866779"
+    "FIX:tag": "866779",
+    "display": "RiskInstrumentScope"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legratesource",
-          "fix:tag": "3117"
+          "FIX:field": "legratesource",
+          "FIX:tag": "3117"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legratesourcetype",
-          "fix:tag": "3118"
+          "FIX:field": "legratesourcetype",
+          "FIX:tag": "3118"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreferencepage",
-          "fix:tag": "3119"
+          "FIX:field": "legreferencepage",
+          "FIX:tag": "3119"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legratesourcereferencepageheading",
-          "fix:tag": "3120"
+          "FIX:field": "legratesourcereferencepageheading",
+          "FIX:tag": "3120"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legratesourcesymbol",
-          "fix:tag": "3121"
+          "FIX:field": "legratesourcesymbol",
+          "FIX:tag": "3121"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legfxbenchmark",
-          "fix:tag": "3122"
+          "FIX:field": "legfxbenchmark",
+          "FIX:tag": "3122"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legfxbenchmarkdate",
-          "fix:tag": "3123"
+          "FIX:field": "legfxbenchmarkdate",
+          "FIX:tag": "3123"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legfxbenchmarktime",
-          "fix:tag": "3124"
+          "FIX:field": "legfxbenchmarktime",
+          "FIX:tag": "3124"
         }
       },
       {
@@ -98,15 +98,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legfxbenchmarkbusinesscenter",
-          "fix:tag": "3125"
+          "FIX:field": "legfxbenchmarkbusinesscenter",
+          "FIX:tag": "3125"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegRateSource",
-    "fix:tag": "893002"
+    "FIX:tag": "893002",
+    "display": "LegRateSource"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdentrystatus",
-          "fix:tag": "3106"
+          "FIX:field": "mdentrystatus",
+          "FIX:tag": "3106"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdentryid",
-          "fix:tag": "278"
+          "FIX:field": "mdentryid",
+          "FIX:tag": "278"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdentrystatustext",
-          "fix:tag": "3107"
+          "FIX:field": "mdentrystatustext",
+          "FIX:tag": "3107"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmdentrystatustextlen",
-          "fix:tag": "3108"
+          "FIX:field": "encodedmdentrystatustextlen",
+          "FIX:tag": "3108"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedmdentrystatustext",
-          "fix:tag": "3109"
+          "FIX:field": "encodedmdentrystatustext",
+          "FIX:tag": "3109"
         }
       },
       {
@@ -65,14 +65,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MDAck",
-    "fix:tag": "1070342"
+    "FIX:tag": "1070342",
+    "display": "MDAck"
   }
 }

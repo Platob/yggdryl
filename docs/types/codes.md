@@ -23,15 +23,16 @@ A code is an identity over a published registry, not a string with a charset: a 
 | | |
 | --- | --- |
 | Value | one `Scalar` variant per code - `Country`, `Currency`, `Mic`, `Cfi`, `Side`, `State`, `TimeInForce`, `Isin`, `Cusip`, `Sedol`, `Bloomberg` - holding the text; equality, order and hash carry the identity, so `Side("BUY")` and `TimeInForce("BUY")` are two values, and they sort the way their datatypes sort |
+| Family | `Code` is the eleven as one value - a variant per code, named as the `Scalar` variant is - and a `FamilyValue` beside `CodeValue`: `Scalar::as_code` narrows to it and `into_scalar` widens back ([Scalar](scalar.md#families)) |
 | Read by spelling | `side` and `state` hold explicit values of the crate's own - `BUY`, `SSHORT`, `ASDEF`; `20NEW`, `80FILLED` - and read a FIX wire code, the specification's name or the stored value onto them through `Side::from_spelling` and `State::from_spelling`; a spelling that names none is refused, never stored. FIX's `Side(54)` reaches the side values through the name its dictionary gives each code, so a dialect's own code maps as its dictionary says |
 | Storage | the text itself: nothing padded, nothing to trim, so a column dictionary-encodes and carries string statistics like any other text |
 | Identity | the extension *name*, never the storage: `yggdryl.currency` over `utf8` is a currency, and the same `utf8` under `yggdryl.string` or under no name at all is the text it is |
 | `code_width` | the most bytes one value may be, the number its standard fixes; `fixed_byte_width` is `None`, because the width bounds a value rather than laying it out |
 | `ascii_packed` | the value's bytes padded to that width and read big-endian into one `i128` - the padding is the packing's, never a column's: a fixed US-ASCII string of at most sixteen bytes or a code; everything else refused |
-| `StringEnum` | a name plus one US-ASCII value per member under `field:enum`; accepted on a fixed US-ASCII string of at most sixteen bytes or a code |
+| `StringEnum` | a name plus one US-ASCII value per member under `FIELD:enum`; accepted on a fixed US-ASCII string of at most sixteen bytes or a code |
 | Lanes | `Side::is_bid` and `Side::is_ask` say which lane of a quote a side takes - `BUY` and `BUYMINUS` the bid, `SELL`, `SELLPLUS`, `SSHORT`, `SSHORTEX` and `SELLUND` the ask, and a cross, `UNDISC`, `ASDEF`, `OPPOSITE` or `UNKNOWN` neither - which is what the FIX lift and a market element fill a lane by |
 | Merge | `CodeValue::merge_with(self, &Self) -> Self` is the better statement of two codes of one kind: a `cfi` fills every `X` from the other where the two describe one instrument, a `state` that reached none takes the other and otherwise the further along stands, a `side` `UNKNOWN`, a `currency` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is. What a [graph element](../graph.md) folds two statements of one fact with |
-| Rust only | `DataType::CODES`, the code leaf types, `Scalar::code_storage` and `Scalar::is_code`, `Side::from_spelling`, `State::rank` and the lifecycle predicates, `Isin`/`Cusip`/`Sedol::{is_valid, is_canonical, closing_digit}` |
+| Rust only | `DataType::CODES`, the code leaf types and the `Code` family enum, `Scalar::code_storage` and `Scalar::is_code`, `Side::from_spelling`, `State::rank` and the lifecycle predicates, `Isin`/`Cusip`/`Sedol::{is_valid, is_canonical, closing_digit}` |
 
 ## Use
 
@@ -240,12 +241,12 @@ A code is an identity over a published registry, not a string with a charset: a 
 FIX tag 35 stores complete `utf8` text, including codes such as `P Report Ack`.
 The [FIX registry](../fix/registry.md)
 owns `MsgType`: the registry's immutable message Struct definition, a component
-carrying `fix:msgtype`, obtained through registry lookup. Its wire code stays
+carrying `FIX:msgtype`, obtained through registry lookup. Its wire code stays
 intact; message definitions have no generic datatype or code field helper.
 
 ## Packed integers and the declared vocabulary
 
-`ascii_packed` is the value's bytes padded to the width and read big-endian: one integer everywhere, ordered as the text, never negative. The padding belongs to the packing - a code's column stores the text alone - which is what keeps a `field:enum` document the same integers whatever a column stores its values as. It answers for a fixed US-ASCII string of at most sixteen bytes or a code, and refuses everything else by name. `StringEnum` names those integers: one US-ASCII value per member, stored on the field under the reserved key `field:enum` ([Protocol](protocol.md)), so the width stays the field's datatype and the enum crosses Arrow, a file, and another runtime intact.
+`ascii_packed` is the value's bytes padded to the width and read big-endian: one integer everywhere, ordered as the text, never negative. The padding belongs to the packing - a code's column stores the text alone - which is what keeps a `FIELD:enum` document the same integers whatever a column stores its values as. It answers for a fixed US-ASCII string of at most sixteen bytes or a code, and refuses everything else by name. `StringEnum` names those integers: one US-ASCII value per member, stored on the field under the reserved key `FIELD:enum` ([Protocol](protocol.md)), so the width stays the field's datatype and the enum crosses Arrow, a file, and another runtime intact.
 
 === "Rust"
 
@@ -567,7 +568,7 @@ nobody published would be a guess.
 - `ascii_packed` on a variable string, on UTF-8, or on a width past 16 bytes -> refused, `at most 16 bytes`.
 - `ascii_packed` -> an `i32`, an `i64`, or a whole `i128` by width, and the integer a stable hash hashes.
 - A `StringEnum` on a string that is not fixed US-ASCII of at most sixteen bytes -> refused by name at `set_string_enum` and `into_members`; error kind `string-enum`.
-- `field:enum` document -> the width never enters it, so one enum is one canonical text.
+- `FIELD:enum` document -> the width never enters it, so one enum is one canonical text.
 - `from_logical_name` -> the shipped `COUNTRIES`, `CURRENCIES`, `MICS`, `SIDES`, `DIRECTIONS`, `STATES`, `TIMESINFORCE` listings, `prebuilt()` in either binding; `"Exchange"` -> `MICS`.
 - `from_logical_name("tenor")` (registered, no listing) -> an empty enum.
 - JavaScript `readRecords` -> Arrow JS rows carry no extension identity, so a code column arrives as the text it stores, under no identity.

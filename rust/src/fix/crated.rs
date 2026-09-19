@@ -7,11 +7,11 @@
 //! it goes by, its parents, the code its content digests to, when it
 //! happened, was created and was read as a snapshot, the element it follows
 //! and its place in the chain. Beside them stand the facts a capture states
-//! about the line - where it was read from, when the capture recorded it,
-//! how many pairs it carried - and the ones a bridge's own log states about
-//! the line it wrote: the session instance, the message context and the
-//! plugin that logged it. Each belongs in a column: a scalar registers as a
-//! field, and the identifiers Map as a group of entries.
+//! about the line - where it was read from and how many pairs it carried -
+//! and the ones a bridge's own log states about the line it wrote: the
+//! session instance, the message context and the plugin that logged it.
+//! Each belongs in a column: a scalar registers as a field, and the
+//! identifiers Map as a group of entries.
 //!
 //! What a message says about its *market* is not here and never was this
 //! crate's to name: the price, the quantity, the instrument's codes, the
@@ -28,8 +28,8 @@
 //! bridge row spelling `SESSIONID` lands on the crate's own column, and a
 //! name every registry carries is never an unknown key. [`is_crate_tag`] is
 //! the whole test. A field is its tag and its name, so each is declared as
-//! both - `PLUGINID_TAG_NAME` is `(65_009, "pluginid")` - and a caller reads
-//! the half it needs.
+//! both - `MSGPLUGINID_TAG_NAME` is `(65_009, "msgpluginid")` - and a
+//! caller reads the half it needs.
 //!
 //! # What is FIX's own is not here
 //!
@@ -56,12 +56,12 @@
 //!
 //! [`FixRegistry::new`](super::FixRegistry::new) inserts them before anything
 //! else, so a dictionary loaded from a store, built from fields or left empty
-//! answers `currunix` and `pluginid` alike - and a store never writes them,
-//! because they are the crate's rather than the store's. A stored copy is
+//! answers `currunix` and `msgpluginid` alike - and a store never writes
+//! them, because they are the crate's rather than the store's. A stored copy is
 //! read past for the same reason: the crate's own definition is the one that
 //! types a row. Folding another dictionary in never counts them either.
 //!
-//! Eighteen scalar fields and two Map groups, each registered by its shape.
+//! Seventeen scalar fields and two Map groups, each registered by its shape.
 
 use std::sync::LazyLock;
 
@@ -88,7 +88,7 @@ pub const MSGCTXID_TAG_NAME: (i32, &str) = (65_008, "msgctxid");
 
 /// The tag and name carrying the plugin that logged the line, as a bridge
 /// names it.
-pub const PLUGINID_TAG_NAME: (i32, &str) = (65_009, "pluginid");
+pub const MSGPLUGINID_TAG_NAME: (i32, &str) = (65_009, "msgpluginid");
 
 /// The tag and name carrying the code the message's content digests to:
 /// the XXH3-64 of what the event states and the named FIX content behind it.
@@ -109,7 +109,7 @@ pub const PREVUNIX_TAG_NAME: (i32, &str) = (65_021, "prevunix");
 pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");
 
 /// The tag and name carrying when the message was created.
-pub const CREATUNIX_TAG_NAME: (i32, &str) = (65_023, "creatunix");
+pub const CREAUNIX_TAG_NAME: (i32, &str) = (65_023, "creaunix");
 
 /// The tag and name carrying the grid instant a walk read the message as
 /// the snapshot of.
@@ -133,9 +133,6 @@ pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");
 /// stated. A reader prunes on it without opening the list, which is what a
 /// count column is for.
 pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");
-
-/// The tag and name carrying the instant the capture itself recorded the line.
-pub const RECORDEDAT_TAG_NAME: (i32, &str) = (65_028, "recordedat");
 
 /// The tag and name carrying the session instance a bridge handled a line on.
 ///
@@ -216,11 +213,10 @@ static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
 /// Everything else the crate owns is about the session or the chain the
 /// message stands in - the identifiers it resolved, the keys a bridge
 /// stated, the plugin, the context and the session instance - and carries.
-const SETTLED_TO_ONE_MESSAGE: [i32; 15] = [
+const SETTLED_TO_ONE_MESSAGE: [i32; 14] = [
     CURRUNIX_TAG_NAME.0,
-    CREATUNIX_TAG_NAME.0,
+    CREAUNIX_TAG_NAME.0,
     SNAPUNIX_TAG_NAME.0,
-    RECORDEDAT_TAG_NAME.0,
     PREVUNIX_TAG_NAME.0,
     PREVUUID_TAG_NAME.0,
     CURRHASHCODE_TAG_NAME.0,
@@ -238,7 +234,7 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 15] = [
 /// is settled against, the codes and the identity it settles to.
 const ALWAYS_STATED: [i32; 6] = [
     CURRUNIX_TAG_NAME.0,
-    CREATUNIX_TAG_NAME.0,
+    CREAUNIX_TAG_NAME.0,
     CURRHASHCODE_TAG_NAME.0,
     CROSSHASHCODE_TAG_NAME.0,
     CURRUUID_TAG_NAME.0,
@@ -248,7 +244,7 @@ const ALWAYS_STATED: [i32; 6] = [
 /// One field of the crate's own, from its tag and name, with a FIX-style
 /// display.
 ///
-/// Display and description use generic field metadata rather than the `fix:`
+/// Display and description use generic field metadata rather than the `FIX:`
 /// scheme because every catalog the crate writes to understands them.
 fn crated(
     (tag, name): (i32, &str),
@@ -263,20 +259,6 @@ fn crated(
     if SETTLED_TO_ONE_MESSAGE.contains(&tag) {
         field.as_fix_mut().set_transient(false)?;
     }
-    Ok(field)
-}
-
-/// One field a bridge or a reader spells under its own names, deriving
-/// nothing: what nobody stated, nobody knows.
-fn aliased(
-    identity: (i32, &str),
-    display: &str,
-    dtype: DataType,
-    description: &str,
-    aliases: &[&str],
-) -> Result<Field> {
-    let mut field = crated(identity, display, dtype, description)?;
-    field.as_fix_mut().set_names(aliases.iter().copied())?;
     Ok(field)
 }
 
@@ -326,11 +308,11 @@ fn build() -> Result<Vec<Field>> {
         // row's own column - the bracket the bridge's row header writes in
         // front of every line - and never derived.
         crated(
-            PLUGINID_TAG_NAME,
-            "PluginId",
+            MSGPLUGINID_TAG_NAME,
+            "MsgPluginId",
             DataType::utf8(),
             "The plugin that logged the line inside a bridge, as the bridge \
-             names it: the row's own pluginid column, never derived.",
+             names it: the row's own msgpluginid column, never derived.",
         )?,
         // The instrument and the market, one spelling each: an ISIN as a
         // bridge row states it or as `SecurityID` with an ISIN source, and
@@ -367,8 +349,8 @@ fn build() -> Result<Vec<Field>> {
             "The identity of the message this one follows, where it follows one.",
         )?,
         crated(
-            CREATUNIX_TAG_NAME,
-            "CreatUnix",
+            CREAUNIX_TAG_NAME,
+            "CreaUnix",
             clock(),
             "When the message was created: what it states, else when the \
              original was sent, else when it happened; the earliest its \
@@ -387,7 +369,7 @@ fn build() -> Result<Vec<Field>> {
         crated(
             SOURCEURL_TAG_NAME,
             "SourceUrl",
-            DataType::Url,
+            DataType::url(),
             "The object this message's line was read from.",
         )?,
         // The arrival record's counter. The group it counts is not a registry
@@ -399,26 +381,6 @@ fn build() -> Result<Vec<Field>> {
             "NoFixEntries",
             DataType::Int32,
             "How many pairs the message carried, in arrival order.",
-        )?,
-        // When the capture wrote the line down, which is a fact about the
-        // capture and not about the message - so it is outside the content
-        // hash for the same reason `sourceurl` is: one day's log re-cut,
-        // replayed or copied records the same message at a second instant,
-        // and both copies must digest alike.
-        // The text reader already carries the line's own instant, under the
-        // name it gives that column - so the reading reaches this column by
-        // an alias, the way every other capture column reaches its field,
-        // rather than by a second mapping. `mtime` is the reader's own
-        // spelling. Nothing derives it: a message's `SendingTime` is when
-        // the *message* says it was sent, and answering that here would
-        // have every row claim a recording nobody made.
-        aliased(
-            RECORDEDAT_TAG_NAME,
-            "RecordedAt",
-            clock(),
-            "The instant the capture recorded this line, as whoever read the \
-             line states it; null where nobody did.",
-            &["mtime"],
         )?,
         // The session instance the bridge handled a line on, which its own
         // row header states and no FIX message carries: `SenderCompID` names
@@ -494,7 +456,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 20);
+/// assert_eq!(held.len(), 19);
 /// assert_eq!(held[0].name(), "currunix");
 /// assert_eq!(held[0].display(), Some("CurrUnix"));
 /// // No partition column: how a layout is cut is the target's to decide -
@@ -504,8 +466,8 @@ fn build() -> Result<Vec<Field>> {
 /// assert!(held.iter().all(|field| field.name() != "timepartition"));
 /// // And no derived column: a fact a message implies about its market is
 /// // what the traits answer off the FIX fields it lifted, never a second
-/// // column beside them, so nothing here declares a `fix:derivation`.
-/// assert!(held.iter().all(|field| !field.has_metadata("fix:derivation")));
+/// // column beside them, so nothing here declares a `FIX:derivation`.
+/// assert!(held.iter().all(|field| !field.has_metadata("FIX:derivation")));
 /// // Above every tag FIX or a venue publishes, and its tag and name are
 /// // its identity.
 /// let (tag, name) = yggdryl::CURRUNIX_TAG_NAME;
@@ -635,7 +597,8 @@ impl super::FixRegistry {
                 }
                 name
             };
-            let mut message = crate::DataType::from_fields([])?.required_field(canonical);
+            let mut message = crate::DataType::from(crate::StructureType::from_fields([])?)
+                .required_field(canonical);
             message.as_fix_mut().set_msgtype(&value)?;
             next.create_definition(crate::FixCategory::Components, message)?;
         }

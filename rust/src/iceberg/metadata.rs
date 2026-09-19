@@ -1691,10 +1691,11 @@ impl TableMetadata {
     /// ```
     /// use yggdryl::iceberg::{FormatVersion, PartitionSpec, Snapshot, TableMetadata};
     /// use yggdryl::iceberg::assign_field_ids;
+    /// use yggdryl::StructureType;
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    /// let mut schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
     ///     .required_field("row");
     /// assign_field_ids(&mut schema, 1)?;
     /// let mut metadata = TableMetadata::new(
@@ -2991,11 +2992,12 @@ fn invalid(reason: SmolStr) -> Error {
 mod strict_metadata_tests {
     use super::{FormatVersion, SortOrder, TableMetadata};
     use crate::iceberg::{PartitionSpec, Snapshot, SnapshotRef};
-    use crate::{DataType, Scalar};
+    use crate::{DataType, Scalar, StructureType};
     use smol_str::SmolStr;
 
     fn document(version: FormatVersion) -> Scalar {
-        let schema = DataType::from_fields([DataType::Int64.required_field("id")])
+        let schema = StructureType::from_fields([DataType::Int64.required_field("id")])
+            .map(DataType::from)
             .unwrap()
             .required_field("row");
         TableMetadata::new(

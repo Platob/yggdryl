@@ -10,13 +10,13 @@
 //! ```no_run
 //! use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
 //! use yggdryl::local::Folder;
-//! use yggdryl::{DataType, Field};
+//! use yggdryl::{DataType, Field, StructureType};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut schema = DataType::from_fields([
+//! let mut schema = DataType::from(StructureType::from_fields([
 //!     DataType::Int64.required_field("id"),
 //!     DataType::utf8().nullable_field("venue"),
-//! ])?
+//! ])?)
 //! .required_field("row");
 //! assign_field_ids(&mut schema, 1)?;
 //!
@@ -114,7 +114,9 @@ use crate::cast::ArrowCastOptions;
 use crate::expression::Projection;
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::{DataType, Error, Field, Filter, IOKind, MimeType, Result, Scalar, Selector, Term};
+use crate::{
+    DataType, Error, Field, Filter, IOKind, MimeType, Result, Scalar, Selector, StructureType, Term,
+};
 use crate::{IOBase, IOMedia};
 
 /// The directory a table keeps its metadata documents and manifests in.
@@ -353,7 +355,7 @@ impl<H: IOBase> Table<H> {
     /// The one resolver is [`IcebergOptions`]: an explicit option stored with
     /// [`Self::set_options`] wins, then the table property
     /// [`IcebergOptions::TARGET_FILE_SIZE_KEY`], then the schema root's
-    /// `iceberg:write.target-file-size-bytes` protocol property, then
+    /// `ICEBERG:write.target-file-size-bytes` protocol property, then
     /// Iceberg's own default of 512 MiB.
     ///
     /// What a write measures against this target is the Arrow in-memory size
@@ -400,7 +402,7 @@ impl<H: IOBase> Table<H> {
     ///
     /// Each field takes the nearest of three layers: the explicit override
     /// stored with [`Self::set_options`], then the table property of the same
-    /// name (falling back to the schema root's `iceberg:` spelling), and the
+    /// name (falling back to the schema root's `ICEBERG:` spelling), and the
     /// getters answer the documented default for whatever remains unset.
     ///
     /// # Errors
@@ -3241,7 +3243,7 @@ fn projected_root(stored: &Field, columns: &[String]) -> Option<Field> {
     }
     Field::from_parts(
         stored.name(),
-        DataType::from_fields(kept).ok()?,
+        StructureType::from_fields(kept).map(DataType::from).ok()?,
         stored.is_nullable(),
         stored.metadata_iter(),
     )
@@ -3509,7 +3511,8 @@ mod key_bound_tests {
 
     #[test]
     fn generated_nan_merge_bounds_are_conservatively_unbounded() {
-        let mut schema = DataType::from_fields([DataType::Float64.required_field("ratio")])
+        let mut schema = StructureType::from_fields([DataType::Float64.required_field("ratio")])
+            .map(DataType::from)
             .unwrap()
             .required_field("row");
         crate::iceberg::assign_field_ids(&mut schema, 1).unwrap();
@@ -3527,7 +3530,8 @@ mod key_bound_tests {
 
     #[test]
     fn partition_summaries_omit_nan_bounds() {
-        let mut schema = DataType::from_fields([DataType::Float64.required_field("ratio")])
+        let mut schema = StructureType::from_fields([DataType::Float64.required_field("ratio")])
+            .map(DataType::from)
             .unwrap()
             .required_field("row");
         crate::iceberg::assign_field_ids(&mut schema, 1).unwrap();

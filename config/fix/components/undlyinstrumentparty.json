@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinginstrumentpartyid",
-          "fix:tag": "1059"
+          "FIX:field": "underlyinginstrumentpartyid",
+          "FIX:tag": "1059"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinginstrumentpartyidsource",
-          "fix:tag": "1060"
+          "FIX:field": "underlyinginstrumentpartyidsource",
+          "FIX:tag": "1060"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinginstrumentpartyrole",
-          "fix:tag": "1061"
+          "FIX:field": "underlyinginstrumentpartyrole",
+          "FIX:tag": "1061"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyinginstrumentpartyrolequalifier",
-          "fix:tag": "2391"
+          "FIX:field": "underlyinginstrumentpartyrolequalifier",
+          "FIX:tag": "2391"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noundlyinstrumentpartysubids",
-          "fix:tag": "1062"
+          "FIX:field": "noundlyinstrumentpartysubids",
+          "FIX:tag": "1062"
         }
       },
       {
@@ -65,14 +65,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "undlyinstrumentptyssubgrp"
+          "FIX:group": "undlyinstrumentptyssubgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UndlyInstrumentParty",
-    "fix:tag": "648020"
+    "FIX:tag": "648020",
+    "display": "UndlyInstrumentParty"
   }
 }

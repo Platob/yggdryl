@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40900",
       "description": "The cap rate, if any, which applies to the second floating rate. The cap rate (strike) is only required where the floating rate on a swap stream is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as 0.05.",
-      "display": "PaymentStubIndex2CapRate",
-      "fix:tag": "40900"
+      "display": "PaymentStubIndex2CapRate"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40901",
       "description": "The floor rate, if any, which applies to the second floating rate. The floor rate (strike) is only required where the floating rate on a swap stream is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A floor rate of 5% would be represented as 0.05.",
-      "display": "PaymentStubIndex2FloorRate",
-      "fix:tag": "40901"
+      "display": "PaymentStubIndex2FloorRate"
     }
   },
   {
@@ -30,9 +30,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40902",
       "description": "Number of settlement rate fallbacks in the repeating group",
-      "display": "NoLegSettlRateFallbacks",
-      "fix:tag": "40902"
+      "display": "NoLegSettlRateFallbacks"
     }
   },
   {
@@ -42,9 +42,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40903",
       "description": "The maximum number of days to wait for a quote from the disrupted settlement rate option before proceding to this method.",
-      "display": "LegSettlRatePostponementMaximumDays",
-      "fix:tag": "40903"
+      "display": "LegSettlRatePostponementMaximumDays"
     }
   },
   {
@@ -54,9 +54,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source of rate information.",
-      "display": "UnderlyingSettlRateFallbackRateSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bloomberg",
@@ -83,7 +81,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "40904"
+      "FIX:tag": "40904",
+      "description": "Identifies the source of rate information.",
+      "display": "UnderlyingSettlRateFallbackRateSource"
     }
   },
   {
@@ -93,9 +93,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40905",
       "description": "Indicates whether to request a settlement rate quote from the market.",
-      "display": "LegSettlRatePostponementSurvey",
-      "fix:tag": "40905"
+      "display": "LegSettlRatePostponementSurvey"
     }
   },
   {
@@ -105,9 +105,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to identify the settlement rate postponement calculation agent.",
-      "display": "LegSettlRatePostponementCalculationAgent",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ExercisingParty",
@@ -129,7 +127,9 @@
           "doc": "As specified in the standard terms supplement"
         }
       ],
-      "fix:tag": "40906"
+      "FIX:tag": "40906",
+      "description": "Used to identify the settlement rate postponement calculation agent.",
+      "display": "LegSettlRatePostponementCalculationAgent"
     }
   },
   {
@@ -140,9 +140,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40907",
       "description": "The unadjusted effective date.",
-      "display": "StreamEffectiveDateUnadjusted",
-      "fix:tag": "40907"
+      "display": "StreamEffectiveDateUnadjusted"
     }
   },
   {
@@ -152,9 +152,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the instrument's stream's effective, or relative effective, date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
-      "display": "StreamEffectiveDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -196,7 +194,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40908"
+      "FIX:tag": "40908",
+      "description": "The business day convention used to adjust the instrument's stream's effective, or relative effective, date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
+      "display": "StreamEffectiveDateBusinessDayConvention"
     }
   },
   {
@@ -206,9 +206,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40909",
       "description": "The business center calendar used to adjust the instrument's stream's effective, or relative effective, date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "StreamEffectiveDateBusinessCenter",
-      "fix:tag": "40909"
+      "display": "StreamEffectiveDateBusinessCenter"
     }
   },
   {
@@ -218,9 +218,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40910",
       "description": "Specifies the anchor date when the effective date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "StreamEffectiveDateRelativeTo",
-      "fix:tag": "40910"
+      "display": "StreamEffectiveDateRelativeTo"
     }
   },
   {
@@ -230,9 +230,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40911",
       "description": "Time unit multiplier for the relative effective date offset.",
-      "display": "StreamEffectiveDateOffsetPeriod",
-      "fix:tag": "40911"
+      "display": "StreamEffectiveDateOffsetPeriod"
     }
   },
   {
@@ -242,9 +242,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative effective date offset.",
-      "display": "StreamEffectiveDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -266,7 +264,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "40912"
+      "FIX:tag": "40912",
+      "description": "Time unit associated with the relative effective date offset.",
+      "display": "StreamEffectiveDateOffsetUnit"
     }
   },
   {
@@ -276,9 +276,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative effective date offset.",
-      "display": "StreamEffectiveDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -310,7 +308,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "40913"
+      "FIX:tag": "40913",
+      "description": "Specifies the day type of the relative effective date offset.",
+      "display": "StreamEffectiveDateOffsetDayType"
     }
   },
   {
@@ -321,9 +321,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40914",
       "description": "The adjusted effective date.",
-      "display": "StreamEffectiveDateAdjusted",
-      "fix:tag": "40914"
+      "display": "StreamEffectiveDateAdjusted"
     }
   },
   {
@@ -333,9 +333,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40915",
       "description": "Identifies the reference \"page\" from the rate source. When UnderlyingSettlRateFallbackRateSource(40904) = 3(ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
-      "display": "UnderlyingSettlRateFallbackReferencePage",
-      "fix:tag": "40915"
+      "display": "UnderlyingSettlRateFallbackReferencePage"
     }
   },
   {
@@ -345,9 +345,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40916",
       "description": "The number of business days between successive valuation dates when multiple valuation dates are applicable for cash settlement.",
-      "display": "CashSettlValuationSubsequentBusinessDaysOffset",
-      "fix:tag": "40916"
+      "display": "CashSettlValuationSubsequentBusinessDaysOffset"
     }
   },
   {
@@ -357,9 +357,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40917",
       "description": "Where multiple valuation dates are specified as being applicable for cash settlement, this specifies the number of applicable valuation dates.",
-      "display": "CashSettlNumOfValuationDates",
-      "fix:tag": "40917"
+      "display": "CashSettlNumOfValuationDates"
     }
   },
   {
@@ -369,9 +369,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to further qualify the value of UnderlyingProvisionPartyRole(42176).",
-      "display": "UnderlyingProvisionPartyRoleQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Agency",
@@ -559,7 +557,9 @@
           "doc": "Lender"
         }
       ],
-      "fix:tag": "40918"
+      "FIX:tag": "40918",
+      "description": "Used to further qualify the value of UnderlyingProvisionPartyRole(42176).",
+      "display": "UnderlyingProvisionPartyRoleQualifier"
     }
   },
   {
@@ -569,9 +569,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of price for PaymentPrice(40218).",
-      "display": "PaymentPriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Percentage",
@@ -698,7 +696,9 @@
           "doc": "Percentage of notional"
         }
       ],
-      "fix:tag": "40919"
+      "FIX:tag": "40919",
+      "description": "Specifies the type of price for PaymentPrice(40218).",
+      "display": "PaymentPriceType"
     }
   },
   {
@@ -708,9 +708,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative payment date offset.",
-      "display": "PaymentStreamPaymentDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -742,7 +740,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "40920"
+      "FIX:tag": "40920",
+      "description": "Specifies the day type of the relative payment date offset.",
+      "display": "PaymentStreamPaymentDateOffsetDayType"
     }
   },
   {
@@ -752,9 +752,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used for adjusting dates. The value defined here applies to all adjustable dates in the instrument unless specifically overridden.",
-      "display": "BusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -796,7 +794,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40921"
+      "FIX:tag": "40921",
+      "description": "The business day convention used for adjusting dates. The value defined here applies to all adjustable dates in the instrument unless specifically overridden.",
+      "display": "BusinessDayConvention"
     }
   },
   {
@@ -806,9 +806,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The convention for determining a sequence of dates. It is used in conjunction with a specified frequency. The value defined here applies to all adjustable dates in the instrument unless specifically overridden. Additional values may be used by mutual agreement of the counterparties.",
-      "display": "DateRollConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FirstDay",
@@ -1040,7 +1038,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "40922"
+      "FIX:tag": "40922",
+      "description": "The convention for determining a sequence of dates. It is used in conjunction with a specified frequency. The value defined here applies to all adjustable dates in the instrument unless specifically overridden. Additional values may be used by mutual agreement of the counterparties.",
+      "display": "DateRollConvention"
     }
   },
   {
@@ -1050,9 +1050,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40923",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegBusinessCenters",
-      "fix:tag": "40923"
+      "display": "NoLegBusinessCenters"
     }
   },
   {
@@ -1062,9 +1062,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40924",
       "description": "A business center whose calendar is used for date adjustment, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegBusinessCenter",
-      "fix:tag": "40924"
+      "display": "LegBusinessCenter"
     }
   },
   {
@@ -1074,9 +1074,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used for adjusting dates. The value defined here applies to all adjustable dates in the instrument leg unless specifically overridden.",
-      "display": "LegBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1118,7 +1116,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40925"
+      "FIX:tag": "40925",
+      "description": "The business day convention used for adjusting dates. The value defined here applies to all adjustable dates in the instrument leg unless specifically overridden.",
+      "display": "LegBusinessDayConvention"
     }
   },
   {
@@ -1128,9 +1128,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The convention for determining a sequence of dates. It is used in conjunction with a specified frequency. The value defined here applies to all adjustable dates in the instrument leg unless specifically overridden.",
-      "display": "LegDateRollConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FirstDay",
@@ -1362,7 +1360,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "40926"
+      "FIX:tag": "40926",
+      "description": "The convention for determining a sequence of dates. It is used in conjunction with a specified frequency. The value defined here applies to all adjustable dates in the instrument leg unless specifically overridden.",
+      "display": "LegDateRollConvention"
     }
   },
   {
@@ -1372,9 +1372,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40927",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegPaymentScheduleFixingDateBusinessCenters",
-      "fix:tag": "40927"
+      "display": "NoLegPaymentScheduleFixingDateBusinessCenters"
     }
   },
   {
@@ -1384,9 +1384,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40928",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegPaymentScheduleInterimExchangeDateBusinessCenters",
-      "fix:tag": "40928"
+      "display": "NoLegPaymentScheduleInterimExchangeDateBusinessCenters"
     }
   },
   {
@@ -1396,9 +1396,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40929",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegPaymentStreamNonDeliverableFixingDateBusinessCenters",
-      "fix:tag": "40929"
+      "display": "NoLegPaymentStreamNonDeliverableFixingDateBusinessCenters"
     }
   },
   {
@@ -1408,9 +1408,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40930",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegPaymentStreamPaymentDateBusinessCenters",
-      "fix:tag": "40930"
+      "display": "NoLegPaymentStreamPaymentDateBusinessCenters"
     }
   },
   {
@@ -1420,9 +1420,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40931",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegPaymentStreamResetDateBusinessCenters",
-      "fix:tag": "40931"
+      "display": "NoLegPaymentStreamResetDateBusinessCenters"
     }
   },
   {
@@ -1432,9 +1432,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40932",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegPaymentStreamInitialFixingDateBusinessCenters",
-      "fix:tag": "40932"
+      "display": "NoLegPaymentStreamInitialFixingDateBusinessCenters"
     }
   },
   {
@@ -1444,9 +1444,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40933",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegPaymentStreamFixingDateBusinessCenters",
-      "fix:tag": "40933"
+      "display": "NoLegPaymentStreamFixingDateBusinessCenters"
     }
   },
   {
@@ -1456,9 +1456,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40934",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegProvisionCashSettlPaymentDateBusinessCenters",
-      "fix:tag": "40934"
+      "display": "NoLegProvisionCashSettlPaymentDateBusinessCenters"
     }
   },
   {
@@ -1468,9 +1468,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40935",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegProvisionCashSettlValueDateBusinessCenters",
-      "fix:tag": "40935"
+      "display": "NoLegProvisionCashSettlValueDateBusinessCenters"
     }
   },
   {
@@ -1480,9 +1480,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40936",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegProvisionOptionExerciseBusinessCenters",
-      "fix:tag": "40936"
+      "display": "NoLegProvisionOptionExerciseBusinessCenters"
     }
   },
   {
@@ -1492,9 +1492,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40937",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegProvisionOptionExpirationDateBusinessCenters",
-      "fix:tag": "40937"
+      "display": "NoLegProvisionOptionExpirationDateBusinessCenters"
     }
   },
   {
@@ -1504,9 +1504,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40938",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegProvisionOptionRelevantUnderlyingDateBusinessCenters",
-      "fix:tag": "40938"
+      "display": "NoLegProvisionOptionRelevantUnderlyingDateBusinessCenters"
     }
   },
   {
@@ -1516,9 +1516,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40939",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegProvisionDateBusinessCenters",
-      "fix:tag": "40939"
+      "display": "NoLegProvisionDateBusinessCenters"
     }
   },
   {
@@ -1528,9 +1528,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40940",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegStreamCalculationPeriodBusinessCenters",
-      "fix:tag": "40940"
+      "display": "NoLegStreamCalculationPeriodBusinessCenters"
     }
   },
   {
@@ -1540,9 +1540,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40941",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegStreamFirstPeriodStartDateBusinessCenters",
-      "fix:tag": "40941"
+      "display": "NoLegStreamFirstPeriodStartDateBusinessCenters"
     }
   },
   {
@@ -1552,9 +1552,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40942",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegStreamEffectiveDateBusinessCenters",
-      "fix:tag": "40942"
+      "display": "NoLegStreamEffectiveDateBusinessCenters"
     }
   },
   {
@@ -1564,9 +1564,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40943",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegStreamTerminationDateBusinessCenters",
-      "fix:tag": "40943"
+      "display": "NoLegStreamTerminationDateBusinessCenters"
     }
   },
   {
@@ -1576,9 +1576,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40944",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoPaymentBusinessCenters",
-      "fix:tag": "40944"
+      "display": "NoPaymentBusinessCenters"
     }
   },
   {
@@ -1588,9 +1588,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40945",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoPaymentScheduleInterimExchangeDateBusinessCenters",
-      "fix:tag": "40945"
+      "display": "NoPaymentScheduleInterimExchangeDateBusinessCenters"
     }
   },
   {
@@ -1600,9 +1600,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40946",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoPaymentStreamNonDeliverableFixingDatesBusinessCenters",
-      "fix:tag": "40946"
+      "display": "NoPaymentStreamNonDeliverableFixingDatesBusinessCenters"
     }
   },
   {
@@ -1612,9 +1612,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40947",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoPaymentStreamPaymentDateBusinessCenters",
-      "fix:tag": "40947"
+      "display": "NoPaymentStreamPaymentDateBusinessCenters"
     }
   },
   {
@@ -1624,9 +1624,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40948",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoPaymentStreamResetDateBusinessCenters",
-      "fix:tag": "40948"
+      "display": "NoPaymentStreamResetDateBusinessCenters"
     }
   },
   {
@@ -1636,9 +1636,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40949",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoPaymentStreamInitialFixingDateBusinessCenters",
-      "fix:tag": "40949"
+      "display": "NoPaymentStreamInitialFixingDateBusinessCenters"
     }
   },
   {
@@ -1648,9 +1648,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40950",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoPaymentStreamFixingDateBusinessCenters",
-      "fix:tag": "40950"
+      "display": "NoPaymentStreamFixingDateBusinessCenters"
     }
   },
   {
@@ -1660,9 +1660,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40951",
       "description": "Number of event news sources in the repeating group.",
-      "display": "NoProtectionTermEventNewsSources",
-      "fix:tag": "40951"
+      "display": "NoProtectionTermEventNewsSources"
     }
   },
   {
@@ -1672,9 +1672,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40952",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoProvisionCashSettlPaymentDateBusinessCenters",
-      "fix:tag": "40952"
+      "display": "NoProvisionCashSettlPaymentDateBusinessCenters"
     }
   },
   {
@@ -1684,9 +1684,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40953",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoProvisionCashSettlValueDateBusinessCenters",
-      "fix:tag": "40953"
+      "display": "NoProvisionCashSettlValueDateBusinessCenters"
     }
   },
   {
@@ -1696,9 +1696,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40954",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoProvisionOptionExerciseBusinessCenters",
-      "fix:tag": "40954"
+      "display": "NoProvisionOptionExerciseBusinessCenters"
     }
   },
   {
@@ -1708,9 +1708,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40955",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoProvisionOptionExpirationDateBusinessCenters",
-      "fix:tag": "40955"
+      "display": "NoProvisionOptionExpirationDateBusinessCenters"
     }
   },
   {
@@ -1720,9 +1720,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40956",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoProvisionOptionRelevantUnderlyingDateBusinessCenters",
-      "fix:tag": "40956"
+      "display": "NoProvisionOptionRelevantUnderlyingDateBusinessCenters"
     }
   },
   {
@@ -1732,9 +1732,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40957",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoProvisionDateBusinessCenters",
-      "fix:tag": "40957"
+      "display": "NoProvisionDateBusinessCenters"
     }
   },
   {
@@ -1744,9 +1744,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40958",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoStreamCalculationPeriodBusinessCenters",
-      "fix:tag": "40958"
+      "display": "NoStreamCalculationPeriodBusinessCenters"
     }
   },
   {
@@ -1756,9 +1756,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40959",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoStreamFirstPeriodStartDateBusinessCenters",
-      "fix:tag": "40959"
+      "display": "NoStreamFirstPeriodStartDateBusinessCenters"
     }
   },
   {
@@ -1768,9 +1768,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40960",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoStreamEffectiveDateBusinessCenters",
-      "fix:tag": "40960"
+      "display": "NoStreamEffectiveDateBusinessCenters"
     }
   },
   {
@@ -1780,9 +1780,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40961",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoStreamTerminationDateBusinessCenters",
-      "fix:tag": "40961"
+      "display": "NoStreamTerminationDateBusinessCenters"
     }
   },
   {
@@ -1792,9 +1792,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40962",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingBusinessCenters",
-      "fix:tag": "40962"
+      "display": "NoUnderlyingBusinessCenters"
     }
   },
   {
@@ -1804,9 +1804,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40963",
       "description": "A business center whose calendar is used for date adjustment, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "UnderlyingBusinessCenter",
-      "fix:tag": "40963"
+      "display": "UnderlyingBusinessCenter"
     }
   },
   {
@@ -1816,9 +1816,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used for adjusting dates. The value defined here applies to all adjustable dates in the underlying instrument unless specifically overridden.",
-      "display": "UnderlyingBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1860,7 +1858,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "40964"
+      "FIX:tag": "40964",
+      "description": "The business day convention used for adjusting dates. The value defined here applies to all adjustable dates in the underlying instrument unless specifically overridden.",
+      "display": "UnderlyingBusinessDayConvention"
     }
   },
   {
@@ -1870,9 +1870,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The convention for determining a sequence of dates. It is used in conjunction with a specified frequency. The value defined here applies to all adjustable dates in the underlying instrument unless specifically overridden.",
-      "display": "UnderlyingDateRollConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FirstDay",
@@ -2104,7 +2102,9 @@
           "doc": "Sunday"
         }
       ],
-      "fix:tag": "40965"
+      "FIX:tag": "40965",
+      "description": "The convention for determining a sequence of dates. It is used in conjunction with a specified frequency. The value defined here applies to all adjustable dates in the underlying instrument unless specifically overridden.",
+      "display": "UnderlyingDateRollConvention"
     }
   },
   {
@@ -2114,9 +2114,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40966",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingPaymentScheduleFixingDateBusinessCenters",
-      "fix:tag": "40966"
+      "display": "NoUnderlyingPaymentScheduleFixingDateBusinessCenters"
     }
   },
   {
@@ -2126,9 +2126,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40967",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingPaymentScheduleInterimExchangeDateBusinessCenters",
-      "fix:tag": "40967"
+      "display": "NoUnderlyingPaymentScheduleInterimExchangeDateBusinessCenters"
     }
   },
   {
@@ -2138,9 +2138,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40968",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingPaymentStreamNonDeliverableFixingDatesBizCenters",
-      "fix:tag": "40968"
+      "display": "NoUnderlyingPaymentStreamNonDeliverableFixingDatesBizCenters"
     }
   },
   {
@@ -2150,9 +2150,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40969",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingPaymentStreamPaymentDateBusinessCenters",
-      "fix:tag": "40969"
+      "display": "NoUnderlyingPaymentStreamPaymentDateBusinessCenters"
     }
   },
   {
@@ -2162,9 +2162,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40970",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingPaymentStreamResetDateBusinessCenters",
-      "fix:tag": "40970"
+      "display": "NoUnderlyingPaymentStreamResetDateBusinessCenters"
     }
   },
   {
@@ -2174,9 +2174,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40971",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingPaymentStreamInitialFixingDateBusinessCenters",
-      "fix:tag": "40971"
+      "display": "NoUnderlyingPaymentStreamInitialFixingDateBusinessCenters"
     }
   },
   {
@@ -2186,9 +2186,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40972",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingPaymentStreamFixingDateBusinessCenters",
-      "fix:tag": "40972"
+      "display": "NoUnderlyingPaymentStreamFixingDateBusinessCenters"
     }
   },
   {
@@ -2198,9 +2198,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40973",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingStreamCalculationPeriodBusinessCenters",
-      "fix:tag": "40973"
+      "display": "NoUnderlyingStreamCalculationPeriodBusinessCenters"
     }
   },
   {
@@ -2210,9 +2210,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40974",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingStreamFirstPeriodStartDateBusinessCenters",
-      "fix:tag": "40974"
+      "display": "NoUnderlyingStreamFirstPeriodStartDateBusinessCenters"
     }
   },
   {
@@ -2222,9 +2222,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40975",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingStreamEffectiveDateBusinessCenters",
-      "fix:tag": "40975"
+      "display": "NoUnderlyingStreamEffectiveDateBusinessCenters"
     }
   },
   {
@@ -2234,9 +2234,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40976",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoUnderlyingStreamTerminationDateBusinessCenters",
-      "fix:tag": "40976"
+      "display": "NoUnderlyingStreamTerminationDateBusinessCenters"
     }
   },
   {
@@ -2246,9 +2246,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40977",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoPaymentScheduleFixingDateBusinessCenters",
-      "fix:tag": "40977"
+      "display": "NoPaymentScheduleFixingDateBusinessCenters"
     }
   },
   {
@@ -2258,9 +2258,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40978",
       "description": "Byte length of encoded (non-ASCII characters) EncodedLegStreamText(40979) field.",
-      "display": "EncodedLegStreamTextLen",
-      "fix:tag": "40978"
+      "display": "EncodedLegStreamTextLen"
     }
   },
   {
@@ -2270,9 +2270,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40979",
       "description": "Encoded (non-ASCII characters) representation of the LegStreamText(40248) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegStreamText(40248) field.",
-      "display": "EncodedLegStreamText",
-      "fix:tag": "40979"
+      "display": "EncodedLegStreamText"
     }
   },
   {
@@ -2282,9 +2282,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40980",
       "description": "Byte length of encoded (non-ASCII characters) EncodedLegProvisionText(40472) field.",
-      "display": "EncodedLegProvisionTextLen",
-      "fix:tag": "40980"
+      "display": "EncodedLegProvisionTextLen"
     }
   },
   {
@@ -2294,9 +2294,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40981",
       "description": "Encoded (non-ASCII characters) representation of the LegProvisionText(40472) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegProvisionText(40472) field.",
-      "display": "EncodedLegProvisionText",
-      "fix:tag": "40981"
+      "display": "EncodedLegProvisionText"
     }
   },
   {
@@ -2306,9 +2306,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40982",
       "description": "Byte length of encoded (non-ASCII characters) EncodedStreamText(40983) field.",
-      "display": "EncodedStreamTextLen",
-      "fix:tag": "40982"
+      "display": "EncodedStreamTextLen"
     }
   },
   {
@@ -2318,9 +2318,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40983",
       "description": "Encoded (non-ASCII characters) representation of the StreamText(40056) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the StreamText(40056) field.",
-      "display": "EncodedStreamText",
-      "fix:tag": "40983"
+      "display": "EncodedStreamText"
     }
   },
   {
@@ -2330,9 +2330,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40984",
       "description": "Byte length of encoded (non-ASCII characters) EncodedPaymentText(40985) field.",
-      "display": "EncodedPaymentTextLen",
-      "fix:tag": "40984"
+      "display": "EncodedPaymentTextLen"
     }
   },
   {
@@ -2342,9 +2342,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40985",
       "description": "Encoded (non-ASCII characters) representation of the PaymentText(40229) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the PaymentText(40229) field.",
-      "display": "EncodedPaymentText",
-      "fix:tag": "40985"
+      "display": "EncodedPaymentText"
     }
   },
   {
@@ -2354,9 +2354,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40986",
       "description": "Byte length of encoded (non-ASCII characters) EncodedProvisionText(40987) field.",
-      "display": "EncodedProvisionTextLen",
-      "fix:tag": "40986"
+      "display": "EncodedProvisionTextLen"
     }
   },
   {
@@ -2366,9 +2366,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40987",
       "description": "Encoded (non-ASCII characters) representation of the ProvisionText(40113) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the ProvisionText(40113) field.",
-      "display": "EncodedProvisionText",
-      "fix:tag": "40987"
+      "display": "EncodedProvisionText"
     }
   },
   {
@@ -2378,9 +2378,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40988",
       "description": "Byte length of encoded (non-ASCII characters) EncodedUnderlyingStreamText(40989) field.",
-      "display": "EncodedUnderlyingStreamTextLen",
-      "fix:tag": "40988"
+      "display": "EncodedUnderlyingStreamTextLen"
     }
   },
   {
@@ -2390,9 +2390,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40989",
       "description": "Encoded (non-ASCII characters) representation of the UnderlyingStreamText(40547) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingStreamText(40547) field.",
-      "display": "EncodedUnderlyingStreamText",
-      "fix:tag": "40989"
+      "display": "EncodedUnderlyingStreamText"
     }
   },
   {
@@ -2402,9 +2402,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40990",
       "description": "Applicable value for LegMarketDisruptionFallbackType(41470).",
-      "display": "LegMarketDisruptionFallbackValue",
-      "fix:tag": "40990"
+      "display": "LegMarketDisruptionFallbackValue"
     }
   },
   {
@@ -2414,9 +2414,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40991",
       "description": "Applicable value for MarketDisruptionEvent(41093).",
-      "display": "MarketDisruptionValue",
-      "fix:tag": "40991"
+      "display": "MarketDisruptionValue"
     }
   },
   {
@@ -2426,9 +2426,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40992",
       "description": "Applicable value for MarketDisruptionFallbackType(41095).",
-      "display": "MarketDisruptionFallbackValue",
-      "fix:tag": "40992"
+      "display": "MarketDisruptionFallbackValue"
     }
   },
   {
@@ -2438,9 +2438,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to further clarify the value of PaymentType(40213).",
-      "display": "PaymentSubType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Initial",
@@ -2497,7 +2495,9 @@
           "doc": "Floating rate"
         }
       ],
-      "fix:tag": "40993"
+      "FIX:tag": "40993",
+      "description": "Used to further clarify the value of PaymentType(40213).",
+      "display": "PaymentSubType"
     }
   },
   {
@@ -2507,9 +2507,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40994",
       "description": "The number of averaging observations in the repeating group.",
-      "display": "NoComplexEventAveragingObservations",
-      "fix:tag": "40994"
+      "display": "NoComplexEventAveragingObservations"
     }
   },
   {
@@ -2519,9 +2519,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40995",
       "description": "Cross reference to the ordinal observation as specified either in the ComplexEventScheduleGrp or ComplexEventPeriodDateGrp components.",
-      "display": "ComplexEventAveragingObservationNumber",
-      "fix:tag": "40995"
+      "display": "ComplexEventAveragingObservationNumber"
     }
   },
   {
@@ -2531,9 +2531,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40996",
       "description": "The weight factor to be applied to the observation.",
-      "display": "ComplexEventAveragingWeight",
-      "fix:tag": "40996"
+      "display": "ComplexEventAveragingWeight"
     }
   },
   {
@@ -2543,9 +2543,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40997",
       "description": "The number of credit events specified in the repeating group.",
-      "display": "NoComplexEventCreditEvents",
-      "fix:tag": "40997"
+      "display": "NoComplexEventCreditEvents"
     }
   },
   {
@@ -2555,9 +2555,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40998",
       "description": "Specifies the type of credit event. See https://fixtrading.org/packages/credit-event-type for code list of applicable event types.",
-      "display": "ComplexEventCreditEventType",
-      "fix:tag": "40998"
+      "display": "ComplexEventCreditEventType"
     }
   },
   {
@@ -2567,9 +2567,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "40999",
       "description": "The credit event value appropriate to ComplexEventCreditEventType(40998). See https://fixtrading.org/packages/credit-event-type for applicable event type values.",
-      "display": "ComplexEventCreditEventValue",
-      "fix:tag": "40999"
+      "display": "ComplexEventCreditEventValue"
     }
   }
 ]

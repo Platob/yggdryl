@@ -10,7 +10,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyinginstrument"
+          "FIX:component": "underlyinginstrument"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlprice",
-          "fix:tag": "732"
+          "FIX:field": "underlyingsettlprice",
+          "FIX:tag": "732"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlpricetype",
-          "fix:tag": "733"
+          "FIX:field": "underlyingsettlpricetype",
+          "FIX:tag": "733"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryamount",
-          "fix:tag": "1037"
+          "FIX:field": "underlyingdeliveryamount",
+          "FIX:tag": "1037"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingamounts",
-          "fix:tag": "984"
+          "FIX:field": "nounderlyingamounts",
+          "FIX:tag": "984"
         }
       },
       {
@@ -64,14 +64,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingamount"
+          "FIX:group": "underlyingamount"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PosUndInstrmt",
-    "fix:tag": "865506"
+    "FIX:tag": "865506",
+    "display": "PosUndInstrmt"
   }
 }

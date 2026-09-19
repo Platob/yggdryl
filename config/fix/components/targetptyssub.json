@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "targetpartysubid",
-          "fix:tag": "2434"
+          "FIX:field": "targetpartysubid",
+          "FIX:tag": "2434"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "targetpartysubidtype",
-          "fix:tag": "2435"
+          "FIX:field": "targetpartysubidtype",
+          "FIX:tag": "2435"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TargetPtysSub",
-    "fix:tag": "114293"
+    "FIX:tag": "114293",
+    "display": "TargetPtysSub"
   }
 }

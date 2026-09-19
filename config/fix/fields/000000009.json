@@ -8,9 +8,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "900",
       "description": "TotalNetValue is determined as follows:",
-      "display": "TotalNetValue",
-      "fix:tag": "900"
+      "display": "TotalNetValue"
     }
   },
   {
@@ -22,9 +22,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "901",
       "description": "Starting consideration less repayments",
-      "display": "CashOutstanding",
-      "fix:tag": "901"
+      "display": "CashOutstanding"
     }
   },
   {
@@ -34,9 +34,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "902",
       "description": "Collateral Assignment Identifier",
-      "display": "CollAsgnID",
-      "fix:tag": "902"
+      "display": "CollAsgnID"
     }
   },
   {
@@ -46,9 +46,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Collateral Assignment Transaction Type",
-      "display": "CollAsgnTransType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "New",
@@ -75,7 +73,9 @@
           "doc": "Reverse"
         }
       ],
-      "fix:tag": "903"
+      "FIX:tag": "903",
+      "description": "Collateral Assignment Transaction Type",
+      "display": "CollAsgnTransType"
     }
   },
   {
@@ -85,9 +85,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "904",
       "description": "Collateral Response Identifier",
-      "display": "CollRespID",
-      "fix:tag": "904"
+      "display": "CollRespID"
     }
   },
   {
@@ -97,9 +97,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of collateral assignment response.",
-      "display": "CollAsgnRespType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Received",
@@ -131,7 +129,9 @@
           "doc": "Transaction completed with warning - see Text(58) for further information."
         }
       ],
-      "fix:tag": "905"
+      "FIX:tag": "905",
+      "description": "Type of collateral assignment response.",
+      "display": "CollAsgnRespType"
     }
   },
   {
@@ -141,9 +141,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Collateral Assignment Reject Reason",
-      "display": "CollAsgnRejectReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "UnknownDeal",
@@ -180,7 +178,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "906"
+      "FIX:tag": "906",
+      "description": "Collateral Assignment Reject Reason",
+      "display": "CollAsgnRejectReason"
     }
   },
   {
@@ -190,9 +190,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "907",
       "description": "Collateral Assignment Identifier to which a transaction refers",
-      "display": "CollAsgnRefID",
-      "fix:tag": "907"
+      "display": "CollAsgnRefID"
     }
   },
   {
@@ -202,9 +202,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "908",
       "description": "Collateral Report Identifier",
-      "display": "CollRptID",
-      "fix:tag": "908"
+      "display": "CollRptID"
     }
   },
   {
@@ -214,9 +214,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "909",
       "description": "Collateral Inquiry Identifier",
-      "display": "CollInquiryID",
-      "fix:tag": "909"
+      "display": "CollInquiryID"
     }
   },
   {
@@ -226,9 +226,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Collateral Status",
-      "display": "CollStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Unassigned",
@@ -260,7 +258,9 @@
           "doc": "Reused"
         }
       ],
-      "fix:tag": "910"
+      "FIX:tag": "910",
+      "description": "Collateral Status",
+      "display": "CollStatus"
     }
   },
   {
@@ -270,9 +270,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "911",
       "description": "Total number of reports returned in response to a request.",
-      "display": "TotNumReports",
-      "fix:tag": "911"
+      "display": "TotNumReports"
     }
   },
   {
@@ -282,9 +282,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether this message is the last report message in response to a request message, e.g. OrderMassStatusRequest(35=AF), TradeCaptureReportRequest(35=AD).",
-      "display": "LastRptRequested",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "NotLastMessage",
@@ -302,7 +300,9 @@
           "doc": "Last message"
         }
       ],
-      "fix:tag": "912"
+      "FIX:tag": "912",
+      "description": "Indicates whether this message is the last report message in response to a request message, e.g. OrderMassStatusRequest(35=AF), TradeCaptureReportRequest(35=AD).",
+      "display": "LastRptRequested"
     }
   },
   {
@@ -312,9 +312,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "913",
       "description": "The full name of the base standard agreement, annexes and amendments in place between the principals applicable to a financing transaction. See https://fpml.org/coding-scheme/master-agreement-type for derivative values.",
-      "display": "AgreementDesc",
-      "fix:tag": "913"
+      "display": "AgreementDesc"
     }
   },
   {
@@ -324,9 +324,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "914",
       "description": "A common reference to the applicable standing agreement between the counterparties to a financing transaction.",
-      "display": "AgreementID",
-      "fix:tag": "914"
+      "display": "AgreementID"
     }
   },
   {
@@ -337,9 +337,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "915",
       "description": "A reference to the date the underlying agreement specified by AgreementID and AgreementDesc was executed.",
-      "display": "AgreementDate",
-      "fix:tag": "915"
+      "display": "AgreementDate"
     }
   },
   {
@@ -350,9 +350,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "916",
       "description": "Start date of a financing deal, i.e. the date the buyer pays the seller cash and takes control of the collateral",
-      "display": "StartDate",
-      "fix:tag": "916"
+      "display": "StartDate"
     }
   },
   {
@@ -363,9 +363,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "917",
       "description": "End date of a financing deal, i.e. the date the seller reimburses the buyer and takes back control of the collateral",
-      "display": "EndDate",
-      "fix:tag": "917"
+      "display": "EndDate"
     }
   },
   {
@@ -375,9 +375,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "918",
       "description": "Contractual currency forming the basis of a financing agreement and associated transactions. Usually, but not always, the same as the trade currency.",
-      "display": "AgreementCurrency",
-      "fix:tag": "918"
+      "display": "AgreementCurrency"
     }
   },
   {
@@ -387,9 +387,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies type of settlement",
-      "display": "DeliveryType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "VersusPayment",
@@ -416,7 +414,9 @@
           "doc": "Deliver-by-Value"
         }
       ],
-      "fix:tag": "919"
+      "FIX:tag": "919",
+      "description": "Identifies type of settlement",
+      "display": "DeliveryType"
     }
   },
   {
@@ -428,9 +428,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "920",
       "description": "Accrued Interest Amount applicable to a financing transaction on the End Date.",
-      "display": "EndAccruedInterestAmt",
-      "fix:tag": "920"
+      "display": "EndAccruedInterestAmt"
     }
   },
   {
@@ -442,9 +442,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "921",
       "description": "Starting dirty cash consideration of a financing deal, i.e. paid to the seller on the Start Date.",
-      "display": "StartCash",
-      "fix:tag": "921"
+      "display": "StartCash"
     }
   },
   {
@@ -456,9 +456,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "922",
       "description": "Ending dirty cash consideration of a financing deal. i.e. reimbursed to the buyer on the End Date.",
-      "display": "EndCash",
-      "fix:tag": "922"
+      "display": "EndCash"
     }
   },
   {
@@ -468,9 +468,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "923",
       "description": "Unique identifier for a User Request.",
-      "display": "UserRequestID",
-      "fix:tag": "923"
+      "display": "UserRequestID"
     }
   },
   {
@@ -480,9 +480,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the action required by a User Request Message",
-      "display": "UserRequestType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "LogOnUser",
@@ -509,7 +507,9 @@
           "doc": "Request Throttle Limit"
         }
       ],
-      "fix:tag": "924"
+      "FIX:tag": "924",
+      "description": "Indicates the action required by a User Request Message",
+      "display": "UserRequestType"
     }
   },
   {
@@ -519,9 +519,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "925",
       "description": "New Password or passphrase",
-      "display": "NewPassword",
-      "fix:tag": "925"
+      "display": "NewPassword"
     }
   },
   {
@@ -531,9 +531,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the status of a user",
-      "display": "UserStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "LoggedIn",
@@ -580,7 +578,9 @@
           "doc": "Throttle parameters changed"
         }
       ],
-      "fix:tag": "926"
+      "FIX:tag": "926",
+      "description": "Indicates the status of a user",
+      "display": "UserStatus"
     }
   },
   {
@@ -590,9 +590,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "927",
       "description": "A text description associated with a user status.",
-      "display": "UserStatusText",
-      "fix:tag": "927"
+      "display": "UserStatusText"
     }
   },
   {
@@ -602,9 +602,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the status of a network connection",
-      "display": "StatusValue",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Connected",
@@ -626,7 +624,9 @@
           "doc": "In Process"
         }
       ],
-      "fix:tag": "928"
+      "FIX:tag": "928",
+      "description": "Indicates the status of a network connection",
+      "display": "StatusValue"
     }
   },
   {
@@ -636,9 +636,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "929",
       "description": "A text description associated with a network status.",
-      "display": "StatusText",
-      "fix:tag": "929"
+      "display": "StatusText"
     }
   },
   {
@@ -648,9 +648,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "930",
       "description": "Assigned value used to identify a firm.",
-      "display": "RefCompID",
-      "fix:tag": "930"
+      "display": "RefCompID"
     }
   },
   {
@@ -660,9 +660,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "931",
       "description": "Assigned value used to identify specific elements within a firm.",
-      "display": "RefSubID",
-      "fix:tag": "931"
+      "display": "RefSubID"
     }
   },
   {
@@ -672,9 +672,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "932",
       "description": "Unique identifier for a network response.",
-      "display": "NetworkResponseID",
-      "fix:tag": "932"
+      "display": "NetworkResponseID"
     }
   },
   {
@@ -684,9 +684,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "933",
       "description": "Unique identifier for a network resquest.",
-      "display": "NetworkRequestID",
-      "fix:tag": "933"
+      "display": "NetworkRequestID"
     }
   },
   {
@@ -696,9 +696,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "934",
       "description": "Identifier of the previous Network Response message sent to a counterparty, used to allow incremental updates.",
-      "display": "LastNetworkResponseID",
-      "fix:tag": "934"
+      "display": "LastNetworkResponseID"
     }
   },
   {
@@ -708,9 +708,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the type and level of details required for a Network Status Request Message",
-      "display": "NetworkRequestType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Snapshot",
@@ -732,7 +730,9 @@
           "doc": "Level of Detail, then NoCompID's becomes required"
         }
       ],
-      "fix:tag": "935"
+      "FIX:tag": "935",
+      "description": "Indicates the type and level of details required for a Network Status Request Message",
+      "display": "NetworkRequestType"
     }
   },
   {
@@ -742,9 +742,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "936",
       "description": "Number of CompID entries in a repeating group.",
-      "display": "NoCompIDs",
-      "fix:tag": "936"
+      "display": "NoCompIDs"
     }
   },
   {
@@ -754,9 +754,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the type of Network Response Message.",
-      "display": "NetworkStatusResponseType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Full",
@@ -768,7 +766,9 @@
           "doc": "Incremental Update"
         }
       ],
-      "fix:tag": "937"
+      "FIX:tag": "937",
+      "description": "Indicates the type of Network Response Message.",
+      "display": "NetworkStatusResponseType"
     }
   },
   {
@@ -778,9 +778,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "938",
       "description": "Number of CollInquiryQualifier entries in a repeating group.",
-      "display": "NoCollInquiryQualifier",
-      "fix:tag": "938"
+      "display": "NoCollInquiryQualifier"
     }
   },
   {
@@ -790,9 +790,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Trade Report Status",
-      "display": "TrdRptStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Accepted",
@@ -854,7 +852,9 @@
           "doc": "Disputed"
         }
       ],
-      "fix:tag": "939"
+      "FIX:tag": "939",
+      "description": "Trade Report Status",
+      "display": "TrdRptStatus"
     }
   },
   {
@@ -864,9 +864,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the affirmation status of the confirmation.",
-      "display": "AffirmStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Received",
@@ -883,7 +881,9 @@
           "doc": "Affirmed"
         }
       ],
-      "fix:tag": "940"
+      "FIX:tag": "940",
+      "description": "Specifies the affirmation status of the confirmation.",
+      "display": "AffirmStatus"
     }
   },
   {
@@ -893,9 +893,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "941",
       "description": "Currency in which the strike price of an underlying instrument is denominated",
-      "display": "UnderlyingStrikeCurrency",
-      "fix:tag": "941"
+      "display": "UnderlyingStrikeCurrency"
     }
   },
   {
@@ -905,9 +905,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "942",
       "description": "Currency in which the strike price of a instrument leg of a multileg instrument is denominated",
-      "display": "LegStrikeCurrency",
-      "fix:tag": "942"
+      "display": "LegStrikeCurrency"
     }
   },
   {
@@ -917,9 +917,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "943",
       "description": "A code that represents a time interval in which a fill or trade occurred.",
-      "display": "TimeBracket",
-      "fix:tag": "943"
+      "display": "TimeBracket"
     }
   },
   {
@@ -929,9 +929,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Action proposed for an Underlying Instrument instance.",
-      "display": "CollAction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Retain",
@@ -948,7 +946,9 @@
           "doc": "Remove"
         }
       ],
-      "fix:tag": "944"
+      "FIX:tag": "944",
+      "description": "Action proposed for an Underlying Instrument instance.",
+      "display": "CollAction"
     }
   },
   {
@@ -958,9 +958,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of Collateral Inquiry",
-      "display": "CollInquiryStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Accepted",
@@ -987,7 +985,9 @@
           "doc": "Rejected"
         }
       ],
-      "fix:tag": "945"
+      "FIX:tag": "945",
+      "description": "Status of Collateral Inquiry",
+      "display": "CollInquiryStatus"
     }
   },
   {
@@ -997,9 +997,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Result returned in response to Collateral Inquiry",
-      "display": "CollInquiryResult",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Successful",
@@ -1056,7 +1054,9 @@
           "doc": "Other (further information in Text (58) field)"
         }
       ],
-      "fix:tag": "946"
+      "FIX:tag": "946",
+      "description": "Result returned in response to Collateral Inquiry",
+      "display": "CollInquiryResult"
     }
   },
   {
@@ -1066,9 +1066,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "947",
       "description": "Currency in which the StrikePrice is denominated.",
-      "display": "StrikeCurrency",
-      "fix:tag": "947"
+      "display": "StrikeCurrency"
     }
   },
   {
@@ -1078,9 +1078,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "948",
       "description": "Number of Nested3PartyID (949), Nested3PartyIDSource (950), and Nested3PartyRole (95) entries",
-      "display": "NoNested3PartyIDs",
-      "fix:tag": "948"
+      "display": "NoNested3PartyIDs"
     }
   },
   {
@@ -1090,9 +1090,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "949",
       "description": "PartyID value within a \"third instance\" Nested repeating group.",
-      "display": "Nested3PartyID",
-      "fix:tag": "949"
+      "display": "Nested3PartyID"
     }
   },
   {
@@ -1102,9 +1102,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "PartyIDSource value within a \"third instance\" Nested repeating group.",
-      "display": "Nested3PartyIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "KoreanInvestorID",
@@ -1292,7 +1290,9 @@
           "doc": "Korea Short Selling Registration Number"
         }
       ],
-      "fix:tag": "950"
+      "FIX:tag": "950",
+      "description": "PartyIDSource value within a \"third instance\" Nested repeating group.",
+      "display": "Nested3PartyIDSource"
     }
   },
   {
@@ -1302,9 +1302,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "PartyRole value within a \"third instance\" Nested repeating group.",
-      "display": "Nested3PartyRole",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ExecutingFirm",
@@ -1951,7 +1949,9 @@
           "doc": "Algorithm"
         }
       ],
-      "fix:tag": "951"
+      "FIX:tag": "951",
+      "description": "PartyRole value within a \"third instance\" Nested repeating group.",
+      "display": "Nested3PartyRole"
     }
   },
   {
@@ -1961,9 +1961,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "952",
       "description": "Number of Nested3PartySubIDs (953) entries",
-      "display": "NoNested3PartySubIDs",
-      "fix:tag": "952"
+      "display": "NoNested3PartySubIDs"
     }
   },
   {
@@ -1973,9 +1973,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "953",
       "description": "PartySubID value within a \"third instance\" Nested repeating group.",
-      "display": "Nested3PartySubID",
-      "fix:tag": "953"
+      "display": "Nested3PartySubID"
     }
   },
   {
@@ -1985,9 +1985,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "PartySubIDType value within a \"third instance\" Nested repeating group.",
-      "display": "Nested3PartySubIDType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Firm",
@@ -2434,22 +2432,23 @@
           "doc": "Certificate registration status"
         }
       ],
-      "fix:tag": "954"
+      "FIX:tag": "954",
+      "description": "PartySubIDType value within a \"third instance\" Nested repeating group.",
+      "display": "Nested3PartySubIDType"
     }
   },
   {
     "name": "legcontractsettlmonth",
     "dtype": {
       "type": "string",
-      "layout": "fixed_string",
-      "charset": "us-ascii",
+      "layout": "fixed_ascii",
       "fixed": 8
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "955",
       "description": "Specifies when the contract (i.e. MBS/TBA) will settle.",
-      "display": "LegContractSettlMonth",
-      "fix:tag": "955"
+      "display": "LegContractSettlMonth"
     }
   },
   {
@@ -2460,9 +2459,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "956",
       "description": "The start date used for calculating accrued interest on debt instruments which are being sold between interest payment dates. Often but not always the same as the Issue Date and the Dated Date",
-      "display": "LegInterestAccrualDate",
-      "fix:tag": "956"
+      "display": "LegInterestAccrualDate"
     }
   },
   {
@@ -2472,9 +2471,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "957",
       "description": "Indicates number of strategy parameters",
-      "display": "NoStrategyParameters",
-      "fix:tag": "957"
+      "display": "NoStrategyParameters"
     }
   },
   {
@@ -2484,9 +2483,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "958",
       "description": "Name of parameter",
-      "display": "StrategyParameterName",
-      "fix:tag": "958"
+      "display": "StrategyParameterName"
     }
   },
   {
@@ -2496,9 +2495,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Datatype of the parameter",
-      "display": "StrategyParameterType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Int",
@@ -2645,7 +2642,9 @@
           "doc": "Tenor"
         }
       ],
-      "fix:tag": "959"
+      "FIX:tag": "959",
+      "description": "Datatype of the parameter",
+      "display": "StrategyParameterType"
     }
   },
   {
@@ -2655,9 +2654,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "960",
       "description": "Value of the parameter",
-      "display": "StrategyParameterValue",
-      "fix:tag": "960"
+      "display": "StrategyParameterValue"
     }
   },
   {
@@ -2667,9 +2666,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "961",
       "description": "Host assigned entity ID that can be used to reference all components of a cross; sides + strategy + legs. Used as the primary key with which to refer to the Cross Order for cancellation and replace. The HostCrossID will also be used to link together components of the Cross Order. For example, each individual Execution Report associated with the order will carry HostCrossID in order to tie back to the original cross order.",
-      "display": "HostCrossID",
-      "fix:tag": "961"
+      "display": "HostCrossID"
     }
   },
   {
@@ -2681,9 +2680,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "962",
       "description": "Indicates how long the order as specified in the side stays in effect. SideTimeInForce allows a two-sided cross order to specify order behavior separately for each side. Absence of this field indicates that TimeInForce should be referenced. SideTimeInForce will override TimeInForce if both are provided.",
-      "display": "SideTimeInForce",
-      "fix:tag": "962"
+      "display": "SideTimeInForce"
     }
   },
   {
@@ -2693,9 +2692,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "963",
       "description": "Unique identifier for the Market Data Report.",
-      "display": "MDReportID",
-      "fix:tag": "963"
+      "display": "MDReportID"
     }
   },
   {
@@ -2705,9 +2704,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "964",
       "description": "Identifies a Security List message.",
-      "display": "SecurityReportID",
-      "fix:tag": "964"
+      "display": "SecurityReportID"
     }
   },
   {
@@ -2717,9 +2716,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the current state of the instrument.",
-      "display": "SecurityStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Active",
@@ -2776,7 +2773,9 @@
           "doc": "Pending Deletion"
         }
       ],
-      "fix:tag": "965"
+      "FIX:tag": "965",
+      "description": "Indicates the current state of the instrument.",
+      "display": "SecurityStatus"
     }
   },
   {
@@ -2786,9 +2785,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "966",
       "description": "Indicator to determine if instrument is settle on open",
-      "display": "SettleOnOpenFlag",
-      "fix:tag": "966"
+      "display": "SettleOnOpenFlag"
     }
   },
   {
@@ -2798,9 +2797,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "967",
       "description": "Used for derivatives. Multiplier applied to the strike price for the purpose of calculating the settlement value.",
-      "display": "StrikeMultiplier",
-      "fix:tag": "967"
+      "display": "StrikeMultiplier"
     }
   },
   {
@@ -2810,9 +2809,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "968",
       "description": "Used for derivatives. The number of shares/units for the financial instrument involved in the option trade.",
-      "display": "StrikeValue",
-      "fix:tag": "968"
+      "display": "StrikeValue"
     }
   },
   {
@@ -2822,9 +2821,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "969",
       "description": "Minimum price increase for a given exchange-traded Instrument",
-      "display": "MinPriceIncrement",
-      "fix:tag": "969"
+      "display": "MinPriceIncrement"
     }
   },
   {
@@ -2834,9 +2833,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "970",
       "description": "Position Limit for a given exchange-traded product.",
-      "display": "PositionLimit",
-      "fix:tag": "970"
+      "display": "PositionLimit"
     }
   },
   {
@@ -2846,9 +2845,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "971",
       "description": "Position Limit in the near-term contract for a given exchange-traded product.",
-      "display": "NTPositionLimit",
-      "fix:tag": "971"
+      "display": "NTPositionLimit"
     }
   },
   {
@@ -2858,9 +2857,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "972",
       "description": "Percent of the Strike Price that this underlying represents.",
-      "display": "UnderlyingAllocationPercent",
-      "fix:tag": "972"
+      "display": "UnderlyingAllocationPercent"
     }
   },
   {
@@ -2872,9 +2871,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "973",
       "description": "Cash amount associated with the underlying component.",
-      "display": "UnderlyingCashAmount",
-      "fix:tag": "973"
+      "display": "UnderlyingCashAmount"
     }
   },
   {
@@ -2884,9 +2883,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used for derivatives that deliver into cash underlying.",
-      "display": "UnderlyingCashType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "FIXED",
           "name": "FIXED",
@@ -2898,7 +2895,9 @@
           "doc": "DIFF"
         }
       ],
-      "fix:tag": "974"
+      "FIX:tag": "974",
+      "description": "Used for derivatives that deliver into cash underlying.",
+      "display": "UnderlyingCashType"
     }
   },
   {
@@ -2908,9 +2907,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates order settlement period for the underlying instrument.",
-      "display": "UnderlyingSettlementType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "2",
           "name": "TPlus1",
@@ -2942,7 +2939,9 @@
           "doc": "S-2"
         }
       ],
-      "fix:tag": "975"
+      "FIX:tag": "975",
+      "description": "Indicates order settlement period for the underlying instrument.",
+      "display": "UnderlyingSettlementType"
     }
   },
   {
@@ -2953,9 +2952,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "976",
       "description": "Date associated to the quantity that is being reported for the position.",
-      "display": "QuantityDate",
-      "fix:tag": "976"
+      "display": "QuantityDate"
     }
   },
   {
@@ -2965,9 +2964,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "977",
       "description": "Unique identifier for the Contrary Intention report",
-      "display": "ContIntRptID",
-      "fix:tag": "977"
+      "display": "ContIntRptID"
     }
   },
   {
@@ -2977,9 +2976,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "978",
       "description": "Indicates if the contrary intention was received after the exchange imposed cutoff time",
-      "display": "LateIndicator",
-      "fix:tag": "978"
+      "display": "LateIndicator"
     }
   },
   {
@@ -2989,9 +2988,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "979",
       "description": "Originating source of the request.",
-      "display": "InputSource",
-      "fix:tag": "979"
+      "display": "InputSource"
     }
   },
   {
@@ -3001,9 +3000,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the action taken or to be taken for the specified instrument or list of instruments.",
-      "display": "SecurityUpdateAction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "A",
           "name": "Add",
@@ -3020,7 +3017,9 @@
           "doc": "Modify"
         }
       ],
-      "fix:tag": "980"
+      "FIX:tag": "980",
+      "description": "Specifies the action taken or to be taken for the specified instrument or list of instruments.",
+      "display": "SecurityUpdateAction"
     }
   },
   {
@@ -3030,9 +3029,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "981",
       "description": "Number of Expiration Qty entries",
-      "display": "NoExpiration",
-      "fix:tag": "981"
+      "display": "NoExpiration"
     }
   },
   {
@@ -3042,9 +3041,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Expiration Quantity type",
-      "display": "ExpirationQtyType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "AutoExercise",
@@ -3071,10 +3068,12 @@
           "doc": "Difference"
         }
       ],
-      "fix:names": [
+      "FIX:names": [
         "exptype"
       ],
-      "fix:tag": "982"
+      "FIX:tag": "982",
+      "description": "Expiration Quantity type",
+      "display": "ExpirationQtyType"
     }
   },
   {
@@ -3086,9 +3085,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "983",
       "description": "Expiration Quantity associated with the Expiration Type",
-      "display": "ExpQty",
-      "fix:tag": "983"
+      "display": "ExpQty"
     }
   },
   {
@@ -3098,9 +3097,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "984",
       "description": "Total number of occurrences of Amount to pay in order to receive the underlying instrument",
-      "display": "NoUnderlyingAmounts",
-      "fix:tag": "984"
+      "display": "NoUnderlyingAmounts"
     }
   },
   {
@@ -3112,9 +3111,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "985",
       "description": "Amount to pay in order to receive the underlying instrument",
-      "display": "UnderlyingPayAmount",
-      "fix:tag": "985"
+      "display": "UnderlyingPayAmount"
     }
   },
   {
@@ -3126,9 +3125,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "986",
       "description": "Amount to collect in order to deliver the underlying instrument",
-      "display": "UnderlyingCollectAmount",
-      "fix:tag": "986"
+      "display": "UnderlyingCollectAmount"
     }
   },
   {
@@ -3139,9 +3138,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "987",
       "description": "Date the underlying instrument will settle. Used for derivatives that deliver into more than one underlying instrument. Settlement dates can vary across underlying instruments.",
-      "display": "UnderlyingSettlementDate",
-      "fix:tag": "987"
+      "display": "UnderlyingSettlementDate"
     }
   },
   {
@@ -3151,9 +3150,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "988",
       "description": "Settlement status of the underlying instrument. Used for derivatives that deliver into more than one underlying instrument. Settlement can be delayed for an underlying instrument.",
-      "display": "UnderlyingSettlementStatus",
-      "fix:tag": "988"
+      "display": "UnderlyingSettlementStatus"
     }
   },
   {
@@ -3163,9 +3162,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "989",
       "description": "Will allow the intermediary to specify an allocation ID generated by their system.",
-      "display": "SecondaryIndividualAllocID",
-      "fix:tag": "989"
+      "display": "SecondaryIndividualAllocID"
     }
   },
   {
@@ -3175,9 +3174,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "990",
       "description": "Additional attribute to store the Trade ID of the Leg.",
-      "display": "LegReportID",
-      "fix:tag": "990"
+      "display": "LegReportID"
     }
   },
   {
@@ -3189,9 +3188,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "991",
       "description": "Specifies average price rounded to quoted precision.",
-      "display": "RndPx",
-      "fix:tag": "991"
+      "display": "RndPx"
     }
   },
   {
@@ -3201,9 +3200,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies whether the allocation is to be sub-allocated or allocated to a third party",
-      "display": "IndividualAllocType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "SubAllocate",
@@ -3215,7 +3212,9 @@
           "doc": "Third Party Allocation"
         }
       ],
-      "fix:tag": "992"
+      "FIX:tag": "992",
+      "description": "Identifies whether the allocation is to be sub-allocated or allocated to a third party",
+      "display": "IndividualAllocType"
     }
   },
   {
@@ -3225,9 +3224,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "993",
       "description": "Capacity of customer in the allocation block.",
-      "display": "AllocCustomerCapacity",
-      "fix:tag": "993"
+      "display": "AllocCustomerCapacity"
     }
   },
   {
@@ -3237,9 +3236,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "994",
       "description": "The Tier the trade was matched by the clearing system.",
-      "display": "TierCode",
-      "fix:tag": "994"
+      "display": "TierCode"
     }
   },
   {
@@ -3249,9 +3248,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The unit of measure of the underlying commodity upon which the contract is based. Two groups of units of measure enumerations are supported.",
-      "display": "UnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -3733,7 +3730,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "996"
+      "FIX:tag": "996",
+      "description": "The unit of measure of the underlying commodity upon which the contract is based. Two groups of units of measure enumerations are supported.",
+      "display": "UnitOfMeasure"
     }
   },
   {
@@ -3743,9 +3742,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Unit of time associated with the contract.",
-      "display": "TimeUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "H",
           "name": "Hour",
@@ -3797,7 +3794,9 @@
           "doc": "Flexible"
         }
       ],
-      "fix:tag": "997"
+      "FIX:tag": "997",
+      "description": "Unit of time associated with the contract.",
+      "display": "TimeUnit"
     }
   },
   {
@@ -3807,9 +3806,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Underlying unit of measure.",
-      "display": "UnderlyingUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -4291,7 +4288,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "998"
+      "FIX:tag": "998",
+      "description": "Underlying unit of measure.",
+      "display": "UnderlyingUnitOfMeasure"
     }
   },
   {
@@ -4301,9 +4300,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Multileg instrument unit of measure.",
-      "display": "LegUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -4785,7 +4782,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "999"
+      "FIX:tag": "999",
+      "description": "Multileg instrument unit of measure.",
+      "display": "LegUnitOfMeasure"
     }
   }
 ]

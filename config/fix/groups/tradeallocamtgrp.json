@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "tradeallocamtcomponent"
+        "FIX:component": "tradeallocamtcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "tradeallocamtcomponent",
+    "FIX:counter": "1844",
+    "FIX:tag": "926984",
     "description": "Required if NoTradeAllocAmts(1844) > 0.",
-    "display": "TradeAllocAmtGrp",
-    "fix:component": "tradeallocamtcomponent",
-    "fix:counter": "1844",
-    "fix:tag": "926984"
+    "display": "TradeAllocAmtGrp"
   }
 }

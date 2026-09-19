@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingphysicalsettlterm"
+        "FIX:component": "underlyingphysicalsettlterm"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingphysicalsettlterm",
+    "FIX:counter": "42060",
+    "FIX:tag": "190211",
     "description": "Required if NoUnderlyingPhysicalSettlTerms(42060) > 0.",
-    "display": "UnderlyingPhysicalSettlTermGrp",
-    "fix:component": "underlyingphysicalsettlterm",
-    "fix:counter": "42060",
-    "fix:tag": "190211"
+    "display": "UnderlyingPhysicalSettlTermGrp"
   }
 }

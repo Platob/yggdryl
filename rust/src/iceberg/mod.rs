@@ -18,13 +18,13 @@
 //! ```no_run
 //! use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
 //! use yggdryl::local::Folder;
-//! use yggdryl::{DataType, Field};
+//! use yggdryl::{DataType, Field, StructureType};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut schema = DataType::from_fields([
+//! let mut schema = DataType::from(StructureType::from_fields([
 //!     DataType::Int64.required_field("id"),
 //!     DataType::utf8().nullable_field("venue"),
-//! ])?
+//! ])?)
 //! .required_field("row");
 //! assign_field_ids(&mut schema, 1)?;
 //!

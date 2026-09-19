@@ -71,6 +71,7 @@ impl Scalar {
             | Self::Record(_)
             | Self::Version(_)
             | Self::Url(_)
+            | Self::Urn(_)
             | Self::MediaType(_) => return None,
             Self::String(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             code_scalars!() => {
@@ -279,7 +280,7 @@ impl Scalar {
             return;
         }
         if let (Some(family), Some(count), Some(unit), Some(zone)) = (
-            self.temporal_family(),
+            self.temporal_kind(),
             self.temporal_count(),
             self.temporal_unit(),
             self.temporal_timezone(),
@@ -312,6 +313,12 @@ impl Scalar {
             }
             Self::Url(value) => {
                 write_tag(sink, DataTypeId::Url);
+                let canonical = value.to_string();
+                write_len(sink, canonical.len());
+                sink.write(canonical.as_bytes());
+            }
+            Self::Urn(value) => {
+                write_tag(sink, DataTypeId::Urn);
                 let canonical = value.to_string();
                 write_len(sink, canonical.len());
                 sink.write(canonical.as_bytes());
@@ -523,17 +530,17 @@ pub(super) fn write_decimal(sink: &mut impl Hasher, unscaled: i256, scale: i8) {
 /// Write a temporal as its family, normalized count, and zone.
 pub(super) fn write_temporal(
     sink: &mut impl Hasher,
-    family: crate::TemporalFamily,
+    family: crate::TemporalKind,
     count: i64,
     unit: crate::TimeUnit,
     zone: &crate::Timezone,
 ) {
     let tag = match family {
-        crate::TemporalFamily::Date => DataTypeId::Date64,
-        crate::TemporalFamily::Time => DataTypeId::Time64,
-        crate::TemporalFamily::DateTime => DataTypeId::DateTime64,
-        crate::TemporalFamily::Duration => DataTypeId::Duration64,
-        crate::TemporalFamily::Interval => DataTypeId::Interval,
+        crate::TemporalKind::Date => DataTypeId::Date64,
+        crate::TemporalKind::Time => DataTypeId::Time64,
+        crate::TemporalKind::DateTime => DataTypeId::DateTime64,
+        crate::TemporalKind::Duration => DataTypeId::Duration64,
+        crate::TemporalKind::Interval => DataTypeId::Interval,
     };
     let (class, count) = temporal_key(count, unit);
     write_tag(sink, tag);

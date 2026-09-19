@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingprovisionoptionexercisebusinesscentercomponent"
+        "FIX:component": "underlyingprovisionoptionexercisebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingprovisionoptionexercisebusinesscentercomponent",
+    "FIX:counter": "42184",
+    "FIX:tag": "1039622",
     "description": "Required if NoUnderlyingProvisionOptionExerciseBusinessCenters(42184) > 0.",
-    "display": "UnderlyingProvisionOptionExerciseBusinessCenterGrp",
-    "fix:component": "underlyingprovisionoptionexercisebusinesscentercomponent",
-    "fix:counter": "42184",
-    "fix:tag": "1039622"
+    "display": "UnderlyingProvisionOptionExerciseBusinessCenterGrp"
   }
 }

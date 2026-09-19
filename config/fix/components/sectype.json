@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitytype",
-          "fix:tag": "167"
+          "FIX:field": "securitytype",
+          "FIX:tag": "167"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securitysubtype",
-          "fix:tag": "762"
+          "FIX:field": "securitysubtype",
+          "FIX:tag": "762"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "product",
-          "fix:tag": "460"
+          "FIX:field": "product",
+          "FIX:tag": "460"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cficode",
-          "fix:tag": "461"
+          "FIX:field": "cficode",
+          "FIX:tag": "461"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "upicode",
-          "fix:tag": "2891"
+          "FIX:field": "upicode",
+          "FIX:tag": "2891"
         }
       },
       {
@@ -65,15 +65,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SecType",
-    "fix:tag": "1001310"
+    "FIX:tag": "1001310",
+    "display": "SecType"
   }
 }

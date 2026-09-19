@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "mdreqid",
-          "fix:tag": "262"
+          "FIX:field": "mdreqid",
+          "FIX:tag": "262"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "subscriptionrequesttype",
-          "fix:tag": "263"
+          "FIX:field": "subscriptionrequesttype",
+          "FIX:tag": "263"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -53,7 +53,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "marketdepth",
-          "fix:tag": "264"
+          "FIX:field": "marketdepth",
+          "FIX:tag": "264"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdupdatetype",
-          "fix:tag": "265"
+          "FIX:field": "mdupdatetype",
+          "FIX:tag": "265"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "aggregatedbook",
-          "fix:tag": "266"
+          "FIX:field": "aggregatedbook",
+          "FIX:tag": "266"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "openclosesettlflag",
-          "fix:tag": "286"
+          "FIX:field": "openclosesettlflag",
+          "FIX:tag": "286"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "scope",
-          "fix:tag": "546"
+          "FIX:field": "scope",
+          "FIX:tag": "546"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdimplicitdelete",
-          "fix:tag": "547"
+          "FIX:field": "mdimplicitdelete",
+          "FIX:tag": "547"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nomdentrytypes",
-          "fix:tag": "267"
+          "FIX:field": "nomdentrytypes",
+          "FIX:tag": "267"
         }
       },
       {
@@ -140,7 +140,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "mdreqgrp"
+          "FIX:group": "mdreqgrp"
         }
       },
       {
@@ -150,8 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketsegments",
-          "fix:tag": "1310"
+          "FIX:field": "nomarketsegments",
+          "FIX:tag": "1310"
         }
       },
       {
@@ -161,7 +161,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "marketsegmentscopegrp"
+          "FIX:group": "marketsegmentscopegrp"
         }
       },
       {
@@ -171,8 +171,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "norelatedsym",
-          "fix:tag": "146"
+          "FIX:field": "norelatedsym",
+          "FIX:tag": "146"
         }
       },
       {
@@ -182,7 +182,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "instrmtmdreqgrp"
+          "FIX:group": "instrmtmdreqgrp"
         }
       },
       {
@@ -192,8 +192,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notradingsessions",
-          "fix:tag": "386"
+          "FIX:field": "notradingsessions",
+          "FIX:tag": "386"
         }
       },
       {
@@ -203,7 +203,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "trdgsesgrp"
+          "FIX:group": "trdgsesgrp"
         }
       },
       {
@@ -213,8 +213,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applqueueaction",
-          "fix:tag": "815"
+          "FIX:field": "applqueueaction",
+          "FIX:tag": "815"
         }
       },
       {
@@ -224,8 +224,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applqueuemax",
-          "fix:tag": "812"
+          "FIX:field": "applqueuemax",
+          "FIX:tag": "812"
         }
       },
       {
@@ -235,8 +235,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdquotetype",
-          "fix:tag": "1070"
+          "FIX:field": "mdquotetype",
+          "FIX:tag": "1070"
         }
       },
       {
@@ -246,8 +246,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fastmarketindicator",
-          "fix:tag": "2447"
+          "FIX:field": "fastmarketindicator",
+          "FIX:tag": "2447"
         }
       },
       {
@@ -257,16 +257,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "V",
+    "FIX:tag": "108215",
     "description": "MsgType = V",
-    "display": "MarketDataRequest",
-    "fix:msgtype": "V",
-    "fix:tag": "108215"
+    "display": "MarketDataRequest"
   }
 }

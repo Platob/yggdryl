@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionpartysubid",
-          "fix:tag": "40179"
+          "FIX:field": "provisionpartysubid",
+          "FIX:tag": "40179"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisionpartysubidtype",
-          "fix:tag": "40180"
+          "FIX:field": "provisionpartysubidtype",
+          "FIX:tag": "40180"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ProvisionPtysSub",
-    "fix:tag": "1028453"
+    "FIX:tag": "1028453",
+    "display": "ProvisionPtysSub"
   }
 }

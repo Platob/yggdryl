@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommodityaltid",
-          "fix:tag": "41278"
+          "FIX:field": "streamcommodityaltid",
+          "FIX:tag": "41278"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommodityaltidsource",
-          "fix:tag": "41279"
+          "FIX:field": "streamcommodityaltidsource",
+          "FIX:tag": "41279"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "StreamCommodityAltID",
-    "fix:tag": "135538"
+    "FIX:tag": "135538",
+    "display": "StreamCommodityAltID"
   }
 }

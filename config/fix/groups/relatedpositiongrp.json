@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "relatedposition"
+        "FIX:component": "relatedposition"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "relatedposition",
+    "FIX:counter": "1861",
+    "FIX:tag": "474326",
     "description": "Required if NoRelatedPositions(1861) > 0.",
-    "display": "RelatedPositionGrp",
-    "fix:component": "relatedposition",
-    "fix:counter": "1861",
-    "fix:tag": "474326"
+    "display": "RelatedPositionGrp"
   }
 }

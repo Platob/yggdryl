@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rootpartysubid",
-          "fix:tag": "1121"
+          "FIX:field": "rootpartysubid",
+          "FIX:tag": "1121"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rootpartysubidtype",
-          "fix:tag": "1122"
+          "FIX:field": "rootpartysubidtype",
+          "FIX:tag": "1122"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "RootSubParty",
-    "fix:tag": "219780"
+    "FIX:tag": "219780",
+    "display": "RootSubParty"
   }
 }

@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdmsgid",
-          "fix:tag": "3110"
+          "FIX:field": "mdmsgid",
+          "FIX:tag": "3110"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdbooktype",
-          "fix:tag": "1021"
+          "FIX:field": "mdbooktype",
+          "FIX:tag": "1021"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdfeedtype",
-          "fix:tag": "1022"
+          "FIX:field": "mdfeedtype",
+          "FIX:tag": "1022"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdsubfeedtype",
-          "fix:tag": "1683"
+          "FIX:field": "mdsubfeedtype",
+          "FIX:tag": "1683"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradedate",
-          "fix:tag": "75"
+          "FIX:field": "tradedate",
+          "FIX:tag": "75"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdreqid",
-          "fix:tag": "262"
+          "FIX:field": "mdreqid",
+          "FIX:tag": "262"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid",
-          "fix:tag": "1301"
+          "FIX:field": "marketid",
+          "FIX:tag": "1301"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid",
-          "fix:tag": "1300"
+          "FIX:field": "marketsegmentid",
+          "FIX:tag": "1300"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nomdentries",
-          "fix:tag": "268"
+          "FIX:field": "nomdentries",
+          "FIX:tag": "268"
         }
       },
       {
@@ -129,7 +129,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "mdincgrp"
+          "FIX:group": "mdincgrp"
         }
       },
       {
@@ -139,8 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applqueuedepth",
-          "fix:tag": "813"
+          "FIX:field": "applqueuedepth",
+          "FIX:tag": "813"
         }
       },
       {
@@ -150,8 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applqueueresolution",
-          "fix:tag": "814"
+          "FIX:field": "applqueueresolution",
+          "FIX:tag": "814"
         }
       },
       {
@@ -161,8 +161,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noroutingids",
-          "fix:tag": "215"
+          "FIX:field": "noroutingids",
+          "FIX:tag": "215"
         }
       },
       {
@@ -172,7 +172,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "routinggrp"
+          "FIX:group": "routinggrp"
         }
       },
       {
@@ -182,16 +182,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "X",
+    "FIX:tag": "893535",
     "description": "MsgType = X",
-    "display": "MarketDataIncrementalRefresh",
-    "fix:msgtype": "X",
-    "fix:tag": "893535"
+    "display": "MarketDataIncrementalRefresh"
   }
 }

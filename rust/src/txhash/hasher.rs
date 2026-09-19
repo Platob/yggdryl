@@ -179,7 +179,7 @@ impl TxHasher {
     ///
     /// The configured state is the prototype the fill reads its algorithm,
     /// seed, and secret from; [`Digester::apply_arrow_batch`] carries the
-    /// rule. A holder coupling an instant reads its own `digest:unit`, not
+    /// rule. A holder coupling an instant reads its own `DIGEST:unit`, not
     /// this hasher's, because the resolution a column stores is a fact about
     /// the schema.
     ///

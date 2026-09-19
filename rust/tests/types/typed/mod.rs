@@ -4,7 +4,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use yggdryl::interval::Interval;
-use yggdryl::{DataType, Field, FieldScalar, Scalar, TimeUnit, Timezone};
+use yggdryl::{DataType, Field, FieldScalar, Scalar, StructureType, TimeUnit, Timezone};
 use yggdryl::{DateTimeType, UncheckedFieldScalar};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
@@ -127,10 +127,11 @@ fn a_value_infers_the_shared_field_of_its_own_datatype() {
 #[test]
 fn a_nested_value_is_validated_against_the_field_it_claims() {
     let row = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]);
-    let schema = DataType::from_fields([
+    let schema = StructureType::from_fields([
         Field::new("id", DataType::Int64, false),
         Field::new("symbol", DataType::utf8(), false),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     let typed = FieldScalar::new(&schema, row.clone()).unwrap();
@@ -326,6 +327,8 @@ fn an_unchecked_pairing_reads_through_the_field_without_committing() {
 }
 
 mod arrow {
+
+    use yggdryl::StructureType;
     use yggdryl::{DataType, Field, FieldScalar, Scalar};
 
     #[test]
@@ -384,10 +387,11 @@ mod arrow {
 
     #[test]
     fn a_struct_pairing_decodes_and_reprojects_its_canonical_row_spelling() {
-        let structure = DataType::from_fields([
+        let structure = StructureType::from_fields([
             Field::new("id", DataType::Int64, false),
             Field::new("name", DataType::utf8(), true),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
         let row = Scalar::from_sequence([Scalar::from(7_i64), Scalar::from("XNAS")]);

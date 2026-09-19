@@ -8,7 +8,9 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::arithmetic::{Arithmetic, ArithmeticTarget, invalid_binary};
 use crate::typed::define_field_types;
-use crate::value::{PathSegment, ValidationFailure, canonical_error, expected};
+use crate::value::{
+    IntegerValue, PathSegment, ValidationFailure, canonical_error, expected, family_value,
+};
 use crate::{DataType, DataTypeId, Error, IntervalType, Result, Scalar, TimeUnit, Value};
 
 // ------------------------------------------------------------------------
@@ -127,21 +129,6 @@ define_field_types!(UInt64Type, UInt64);
 // Integer scalar canonicalization and validation.
 // ------------------------------------------------------------------------
 
-/// Operations shared by every signed and unsigned integer representation.
-pub trait IntegerValue: crate::Value {
-    /// Whether this representation is signed.
-    const SIGNED: bool;
-    /// The physical width in bits.
-    const BIT_WIDTH: u8;
-
-    /// Return this integer as a signed 128-bit value when it fits.
-    fn as_i128(&self) -> Option<i128>;
-    /// Return this integer as an unsigned 128-bit value when it is non-negative.
-    fn as_u128(&self) -> Option<u128>;
-    /// Build this width from a signed 128-bit value.
-    fn from_i128(value: i128) -> Result<Self>;
-}
-
 macro_rules! integer_leaf {
     ($name:ident, $native:ty) => {
         #[doc = concat!("One exact `", stringify!($native), "` value.")]
@@ -204,6 +191,21 @@ integer_leaf!(UInt32, u32);
 integer_leaf!(UInt64, u64);
 integer_leaf!(Int128, i128);
 integer_leaf!(UInt128, u128);
+
+family_value!(
+    /// The integer family as one value: any of the ten widths.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, FamilyValue, Int32, Integer, Scalar};
+    ///
+    /// let held = Integer::from(Int32::new(7));
+    /// assert_eq!(held.dtype().unwrap(), DataType::Int32);
+    /// assert_eq!(held.clone().into_scalar(), Scalar::Int32(Int32::new(7)));
+    /// assert_eq!(Integer::from_scalar(&Scalar::Int32(Int32::new(7))), Some(held));
+    /// assert_eq!(Integer::from_scalar(&Scalar::from(1.5_f64)), None);
+    /// ```
+    Integer, Integer, [Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128]
+);
 
 const _: () = assert!(std::mem::size_of::<Int32>() == 4);
 

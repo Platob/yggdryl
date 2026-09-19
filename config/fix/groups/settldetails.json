@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "settldetail"
+        "FIX:component": "settldetail"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "settldetail",
+    "FIX:counter": "1158",
+    "FIX:tag": "1021899",
     "description": "Number of settlement parties",
-    "display": "SettlDetails",
-    "fix:component": "settldetail",
-    "fix:counter": "1158",
-    "fix:tag": "1021899"
+    "display": "SettlDetails"
   }
 }

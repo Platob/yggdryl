@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use crate::code::folded_spelling;
-use crate::code::{CodeValue, code_leaf, code_value};
+use crate::code::{code_leaf, code_value};
 use crate::typed::define_field_types;
+use crate::value::CodeValue;
 use crate::{DataType, Result, Scalar, Value};
 
 code_leaf!(State, STATE_WIDTH);

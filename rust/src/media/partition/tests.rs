@@ -12,7 +12,7 @@ use crate::fs::{
 };
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::{DataType, Error, IOKind, MediaType, MimeType, Result, Url};
+use crate::{DataType, Error, IOKind, MediaType, MimeType, Result, StructureType, Url};
 use crate::{IOBase, Listing};
 
 fn prices() -> RecordBatch {
@@ -275,7 +275,8 @@ fn encoded_batch(batch: &RecordBatch) -> Vec<u8> {
 }
 
 fn options() -> RecordOptions {
-    let field = DataType::from_fields([DataType::Int64.required_field("price")])
+    let field = StructureType::from_fields([DataType::Int64.required_field("price")])
+        .map(DataType::from)
         .expect("one field")
         .required_field("row");
     RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)

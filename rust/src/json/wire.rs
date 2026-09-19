@@ -48,6 +48,7 @@ impl Serialize for JsonRef<'_> {
             }
             Scalar::Version(value) => serializer.collect_str(value),
             Scalar::Url(value) => serializer.collect_str(value),
+            Scalar::Urn(value) => serializer.collect_str(value),
             Scalar::Timezone(value) => serializer.serialize_str(value.as_str()),
             Scalar::MimeType(value) => serializer.serialize_str(value.as_str()),
             Scalar::MediaType(value) => serializer.collect_str(value),

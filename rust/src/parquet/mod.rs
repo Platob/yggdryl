@@ -47,15 +47,15 @@
 //! the Iceberg v3 layer - so variant columns are schema-level until it does.
 //!
 //! ```
-//! use yggdryl::{IOBase, IOMedia, holder::Buffer};
+//! use yggdryl::{IOBase, IOMedia, StructureType, holder::Buffer};
 //! use yggdryl::parquet::Parquet;
 //! use yggdryl::{DataType, Url};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let field = DataType::from_fields([
+//! let field = DataType::from(StructureType::from_fields([
 //!     DataType::Int64.required_field("id"),
 //!     DataType::utf8().nullable_field("symbol"),
-//! ])?
+//! ])?)
 //! .required_field("row");
 //!
 //! let handle =

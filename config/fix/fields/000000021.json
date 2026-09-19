@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2100",
       "description": "Market associated with the position amount.",
-      "display": "PosAmtMarketID",
-      "fix:tag": "2100"
+      "display": "PosAmtMarketID"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2101",
       "description": "Indicates if the position has been terminated.",
-      "display": "TerminatedIndicator",
-      "fix:tag": "2101"
+      "display": "TerminatedIndicator"
     }
   },
   {
@@ -30,9 +30,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2102",
       "description": "Indicates whether the originating account is exempt (Y) from marking orders as short or not (N). This designation may be used on both buy and sell orders.",
-      "display": "ShortMarkingExemptIndicator",
-      "fix:tag": "2102"
+      "display": "ShortMarkingExemptIndicator"
     }
   },
   {
@@ -42,9 +42,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2103",
       "description": "Specifies the identifier of the reporting entity as assigned by regulatory agency.",
-      "display": "RelatedRegulatoryTradeIDSource",
-      "fix:tag": "2103"
+      "display": "RelatedRegulatoryTradeIDSource"
     }
   },
   {
@@ -54,9 +54,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2104",
       "description": "The number of attached files.",
-      "display": "NoAttachments",
-      "fix:tag": "2104"
+      "display": "NoAttachments"
     }
   },
   {
@@ -66,9 +66,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2105",
       "description": "Specifies the file name of the attachment.",
-      "display": "AttachmentName",
-      "fix:tag": "2105"
+      "display": "AttachmentName"
     }
   },
   {
@@ -78,9 +78,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2106",
       "description": "The MIME media type (and optional subtype) of the attachment. The values used are those assigned, listed and maintained by IANA (www.iana.org) [RFC2046]. See http://www.iana.org/assignments/media-types/index.html for available types.",
-      "display": "AttachmentMediaType",
-      "fix:tag": "2106"
+      "display": "AttachmentMediaType"
     }
   },
   {
@@ -90,9 +90,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2107",
       "description": "Specifies semantically the type of the attached document from a business perspective. The default classification scheme reuses the FIX standard classification scheme of a high level section (pretrade, trade, posttrade, etc.) and a category, then a specific application or document type. The expression follows {\"section/category/application type\"}.",
-      "display": "AttachmentClassification",
-      "fix:tag": "2107"
+      "display": "AttachmentClassification"
     }
   },
   {
@@ -102,9 +102,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2108",
       "description": "Used to specify an external URL where the attachment can be obtained.",
-      "display": "AttachmentExternalURL",
-      "fix:tag": "2108"
+      "display": "AttachmentExternalURL"
     }
   },
   {
@@ -114,9 +114,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The encoding type of the content provided in EncodedAttachment(2112).",
-      "display": "AttachmentEncodingType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Base64",
@@ -128,7 +126,9 @@
           "doc": "Raw binary"
         }
       ],
-      "fix:tag": "2109"
+      "FIX:tag": "2109",
+      "description": "The encoding type of the content provided in EncodedAttachment(2112).",
+      "display": "AttachmentEncodingType"
     }
   },
   {
@@ -138,9 +138,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2110",
       "description": "Unencoded content length in bytes. Can be used to validate successful unencoding.",
-      "display": "UnencodedAttachmentLen",
-      "fix:tag": "2110"
+      "display": "UnencodedAttachmentLen"
     }
   },
   {
@@ -150,9 +150,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2111",
       "description": "Byte length of encoded the EncodedAttachment(2112) field.",
-      "display": "EncodedAttachmentLen",
-      "fix:tag": "2111"
+      "display": "EncodedAttachmentLen"
     }
   },
   {
@@ -162,9 +162,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2112",
       "description": "The content of the attachment in the encoding format specified in the AttachmentEncodingType(2109) field.",
-      "display": "EncodedAttachment",
-      "fix:tag": "2112"
+      "display": "EncodedAttachment"
     }
   },
   {
@@ -174,9 +174,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2113",
       "description": "The number of attachment keywords.",
-      "display": "NoAttachmentKeywords",
-      "fix:tag": "2113"
+      "display": "NoAttachmentKeywords"
     }
   },
   {
@@ -186,9 +186,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2114",
       "description": "Can be used to provide data or keyword tagging of the content of the attachment.",
-      "display": "AttachmentKeyword",
-      "fix:tag": "2114"
+      "display": "AttachmentKeyword"
     }
   },
   {
@@ -198,9 +198,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the negotiation method to be used.",
-      "display": "NegotiationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "AutoSpot",
@@ -217,7 +215,9 @@
           "doc": "The spot price for the reference or benchmark security is to be negotiated via phone or voice."
         }
       ],
-      "fix:tag": "2115"
+      "FIX:tag": "2115",
+      "description": "Specifies the negotiation method to be used.",
+      "display": "NegotiationMethod"
     }
   },
   {
@@ -229,9 +229,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2116",
       "description": "The time of the next auction.",
-      "display": "NextAuctionTime",
-      "fix:tag": "2116"
+      "display": "NextAuctionTime"
     }
   },
   {
@@ -241,9 +241,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Trade side of payout payer.",
-      "display": "ComplexOptPayoutPaySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buy",
@@ -255,7 +253,9 @@
           "doc": "Sell"
         }
       ],
-      "fix:tag": "2117"
+      "FIX:tag": "2117",
+      "description": "Trade side of payout payer.",
+      "display": "ComplexOptPayoutPaySide"
     }
   },
   {
@@ -265,9 +265,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Trade side of payout receiver.",
-      "display": "ComplexOptPayoutReceiveSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buy",
@@ -279,7 +277,9 @@
           "doc": "Sell"
         }
       ],
-      "fix:tag": "2118"
+      "FIX:tag": "2118",
+      "description": "Trade side of payout receiver.",
+      "display": "ComplexOptPayoutReceiveSide"
     }
   },
   {
@@ -289,9 +289,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2119",
       "description": "Reference to the underlier whose payments are being passed through.",
-      "display": "ComplexOptPayoutUnderlier",
-      "fix:tag": "2119"
+      "display": "ComplexOptPayoutUnderlier"
     }
   },
   {
@@ -301,9 +301,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2120",
       "description": "Percentage of observed price for calculating the payout associated with the event.",
-      "display": "ComplexOptPayoutPercentage",
-      "fix:tag": "2120"
+      "display": "ComplexOptPayoutPercentage"
     }
   },
   {
@@ -313,9 +313,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies when the payout is to occur.",
-      "display": "ComplexOptPayoutTime",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Close",
@@ -352,7 +350,9 @@
           "doc": "As specified in master confirmation"
         }
       ],
-      "fix:tag": "2121"
+      "FIX:tag": "2121",
+      "description": "Specifies when the payout is to occur.",
+      "display": "ComplexOptPayoutTime"
     }
   },
   {
@@ -362,9 +362,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2122",
       "description": "Specifies the currency of the payout amount.",
-      "display": "ComplexOptPayoutCurrency",
-      "fix:tag": "2122"
+      "display": "ComplexOptPayoutCurrency"
     }
   },
   {
@@ -374,9 +374,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2123",
       "description": "Specifies the price percentage at which the complex event takes effect. Impact of the event price is determined by the ComplexEventType(1484).",
-      "display": "ComplexEventPricePercentage",
-      "fix:tag": "2123"
+      "display": "ComplexEventPricePercentage"
     }
   },
   {
@@ -386,9 +386,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2124",
       "description": "Specifies the first or only reference currency of the trade.",
-      "display": "ComplexEventCurrencyOne",
-      "fix:tag": "2124"
+      "display": "ComplexEventCurrencyOne"
     }
   },
   {
@@ -398,9 +398,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2125",
       "description": "Specifies the second reference currency of the trade.",
-      "display": "ComplexEventCurrencyTwo",
-      "fix:tag": "2125"
+      "display": "ComplexEventCurrencyTwo"
     }
   },
   {
@@ -410,9 +410,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "For foreign exchange Quanto option feature.",
-      "display": "ComplexEventQuoteBasis",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Currency1PerCurrency2",
@@ -424,7 +422,9 @@
           "doc": "Currency 2 per currency 1"
         }
       ],
-      "fix:tag": "2126"
+      "FIX:tag": "2126",
+      "description": "For foreign exchange Quanto option feature.",
+      "display": "ComplexEventQuoteBasis"
     }
   },
   {
@@ -434,9 +434,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2127",
       "description": "Specifies the fixed FX rate alternative for FX Quantro options.",
-      "display": "ComplexEventFixedFXRate",
-      "fix:tag": "2127"
+      "display": "ComplexEventFixedFXRate"
     }
   },
   {
@@ -446,9 +446,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2128",
       "description": "Specifies the method according to which an amount or a date is determined. See https://fpml.org/coding-scheme/determination-method for values.",
-      "display": "ComplexEventDeterminationMethod",
-      "fix:tag": "2128"
+      "display": "ComplexEventDeterminationMethod"
     }
   },
   {
@@ -458,9 +458,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to identify the calculation agent.",
-      "display": "ComplexEventCalculationAgent",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ExercisingParty",
@@ -482,7 +480,9 @@
           "doc": "As specified in the standard terms supplement"
         }
       ],
-      "fix:tag": "2129"
+      "FIX:tag": "2129",
+      "description": "Used to identify the calculation agent.",
+      "display": "ComplexEventCalculationAgent"
     }
   },
   {
@@ -494,9 +494,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2130",
       "description": "Upper strike price for Asian option feature. Strike percentage for a Strike Spread.",
-      "display": "ComplexEventStrikePrice",
-      "fix:tag": "2130"
+      "display": "ComplexEventStrikePrice"
     }
   },
   {
@@ -506,9 +506,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2131",
       "description": "Strike factor for Asian option feature. Upper strike percentage for a Strike Spread.",
-      "display": "ComplexEventStrikeFactor",
-      "fix:tag": "2131"
+      "display": "ComplexEventStrikeFactor"
     }
   },
   {
@@ -518,9 +518,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2132",
       "description": "Upper string number of options for a Strike Spread.",
-      "display": "ComplexEventStrikeNumberOfOptions",
-      "fix:tag": "2132"
+      "display": "ComplexEventStrikeNumberOfOptions"
     }
   },
   {
@@ -530,9 +530,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2133",
       "description": "Reference to credit event table elsewhere in the message.",
-      "display": "ComplexEventCreditEventsXIDRef",
-      "fix:tag": "2133"
+      "display": "ComplexEventCreditEventsXIDRef"
     }
   },
   {
@@ -542,9 +542,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The notifying party is the party that notifies the other party when a credit event has occurred by means of a credit event notice. If more than one party is referenced as being the notifying party then either party may notify the other of a credit event occurring.",
-      "display": "ComplexEventCreditEventNotifyingParty",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "SellerNotifies",
@@ -561,7 +559,9 @@
           "doc": "Seller or buyer notifies"
         }
       ],
-      "fix:tag": "2134"
+      "FIX:tag": "2134",
+      "description": "The notifying party is the party that notifies the other party when a credit event has occurred by means of a credit event notice. If more than one party is referenced as being the notifying party then either party may notify the other of a credit event occurring.",
+      "display": "ComplexEventCreditEventNotifyingParty"
     }
   },
   {
@@ -571,9 +571,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2135",
       "description": "The local business center for which the credit event is to be determined. The inclusion of this business center implies that Greenwich Mean Time in Section 3.3 of the 2003 ISDA Credit Derivatives Definitions is replaced by the local time of the specified business center. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "ComplexEventCreditEventBusinessCenter",
-      "fix:tag": "2135"
+      "display": "ComplexEventCreditEventBusinessCenter"
     }
   },
   {
@@ -583,9 +583,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2136",
       "description": "When this element is specified and set to 'Y', indicates that ISDA defined Standard Public Sources are applicable.",
-      "display": "ComplexEventCreditEventStandardSources",
-      "fix:tag": "2136"
+      "display": "ComplexEventCreditEventStandardSources"
     }
   },
   {
@@ -595,9 +595,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2137",
       "description": "The minimum number of the specified public information sources that must publish information that reasonably confirms that a credit event has occurred. The market convention is two.",
-      "display": "ComplexEventCreditEventMinimumSources",
-      "fix:tag": "2137"
+      "display": "ComplexEventCreditEventMinimumSources"
     }
   },
   {
@@ -607,9 +607,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2138",
       "description": "Identifier of this complex event for cross referencing elsewhere in the message.",
-      "display": "ComplexEventXID",
-      "fix:tag": "2138"
+      "display": "ComplexEventXID"
     }
   },
   {
@@ -619,9 +619,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2139",
       "description": "Reference to a complex event elsewhere in the message.",
-      "display": "ComplexEventXIDRef",
-      "fix:tag": "2139"
+      "display": "ComplexEventXIDRef"
     }
   },
   {
@@ -631,9 +631,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2140",
       "description": "Specifies the methodology and/or assumptions used to generate the trade value.",
-      "display": "ValuationReferenceModel",
-      "fix:tag": "2140"
+      "display": "ValuationReferenceModel"
     }
   },
   {
@@ -643,9 +643,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of trade strategy.",
-      "display": "StrategyType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "STD",
           "name": "Straddle",
@@ -677,7 +675,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2141"
+      "FIX:tag": "2141",
+      "description": "Specifies the type of trade strategy.",
+      "display": "StrategyType"
     }
   },
   {
@@ -687,9 +687,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2142",
       "description": "When this element is specified and set to 'Y', it indicates that common pricing applies. Common pricing may be relevant for a transaction that references more than one commodity reference price.",
-      "display": "CommonPricingIndicator",
-      "fix:tag": "2142"
+      "display": "CommonPricingIndicator"
     }
   },
   {
@@ -699,9 +699,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the consequences of bullion settlement disruption events.",
-      "display": "SettlDisruptionProvision",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Negotiation",
@@ -713,7 +711,9 @@
           "doc": "Cancellation and payment"
         }
       ],
-      "fix:tag": "2143"
+      "FIX:tag": "2143",
+      "description": "Specifies the consequences of bullion settlement disruption events.",
+      "display": "SettlDisruptionProvision"
     }
   },
   {
@@ -723,9 +723,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the rounding direction if not overridden elsewhere.",
-      "display": "InstrumentRoundingDirection",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "RoundToNearest",
@@ -742,7 +740,9 @@
           "doc": "Round up"
         }
       ],
-      "fix:tag": "2144"
+      "FIX:tag": "2144",
+      "description": "Specifies the rounding direction if not overridden elsewhere.",
+      "display": "InstrumentRoundingDirection"
     }
   },
   {
@@ -752,9 +752,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2145",
       "description": "Specifies the rounding precision in terms of a number of decimal places. Note how a percentage rate rounding of 5 decimal places is expressed as a rounding precision of 7.",
-      "display": "InstrumentRoundingPrecision",
-      "fix:tag": "2145"
+      "display": "InstrumentRoundingPrecision"
     }
   },
   {
@@ -764,9 +764,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2146",
       "description": "Indicator to determine if the instrument is to settle on open.",
-      "display": "LegSettleOnOpenFlag",
-      "fix:tag": "2146"
+      "display": "LegSettleOnOpenFlag"
     }
   },
   {
@@ -776,9 +776,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the method under which assignment was conducted.",
-      "display": "LegInstrmtAssignmentMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "P",
           "name": "ProRata",
@@ -790,7 +788,9 @@
           "doc": "Random"
         }
       ],
-      "fix:tag": "2147"
+      "FIX:tag": "2147",
+      "description": "Specifies the method under which assignment was conducted.",
+      "display": "LegInstrmtAssignmentMethod"
     }
   },
   {
@@ -800,9 +800,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the current state of the leg instrument.",
-      "display": "LegSecurityStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Active",
@@ -859,7 +857,9 @@
           "doc": "Pending Deletion"
         }
       ],
-      "fix:tag": "2148"
+      "FIX:tag": "2148",
+      "description": "Indicates the current state of the leg instrument.",
+      "display": "LegSecurityStatus"
     }
   },
   {
@@ -869,9 +869,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "A category of CDS credit event in which the underlying bond experiences a restructuring.",
-      "display": "LegRestructuringType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "FR",
           "name": "FullRestructuring",
@@ -893,7 +891,9 @@
           "doc": "No Restructuring specified"
         }
       ],
-      "fix:tag": "2149"
+      "FIX:tag": "2149",
+      "description": "A category of CDS credit event in which the underlying bond experiences a restructuring.",
+      "display": "LegRestructuringType"
     }
   },
   {
@@ -903,9 +903,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies which issue (underlying bond) will receive payment priority in the event of a default.",
-      "display": "LegSeniority",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "SD",
           "name": "SeniorSecured",
@@ -937,7 +935,9 @@
           "doc": "Senior Non-Preferred"
         }
       ],
-      "fix:tag": "2150"
+      "FIX:tag": "2150",
+      "description": "Specifies which issue (underlying bond) will receive payment priority in the event of a default.",
+      "display": "LegSeniority"
     }
   },
   {
@@ -947,9 +947,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2151",
       "description": "Indicates the notional percentage of the deal that is still outstanding based on the remaining components of the index.",
-      "display": "LegNotionalPercentageOutstanding",
-      "fix:tag": "2151"
+      "display": "LegNotionalPercentageOutstanding"
     }
   },
   {
@@ -959,9 +959,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2152",
       "description": "Used to reflect the Original value prior to the application of a credit event. See LegNotionalPercentageOutstanding(2151).",
-      "display": "LegOriginalNotionalPercentageOutstanding",
-      "fix:tag": "2152"
+      "display": "LegOriginalNotionalPercentageOutstanding"
     }
   },
   {
@@ -971,9 +971,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2153",
       "description": "Lower bound percentage of the loss that the tranche can endure.",
-      "display": "LegAttachmentPoint",
-      "fix:tag": "2153"
+      "display": "LegAttachmentPoint"
     }
   },
   {
@@ -983,9 +983,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2154",
       "description": "Upper bound percentage of the loss the tranche can endure.",
-      "display": "LegDetachmentPoint",
-      "fix:tag": "2154"
+      "display": "LegDetachmentPoint"
     }
   },
   {
@@ -995,9 +995,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of reference obligation for credit derivatives contracts.",
-      "display": "LegObligationType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bond",
@@ -1019,7 +1017,9 @@
           "doc": "Loan"
         }
       ],
-      "fix:tag": "2155"
+      "FIX:tag": "2155",
+      "description": "Type of reference obligation for credit derivatives contracts.",
+      "display": "LegObligationType"
     }
   },
   {
@@ -1029,9 +1029,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The sub-classification or notional schedule type of the swap.",
-      "display": "LegSwapSubClass",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "AMTZ",
           "name": "Amortizing",
@@ -1058,7 +1056,9 @@
           "doc": "Custom notional schedule"
         }
       ],
-      "fix:tag": "2156"
+      "FIX:tag": "2156",
+      "description": "The sub-classification or notional schedule type of the swap.",
+      "display": "LegSwapSubClass"
     }
   },
   {
@@ -1068,9 +1068,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2157",
       "description": "The Nth reference obligation in a CDS reference basket. If specified without LegMthToDefault(2158) the default will trigger a CDS payout. If LegMthToDefault(2158) is also present then payout occurs between the Nth and Mth obligations to default.",
-      "display": "LegNthToDefault",
-      "fix:tag": "2157"
+      "display": "LegNthToDefault"
     }
   },
   {
@@ -1080,9 +1080,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2158",
       "description": "The Mth reference obligation to default in a CDS reference basket. When an NthToDefault(2157) to MthToDefault(2158) are represented then the CDS payout occurs between the Nth and Mth obligations to default.",
-      "display": "LegMthToDefault",
-      "fix:tag": "2158"
+      "display": "LegMthToDefault"
     }
   },
   {
@@ -1092,9 +1092,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2159",
       "description": "Relevant settled entity matrix source.",
-      "display": "LegSettledEntityMatrixSource",
-      "fix:tag": "2159"
+      "display": "LegSettledEntityMatrixSource"
     }
   },
   {
@@ -1105,9 +1105,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2160",
       "description": "The publication date of the applicable version of the matrix. When this element is omitted, the Standard Terms Supplement defines rules for which version of the matrix is applicable.",
-      "display": "LegSettledEntityMatrixPublicationDate",
-      "fix:tag": "2160"
+      "display": "LegSettledEntityMatrixPublicationDate"
     }
   },
   {
@@ -1117,9 +1117,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the coupon type of the bond.",
-      "display": "LegCouponType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Zero",
@@ -1141,7 +1139,9 @@
           "doc": "Structured"
         }
       ],
-      "fix:tag": "2161"
+      "FIX:tag": "2161",
+      "description": "Specifies the coupon type of the bond.",
+      "display": "LegCouponType"
     }
   },
   {
@@ -1153,9 +1153,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2162",
       "description": "Specifies the total amount of the issue. Corresponds to the par value multiplied by the number of issued security.",
-      "display": "LegTotalIssuedAmount",
-      "fix:tag": "2162"
+      "display": "LegTotalIssuedAmount"
     }
   },
   {
@@ -1165,9 +1165,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2163",
       "description": "Time unit multiplier for the frequency of the bond's coupon payment.",
-      "display": "LegCouponFrequencyPeriod",
-      "fix:tag": "2163"
+      "display": "LegCouponFrequencyPeriod"
     }
   },
   {
@@ -1177,9 +1177,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the frequency of the bond's coupon payment.",
-      "display": "LegCouponFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1221,7 +1219,9 @@
           "doc": "Term"
         }
       ],
-      "fix:tag": "2164"
+      "FIX:tag": "2164",
+      "description": "Time unit associated with the frequency of the bond's coupon payment.",
+      "display": "LegCouponFrequencyUnit"
     }
   },
   {
@@ -1231,9 +1231,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
-      "display": "LegCouponDayCount",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OneOne",
@@ -1355,7 +1353,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2165"
+      "FIX:tag": "2165",
+      "description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
+      "display": "LegCouponDayCount"
     }
   },
   {
@@ -1365,9 +1365,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2166",
       "description": "Identifies the equity in which a convertible bond can be converted to.",
-      "display": "LegConvertibleBondEquityID",
-      "fix:tag": "2166"
+      "display": "LegConvertibleBondEquityID"
     }
   },
   {
@@ -1377,9 +1377,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies class or source of the LegConvertibleBondEquitySecurityID(2166) value.",
-      "display": "LegConvertibleBondEquityIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -1546,22 +1544,23 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "2167"
+      "FIX:tag": "2167",
+      "description": "Identifies class or source of the LegConvertibleBondEquitySecurityID(2166) value.",
+      "display": "LegConvertibleBondEquityIDSource"
     }
   },
   {
     "name": "legcontractpricerefmonth",
     "dtype": {
       "type": "string",
-      "layout": "fixed_string",
-      "charset": "us-ascii",
+      "layout": "fixed_ascii",
       "fixed": 8
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2168",
       "description": "Reference month if there is no applicable LegMaturityMonthYear(610) value for the contract or security.",
-      "display": "LegContractPriceRefMonth",
-      "fix:tag": "2168"
+      "display": "LegContractPriceRefMonth"
     }
   },
   {
@@ -1571,9 +1570,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the seniority level of the lien in a loan.",
-      "display": "LegLienSeniority",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Unknown",
@@ -1595,7 +1592,9 @@
           "doc": "Third lien"
         }
       ],
-      "fix:tag": "2169"
+      "FIX:tag": "2169",
+      "description": "Indicates the seniority level of the lien in a loan.",
+      "display": "LegLienSeniority"
     }
   },
   {
@@ -1605,9 +1604,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of loan when the credit default swap's reference obligation is a loan.",
-      "display": "LegLoanFacility",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "BridgeLoan",
@@ -1639,7 +1636,9 @@
           "doc": "Trade claim"
         }
       ],
-      "fix:tag": "2170"
+      "FIX:tag": "2170",
+      "description": "Specifies the type of loan when the credit default swap's reference obligation is a loan.",
+      "display": "LegLoanFacility"
     }
   },
   {
@@ -1649,9 +1648,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of reference entity for first-to-default CDS basket contracts.",
-      "display": "LegReferenceEntityType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Asian",
@@ -1703,7 +1700,9 @@
           "doc": "Western European insurance"
         }
       ],
-      "fix:tag": "2171"
+      "FIX:tag": "2171",
+      "description": "Specifies the type of reference entity for first-to-default CDS basket contracts.",
+      "display": "LegReferenceEntityType"
     }
   },
   {
@@ -1713,9 +1712,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2172",
       "description": "The series identifier of a credit default swap index.",
-      "display": "LegIndexSeries",
-      "fix:tag": "2172"
+      "display": "LegIndexSeries"
     }
   },
   {
@@ -1725,9 +1724,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2173",
       "description": "The version of a credit default swap index annex.",
-      "display": "LegIndexAnnexVersion",
-      "fix:tag": "2173"
+      "display": "LegIndexAnnexVersion"
     }
   },
   {
@@ -1738,9 +1737,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2174",
       "description": "The date of a credit default swap index series annex.",
-      "display": "LegIndexAnnexDate",
-      "fix:tag": "2174"
+      "display": "LegIndexAnnexDate"
     }
   },
   {
@@ -1750,9 +1749,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2175",
       "description": "The source of a credit default swap series annex.",
-      "display": "LegIndexAnnexSource",
-      "fix:tag": "2175"
+      "display": "LegIndexAnnexSource"
     }
   },
   {
@@ -1762,9 +1761,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2176",
       "description": "In an outright or forward commodity trade that is cash settled this is the index used to determine the cash payment.",
-      "display": "LegSettlRateIndex",
-      "fix:tag": "2176"
+      "display": "LegSettlRateIndex"
     }
   },
   {
@@ -1774,9 +1773,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2177",
       "description": "This is an optional qualifying attribute of LegSettlementRateIndex(2176) such as the delivery zone for an electricity contract.",
-      "display": "LegSettlRateIndexLocation",
-      "fix:tag": "2177"
+      "display": "LegSettlRateIndexLocation"
     }
   },
   {
@@ -1786,9 +1785,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2178",
       "description": "Description of the option expiration.",
-      "display": "LegOptionExpirationDesc",
-      "fix:tag": "2178"
+      "display": "LegOptionExpirationDesc"
     }
   },
   {
@@ -1798,9 +1797,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2179",
       "description": "Byte length of encoded (non-ASCII characters) EncodedLegOptionExpirationDesc(2180) field.",
-      "display": "EncodedLegOptionExpirationDescLen",
-      "fix:tag": "2179"
+      "display": "EncodedLegOptionExpirationDescLen"
     }
   },
   {
@@ -1810,9 +1809,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2180",
       "description": "Encoded (non-ASCII characters) representation of the LegOptionExpirationDesc(2178) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegOptionExpirationDesc(2178).",
-      "display": "EncodedLegOptionExpirationDesc",
-      "fix:tag": "2180"
+      "display": "EncodedLegOptionExpirationDesc"
     }
   },
   {
@@ -1822,9 +1821,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2181",
       "description": "Used for derivatives. Multiplier applied to the strike price for the purpose of calculating the settlement value.",
-      "display": "LegStrikeMultiplier",
-      "fix:tag": "2181"
+      "display": "LegStrikeMultiplier"
     }
   },
   {
@@ -1834,9 +1833,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2182",
       "description": "The number of shares/units for the financial instrument involved in the option trade. Used for derivatives.",
-      "display": "LegStrikeValue",
-      "fix:tag": "2182"
+      "display": "LegStrikeValue"
     }
   },
   {
@@ -1846,9 +1845,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to express the unit of measure (UOM) of the price if different from the contract.",
-      "display": "LegStrikeUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -2330,7 +2327,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "2183"
+      "FIX:tag": "2183",
+      "description": "Used to express the unit of measure (UOM) of the price if different from the contract.",
+      "display": "LegStrikeUnitOfMeasure"
     }
   },
   {
@@ -2340,9 +2339,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2184",
       "description": "Specifies the index used to calculate the strike price.",
-      "display": "LegStrikeIndex",
-      "fix:tag": "2184"
+      "display": "LegStrikeIndex"
     }
   },
   {
@@ -2354,9 +2353,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2185",
       "description": "Specifies the strike price offset from the named index.",
-      "display": "LegStrikeIndexSpread",
-      "fix:tag": "2185"
+      "display": "LegStrikeIndexSpread"
     }
   },
   {
@@ -2366,9 +2365,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies how the strike price is determined at the point of option exercise. The strike may be fixed throughout the life of the option, set at expiration to the value of the underlying, set to the average value of the underlying , or set to the optimal value of the underlying.",
-      "display": "LegStrikePriceDeterminationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FixedStrike",
@@ -2390,7 +2387,9 @@
           "doc": "Strike set to optimal value"
         }
       ],
-      "fix:tag": "2186"
+      "FIX:tag": "2186",
+      "description": "Specifies how the strike price is determined at the point of option exercise. The strike may be fixed throughout the life of the option, set at expiration to the value of the underlying, set to the average value of the underlying , or set to the optimal value of the underlying.",
+      "display": "LegStrikePriceDeterminationMethod"
     }
   },
   {
@@ -2400,9 +2399,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the boundary condition to be used for the strike price relative to the underlying price at the point of option exercise.",
-      "display": "LegStrikePriceBoundaryMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "LessThan",
@@ -2429,7 +2426,9 @@
           "doc": "Greater than underlying is in-the-money(ITM)"
         }
       ],
-      "fix:tag": "2187"
+      "FIX:tag": "2187",
+      "description": "Specifies the boundary condition to be used for the strike price relative to the underlying price at the point of option exercise.",
+      "display": "LegStrikePriceBoundaryMethod"
     }
   },
   {
@@ -2439,9 +2438,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2188",
       "description": "Used in combination with StrikePriceBoundaryMethod(2187) to specify the percentage of the strike price in relation to the underlying price. The percentage is generally 100 or greater for puts and 100 or less for calls.",
-      "display": "LegStrikePriceBoundaryPrecision",
-      "fix:tag": "2188"
+      "display": "LegStrikePriceBoundaryPrecision"
     }
   },
   {
@@ -2451,9 +2450,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies how the underlying price is determined at the point of option exercise. The underlying price may be set to the current settlement price, set to a special reference, set to the optimal value of the underlying during the defined period (\"Look-back\") or set to the average value of the underlying during the defined period (\"Asian option\").",
-      "display": "LegUnderlyingPriceDeterminationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Regular",
@@ -2475,7 +2472,9 @@
           "doc": "Average value (Asian option)"
         }
       ],
-      "fix:tag": "2189"
+      "FIX:tag": "2189",
+      "description": "Specifies how the underlying price is determined at the point of option exercise. The underlying price may be set to the current settlement price, set to a special reference, set to the optimal value of the underlying during the defined period (\"Look-back\") or set to the average value of the underlying during the defined period (\"Asian option\").",
+      "display": "LegUnderlyingPriceDeterminationMethod"
     }
   },
   {
@@ -2485,9 +2484,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2190",
       "description": "Minimum price increment for a given exchange-traded instrument. Could also be used to represent tick value.",
-      "display": "LegMinPriceIncrement",
-      "fix:tag": "2190"
+      "display": "LegMinPriceIncrement"
     }
   },
   {
@@ -2499,9 +2498,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2191",
       "description": "Minimum price increment amount associated with the LegMinPriceIncrement(2190). For listed derivatives, the value can be calculated by multiplying LegMinPriceIncrement(2190) by LegContractMultiplier(614).",
-      "display": "LegMinPriceIncrementAmount",
-      "fix:tag": "2191"
+      "display": "LegMinPriceIncrementAmount"
     }
   },
   {
@@ -2511,9 +2510,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Settlement method for a contract or instrument. Additional values may be used with bilateral agreement.",
-      "display": "LegSettlMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "C",
           "name": "CashSettlementRequired",
@@ -2530,7 +2527,9 @@
           "doc": "Election at exercise"
         }
       ],
-      "fix:tag": "2192"
+      "FIX:tag": "2192",
+      "description": "Settlement method for a contract or instrument. Additional values may be used with bilateral agreement.",
+      "display": "LegSettlMethod"
     }
   },
   {
@@ -2540,9 +2539,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the type of valuation method or trigger payout for an in-the-money option.",
-      "display": "LegOptPayoutType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Vanilla",
@@ -2589,7 +2586,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2193"
+      "FIX:tag": "2193",
+      "description": "Indicates the type of valuation method or trigger payout for an in-the-money option.",
+      "display": "LegOptPayoutType"
     }
   },
   {
@@ -2601,9 +2600,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2194",
       "description": "Cash amount indicating the pay out associated with an option. For binary options this is a fixed amount.",
-      "display": "LegOptPayoutAmount",
-      "fix:tag": "2194"
+      "display": "LegOptPayoutAmount"
     }
   },
   {
@@ -2613,9 +2612,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the method for price quotation.",
-      "display": "LegPriceQuoteMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "STD",
           "name": "Standard",
@@ -2637,7 +2634,9 @@
           "doc": "Percent of Par"
         }
       ],
-      "fix:tag": "2195"
+      "FIX:tag": "2195",
+      "description": "Specifies the method for price quotation.",
+      "display": "LegPriceQuoteMethod"
     }
   },
   {
@@ -2647,9 +2646,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of valuation method applied.",
-      "display": "LegValuationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "EQTY",
           "name": "PremiumStyle",
@@ -2676,7 +2673,9 @@
           "doc": "CDS in delivery - use recovery rate to calculate obligation"
         }
       ],
-      "fix:tag": "2196"
+      "FIX:tag": "2196",
+      "description": "Specifies the type of valuation method applied.",
+      "display": "LegValuationMethod"
     }
   },
   {
@@ -2686,9 +2685,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2197",
       "description": "Specifies the source of trade valuation data.",
-      "display": "LegValuationSource",
-      "fix:tag": "2197"
+      "display": "LegValuationSource"
     }
   },
   {
@@ -2698,9 +2697,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2198",
       "description": "Specifies the methodology and/or assumptions used to generate the trade value.",
-      "display": "LegValuationReferenceModel",
-      "fix:tag": "2198"
+      "display": "LegValuationReferenceModel"
     }
   },
   {
@@ -2710,9 +2709,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether instruments are pre-listed only or can also be defined via user request.",
-      "display": "LegListMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "PreListedOnly",
@@ -2724,7 +2721,9 @@
           "doc": "user requested"
         }
       ],
-      "fix:tag": "2199"
+      "FIX:tag": "2199",
+      "description": "Indicates whether instruments are pre-listed only or can also be defined via user request.",
+      "display": "LegListMethod"
     }
   }
 ]

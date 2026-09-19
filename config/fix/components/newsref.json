@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "newsrefid",
-          "fix:tag": "1476"
+          "FIX:field": "newsrefid",
+          "FIX:tag": "1476"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "newsreftype",
-          "fix:tag": "1477"
+          "FIX:field": "newsreftype",
+          "FIX:tag": "1477"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "NewsRef",
-    "fix:tag": "348060"
+    "FIX:tag": "348060",
+    "display": "NewsRef"
   }
 }

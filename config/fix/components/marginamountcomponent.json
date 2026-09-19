@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamt",
-          "fix:tag": "1645"
+          "FIX:field": "marginamt",
+          "FIX:tag": "1645"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamttype",
-          "fix:tag": "1644"
+          "FIX:field": "marginamttype",
+          "FIX:tag": "1644"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamtccy",
-          "fix:tag": "1646"
+          "FIX:field": "marginamtccy",
+          "FIX:tag": "1646"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamtfxrate",
-          "fix:tag": "2088"
+          "FIX:field": "marginamtfxrate",
+          "FIX:tag": "2088"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamtfxratecalc",
-          "fix:tag": "2089"
+          "FIX:field": "marginamtfxratecalc",
+          "FIX:tag": "2089"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamountmarketsegmentid",
-          "fix:tag": "1714"
+          "FIX:field": "marginamountmarketsegmentid",
+          "FIX:tag": "1714"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marginamountmarketid",
-          "fix:tag": "1715"
+          "FIX:field": "marginamountmarketid",
+          "FIX:tag": "1715"
         }
       },
       {
@@ -87,15 +87,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "margindirection",
-          "fix:tag": "2851"
+          "FIX:field": "margindirection",
+          "FIX:tag": "2851"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MarginAmount",
-    "fix:tag": "265118"
+    "FIX:tag": "265118",
+    "display": "MarginAmount"
   }
 }

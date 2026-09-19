@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refcompid",
-          "fix:tag": "930"
+          "FIX:field": "refcompid",
+          "FIX:tag": "930"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refsubid",
-          "fix:tag": "931"
+          "FIX:field": "refsubid",
+          "FIX:tag": "931"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "locationid",
-          "fix:tag": "283"
+          "FIX:field": "locationid",
+          "FIX:tag": "283"
         }
       },
       {
@@ -43,15 +43,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deskid",
-          "fix:tag": "284"
+          "FIX:field": "deskid",
+          "FIX:tag": "284"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "CompIDReq",
-    "fix:tag": "958785"
+    "FIX:tag": "958785",
+    "display": "CompIDReq"
   }
 }

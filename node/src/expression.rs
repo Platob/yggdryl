@@ -1300,7 +1300,7 @@ impl JsSelector {
     }
 
     /// The selector a struct root declares: one column per child, with its
-    /// datatype, nullability, metadata, and any `transform:` it carries.
+    /// datatype, nullability, metadata, and any `TRANSFORM:` it carries.
     #[napi(factory)]
     pub fn from_field(field: &JsField) -> Self {
         Self::from_core(CoreSelector::from_field(&field.inner))
@@ -1434,7 +1434,7 @@ impl JsSelector {
     }
 
     /// The struct root this selector publishes from `root`, carrying the
-    /// selector itself as each column's `transform:` declaration, so
+    /// selector itself as each column's `TRANSFORM:` declaration, so
     /// `Selector.fromField` of the answer is this selector again.
     #[napi]
     pub fn into_field(&self, root: &JsField) -> Result<JsField> {

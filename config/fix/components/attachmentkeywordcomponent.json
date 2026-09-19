@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "attachmentkeyword",
-          "fix:tag": "2114"
+          "FIX:field": "attachmentkeyword",
+          "FIX:tag": "2114"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "AttachmentKeyword",
-    "fix:tag": "603252"
+    "FIX:tag": "603252",
+    "display": "AttachmentKeyword"
   }
 }

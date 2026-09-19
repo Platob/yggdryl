@@ -51,7 +51,7 @@ _FIELD_OPTION_KEYS = frozenset(
 _OPTION_KEYS = _FIELD_OPTION_KEYS | {"arrow_type"}
 _EXTENSION_METADATA_PREFIX = "ARROW:extension:"
 _PARQUET_FIELD_ID = "PARQUET:field_id"
-_FIELD_ENUM = "field:enum"
+_FIELD_ENUM = "FIELD:enum"
 _I32_MIN = -(2**31)
 _I32_MAX = 2**31 - 1
 _I64_MIN = -(2**63)
@@ -1326,7 +1326,7 @@ def _string_metadata(
 
 
 def _declared_string_enum(hint: object) -> str | None:
-    """The `field:enum` document one annotation declares, if it declares one.
+    """The `FIELD:enum` document one annotation declares, if it declares one.
 
     A bare width base names no members, so it stays a plain fixed column.
     """

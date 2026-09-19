@@ -27,7 +27,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
 
     let mut group = criterion.benchmark_group("typed/struct");
     let structure = StructureType::from(
-        yggdryl::Fields::from_fields([DataType::Int64.required_field("id")])
+        yggdryl::StructType::from_fields([DataType::Int64.required_field("id")])
             .expect("the benchmark Struct children are valid"),
     );
     let root = StructureField::new("row", structure, false);
@@ -45,7 +45,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // it collapses back into is the one allocation a row build pays.
     let mut group = criterion.benchmark_group("typed/record");
     let columns = 16;
-    let root = DataType::from_fields((0..columns).map(|index| {
+    let root = StructureType::from_fields((0..columns).map(|index| {
         let name = format!("column_{index}");
         if index % 2 == 0 {
             DataType::Int64.required_field(name)
@@ -53,6 +53,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             DataType::utf8().nullable_field(name)
         }
     }))
+    .map(DataType::from)
     .expect("the benchmark row schema is valid")
     .required_field("row");
     let row = root

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingprotectionterm"
+        "FIX:component": "underlyingprotectionterm"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingprotectionterm",
+    "FIX:counter": "42068",
+    "FIX:tag": "1023889",
     "description": "Required if NoUnderlyingProtectionTerms(42068) > 0.",
-    "display": "UnderlyingProtectionTermGrp",
-    "fix:component": "underlyingprotectionterm",
-    "fix:counter": "42068",
-    "fix:tag": "1023889"
+    "display": "UnderlyingProtectionTermGrp"
   }
 }

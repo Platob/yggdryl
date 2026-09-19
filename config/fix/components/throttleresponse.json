@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "throttleinst",
-          "fix:tag": "1685"
+          "FIX:field": "throttleinst",
+          "FIX:tag": "1685"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "throttlestatus",
-          "fix:tag": "1609"
+          "FIX:field": "throttlestatus",
+          "FIX:tag": "1609"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "throttlecountindicator",
-          "fix:tag": "1686"
+          "FIX:field": "throttlecountindicator",
+          "FIX:tag": "1686"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ThrottleResponse",
-    "fix:tag": "985809"
+    "FIX:tag": "985809",
+    "display": "ThrottleResponse"
   }
 }

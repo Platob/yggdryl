@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refapplid",
-          "fix:tag": "1355"
+          "FIX:field": "refapplid",
+          "FIX:tag": "1355"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applnewseqnum",
-          "fix:tag": "1399"
+          "FIX:field": "applnewseqnum",
+          "FIX:tag": "1399"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refappllastseqnum",
-          "fix:tag": "1357"
+          "FIX:field": "refappllastseqnum",
+          "FIX:tag": "1357"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ApplIDReport",
-    "fix:tag": "408930"
+    "FIX:tag": "408930",
+    "display": "ApplIDReport"
   }
 }

@@ -10,7 +10,7 @@ use yggdryl::SequenceType;
 use yggdryl::State;
 use yggdryl::graph::Event;
 use yggdryl::text::{TextBytes, TextLine};
-use yggdryl::{DataType, Field, FixCodec, FixEntry, FixId, FixRegistry, Scalar};
+use yggdryl::{DataType, Field, FixCodec, FixEntry, FixId, FixRegistry, Scalar, StructureType};
 
 fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
@@ -1186,7 +1186,8 @@ fn a_code_declared_under_another_name_is_a_second_message_and_the_bare_code_answ
     let declare = |name: &str| {
         let mut allocation = DataType::Int32.nullable_field("AllocQty");
         allocation.as_fix_mut().set_tag(80).unwrap();
-        let mut message = DataType::from_fields([allocation])
+        let mut message = StructureType::from_fields([allocation])
+            .map(DataType::from)
             .unwrap()
             .required_field(name);
         message.as_fix_mut().set_msgtype("J").unwrap();
@@ -1425,7 +1426,8 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     sub_id.as_fix_mut().set_tag(523).unwrap();
     let mut sub_type = DataType::Int32.nullable_field("partysubidtype");
     sub_type.as_fix_mut().set_tag(803).unwrap();
-    let sub_item = DataType::from_fields([sub_id.clone(), sub_type.clone()])
+    let sub_item = StructureType::from_fields([sub_id.clone(), sub_type.clone()])
+        .map(DataType::from)
         .unwrap()
         .required_field("partysub");
     let mut sub_count = DataType::Int32.nullable_field("nopartysubids");
@@ -1436,12 +1438,13 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     party_id.as_fix_mut().set_tag(448).unwrap();
     let mut role = DataType::Int32.nullable_field("partyrole");
     role.as_fix_mut().set_tag(452).unwrap();
-    let item = DataType::from_fields([
+    let item = StructureType::from_fields([
         party_id.clone(),
         role.clone(),
         sub_count.clone(),
         subs.clone(),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("party");
     let mut count = DataType::Int32.nullable_field("nopartyids");
@@ -1621,7 +1624,8 @@ fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
     // its group in the wider variant is still a dictionary of groups.
     let mut party_id = DataType::utf8().nullable_field("partyid");
     party_id.as_fix_mut().set_tag(448).unwrap();
-    let item = DataType::from_fields([party_id])
+    let item = StructureType::from_fields([party_id])
+        .map(DataType::from)
         .unwrap()
         .required_field("item");
     let mut group = DataType::large_list(item.clone()).nullable_field("parties");
@@ -1773,15 +1777,18 @@ fn separatorless_group_inference_uses_only_direct_members() {
     // A selected message's direct members outrank the wider global Parties
     // definition, even when the key addresses its numeric counter.
     let mut scoped = registry().as_ref().clone();
-    let item = DataType::from_fields([scoped.field_by_tag(448).unwrap().clone()])
+    let item = StructureType::from_fields([scoped.field_by_tag(448).unwrap().clone()])
+        .map(DataType::from)
         .unwrap()
         .required_field("minimalparty");
     let mut group = DataType::list(item).nullable_field("minimalparties");
     group.as_fix_mut().set_counter(453).unwrap();
     scoped.insert(group.clone()).unwrap();
-    let mut definition = DataType::from_fields([scoped.field_by_tag(453).unwrap().clone(), group])
-        .unwrap()
-        .required_field("minimalpartiesmessage");
+    let mut definition =
+        StructureType::from_fields([scoped.field_by_tag(453).unwrap().clone(), group])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("minimalpartiesmessage");
     definition.as_fix_mut().set_msgtype("ZMIN").unwrap();
     scoped.insert(definition).unwrap();
     let numeric_name = super::fixed_codec(Arc::new(scoped))
@@ -2094,7 +2101,8 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
 
     // The same rows as one Arrow batch in and one Arrow batch out, with the
     // row count preserved: a capture joins back to its source by position.
-    let capture = DataType::from_fields([DataType::binary().required_field("body")])
+    let capture = StructureType::from_fields([DataType::binary().required_field("body")])
+        .map(DataType::from)
         .expect("a capture shape")
         .required_field("capture");
     let values = Scalar::from_sequence(

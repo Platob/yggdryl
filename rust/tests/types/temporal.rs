@@ -1,8 +1,8 @@
 //! The temporal scalar: exact widths, the zone every value carries, and
 //! the readers that answer for each family.
 
-use yggdryl::{DataType, DataTypeId, Scalar, TemporalFamily, TimeUnit, Timezone, Value};
-use yggdryl::{Date32, DateTime64, Interval};
+use yggdryl::{DataType, DataTypeId, FamilyValue, Scalar, Temporal, TimeUnit, Timezone, Value};
+use yggdryl::{Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64};
 
 #[test]
 fn constructors_reject_illegal_width_unit_combinations() {
@@ -87,56 +87,56 @@ fn temporal_readers_answer_every_temporal_variant() {
     let cases = [
         (
             Scalar::date32(1),
-            TemporalFamily::Date,
+            "date",
             TimeUnit::Day,
             Timezone::NAIVE,
             1_i64,
         ),
         (
             Scalar::date64(86_400_000),
-            TemporalFamily::Date,
+            "date",
             TimeUnit::Millisecond,
             Timezone::NAIVE,
             86_400_000,
         ),
         (
             Scalar::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
-            TemporalFamily::Time,
+            "time",
             TimeUnit::Second,
             Timezone::NAIVE,
             1,
         ),
         (
             Scalar::time64(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
-            TemporalFamily::Time,
+            "time",
             TimeUnit::Microsecond,
             Timezone::NAIVE,
             1,
         ),
         (
             Scalar::datetime64(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
-            TemporalFamily::DateTime,
+            "datetime",
             TimeUnit::Nanosecond,
             Timezone::UTC,
             1,
         ),
         (
             Scalar::duration32(-1, TimeUnit::Millisecond).unwrap(),
-            TemporalFamily::Duration,
+            "duration",
             TimeUnit::Millisecond,
             Timezone::NAIVE,
             -1,
         ),
         (
             Scalar::duration64(1, TimeUnit::Microsecond).unwrap(),
-            TemporalFamily::Duration,
+            "duration",
             TimeUnit::Microsecond,
             Timezone::NAIVE,
             1,
         ),
         (
             Scalar::interval(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
-            TemporalFamily::Interval,
+            "interval",
             TimeUnit::MonthDayNano,
             Timezone::NAIVE,
             3,
@@ -144,7 +144,11 @@ fn temporal_readers_answer_every_temporal_variant() {
     ];
     for (value, family, unit, zone, count) in &cases {
         assert!(value.is_temporal(), "{value:?}");
-        assert_eq!(value.temporal_family(), Some(*family), "{value:?}");
+        assert_eq!(
+            value.as_temporal().map(|held| held.family()),
+            Some(*family),
+            "{value:?}"
+        );
         assert_eq!(value.temporal_unit(), Some(*unit), "{value:?}");
         assert_eq!(value.temporal_timezone(), Some(*zone), "{value:?}");
         assert_eq!(value.temporal_count(), Some(*count), "{value:?}");
@@ -162,7 +166,7 @@ fn temporal_readers_answer_every_temporal_variant() {
 
     let number = Scalar::from(1);
     assert!(!number.is_temporal());
-    assert_eq!(number.temporal_family(), None);
+    assert_eq!(number.as_temporal().map(|held| held.family()), None);
     assert_eq!(number.temporal_unit(), None);
     assert_eq!(number.temporal_timezone(), None);
     assert_eq!(number.temporal_count(), None);
@@ -207,4 +211,53 @@ fn family_constructors_reject_invalid_parts() {
     assert!(Scalar::from_datetime(1, TimeUnit::Day, Timezone::NAIVE).is_err());
     assert!(Scalar::from_duration(1, TimeUnit::DayTime, Timezone::NAIVE).is_err());
     assert!(Scalar::from_duration(1, TimeUnit::Second, Timezone::UTC).is_err());
+}
+
+#[test]
+fn the_temporal_family_stands_for_every_leaf() {
+    crate::scalar::assert_family_round_trip(
+        vec![
+            crate::family_leaf!(
+                Temporal::Date32,
+                Date32::new(1, TimeUnit::Day, Timezone::NAIVE).unwrap()
+            ),
+            crate::family_leaf!(
+                Temporal::Date64,
+                Date64::new(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap()
+            ),
+            crate::family_leaf!(
+                Temporal::Time32,
+                Time32::new(1, TimeUnit::Second, Timezone::NAIVE).unwrap()
+            ),
+            crate::family_leaf!(
+                Temporal::Time64,
+                Time64::new(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()
+            ),
+            crate::family_leaf!(
+                Temporal::DateTime64,
+                DateTime64::new(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
+            ),
+            crate::family_leaf!(
+                Temporal::Duration32,
+                Duration32::new(-1, TimeUnit::Millisecond, Timezone::NAIVE).unwrap()
+            ),
+            crate::family_leaf!(
+                Temporal::Duration64,
+                Duration64::new(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()
+            ),
+            crate::family_leaf!(
+                Temporal::Interval,
+                Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()
+            ),
+        ],
+        yggdryl::DataTypeKind::Temporal,
+        &Scalar::from(1_i64),
+    );
+    // The family answers the leaf's datatype with the parameters the leaf
+    // carries, as `Scalar::dtype` does for the same value.
+    let value = Scalar::datetime64(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+    assert_eq!(
+        Temporal::from_scalar(&value).unwrap().dtype().unwrap(),
+        DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).unwrap()
+    );
 }

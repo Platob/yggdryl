@@ -12,12 +12,16 @@ use yggdryl::arrow::{batch_reader, scalar_array, scalar_value};
 use yggdryl::expression::Literal;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::{Charset, DataType, DataTypeId, Field, Scalar, StringEnum, Term, Url};
+use yggdryl::{Charset, DataType, DataTypeId, Field, Scalar, StringEnum, StructureType, Term, Url};
 use yggdryl::{IOBase, IOMedia};
 use yggdryl::{Str, StringType};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    Field::new("row", DataType::from_fields(fields).unwrap(), false)
+    Field::new(
+        "row",
+        DataType::from(StructureType::from_fields(fields).unwrap()),
+        false,
+    )
 }
 
 /// Four-byte storage: the padded codes the writer would have stored.

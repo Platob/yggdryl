@@ -1,4 +1,4 @@
-//! `PythonMetadata`, the class declaration a field carries under `python:`.
+//! `PythonMetadata`, the class declaration a field carries under `PYTHON:`.
 //!
 //! Python is the one runtime that can hand a schema its own declaring class,
 //! so the class identity a field remembers is built here once - from a class
@@ -35,7 +35,7 @@ fn kind_names() -> String {
         .join(", ")
 }
 
-/// The Python class a field's `python:` properties name.
+/// The Python class a field's `PYTHON:` properties name.
 ///
 /// Immutable: `module`, `qualname` and `kind` are validated together when the
 /// value is built, so a declaration is never half-set and never re-validated
@@ -150,7 +150,7 @@ impl PyPythonMetadata {
     /// The three metadata entries this declaration stores.
     ///
     /// Merging these into a mapping is what lets one `Field` construction
-    /// carry the declaration, without a caller ever spelling a `python:` key.
+    /// carry the declaration, without a caller ever spelling a `PYTHON:` key.
     #[getter]
     fn properties<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let properties = PyDict::new(py);

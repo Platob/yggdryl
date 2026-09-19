@@ -5,7 +5,7 @@ use regex_syntax::ParserBuilder;
 use regex_syntax::hir::{Class, Hir, HirKind};
 use smol_str::format_smolstr;
 
-use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone};
+use crate::{DataType, Error, Field, Result, Scalar, StructureType, TimeUnit, Timezone};
 
 impl DataType {
     /// Build a Struct datatype from a regex's named captures.
@@ -77,7 +77,7 @@ impl DataType {
         }
         captures.sort_by_key(|(index, _, _)| *index);
 
-        DataType::from_fields(
+        StructureType::from_fields(
             captures
                 .into_iter()
                 .map(|(_, name, capture)| {
@@ -90,6 +90,7 @@ impl DataType {
                 })
                 .collect::<Result<Vec<_>>>()?,
         )
+        .map(DataType::from)
     }
 }
 

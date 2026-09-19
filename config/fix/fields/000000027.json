@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2700",
       "description": "Identifier of the collateral portfolio when reporting on a portfolio basis.",
-      "display": "SideCollateralPortfolioID",
-      "fix:tag": "2700"
+      "display": "SideCollateralPortfolioID"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2701",
       "description": "Type of collateral on deposit being reported.",
-      "display": "SideCollateralType",
-      "fix:tag": "2701"
+      "display": "SideCollateralType"
     }
   },
   {
@@ -32,9 +32,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2702",
       "description": "Currency value currently attributed to the collateral.",
-      "display": "SideCurrentCollateralAmount",
-      "fix:tag": "2702"
+      "display": "SideCurrentCollateralAmount"
     }
   },
   {
@@ -44,9 +44,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2703",
       "description": "Indicates, if \"Y\", that a stated valuation includes a haircut, e.g. that the stated value reflects the subtraction of the haircut. Note that a value of \"N\" does not imply a haircut is not applicable, only that the haircut (if any) is not reflected in the stated valuation.",
-      "display": "SideHaircutIndicator",
-      "fix:tag": "2703"
+      "display": "SideHaircutIndicator"
     }
   },
   {
@@ -56,9 +56,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of execution destination for the order.",
-      "display": "ExDestinationType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NoRestriction",
@@ -80,7 +78,9 @@
           "doc": "Can be traded on a trading venue or Systematic internaliser (SI)"
         }
       ],
-      "fix:tag": "2704"
+      "FIX:tag": "2704",
+      "description": "Identifies the type of execution destination for the order.",
+      "display": "ExDestinationType"
     }
   },
   {
@@ -90,9 +90,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Market condition. In the context of ESMA RTS 8 it is important that trading venues communicate the condition of the market, particularly \"stressed\" and \"exceptional\", in order to provide incentives for firms contributing to liquidity.",
-      "display": "MarketCondition",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Normal",
@@ -109,7 +107,9 @@
           "doc": "Exceptional"
         }
       ],
-      "fix:tag": "2705"
+      "FIX:tag": "2705",
+      "description": "Market condition. In the context of ESMA RTS 8 it is important that trading venues communicate the condition of the market, particularly \"stressed\" and \"exceptional\", in order to provide incentives for firms contributing to liquidity.",
+      "display": "MarketCondition"
     }
   },
   {
@@ -119,9 +119,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2706",
       "description": "Number of quote attributes entries.",
-      "display": "NoQuoteAttributes",
-      "fix:tag": "2706"
+      "display": "NoQuoteAttributes"
     }
   },
   {
@@ -131,9 +131,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The type of attribute for the quote.",
-      "display": "QuoteAttributeType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "QuoteAboveStandardMarketSize",
@@ -160,7 +158,9 @@
           "doc": "Bid or ask request"
         }
       ],
-      "fix:tag": "2707"
+      "FIX:tag": "2707",
+      "description": "The type of attribute for the quote.",
+      "display": "QuoteAttributeType"
     }
   },
   {
@@ -170,9 +170,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2708",
       "description": "The value associated with the quote attribute type specified in QuoteAttributeType(2707).",
-      "display": "QuoteAttributeValue",
-      "fix:tag": "2708"
+      "display": "QuoteAttributeValue"
     }
   },
   {
@@ -182,9 +182,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2709",
       "description": "Number of price qualifiers in the repeating group.",
-      "display": "NoPriceQualifiers",
-      "fix:tag": "2709"
+      "display": "NoPriceQualifiers"
     }
   },
   {
@@ -194,9 +194,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Qualifier for price. May be used when the price needs to be explicitly qualified.",
-      "display": "PriceQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "AccruedInterestIsFactored",
@@ -213,7 +211,9 @@
           "doc": "The effect of bond amortization or the floating rate index offset is factored into the price"
         }
       ],
-      "fix:tag": "2710"
+      "FIX:tag": "2710",
+      "description": "Qualifier for price. May be used when the price needs to be explicitly qualified.",
+      "display": "PriceQualifier"
     }
   },
   {
@@ -223,9 +223,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Describes the reporting ranges for executed transactions.",
-      "display": "MDValueTier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Range1",
@@ -242,7 +240,9 @@
           "doc": "Range 3"
         }
       ],
-      "fix:tag": "2711"
+      "FIX:tag": "2711",
+      "description": "Describes the reporting ranges for executed transactions.",
+      "display": "MDValueTier"
     }
   },
   {
@@ -252,9 +252,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies whether the current entry contributes to the trade or transaction economics, i.e. affects NetMoney(118).",
-      "display": "MiscFeeQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Contributes",
@@ -266,7 +264,9 @@
           "doc": "Does not contribute"
         }
       ],
-      "fix:tag": "2712"
+      "FIX:tag": "2712",
+      "description": "Identifies whether the current entry contributes to the trade or transaction economics, i.e. affects NetMoney(118).",
+      "display": "MiscFeeQualifier"
     }
   },
   {
@@ -276,9 +276,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2713",
       "description": "Can be used to provide a textual description of the fee type.",
-      "display": "MiscFeeDesc",
-      "fix:tag": "2713"
+      "display": "MiscFeeDesc"
     }
   },
   {
@@ -288,9 +288,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2714",
       "description": "The full normative name of the financial instrument.",
-      "display": "FinancialInstrumentFullName",
-      "fix:tag": "2714"
+      "display": "FinancialInstrumentFullName"
     }
   },
   {
@@ -300,9 +300,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2715",
       "description": "Byte length of encoded (non-ASCII characters) EncodedFinancialInstrumentFullName(2716) field.",
-      "display": "EncodedFinancialInstrumentFullNameLen",
-      "fix:tag": "2715"
+      "display": "EncodedFinancialInstrumentFullNameLen"
     }
   },
   {
@@ -312,9 +312,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2716",
       "description": "Encoded (non-ASCII characters) representation of the FinancialInstrumentFullName(2714) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the FinancialInstrumentFullName(2714) field.",
-      "display": "EncodedFinancialInstrumentFullName",
-      "fix:tag": "2716"
+      "display": "EncodedFinancialInstrumentFullName"
     }
   },
   {
@@ -324,9 +324,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2717",
       "description": "The full normative name of the multileg's financial instrument.",
-      "display": "LegFinancialInstrumentFullName",
-      "fix:tag": "2717"
+      "display": "LegFinancialInstrumentFullName"
     }
   },
   {
@@ -336,9 +336,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2718",
       "description": "Byte length of encoded (non-ASCII characters) individual multileg instrument's EncodedLegFinancialInstrumentFullName(2719).",
-      "display": "EncodedLegFinancialInstrumentFullNameLen",
-      "fix:tag": "2718"
+      "display": "EncodedLegFinancialInstrumentFullNameLen"
     }
   },
   {
@@ -348,9 +348,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2719",
       "description": "Encoded (non-ASCII characters) representation of the LegFinancialInstrumentFullName(2717) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the LegFinancialInstrumentFullName(2717) field.",
-      "display": "EncodedLegFinancialInstrumentFullName",
-      "fix:tag": "2719"
+      "display": "EncodedLegFinancialInstrumentFullName"
     }
   },
   {
@@ -360,9 +360,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2720",
       "description": "The full normative name of the underlying financial instrument.",
-      "display": "UnderlyingFinancialInstrumentFullName",
-      "fix:tag": "2720"
+      "display": "UnderlyingFinancialInstrumentFullName"
     }
   },
   {
@@ -372,9 +372,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2721",
       "description": "Byte length of encoded (non-ASCII characters) underlying instrument's EncodedUnderlyingFinancialInstrumentFullName(2722).",
-      "display": "EncodedUnderlyingFinancialInstrumentFullNameLen",
-      "fix:tag": "2721"
+      "display": "EncodedUnderlyingFinancialInstrumentFullNameLen"
     }
   },
   {
@@ -384,9 +384,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2722",
       "description": "Encoded (non-ASCII characters) representation of the UnderlyingFinancialInstrumentFullName(2720) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the UnderlyingFinancialInstrumentFullName(2720) field.",
-      "display": "EncodedUnderlyingFinancialInstrumentFullName",
-      "fix:tag": "2722"
+      "display": "EncodedUnderlyingFinancialInstrumentFullName"
     }
   },
   {
@@ -396,9 +396,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Curve time unit associated with the underlying index.",
-      "display": "UnderlyingIndexCurveUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -420,7 +418,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "2723"
+      "FIX:tag": "2723",
+      "description": "Curve time unit associated with the underlying index.",
+      "display": "UnderlyingIndexCurveUnit"
     }
   },
   {
@@ -430,9 +430,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2724",
       "description": "Curve time multiplier for the underlying index.",
-      "display": "UnderlyingIndexCurvePeriod",
-      "fix:tag": "2724"
+      "display": "UnderlyingIndexCurvePeriod"
     }
   },
   {
@@ -442,9 +442,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Further sub classification of the CommissionAmountType(2641).",
-      "display": "CommissionAmountSubType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ResearchPaymentAccount",
@@ -464,7 +462,9 @@
           "doc": "Other type of research payment"
         }
       ],
-      "fix:tag": "2725"
+      "FIX:tag": "2725",
+      "description": "Further sub classification of the CommissionAmountType(2641).",
+      "display": "CommissionAmountSubType"
     }
   },
   {
@@ -474,9 +474,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Further sub classification of the AllocCommissionAmountType(2655).",
-      "display": "AllocCommissionAmountSubType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ResearchPaymentAccount",
@@ -496,7 +494,9 @@
           "doc": "Other type of research payment"
         }
       ],
-      "fix:tag": "2726"
+      "FIX:tag": "2726",
+      "description": "Further sub classification of the AllocCommissionAmountType(2655).",
+      "display": "AllocCommissionAmountSubType"
     }
   },
   {
@@ -506,9 +506,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2727",
       "description": "Unique identifier for a specific leg (uniqueness not defined as part of the FIX specification). AllocLegRefID(2727) references the value from LegID(1788) in the current multileg order or trade message specifying to which leg the allocation instance applies.",
-      "display": "AllocLegRefID",
-      "fix:tag": "2727"
+      "display": "AllocLegRefID"
     }
   },
   {
@@ -518,9 +518,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2728",
       "description": "Time unit multiplier for the floating rate index identified in FloatingRateIndexID(2731).",
-      "display": "FloatingRateIndexCurvePeriod",
-      "fix:tag": "2728"
+      "display": "FloatingRateIndexCurvePeriod"
     }
   },
   {
@@ -532,9 +532,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2729",
       "description": "Spread from the floating rate index.",
-      "display": "FloatingRateIndexCurveSpread",
-      "fix:tag": "2729"
+      "display": "FloatingRateIndexCurveSpread"
     }
   },
   {
@@ -544,9 +544,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the floating rate index identified in FloatingRateIndexID(2731).",
-      "display": "FloatingRateIndexCurveUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -568,7 +566,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "2730"
+      "FIX:tag": "2730",
+      "description": "Time unit associated with the floating rate index identified in FloatingRateIndexID(2731).",
+      "display": "FloatingRateIndexCurveUnit"
     }
   },
   {
@@ -578,9 +578,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2731",
       "description": "Security identifier of the floating rate index.",
-      "display": "FloatingRateIndexID",
-      "fix:tag": "2731"
+      "display": "FloatingRateIndexID"
     }
   },
   {
@@ -590,9 +590,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Source for the floating rate index identified in FloatingRateIndexID(2731).",
-      "display": "FloatingRateIndexIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -759,7 +757,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "2732"
+      "FIX:tag": "2732",
+      "description": "Source for the floating rate index identified in FloatingRateIndexID(2731).",
+      "display": "FloatingRateIndexIDSource"
     }
   },
   {
@@ -769,9 +769,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2733",
       "description": "Month identified in the index roll.",
-      "display": "IndexRollMonth",
-      "fix:tag": "2733"
+      "display": "IndexRollMonth"
     }
   },
   {
@@ -781,9 +781,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2734",
       "description": "Number of instances of the index roll month.",
-      "display": "NoIndexRollMonths",
-      "fix:tag": "2734"
+      "display": "NoIndexRollMonths"
     }
   },
   {
@@ -793,9 +793,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2735",
       "description": "Used to provide a more specific description of the asset specified in AssetType(1940). See https://fixtrading.org/packages/assetsubtype for code list of applicable values.",
-      "display": "AssetSubType",
-      "fix:tag": "2735"
+      "display": "AssetSubType"
     }
   },
   {
@@ -805,9 +805,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Final price type of the commodity as specified by the trading venue.",
-      "display": "CommodityFinalPriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ArgusMcCloskey",
@@ -844,7 +842,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2736"
+      "FIX:tag": "2736",
+      "description": "Final price type of the commodity as specified by the trading venue.",
+      "display": "CommodityFinalPriceType"
     }
   },
   {
@@ -854,9 +854,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2737",
       "description": "Short name of the financial instrument. Uses ISO 18774 (FINS) values.",
-      "display": "FinancialInstrumentShortName",
-      "fix:tag": "2737"
+      "display": "FinancialInstrumentShortName"
     }
   },
   {
@@ -867,9 +867,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2738",
       "description": "Next index roll date.",
-      "display": "NextIndexRollDate",
-      "fix:tag": "2738"
+      "display": "NextIndexRollDate"
     }
   },
   {
@@ -879,9 +879,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2739",
       "description": "Used to provide a more specific description of the asset specified in LegAssetType(2069). See https://fixtrading.org/packages/assetsubtype for code list of applicable values.",
-      "display": "LegAssetSubType",
-      "fix:tag": "2739"
+      "display": "LegAssetSubType"
     }
   },
   {
@@ -891,9 +891,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2740",
       "description": "Short name of the financial instrument. Uses ISO 18774 (FISN) values.",
-      "display": "LegFinancialInstrumentShortName",
-      "fix:tag": "2740"
+      "display": "LegFinancialInstrumentShortName"
     }
   },
   {
@@ -903,9 +903,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2741",
       "description": "Used to provide a more specific description of the asset specified in SecondaryAssetType(1979). See https://fixtrading.org/packages/assetsubtype for code list of applicable values.",
-      "display": "SecondaryAssetSubType",
-      "fix:tag": "2741"
+      "display": "SecondaryAssetSubType"
     }
   },
   {
@@ -915,9 +915,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2742",
       "description": "Short name of the financial instrument. Uses ISO 18774 (FINS) values.",
-      "display": "UnderlyingFinancialInstrumentShortName",
-      "fix:tag": "2742"
+      "display": "UnderlyingFinancialInstrumentShortName"
     }
   },
   {
@@ -927,9 +927,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2743",
       "description": "Used to provide a more specific description of the asset specified in LegSecondaryAssetType(2079). See https://fixtrading.org/packages/assetsubtype for code list of applicable values.",
-      "display": "LegSecondaryAssetSubType",
-      "fix:tag": "2743"
+      "display": "LegSecondaryAssetSubType"
     }
   },
   {
@@ -939,9 +939,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2744",
       "description": "Used to provide a more specific description of the asset specified in UnderlyingAssetType(2015). See https://fixtrading.org/packages/assetsubtype for code list of applicable values.",
-      "display": "UnderlyingAssetSubType",
-      "fix:tag": "2744"
+      "display": "UnderlyingAssetSubType"
     }
   },
   {
@@ -951,9 +951,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2745",
       "description": "May be used to provide a more specific description of the asset specified in UnderlyingSecondaryAssetType(2083). See https://fixtrading.org/packages/assetsubtype for code list of applicable values.",
-      "display": "UnderlyingSecondaryAssetSubType",
-      "fix:tag": "2745"
+      "display": "UnderlyingSecondaryAssetSubType"
     }
   },
   {
@@ -963,9 +963,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2746",
       "description": "Number of instances of reference data dates.",
-      "display": "NoReferenceDataDates",
-      "fix:tag": "2746"
+      "display": "NoReferenceDataDates"
     }
   },
   {
@@ -977,9 +977,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2747",
       "description": "Reference data entry's date-time of the type specified in ReferenceDataDateType(2748).",
-      "display": "ReferenceDataDate",
-      "fix:tag": "2747"
+      "display": "ReferenceDataDate"
     }
   },
   {
@@ -989,9 +989,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference data entry's date-time type.",
-      "display": "ReferenceDataDateType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "AdmitToTradeRequestDate",
@@ -1013,7 +1011,9 @@
           "doc": "Termination date"
         }
       ],
-      "fix:tag": "2748"
+      "FIX:tag": "2748",
+      "description": "Reference data entry's date-time type.",
+      "display": "ReferenceDataDateType"
     }
   },
   {
@@ -1025,9 +1025,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2749",
       "description": "Time of the individual execution.",
-      "display": "ExecutionTimestamp",
-      "fix:tag": "2749"
+      "display": "ExecutionTimestamp"
     }
   },
   {
@@ -1039,9 +1039,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2750",
       "description": "Represents the reportable price on fill when an instance of the Parties component with PartyRole(452) = 73 (Execution Venue) is present to prevent having to compute running totals.",
-      "display": "ReportingPx",
-      "fix:tag": "2750"
+      "display": "ReportingPx"
     }
   },
   {
@@ -1053,9 +1053,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2751",
       "description": "Represents the reportable quantity on fill when an instance of the Parties component with PartyRole(452) = 73 (Execution Venue) is present to prevent having to compute running totals.",
-      "display": "ReportingQty",
-      "fix:tag": "2751"
+      "display": "ReportingQty"
     }
   },
   {
@@ -1065,9 +1065,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2752",
       "description": "Specific delivery route or time charter average. Applicable to commodity freight contracts.",
-      "display": "DeliveryRouteOrCharter",
-      "fix:tag": "2752"
+      "display": "DeliveryRouteOrCharter"
     }
   },
   {
@@ -1077,9 +1077,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the type of return or payout trigger for the swap or forward.",
-      "display": "ReturnTrigger",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Dividend",
@@ -1131,7 +1129,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2753"
+      "FIX:tag": "2753",
+      "description": "Indicates the type of return or payout trigger for the swap or forward.",
+      "display": "ReturnTrigger"
     }
   },
   {
@@ -1141,9 +1141,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2754",
       "description": "Specific delivery route or time charter average. Applicable to commodity freight contracts.",
-      "display": "LegDeliveryRouteOrCharter",
-      "fix:tag": "2754"
+      "display": "LegDeliveryRouteOrCharter"
     }
   },
   {
@@ -1153,9 +1153,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the type of return or payout trigger for the swap or forward.",
-      "display": "LegReturnTrigger",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Dividend",
@@ -1207,7 +1205,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2755"
+      "FIX:tag": "2755",
+      "description": "Indicates the type of return or payout trigger for the swap or forward.",
+      "display": "LegReturnTrigger"
     }
   },
   {
@@ -1217,9 +1217,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2756",
       "description": "Specific delivery route or time charter average. Applicable to commodity freight contracts.",
-      "display": "UnderlyingDeliveryRouteOrCharter",
-      "fix:tag": "2756"
+      "display": "UnderlyingDeliveryRouteOrCharter"
     }
   },
   {
@@ -1229,9 +1229,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the type of return or payout trigger for the swap or forward.",
-      "display": "UnderlyingReturnTrigger",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Dividend",
@@ -1283,7 +1281,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2757"
+      "FIX:tag": "2757",
+      "description": "Indicates the type of return or payout trigger for the swap or forward.",
+      "display": "UnderlyingReturnTrigger"
     }
   },
   {
@@ -1293,9 +1293,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2758",
       "description": "Unique identifier for the request message.",
-      "display": "AllocRequestID",
-      "fix:tag": "2758"
+      "display": "AllocRequestID"
     }
   },
   {
@@ -1307,9 +1307,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2759",
       "description": "Indicates the total notional units or amount of an allocation group. Includes any allocated units or amount.",
-      "display": "GroupAmount",
-      "fix:tag": "2759"
+      "display": "GroupAmount"
     }
   },
   {
@@ -1321,9 +1321,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2760",
       "description": "Indicates the remaining notional units or amount of an allocation group that has not yet been allocated.",
-      "display": "GroupRemainingAmount",
-      "fix:tag": "2760"
+      "display": "GroupRemainingAmount"
     }
   },
   {
@@ -1335,9 +1335,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2761",
       "description": "Indicates the notional units or amount being allocated.",
-      "display": "AllocGroupAmount",
-      "fix:tag": "2761"
+      "display": "AllocGroupAmount"
     }
   },
   {
@@ -1349,9 +1349,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2762",
       "description": "Price offset of the markup denominated in the price type of the trade.",
-      "display": "PriceMarkup",
-      "fix:tag": "2762"
+      "display": "PriceMarkup"
     }
   },
   {
@@ -1361,9 +1361,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The average pricing model used for block trades.",
-      "display": "AveragePriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "TimeWeightedAveragePrice",
@@ -1385,7 +1383,9 @@
           "doc": "Limit order average price"
         }
       ],
-      "fix:tag": "2763"
+      "FIX:tag": "2763",
+      "description": "The average pricing model used for block trades.",
+      "display": "AveragePriceType"
     }
   },
   {
@@ -1397,9 +1397,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2764",
       "description": "Start of the time period during which price averaging occurred.",
-      "display": "AveragePriceStartTime",
-      "fix:tag": "2764"
+      "display": "AveragePriceStartTime"
     }
   },
   {
@@ -1411,9 +1411,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2765",
       "description": "End of the time period during which price averaging occurred.",
-      "display": "AveragePriceEndTime",
-      "fix:tag": "2765"
+      "display": "AveragePriceEndTime"
     }
   },
   {
@@ -1423,9 +1423,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2766",
       "description": "For Percent-of-volume (POV) average pricing this is the target percentage this order quantity represents of the total trading volume of an instrument during the specified time period. This provides the data needed to ensure that the average price is fair based on the total sum of grouped POV trades.",
-      "display": "OrderPercentOfTotalVolume",
-      "fix:tag": "2766"
+      "display": "OrderPercentOfTotalVolume"
     }
   },
   {
@@ -1435,9 +1435,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of the trade give-up relative to the group identified in AllocGroupID(1730).",
-      "display": "AllocGroupStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Added",
@@ -1464,7 +1462,9 @@
           "doc": "Pending"
         }
       ],
-      "fix:tag": "2767"
+      "FIX:tag": "2767",
+      "description": "Status of the trade give-up relative to the group identified in AllocGroupID(1730).",
+      "display": "AllocGroupStatus"
     }
   },
   {
@@ -1474,9 +1474,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of the AllocationInstructionAlertRequest(35=DU).",
-      "display": "AllocRequestStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Accepted",
@@ -1488,7 +1486,9 @@
           "doc": "Rejected"
         }
       ],
-      "fix:tag": "2768"
+      "FIX:tag": "2768",
+      "description": "Status of the AllocationInstructionAlertRequest(35=DU).",
+      "display": "AllocRequestStatus"
     }
   },
   {
@@ -1498,9 +1498,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Average pricing indicator at the allocation level.",
-      "display": "AllocAvgPxIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NoAveragePricing",
@@ -1527,7 +1525,9 @@
           "doc": "Trade is average priced"
         }
       ],
-      "fix:tag": "2769"
+      "FIX:tag": "2769",
+      "description": "Average pricing indicator at the allocation level.",
+      "display": "AllocAvgPxIndicator"
     }
   },
   {
@@ -1537,9 +1537,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2770",
       "description": "Used by submitting firm to group trades being sub-allocated into an average price group. The trades in the average price group will be used to calculate an average price for the group.",
-      "display": "AllocAvgPxGroupID",
-      "fix:tag": "2770"
+      "display": "AllocAvgPxGroupID"
     }
   },
   {
@@ -1549,9 +1549,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2771",
       "description": "When reporting a group change by the central counterparty to allocations of trades for the same instrument traded at the same price this identifies the previous group identifier.",
-      "display": "PreviousAllocGroupID",
-      "fix:tag": "2771"
+      "display": "PreviousAllocGroupID"
     }
   },
   {
@@ -1561,9 +1561,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2772",
       "description": "Number of match exceptions in the repeating group.",
-      "display": "NoMatchExceptions",
-      "fix:tag": "2772"
+      "display": "NoMatchExceptions"
     }
   },
   {
@@ -1573,9 +1573,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of matching exception.",
-      "display": "MatchExceptionType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NoMatchingConfirmation",
@@ -1612,7 +1610,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2773"
+      "FIX:tag": "2773",
+      "description": "Type of matching exception.",
+      "display": "MatchExceptionType"
     }
   },
   {
@@ -1622,9 +1622,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the data point used in the matching operation which resulted in an exception.",
-      "display": "MatchExceptionElementType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "AccruedInterest",
@@ -1716,7 +1714,9 @@
           "doc": "Tax"
         }
       ],
-      "fix:tag": "2774"
+      "FIX:tag": "2774",
+      "description": "Identifies the data point used in the matching operation which resulted in an exception.",
+      "display": "MatchExceptionElementType"
     }
   },
   {
@@ -1726,9 +1726,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2775",
       "description": "The matching exception data point name, for example: \"Trade currency\". This may be used for display purposes, providing a corresponding description for the value in MatchExceptionElementType(2774).",
-      "display": "MatchExceptionElementName",
-      "fix:tag": "2775"
+      "display": "MatchExceptionElementName"
     }
   },
   {
@@ -1738,9 +1738,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2776",
       "description": "The allocating party's data value used in the match operation.",
-      "display": "MatchExceptionAllocValue",
-      "fix:tag": "2776"
+      "display": "MatchExceptionAllocValue"
     }
   },
   {
@@ -1750,9 +1750,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2777",
       "description": "The confirming party's data value used in the match operation.",
-      "display": "MatchExceptionConfirmValue",
-      "fix:tag": "2777"
+      "display": "MatchExceptionConfirmValue"
     }
   },
   {
@@ -1762,9 +1762,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2778",
       "description": "The data element's tolerance value. Omitted if no tolerance is allowed or not applicable.",
-      "display": "MatchExceptionToleranceValue",
-      "fix:tag": "2778"
+      "display": "MatchExceptionToleranceValue"
     }
   },
   {
@@ -1774,9 +1774,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The type of value in MatchExceptionToleranceValue(2778). Omitted if no tolerance is allowed or not applicable.",
-      "display": "MatchExceptionToleranceValueType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "FixedAmount",
@@ -1788,7 +1786,9 @@
           "doc": "Percentage"
         }
       ],
-      "fix:tag": "2779"
+      "FIX:tag": "2779",
+      "description": "The type of value in MatchExceptionToleranceValue(2778). Omitted if no tolerance is allowed or not applicable.",
+      "display": "MatchExceptionToleranceValueType"
     }
   },
   {
@@ -1798,9 +1798,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2780",
       "description": "Description of the exception.",
-      "display": "MatchExceptionText",
-      "fix:tag": "2780"
+      "display": "MatchExceptionText"
     }
   },
   {
@@ -1810,9 +1810,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2781",
       "description": "Number of matching data points in the repeating group.",
-      "display": "NoMatchingDataPoints",
-      "fix:tag": "2781"
+      "display": "NoMatchingDataPoints"
     }
   },
   {
@@ -1822,9 +1822,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Data point's matching type.",
-      "display": "MatchingDataPointIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Mandatory",
@@ -1836,7 +1834,9 @@
           "doc": "Optional"
         }
       ],
-      "fix:tag": "2782"
+      "FIX:tag": "2782",
+      "description": "Data point's matching type.",
+      "display": "MatchingDataPointIndicator"
     }
   },
   {
@@ -1846,9 +1846,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2783",
       "description": "Value of the matching data point.",
-      "display": "MatchingDataPointValue",
-      "fix:tag": "2783"
+      "display": "MatchingDataPointValue"
     }
   },
   {
@@ -1858,9 +1858,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the data point used in the matching operation.",
-      "display": "MatchingDataPointType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "AccruedInterest",
@@ -1952,7 +1950,9 @@
           "doc": "Tax"
         }
       ],
-      "fix:tag": "2784"
+      "FIX:tag": "2784",
+      "description": "Identifies the data point used in the matching operation.",
+      "display": "MatchingDataPointType"
     }
   },
   {
@@ -1962,9 +1962,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2785",
       "description": "The matching data point name, for example: \"Trade currency\". This may be used for display purposes, providing a corresponding description for the value in MatchingDataPointType(2784).",
-      "display": "MatchingDataPointName",
-      "fix:tag": "2785"
+      "display": "MatchingDataPointName"
     }
   },
   {
@@ -1974,9 +1974,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2786",
       "description": "The message identifier for the trade aggregation request.",
-      "display": "TradeAggregationRequestID",
-      "fix:tag": "2786"
+      "display": "TradeAggregationRequestID"
     }
   },
   {
@@ -1986,9 +1986,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2787",
       "description": "Reference identifier to a previously sent trade aggregation message being cancelled or replaced.",
-      "display": "TradeAggregationRequestRefID",
-      "fix:tag": "2787"
+      "display": "TradeAggregationRequestRefID"
     }
   },
   {
@@ -1998,9 +1998,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the trade aggregation transaction type.",
-      "display": "TradeAggregationTransType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "New",
@@ -2017,7 +2015,9 @@
           "doc": "Replace"
         }
       ],
-      "fix:tag": "2788"
+      "FIX:tag": "2788",
+      "description": "Identifies the trade aggregation transaction type.",
+      "display": "TradeAggregationTransType"
     }
   },
   {
@@ -2029,9 +2029,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2789",
       "description": "Total quantity of orders or fills quantity aggregated.",
-      "display": "AggregatedQty",
-      "fix:tag": "2789"
+      "display": "AggregatedQty"
     }
   },
   {
@@ -2041,9 +2041,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of the trade aggregation request.",
-      "display": "TradeAggregationRequestStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Accepted",
@@ -2055,7 +2053,9 @@
           "doc": "Rejected"
         }
       ],
-      "fix:tag": "2790"
+      "FIX:tag": "2790",
+      "description": "Status of the trade aggregation request.",
+      "display": "TradeAggregationRequestStatus"
     }
   },
   {
@@ -2065,9 +2065,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason for trade aggregation request being rejected.",
-      "display": "TradeAggregationRejectReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "UnknownOrders",
@@ -2084,7 +2082,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2791"
+      "FIX:tag": "2791",
+      "description": "Reason for trade aggregation request being rejected.",
+      "display": "TradeAggregationRejectReason"
     }
   },
   {
@@ -2094,9 +2094,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2792",
       "description": "Unique identifier for the TradeAggregationReport(35=DX).",
-      "display": "TradeAggregationReportID",
-      "fix:tag": "2792"
+      "display": "TradeAggregationReportID"
     }
   },
   {
@@ -2108,9 +2108,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2793",
       "description": "The average FX spot rate.",
-      "display": "AvgSpotRate",
-      "fix:tag": "2793"
+      "display": "AvgSpotRate"
     }
   },
   {
@@ -2122,9 +2122,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2794",
       "description": "The average forward points. May be a negative value.",
-      "display": "AvgForwardPoints",
-      "fix:tag": "2794"
+      "display": "AvgForwardPoints"
     }
   },
   {
@@ -2134,9 +2134,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the type of the currency rate being used. This is relevant for currencies that have offshore rate that different from onshore rate.",
-      "display": "OffshoreIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Regular",
@@ -2153,7 +2151,9 @@
           "doc": "Onshore"
         }
       ],
-      "fix:tag": "2795"
+      "FIX:tag": "2795",
+      "description": "Indicates the type of the currency rate being used. This is relevant for currencies that have offshore rate that different from onshore rate.",
+      "display": "OffshoreIndicator"
     }
   },
   {
@@ -2163,10 +2163,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "5.0.2",
+      "FIX:tag": "2796",
       "description": "Specifies the foreign exchange benchmark rate fixing to be used in valuing the transaction. For example \"London 4 p.m.\" or \"Tokyo 3 p.m.\"",
-      "display": "FXBenchmarkRateFix",
-      "fix:deprecated": "5.0.2",
-      "fix:tag": "2796"
+      "display": "FXBenchmarkRateFix"
     }
   },
   {
@@ -2176,9 +2176,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2797",
       "description": "Byte length of encoded (non-ASCII characters) EncodedMatchExceptionText(2798) field.",
-      "display": "EncodedMatchExceptionTextLen",
-      "fix:tag": "2797"
+      "display": "EncodedMatchExceptionTextLen"
     }
   },
   {
@@ -2188,9 +2188,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2798",
       "description": "Encoded (non-ASCII characters) representation of the MatchExceptionText(2780) field in the encoded format specified via the MessageEncoding(347) field.",
-      "display": "EncodedMatchExceptionText",
-      "fix:tag": "2798"
+      "display": "EncodedMatchExceptionText"
     }
   },
   {
@@ -2200,9 +2200,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2799",
       "description": "Unique ID of the PayManagementReport(35=EA) message.",
-      "display": "PayReportID",
-      "fix:tag": "2799"
+      "display": "PayReportID"
     }
   }
 ]

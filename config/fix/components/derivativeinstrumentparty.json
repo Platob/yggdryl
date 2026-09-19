@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrumentpartyid",
-          "fix:tag": "1293"
+          "FIX:field": "derivativeinstrumentpartyid",
+          "FIX:tag": "1293"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrumentpartyidsource",
-          "fix:tag": "1294"
+          "FIX:field": "derivativeinstrumentpartyidsource",
+          "FIX:tag": "1294"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrumentpartyrole",
-          "fix:tag": "1295"
+          "FIX:field": "derivativeinstrumentpartyrole",
+          "FIX:tag": "1295"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrumentpartyrolequalifier",
-          "fix:tag": "2377"
+          "FIX:field": "derivativeinstrumentpartyrolequalifier",
+          "FIX:tag": "2377"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noderivativeinstrumentpartysubids",
-          "fix:tag": "1296"
+          "FIX:field": "noderivativeinstrumentpartysubids",
+          "FIX:tag": "1296"
         }
       },
       {
@@ -65,14 +65,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "derivativeinstrumentpartysubidsgrp"
+          "FIX:group": "derivativeinstrumentpartysubidsgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "DerivativeInstrumentParty",
-    "fix:tag": "493050"
+    "FIX:tag": "493050",
+    "display": "DerivativeInstrumentParty"
   }
 }

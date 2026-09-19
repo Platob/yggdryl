@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "referencedatadate",
-          "fix:tag": "2747"
+          "FIX:field": "referencedatadate",
+          "FIX:tag": "2747"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "referencedatadatetype",
-          "fix:tag": "2748"
+          "FIX:field": "referencedatadatetype",
+          "FIX:tag": "2748"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ReferenceDataDate",
-    "fix:tag": "269385"
+    "FIX:tag": "269385",
+    "display": "ReferenceDataDate"
   }
 }

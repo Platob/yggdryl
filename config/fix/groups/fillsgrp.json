@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "fill"
+        "FIX:component": "fill"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "fill",
+    "FIX:counter": "1362",
+    "FIX:tag": "820703",
     "description": "Specifies the number of partial fills included in this Execution Report",
-    "display": "FillsGrp",
-    "fix:component": "fill",
-    "fix:counter": "1362",
-    "fix:tag": "820703"
+    "display": "FillsGrp"
   }
 }

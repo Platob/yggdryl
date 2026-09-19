@@ -29,7 +29,7 @@ A caller holding rows and a dotted name needs nothing else.
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::iceberg::Catalog;
     use yggdryl::local::Folder;
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
     let warehouse = Folder::temporary()?.path()?.join("yggdryl-doc-warehouse");
     let _ = std::fs::remove_dir_all(&warehouse);
@@ -37,10 +37,10 @@ A caller holding rows and a dotted name needs nothing else.
 
     // Rows and a name are enough: the first append creates the table with the
     // schema the rows carry, and the second appends to it.
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
-    ])?
+    ])?)
     .required_field("row")
     .with_partition_fields(&["venue"])?;
     let arrow_schema = schema.into_arrow_schema()?;
@@ -320,6 +320,7 @@ use std::sync::Arc;
 
 use arrow_array::{Float32Array, Float64Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::holder::Holder;
+use yggdryl::StructureType;
 use yggdryl::iceberg::Table;
 use yggdryl::local::Folder;
 use yggdryl::DataType;
@@ -330,13 +331,13 @@ let catalog = yggdryl::iceberg::Catalog::new(Folder::new(&root)?);
 
 // CREATE TABLE nyc.taxis (...) PARTITIONED BY (vendor_id)
 // The partition mark on the schema is the whole PARTITIONED BY clause.
-let schema = DataType::from_fields([
+let schema = DataType::from(StructureType::from_fields([
     DataType::Int64.required_field("vendor_id"),
     DataType::Int64.required_field("trip_id"),
     DataType::Float32.nullable_field("trip_distance"),
     DataType::Float64.nullable_field("fare_amount"),
     DataType::utf8().nullable_field("store_and_fwd_flag"),
-])?
+])?)
 .required_field("row")
 .with_partition_fields(&["vendor_id"])?;
 let mut table = catalog.tables().create("nyc.taxis", schema.clone())?;
@@ -445,7 +446,7 @@ let _ = std::fs::remove_dir_all(&root);
 - No JavaScript indexing hook -> Map verbs: `get`, `has`, `size`, `keys`, `values`, `entries`, `create`, `openOrCreate`.
 - `len` / `size` -> drains the listing, costing the level.
 - No properties document -> empty properties, never an error.
-- A key prefixed `iceberg:` -> refused; reserved for the format.
+- A key prefixed `ICEBERG:` -> refused; reserved for the format.
 - `update_properties` on an empty namespace -> durable, plus ancestry.
 - Removal anywhere -> absent; storage has no delete or move primitive.
 

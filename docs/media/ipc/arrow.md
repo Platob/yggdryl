@@ -26,12 +26,12 @@ The three intents share one reader-shaped input. Append retains stored rows; key
     use yggdryl::media::IORecordOptions;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
-    let field = DataType::from_fields([
+    let field = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
-    ])?
+    ])?)
     .required_field("row");
     let schema = field.into_arrow_schema()?;
     let batch = |ids: Vec<i64>, venues: Vec<Option<&str>>| {
@@ -148,13 +148,13 @@ The three intents share one reader-shaped input. Append retains stored rows; key
     use yggdryl::arrow;
     use yggdryl::holder::Buffer;
     use yggdryl::ipc::{self, IpcOptions};
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
-    let stored = DataType::from_fields([
+    let stored = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
         DataType::utf8().required_field("venue"),
-    ])?
+    ])?)
     .required_field("row");
     let arrow_schema = stored.into_arrow_schema()?;
 
@@ -172,7 +172,7 @@ The three intents share one reader-shaped input. Append retains stored rows; key
     ipc::overwrite_arrow_reader(&mut handle, arrow::batch_reader(arrow_schema, [batch]), &options)?;
 
     // One of the three columns, named by a root Field of its own.
-    let wanted = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+    let wanted = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
 
     let projected = ipc::read_batch_reader(&handle, Some(&wanted), &options)?;
     assert_eq!(projected.schema().fields().len(), 1);
@@ -260,9 +260,9 @@ The `field` argument is a column pushdown and nothing else: skipped columns are 
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
     use yggdryl::ipc::Ipc;
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
     let arrow_schema = schema.clone().into_arrow_schema()?;
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),

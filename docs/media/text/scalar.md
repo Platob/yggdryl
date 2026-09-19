@@ -22,7 +22,7 @@ A write consumes the `body` column and adds the terminator; a read hands the lin
     ```rust
     use yggdryl::holder::Buffer;
     use yggdryl::media::IORecordOptions;
-    use yggdryl::{DataType, IOBase, IOMedia, Scalar, Url};
+    use yggdryl::{DataType, IOBase, IOMedia, Scalar, StructureType, Url};
 
     struct Line(&'static str);
 
@@ -32,7 +32,7 @@ A write consumes the `body` column and adds the terminator; a read hands the lin
         }
     }
 
-    let body = DataType::from_fields([DataType::utf8().required_field("body")])?
+    let body = DataType::from(StructureType::from_fields([DataType::utf8().required_field("body")])?)
         .required_field("row");
     let mut handle =
         Buffer::new().with_media_type(Url::from_str("file:///app.log")?.media_type());

@@ -24,7 +24,7 @@ use arrow_buffer::BooleanBuffer;
 use arrow_ord::cmp;
 use criterion::{Criterion, criterion_group, criterion_main};
 use yggdryl::expression::{Bound, Bounds};
-use yggdryl::{DataType, Expression, Field, Scalar, Term};
+use yggdryl::{DataType, Expression, Field, Scalar, StructureType, Term};
 
 /// Rows enough to make a per-batch cost visible and small enough to stay warm.
 const ROWS: usize = bench_profile::corpus(65_536, 16_384);
@@ -71,12 +71,13 @@ const CASES: [Case; 6] = [
 fn schema() -> Field {
     Field::new(
         "trades",
-        DataType::from_fields([
+        StructureType::from_fields([
             Field::new("ccy", DataType::utf8(), true),
             Field::new("price", DataType::decimal128(9, 2).unwrap(), true),
             Field::new("size", DataType::Int64, true),
             Field::new("venue", DataType::utf8(), true),
         ])
+        .map(DataType::from)
         .unwrap(),
         false,
     )
@@ -329,18 +330,20 @@ fn predicate_path_benchmarks(criterion: &mut Criterion) {
     const LEGS: usize = 4;
     let schema = Field::new(
         "trades",
-        DataType::from_fields([Field::new(
+        StructureType::from_fields([Field::new(
             "legs",
             DataType::list(
-                DataType::from_fields([
+                StructureType::from_fields([
                     Field::new("ccy", DataType::utf8(), true),
                     Field::new("size", DataType::Int64, true),
                 ])
+                .map(DataType::from)
                 .unwrap()
                 .nullable_field("item"),
             ),
             true,
         )])
+        .map(DataType::from)
         .unwrap(),
         false,
     );

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingcomplexeventratesourcecomponent"
+        "FIX:component": "underlyingcomplexeventratesourcecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingcomplexeventratesourcecomponent",
+    "FIX:counter": "41732",
+    "FIX:tag": "642112",
     "description": "Required if NoUnderlyingComplexEventRateSources(41732) > 0.",
-    "display": "UnderlyingComplexEventRateSourceGrp",
-    "fix:component": "underlyingcomplexeventratesourcecomponent",
-    "fix:counter": "41732",
-    "fix:tag": "642112"
+    "display": "UnderlyingComplexEventRateSourceGrp"
   }
 }

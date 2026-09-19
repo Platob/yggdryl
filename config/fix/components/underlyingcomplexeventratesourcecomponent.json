@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventratesource",
-          "fix:tag": "41733"
+          "FIX:field": "underlyingcomplexeventratesource",
+          "FIX:tag": "41733"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventratesourcetype",
-          "fix:tag": "41734"
+          "FIX:field": "underlyingcomplexeventratesourcetype",
+          "FIX:tag": "41734"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventreferencepage",
-          "fix:tag": "41735"
+          "FIX:field": "underlyingcomplexeventreferencepage",
+          "FIX:tag": "41735"
         }
       },
       {
@@ -43,15 +43,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventreferencepageheading",
-          "fix:tag": "41736"
+          "FIX:field": "underlyingcomplexeventreferencepageheading",
+          "FIX:tag": "41736"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEventRateSource",
-    "fix:tag": "943054"
+    "FIX:tag": "943054",
+    "display": "UnderlyingComplexEventRateSource"
   }
 }

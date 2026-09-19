@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingcomplexeventperiod"
+        "FIX:component": "underlyingcomplexeventperiod"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingcomplexeventperiod",
+    "FIX:counter": "41729",
+    "FIX:tag": "459480",
     "description": "Required if NoUnderlyingComplexEventPeriods(41729) > 0.",
-    "display": "UnderlyingComplexEventPeriodGrp",
-    "fix:component": "underlyingcomplexeventperiod",
-    "fix:counter": "41729",
-    "fix:tag": "459480"
+    "display": "UnderlyingComplexEventPeriodGrp"
   }
 }

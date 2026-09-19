@@ -216,7 +216,7 @@ width it declares and pads to it on the way out, because that is what the fixed 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Scalar};
+    use yggdryl::{DataType, Scalar, StructureType};
 
     let money: DataType = "decimal128(10, 2)".parse()?;
     assert_eq!(money.scalar("10.50")?, Scalar::d128(1_050, 2));
@@ -234,10 +234,10 @@ width it declares and pads to it on the way out, because that is what the fixed 
         Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i32))])?
     );
 
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float32.nullable_field("price"),
-    ])?
+    ])?)
     .required_field("trade");
 
     // A row is one ordered sequence with one value per struct child.
@@ -299,12 +299,12 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
     use arrow_array::{Int32Array, RecordBatch, StringArray};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
     use yggdryl::FieldValue as _;
-use yggdryl::{ArrowCastOptions, DataType, Field};
+use yggdryl::{ArrowCastOptions, DataType, Field, StructureType};
 
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
-    ])?
+    ])?)
     .required_field("trade");
 
     let source = RecordBatch::try_new(
@@ -370,13 +370,13 @@ strictness is about declared values that are absent, not about columns nobody de
     use arrow_array::{ArrayRef, Int32Array, RecordBatch};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
     use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, StructureType};
 
     let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
-    let root = DataType::from_fields([
+    let root = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
-    ])?
+    ])?)
     .required_field("row");
 
     let source = Arc::new(Schema::new(vec![ArrowField::new(
@@ -457,7 +457,7 @@ exactly as it does for a null the source carried. Only zero-length text is empty
 a spelling no reader takes and keeps the reader's own answer. A string leaf, a byte leaf and an
 interval keep the empty cell as what it is, and so does a code whose neutral member is the
 empty text, which is also that code's canonical default. A reader that takes only a plain text
-layout - version, url, timezone, mimetype, mediatype under a dictionary source - answers a
+layout - version, url, urn, timezone, mimetype, mediatype under a dictionary source - answers a
 column with no visible value as a null column, so a required target under `strict` is refused
 by path there too.
 
@@ -564,9 +564,9 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, Int32Array, RecordBatch};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType};
+use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, StructureType};
 
-let root = DataType::from_fields([DataType::Int64.required_field("id")])?
+let root = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
     .required_field("row");
 let source = Arc::new(Schema::new(vec![ArrowField::new(
     "id",

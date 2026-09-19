@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legprovisioncashsettlpaymentdatebusinesscentercomponent"
+        "FIX:component": "legprovisioncashsettlpaymentdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legprovisioncashsettlpaymentdatebusinesscentercomponent",
+    "FIX:counter": "40934",
+    "FIX:tag": "693540",
     "description": "Required if NoLegProvisionCashSettlPaymentDateBusinessCenters(40934) > 0.",
-    "display": "LegProvisionCashSettlPaymentDateBusinessCenterGrp",
-    "fix:component": "legprovisioncashsettlpaymentdatebusinesscentercomponent",
-    "fix:counter": "40934",
-    "fix:tag": "693540"
+    "display": "LegProvisionCashSettlPaymentDateBusinessCenterGrp"
   }
 }

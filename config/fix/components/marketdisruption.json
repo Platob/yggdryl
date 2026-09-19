@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionprovision",
-          "fix:tag": "41087"
+          "FIX:field": "marketdisruptionprovision",
+          "FIX:tag": "41087"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketdisruptionevents",
-          "fix:tag": "41092"
+          "FIX:field": "nomarketdisruptionevents",
+          "FIX:tag": "41092"
         }
       },
       {
@@ -32,7 +32,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "marketdisruptioneventgrp"
+          "FIX:group": "marketdisruptioneventgrp"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionfallbackprovision",
-          "fix:tag": "41088"
+          "FIX:field": "marketdisruptionfallbackprovision",
+          "FIX:tag": "41088"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketdisruptionfallbacks",
-          "fix:tag": "41094"
+          "FIX:field": "nomarketdisruptionfallbacks",
+          "FIX:tag": "41094"
         }
       },
       {
@@ -64,7 +64,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "marketdisruptionfallbackgrp"
+          "FIX:group": "marketdisruptionfallbackgrp"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketdisruptionfallbackreferenceprices",
-          "fix:tag": "41096"
+          "FIX:field": "nomarketdisruptionfallbackreferenceprices",
+          "FIX:tag": "41096"
         }
       },
       {
@@ -85,7 +85,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "marketdisruptionfallbackreferencepricegrp"
+          "FIX:group": "marketdisruptionfallbackreferencepricegrp"
         }
       },
       {
@@ -95,8 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionmaximumdays",
-          "fix:tag": "41089"
+          "FIX:field": "marketdisruptionmaximumdays",
+          "FIX:tag": "41089"
         }
       },
       {
@@ -106,8 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionmaterialitypercentage",
-          "fix:tag": "41090"
+          "FIX:field": "marketdisruptionmaterialitypercentage",
+          "FIX:tag": "41090"
         }
       },
       {
@@ -117,16 +117,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketdisruptionminimumfuturescontracts",
-          "fix:tag": "41091"
+          "FIX:field": "marketdisruptionminimumfuturescontracts",
+          "FIX:tag": "41091"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "631362",
     "description": "If specified, the disruption event should be specified in MarketDisruptionEventGrp.",
-    "display": "MarketDisruption",
-    "fix:tag": "631362"
+    "display": "MarketDisruption"
   }
 }

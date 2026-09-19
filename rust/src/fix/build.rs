@@ -37,7 +37,7 @@ use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
 use crate::sequence::SequenceType;
 use crate::text::TextBytes;
-use crate::{DataType, Error, Field, Result, Scalar, Version};
+use crate::{DataType, Error, Field, Result, Scalar, StructureType, Version};
 use crate::{Side, State};
 
 /// What a key resolved to, before any field is built.
@@ -153,7 +153,7 @@ struct Slot {
     /// Whether the field is the dictionary's own, and so carries the tag it
     /// resolved to.
     ///
-    /// A key no dictionary explains keeps its spelling and no `fix:tag`, so
+    /// A key no dictionary explains keeps its spelling and no `FIX:tag`, so
     /// the message's tag index leaves it out - which is what a reader of the
     /// finished field would find, read once here instead of once per child.
     known: bool,
@@ -1769,7 +1769,7 @@ impl<'registry> Builder<'registry> {
             }
         }
         tags.sort_unstable();
-        let root = DataType::from_fields(fields)?.required_field(name);
+        let root = DataType::from(StructureType::from_fields(fields)?).required_field(name);
         Ok(Built {
             field: root,
             value: Scalar::from_sequence(values),
@@ -1930,7 +1930,8 @@ impl Slot {
             let mut item = match self.field.dtype() {
                 DataType::Sequence(SequenceType::List(item))
                 | DataType::Sequence(SequenceType::LargeList(item)) => item.as_ref().clone(),
-                _ => DataType::from_fields([])?.required_field(occurrence_name(&self.field)),
+                _ => DataType::from(StructureType::from_fields([])?)
+                    .required_field(occurrence_name(&self.field)),
             };
             item.set_nullable(true);
             let values = Scalar::from_sequence(self.values.into_iter().map(|_| Scalar::Null));
@@ -2000,7 +2001,7 @@ impl Slot {
                 member_fields.push(member);
             }
         }
-        let mut item = DataType::from_fields(member_fields.clone())?
+        let mut item = DataType::from(StructureType::from_fields(member_fields.clone())?)
             .required_field(occurrence_name(&self.field));
         // A gapped index leaves an occurrence nobody stated, which is null.
         if finished.iter().any(Option::is_none) {

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legratesourcecomponent"
+        "FIX:component": "legratesourcecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legratesourcecomponent",
+    "FIX:counter": "3116",
+    "FIX:tag": "633137",
     "description": "Required if NoLegRateSources(3116) > 0.",
-    "display": "LegRateSource",
-    "fix:component": "legratesourcecomponent",
-    "fix:counter": "3116",
-    "fix:tag": "633137"
+    "display": "LegRateSource"
   }
 }

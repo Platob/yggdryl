@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "altmdsourceid",
-          "fix:tag": "817"
+          "FIX:field": "altmdsourceid",
+          "FIX:tag": "817"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MDRjct",
-    "fix:tag": "323173"
+    "FIX:tag": "323173",
+    "display": "MDRjct"
   }
 }

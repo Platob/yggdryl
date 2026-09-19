@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationperioddate",
-          "fix:tag": "41955"
+          "FIX:field": "underlyingstreamcalculationperioddate",
+          "FIX:tag": "41955"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamcalculationperioddatetype",
-          "fix:tag": "41956"
+          "FIX:field": "underlyingstreamcalculationperioddatetype",
+          "FIX:tag": "41956"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingStreamCalculationPeriodDate",
-    "fix:tag": "996636"
+    "FIX:tag": "996636",
+    "display": "UnderlyingStreamCalculationPeriodDate"
   }
 }

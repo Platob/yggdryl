@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notafforigclordid",
-          "fix:tag": "1372"
+          "FIX:field": "notafforigclordid",
+          "FIX:tag": "1372"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notaffectedorderid",
-          "fix:tag": "1371"
+          "FIX:field": "notaffectedorderid",
+          "FIX:tag": "1371"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notaffsecondaryorderid",
-          "fix:tag": "1825"
+          "FIX:field": "notaffsecondaryorderid",
+          "FIX:tag": "1825"
         }
       },
       {
@@ -43,16 +43,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notaffectedreason",
-          "fix:tag": "2677"
+          "FIX:field": "notaffectedreason",
+          "FIX:tag": "2677"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "NotAffectedOrd",
-    "fix:identifiers": "notafforigclordid,notaffectedorderid,notaffsecondaryorderid",
-    "fix:tag": "917460"
+    "FIX:identifiers": "notafforigclordid,notaffectedorderid,notaffsecondaryorderid",
+    "FIX:tag": "917460",
+    "display": "NotAffectedOrd"
   }
 }

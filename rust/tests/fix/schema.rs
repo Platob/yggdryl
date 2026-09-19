@@ -6,7 +6,9 @@ use super::SoleMessage;
 use std::sync::Arc;
 
 use yggdryl::graph::MarketElement;
-use yggdryl::{DataType, Field, FixCodec, FixRegistry, Scalar, fix_column_of, fix_schema};
+use yggdryl::{
+    DataType, Field, FixCodec, FixRegistry, Scalar, StructureType, fix_column_of, fix_schema,
+};
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
@@ -44,19 +46,18 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 111);
+    assert_eq!(tags.len(), 110);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
     // groups kept whole, and last the frame.
     assert_eq!(
-        &tags[..13],
+        &tags[..12],
         [
             yggdryl::CURRUNIX_TAG_NAME.0,
-            yggdryl::CREATUNIX_TAG_NAME.0,
+            yggdryl::CREAUNIX_TAG_NAME.0,
             yggdryl::PREVUNIX_TAG_NAME.0,
             yggdryl::SNAPUNIX_TAG_NAME.0,
-            yggdryl::RECORDEDAT_TAG_NAME.0,
             52,
             122,
             60,
@@ -69,7 +70,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "when it happened, and the clocks a message stops being good at"
     );
     assert_eq!(
-        &tags[13..22],
+        &tags[12..21],
         [
             yggdryl::CURRUUID_TAG_NAME.0,
             yggdryl::CROSSUUID_TAG_NAME.0,
@@ -84,7 +85,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "which event"
     );
     assert_eq!(
-        &tags[22..29],
+        &tags[21..28],
         [8, 35, 34, 49, 56, 43, yggdryl::MSGDIRECTION_TAG_NAME.0],
         "which message"
     );
@@ -161,7 +162,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
             .index_of(name)
             .unwrap_or_else(|| panic!("a {name} column"))
     };
-    for pair in ["currunix", "creatunix", "prevunix", "snapunix"].windows(2) {
+    for pair in ["currunix", "creaunix", "prevunix", "snapunix"].windows(2) {
         assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
     }
     assert!(at("snapunix") < at("curruuid"), "the clocks open the row");
@@ -207,7 +208,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     for (tag, display) in [
         (yggdryl::CURRUNIX_TAG_NAME.0, "CurrUnix"),
         (yggdryl::MSGCTXID_TAG_NAME.0, "MsgCtxId"),
-        (yggdryl::PLUGINID_TAG_NAME.0, "PluginId"),
+        (yggdryl::MSGPLUGINID_TAG_NAME.0, "MsgPluginId"),
         (yggdryl::MSGSESSIONID_TAG_NAME.0, "MsgSessionId"),
         (yggdryl::CURRHASHCODE_TAG_NAME.0, "CurrHashCode"),
         (yggdryl::CROSSHASHCODE_TAG_NAME.0, "CrossHashCode"),
@@ -231,7 +232,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         required,
         [
             "currunix",
-            "creatunix",
+            "creaunix",
             "curruuid",
             "crossuuid",
             "currhashcode",
@@ -791,10 +792,11 @@ fn a_value_a_column_will_not_hold_is_that_columns_null() {
     // A message spelling a column's name with a value its datatype cannot
     // hold: five bytes under `SecurityExchange(207)`, which is a four-byte
     // MIC, and four letters under `Currency(15)`, which is three.
-    let root = DataType::from_fields([
+    let root = StructureType::from_fields([
         DataType::utf8().nullable_field("securityexchange"),
         DataType::utf8().nullable_field("currency"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("NewOrderSingle");
     let message = yggdryl::FixMsg::with_registry(

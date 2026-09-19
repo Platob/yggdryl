@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpartyid",
-          "fix:tag": "782"
+          "FIX:field": "settlpartyid",
+          "FIX:tag": "782"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpartyidsource",
-          "fix:tag": "783"
+          "FIX:field": "settlpartyidsource",
+          "FIX:tag": "783"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpartyrole",
-          "fix:tag": "784"
+          "FIX:field": "settlpartyrole",
+          "FIX:tag": "784"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpartyrolequalifier",
-          "fix:tag": "2389"
+          "FIX:field": "settlpartyrolequalifier",
+          "FIX:tag": "2389"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosettlpartysubids",
-          "fix:tag": "801"
+          "FIX:field": "nosettlpartysubids",
+          "FIX:tag": "801"
         }
       },
       {
@@ -65,14 +65,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "settlptyssubgrp"
+          "FIX:group": "settlptyssubgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SettlParty",
-    "fix:tag": "1085211"
+    "FIX:tag": "1085211",
+    "display": "SettlParty"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "registdtls",
-          "fix:tag": "509"
+          "FIX:field": "registdtls",
+          "FIX:tag": "509"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "registemail",
-          "fix:tag": "511"
+          "FIX:field": "registemail",
+          "FIX:tag": "511"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mailingdtls",
-          "fix:tag": "474"
+          "FIX:field": "mailingdtls",
+          "FIX:tag": "474"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mailinginst",
-          "fix:tag": "482"
+          "FIX:field": "mailinginst",
+          "FIX:tag": "482"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedpartyids",
-          "fix:tag": "539"
+          "FIX:field": "nonestedpartyids",
+          "FIX:tag": "539"
         }
       },
       {
@@ -65,7 +65,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "nestedparties"
+          "FIX:group": "nestedparties"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ownertype",
-          "fix:tag": "522"
+          "FIX:field": "ownertype",
+          "FIX:tag": "522"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dateofbirth",
-          "fix:tag": "486"
+          "FIX:field": "dateofbirth",
+          "FIX:tag": "486"
         }
       },
       {
@@ -97,15 +97,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "investorcountryofresidence",
-          "fix:tag": "475"
+          "FIX:field": "investorcountryofresidence",
+          "FIX:tag": "475"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "RgstDtl",
-    "fix:tag": "666878"
+    "FIX:tag": "666878",
+    "display": "RgstDtl"
   }
 }

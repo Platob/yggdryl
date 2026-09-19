@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdreppartyrole",
-          "fix:tag": "1388"
+          "FIX:field": "trdreppartyrole",
+          "FIX:tag": "1388"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "trdrepindicator",
-          "fix:tag": "1389"
+          "FIX:field": "trdrepindicator",
+          "FIX:tag": "1389"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TrdRepIndicator",
-    "fix:tag": "386016"
+    "FIX:tag": "386016",
+    "display": "TrdRepIndicator"
   }
 }

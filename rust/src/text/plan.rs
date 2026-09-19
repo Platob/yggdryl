@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Field, FieldPath, Result};
+use crate::{DataType, Error, Field, FieldPath, Result, StructureType};
 
 use super::options::{MIMETYPE_COLUMN, MTIME_COLUMN, TextOptions, mtime_dtype};
 
@@ -87,7 +87,7 @@ impl TextPlan {
             &mut columns,
             TextSource::Url,
             "sourceurl",
-            DataType::Url,
+            DataType::url(),
             true,
             "The URL of the object this line was read from.",
         );
@@ -226,7 +226,7 @@ impl TextPlan {
                 Ok(field)
             })
             .collect::<Result<Vec<_>>>()?;
-        Ok(DataType::from_fields(fields)?.required_field(name))
+        Ok(DataType::from(StructureType::from_fields(fields)?).required_field(name))
     }
 }
 

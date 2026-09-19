@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "complexeventtime"
+        "FIX:component": "complexeventtime"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "complexeventtime",
+    "FIX:counter": "1494",
+    "FIX:tag": "732453",
     "description": "Required if NoComplexEventTimes(1494) > 0.",
-    "display": "ComplexEventTimes",
-    "fix:component": "complexeventtime",
-    "fix:counter": "1494",
-    "fix:tag": "732453"
+    "display": "ComplexEventTimes"
   }
 }

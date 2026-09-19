@@ -19,7 +19,7 @@ use yggdryl::iceberg::{
 };
 use yggdryl::local::Folder;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{DataType, Field, IOBase, IOMedia, Scalar, Selector};
+use yggdryl::{DataType, Field, IOBase, IOMedia, Scalar, Selector, StructureType};
 
 /// A table folder that records every relative path resolved through it.
 ///
@@ -86,11 +86,12 @@ fn root(label: &str) -> std::path::PathBuf {
 }
 
 fn schema() -> Field {
-    let mut schema = DataType::from_fields([
+    let mut schema = StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
         DataType::utf8().nullable_field("venue"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     assign_field_ids(&mut schema, 1).unwrap();

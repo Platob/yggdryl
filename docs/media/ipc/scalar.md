@@ -22,7 +22,7 @@ The three intents carry the same rows as the [batch surface](arrow.md), one row 
     ```rust
     use yggdryl::holder::Buffer;
     use yggdryl::media::IORecordOptions;
-    use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar};
+    use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, StructureType};
 
     struct Quote(i64, &'static str);
 
@@ -32,10 +32,10 @@ The three intents carry the same rows as the [batch surface](arrow.md), one row 
         }
     }
 
-    let field = DataType::from_fields([
+    let field = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("venue"),
-    ])?
+    ])?)
     .required_field("row");
     let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
     let options = handle.record_options()?.with_field(field.clone());

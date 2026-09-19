@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrumentpartysubid",
-          "fix:tag": "1297"
+          "FIX:field": "derivativeinstrumentpartysubid",
+          "FIX:tag": "1297"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "derivativeinstrumentpartysubidtype",
-          "fix:tag": "1298"
+          "FIX:field": "derivativeinstrumentpartysubidtype",
+          "FIX:tag": "1298"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "DerivativeInstrumentPartySubID",
-    "fix:tag": "1049874"
+    "FIX:tag": "1049874",
+    "display": "DerivativeInstrumentPartySubID"
   }
 }

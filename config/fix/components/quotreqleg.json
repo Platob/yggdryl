@@ -10,7 +10,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrumentleg"
+          "FIX:component": "instrumentleg"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legorderqty",
-          "fix:tag": "685"
+          "FIX:field": "legorderqty",
+          "FIX:tag": "685"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legqty",
-          "fix:tag": "687"
+          "FIX:field": "legqty",
+          "FIX:tag": "687"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmidpx",
-          "fix:tag": "2346"
+          "FIX:field": "legmidpx",
+          "FIX:tag": "2346"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legswaptype",
-          "fix:tag": "690"
+          "FIX:field": "legswaptype",
+          "FIX:tag": "690"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettltype",
-          "fix:tag": "587"
+          "FIX:field": "legsettltype",
+          "FIX:tag": "587"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettldate",
-          "fix:tag": "588"
+          "FIX:field": "legsettldate",
+          "FIX:tag": "588"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstipulations",
-          "fix:tag": "683"
+          "FIX:field": "nolegstipulations",
+          "FIX:tag": "683"
         }
       },
       {
@@ -97,7 +97,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legstipulations"
+          "FIX:group": "legstipulations"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedpartyids",
-          "fix:tag": "539"
+          "FIX:field": "nonestedpartyids",
+          "FIX:tag": "539"
         }
       },
       {
@@ -118,7 +118,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "nestedparties"
+          "FIX:group": "nestedparties"
         }
       },
       {
@@ -128,7 +128,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legbenchmarkcurvedata"
+          "FIX:component": "legbenchmarkcurvedata"
         }
       },
       {
@@ -138,8 +138,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegratesources",
-          "fix:tag": "3116"
+          "FIX:field": "nolegratesources",
+          "FIX:tag": "3116"
         }
       },
       {
@@ -149,7 +149,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legratesourcegrp"
+          "FIX:group": "legratesourcegrp"
         }
       },
       {
@@ -159,15 +159,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legrefid",
-          "fix:tag": "654"
+          "FIX:field": "legrefid",
+          "FIX:tag": "654"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "QuotReqLeg",
-    "fix:tag": "653326"
+    "FIX:tag": "653326",
+    "display": "QuotReqLeg"
   }
 }

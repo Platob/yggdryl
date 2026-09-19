@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecurrentcollateralamount",
-          "fix:tag": "2702"
+          "FIX:field": "sidecurrentcollateralamount",
+          "FIX:tag": "2702"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralcurrency",
-          "fix:tag": "2695"
+          "FIX:field": "sidecollateralcurrency",
+          "FIX:tag": "2695"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralcurrencycodesource",
-          "fix:tag": "2930"
+          "FIX:field": "sidecollateralcurrencycodesource",
+          "FIX:tag": "2930"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralamounttype",
-          "fix:tag": "2694"
+          "FIX:field": "sidecollateralamounttype",
+          "FIX:tag": "2694"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralfxrate",
-          "fix:tag": "2696"
+          "FIX:field": "sidecollateralfxrate",
+          "FIX:tag": "2696"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralfxratecalc",
-          "fix:tag": "2697"
+          "FIX:field": "sidecollateralfxratecalc",
+          "FIX:tag": "2697"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateraltype",
-          "fix:tag": "2701"
+          "FIX:field": "sidecollateraltype",
+          "FIX:tag": "2701"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralamountmarketsegmentid",
-          "fix:tag": "2693"
+          "FIX:field": "sidecollateralamountmarketsegmentid",
+          "FIX:tag": "2693"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralamountmarketid",
-          "fix:tag": "2692"
+          "FIX:field": "sidecollateralamountmarketid",
+          "FIX:tag": "2692"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidehaircutindicator",
-          "fix:tag": "2703"
+          "FIX:field": "sidehaircutindicator",
+          "FIX:tag": "2703"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralportfolioid",
-          "fix:tag": "2700"
+          "FIX:field": "sidecollateralportfolioid",
+          "FIX:tag": "2700"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralpercentoverage",
-          "fix:tag": "2699"
+          "FIX:field": "sidecollateralpercentoverage",
+          "FIX:tag": "2699"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralmarketprice",
-          "fix:tag": "2698"
+          "FIX:field": "sidecollateralmarketprice",
+          "FIX:tag": "2698"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidecollateralreinvestmentrate",
-          "fix:tag": "2862"
+          "FIX:field": "sidecollateralreinvestmentrate",
+          "FIX:tag": "2862"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosidecollateralreinvestments",
-          "fix:tag": "2864"
+          "FIX:field": "nosidecollateralreinvestments",
+          "FIX:tag": "2864"
         }
       },
       {
@@ -175,7 +175,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "sidecollateralreinvestmentgrp"
+          "FIX:group": "sidecollateralreinvestmentgrp"
         }
       },
       {
@@ -185,15 +185,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sideunderlyingrefid",
-          "fix:tag": "2863"
+          "FIX:field": "sideunderlyingrefid",
+          "FIX:tag": "2863"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SideCollateralAmount",
-    "fix:tag": "417014"
+    "FIX:tag": "417014",
+    "display": "SideCollateralAmount"
   }
 }

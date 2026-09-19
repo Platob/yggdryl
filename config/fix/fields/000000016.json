@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1600",
       "description": "Provides the name of the infrastructure component being used for session level communication. Normally this would be the FIX Engine or FIX Gateway product name.",
-      "display": "FIXEngineName",
-      "fix:tag": "1600"
+      "display": "FIXEngineName"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1601",
       "description": "Provides the version of the infrastructure component.",
-      "display": "FIXEngineVersion",
-      "fix:tag": "1601"
+      "display": "FIXEngineVersion"
     }
   },
   {
@@ -30,9 +30,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1602",
       "description": "Provides the name of the vendor providing the infrastructure component.",
-      "display": "FIXEngineVendor",
-      "fix:tag": "1602"
+      "display": "FIXEngineVendor"
     }
   },
   {
@@ -42,9 +42,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1603",
       "description": "Provides the name of the application system being used to generate FIX application messages. This will normally be a trading system, OMS, or EMS.",
-      "display": "ApplicationSystemName",
-      "fix:tag": "1603"
+      "display": "ApplicationSystemName"
     }
   },
   {
@@ -54,9 +54,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1604",
       "description": "Provides the version of the application system being used to initiate FIX application messages.",
-      "display": "ApplicationSystemVersion",
-      "fix:tag": "1604"
+      "display": "ApplicationSystemVersion"
     }
   },
   {
@@ -66,9 +66,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1605",
       "description": "Provides the vendor of the application system.",
-      "display": "ApplicationSystemVendor",
-      "fix:tag": "1605"
+      "display": "ApplicationSystemVendor"
     }
   },
   {
@@ -78,9 +78,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1606",
       "description": "Represents the total number of simple instruments that make up a multi-legged security. Complex spread instruments may be constructed of legs which themselves are multi-leg instruments.",
-      "display": "NumOfSimpleInstruments",
-      "fix:tag": "1606"
+      "display": "NumOfSimpleInstruments"
     }
   },
   {
@@ -90,9 +90,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the reason a security definition request is being rejected.",
-      "display": "SecurityRejectReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "InvalidInstrumentRequested",
@@ -149,7 +147,9 @@
           "doc": "Invalid instrument structure specified"
         }
       ],
-      "fix:tag": "1607"
+      "FIX:tag": "1607",
+      "description": "Identifies the reason a security definition request is being rejected.",
+      "display": "SecurityRejectReason"
     }
   },
   {
@@ -161,9 +161,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1608",
       "description": "Used to convey the initially requested display quantity specified in DisplayQty(1138) on order entry and modification messages in ExecutionReport message. Applicable only in ExecutionReport message where DisplayQty(1138) is the currently displayed quantity and the requested display quantity of the order also needs to be conveyed. The values of the two fields are different as soon as the order is partially filled and also after a refresh of the order whenever DisplayMethod(1084) is not 1=Initial.",
-      "display": "InitialDisplayQty",
-      "fix:tag": "1608"
+      "display": "InitialDisplayQty"
     }
   },
   {
@@ -173,9 +173,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether a message was queued as a result of throttling.",
-      "display": "ThrottleStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ThrottleLimitNotExceededNotQueued",
@@ -187,7 +185,9 @@
           "doc": "Queued due to throttle limit exceeded"
         }
       ],
-      "fix:tag": "1609"
+      "FIX:tag": "1609",
+      "description": "Indicates whether a message was queued as a result of throttling.",
+      "display": "ThrottleStatus"
     }
   },
   {
@@ -197,9 +197,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1610",
       "description": "Indicates number of repeating groups to follow.",
-      "display": "NoThrottles",
-      "fix:tag": "1610"
+      "display": "NoThrottles"
     }
   },
   {
@@ -209,9 +209,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Action to take should throttle limit be exceeded.",
-      "display": "ThrottleAction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "QueueInbound",
@@ -238,7 +236,9 @@
           "doc": "Warning"
         }
       ],
-      "fix:tag": "1611"
+      "FIX:tag": "1611",
+      "description": "Action to take should throttle limit be exceeded.",
+      "display": "ThrottleAction"
     }
   },
   {
@@ -248,9 +248,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of throttle.",
-      "display": "ThrottleType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "InboundRate",
@@ -262,7 +260,9 @@
           "doc": "Outstanding Requests"
         }
       ],
-      "fix:tag": "1612"
+      "FIX:tag": "1612",
+      "description": "Type of throttle.",
+      "display": "ThrottleType"
     }
   },
   {
@@ -272,9 +272,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1613",
       "description": "Maximum number of messages allowed by the throttle. May be a rate limit or a limit on the number of outstanding requests.",
-      "display": "ThrottleNoMsgs",
-      "fix:tag": "1613"
+      "display": "ThrottleNoMsgs"
     }
   },
   {
@@ -284,9 +284,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1614",
       "description": "Value of the time interval in which the rate throttle is applied.",
-      "display": "ThrottleTimeInterval",
-      "fix:tag": "1614"
+      "display": "ThrottleTimeInterval"
     }
   },
   {
@@ -296,9 +296,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Units in which ThrottleTimeInterval is expressed. Uses same enumerations as OrderDelayUnit(1429).",
-      "display": "ThrottleTimeUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Seconds",
@@ -360,7 +358,9 @@
           "doc": "years"
         }
       ],
-      "fix:tag": "1615"
+      "FIX:tag": "1615",
+      "description": "Units in which ThrottleTimeInterval is expressed. Uses same enumerations as OrderDelayUnit(1429).",
+      "display": "ThrottleTimeUnit"
     }
   },
   {
@@ -370,9 +370,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1616",
       "description": "Used to limit instrument scope to specified security exchange.",
-      "display": "InstrumentScopeSecurityExchange",
-      "fix:tag": "1616"
+      "display": "InstrumentScopeSecurityExchange"
     }
   },
   {
@@ -382,9 +382,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The type of assignment being affected in the Stream Assignment Report.",
-      "display": "StreamAsgnType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Assignment",
@@ -401,7 +399,9 @@
           "doc": "Terminate/Unassign"
         }
       ],
-      "fix:tag": "1617"
+      "FIX:tag": "1617",
+      "description": "The type of assignment being affected in the Stream Assignment Report.",
+      "display": "StreamAsgnType"
     }
   },
   {
@@ -411,9 +411,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1618",
       "description": "Number of ThrottleMsgType fields.",
-      "display": "NoThrottleMsgType",
-      "fix:tag": "1618"
+      "display": "NoThrottleMsgType"
     }
   },
   {
@@ -423,9 +423,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The MsgType (35) of the FIX message being referenced.",
-      "display": "ThrottleMsgType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Heartbeat",
@@ -1332,7 +1330,9 @@
           "doc": "TradingSessionStatusAck"
         }
       ],
-      "fix:tag": "1619"
+      "FIX:tag": "1619",
+      "description": "The MsgType (35) of the FIX message being referenced.",
+      "display": "ThrottleMsgType"
     }
   },
   {
@@ -1342,9 +1342,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1620",
       "description": "Byte length of encoded (non-ASCII characters) InstrumentScopeEncodedSecurityDesc (1621) field",
-      "display": "InstrumentScopeEncodedSecurityDescLen",
-      "fix:tag": "1620"
+      "display": "InstrumentScopeEncodedSecurityDescLen"
     }
   },
   {
@@ -1354,9 +1354,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1621",
       "description": "Encoded (non-ASCII characters) representation of the InstrumentScopeSecurityDesc(1556) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the InstrumentScopeSecurityDesc(1556) field.",
-      "display": "InstrumentScopeEncodedSecurityDesc",
-      "fix:tag": "1621"
+      "display": "InstrumentScopeEncodedSecurityDesc"
     }
   },
   {
@@ -1366,9 +1366,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1622",
       "description": "Yield Type, using same values as YieldType (235)",
-      "display": "FillYieldType",
-      "fix:tag": "1622"
+      "display": "FillYieldType"
     }
   },
   {
@@ -1378,9 +1378,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1623",
       "description": "Yield Percentage, using same values as Yield (236)",
-      "display": "FillYield",
-      "fix:tag": "1623"
+      "display": "FillYield"
     }
   },
   {
@@ -1390,9 +1390,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1624",
       "description": "Number of Instructions in the <MatchingInstructions> repeating group.",
-      "display": "NoMatchInst",
-      "fix:tag": "1624"
+      "display": "NoMatchInst"
     }
   },
   {
@@ -1402,9 +1402,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Matching Instruction for the order.",
-      "display": "MatchInst",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Match",
@@ -1416,7 +1414,9 @@
           "doc": "Do Not Match"
         }
       ],
-      "fix:tag": "1625"
+      "FIX:tag": "1625",
+      "description": "Matching Instruction for the order.",
+      "display": "MatchInst"
     }
   },
   {
@@ -1426,9 +1426,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1626",
       "description": "Existing FIX field to be applied as a matching criteria to the instruction, bilaterally agreed between parties.",
-      "display": "MatchAttribTagID",
-      "fix:tag": "1626"
+      "display": "MatchAttribTagID"
     }
   },
   {
@@ -1438,9 +1438,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1627",
       "description": "Value of MatchAttribTagID(1626) on which to apply the matching instruction.",
-      "display": "MatchAttribValue",
-      "fix:tag": "1627"
+      "display": "MatchAttribValue"
     }
   },
   {
@@ -1450,9 +1450,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Defines the scope of TriggerAction(1101) when it is set to \"cancel\" (3).",
-      "display": "TriggerScope",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ThisOrder",
@@ -1484,7 +1482,9 @@
           "doc": "All other orders for the given security, price and side"
         }
       ],
-      "fix:tag": "1628"
+      "FIX:tag": "1628",
+      "description": "Defines the scope of TriggerAction(1101) when it is set to \"cancel\" (3).",
+      "display": "TriggerScope"
     }
   },
   {
@@ -1494,9 +1494,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1629",
       "description": "This is the time in seconds of a \"Good for Time\" (GFT) TimeInForce.",
-      "display": "ExposureDuration",
-      "fix:tag": "1629"
+      "display": "ExposureDuration"
     }
   },
   {
@@ -1506,9 +1506,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1630",
       "description": "The number of limit amount entries.",
-      "display": "NoLimitAmts",
-      "fix:tag": "1630"
+      "display": "NoLimitAmts"
     }
   },
   {
@@ -1518,9 +1518,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of limit amount expressed in LastLimitAmt(1632) and LimitAmtRemaining(1633).",
-      "display": "LimitAmtType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "CreditLimit",
@@ -1552,7 +1550,9 @@
           "doc": "Short position limit"
         }
       ],
-      "fix:tag": "1631"
+      "FIX:tag": "1631",
+      "description": "Identifies the type of limit amount expressed in LastLimitAmt(1632) and LimitAmtRemaining(1633).",
+      "display": "LimitAmtType"
     }
   },
   {
@@ -1564,9 +1564,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1632",
       "description": "The amount that has been drawn down against the counterparty for a given trade. The type of limit is specified in LimitAmtType(1631).",
-      "display": "LastLimitAmt",
-      "fix:tag": "1632"
+      "display": "LastLimitAmt"
     }
   },
   {
@@ -1578,9 +1578,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1633",
       "description": "The remaining limit amount available between the counterparties. The type of limit is specified in LimitAmtType(1631).",
-      "display": "LimitAmtRemaining",
-      "fix:tag": "1633"
+      "display": "LimitAmtRemaining"
     }
   },
   {
@@ -1590,9 +1590,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1634",
       "description": "Indicates the currency that the limit amount is specified in.",
-      "display": "LimitAmtCurrency",
-      "fix:tag": "1634"
+      "display": "LimitAmtCurrency"
     }
   },
   {
@@ -1602,9 +1602,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1635",
       "description": "Unique identifier of the MarginRequirementInquiry.",
-      "display": "MarginReqmtInqID",
-      "fix:tag": "1635"
+      "display": "MarginReqmtInqID"
     }
   },
   {
@@ -1614,9 +1614,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1636",
       "description": "Number of margin requirement inquiry qualifiers.",
-      "display": "NoMarginReqmtInqQualifier",
-      "fix:tag": "1636"
+      "display": "NoMarginReqmtInqQualifier"
     }
   },
   {
@@ -1626,9 +1626,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Qualifier for MarginRequirementInquiry to identify a specific report.",
-      "display": "MarginReqmtInqQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Summary",
@@ -1650,7 +1648,9 @@
           "doc": "Net Position"
         }
       ],
-      "fix:tag": "1637"
+      "FIX:tag": "1637",
+      "description": "Qualifier for MarginRequirementInquiry to identify a specific report.",
+      "display": "MarginReqmtInqQualifier"
     }
   },
   {
@@ -1660,9 +1660,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of MarginRequirementReport.",
-      "display": "MarginReqmtRptType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Summary",
@@ -1679,7 +1677,9 @@
           "doc": "Excess/Deficit"
         }
       ],
-      "fix:tag": "1638"
+      "FIX:tag": "1638",
+      "description": "Type of MarginRequirementReport.",
+      "display": "MarginReqmtRptType"
     }
   },
   {
@@ -1689,9 +1689,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1639",
       "description": "Identifier for group of instruments with similar risk profile.",
-      "display": "MarginClass",
-      "fix:tag": "1639"
+      "display": "MarginClass"
     }
   },
   {
@@ -1701,9 +1701,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of MarginRequirementInquiry.",
-      "display": "MarginReqmtInqStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Accepted",
@@ -1730,7 +1728,9 @@
           "doc": "Rejected"
         }
       ],
-      "fix:tag": "1640"
+      "FIX:tag": "1640",
+      "description": "Status of MarginRequirementInquiry.",
+      "display": "MarginReqmtInqStatus"
     }
   },
   {
@@ -1740,9 +1740,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Result returned in response to MarginRequirementInquiry.",
-      "display": "MarginReqmtInqResult",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Successful",
@@ -1794,7 +1792,9 @@
           "doc": "Other (further information in Text (58) field)"
         }
       ],
-      "fix:tag": "1641"
+      "FIX:tag": "1641",
+      "description": "Result returned in response to MarginRequirementInquiry.",
+      "display": "MarginReqmtInqResult"
     }
   },
   {
@@ -1804,9 +1804,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1642",
       "description": "Identifier for the MarginRequirementReport message.",
-      "display": "MarginReqmtRptID",
-      "fix:tag": "1642"
+      "display": "MarginReqmtRptID"
     }
   },
   {
@@ -1816,9 +1816,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1643",
       "description": "Number of margin requirement amounts.",
-      "display": "NoMarginAmt",
-      "fix:tag": "1643"
+      "display": "NoMarginAmt"
     }
   },
   {
@@ -1828,9 +1828,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of margin requirement amount being specified.",
-      "display": "MarginAmtType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "AdditionalMargin",
@@ -2007,7 +2005,9 @@
           "doc": "Other risk margin"
         }
       ],
-      "fix:tag": "1644"
+      "FIX:tag": "1644",
+      "description": "Type of margin requirement amount being specified.",
+      "display": "MarginAmtType"
     }
   },
   {
@@ -2019,9 +2019,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1645",
       "description": "Amount of margin requirement.",
-      "display": "MarginAmt",
-      "fix:tag": "1645"
+      "display": "MarginAmt"
     }
   },
   {
@@ -2031,9 +2031,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1646",
       "description": "Currency of the MarginAmt(1645).",
-      "display": "MarginAmtCcy",
-      "fix:tag": "1646"
+      "display": "MarginAmtCcy"
     }
   },
   {
@@ -2043,9 +2043,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1647",
       "description": "Number of related instruments",
-      "display": "NoRelatedInstruments",
-      "fix:tag": "1647"
+      "display": "NoRelatedInstruments"
     }
   },
   {
@@ -2055,9 +2055,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The type of instrument relationship",
-      "display": "RelatedInstrumentType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "HedgesForInstrument",
@@ -2089,7 +2087,9 @@
           "doc": "Leg"
         }
       ],
-      "fix:tag": "1648"
+      "FIX:tag": "1648",
+      "description": "The type of instrument relationship",
+      "display": "RelatedInstrumentType"
     }
   },
   {
@@ -2099,9 +2099,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1649",
       "description": "Ticker symbol of the related security. Common \"human understood\" representation of the security.",
-      "display": "RelatedSymbol",
-      "fix:tag": "1649"
+      "display": "RelatedSymbol"
     }
   },
   {
@@ -2111,9 +2111,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1650",
       "description": "Related security identifier value of RelatedSecurityIDSource(1651) type.",
-      "display": "RelatedSecurityID",
-      "fix:tag": "1650"
+      "display": "RelatedSecurityID"
     }
   },
   {
@@ -2123,9 +2123,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies class or source of the RelatedSecurityID (1650) value.",
-      "display": "RelatedSecurityIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -2292,7 +2290,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "1651"
+      "FIX:tag": "1651",
+      "description": "Identifies class or source of the RelatedSecurityID (1650) value.",
+      "display": "RelatedSecurityIDSource"
     }
   },
   {
@@ -2302,9 +2302,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Security type of the related instrument.",
-      "display": "RelatedSecurityType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "ABS",
           "name": "AssetBackedSecurities",
@@ -3396,22 +3394,23 @@
           "doc": "Term Deposit Receipt"
         }
       ],
-      "fix:tag": "1652"
+      "FIX:tag": "1652",
+      "description": "Security type of the related instrument.",
+      "display": "RelatedSecurityType"
     }
   },
   {
     "name": "relatedmaturitymonthyear",
     "dtype": {
       "type": "string",
-      "layout": "fixed_string",
-      "charset": "us-ascii",
+      "layout": "fixed_ascii",
       "fixed": 8
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1653",
       "description": "Expiration date for the related instrument contract.",
-      "display": "RelatedMaturityMonthYear",
-      "fix:tag": "1653"
+      "display": "RelatedMaturityMonthYear"
     }
   },
   {
@@ -3423,9 +3422,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1654",
       "description": "Used to specify the portion of the short contract quantity that is considered covered (e.g. used for short option position).",
-      "display": "CoveredQty",
-      "fix:tag": "1654"
+      "display": "CoveredQty"
     }
   },
   {
@@ -3435,9 +3434,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates market maker participation in security.",
-      "display": "MarketMakerActivity",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NoParticipation",
@@ -3459,7 +3456,9 @@
           "doc": "Both buy and sell participation"
         }
       ],
-      "fix:tag": "1655"
+      "FIX:tag": "1655",
+      "description": "Indicates market maker participation in security.",
+      "display": "MarketMakerActivity"
     }
   },
   {
@@ -3469,9 +3468,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1656",
       "description": "Number of instrument scopes.",
-      "display": "NoInstrumentScopes",
-      "fix:tag": "1656"
+      "display": "NoInstrumentScopes"
     }
   },
   {
@@ -3481,9 +3480,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1657",
       "description": "Number of requesting party identifiers.",
-      "display": "NoRequestingPartyIDs",
-      "fix:tag": "1657"
+      "display": "NoRequestingPartyIDs"
     }
   },
   {
@@ -3493,9 +3492,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1658",
       "description": "Party identifier for the requesting party.",
-      "display": "RequestingPartyID",
-      "fix:tag": "1658"
+      "display": "RequestingPartyID"
     }
   },
   {
@@ -3505,9 +3504,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source of the RequestingPartyID(1658) value.",
-      "display": "RequestingPartyIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "KoreanInvestorID",
@@ -3695,7 +3692,9 @@
           "doc": "Korea Short Selling Registration Number"
         }
       ],
-      "fix:tag": "1659"
+      "FIX:tag": "1659",
+      "description": "Identifies the source of the RequestingPartyID(1658) value.",
+      "display": "RequestingPartyIDSource"
     }
   },
   {
@@ -3705,9 +3704,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type or role of the RequestingPartyID(1658) specified.",
-      "display": "RequestingPartyRole",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ExecutingFirm",
@@ -4354,7 +4351,9 @@
           "doc": "Algorithm"
         }
       ],
-      "fix:tag": "1660"
+      "FIX:tag": "1660",
+      "description": "Identifies the type or role of the RequestingPartyID(1658) specified.",
+      "display": "RequestingPartyRole"
     }
   },
   {
@@ -4364,9 +4363,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1661",
       "description": "Number of requesting party sub-identifiers.",
-      "display": "NoRequestingPartySubIDs",
-      "fix:tag": "1661"
+      "display": "NoRequestingPartySubIDs"
     }
   },
   {
@@ -4376,9 +4375,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1662",
       "description": "Sub-identifier for the party specified in RequestingPartyID(1658).",
-      "display": "RequestingPartySubID",
-      "fix:tag": "1662"
+      "display": "RequestingPartySubID"
     }
   },
   {
@@ -4388,9 +4387,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of RequestingPartySubID(1662) value.",
-      "display": "RequestingPartySubIDType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Firm",
@@ -4837,7 +4834,9 @@
           "doc": "Certificate registration status"
         }
       ],
-      "fix:tag": "1663"
+      "FIX:tag": "1663",
+      "description": "Type of RequestingPartySubID(1662) value.",
+      "display": "RequestingPartySubIDType"
     }
   },
   {
@@ -4847,9 +4846,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1664",
       "description": "Byte length of encoded (non-ASCII characters) EncodedRejectText(1665) field.",
-      "display": "EncodedRejectTextLen",
-      "fix:tag": "1664"
+      "display": "EncodedRejectTextLen"
     }
   },
   {
@@ -4859,9 +4858,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1665",
       "description": "Encoded (non-ASCII characters) representation of the RejectText(1328) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the RejectText(1328) field.",
-      "display": "EncodedRejectText",
-      "fix:tag": "1665"
+      "display": "EncodedRejectText"
     }
   },
   {
@@ -4871,9 +4870,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1666",
       "description": "Unique identifier for the PartyRiskLimitsRequest",
-      "display": "RiskLimitRequestID",
-      "fix:tag": "1666"
+      "display": "RiskLimitRequestID"
     }
   },
   {
@@ -4883,9 +4882,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1667",
       "description": "Identifier for the PartyRiskLimitsReport",
-      "display": "RiskLimitReportID",
-      "fix:tag": "1667"
+      "display": "RiskLimitReportID"
     }
   },
   {
@@ -4895,9 +4894,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1668",
       "description": "Number of risk limit types requested.",
-      "display": "NoRequestedRiskLimitType",
-      "fix:tag": "1668"
+      "display": "NoRequestedRiskLimitType"
     }
   },
   {
@@ -4907,9 +4906,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1669",
       "description": "Number of risk limits for different instrument scopes.",
-      "display": "NoRiskLimits",
-      "fix:tag": "1669"
+      "display": "NoRiskLimits"
     }
   },
   {
@@ -4919,9 +4918,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1670",
       "description": "Unique reference identifier for a specific risk limit defined for the specified party.",
-      "display": "RiskLimitID",
-      "fix:tag": "1670"
+      "display": "RiskLimitID"
     }
   },
   {
@@ -4931,9 +4930,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1671",
       "description": "Number of party details.",
-      "display": "NoPartyDetails",
-      "fix:tag": "1671"
+      "display": "NoPartyDetails"
     }
   },
   {
@@ -4943,9 +4942,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the status of the party identified with PartyDetailID(1691).",
-      "display": "PartyDetailStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Active",
@@ -4962,7 +4959,9 @@
           "doc": "Halted"
         }
       ],
-      "fix:tag": "1672"
+      "FIX:tag": "1672",
+      "description": "Indicates the status of the party identified with PartyDetailID(1691).",
+      "display": "PartyDetailStatus"
     }
   },
   {
@@ -4972,9 +4971,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1673",
       "description": "Identifies the market to which the matching instruction applies.",
-      "display": "MatchInstMarketID",
-      "fix:tag": "1673"
+      "display": "MatchInstMarketID"
     }
   },
   {
@@ -4984,9 +4983,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Qualifies the value of PartyDetailRole(1693).",
-      "display": "PartyDetailRoleQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Agency",
@@ -5174,7 +5171,9 @@
           "doc": "Lender"
         }
       ],
-      "fix:tag": "1674"
+      "FIX:tag": "1674",
+      "description": "Qualifies the value of PartyDetailRole(1693).",
+      "display": "PartyDetailRoleQualifier"
     }
   },
   {
@@ -5184,9 +5183,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Qualifies the value of RelatedPartyRole(1565)",
-      "display": "RelatedPartyDetailRoleQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Agency",
@@ -5374,7 +5371,9 @@
           "doc": "Lender"
         }
       ],
-      "fix:tag": "1675"
+      "FIX:tag": "1675",
+      "description": "Qualifies the value of RelatedPartyRole(1565)",
+      "display": "RelatedPartyDetailRoleQualifier"
     }
   },
   {
@@ -5384,9 +5383,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1676",
       "description": "Number of party updates.",
-      "display": "NoPartyUpdates",
-      "fix:tag": "1676"
+      "display": "NoPartyUpdates"
     }
   },
   {
@@ -5396,9 +5395,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1677",
       "description": "Number of party risk limits.",
-      "display": "NoPartyRiskLimits",
-      "fix:tag": "1677"
+      "display": "NoPartyRiskLimits"
     }
   },
   {
@@ -5408,9 +5407,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1678",
       "description": "Byte length of encoded (non-ASCII characters) EncodedOptionExpirationDesc(1697) field.",
-      "display": "EncodedOptionExpirationDescLen",
-      "fix:tag": "1678"
+      "display": "EncodedOptionExpirationDescLen"
     }
   },
   {
@@ -5420,9 +5419,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the trading status applicable to a group of instruments.",
-      "display": "SecurityMassTradingStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "OpeningDelay",
@@ -5569,7 +5566,9 @@
           "doc": "Delayed"
         }
       ],
-      "fix:tag": "1679"
+      "FIX:tag": "1679",
+      "description": "Identifies the trading status applicable to a group of instruments.",
+      "display": "SecurityMassTradingStatus"
     }
   },
   {
@@ -5579,9 +5578,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies an event related to the mass trading status.",
-      "display": "SecurityMassTradingEvent",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "OrderImbalance",
@@ -5638,7 +5635,9 @@
           "doc": "Outage resolved"
         }
       ],
-      "fix:tag": "1680"
+      "FIX:tag": "1680",
+      "description": "Identifies an event related to the mass trading status.",
+      "display": "SecurityMassTradingEvent"
     }
   },
   {
@@ -5648,9 +5647,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Denotes the reason for the Opening Delay or Trading halt of a group of securities.",
-      "display": "MassHaltReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NewsDissemination",
@@ -5687,7 +5684,9 @@
           "doc": "Outage"
         }
       ],
-      "fix:tag": "1681"
+      "FIX:tag": "1681",
+      "description": "Denotes the reason for the Opening Delay or Trading halt of a group of securities.",
+      "display": "MassHaltReason"
     }
   },
   {
@@ -5697,9 +5696,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the trading status applicable to the instrument in the market data message.",
-      "display": "MDSecurityTradingStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "OpeningDelay",
@@ -5846,7 +5843,9 @@
           "doc": "Delayed"
         }
       ],
-      "fix:tag": "1682"
+      "FIX:tag": "1682",
+      "description": "Identifies the trading status applicable to the instrument in the market data message.",
+      "display": "MDSecurityTradingStatus"
     }
   },
   {
@@ -5856,9 +5855,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1683",
       "description": "Describes a sub-class for a given class of service defined by MDFeedType (1022)",
-      "display": "MDSubFeedType",
-      "fix:tag": "1683"
+      "display": "MDSubFeedType"
     }
   },
   {
@@ -5868,9 +5867,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Denotes the reason for the Opening Delay or Trading Halt.",
-      "display": "MDHaltReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NewsDissemination",
@@ -5907,7 +5904,9 @@
           "doc": "Outage"
         }
       ],
-      "fix:tag": "1684"
+      "FIX:tag": "1684",
+      "description": "Denotes the reason for the Opening Delay or Trading Halt.",
+      "display": "MDHaltReason"
     }
   },
   {
@@ -5917,9 +5916,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Describes action recipient should take if a throttle limit were exceeded.",
-      "display": "ThrottleInst",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "RejectIfThrottleLimitExceeded",
@@ -5931,7 +5928,9 @@
           "doc": "Queue if throttle limit exceeded"
         }
       ],
-      "fix:tag": "1685"
+      "FIX:tag": "1685",
+      "description": "Describes action recipient should take if a throttle limit were exceeded.",
+      "display": "ThrottleInst"
     }
   },
   {
@@ -5941,9 +5940,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether a message decrements the number of outstanding requests, e.g. one where ThrottleType = Outstanding Requests.",
-      "display": "ThrottleCountIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OutstandingRequestsUnchanged",
@@ -5955,7 +5952,9 @@
           "doc": "Outstanding requests decreased"
         }
       ],
-      "fix:tag": "1686"
+      "FIX:tag": "1686",
+      "description": "Indicates whether a message decrements the number of outstanding requests, e.g. one where ThrottleType = Outstanding Requests.",
+      "display": "ThrottleCountIndicator"
     }
   },
   {
@@ -5965,9 +5964,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether a restriction applies to short selling a security.",
-      "display": "ShortSaleRestriction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NoRestrictions",
@@ -5989,7 +5986,9 @@
           "doc": "Security is not shortable without pre-borrow"
         }
       ],
-      "fix:tag": "1687"
+      "FIX:tag": "1687",
+      "description": "Indicates whether a restriction applies to short selling a security.",
+      "display": "ShortSaleRestriction"
     }
   },
   {
@@ -5999,9 +5998,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the reason a short sale order is exempted from applicable regulation (e.g. Reg SHO addendum (b)(1) in the U.S.).",
-      "display": "ShortSaleExemptionReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ExemptionReasonUnknown",
@@ -6053,7 +6050,9 @@
           "doc": "VWAP"
         }
       ],
-      "fix:tag": "1688"
+      "FIX:tag": "1688",
+      "description": "Indicates the reason a short sale order is exempted from applicable regulation (e.g. Reg SHO addendum (b)(1) in the U.S.).",
+      "display": "ShortSaleExemptionReason"
     }
   },
   {
@@ -6063,9 +6062,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the reason a short sale is exempted from applicable regulation (e.g. Reg SHO addendum (b)(1) in the U.S.)",
-      "display": "LegShortSaleExemptionReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ExemptionReasonUnknown",
@@ -6117,7 +6114,9 @@
           "doc": "VWAP"
         }
       ],
-      "fix:tag": "1689"
+      "FIX:tag": "1689",
+      "description": "Indicates the reason a short sale is exempted from applicable regulation (e.g. Reg SHO addendum (b)(1) in the U.S.)",
+      "display": "LegShortSaleExemptionReason"
     }
   },
   {
@@ -6127,9 +6126,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the reason a short sale is exempted from applicable regulation (e.g. Reg SHO addendum (b)(1) in the U.S.)",
-      "display": "SideShortSaleExemptionReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ExemptionReasonUnknown",
@@ -6181,7 +6178,9 @@
           "doc": "VWAP"
         }
       ],
-      "fix:tag": "1690"
+      "FIX:tag": "1690",
+      "description": "Indicates the reason a short sale is exempted from applicable regulation (e.g. Reg SHO addendum (b)(1) in the U.S.)",
+      "display": "SideShortSaleExemptionReason"
     }
   },
   {
@@ -6191,9 +6190,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1691",
       "description": "Party identifier within Parties Reference Data messages.",
-      "display": "PartyDetailID",
-      "fix:tag": "1691"
+      "display": "PartyDetailID"
     }
   },
   {
@@ -6203,9 +6202,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Source of the identifier of the PartyDetailID(1691) specified.",
-      "display": "PartyDetailIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "KoreanInvestorID",
@@ -6393,7 +6390,9 @@
           "doc": "Korea Short Selling Registration Number"
         }
       ],
-      "fix:tag": "1692"
+      "FIX:tag": "1692",
+      "description": "Source of the identifier of the PartyDetailID(1691) specified.",
+      "display": "PartyDetailIDSource"
     }
   },
   {
@@ -6403,9 +6402,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type or role of PartyDetailID(1691) specified.",
-      "display": "PartyDetailRole",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ExecutingFirm",
@@ -7052,7 +7049,9 @@
           "doc": "Algorithm"
         }
       ],
-      "fix:tag": "1693"
+      "FIX:tag": "1693",
+      "description": "Identifies the type or role of PartyDetailID(1691) specified.",
+      "display": "PartyDetailRole"
     }
   },
   {
@@ -7062,9 +7061,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1694",
       "description": "Number of party detail sub-identifiers.",
-      "display": "NoPartyDetailSubIDs",
-      "fix:tag": "1694"
+      "display": "NoPartyDetailSubIDs"
     }
   },
   {
@@ -7074,9 +7073,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1695",
       "description": "Sub-identifier for the party specified in PartyDetailID(1691).",
-      "display": "PartyDetailSubID",
-      "fix:tag": "1695"
+      "display": "PartyDetailSubID"
     }
   },
   {
@@ -7086,9 +7085,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of PartyDetailSubID(1695) value.",
-      "display": "PartyDetailSubIDType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Firm",
@@ -7535,7 +7532,9 @@
           "doc": "Certificate registration status"
         }
       ],
-      "fix:tag": "1696"
+      "FIX:tag": "1696",
+      "description": "Type of PartyDetailSubID(1695) value.",
+      "display": "PartyDetailSubIDType"
     }
   },
   {
@@ -7545,9 +7544,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1697",
       "description": "Encoded (non-ASCII characters) representation of the OptionExpirationDesc(1581) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the OptionExpirationDesc(1581).",
-      "display": "EncodedOptionExpirationDesc",
-      "fix:tag": "1697"
+      "display": "EncodedOptionExpirationDesc"
     }
   },
   {
@@ -7557,9 +7556,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to express the unit of measure (UOM) of the price if different from the contract.",
-      "display": "StrikeUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -8041,7 +8038,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "1698"
+      "FIX:tag": "1698",
+      "description": "Used to express the unit of measure (UOM) of the price if different from the contract.",
+      "display": "StrikeUnitOfMeasure"
     }
   },
   {
@@ -8051,9 +8050,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1699",
       "description": "Unique identifier for the AccountSummaryReport(35=CQ).",
-      "display": "AccountSummaryReportID",
-      "fix:tag": "1699"
+      "display": "AccountSummaryReportID"
     }
   }
 ]

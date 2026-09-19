@@ -1434,8 +1434,10 @@ mod hardening {
 }
 
 mod records {
+
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
+    use yggdryl::StructureType;
     use yggdryl::avro::Avro;
 
     use arrow_array::builder::{Float64Builder, Int64Builder, ListBuilder, StringBuilder};
@@ -1454,12 +1456,13 @@ mod records {
     fn batch() -> (Field, RecordBatch) {
         let schema = Field::new(
             "trades",
-            DataType::from_fields([
+            StructureType::from_fields([
                 DataType::Int64.required_field("id"),
                 DataType::utf8().nullable_field("symbol"),
                 DataType::Float64.nullable_field("price"),
                 DataType::list(DataType::Int64.required_field("item")).required_field("legs"),
             ])
+            .map(DataType::from)
             .unwrap(),
             false,
         );
@@ -1671,7 +1674,7 @@ mod records {
 
     #[test]
     fn record_batches_keep_exact_avro_logical_and_fixed_leaves() {
-        let field = DataType::from_fields([
+        let field = StructureType::from_fields([
             DataType::uuid().required_field("id"),
             DataType::decimal32(9, 2).unwrap().required_field("small"),
             DataType::decimal64(18, 2).unwrap().required_field("large"),
@@ -1680,6 +1683,7 @@ mod records {
                 .unwrap()
                 .required_field("span"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
         let rows = Scalar::from_sequence([Scalar::from_record([
@@ -1742,10 +1746,11 @@ mod records {
 
         let narrow = Field::new(
             "trades",
-            DataType::from_fields([
+            StructureType::from_fields([
                 DataType::Int64.required_field("id"),
                 DataType::Float64.nullable_field("price"),
             ])
+            .map(DataType::from)
             .unwrap(),
             false,
         );
@@ -1855,7 +1860,8 @@ mod records {
 
     #[test]
     fn dimensions_skip_a_large_avro_payload_without_decoding_it() {
-        let field = DataType::from_fields([DataType::utf8().required_field("payload")])
+        let field = StructureType::from_fields([DataType::utf8().required_field("payload")])
+            .map(DataType::from)
             .unwrap()
             .required_field("rows");
         let payload = "0123456789abcdef".repeat(65_536);
@@ -1982,10 +1988,11 @@ mod records {
 
     #[test]
     fn an_open_cache_tracks_the_final_avro_field_after_casting() {
-        let stored = DataType::from_fields([
+        let stored = StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("trades");
         let first = RecordBatch::try_new(
@@ -2006,10 +2013,11 @@ mod records {
             .unwrap();
         media.open().unwrap();
 
-        let loose = DataType::from_fields([
+        let loose = StructureType::from_fields([
             DataType::utf8().required_field("id"),
             DataType::utf8().nullable_field("symbol"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("trades");
         let incoming = RecordBatch::try_new(
@@ -2188,10 +2196,11 @@ mod records {
         // declared type is already the null the wrap would add.
         let schema = Field::new(
             "row",
-            DataType::from_fields([
+            StructureType::from_fields([
                 DataType::Int64.required_field("id"),
                 DataType::Null.nullable_field("gap"),
             ])
+            .map(DataType::from)
             .unwrap(),
             false,
         );
@@ -2225,9 +2234,10 @@ mod records {
         // cannot be spelled.
         let schema = Field::new(
             "row",
-            DataType::from_fields([DataType::interval(yggdryl::TimeUnit::MonthDayNano)
+            StructureType::from_fields([DataType::interval(yggdryl::TimeUnit::MonthDayNano)
                 .unwrap()
                 .required_field("span")])
+            .map(DataType::from)
             .unwrap(),
             false,
         );
@@ -2276,7 +2286,7 @@ mod records {
     fn logical_columns_round_trip_columnar() {
         let schema = Field::new(
             "row",
-            DataType::from_fields([
+            StructureType::from_fields([
                 DataType::date32().required_field("day"),
                 DataType::DateTime(DateTimeType::DateTime64 {
                     unit: yggdryl::TimeUnit::Microsecond,
@@ -2285,6 +2295,7 @@ mod records {
                 .nullable_field("at"),
                 DataType::decimal(10, 2).unwrap().required_field("cost"),
             ])
+            .map(DataType::from)
             .unwrap(),
             false,
         );
@@ -2644,7 +2655,9 @@ mod fuzz_lite {
 }
 
 mod limits {
+
     use std::sync::Arc;
+    use yggdryl::StructureType;
 
     use arrow_array::RecordBatchReader;
 
@@ -2655,7 +2668,8 @@ mod limits {
 
     /// A struct field is the schema of the batches it describes.
     fn schema() -> Field {
-        DataType::from_fields([DataType::Int64.required_field("id")])
+        StructureType::from_fields([DataType::Int64.required_field("id")])
+            .map(DataType::from)
             .unwrap()
             .required_field("row")
     }

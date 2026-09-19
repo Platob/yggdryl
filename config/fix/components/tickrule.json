@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "starttickpricerange",
-          "fix:tag": "1206"
+          "FIX:field": "starttickpricerange",
+          "FIX:tag": "1206"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "endtickpricerange",
-          "fix:tag": "1207"
+          "FIX:field": "endtickpricerange",
+          "FIX:tag": "1207"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tickincrement",
-          "fix:tag": "1208"
+          "FIX:field": "tickincrement",
+          "FIX:tag": "1208"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tickruletype",
-          "fix:tag": "1209"
+          "FIX:field": "tickruletype",
+          "FIX:tag": "1209"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tickruleproductcomplex",
-          "fix:tag": "2571"
+          "FIX:field": "tickruleproductcomplex",
+          "FIX:tag": "2571"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpriceincrement",
-          "fix:tag": "1830"
+          "FIX:field": "settlpriceincrement",
+          "FIX:tag": "1830"
         }
       },
       {
@@ -76,15 +76,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlpricesecondaryincrement",
-          "fix:tag": "1831"
+          "FIX:field": "settlpricesecondaryincrement",
+          "FIX:tag": "1831"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TickRule",
-    "fix:tag": "773145"
+    "FIX:tag": "773145",
+    "display": "TickRule"
   }
 }

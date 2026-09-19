@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legreturnratepricecomponent"
+        "FIX:component": "legreturnratepricecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legreturnratepricecomponent",
+    "FIX:counter": "42564",
+    "FIX:tag": "447044",
     "description": "Required if NoLegReturnRatePrices(42564) > 0.",
-    "display": "LegReturnRatePriceGrp",
-    "fix:component": "legreturnratepricecomponent",
-    "fix:counter": "42564",
-    "fix:tag": "447044"
+    "display": "LegReturnRatePriceGrp"
   }
 }

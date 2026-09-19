@@ -15,7 +15,7 @@
 //! framing each line under the bridge's row header, the whole path into fixed
 //! rows, the codec alone over the framed bodies, the record reader over the
 //! same bodies with each row naming the plugin that logged it - so the
-//! `pluginid` capture's fill is measured on its own - and then what a message
+//! `msgpluginid` capture's fill is measured on its own - and then what a message
 //! costs after it is built - its row, the batch the rows land in, the one
 //! walk that joins it to its order's life, and its digest. A parse settles
 //! everything a message derives about itself - the dictionary's latest
@@ -184,11 +184,11 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
 
     // The record reader over the same bodies, each row naming the plugin
-    // that logged it: the capture fills the crate's `pluginid` field and
+    // that logged it: the capture fills the crate's `msgpluginid` field and
     // selects nothing, so this is what a row costs to read with one more
     // capture on every line.
     let plugin_codec = FixCodec::new(Arc::clone(&registry))
-        .with_capture_names(["pluginid"])
+        .with_capture_names(["msgpluginid"])
         .with_exclude_msgtypes::<[&str; 0], &str>([]);
     let lines: Vec<TextLine> = held
         .iter()
@@ -210,7 +210,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .expect("captures")
         })
         .collect();
-    group.bench_function("parse_text_lines_pluginid", |bencher| {
+    group.bench_function("parse_text_lines_msgpluginid", |bencher| {
         bencher.iter_batched(
             || lines.clone(),
             |held| {

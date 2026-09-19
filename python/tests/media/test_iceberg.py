@@ -795,16 +795,16 @@ class TestCatalog:
         assert catalog.properties == {"region": "eu"}
 
         # The reserved prefix is refused with the core's own message.
-        with pytest.raises(ValueError, match="reserved .*iceberg:"):
-            catalog.update_properties({"iceberg:x": "1"})
+        with pytest.raises(ValueError, match="reserved .*ICEBERG:"):
+            catalog.update_properties({"ICEBERG:x": "1"})
 
         sales = catalog.namespaces.create("sales")
         assert sales.properties == {}
         sales.update_properties({"team": "emea"})
         assert sales.properties == {"team": "emea"}
         assert catalog.namespaces["sales"].properties == {"team": "emea"}
-        with pytest.raises(ValueError, match="reserved .*iceberg:"):
-            sales.update_properties({"iceberg:x": "1"})
+        with pytest.raises(ValueError, match="reserved .*ICEBERG:"):
+            sales.update_properties({"ICEBERG:x": "1"})
 
 
 class TestTimeTravel:

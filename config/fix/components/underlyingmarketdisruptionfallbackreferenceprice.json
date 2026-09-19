@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackunderliertype",
-          "fix:tag": "41869"
+          "FIX:field": "underlyingmarketdisruptionfallbackunderliertype",
+          "FIX:tag": "41869"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackunderliersecurityid",
-          "fix:tag": "41870"
+          "FIX:field": "underlyingmarketdisruptionfallbackunderliersecurityid",
+          "FIX:tag": "41870"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackunderliersecurityidsource",
-          "fix:tag": "41871"
+          "FIX:field": "underlyingmarketdisruptionfallbackunderliersecurityidsource",
+          "FIX:tag": "41871"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackunderliersecuritydesc",
-          "fix:tag": "41872"
+          "FIX:field": "underlyingmarketdisruptionfallbackunderliersecuritydesc",
+          "FIX:tag": "41872"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingmarketdisruptionfallbackunderliersecdesclen",
-          "fix:tag": "41873"
+          "FIX:field": "encodedunderlyingmarketdisruptionfallbackunderliersecdesclen",
+          "FIX:tag": "41873"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedunderlyingmarketdisruptionfallbackunderliersecuritydesc",
-          "fix:tag": "41874"
+          "FIX:field": "encodedunderlyingmarketdisruptionfallbackunderliersecuritydesc",
+          "FIX:tag": "41874"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackopenunits",
-          "fix:tag": "41875"
+          "FIX:field": "underlyingmarketdisruptionfallbackopenunits",
+          "FIX:tag": "41875"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackbasketcurrency",
-          "fix:tag": "41876"
+          "FIX:field": "underlyingmarketdisruptionfallbackbasketcurrency",
+          "FIX:tag": "41876"
         }
       },
       {
@@ -98,15 +98,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackbasketdivisor",
-          "fix:tag": "41877"
+          "FIX:field": "underlyingmarketdisruptionfallbackbasketdivisor",
+          "FIX:tag": "41877"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingMarketDisruptionFallbackReferencePrice",
-    "fix:tag": "1002301"
+    "FIX:tag": "1002301",
+    "display": "UnderlyingMarketDisruptionFallbackReferencePrice"
   }
 }

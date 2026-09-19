@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::sequence::SequenceType;
-use crate::{DataType, Error, Field, Result, Scalar};
+use crate::{DataType, Error, Field, Result, Scalar, StructureType};
 
 const MAX_DEPTH: usize = 64;
 
@@ -142,12 +142,12 @@ fn nullable_layout(field: &Field, nullable: bool, depth: usize) -> Result<Field>
     check_depth(field, depth)?;
     let mut held = field.clone();
     let dtype = match field.dtype() {
-        DataType::Structure(fields) => DataType::from_fields(
+        DataType::Structure(fields) => DataType::from(StructureType::from_fields(
             fields
                 .iter()
                 .map(|child| nullable_layout(child, true, depth + 1))
                 .collect::<Result<Vec<_>>>()?,
-        )?,
+        )?),
         DataType::Sequence(SequenceType::List(item)) => {
             DataType::list(nullable_layout(item, false, depth + 1)?)
         }
@@ -196,20 +196,23 @@ mod tests {
     }
 
     fn parties() -> Field {
-        let subparty = DataType::from_fields([tagged("PartySubID", 523, DataType::utf8())])
+        let subparty = StructureType::from_fields([tagged("PartySubID", 523, DataType::utf8())])
+            .map(DataType::from)
             .unwrap()
             .required_field("SubParty");
         let mut nested = DataType::large_list(subparty).required_field("SubParties");
         nested.as_fix_mut().set_counter(802).unwrap();
-        let attribution = DataType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
+        let attribution = StructureType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
+            .map(DataType::from)
             .unwrap()
             .required_field("Attribution");
-        let item = DataType::from_fields([
+        let item = StructureType::from_fields([
             tagged("PartyID", 448, DataType::utf8()),
             attribution,
             tagged("NoPartySubIDs", 802, DataType::Int32),
             nested,
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("Party");
         let mut group = DataType::list(item).required_field("Parties");
@@ -256,7 +259,8 @@ mod tests {
 
     #[test]
     fn message_and_nested_scope_borrow_one_precompiled_plan() {
-        let mut field = DataType::from_fields([parties()])
+        let mut field = StructureType::from_fields([parties()])
+            .map(DataType::from)
             .unwrap()
             .required_field("Report");
         field.as_fix_mut().set_msgtype("R").unwrap();
@@ -288,7 +292,8 @@ mod tests {
             original,
             registry.get_group_plan_by_tag(453).unwrap()
         ));
-        let item = DataType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
+        let item = StructureType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
+            .map(DataType::from)
             .unwrap()
             .required_field("Party");
         let mut replacement = DataType::list(item).required_field("Parties");

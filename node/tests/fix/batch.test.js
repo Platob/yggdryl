@@ -42,7 +42,7 @@ const PIPE = '|'.charCodeAt(0)
 const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
 // The columns a row must carry a value at: the settled identity, and the
 // version every message opens with.
-const REQUIRED = ['currunix', 'creatunix', 'curruuid', 'crossuuid', 'currhashcode', 'crosshashcode', 'beginstring']
+const REQUIRED = ['currunix', 'creaunix', 'curruuid', 'crossuuid', 'currhashcode', 'crosshashcode', 'beginstring']
 
 // Two frames on one row: a line is none, one or many messages, and this
 // one is two.
@@ -208,7 +208,7 @@ test('parseTextLines pulls one line at a time', () => {
   assert.equal([...codec.parseTextLines([new TextLine(0, Buffer.from(TWO_FRAMES))])].length, 2)
 })
 
-test("a row's pluginid fills its own column and selects nothing", () => {
+test("a row's msgpluginid fills its own column and selects nothing", () => {
   // A venue field beside the specification's: one namespace, so `VENUETAG`
   // resolves whatever the row's plugin is called, and the membership the
   // field carries is provenance a caller filters on.
@@ -220,13 +220,13 @@ test("a row's pluginid fills its own column and selects nothing", () => {
     registry.insert(field)
   }
   assert.deepEqual(registry.dialects(), ['elsewhere', 'venue'])
-  const captureNames = ['pluginid', 'prevpluginid']
+  const captureNames = ['msgpluginid', 'prevmsgpluginid']
   const codec = reading(registry, { captureNames })
   const body = Buffer.from('MSGTYPE=D|CLORDID=A|VENUETAG=dark')
   // A line and the captures its header declared, in that order.
   const lined = (plugin, previous = null, held = body) => new TextLine(0, held, [plugin, previous])
 
-  // A `pluginid` capture - a plugin named like a dictionary, one no
+  // A `msgpluginid` capture - a plugin named like a dictionary, one no
   // dictionary is named after, a null, an empty string - fills the crate's
   // own field exactly as it was spelled and selects no dialect: the venue's
   // field resolves under every one of them.
@@ -236,16 +236,16 @@ test("a row's pluginid fills its own column and selects nothing", () => {
     assert.equal(message.byName('venuetag').asJs(), 'dark', `${spelled}`)
     // A capture is the message's own, typed: an empty spelling states
     // nothing, as an absent one does.
-    assert.equal(message.capture().pluginid, spelled === '' ? null : spelled, `${spelled}`)
+    assert.equal(message.capture().msgpluginid, spelled === '' ? null : spelled, `${spelled}`)
     // A message root is not a dictionary member.
     assert.deepEqual(message.field.fix.branches, [])
   }
 
-  // Nothing fills `prevpluginid` but a capture of that name, and the two
+  // Nothing fills `prevmsgpluginid` but a capture of that name, and the two
   // session names are only ever what the line itself spells, through the
   // aliases a bridge row writes them under.
   const [carried] = codec.parseTextLine(lined('venue', 'ULFilter'))
-  assert.equal(carried.capture().pluginid, 'venue')
+  assert.equal(carried.capture().msgpluginid, 'venue')
   const spoken = '|#SYMBOL=TTF|#TECH.CLIENTID=MCFP2|'
   const [stated] = codec.parseTextLine(lined('venue', null, Buffer.from(spoken)))
   // A bridge's own namespaced key is the message's metadata, folded once.
@@ -781,14 +781,14 @@ test("a capture's own columns never reach the message", () => {
   const parsed = one(codec, ORDER)
 
   // A parsed message has no capture columns: they are null in its row, the
-  // two the crate tags among them.
+  // one the crate tags among them.
   const row = parsed.intoRow(schema).asJs()
-  for (const carrier of ['url', 'rownum', 'body', 'sourceurl', 'recordedat']) {
+  for (const carrier of ['url', 'rownum', 'body', 'sourceurl']) {
     assert.equal(row[schema.indexOf(carrier)], null, carrier)
   }
 
   // A row a reader stated them on reads back holding none of them, and a
-  // write to one of the crate's two is refused rather than silently kept.
+  // write to the crate's own column is refused rather than silently kept.
   const stated = [...row]
   stated[schema.indexOf('url')] = 'file:///capture.log'
   stated[schema.indexOf('rownum')] = 42n
@@ -801,7 +801,7 @@ test("a capture's own columns never reach the message", () => {
 
   // So a message alone writes them null: the readers restate them.
   const written = again.intoRow(schema).asJs()
-  for (const carrier of ['url', 'rownum', 'body', 'sourceurl', 'recordedat']) {
+  for (const carrier of ['url', 'rownum', 'body', 'sourceurl']) {
     assert.equal(written[schema.indexOf(carrier)], null, carrier)
   }
   assert.equal(written[schema.indexOf('symbol')], 'AAPL')
@@ -839,7 +839,7 @@ test('a row without the entries column has no entries', () => {
   // could not rebuild - so the identity it writes is its own, over what it
   // now says, rather than the one the parsed message settled.
   const again = held.intoRow(narrow)
-  for (const name of ['currunix', 'creatunix', 'crossuuid', 'crosshashcode']) {
+  for (const name of ['currunix', 'creaunix', 'crossuuid', 'crosshashcode']) {
     const at = narrow.indexOf(name)
     assert.ok(again.at(at).equals(row.at(at)), name)
   }

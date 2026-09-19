@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "additionaltermconditionprecedentbondindicator",
-          "fix:tag": "40020"
+          "FIX:field": "additionaltermconditionprecedentbondindicator",
+          "FIX:tag": "40020"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "additionaltermdiscrepancyclauseindicator",
-          "fix:tag": "40021"
+          "FIX:field": "additionaltermdiscrepancyclauseindicator",
+          "FIX:tag": "40021"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noadditionaltermbondrefs",
-          "fix:tag": "40000"
+          "FIX:field": "noadditionaltermbondrefs",
+          "FIX:tag": "40000"
         }
       },
       {
@@ -43,14 +43,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "additionaltermbondrefgrp"
+          "FIX:group": "additionaltermbondrefgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "AdditionalTerm",
-    "fix:tag": "207305"
+    "FIX:tag": "207305",
+    "display": "AdditionalTerm"
   }
 }

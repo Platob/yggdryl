@@ -14,7 +14,7 @@ pub(super) fn hash_of<T: std::hash::Hash>(value: &T) -> u64 {
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions as _, RecordOptions};
 use yggdryl::text::{LeadingFragment, LineSep, Text, TextLine, TextOptions, read_text_lines};
-use yggdryl::{Codec, DataType, Field, Timezone};
+use yggdryl::{Codec, DataType, Field, StructureType, Timezone};
 use yggdryl::{IOBase as _, IOMedia as _};
 
 fn named(name: &str, bytes: &[u8]) -> Buffer {
@@ -926,11 +926,12 @@ fn folder_leaves_never_share_framing_state_and_restart_physical_rownums() {
 fn generic_record_writes_use_only_the_text_body() {
     let mut target = named("out.txt", b"old");
     let mut options: RecordOptions = TextOptions::new().into();
-    let field = DataType::from_fields([
+    let field = StructureType::from_fields([
         DataType::utf8().required_field("sourceurl"),
         DataType::Int64.required_field("rownum"),
         DataType::utf8().required_field("body"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     options.set_field(field);
@@ -995,10 +996,11 @@ fn a_binary_body_is_refused_by_a_write_naming_what_it_expected() {
     // written as if it were: the refusal names the column and the layout.
     let mut target = named("refused.txt", b"old");
     let mut options: RecordOptions = TextOptions::new().into();
-    let field = DataType::from_fields([
+    let field = StructureType::from_fields([
         DataType::utf8().required_field("sourceurl"),
         DataType::binary().required_field("body"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     options.set_field(field);

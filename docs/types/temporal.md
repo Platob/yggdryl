@@ -13,7 +13,7 @@ Five families - date, time, datetime, duration, interval - each an enum of leave
 | Validates | once, at construction: a width refuses a resolution it does not carry, an interval refuses a resolution, a datetime refuses a layout; a leaf built by hand is caught by `validate` and by the Arrow projection |
 | Arrow | `Date32`, `Date64`, `Time32(unit)`, `Time64(unit)`, `Timestamp(unit, zone)` with the zone only when the datatype states one, `Duration(unit)` for both duration widths, `Interval(layout)` |
 | Text | the classic ISO 8601 spelling, read and written at the unit's full width, for every family but the interval |
-| Rust only | the family enums, the value types and `TemporalValue`; the bindings speak the identifiers, `DataType.time(unit)`, and one factory per leaf |
+| Rust only | the family enums, the value types, the `Temporal` value enum over the eight leaves and `TemporalValue`; the bindings speak the identifiers, `DataType.time(unit)`, and one factory per leaf |
 
 ## Use
 
@@ -24,7 +24,7 @@ The leaf is the storage and its unit the parameter; the family is what a reader 
     ```rust
     use arrow_schema::{DataType as ArrowDataType, IntervalUnit, TimeUnit as ArrowTimeUnit};
     use yggdryl::{DateTimeType, DateType, DurationType, IntervalType, TimeType};
-    use yggdryl::{DataType, DataTypeId, DataTypeKind, Scalar, TemporalFamily, TimeUnit, Timezone};
+    use yggdryl::{DataType, DataTypeId, DataTypeKind, Scalar, Temporal, TimeUnit, Timezone};
 
     // Five families; each constructor picks a leaf and validates its unit once.
     let day = DataType::date32();
@@ -56,8 +56,13 @@ The leaf is the storage and its unit the parameter; the family is what a reader 
     assert_eq!(clock.time_type().unwrap().bit_width(), 32);
     assert_eq!(at.datetime_type().unwrap().timezone(), Timezone::UTC);
     assert_eq!(span.interval_type().unwrap().unit(), TimeUnit::MonthDayNano);
-    assert_eq!(elapsed.duration_type().unwrap().family(), TemporalFamily::Duration);
+    assert_eq!(elapsed.duration_type().unwrap().family(), "duration");
     assert_eq!(day.time_type(), None);
+
+    // A value answers the same family, as one `Temporal` over the eight leaves.
+    let ninety = Scalar::duration64(90, TimeUnit::Second)?;
+    assert!(matches!(ninety.as_temporal(), Some(Temporal::Duration64(_))));
+    assert_eq!(ninety.as_temporal().map(|held| held.family()), Some("duration"));
 
     // `time` picks the width from the unit; a unit a width does not carry is refused.
     assert_eq!(DataType::time(TimeUnit::Second)?, DataType::time32(TimeUnit::Second)?);
@@ -177,12 +182,12 @@ has no spelling and keeps its count. A date read under a
 
 ```rust
 use yggdryl::{DateField, DateType};
-use yggdryl::{DataType, Scalar, TemporalFamily, TimeUnit};
+use yggdryl::{DataType, Scalar, TimeUnit};
 
 assert_eq!(DataType::date32().date_type(), Some(DateType::Date32));
 assert_eq!(DateType::Date64.unit(), TimeUnit::Millisecond);
 assert_eq!(DateType::Date64.bit_width(), 64);
-assert_eq!(DateType::ALL.map(DateType::family), [TemporalFamily::Date; 2]);
+assert_eq!(DateType::ALL.map(DateType::family), ["date"; 2]);
 
 // The leaf is the field's payload, and a value knows its width.
 let day = DateField::new("day", DateType::Date32, false);
@@ -410,8 +415,9 @@ Units parse case-insensitively; whitespace, `_`, or `-` may separate words.
 | `month_day_nano` | `monthdaynano`, `monthdaynanos`, `month_day_nanosecond`, `month_day_nanoseconds` | `interval` |
 
 `TimeUnit` is the one unit parser and Arrow converter (see [Scalar](scalar.md)
-for the shared enums); a temporal `Scalar` answers `temporal_family`,
-`temporal_unit`, `temporal_timezone` and `temporal_count` across the widths.
+for the shared enums); a temporal `Scalar` answers `temporal_unit`,
+`temporal_timezone` and `temporal_count` across the widths, and `as_temporal`
+the `Temporal` value whose `family()` names the family it belongs to.
 
 ### Timezone
 

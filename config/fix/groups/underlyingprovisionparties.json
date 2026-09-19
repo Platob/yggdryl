@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingprovisionparty"
+        "FIX:component": "underlyingprovisionparty"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingprovisionparty",
+    "FIX:counter": "42173",
+    "FIX:tag": "131778",
     "description": "Required if NoUnderlyingProvisionPartyIDs(42173) > 0.",
-    "display": "UnderlyingProvisionParties",
-    "fix:component": "underlyingprovisionparty",
-    "fix:counter": "42173",
-    "fix:tag": "131778"
+    "display": "UnderlyingProvisionParties"
   }
 }

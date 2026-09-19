@@ -6,9 +6,9 @@ use std::sync::Arc;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
 use yggdryl::{
-    BytesType, DataType, DateTimeType, DateType, DecimalType, DictionaryType, DurationType, Fields,
+    BytesType, DataType, DateTimeType, DateType, DecimalType, DictionaryType, DurationType,
     FloatingType, GeospatialType, IntegerType, IntervalType, MapType, RunEndEncodedType,
-    StringType, TimeType, TimeUnit, UnionFields, UnionMode,
+    StringType, StructType, StructureType, TimeType, TimeUnit, UnionFields, UnionMode,
 };
 use yggdryl::{Charset, Error, Field, Timezone};
 
@@ -133,7 +133,7 @@ fn nested_helper_values_have_total_order_and_hash() {
 fn canonical_display_json_and_arrow_are_lossless() {
     let item = Field::from_parts(
         "item,東京",
-        DataType::from_fields([
+        StructureType::from_fields([
             Field::new("id", DataType::Int64, false),
             Field::from_parts(
                 "text",
@@ -143,6 +143,7 @@ fn canonical_display_json_and_arrow_are_lossless() {
             )
             .unwrap(),
         ])
+        .map(DataType::from)
         .unwrap(),
         true,
         [("doc", "nested, metadata")],
@@ -471,7 +472,9 @@ fn every_arrow_variant_has_a_lossless_owned_equivalent() {
         DataType::fixed_size_list(item(), 4).unwrap(),
         DataType::large_list(item()),
         DataType::large_list_view(item()),
-        DataType::from_fields([Field::new("value", DataType::Int32, false)]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([Field::new("value", DataType::Int32, false)]).unwrap(),
+        ),
         DataType::union(
             [
                 (0, Field::new("number", DataType::Int64, false)),
@@ -612,6 +615,6 @@ fn public_field_collections_validate_children_without_clone_helpers() {
         DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)),
         false,
     );
-    assert!(Fields::from_fields([invalid.clone()]).is_err());
+    assert!(StructType::from_fields([invalid.clone()]).is_err());
     assert!(UnionFields::from_fields([(0, invalid)]).is_err());
 }

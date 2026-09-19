@@ -60,11 +60,11 @@ PROTOCOL_FIELD = Field(
     "float64",
     nullable=False,
     metadata={
-        "iceberg:doc": "closing price",
-        "iceberg:field-id": "7",
-        "iceberg:schema-id": "3",
-        "postgres:column": "close",
-        "postgres:type": "numeric(18,6)",
+        "ICEBERG:doc": "closing price",
+        "ICEBERG:field-id": "7",
+        "ICEBERG:schema-id": "3",
+        "POSTGRES:column": "close",
+        "POSTGRES:type": "numeric(18,6)",
         "venue": "XPAR",
     },
 )
@@ -292,7 +292,7 @@ def _read_through_get_property() -> object:
 
 
 def _read_through_metadata_key() -> object:
-    return PROTOCOL_FIELD.metadata["iceberg:doc"]
+    return PROTOCOL_FIELD.metadata["ICEBERG:doc"]
 
 
 def _protocol_view_items() -> object:

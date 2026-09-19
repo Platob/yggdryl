@@ -48,7 +48,6 @@ pub mod duration;
 mod enumeration;
 pub mod enums;
 pub mod expression;
-mod family;
 mod field;
 pub mod fix;
 pub mod floating;
@@ -116,8 +115,7 @@ pub mod txhash;
 mod typed;
 pub mod union;
 mod union_mode;
-mod uri;
-pub mod url;
+pub mod uri;
 pub mod utf8;
 pub mod uuid;
 mod value;
@@ -147,18 +145,18 @@ pub use expression::{Expression, Filter, Plan, Selector, Term};
 pub use expression::{FieldPath, FieldSegment};
 pub use fix::MsgType;
 pub use fix::{
-    CRATE_TAG_MAX, CRATE_TAG_MIN, CREATUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME,
+    CRATE_TAG_MAX, CRATE_TAG_MIN, CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME,
     CROSSUUID_TAG_NAME, CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME, CURRUUID_TAG_NAME,
     DEFAULT_NULL_VALUES, DEFAULT_PAYLOAD_COLUMN, DEFAULT_REFUSED_MSGTYPES, FIX_TYPED_TAGS,
     FIXMSG_TAG_NAME, FixCapture, FixCode, FixCodeValue, FixCodec, FixCodes, FixDedup, FixDirection,
     FixDirectionEntry, FixDirections, FixEntry, FixFieldIter, FixHeader, FixId, FixKey, FixLifted,
     FixMessages, FixMsg, FixPatterns, FixRegistry, FixSpellings, IDENTIFIERS_TAG_NAME,
-    METADATA_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGSESSIONID_TAG_NAME,
-    NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME, PLUGINID_TAG_NAME, PREVUNIX_TAG_NAME,
-    PREVUUID_TAG_NAME, RECORDEDAT_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH,
-    SOURCEURL_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, ULBRIDGE_ROWHEADER, Words,
-    fix_column_of, fix_column_tags, fix_crate_fields, fix_schema, fix_schema_carrying,
-    fix_schema_tags, from_fix_document, into_fix_document, is_crate_tag,
+    METADATA_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME,
+    MSGSESSIONID_TAG_NAME, NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME, PREVUNIX_TAG_NAME,
+    PREVUUID_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH, SOURCEURL_TAG_NAME,
+    STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, ULBRIDGE_ROWHEADER, Words, fix_column_of,
+    fix_column_tags, fix_crate_fields, fix_schema, fix_schema_carrying, fix_schema_tags,
+    from_fix_document, into_fix_document, is_crate_tag,
 };
 pub use int256::{i256, u256};
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
@@ -192,9 +190,10 @@ pub use text::{Format, Limits, ScalarIter};
 pub use time_unit::TimeUnit;
 pub use union_mode::UnionMode;
 pub use uri::{
-    Authority, Extensions, Parameters, Parents, PathSegments, Uri, UriParents, UriPath, Url,
-    UrlParents, Urn,
+    Authority, Extensions, Parameters, Parents, PathSegments, Uri, UriParents, UriPath, UriType,
+    Url, UrlParents, Urn,
 };
+pub(crate) use uri::{URL_EXTENSION_NAME, URN_EXTENSION_NAME};
 pub use xxhash::{DigestFieldNames, DigestFields};
 
 pub(crate) use arithmetic::Arithmetic;
@@ -222,10 +221,6 @@ pub use diff::{Differences, OwnedDifferences};
 pub use duration::*;
 pub use enumeration::Vocabulary;
 pub use enums::*;
-pub use family::{
-    Children, DataTypeValue, DictionaryOptions, FieldSidecar, FieldValue, GeographyType,
-    GeometryType, NestedValue, RunEndType, UnionType,
-};
 pub use field::*;
 pub use floating::*;
 #[cfg(feature = "parquet")]
@@ -248,8 +243,8 @@ pub use mime_type::MimeTypeType;
 pub(crate) use parser::{folds_equal, normalized};
 pub use pretty::Pretty;
 pub use runend::*;
+pub use scalar::Scalar;
 pub(crate) use scalar::code_scalars;
-pub use scalar::{Scalar, Value};
 pub use sedol::*;
 pub use sequence::*;
 pub use side::*;
@@ -257,6 +252,7 @@ pub use state::*;
 pub(crate) use string::trim_padding;
 pub use string::*;
 pub use structure::*;
+pub(crate) use temporal::TemporalKind;
 pub use temporal::*;
 pub use time::*;
 pub use timeinforce::*;
@@ -264,20 +260,24 @@ pub(crate) use timezone::TIMEZONE_EXTENSION_NAME;
 pub use timezone::{Timezone, TimezoneType};
 pub use typed::{FieldRecord, FieldScalar, UncheckedFieldScalar};
 pub use union::*;
-pub use url::*;
 pub use uuid::*;
 pub(crate) use uuid::{
     UUID_EXTENSION_NAME, UUID_TEXT_LEN, uuid_bytes, uuid_parse, uuid_rendered, uuid_text,
 };
 pub(crate) use value::dtype_scalar;
+pub use value::{
+    Children, CodeValue, DataTypeValue, DecimalValue, DictionaryOptions, FamilyValue, FieldSidecar,
+    FieldValue, FloatingValue, GeographyType, GeometryType, GeospatialValue, IntegerValue, Nested,
+    NestedValue, RunEndType, TemporalValue, UnionType, Value,
+};
 pub(crate) use version::VERSION_EXTENSION_NAME;
 pub use version::*;
 
 #[cfg(test)]
 mod tests {
     use super::{
-        DataType, Field, Fields, MediaType, Metadata, MimeType, OwnedDifferences, Scheme, Uri, Url,
-        Urn,
+        DataType, Field, MediaType, Metadata, MimeType, OwnedDifferences, Scheme, StructType, Uri,
+        Url, Urn,
     };
 
     fn assert_send_sync<T: Send + Sync>() {}
@@ -286,7 +286,7 @@ mod tests {
     fn core_schema_values_are_send_and_sync() {
         assert_send_sync::<DataType>();
         assert_send_sync::<Field>();
-        assert_send_sync::<Fields>();
+        assert_send_sync::<StructType>();
         assert_send_sync::<Metadata>();
         assert_send_sync::<MimeType>();
         assert_send_sync::<MediaType>();

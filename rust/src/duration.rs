@@ -40,9 +40,9 @@ use std::fmt;
 pub(crate) use arrow::{arrow_storage, from_arrow_storage};
 use smol_str::format_smolstr;
 
-use crate::family::DataTypeValue;
 use crate::temporal::scalars::require;
-use crate::temporal::{TemporalFamily, temporal_leaf, validate_duration_unit};
+use crate::temporal::{TemporalKind, temporal_leaf, validate_duration_unit};
+use crate::value::DataTypeValue;
 use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, TimeUnit, Timezone};
 
 // ------------------------------------------------------------------------
@@ -127,10 +127,10 @@ impl DurationType {
         }
     }
 
-    /// The temporal family every leaf belongs to.
+    /// The family's name, `duration`, as a datatype spells it.
     #[must_use]
-    pub const fn family(self) -> TemporalFamily {
-        TemporalFamily::Duration
+    pub const fn family(self) -> &'static str {
+        TemporalKind::Duration.as_str()
     }
 
     /// The name this width states its own refusals under.

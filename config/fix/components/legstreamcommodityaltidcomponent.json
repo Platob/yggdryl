@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityaltid",
-          "fix:tag": "41675"
+          "FIX:field": "legstreamcommodityaltid",
+          "FIX:tag": "41675"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommodityaltidsource",
-          "fix:tag": "41676"
+          "FIX:field": "legstreamcommodityaltidsource",
+          "FIX:tag": "41676"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamCommodityAltID",
-    "fix:tag": "174268"
+    "FIX:tag": "174268",
+    "display": "LegStreamCommodityAltID"
   }
 }

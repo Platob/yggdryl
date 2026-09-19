@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggertype",
-          "fix:tag": "1100"
+          "FIX:field": "triggertype",
+          "FIX:tag": "1100"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggeraction",
-          "fix:tag": "1101"
+          "FIX:field": "triggeraction",
+          "FIX:tag": "1101"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggerscope",
-          "fix:tag": "1628"
+          "FIX:field": "triggerscope",
+          "FIX:tag": "1628"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggerprice",
-          "fix:tag": "1102"
+          "FIX:field": "triggerprice",
+          "FIX:tag": "1102"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggersymbol",
-          "fix:tag": "1103"
+          "FIX:field": "triggersymbol",
+          "FIX:tag": "1103"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggersecurityid",
-          "fix:tag": "1104"
+          "FIX:field": "triggersecurityid",
+          "FIX:tag": "1104"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggersecurityidsource",
-          "fix:tag": "1105"
+          "FIX:field": "triggersecurityidsource",
+          "FIX:tag": "1105"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggersecuritydesc",
-          "fix:tag": "1106"
+          "FIX:field": "triggersecuritydesc",
+          "FIX:tag": "1106"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggerpricetype",
-          "fix:tag": "1107"
+          "FIX:field": "triggerpricetype",
+          "FIX:tag": "1107"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggerpricetypescope",
-          "fix:tag": "1108"
+          "FIX:field": "triggerpricetypescope",
+          "FIX:tag": "1108"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggerpricedirection",
-          "fix:tag": "1109"
+          "FIX:field": "triggerpricedirection",
+          "FIX:tag": "1109"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggernewprice",
-          "fix:tag": "1110"
+          "FIX:field": "triggernewprice",
+          "FIX:tag": "1110"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggerordertype",
-          "fix:tag": "1111"
+          "FIX:field": "triggerordertype",
+          "FIX:tag": "1111"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggernewqty",
-          "fix:tag": "1112"
+          "FIX:field": "triggernewqty",
+          "FIX:tag": "1112"
         }
       },
       {
@@ -164,8 +164,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggertradingsessionid",
-          "fix:tag": "1113"
+          "FIX:field": "triggertradingsessionid",
+          "FIX:tag": "1113"
         }
       },
       {
@@ -175,16 +175,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "triggertradingsessionsubid",
-          "fix:tag": "1114"
+          "FIX:field": "triggertradingsessionsubid",
+          "FIX:tag": "1114"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "400921",
     "description": "Required if any other Triggering tags are specified.",
-    "display": "TriggeringInstruction",
-    "fix:tag": "400921"
+    "display": "TriggeringInstruction"
   }
 }

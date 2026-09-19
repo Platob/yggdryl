@@ -9,14 +9,14 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, RecordBatch, StringArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::FieldValue as _;
-use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, StringEnum};
+use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, StringEnum, StructureType};
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new(
         "row",
-        DataType::from_fields(fields).expect("the benchmark fields are valid"),
+        DataType::from(StructureType::from_fields(fields).expect("the benchmark fields are valid")),
         false,
     )
 }

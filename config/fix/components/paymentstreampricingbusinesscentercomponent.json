@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreampricingbusinesscenter",
-          "fix:tag": "41193"
+          "FIX:field": "paymentstreampricingbusinesscenter",
+          "FIX:tag": "41193"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentStreamPricingBusinessCenter",
-    "fix:tag": "304084"
+    "FIX:tag": "304084",
+    "display": "PaymentStreamPricingBusinessCenter"
   }
 }

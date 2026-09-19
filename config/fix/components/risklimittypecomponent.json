@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimittype",
-          "fix:tag": "1530"
+          "FIX:field": "risklimittype",
+          "FIX:tag": "1530"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitamount",
-          "fix:tag": "1531"
+          "FIX:field": "risklimitamount",
+          "FIX:tag": "1531"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitaction",
-          "fix:tag": "1767"
+          "FIX:field": "risklimitaction",
+          "FIX:tag": "1767"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitutilizationamount",
-          "fix:tag": "1766"
+          "FIX:field": "risklimitutilizationamount",
+          "FIX:tag": "1766"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitutilizationpercent",
-          "fix:tag": "1765"
+          "FIX:field": "risklimitutilizationpercent",
+          "FIX:tag": "1765"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitcurrency",
-          "fix:tag": "1532"
+          "FIX:field": "risklimitcurrency",
+          "FIX:tag": "1532"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitcurrencycodesource",
-          "fix:tag": "2939"
+          "FIX:field": "risklimitcurrencycodesource",
+          "FIX:tag": "2939"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitplatform",
-          "fix:tag": "1533"
+          "FIX:field": "risklimitplatform",
+          "FIX:tag": "1533"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitvelocityperiod",
-          "fix:tag": "2336"
+          "FIX:field": "risklimitvelocityperiod",
+          "FIX:tag": "2336"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitvelocityunit",
-          "fix:tag": "2337"
+          "FIX:field": "risklimitvelocityunit",
+          "FIX:tag": "2337"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noriskwarninglevels",
-          "fix:tag": "1559"
+          "FIX:field": "noriskwarninglevels",
+          "FIX:tag": "1559"
         }
       },
       {
@@ -131,14 +131,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "riskwarninglevelgrp"
+          "FIX:group": "riskwarninglevelgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "RiskLimitType",
-    "fix:tag": "768117"
+    "FIX:tag": "768117",
+    "display": "RiskLimitType"
   }
 }

@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "listid",
-          "fix:tag": "66"
+          "FIX:field": "listid",
+          "FIX:tag": "66"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "liststatustype",
-          "fix:tag": "429"
+          "FIX:field": "liststatustype",
+          "FIX:tag": "429"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "norpts",
-          "fix:tag": "82"
+          "FIX:field": "norpts",
+          "FIX:tag": "82"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "listorderstatus",
-          "fix:tag": "431"
+          "FIX:field": "listorderstatus",
+          "FIX:tag": "431"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contingencytype",
-          "fix:tag": "1385"
+          "FIX:field": "contingencytype",
+          "FIX:tag": "1385"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listrejectreason",
-          "fix:tag": "1386"
+          "FIX:field": "listrejectreason",
+          "FIX:tag": "1386"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "rptseq",
-          "fix:tag": "83"
+          "FIX:field": "rptseq",
+          "FIX:tag": "83"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "liststatustext",
-          "fix:tag": "444"
+          "FIX:field": "liststatustext",
+          "FIX:tag": "444"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedliststatustextlen",
-          "fix:tag": "445"
+          "FIX:field": "encodedliststatustextlen",
+          "FIX:tag": "445"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedliststatustext",
-          "fix:tag": "446"
+          "FIX:field": "encodedliststatustext",
+          "FIX:tag": "446"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "totnoorders",
-          "fix:tag": "68"
+          "FIX:field": "totnoorders",
+          "FIX:tag": "68"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment",
-          "fix:tag": "893"
+          "FIX:field": "lastfragment",
+          "FIX:tag": "893"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "noorders",
-          "fix:tag": "73"
+          "FIX:field": "noorders",
+          "FIX:tag": "73"
         }
       },
       {
@@ -174,7 +174,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "ordliststatgrp"
+          "FIX:group": "ordliststatgrp"
         }
       },
       {
@@ -184,17 +184,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "listid",
+    "FIX:msgtype": "N",
+    "FIX:tag": "881014",
     "description": "MsgType = N",
-    "display": "ListStatus",
-    "fix:identifiers": "listid",
-    "fix:msgtype": "N",
-    "fix:tag": "881014"
+    "display": "ListStatus"
   }
 }

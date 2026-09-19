@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "settlinstmsgid",
-          "fix:tag": "777"
+          "FIX:field": "settlinstmsgid",
+          "FIX:tag": "777"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlinstreqid",
-          "fix:tag": "791"
+          "FIX:field": "settlinstreqid",
+          "FIX:tag": "791"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "settlinstmode",
-          "fix:tag": "160"
+          "FIX:field": "settlinstmode",
+          "FIX:tag": "160"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlinstreqrejcode",
-          "fix:tag": "792"
+          "FIX:field": "settlinstreqrejcode",
+          "FIX:tag": "792"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clordid",
-          "fix:tag": "11"
+          "FIX:field": "clordid",
+          "FIX:tag": "11"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosettlinst",
-          "fix:tag": "778"
+          "FIX:field": "nosettlinst",
+          "FIX:tag": "778"
         }
       },
       {
@@ -130,7 +130,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "settlinstgrp"
+          "FIX:group": "settlinstgrp"
         }
       },
       {
@@ -140,17 +140,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "clordid",
+    "FIX:msgtype": "T",
+    "FIX:tag": "936330",
     "description": "MsgType = T",
-    "display": "SettlementInstructions",
-    "fix:identifiers": "clordid",
-    "fix:msgtype": "T",
-    "fix:tag": "936330"
+    "display": "SettlementInstructions"
   }
 }

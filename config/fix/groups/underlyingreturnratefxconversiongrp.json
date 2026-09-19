@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingreturnratefxconversion"
+        "FIX:component": "underlyingreturnratefxconversion"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingreturnratefxconversion",
+    "FIX:counter": "43030",
+    "FIX:tag": "450377",
     "description": "Required if NoUnderlyingReturnRateFXConversions(43030) > 0.",
-    "display": "UnderlyingReturnRateFXConversionGrp",
-    "fix:component": "underlyingreturnratefxconversion",
-    "fix:counter": "43030",
-    "fix:tag": "450377"
+    "display": "UnderlyingReturnRateFXConversionGrp"
   }
 }

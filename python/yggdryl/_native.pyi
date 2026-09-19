@@ -512,7 +512,7 @@ class Scalar:
         "large_cp1252_view", "fixed_cp1252",
         "country", "currency", "mic", "cfi", "isin",
         "cusip", "sedol", "bloomberg", "side", "state", "timeinforce",
-        "uuid", "version", "timezone", "mimetype", "mediatype", "url",
+        "uuid", "version", "timezone", "mimetype", "mediatype", "url", "urn",
         "bytes", "large_binary", "binary_view", "large_binary_view",
         "fixed_binary", "sized_binary",
         "geometry", "geography", "date32", "date64", "time32", "time64",
@@ -1096,7 +1096,7 @@ class ProtocolField:
     def comment(self) -> str | None: ...
     @property
     def display(self) -> str | None: ...
-    # The typed `fix:` vocabulary, answered only by `field.fix`; every other
+    # The typed `FIX:` vocabulary, answered only by `field.fix`; every other
     # protocol's view raises `TypeError` naming its own scheme.
     @property
     def branches(self) -> list[str]: ...
@@ -1161,12 +1161,12 @@ class ProtocolField:
     def description(self) -> str | None: ...
     @description.setter
     def description(self, value: str) -> None: ...
-    # The typed `partition:` vocabulary, answered only by `field.partition`.
+    # The typed `PARTITION:` vocabulary, answered only by `field.partition`.
     @property
     def sources(self) -> list[str] | None: ...
     @sources.setter
     def sources(self, paths: Iterable[str]) -> None: ...
-    # The typed `digest:` vocabulary, answered only by `field.digest`;
+    # The typed `DIGEST:` vocabulary, answered only by `field.digest`;
     # `sources` is the one property both declaring protocols answer.
     def is_holder(self) -> bool: ...
     def set_holder(self) -> None: ...
@@ -1194,7 +1194,7 @@ class ProtocolField:
     def transform(self) -> str | None: ...
     @transform.setter
     def transform(self, transform: str) -> None: ...
-    # The typed `python:` vocabulary, answered only by `field.python`.
+    # The typed `PYTHON:` vocabulary, answered only by `field.python`.
     @property
     def class_metadata(self) -> PythonMetadata | None: ...
     @class_metadata.setter
@@ -1256,7 +1256,7 @@ class ProtocolField:
     def __ne__(self, other: object, /) -> bool: ...
 
 class PythonMetadata:
-    """The Python class a field's `python:` properties name."""
+    """The Python class a field's `PYTHON:` properties name."""
 
     def __init__(self, module: str, qualname: str, kind: str = "class") -> None: ...
     @classmethod
@@ -1374,7 +1374,7 @@ class Field:
         representation: Representation = "value",
     ) -> pyarrow.Array: ...
     # `cast` reconciles the batch to this root, `transform` computes every
-    # column a `transform:expression` or a `partition:transform` declares, and
+    # column a `TRANSFORM:expression` or a `PARTITION:transform` declares, and
     # `digest` fills every holder last, over the rows as they finally stand.
     def apply_arrow_batch(
         self,
@@ -1616,7 +1616,7 @@ class Field:
     def clear_properties(self, scheme: str) -> None: ...
     def protocol(self, scheme: str) -> ProtocolField: ...
     # One named view per well-known protocol. ``https`` is deliberately absent:
-    # it shares the canonical ``http:`` namespace, which ``http`` already reads.
+    # it shares the canonical ``HTTP:`` namespace, which ``http`` already reads.
     @property
     def http(self) -> ProtocolField: ...
     @property
@@ -4901,7 +4901,7 @@ class FixRegistry:
     """Scalar fields, components and repeating groups, one namespace.
 
     A Struct is a component, a List of Structs or a Map a group, and a
-    message a component carrying ``fix:msgtype``; ``insert`` files each by
+    message a component carrying ``FIX:msgtype``; ``insert`` files each by
     its shape and the field doors reach all of them. A tag is an ``int``
     that fits ``i32`` and never a ``bool``; an identifier is the ``int`` a
     field's ``fix.id`` answers, spelled only where the method name says
@@ -4924,7 +4924,7 @@ class FixRegistry:
     loaded dictionary may supply itself. ``len`` counts the scalar fields,
     the components and the groups; iteration walks the scalars. A store
     writes the crate's own definitions like any other and reads a stored
-    copy past. What a dictionary contributed is ``fix:branches`` on each
+    copy past. What a dictionary contributed is ``FIX:branches`` on each
     field it touched, listed by ``dialects``; no lookup consults it.
     """
 
@@ -5063,15 +5063,16 @@ class FixCapture:
     digests to.
 
     What the *reader* said about the line is not here and is held nowhere on
-    a message: the object it was read from and the instant it was recorded
-    are the capture's own columns, stated on the row by whoever read it.
+    a message: the object it was read from, and whatever else the reader
+    carried, are the capture's own columns, stated on the row by whoever
+    read it.
 
     A copy at the moment ``FixMsg.capture()`` answered it; immutable,
     comparing and hashing by its facts.
     """
 
     @property
-    def pluginid(self) -> str | None: ...
+    def msgpluginid(self) -> str | None: ...
     @property
     def msgctxid(self) -> str | None: ...
     @property
@@ -5118,7 +5119,7 @@ class MarketEventData:
     @property
     def seqnum(self) -> int: ...
     @property
-    def creatunix(self) -> int | None: ...
+    def creaunix(self) -> int | None: ...
     @property
     def expirunix(self) -> int | None: ...
     @property
@@ -5347,7 +5348,7 @@ class FixCodec:
     already split. Lines and records answer a lazy ``FixMessages``; the FIX,
     Ullink, FIXML and pair readers answer one ``FixMsg``. A parse builds the
     message, lifts its typed facts, restates deprecated fields to their
-    latest aliases, runs the dictionary's ``fix:derivation`` rules, fills the
+    latest aliases, runs the dictionary's ``FIX:derivation`` rules, fills the
     identifiers the message component declares and an order's lanes, and
     settles the identity - there is no separate enriching step. Chaining:
     ``lifecycle`` walks a stream of messages as one lifecycle, each stated

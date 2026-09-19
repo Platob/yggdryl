@@ -18,13 +18,13 @@
 //! properties, so re-emitting a document reproduces it rather than quietly
 //! dropping what the field model has no slot for. Those properties are reached
 //! through [`Field::as_iceberg`] and [`Field::as_iceberg_mut`], which own the
-//! `iceberg:` vocabulary so this module never spells a metadata key itself.
+//! `ICEBERG:` vocabulary so this module never spells a metadata key itself.
 
 use smol_str::{SmolStr, format_smolstr};
 
 use super::PrimitiveType;
 use crate::SequenceType;
-use crate::{DataType, Error, Field, Result, Scalar};
+use crate::{DataType, Error, Field, Result, Scalar, StructureType};
 
 /// The Iceberg property naming a schema identifier.
 pub(super) const SCHEMA_ID: &str = "schema-id";
@@ -177,7 +177,11 @@ fn struct_field_from_json(name: &str, object: &Scalar, nullable: bool) -> Result
     for entry in entries {
         children.push(field_from_json(entry)?);
     }
-    Ok(Field::new(name, DataType::from_fields(children)?, nullable))
+    Ok(Field::new(
+        name,
+        DataType::from(StructureType::from_fields(children)?),
+        nullable,
+    ))
 }
 
 /// Build one column from an Iceberg field object.
@@ -284,7 +288,11 @@ fn typed_field_from_json(name: &str, type_json: &Scalar, nullable: bool) -> Resu
             if let Some(id) = type_json.get_key_str("value-id").and_then(Scalar::as_i64) {
                 value.set_parquet_field_id(field_id(id, name)?);
             }
-            let entries = Field::new("entries", DataType::from_fields([key, value])?, false);
+            let entries = Field::new(
+                "entries",
+                DataType::from(StructureType::from_fields([key, value])?),
+                false,
+            );
             Ok(Field::new(name, DataType::map(entries, false)?, nullable))
         }
         other => Err(invalid(format_smolstr!(

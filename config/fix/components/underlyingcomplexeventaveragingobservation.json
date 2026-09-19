@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventaveragingobservationnumber",
-          "fix:tag": "41714"
+          "FIX:field": "underlyingcomplexeventaveragingobservationnumber",
+          "FIX:tag": "41714"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventaveragingweight",
-          "fix:tag": "41715"
+          "FIX:field": "underlyingcomplexeventaveragingweight",
+          "FIX:tag": "41715"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEventAveragingObservation",
-    "fix:tag": "448605"
+    "FIX:tag": "448605",
+    "display": "UnderlyingComplexEventAveragingObservation"
   }
 }

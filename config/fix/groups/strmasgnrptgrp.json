@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "strmasgnrpt"
+        "FIX:component": "strmasgnrpt"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "strmasgnrpt",
+    "FIX:counter": "1499",
+    "FIX:tag": "540532",
     "description": "Stream Assignment Reports.",
-    "display": "StrmAsgnRptGrp",
-    "fix:component": "strmasgnrpt",
-    "fix:counter": "1499",
-    "fix:tag": "540532"
+    "display": "StrmAsgnRptGrp"
   }
 }

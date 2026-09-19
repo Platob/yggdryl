@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "trdmatchside"
+        "FIX:component": "trdmatchside"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "trdmatchside",
+    "FIX:counter": "1890",
+    "FIX:tag": "279981",
     "description": "Required if NoTrdMatchSides(1890) > 0.",
-    "display": "TrdMatchSideGrp",
-    "fix:component": "trdmatchside",
-    "fix:counter": "1890",
-    "fix:tag": "279981"
+    "display": "TrdMatchSideGrp"
   }
 }

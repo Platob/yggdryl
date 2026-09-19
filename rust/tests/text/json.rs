@@ -5,8 +5,8 @@ use yggdryl::DateTimeType;
 use yggdryl::json;
 use yggdryl::text::{self, Format, Formatting, Limits};
 use yggdryl::{
-    DataType, DataTypeId, Error, Field, Scalar, TimeUnit, Timezone, from_json_scalar,
-    from_json_scalar_with_field, i256, into_json_scalar,
+    DataType, DataTypeId, Error, Field, Scalar, StructureType, TimeUnit, Timezone,
+    from_json_scalar, from_json_scalar_with_field, i256, into_json_scalar,
 };
 
 #[test]
@@ -72,7 +72,7 @@ fn untyped_reads_return_only_what_json_proves() {
 fn typed_row_field() -> Field {
     Field::new(
         "row",
-        DataType::from_fields([
+        StructureType::from_fields([
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
@@ -89,6 +89,7 @@ fn typed_row_field() -> Field {
             ),
             Field::new("payload", DataType::binary(), false),
         ])
+        .map(DataType::from)
         .unwrap(),
         false,
     )
@@ -257,7 +258,8 @@ fn codec_errors_keep_the_format_and_byte_position() {
 
 #[test]
 fn an_ascii_field_reads_natural_text_trimmed_and_refuses_what_does_not_fit() {
-    let row = DataType::from_fields([DataType::fixed_ascii(4).unwrap().required_field("ccy")])
+    let row = StructureType::from_fields([DataType::fixed_ascii(4).unwrap().required_field("ccy")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let expected =

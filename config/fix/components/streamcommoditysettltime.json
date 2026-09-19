@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlstart",
-          "fix:tag": "41287"
+          "FIX:field": "streamcommoditysettlstart",
+          "FIX:tag": "41287"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettlend",
-          "fix:tag": "41288"
+          "FIX:field": "streamcommoditysettlend",
+          "FIX:tag": "41288"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcommoditysettltimetype",
-          "fix:tag": "41588"
+          "FIX:field": "streamcommoditysettltimetype",
+          "FIX:tag": "41588"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "StreamCommoditySettlTime",
-    "fix:tag": "371721"
+    "FIX:tag": "371721",
+    "display": "StreamCommoditySettlTime"
   }
 }

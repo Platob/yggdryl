@@ -22,7 +22,7 @@ use yggdryl::iceberg::{
     assign_field_ids, can_promote, last_column_id, schema_from_json, schema_into_json,
 };
 use yggdryl::media::DEFAULT_ROOT_NAME;
-use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar as CoreScalar};
+use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar as CoreScalar, StructureType};
 
 use crate::enums::{JsMimeType, MimeTypeInput, mime_type_from_input};
 use crate::iobase::{JsIOBase, LocationInput, folder_from_input};
@@ -77,7 +77,8 @@ fn schema_from_input(value: TableSchemaInput<'_>) -> Result<CoreField> {
         Either3::B(text) => CoreField::from_str(&text).map_err(napi_error),
         Either3::C(children) => {
             let fields = children.iter().map(|child| child.inner.clone());
-            Ok(CoreDataType::from_fields(fields)
+            Ok(StructureType::from_fields(fields)
+                .map(CoreDataType::from)
                 .map_err(napi_error)?
                 .required_field(DEFAULT_ROOT_NAME))
         }
@@ -2355,7 +2356,7 @@ enum SchemaOp {
     DropColumn { path: String },
     /// Rename a column, keeping its identifier.
     RenameColumn { path: String, name: String },
-    /// Set a column's `iceberg:doc` documentation string.
+    /// Set a column's `ICEBERG:doc` documentation string.
     UpdateDoc { path: String, doc: String },
     /// Relax a required column to optional.
     MakeNullable { path: String },
@@ -2406,7 +2407,7 @@ impl JsSchemaUpdate {
         self.ops.push(SchemaOp::RenameColumn { path, name });
     }
 
-    /// Record a new `iceberg:doc` documentation string on the column at `path`.
+    /// Record a new `ICEBERG:doc` documentation string on the column at `path`.
     #[napi]
     pub fn update_doc(&mut self, path: String, doc: String) {
         self.ops.push(SchemaOp::UpdateDoc { path, doc });
@@ -2573,7 +2574,7 @@ impl JsCatalog {
     ///
     /// `updates` is a mapping of properties to set and `removes` lists the
     /// keys to drop, in that order. Passing neither writes nothing at all.
-    /// Keys under the reserved `iceberg:` prefix are refused by name.
+    /// Keys under the reserved `ICEBERG:` prefix are refused by name.
     #[napi]
     pub fn update_properties(
         &self,
@@ -2655,7 +2656,7 @@ impl JsNamespace {
     ///
     /// `updates` is a mapping of properties to set and `removes` lists the
     /// keys to drop, in that order. Passing neither writes nothing at all.
-    /// Keys under the reserved `iceberg:` prefix are refused by name.
+    /// Keys under the reserved `ICEBERG:` prefix are refused by name.
     #[napi]
     pub fn update_properties(
         &self,

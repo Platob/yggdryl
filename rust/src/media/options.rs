@@ -24,10 +24,10 @@
 //!
 //! ```
 //! use yggdryl::media::{IORecordOptions, RecordOptions};
-//! use yggdryl::{DataType, Url};
+//! use yggdryl::{DataType, StructureType, Url};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+//! let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
 //!     .required_field("row");
 //!
 //! // Arrow IPC is available in every Arrow build.
@@ -655,8 +655,8 @@ pub trait IORecordOptions: Sized {
     /// absent layer costs nothing.
     ///
     /// A field shapes rows by [applying](Field::apply_arrow_batch), not by
-    /// casting: a declaration is a cast *and* the `transform:`, `partition:`
-    /// and `digest:` columns it derives, so a column a schema declares arrives
+    /// casting: a declaration is a cast *and* the `TRANSFORM:`, `PARTITION:`
+    /// and `DIGEST:` columns it derives, so a column a schema declares arrives
     /// written rather than arriving as the default nothing filled. A root that
     /// declares no derivation applies as the cast alone.
     ///

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlcurrency",
-          "fix:tag": "40023"
+          "FIX:field": "cashsettlcurrency",
+          "FIX:tag": "40023"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlvaluationfirstbusinessdayoffset",
-          "fix:tag": "40024"
+          "FIX:field": "cashsettlvaluationfirstbusinessdayoffset",
+          "FIX:tag": "40024"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlvaluationsubsequentbusinessdaysoffset",
-          "fix:tag": "40916"
+          "FIX:field": "cashsettlvaluationsubsequentbusinessdaysoffset",
+          "FIX:tag": "40916"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlnumofvaluationdates",
-          "fix:tag": "40917"
+          "FIX:field": "cashsettlnumofvaluationdates",
+          "FIX:tag": "40917"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlvaluationtime",
-          "fix:tag": "40025"
+          "FIX:field": "cashsettlvaluationtime",
+          "FIX:tag": "40025"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlbusinesscenter",
-          "fix:tag": "40026"
+          "FIX:field": "cashsettlbusinesscenter",
+          "FIX:tag": "40026"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlquotemethod",
-          "fix:tag": "40027"
+          "FIX:field": "cashsettlquotemethod",
+          "FIX:tag": "40027"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlquoteamount",
-          "fix:tag": "40028"
+          "FIX:field": "cashsettlquoteamount",
+          "FIX:tag": "40028"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlquotecurrency",
-          "fix:tag": "40029"
+          "FIX:field": "cashsettlquotecurrency",
+          "FIX:tag": "40029"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlminimumquoteamount",
-          "fix:tag": "40030"
+          "FIX:field": "cashsettlminimumquoteamount",
+          "FIX:tag": "40030"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlminimumquotecurrency",
-          "fix:tag": "40031"
+          "FIX:field": "cashsettlminimumquotecurrency",
+          "FIX:tag": "40031"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocashsettldealers",
-          "fix:tag": "40277"
+          "FIX:field": "nocashsettldealers",
+          "FIX:tag": "40277"
         }
       },
       {
@@ -142,7 +142,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "cashsettldealergrp"
+          "FIX:group": "cashsettldealergrp"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlpricesource",
-          "fix:tag": "42216"
+          "FIX:field": "cashsettlpricesource",
+          "FIX:tag": "42216"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlpricedefault",
-          "fix:tag": "42217"
+          "FIX:field": "cashsettlpricedefault",
+          "FIX:tag": "42217"
         }
       },
       {
@@ -174,8 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlbusinessdays",
-          "fix:tag": "40033"
+          "FIX:field": "cashsettlbusinessdays",
+          "FIX:tag": "40033"
         }
       },
       {
@@ -185,8 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlamount",
-          "fix:tag": "40034"
+          "FIX:field": "cashsettlamount",
+          "FIX:tag": "40034"
         }
       },
       {
@@ -196,7 +196,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "cashsettldate"
+          "FIX:component": "cashsettldate"
         }
       },
       {
@@ -206,8 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlrecoveryfactor",
-          "fix:tag": "40035"
+          "FIX:field": "cashsettlrecoveryfactor",
+          "FIX:tag": "40035"
         }
       },
       {
@@ -217,8 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlfixedtermindicator",
-          "fix:tag": "40036"
+          "FIX:field": "cashsettlfixedtermindicator",
+          "FIX:tag": "40036"
         }
       },
       {
@@ -228,8 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlaccruedinterestindicator",
-          "fix:tag": "40037"
+          "FIX:field": "cashsettlaccruedinterestindicator",
+          "FIX:tag": "40037"
         }
       },
       {
@@ -239,8 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettlvaluationmethod",
-          "fix:tag": "40038"
+          "FIX:field": "cashsettlvaluationmethod",
+          "FIX:tag": "40038"
         }
       },
       {
@@ -250,15 +250,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cashsettltermxid",
-          "fix:tag": "40039"
+          "FIX:field": "cashsettltermxid",
+          "FIX:tag": "40039"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "CashSettlTerm",
-    "fix:tag": "211578"
+    "FIX:tag": "211578",
+    "display": "CashSettlTerm"
   }
 }

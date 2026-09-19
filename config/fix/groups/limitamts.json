@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "limitamtcomponent"
+        "FIX:component": "limitamtcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "limitamtcomponent",
+    "FIX:counter": "1630",
+    "FIX:tag": "544399",
     "description": "Number of limit amount occurrences.",
-    "display": "LimitAmts",
-    "fix:component": "limitamtcomponent",
-    "fix:counter": "1630",
-    "fix:tag": "544399"
+    "display": "LimitAmts"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlratefallbackratesource",
-          "fix:tag": "40373"
+          "FIX:field": "settlratefallbackratesource",
+          "FIX:tag": "40373"
         }
       },
       {
@@ -21,16 +21,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlratefallbackreferencepage",
-          "fix:tag": "40655"
+          "FIX:field": "settlratefallbackreferencepage",
+          "FIX:tag": "40655"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "225482",
     "description": "Conditionally required when SettlRateFallbackRateSource(40373) = 3 (ISDA Settlement Rate Option) or 99 (Other).",
-    "display": "SettlRateFallbackRateSource",
-    "fix:tag": "225482"
+    "display": "SettlRateFallbackRateSource"
   }
 }

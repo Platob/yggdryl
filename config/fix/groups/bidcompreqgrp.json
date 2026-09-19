@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "bidcompreq"
+        "FIX:component": "bidcompreq"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "bidcompreq",
+    "FIX:counter": "420",
+    "FIX:tag": "450322",
     "description": "Used if BidType=\"Disclosed\"",
-    "display": "BidCompReqGrp",
-    "fix:component": "bidcompreq",
-    "fix:counter": "420",
-    "fix:tag": "450322"
+    "display": "BidCompReqGrp"
   }
 }

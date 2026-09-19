@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "rgstdistinst"
+        "FIX:component": "rgstdistinst"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "rgstdistinst",
+    "FIX:counter": "510",
+    "FIX:tag": "377394",
     "description": "Number of Distribution instructions in this message (number of repeating groups to follow)",
-    "display": "RgstDistInstGrp",
-    "fix:component": "rgstdistinst",
-    "fix:counter": "510",
-    "fix:tag": "377394"
+    "display": "RgstDistInstGrp"
   }
 }

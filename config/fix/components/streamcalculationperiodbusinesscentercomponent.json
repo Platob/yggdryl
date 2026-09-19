@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamcalculationperiodbusinesscenter",
-          "fix:tag": "40074"
+          "FIX:field": "streamcalculationperiodbusinesscenter",
+          "FIX:tag": "40074"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "StreamCalculationPeriodBusinessCenter",
-    "fix:tag": "430445"
+    "FIX:tag": "430445",
+    "display": "StreamCalculationPeriodBusinessCenter"
   }
 }

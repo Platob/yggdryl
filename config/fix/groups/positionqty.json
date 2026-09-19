@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "positionqtycomponent"
+        "FIX:component": "positionqtycomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "positionqtycomponent",
+    "FIX:counter": "702",
+    "FIX:tag": "558218",
     "description": "Required if NoPositions > 1",
-    "display": "PositionQty",
-    "fix:component": "positionqtycomponent",
-    "fix:counter": "702",
-    "fix:tag": "558218"
+    "display": "PositionQty"
   }
 }

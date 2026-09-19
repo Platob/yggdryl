@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepparametername",
-          "fix:tag": "3046"
+          "FIX:field": "teststepparametername",
+          "FIX:tag": "3046"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepparametertype",
-          "fix:tag": "3047"
+          "FIX:field": "teststepparametertype",
+          "FIX:tag": "3047"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepparametervalue",
-          "fix:tag": "3048"
+          "FIX:field": "teststepparametervalue",
+          "FIX:tag": "3048"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TestStepParameter",
-    "fix:tag": "889631"
+    "FIX:tag": "889631",
+    "display": "TestStepParameter"
   }
 }

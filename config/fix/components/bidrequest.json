@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidid",
-          "fix:tag": "390"
+          "FIX:field": "bidid",
+          "FIX:tag": "390"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "clientbidid",
-          "fix:tag": "391"
+          "FIX:field": "clientbidid",
+          "FIX:tag": "391"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "bidrequesttranstype",
-          "fix:tag": "374"
+          "FIX:field": "bidrequesttranstype",
+          "FIX:tag": "374"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listname",
-          "fix:tag": "392"
+          "FIX:field": "listname",
+          "FIX:tag": "392"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "totnorelatedsym",
-          "fix:tag": "393"
+          "FIX:field": "totnorelatedsym",
+          "FIX:tag": "393"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "bidtype",
-          "fix:tag": "394"
+          "FIX:field": "bidtype",
+          "FIX:tag": "394"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "numtickets",
-          "fix:tag": "395"
+          "FIX:field": "numtickets",
+          "FIX:tag": "395"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency",
-          "fix:tag": "15"
+          "FIX:field": "currency",
+          "FIX:tag": "15"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource",
-          "fix:tag": "2897"
+          "FIX:field": "currencycodesource",
+          "FIX:tag": "2897"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidevalue1",
-          "fix:tag": "396"
+          "FIX:field": "sidevalue1",
+          "FIX:tag": "396"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidevalue2",
-          "fix:tag": "397"
+          "FIX:field": "sidevalue2",
+          "FIX:tag": "397"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nobiddescriptors",
-          "fix:tag": "398"
+          "FIX:field": "nobiddescriptors",
+          "FIX:tag": "398"
         }
       },
       {
@@ -152,7 +152,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "biddescreqgrp"
+          "FIX:group": "biddescreqgrp"
         }
       },
       {
@@ -162,8 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nobidcomponents",
-          "fix:tag": "420"
+          "FIX:field": "nobidcomponents",
+          "FIX:tag": "420"
         }
       },
       {
@@ -173,7 +173,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "bidcompreqgrp"
+          "FIX:group": "bidcompreqgrp"
         }
       },
       {
@@ -183,8 +183,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "liquidityindtype",
-          "fix:tag": "409"
+          "FIX:field": "liquidityindtype",
+          "FIX:tag": "409"
         }
       },
       {
@@ -194,8 +194,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "wtaverageliquidity",
-          "fix:tag": "410"
+          "FIX:field": "wtaverageliquidity",
+          "FIX:tag": "410"
         }
       },
       {
@@ -205,8 +205,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "exchangeforphysical",
-          "fix:tag": "411"
+          "FIX:field": "exchangeforphysical",
+          "FIX:tag": "411"
         }
       },
       {
@@ -216,8 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "outmaincntryuindex",
-          "fix:tag": "412"
+          "FIX:field": "outmaincntryuindex",
+          "FIX:tag": "412"
         }
       },
       {
@@ -227,8 +227,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "crosspercent",
-          "fix:tag": "413"
+          "FIX:field": "crosspercent",
+          "FIX:tag": "413"
         }
       },
       {
@@ -238,8 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "progrptreqs",
-          "fix:tag": "414"
+          "FIX:field": "progrptreqs",
+          "FIX:tag": "414"
         }
       },
       {
@@ -249,8 +249,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "progperiodinterval",
-          "fix:tag": "415"
+          "FIX:field": "progperiodinterval",
+          "FIX:tag": "415"
         }
       },
       {
@@ -260,8 +260,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "inctaxind",
-          "fix:tag": "416"
+          "FIX:field": "inctaxind",
+          "FIX:tag": "416"
         }
       },
       {
@@ -271,8 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "forexreq",
-          "fix:tag": "121"
+          "FIX:field": "forexreq",
+          "FIX:tag": "121"
         }
       },
       {
@@ -282,8 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "numbidders",
-          "fix:tag": "417"
+          "FIX:field": "numbidders",
+          "FIX:tag": "417"
         }
       },
       {
@@ -293,8 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradedate",
-          "fix:tag": "75"
+          "FIX:field": "tradedate",
+          "FIX:tag": "75"
         }
       },
       {
@@ -304,8 +304,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "bidtradetype",
-          "fix:tag": "418"
+          "FIX:field": "bidtradetype",
+          "FIX:tag": "418"
         }
       },
       {
@@ -315,8 +315,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "basispxtype",
-          "fix:tag": "419"
+          "FIX:field": "basispxtype",
+          "FIX:tag": "419"
         }
       },
       {
@@ -326,8 +326,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "striketime",
-          "fix:tag": "443"
+          "FIX:field": "striketime",
+          "FIX:tag": "443"
         }
       },
       {
@@ -337,8 +337,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -348,8 +348,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -359,8 +359,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -370,16 +370,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "k",
+    "FIX:tag": "253071",
     "description": "MsgType = k (lowercase K)",
-    "display": "BidRequest",
-    "fix:msgtype": "k",
-    "fix:tag": "253071"
+    "display": "BidRequest"
   }
 }

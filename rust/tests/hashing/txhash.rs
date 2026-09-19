@@ -3,7 +3,9 @@ use yggdryl::txhash::{
     txh128, unix_from_scalar, unix_now,
 };
 use yggdryl::xxhash::{self, Xxh3};
-use yggdryl::{DataType, Digest, DigestAlgorithm, Error, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::{
+    DataType, Digest, DigestAlgorithm, Error, Field, Scalar, StructureType, TimeUnit, Timezone,
+};
 
 const INSTANT: i64 = 1_700_000_000_000_000;
 
@@ -698,7 +700,8 @@ fn a_scalar_couples_its_own_digest() {
         typed.txhash(1, DigestAlgorithm::Xxh3),
         Scalar::from(1_i64).txhash(1, DigestAlgorithm::Xxh3)
     );
-    let row = DataType::from_fields([field.clone()])
+    let row = StructureType::from_fields([field.clone()])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let record =
@@ -815,13 +818,13 @@ fn the_digest_protocol_couples_a_holder_with_an_instant() {
     holder.as_digest_mut().set_time("event").unwrap();
     assert!(holder.as_digest().is_coupled());
     assert_eq!(holder.as_digest().time(), Some("event"));
-    assert_eq!(holder.get_metadata("digest:time"), Some("event"));
+    assert_eq!(holder.get_metadata("DIGEST:time"), Some("event"));
     assert_eq!(holder.as_digest().coupled_unit().unwrap(), DEFAULT_UNIT);
 
     holder.as_digest_mut().set_unit(TimeUnit::Second).unwrap();
     assert_eq!(holder.as_digest().unit().unwrap(), Some(TimeUnit::Second));
     assert_eq!(holder.as_digest().coupled_unit().unwrap(), TimeUnit::Second);
-    assert_eq!(holder.get_metadata("digest:unit"), Some("s"));
+    assert_eq!(holder.get_metadata("DIGEST:unit"), Some("s"));
 
     // Sixteen coupled bytes hold a 64-bit digest of either family, never the
     // 128-bit one.
@@ -863,7 +866,7 @@ fn coupling_refuses_the_wrong_storage_role_and_spelling() {
     let mut narrow = coupled_holder(DataType::UInt64);
     let refused = narrow.as_digest_mut().set_time("event").unwrap_err();
     assert!(
-        matches!(&refused, Error::InvalidMetadataValue { key, .. } if key == "digest:time"),
+        matches!(&refused, Error::InvalidMetadataValue { key, .. } if key == "DIGEST:time"),
         "{refused}"
     );
     assert_eq!(
@@ -927,7 +930,7 @@ fn stored_coupling_metadata_is_validated_and_canonicalized_on_write() {
     // The raw property route canonicalizes a unit spelling the way every
     // typed key is, and refuses what is no clock resolution.
     holder.as_digest_mut().insert("unit", "micros").unwrap();
-    assert_eq!(holder.get_metadata("digest:unit"), Some("us"));
+    assert_eq!(holder.get_metadata("DIGEST:unit"), Some("us"));
     holder
         .as_digest_mut()
         .insert("unit", "Milliseconds")
@@ -938,7 +941,7 @@ fn stored_coupling_metadata_is_validated_and_canonicalized_on_write() {
     );
     let refused = holder.as_digest_mut().insert("unit", "day").unwrap_err();
     assert!(
-        matches!(&refused, Error::InvalidMetadataValue { key, .. } if key == "digest:unit"),
+        matches!(&refused, Error::InvalidMetadataValue { key, .. } if key == "DIGEST:unit"),
         "{refused}"
     );
     assert!(holder.as_digest_mut().insert("unit", "fortnight").is_err());
@@ -948,7 +951,7 @@ fn stored_coupling_metadata_is_validated_and_canonicalized_on_write() {
     );
     let refused = holder.as_digest_mut().insert("time", "").unwrap_err();
     assert!(
-        matches!(&refused, Error::InvalidMetadataValue { key, .. } if key == "digest:time"),
+        matches!(&refused, Error::InvalidMetadataValue { key, .. } if key == "DIGEST:time"),
         "{refused}"
     );
     assert!(holder.as_digest_mut().insert("time", "*").is_err());

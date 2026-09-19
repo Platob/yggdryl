@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlbusinesscenter",
-          "fix:tag": "41647"
+          "FIX:field": "legstreamcommoditysettlbusinesscenter",
+          "FIX:tag": "41647"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamCommoditySettlBusinessCenter",
-    "fix:tag": "677884"
+    "FIX:tag": "677884",
+    "display": "LegStreamCommoditySettlBusinessCenter"
   }
 }

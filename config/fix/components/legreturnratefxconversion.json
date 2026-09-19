@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratefxcurrencysymbol",
-          "fix:tag": "42531"
+          "FIX:field": "legreturnratefxcurrencysymbol",
+          "FIX:tag": "42531"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratefxrate",
-          "fix:tag": "42532"
+          "FIX:field": "legreturnratefxrate",
+          "FIX:tag": "42532"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratefxratecalc",
-          "fix:tag": "42533"
+          "FIX:field": "legreturnratefxratecalc",
+          "FIX:tag": "42533"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegReturnRateFXConversion",
-    "fix:tag": "471624"
+    "FIX:tag": "471624",
+    "display": "LegReturnRateFXConversion"
   }
 }

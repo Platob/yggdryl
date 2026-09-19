@@ -295,9 +295,11 @@ fn a_media_handle_drops_its_cache_as_part_of_the_removal() {
     use yggdryl::arrow::batch_reader;
     use yggdryl::ipc::Ipc;
 
-    let field = yggdryl::DataType::from_fields([yggdryl::DataType::Int64.required_field("id")])
-        .expect("a struct root")
-        .required_field("row");
+    let field =
+        yggdryl::StructureType::from_fields([yggdryl::DataType::Int64.required_field("id")])
+            .map(yggdryl::DataType::from)
+            .expect("a struct root")
+            .required_field("row");
     let schema = field.clone().into_arrow_schema().expect("an Arrow schema");
 
     let mut media = Ipc::new(Buffer::new());

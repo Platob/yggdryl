@@ -682,7 +682,7 @@ def _build_schema(
         else "dataclass"
     )
     # The class states its own module and qualified name; the native value is
-    # what validates them and spells the `python:` keys they are stored under.
+    # what validates them and spells the `PYTHON:` keys they are stored under.
     root_metadata = dict(PythonMetadata.from_type(cls, kind).properties)
     description = _docstring_summary(cls)
     if description:

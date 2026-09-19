@@ -182,18 +182,19 @@ test('generic MsgType datatype and field helpers are retired', () => {
   // `sized_binary` when the byte family became six real leaves, and the
   // thirteen string leaves beyond the five UTF-8 ones - `sized_utf8`, then
   // the six US-ASCII and the six windows-1252 shapes - when the string family
-  // became eighteen.
+  // became eighteen; and `urn` last, the name beside the `url` location.
   assert.equal(enums.dataTypeIds.includes('msgdirection'), false)
-  assert.equal(enums.dataTypeIds.length, 83)
+  assert.equal(enums.dataTypeIds.length, 84)
   assert.equal(enums.dataTypeIds.indexOf('url'), 58)
+  assert.equal(enums.dataTypeIds.indexOf('urn'), 83)
   assert.equal(enums.dataTypeIds.indexOf('utf8'), 27)
   assert.equal(enums.dataTypeIds.indexOf('sized_utf8'), 70)
   assert.deepEqual(enums.dataTypeIds.slice(-5), [
-    'large_cp1252',
     'cp1252_view',
     'large_cp1252_view',
     'fixed_cp1252',
     'sized_cp1252',
+    'urn',
   ])
   assert.throws(() => new DataType('msgtype'))
   assert.throws(() => new Field('code', 'msgtype'))

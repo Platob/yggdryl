@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidetrdregtimestamp",
-          "fix:tag": "1012"
+          "FIX:field": "sidetrdregtimestamp",
+          "FIX:tag": "1012"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidetrdregtimestamptype",
-          "fix:tag": "1013"
+          "FIX:field": "sidetrdregtimestamptype",
+          "FIX:tag": "1013"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sidetrdregtimestampsrc",
-          "fix:tag": "1014"
+          "FIX:field": "sidetrdregtimestampsrc",
+          "FIX:tag": "1014"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SideTrdRegTS",
-    "fix:tag": "910187"
+    "FIX:tag": "910187",
+    "display": "SideTrdRegTS"
   }
 }

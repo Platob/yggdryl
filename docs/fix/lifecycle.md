@@ -7,10 +7,10 @@ A message says what happened; it does not say which order's life it belongs to b
 | Aspect | Rule |
 | --- | --- |
 | Owns | `FixCodec::lifecycle`, `FixCodec::lifecycle_arrow_reader`; the walk itself is [`graph::EventIterator`](../graph.md), which a caller opens over messages directly for a grid |
-| Columns | the [crate's own](capture.md#the-crates-own-columns): `crosscode` (65048), `crosshashcode` (65018) and `crossuuid` (65040) name the chain; `prevuuid` (65022), `prevunix` (65021), `seqnum` (65042) and `parentuuids` (65041) place a message in it; `creatunix` (65023) is the lifecycle carried forward, and the expiry and the state the walk folds are the traits' to answer off FIX's own fields rather than columns of their own; `snapunix` (65025) is a grid's stamp. `currhashcode` (65017) and `curruuid` (65039) are settled again after every stamp |
+| Columns | the [crate's own](capture.md#the-crates-own-columns): `crosscode` (65048), `crosshashcode` (65018) and `crossuuid` (65040) name the chain; `prevuuid` (65022), `prevunix` (65021), `seqnum` (65042) and `parentuuids` (65041) place a message in it; `creaunix` (65023) is the lifecycle carried forward, and the expiry and the state the walk folds are the traits' to answer off FIX's own fields rather than columns of their own; `snapunix` (65025) is a grid's stamp. `currhashcode` (65017) and `curruuid` (65039) are settled again after every stamp |
 | Chain name | the cross code: the first the message states of `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` and `MDReqID(262)`; `crosshashcode` is its XXH3-64 and `crossuuid` the UUIDv8 of that, so every message spelling one code shares one identity whatever else it says. A message naming none is a chain of one: its `crossuuid` is its own `curruuid` |
 | Joins | a message arriving under the identity a live message holds follows it; one arriving under no live identity, but going by a name a live message goes by - the same `(scheme, value)` in its [`identifiers`](capture.md#the-crates-own-columns), a report stating only the `ClOrdID` an order was placed under - follows that one, and takes the chain's cross code as its own |
-| Follows | the predecessor's `curruuid` and `currunix` recorded, `seqnum` one past the predecessor's, the predecessor adopted as a parent, the chain's cross code forced, the names the predecessor went by taken, and the lifecycle folded: the earliest `creatunix` the two know, the latest expiry, the furthest [state](../types/codes.md#a-state-sorts-by-its-lifecycle) - the last two answered by the traits, because a fold is not a statement and reaches no column; a message that moved is settled again, so its `currhashcode` and `curruuid` are its own |
+| Follows | the predecessor's `curruuid` and `currunix` recorded, `seqnum` one past the predecessor's, the predecessor adopted as a parent, the chain's cross code forced, the names the predecessor went by taken, and the lifecycle folded: the earliest `creaunix` the two know, the latest expiry, the furthest [state](../types/codes.md#a-state-sorts-by-its-lifecycle) - the last two answered by the traits, because a fold is not a statement and reaches no column; a message that moved is settled again, so its `currhashcode` and `curruuid` are its own |
 | Twins | a message arriving under the identity the live one *arrived* under - the same instant and content, one message a bridge logged at every hop it passed - is another statement of it, not the one after it: it takes the live one's place, predecessor, position and lifecycle, and finalizes to the same `curruuid`, so the chain grows by nothing |
 | Order | collected and stably sorted by instant before the walk, because a capture's lines are in the order they were written and two messages of one chain routinely arrive out of their own order |
 | Ends | a terminal state - filled, done for day, cancelled, rejected, expired - or a message past the expiry its fields state retires the chain once yielded, so a venue reusing a `ClOrdID` tomorrow starts a chain afresh under the same `crossuuid` |
@@ -63,7 +63,7 @@ One order's life: the order under its client identifier, the acknowledgement und
     assert_eq!(ack.get_parentuuids(), [order.get_curruuid()]);
     assert_eq!((fill.get_seqnum(), fill.get_prevuuid()), (2, Some(ack.get_curruuid())));
     // The lifecycle travels: the chain's first creation, and the state.
-    assert_eq!(fill.get_creatunix(), order.get_creatunix());
+    assert_eq!(fill.get_creaunix(), order.get_creaunix());
     assert_eq!(fill.get_state().as_str(), "80FILLED");
     // The acknowledgement logged twice is one message: the second statement
     // takes the first one's place and identity, and the chain grows by nothing.
@@ -128,7 +128,7 @@ One order's life: the order under its client identifier, the acknowledgement und
     assert ack.parentuuids == [order.curruuid]
     assert (fill.seqnum, fill.prevuuid) == (2, ack.curruuid)
     # The lifecycle travels: the chain's first creation, and the state.
-    assert fill.event().creatunix == order.event().creatunix
+    assert fill.event().creaunix == order.event().creaunix
     assert fill.state.as_py() == "80FILLED"
     # The acknowledgement logged twice is one message: the second statement takes
     # the first one's place and identity, and the chain grows by nothing.
@@ -192,7 +192,7 @@ One order's life: the order under its client identifier, the acknowledgement und
     assert.deepEqual(ack.parentuuids, [order.curruuid])
     assert.deepEqual([fill.seqnum, fill.prevuuid], [2, ack.curruuid])
     // The lifecycle travels: the chain's first creation, and the state.
-    assert.equal(fill.event().creatunix, order.event().creatunix)
+    assert.equal(fill.event().creaunix, order.event().creaunix)
     assert.equal(fill.state, '80FILLED')
     // The acknowledgement logged twice is one message: the second statement takes
     // the first one's place and identity, and the chain grows by nothing.
@@ -223,11 +223,11 @@ One order's life: the order under its client identifier, the acknowledgement und
 
 The cross code is what a message spells to name the thing it is about, read off the first stated of `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` and `MDReqID(262)` when the message is [built](message.md), and `crossuuid` is derived from it - the UUIDv8 of its XXH3-64 - so two messages spelling one `OrderID` share one identity before any walk reads them. A message spelling none - a heartbeat, a logon - is a chain of one: its `crossuuid` is its own `curruuid`, and it opens nothing anyone else joins.
 
-The walk keys the live chains on that identity, and where a message arrives under an identity nothing live holds, on the names a live message goes by: the message's [`identifiers`](capture.md#the-crates-own-columns) - the message component's own [`fix:identifiers`](registry.md#component-identifiers), each under its canonical field name - are matched pair by pair, `(clordid, A1)`, against the names every live message went by, so a report stating only the `ClOrdID` an order was placed under joins the order, and a fill stating only the venue's `OrderID` joins through the acknowledgement that went by both. A message that follows takes the chain's cross code as its own, so `crosscode` and `crossuuid` name one chain whichever identifier each message chose, and a message's own spelling is still in its row and its wire. A replace's `OrigClOrdID(41)` is a different scheme from `ClOrdID(11)`, so it joins nothing by itself; the replace joins where it states the venue's `OrderID` or a `ClOrdID` a live message went by.
+The walk keys the live chains on that identity, and where a message arrives under an identity nothing live holds, on the names a live message goes by: the message's [`identifiers`](capture.md#the-crates-own-columns) - the message component's own [`FIX:identifiers`](registry.md#component-identifiers), each under its canonical field name - are matched pair by pair, `(clordid, A1)`, against the names every live message went by, so a report stating only the `ClOrdID` an order was placed under joins the order, and a fill stating only the venue's `OrderID` joins through the acknowledgement that went by both. A message that follows takes the chain's cross code as its own, so `crosscode` and `crossuuid` name one chain whichever identifier each message chose, and a message's own spelling is still in its row and its wire. A replace's `OrigClOrdID(41)` is a different scheme from `ClOrdID(11)`, so it joins nothing by itself; the replace joins where it states the venue's `OrderID` or a `ClOrdID` a live message went by.
 
 ## A chain carries its creation and its history
 
-Following records the predecessor's `curruuid` and `currunix` as `prevuuid` and `prevunix`, adopts the predecessor as a parent - `parentuuids` is a message's own list, so a chain is also a lineage a caller walks backward - and puts the message one place after the predecessor's, `seqnum`. The lifecycle folds with it: `creatunix` is the earliest the two know, so the chain's first creation instant travels to every message of it; the expiry is the latest and the [state](../types/codes.md#a-state-sorts-by-its-lifecycle) the furthest along, each answered by the trait rather than stamped on a column. What the message itself said - its instant, its content - stays its own, and the message is settled again once it moved, so its `currhashcode` and `curruuid` are those of the chained message and never of what it was before the walk; a stamped stream replayed answers the same messages, because a message already following its predecessor is one following changes nothing on.
+Following records the predecessor's `curruuid` and `currunix` as `prevuuid` and `prevunix`, adopts the predecessor as a parent - `parentuuids` is a message's own list, so a chain is also a lineage a caller walks backward - and puts the message one place after the predecessor's, `seqnum`. The lifecycle folds with it: `creaunix` is the earliest the two know, so the chain's first creation instant travels to every message of it; the expiry is the latest and the [state](../types/codes.md#a-state-sorts-by-its-lifecycle) the furthest along, each answered by the trait rather than stamped on a column. What the message itself said - its instant, its content - stays its own, and the message is settled again once it moved, so its `currhashcode` and `curruuid` are those of the chained message and never of what it was before the walk; a stamped stream replayed answers the same messages, because a message already following its predecessor is one following changes nothing on.
 
 ## A twin is not a successor
 

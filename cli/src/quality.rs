@@ -100,7 +100,7 @@ pub fn check(registry: &FixRegistry) -> Report {
                         level: Level::Fail,
                         check: "tag",
                         subject: named.clone(),
-                        detail: "states no fix:tag, so it cannot be written back".to_owned(),
+                        detail: "states no FIX:tag, so it cannot be written back".to_owned(),
                     }),
                     Err(error) => report.findings.push(Finding {
                         level: Level::Fail,

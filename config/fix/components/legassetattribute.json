@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legassetattributetype",
-          "fix:tag": "2309"
+          "FIX:field": "legassetattributetype",
+          "FIX:tag": "2309"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legassetattributevalue",
-          "fix:tag": "2310"
+          "FIX:field": "legassetattributevalue",
+          "FIX:tag": "2310"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legassetattributelimit",
-          "fix:tag": "2311"
+          "FIX:field": "legassetattributelimit",
+          "FIX:tag": "2311"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegAssetAttribute",
-    "fix:tag": "734082"
+    "FIX:tag": "734082",
+    "display": "LegAssetAttribute"
   }
 }

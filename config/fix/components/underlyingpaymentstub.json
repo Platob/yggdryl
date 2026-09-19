@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubtype",
-          "fix:tag": "40709"
+          "FIX:field": "underlyingpaymentstubtype",
+          "FIX:tag": "40709"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstublength",
-          "fix:tag": "40710"
+          "FIX:field": "underlyingpaymentstublength",
+          "FIX:tag": "40710"
         }
       },
       {
@@ -32,7 +32,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingpaymentstubstartdate"
+          "FIX:component": "underlyingpaymentstubstartdate"
         }
       },
       {
@@ -42,7 +42,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingpaymentstubenddate"
+          "FIX:component": "underlyingpaymentstubenddate"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubrate",
-          "fix:tag": "40711"
+          "FIX:field": "underlyingpaymentstubrate",
+          "FIX:tag": "40711"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubfixedamount",
-          "fix:tag": "40712"
+          "FIX:field": "underlyingpaymentstubfixedamount",
+          "FIX:tag": "40712"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubfixedcurrency",
-          "fix:tag": "40713"
+          "FIX:field": "underlyingpaymentstubfixedcurrency",
+          "FIX:tag": "40713"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindex",
-          "fix:tag": "40714"
+          "FIX:field": "underlyingpaymentstubindex",
+          "FIX:tag": "40714"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindexsource",
-          "fix:tag": "40715"
+          "FIX:field": "underlyingpaymentstubindexsource",
+          "FIX:tag": "40715"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindexcurveperiod",
-          "fix:tag": "40716"
+          "FIX:field": "underlyingpaymentstubindexcurveperiod",
+          "FIX:tag": "40716"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindexcurveunit",
-          "fix:tag": "40717"
+          "FIX:field": "underlyingpaymentstubindexcurveunit",
+          "FIX:tag": "40717"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindexratemultiplier",
-          "fix:tag": "40718"
+          "FIX:field": "underlyingpaymentstubindexratemultiplier",
+          "FIX:tag": "40718"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindexratespread",
-          "fix:tag": "40719"
+          "FIX:field": "underlyingpaymentstubindexratespread",
+          "FIX:tag": "40719"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindexratespreadpositiontype",
-          "fix:tag": "40720"
+          "FIX:field": "underlyingpaymentstubindexratespreadpositiontype",
+          "FIX:tag": "40720"
         }
       },
       {
@@ -162,8 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindexratetreatment",
-          "fix:tag": "40721"
+          "FIX:field": "underlyingpaymentstubindexratetreatment",
+          "FIX:tag": "40721"
         }
       },
       {
@@ -173,8 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindexcaprate",
-          "fix:tag": "40722"
+          "FIX:field": "underlyingpaymentstubindexcaprate",
+          "FIX:tag": "40722"
         }
       },
       {
@@ -184,8 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindexcapratebuyside",
-          "fix:tag": "40723"
+          "FIX:field": "underlyingpaymentstubindexcapratebuyside",
+          "FIX:tag": "40723"
         }
       },
       {
@@ -195,8 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindexcapratesellside",
-          "fix:tag": "40724"
+          "FIX:field": "underlyingpaymentstubindexcapratesellside",
+          "FIX:tag": "40724"
         }
       },
       {
@@ -206,8 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindexfloorrate",
-          "fix:tag": "40725"
+          "FIX:field": "underlyingpaymentstubindexfloorrate",
+          "FIX:tag": "40725"
         }
       },
       {
@@ -217,8 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindexfloorratebuyside",
-          "fix:tag": "40726"
+          "FIX:field": "underlyingpaymentstubindexfloorratebuyside",
+          "FIX:tag": "40726"
         }
       },
       {
@@ -228,8 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindexfloorratesellside",
-          "fix:tag": "40727"
+          "FIX:field": "underlyingpaymentstubindexfloorratesellside",
+          "FIX:tag": "40727"
         }
       },
       {
@@ -239,8 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindex2",
-          "fix:tag": "40728"
+          "FIX:field": "underlyingpaymentstubindex2",
+          "FIX:tag": "40728"
         }
       },
       {
@@ -250,8 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindex2source",
-          "fix:tag": "40729"
+          "FIX:field": "underlyingpaymentstubindex2source",
+          "FIX:tag": "40729"
         }
       },
       {
@@ -261,8 +261,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindex2curveperiod",
-          "fix:tag": "40730"
+          "FIX:field": "underlyingpaymentstubindex2curveperiod",
+          "FIX:tag": "40730"
         }
       },
       {
@@ -272,8 +272,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindex2curveunit",
-          "fix:tag": "40731"
+          "FIX:field": "underlyingpaymentstubindex2curveunit",
+          "FIX:tag": "40731"
         }
       },
       {
@@ -283,8 +283,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindex2ratemultiplier",
-          "fix:tag": "40732"
+          "FIX:field": "underlyingpaymentstubindex2ratemultiplier",
+          "FIX:tag": "40732"
         }
       },
       {
@@ -294,8 +294,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindex2ratespread",
-          "fix:tag": "40733"
+          "FIX:field": "underlyingpaymentstubindex2ratespread",
+          "FIX:tag": "40733"
         }
       },
       {
@@ -305,8 +305,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindex2ratespreadpositiontype",
-          "fix:tag": "40734"
+          "FIX:field": "underlyingpaymentstubindex2ratespreadpositiontype",
+          "FIX:tag": "40734"
         }
       },
       {
@@ -316,8 +316,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindex2ratetreatment",
-          "fix:tag": "40735"
+          "FIX:field": "underlyingpaymentstubindex2ratetreatment",
+          "FIX:tag": "40735"
         }
       },
       {
@@ -327,8 +327,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindex2caprate",
-          "fix:tag": "40736"
+          "FIX:field": "underlyingpaymentstubindex2caprate",
+          "FIX:tag": "40736"
         }
       },
       {
@@ -338,15 +338,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstubindex2floorrate",
-          "fix:tag": "40737"
+          "FIX:field": "underlyingpaymentstubindex2floorrate",
+          "FIX:tag": "40737"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentStub",
-    "fix:tag": "385018"
+    "FIX:tag": "385018",
+    "display": "UnderlyingPaymentStub"
   }
 }

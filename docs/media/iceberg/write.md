@@ -9,13 +9,13 @@ This page owns committing rows to an Iceberg table: the record methods, data-fil
 | Owns | `append`, `overwrite`, `merge` commits; `compact`; `IcebergOptions`; `data_mime_type`; the commit gate; branches and tags |
 | Commit | Every record call, `compact`, and ref change is one commit through one retry gate; a failed commit leaves no visible change |
 | Reads | A table folder reads through the current snapshot; a replaced or uncommitted file is never read |
-| Target size | `write.target-file-size-bytes`, then the root's `iceberg:write.target-file-size-bytes`, then 512 MiB; a partition group is cut into files of about the target, measured as its Arrow in-memory bytes per row |
+| Target size | `write.target-file-size-bytes`, then the root's `ICEBERG:write.target-file-size-bytes`, then 512 MiB; a partition group is cut into files of about the target, measured as its Arrow in-memory bytes per row |
 | Keys | The identity partition columns lead every merge key, once each, then `merge_by`; a merge naming no key replaces the partitions its rows fall in; a merge reads and rewrites only the files of the partitions its rows fall in |
 | Sort | Every data file holds one partition, sorted by the table's default sort order: [`SortOrder::for_spec`](#sorted-data-files) - the spec's source columns ascending, nulls first - unless `create_sorted` declared another; order 0 is unsorted |
 | Parallel writes | Partition groups are written on `write.parallelism` threads (default: the resolved `read.parallelism`); the manifest lists files in group order; a failing group fails the commit before any metadata is written |
 | Staging | `write.staging` = `off` or a local folder (default: the platform temporary folder for a remote root, `off` for a local one); every data file, manifest and manifest list is encoded into a staging file under a directory of the commit's own and uploaded once - multipart above the store's threshold - with its statistics read from the staged copy; the directory goes when the commit ends, and a failed commit removes every file it published |
 | Remote calls | Over an object store an append of one partition is 9 requests, an upsert into one partition of three 14, a full scan of four files 7, a pruned scan of one file 3: the metadata chain, one `GET` per data file, one upload per written file, and the one listing that claims the version - never a listing of `data/`, a `HEAD` for a size, or a footer read back from the store ([Object stores](../../holder/backends/object.md#what-an-iceberg-table-costs)) |
-| Options | Explicit handle option, then the table property of the same name (or the `iceberg:` root protocol property), then the documented default; `set_options` sets the handle layer |
+| Options | Explicit handle option, then the table property of the same name (or the `ICEBERG:` root protocol property), then the documented default; `set_options` sets the handle layer |
 | Retry defaults | `commit_retries` 4, `commit_min_backoff_ms` 100, `commit_total_timeout_ms` `1_800_000`; a commit resolves only the four `commit.retry.*` keys |
 | Data format | `write.format.default`; Parquet by default, Avro writable; ORC and Puffin metadata are preserved but refused on write |
 | Feature flag | `parquet iceberg` |
@@ -32,15 +32,15 @@ The folder *is* the table, so the shared [record surface](../../holder/iobase/re
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::local::Folder;
-    use yggdryl::{arrow, DataType};
+    use yggdryl::{StructureType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use std::sync::Arc;
 
-    let mut schema = DataType::from_fields([
+    let mut schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
-    ])?
+    ])?)
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
@@ -190,17 +190,17 @@ Rust only.
 ```rust
 use yggdryl::media::IORecordOptions;
 use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-use yggdryl::{IOBase, IOMedia};
+use yggdryl::{IOBase, IOMedia, StructureType};
 use yggdryl::local::Folder;
 use yggdryl::{arrow, DataType, MimeType};
 
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use std::sync::Arc;
 
-let mut schema = DataType::from_fields([
+let mut schema = DataType::from(StructureType::from_fields([
     DataType::Int64.required_field("id"),
     DataType::utf8().nullable_field("venue"),
-])?
+])?)
 .required_field("row");
 assign_field_ids(&mut schema, 1)?;
 
@@ -277,13 +277,13 @@ A merge joins on the identity partition columns first and the caller's key after
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
     use yggdryl::local::Folder;
-    use yggdryl::{arrow, DataType, Selector};
+    use yggdryl::{StructureType, arrow, DataType, Selector};
 
-    let mut schema = DataType::from_fields([
+    let mut schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
         DataType::utf8().nullable_field("venue"),
-    ])?
+    ])?)
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
@@ -440,13 +440,13 @@ use yggdryl::iceberg::{
     assign_field_ids,
 };
 use yggdryl::local::Folder;
-use yggdryl::{arrow, DataType};
+use yggdryl::{DataType, StructureType, arrow};
 
-let mut schema = DataType::from_fields([
+let mut schema = DataType::from(StructureType::from_fields([
     DataType::Int64.required_field("id"),
     DataType::utf8().nullable_field("symbol"),
     DataType::utf8().nullable_field("venue"),
-])?
+])?)
 .required_field("row");
 assign_field_ids(&mut schema, 1)?;
 let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
@@ -512,12 +512,12 @@ The partition groups of one commit are independent - each writes its own files u
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::iceberg::{FormatVersion, IcebergOptions, PartitionSpec, Table, assign_field_ids};
     use yggdryl::local::Folder;
-    use yggdryl::{arrow, DataType};
+    use yggdryl::{StructureType, arrow, DataType};
 
-    let mut schema = DataType::from_fields([
+    let mut schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
-    ])?
+    ])?)
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
     let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-parallel-writes");
@@ -643,12 +643,12 @@ The option resolves like every other: the explicit value, then the table propert
         FormatVersion, IcebergOptions, PartitionSpec, Table, WriteStaging, assign_field_ids,
     };
     use yggdryl::local::Folder;
-    use yggdryl::{arrow, DataType};
+    use yggdryl::{StructureType, arrow, DataType};
 
-    let mut schema = DataType::from_fields([
+    let mut schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
-    ])?
+    ])?)
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
     let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-staging");
@@ -780,13 +780,13 @@ The bindings read the target as `target_file_size` / `targetFileSize`, and Parqu
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::iceberg::{Catalog, FormatVersion};
     use yggdryl::local::Folder;
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
     let warehouse = Folder::temporary()?.path()?.join("yggdryl-doc-compaction");
     let _ = std::fs::remove_dir_all(&warehouse);
     let catalog = Catalog::new(Folder::new(&warehouse)?);
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let arrow_schema = schema.clone().into_arrow_schema()?;
     let one = |id: i64| {
@@ -910,12 +910,12 @@ Every knob a table honors lives on `IcebergOptions`, and every field resolves th
         FormatVersion, IcebergOptions, PartitionSpec, Table,
     };
     use yggdryl::local::Folder;
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-options");
     let _ = std::fs::remove_dir_all(&root);
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let mut table = Table::create(
         Folder::new(&root)?,
@@ -1044,12 +1044,12 @@ The JavaScript constructor takes an object naming any of the eleven fields, and 
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::iceberg::{FormatVersion, IcebergOptions, PartitionSpec, Table};
     use yggdryl::local::Folder;
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-data-format");
     let _ = std::fs::remove_dir_all(&root);
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let mut table = Table::create(
         Folder::new(&root)?,
@@ -1178,12 +1178,12 @@ Rust only.
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::local::Folder;
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-concurrency");
     let _ = std::fs::remove_dir_all(&root);
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     Table::create(
         Folder::new(&root)?,
@@ -1245,12 +1245,12 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::local::Folder;
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-branching");
     let _ = std::fs::remove_dir_all(&root);
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let mut table = Table::create(
         Folder::new(&root)?,

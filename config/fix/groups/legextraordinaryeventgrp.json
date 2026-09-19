@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legextraordinaryevent"
+        "FIX:component": "legextraordinaryevent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legextraordinaryevent",
+    "FIX:counter": "42388",
+    "FIX:tag": "121643",
     "description": "Required if NoLegExtraordinaryEvents(42388) > 0.",
-    "display": "LegExtraordinaryEventGrp",
-    "fix:component": "legextraordinaryevent",
-    "fix:counter": "42388",
-    "fix:tag": "121643"
+    "display": "LegExtraordinaryEventGrp"
   }
 }

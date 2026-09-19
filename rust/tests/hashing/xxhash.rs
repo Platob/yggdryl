@@ -1326,7 +1326,7 @@ mod values {
 
     #[test]
     fn a_field_record_digests_as_the_sequence_it_canonicalizes_to() {
-        let row = yggdryl::DataType::from_fields([
+        let row = yggdryl::StructureType::from_fields([
             yggdryl::Field::new("id", yggdryl::DataType::Int64, false),
             yggdryl::Field::new("symbol", yggdryl::DataType::utf8(), true),
             yggdryl::Field::new(
@@ -1339,6 +1339,7 @@ mod values {
                 true,
             ),
         ])
+        .map(yggdryl::DataType::from)
         .unwrap()
         .required_field("row");
         let nested = Scalar::from_sequence([Scalar::from(1_i32), Scalar::Null]);
@@ -1354,7 +1355,8 @@ mod values {
             record.stable_hash()
         );
         // The empty row frames as the empty sequence, exactly as a row digest does.
-        let empty = yggdryl::DataType::from_fields([])
+        let empty = yggdryl::StructureType::from_fields([])
+            .map(yggdryl::DataType::from)
             .unwrap()
             .required_field("row");
         let record = yggdryl::FieldRecord::new(&empty, Scalar::from_sequence([])).unwrap();

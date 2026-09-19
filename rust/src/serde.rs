@@ -6,8 +6,8 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::enums::EnumType;
 use crate::sequence::SequenceType;
-use crate::{DataType, TimeUnit, UnionFields, UnionMode};
-use crate::{DateTimeType, DateType, DecimalType, DurationType, TimeType};
+use crate::{DataType, StructureType, TimeUnit, UnionFields, UnionMode};
+use crate::{DateTimeType, DateType, DecimalType, DurationType, TimeType, UriType};
 use crate::{Error, Field, Result, Scalar};
 
 /// Structural JSON and Serde implementations for fields.
@@ -238,13 +238,13 @@ mod field {
         /// through its own.
         ///
         /// ```
-        /// use yggdryl::{DataType, Field};
+        /// use yggdryl::{DataType, Field, StructureType};
         ///
         /// # fn main() -> yggdryl::Result<()> {
-        /// let nested = DataType::from_fields([
+        /// let nested = DataType::from(StructureType::from_fields([
         ///     DataType::Int64.required_field("id"),
         ///     DataType::utf8().nullable_field("venue"),
-        /// ])?
+        /// ])?)
         /// .required_field("row");
         ///
         /// assert_eq!(Field::from_value(nested.clone().into_value())?, nested);
@@ -598,6 +598,7 @@ enum DataTypeRef<'a> {
     Uuid {},
     Version {},
     Url {},
+    Urn {},
     Timezone {},
     // One word on the wire, as `timeinforce` is.
     #[serde(rename = "mimetype")]
@@ -746,7 +747,8 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::TimeInForce => Self::TimeInForce {},
             D::Uuid => Self::Uuid {},
             D::Version => Self::Version {},
-            D::Url => Self::Url {},
+            D::Uri(UriType::Url) => Self::Url {},
+            D::Uri(UriType::Urn) => Self::Urn {},
             D::Timezone => Self::Timezone {},
             D::MimeType => Self::MimeType {},
             D::MediaType => Self::MediaType {},
@@ -889,6 +891,7 @@ enum DataTypeWire {
     Uuid {},
     Version {},
     Url {},
+    Urn {},
     Timezone {},
     // One word on the wire, as `timeinforce` is.
     #[serde(rename = "mimetype")]
@@ -1013,7 +1016,8 @@ impl TryFrom<DataTypeWire> for DataType {
             DataTypeWire::TimeInForce {} => Self::TimeInForce,
             DataTypeWire::Uuid {} => Self::Uuid,
             DataTypeWire::Version {} => Self::Version,
-            DataTypeWire::Url {} => Self::Url,
+            DataTypeWire::Url {} => Self::url(),
+            DataTypeWire::Urn {} => Self::urn(),
             DataTypeWire::Timezone {} => Self::Timezone,
             DataTypeWire::MimeType {} => Self::MimeType,
             DataTypeWire::MediaType {} => Self::MediaType,
@@ -1022,7 +1026,7 @@ impl TryFrom<DataTypeWire> for DataType {
             DataTypeWire::FixedSizeList { field, length } => Self::fixed_size_list(field, length)?,
             DataTypeWire::LargeList { field } => Self::large_list(field),
             DataTypeWire::LargeListView { field } => Self::large_list_view(field),
-            DataTypeWire::Struct { fields } => Self::from_fields(fields)?,
+            DataTypeWire::Struct { fields } => Self::from(StructureType::from_fields(fields)?),
             DataTypeWire::Union { mode, fields } => Self::union(
                 fields
                     .into_iter()
@@ -1098,10 +1102,11 @@ impl DataType {
     ///
     /// ```
     /// use yggdryl::DataType;
+    /// use yggdryl::StructureType;
     /// use yggdryl::Scalar;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let row = DataType::from_fields([DataType::Int64.required_field("id")])?;
+    /// let row = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?);
     /// let value = row.clone().into_value();
     ///
     /// assert_eq!(value.get_key_str("type").and_then(Scalar::as_str), Some("struct"));
@@ -1144,7 +1149,8 @@ impl DataType {
             D::TimeInForce => tag("timeinforce"),
             D::Uuid => tag("uuid"),
             D::Version => tag("version"),
-            D::Url => tag("url"),
+            D::Uri(UriType::Url) => tag("url"),
+            D::Uri(UriType::Urn) => tag("urn"),
             D::Timezone => tag("timezone"),
             D::MimeType => tag("mimetype"),
             D::MediaType => tag("mediatype"),
@@ -1418,7 +1424,8 @@ impl DataType {
             "timeinforce" => Self::TimeInForce,
             "uuid" => Self::Uuid,
             "version" => Self::Version,
-            "url" => Self::Url,
+            "url" => Self::url(),
+            "urn" => Self::urn(),
             "timezone" => Self::Timezone,
             "mimetype" => Self::MimeType,
             "mediatype" => Self::MediaType,
@@ -1491,7 +1498,7 @@ impl DataType {
                 for held in fields {
                     children.push(Field::from_value(held.clone())?);
                 }
-                Self::from_fields(children)?
+                Self::from(StructureType::from_fields(children)?)
             }
             "union" => {
                 let mode = match at("mode").and_then(Scalar::as_str) {

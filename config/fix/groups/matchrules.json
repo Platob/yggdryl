@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "matchrule"
+        "FIX:component": "matchrule"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "matchrule",
+    "FIX:counter": "1235",
+    "FIX:tag": "108286",
     "description": "Required if NoMatchRules(1235) > 0.",
-    "display": "MatchRules",
-    "fix:component": "matchrule",
-    "fix:counter": "1235",
-    "fix:tag": "108286"
+    "display": "MatchRules"
   }
 }

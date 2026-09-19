@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlcountry",
-          "fix:tag": "41687"
+          "FIX:field": "legstreamcommoditysettlcountry",
+          "FIX:tag": "41687"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettltimezone",
-          "fix:tag": "41688"
+          "FIX:field": "legstreamcommoditysettltimezone",
+          "FIX:tag": "41688"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlflowtype",
-          "fix:tag": "41689"
+          "FIX:field": "legstreamcommoditysettlflowtype",
+          "FIX:tag": "41689"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlperiodnotional",
-          "fix:tag": "41690"
+          "FIX:field": "legstreamcommoditysettlperiodnotional",
+          "FIX:tag": "41690"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlperiodnotionalunitofmeasure",
-          "fix:tag": "41691"
+          "FIX:field": "legstreamcommoditysettlperiodnotionalunitofmeasure",
+          "FIX:tag": "41691"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlperiodfrequencyperiod",
-          "fix:tag": "41692"
+          "FIX:field": "legstreamcommoditysettlperiodfrequencyperiod",
+          "FIX:tag": "41692"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlperiodfrequencyunit",
-          "fix:tag": "41693"
+          "FIX:field": "legstreamcommoditysettlperiodfrequencyunit",
+          "FIX:tag": "41693"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlperiodprice",
-          "fix:tag": "41694"
+          "FIX:field": "legstreamcommoditysettlperiodprice",
+          "FIX:tag": "41694"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlperiodpriceunitofmeasure",
-          "fix:tag": "41695"
+          "FIX:field": "legstreamcommoditysettlperiodpriceunitofmeasure",
+          "FIX:tag": "41695"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlperiodpricecurrency",
-          "fix:tag": "41696"
+          "FIX:field": "legstreamcommoditysettlperiodpricecurrency",
+          "FIX:tag": "41696"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlholidaysprocessinginstruction",
-          "fix:tag": "41697"
+          "FIX:field": "legstreamcommoditysettlholidaysprocessinginstruction",
+          "FIX:tag": "41697"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstreamcommoditysettldays",
-          "fix:tag": "41680"
+          "FIX:field": "nolegstreamcommoditysettldays",
+          "FIX:tag": "41680"
         }
       },
       {
@@ -142,7 +142,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legstreamcommoditysettldaygrp"
+          "FIX:group": "legstreamcommoditysettldaygrp"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlperiodxid",
-          "fix:tag": "41698"
+          "FIX:field": "legstreamcommoditysettlperiodxid",
+          "FIX:tag": "41698"
         }
       },
       {
@@ -163,15 +163,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcommoditysettlperiodxidref",
-          "fix:tag": "41699"
+          "FIX:field": "legstreamcommoditysettlperiodxidref",
+          "FIX:tag": "41699"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamCommoditySettlPeriod",
-    "fix:tag": "512114"
+    "FIX:tag": "512114",
+    "display": "LegStreamCommoditySettlPeriod"
   }
 }

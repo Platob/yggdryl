@@ -423,6 +423,7 @@ fn payload_bytes(value: &Scalar) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use crate::StructureType;
     use std::convert::Infallible;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -435,10 +436,11 @@ mod tests {
     use super::reader;
 
     fn field() -> Field {
-        DataType::from_fields([
+        StructureType::from_fields([
             DataType::Int32.required_field("id"),
             DataType::utf8().nullable_field("name"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
     }
@@ -559,7 +561,7 @@ mod tests {
 
     #[test]
     fn empty_struct_rows_preserve_their_row_count() {
-        let root = DataType::from_fields([]).unwrap().required_field("empty");
+        let root = DataType::from(StructureType::from_fields([]).unwrap()).required_field("empty");
         let mut batches = reader(
             &root,
             [Scalar::from_sequence([]), Scalar::from_sequence([])],

@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "testsuiterequestid",
-          "fix:tag": "3062"
+          "FIX:field": "testsuiterequestid",
+          "FIX:tag": "3062"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "testsuiterequesttranstype",
-          "fix:tag": "3064"
+          "FIX:field": "testsuiterequesttranstype",
+          "FIX:tag": "3064"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsuiterequestrefid",
-          "fix:tag": "3063"
+          "FIX:field": "testsuiterequestrefid",
+          "FIX:tag": "3063"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -64,7 +64,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notestsuiteparameters",
-          "fix:tag": "3126"
+          "FIX:field": "notestsuiteparameters",
+          "FIX:tag": "3126"
         }
       },
       {
@@ -85,7 +85,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "testsuiteparametergrp"
+          "FIX:group": "testsuiteparametergrp"
         }
       },
       {
@@ -95,8 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostrategyparameters",
-          "fix:tag": "957"
+          "FIX:field": "nostrategyparameters",
+          "FIX:tag": "957"
         }
       },
       {
@@ -106,7 +106,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "strategyparametersgrp"
+          "FIX:group": "strategyparametersgrp"
         }
       },
       {
@@ -116,8 +116,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noalgosystemmodules",
-          "fix:tag": "3025"
+          "FIX:field": "noalgosystemmodules",
+          "FIX:tag": "3025"
         }
       },
       {
@@ -127,7 +127,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "algosystemmodulegrp"
+          "FIX:group": "algosystemmodulegrp"
         }
       },
       {
@@ -137,8 +137,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenariogroupid",
-          "fix:tag": "3079"
+          "FIX:field": "testscenariogroupid",
+          "FIX:tag": "3079"
         }
       },
       {
@@ -148,8 +148,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "notestscenarios",
-          "fix:tag": "3028"
+          "FIX:field": "notestscenarios",
+          "FIX:tag": "3028"
         }
       },
       {
@@ -159,7 +159,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "testscenariogrp"
+          "FIX:group": "testscenariogrp"
         }
       },
       {
@@ -169,8 +169,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -180,8 +180,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -191,8 +191,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -202,8 +202,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -213,16 +213,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "EL",
+    "FIX:tag": "371736",
     "description": "MsgType = EL",
-    "display": "TestSuiteDefinitionRequest",
-    "fix:msgtype": "EL",
-    "fix:tag": "371736"
+    "display": "TestSuiteDefinitionRequest"
   }
 }

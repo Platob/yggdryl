@@ -4,9 +4,7 @@
 use arrow_schema::{
     DataType as ArrowDataType, IntervalUnit as ArrowIntervalUnit, TimeUnit as ArrowTimeUnit,
 };
-use yggdryl::{
-    DataType, DataTypeId, DataTypeKind, Error, Scalar, TemporalFamily, TimeUnit, Timezone,
-};
+use yggdryl::{DataType, DataTypeId, DataTypeKind, Error, Scalar, TimeUnit, Timezone};
 use yggdryl::{DateTimeType, DateType, DurationType, IntervalType, TimeType};
 
 /// The refusal a temporal leaf states: the kind names the width or the
@@ -47,7 +45,7 @@ fn every_date_leaf_is_one_datatype_under_its_id() {
         assert_eq!(leaf.as_str(), id.as_str());
         assert_eq!(leaf.unit(), unit);
         assert_eq!(leaf.bit_width(), bits);
-        assert_eq!(leaf.family(), TemporalFamily::Date);
+        assert_eq!(leaf.family(), "date");
         assert_eq!(DateType::from_id(id), Some(leaf));
         assert!(leaf.validate().is_ok());
         assert_eq!(leaf.to_string(), id.as_str());
@@ -124,7 +122,7 @@ fn every_time_leaf_carries_its_resolution_as_a_parameter() {
         assert_eq!(leaf.id(), id);
         assert_eq!(leaf.as_str(), id.as_str());
         assert_eq!(leaf.bit_width(), bits);
-        assert_eq!(leaf.family(), TemporalFamily::Time);
+        assert_eq!(leaf.family(), "time");
         assert_eq!(TimeType::from_id(id, leaf.unit()), Some(leaf));
         assert_eq!(TimeType::for_unit(leaf.unit()).unwrap(), leaf);
         assert!(leaf.validate().is_ok());
@@ -295,7 +293,7 @@ fn the_datetime_leaf_carries_a_resolution_and_a_zone() {
     assert_eq!(default.unit(), TimeUnit::Microsecond);
     assert_eq!(default.timezone(), Timezone::NAIVE);
     assert_eq!(default.bit_width(), 64);
-    assert_eq!(default.family(), TemporalFamily::DateTime);
+    assert_eq!(default.family(), "datetime");
     assert_eq!(
         DateTimeType::from_id(
             DataTypeId::DateTime64,
@@ -410,7 +408,7 @@ fn every_duration_leaf_carries_a_fixed_length_unit() {
             assert_eq!(leaf.as_str(), id.as_str());
             assert_eq!(leaf.unit(), unit);
             assert_eq!(leaf.bit_width(), bits);
-            assert_eq!(leaf.family(), TemporalFamily::Duration);
+            assert_eq!(leaf.family(), "duration");
             assert_eq!(DurationType::from_id(id, unit), Some(leaf));
             assert!(leaf.validate().is_ok());
             assert_eq!(leaf.to_string(), format!("{}({unit})", id.as_str()));
@@ -496,7 +494,7 @@ fn the_interval_leaf_carries_its_layout() {
         assert_eq!(leaf.id(), DataTypeId::Interval);
         assert_eq!(leaf.as_str(), "interval");
         assert_eq!(leaf.unit(), unit);
-        assert_eq!(leaf.family(), TemporalFamily::Interval);
+        assert_eq!(leaf.family(), "interval");
         assert_eq!(
             IntervalType::from_id(DataTypeId::Interval, unit),
             Some(leaf)

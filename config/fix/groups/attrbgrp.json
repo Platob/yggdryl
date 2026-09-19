@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "attrb"
+        "FIX:component": "attrb"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "AttrbGrp",
-    "fix:component": "attrb",
-    "fix:counter": "870",
-    "fix:tag": "938775"
+    "FIX:component": "attrb",
+    "FIX:counter": "870",
+    "FIX:tag": "938775",
+    "display": "AttrbGrp"
   }
 }

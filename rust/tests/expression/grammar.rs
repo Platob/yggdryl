@@ -15,7 +15,7 @@ use yggdryl::expression::{
     Attribute, Bound, Bounds, ColumnBounds, Cost, Expression, Filter, Literal, Projection,
     Residual, Selector, Term,
 };
-use yggdryl::{DataType, Field, MediaType, Result, Scalar, TimeUnit, Timezone, Url};
+use yggdryl::{DataType, Field, MediaType, Result, Scalar, StructureType, TimeUnit, Timezone, Url};
 
 // ---------------------------------------------------------------------------
 // Text
@@ -214,7 +214,7 @@ fn a_pattern_that_changes_per_row_is_refused_at_bind() {
 fn rows_schema() -> Field {
     Field::new(
         "rows",
-        DataType::from_fields([
+        StructureType::from_fields([
             Field::new("i", DataType::Int64, true),
             Field::new("f", DataType::Float64, true),
             Field::new("d", DataType::decimal128(9, 2).unwrap(), true),
@@ -231,7 +231,10 @@ fn rows_schema() -> Field {
             Field::new("n", DataType::Int32, true).with_partition(true),
             Field::new(
                 "nested",
-                DataType::from_fields([Field::new("leg", DataType::utf8(), true)]).unwrap(),
+                DataType::from(
+                    StructureType::from_fields([Field::new("leg", DataType::utf8(), true)])
+                        .unwrap(),
+                ),
                 true,
             ),
             // Temporal text, so a cast into and out of a temporal is one of
@@ -247,6 +250,7 @@ fn rows_schema() -> Field {
             // segment and one nested in another are compared on both tiers.
             Field::new("legs", DataType::list(leg_field()), true),
         ])
+        .map(DataType::from)
         .unwrap(),
         false,
     )
@@ -255,19 +259,21 @@ fn rows_schema() -> Field {
 /// One leg: a currency, a size, and notes that are themselves a list of
 /// structs.
 fn leg_field() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::utf8().nullable_field("ccy"),
         DataType::Int64.nullable_field("size"),
         DataType::list(
-            DataType::from_fields([
+            StructureType::from_fields([
                 DataType::utf8().nullable_field("k"),
                 DataType::Int64.nullable_field("v"),
             ])
+            .map(DataType::from)
             .unwrap()
             .nullable_field("item"),
         )
         .nullable_field("notes"),
     ])
+    .map(DataType::from)
     .unwrap()
     .nullable_field("item")
 }
@@ -464,7 +470,9 @@ fn scalar_arithmetic_propagates_checked_failures() {
 
     let schema = Field::new(
         "rows",
-        DataType::from_fields([Field::new("small", DataType::Int8, false)]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([Field::new("small", DataType::Int8, false)]).unwrap(),
+        ),
         false,
     );
     let negated = "-small".parse::<Term>().unwrap().bind(&schema).unwrap();
@@ -630,7 +638,8 @@ fn a_parameter_inside_a_predicate_is_supplied_at_bind() {
 fn a_predicate_segment_over_a_sliced_large_list_matches_the_row_tier() {
     let schema = Field::new(
         "rows",
-        DataType::from_fields([Field::new("legs", DataType::large_list(leg_field()), true)])
+        StructureType::from_fields([Field::new("legs", DataType::large_list(leg_field()), true)])
+            .map(DataType::from)
             .unwrap(),
         false,
     );
@@ -1073,20 +1082,20 @@ fn a_field_holds_a_selector_and_gives_it_back() {
     let schema = rows_schema();
     let selector: Selector = "i, i + 1 as next, lower(s) as name".parse().unwrap();
     let plan = selector.into_field(&schema).unwrap();
-    assert_eq!(plan.fields()[0].get_metadata("transform:expression"), None);
+    assert_eq!(plan.fields()[0].get_metadata("TRANSFORM:expression"), None);
     assert_eq!(
-        plan.fields()[1].get_metadata("transform:expression"),
+        plan.fields()[1].get_metadata("TRANSFORM:expression"),
         Some("i + 1")
     );
     // A call over plain columns is stored as the function and its sources,
     // the shape a signature and a partition spec share.
-    assert_eq!(plan.fields()[2].get_metadata("transform:expression"), None);
+    assert_eq!(plan.fields()[2].get_metadata("TRANSFORM:expression"), None);
     assert_eq!(
-        plan.fields()[2].get_metadata("transform:function"),
+        plan.fields()[2].get_metadata("TRANSFORM:function"),
         Some("lower")
     );
     assert_eq!(
-        plan.fields()[2].get_metadata("transform:sources"),
+        plan.fields()[2].get_metadata("TRANSFORM:sources"),
         Some(r#"["s"]"#)
     );
     assert!(plan.as_transform().declares_derivation());
@@ -1126,13 +1135,13 @@ fn a_field_holds_a_selector_and_gives_it_back() {
     // A stored declaration is canonical text, and a malformed one is refused.
     let mut broken = plan.fields()[1].clone();
     broken
-        .insert_metadata("transform:expression", "i +")
+        .insert_metadata("TRANSFORM:expression", "i +")
         .unwrap_err();
-    assert_eq!(broken.get_metadata("transform:expression"), Some("i + 1"));
+    assert_eq!(broken.get_metadata("TRANSFORM:expression"), Some("i + 1"));
     broken
-        .insert_metadata("transform:expression", "I   +  2")
+        .insert_metadata("TRANSFORM:expression", "I   +  2")
         .unwrap();
-    assert_eq!(broken.get_metadata("transform:expression"), Some("I + 2"));
+    assert_eq!(broken.get_metadata("TRANSFORM:expression"), Some("I + 2"));
 }
 
 #[test]
@@ -1544,10 +1553,11 @@ fn a_pattern_with_no_wildcard_becomes_an_equality() {
 fn a_column_named_twice_in_two_cases_is_ambiguous() {
     let schema = Field::new(
         "rows",
-        DataType::from_fields([
+        StructureType::from_fields([
             Field::new("Value", DataType::Int64, true),
             Field::new("value", DataType::Int64, true),
         ])
+        .map(DataType::from)
         .unwrap(),
         false,
     );
@@ -1578,11 +1588,12 @@ fn an_exact_quotient_keeps_room_to_be_a_quotient() {
 fn binds_and_evaluates_rows() {
     let schema = Field::new(
         "trades",
-        DataType::from_fields([
+        StructureType::from_fields([
             Field::new("ccy", DataType::utf8(), true),
             Field::new("price", DataType::decimal128(9, 2).unwrap(), true),
             Field::new("size", DataType::Int32, true),
         ])
+        .map(DataType::from)
         .unwrap(),
         false,
     );

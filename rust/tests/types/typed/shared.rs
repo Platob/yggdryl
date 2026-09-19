@@ -1,6 +1,6 @@
 //! Which datatypes keep a shared field, and that each keeps exactly one.
 
-use yggdryl::{BytesType, StringLayout, StringType};
+use yggdryl::{BytesType, StringLayout, StringType, StructType};
 use yggdryl::{DataType, DataTypeId, Field, Scalar, TimeUnit, Timezone};
 
 #[test]
@@ -113,14 +113,14 @@ fn an_unbounded_or_invalid_datatype_keeps_no_shared_field() {
     for dtype in [
         DataType::list(item.clone()),
         DataType::large_list(item.clone()),
-        DataType::from_fields([item.clone()]).unwrap(),
+        DataType::from(StructureType::from_fields([item.clone()]).unwrap()),
         DataType::map(
             Field::new(
                 "entries",
-                DataType::from_fields([
+                StructureType::from_fields([
                     Field::new("key", DataType::utf8(), false),
                     Field::new("value", DataType::Int64, true),
-                ])
+                ]).map(DataType::from)
                 .unwrap(),
                 false,
             ),

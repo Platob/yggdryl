@@ -15,7 +15,7 @@ use std::hash::Hasher;
 use crate::txhash::TxHash;
 use crate::xxhash::Xxh3;
 use crate::{
-    Bloomberg, Cfi, CodeValue, Currency, Cusip, Decimal, Isin, Mic, Sedol, Side, State, Uuid,
+    Bloomberg, Cfi, CodeValue, Currency, Cusip, Decimal18, Isin, Mic, Sedol, Side, State, Uuid,
 };
 use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 
@@ -613,7 +613,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     unix: i64,
 ///     state: State,
 ///     seqnum: u64,
-///     creatunix: Option<i64>,
+///     creaunix: Option<i64>,
 ///     expirunix: Option<i64>,
 ///     prevunix: Option<i64>,
 ///     prevuuid: Option<Uuid>,
@@ -633,7 +633,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///             unix,
 ///             state: State::from_spelling("New").expect("a shipped state"),
 ///             seqnum: 0,
-///             creatunix: None,
+///             creaunix: None,
 ///             expirunix: None,
 ///             prevunix: None,
 ///             prevuuid: None,
@@ -724,11 +724,11 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     fn set_seqnum(&mut self, seqnum: u64) {
 ///         self.seqnum = seqnum;
 ///     }
-///     fn get_creatunix(&self) -> Option<i64> {
-///         self.creatunix
+///     fn get_creaunix(&self) -> Option<i64> {
+///         self.creaunix
 ///     }
-///     fn set_creatunix(&mut self, unix: Option<i64>) {
-///         self.creatunix = unix;
+///     fn set_creaunix(&mut self, unix: Option<i64>) {
+///         self.creaunix = unix;
 ///     }
 ///     fn get_expirunix(&self) -> Option<i64> {
 ///         self.expirunix
@@ -757,7 +757,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// }
 ///
 /// let mut first = Report::at(1, 10_000);
-/// first.set_creatunix(Some(5_000));
+/// first.set_creaunix(Some(5_000));
 /// first.set_crosscode("O-100".to_owned());
 /// first.set_identifiers(BTreeMap::from([("ClOrdID".to_owned(), "C-1".to_owned())]));
 /// let second = Report::at(2, 20_000);
@@ -768,7 +768,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// // Following carries the lifecycle forward: the earliest creation known,
 /// // the names the predecessor went by, the cross code the chain shares -
 /// // its digest and the cross identity in step - and the next place in it.
-/// assert_eq!(second.get_creatunix(), Some(5_000));
+/// assert_eq!(second.get_creaunix(), Some(5_000));
 /// assert_eq!(second.get_identifiers()["ClOrdID"], "C-1");
 /// assert_eq!(second.get_crosscode(), "O-100");
 /// assert_ne!(second.get_crosshashcode(), 0);
@@ -781,7 +781,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// let held: &dyn Event = &second;
 /// assert_eq!(held.get_curruuid(), Uuid::from_v8(2));
 /// assert_eq!(held.get_currunix(), 20_000);
-/// assert_eq!(held.get_creatunix(), Some(5_000));
+/// assert_eq!(held.get_creaunix(), Some(5_000));
 /// assert!(held.get_state().is_live());
 /// // The identity its instant and code derive: later sorts later.
 /// let earlier = first.time_uuid().expect("an instant a TxHash holds");
@@ -813,11 +813,11 @@ pub trait Event: Element {
 
     /// When this event was created, in the same count as [`Self::get_currunix`],
     /// where it knows.
-    fn get_creatunix(&self) -> Option<i64>;
+    fn get_creaunix(&self) -> Option<i64>;
 
     /// Records when this event was created; `None` states it does not
     /// know.
-    fn set_creatunix(&mut self, unix: Option<i64>);
+    fn set_creaunix(&mut self, unix: Option<i64>);
 
     /// When this event expires, in the same count as [`Self::get_currunix`], where
     /// it has an expiry.
@@ -956,9 +956,9 @@ pub trait Event: Element {
         Self: Sized,
     {
         let mut changed = moved(
-            self.get_creatunix(),
-            earliest(self.get_creatunix(), other.get_creatunix()),
-            |unix| self.set_creatunix(unix),
+            self.get_creaunix(),
+            earliest(self.get_creaunix(), other.get_creaunix()),
+            |unix| self.set_creaunix(unix),
         );
         changed |= moved(
             self.get_expirunix(),
@@ -1039,9 +1039,9 @@ pub trait Event: Element {
 /// of the market it stood on, with no instant of its own.
 ///
 /// Five facts beside what an element already states, each read and
-/// written: `px` is the price, a [`Decimal`] - exact, as a market's numbers
+/// written: `px` is the price, a [`Decimal18`] - exact, as a market's numbers
 /// are - and `currency` the [`Currency`] it is quoted in; `qty` is the
-/// quantity, a [`Decimal`] too, and `unit` the text it is counted in - a
+/// quantity, a [`Decimal18`] too, and `unit` the text it is counted in - a
 /// lot, a barrel, a megawatt-hour, whatever the market says; `side` is the
 /// crate's [`Side`] code, FIX's `Side(54)`. Two lanes state the quote the
 /// element makes, each optional and each the same four facts - `bidpx`,
@@ -1068,13 +1068,13 @@ pub trait Event: Element {
 ///
 /// ```
 /// use yggdryl::graph::{Element, MarketElement, MarketElementData};
-/// use yggdryl::{Cfi, Currency, Decimal, Isin, Side};
+/// use yggdryl::{Cfi, Currency, Decimal18, Isin, Side};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut trade = MarketElementData::default();
 /// trade.set_px("82.5".parse()?);
 /// trade.set_currency(Currency::new("USD")?);
-/// trade.set_qty(Decimal::from_int(1_000));
+/// trade.set_qty(Decimal18::from_int(1_000));
 /// trade.set_unit("bbl".to_owned());
 /// trade.set_side(Side::read("1")?);
 /// trade.set_isincode(Some(Isin::new("US0378331005")?));
@@ -1086,7 +1086,7 @@ pub trait Event: Element {
 /// trade.fill_lanes();
 /// assert_eq!(trade.get_bidpx(), Some("82.5".parse()?));
 /// assert_eq!(trade.get_bidcurrency().map(Currency::as_str), Some("USD"));
-/// assert_eq!((trade.get_bidqty(), trade.get_bidunit()), (Some(Decimal::from_int(1_000)), Some("bbl")));
+/// assert_eq!((trade.get_bidqty(), trade.get_bidunit()), (Some(Decimal18::from_int(1_000)), Some("bbl")));
 /// assert_eq!(trade.get_askpx(), None);
 /// // A market element is an element: one walk reads both.
 /// let held: &dyn MarketElement = &trade;
@@ -1113,10 +1113,10 @@ pub trait Event: Element {
 /// ```
 pub trait MarketElement: Element {
     /// The price.
-    fn get_px(&self) -> Decimal;
+    fn get_px(&self) -> Decimal18;
 
     /// Records the price.
-    fn set_px(&mut self, px: Decimal);
+    fn set_px(&mut self, px: Decimal18);
 
     /// The currency the price is quoted in.
     fn get_currency(&self) -> &Currency;
@@ -1125,10 +1125,10 @@ pub trait MarketElement: Element {
     fn set_currency(&mut self, currency: Currency);
 
     /// The quantity.
-    fn get_qty(&self) -> Decimal;
+    fn get_qty(&self) -> Decimal18;
 
     /// Records the quantity.
-    fn set_qty(&mut self, qty: Decimal);
+    fn set_qty(&mut self, qty: Decimal18);
 
     /// The unit the quantity is counted in; empty where the market says none.
     fn get_unit(&self) -> &str;
@@ -1189,16 +1189,16 @@ pub trait MarketElement: Element {
     /// what it orders, else what it last traded, else what it averaged. This
     /// is the last trade alone, so a fill and the order it fills are told
     /// apart without reading which field each settled from.
-    fn get_lastpx(&self) -> Option<Decimal>;
+    fn get_lastpx(&self) -> Option<Decimal18>;
 
     /// Records the price the element last traded at; `None` states none.
-    fn set_lastpx(&mut self, px: Option<Decimal>);
+    fn set_lastpx(&mut self, px: Option<Decimal18>);
 
     /// The quantity the element last traded, where it states one.
-    fn get_lastqty(&self) -> Option<Decimal>;
+    fn get_lastqty(&self) -> Option<Decimal18>;
 
     /// Records the quantity the element last traded; `None` states none.
-    fn set_lastqty(&mut self, qty: Option<Decimal>);
+    fn set_lastqty(&mut self, qty: Option<Decimal18>);
 
     /// How long the element stands, where it says: FIX's `TimeInForce`, as
     /// the element states it. A market fact rather than a protocol one - it
@@ -1237,22 +1237,22 @@ pub trait MarketElement: Element {
     fn set_symbolticker(&mut self, ticker: Option<String>);
 
     /// The volume-weighted price the element averaged, where it states one.
-    fn get_avgpx(&self) -> Option<Decimal>;
+    fn get_avgpx(&self) -> Option<Decimal18>;
 
     /// Records the price the element averaged; `None` states none.
-    fn set_avgpx(&mut self, px: Option<Decimal>);
+    fn set_avgpx(&mut self, px: Option<Decimal18>);
 
     /// How much of the element's quantity is done, where it states it.
-    fn get_cumqty(&self) -> Option<Decimal>;
+    fn get_cumqty(&self) -> Option<Decimal18>;
 
     /// Records how much of it is done; `None` states none.
-    fn set_cumqty(&mut self, qty: Option<Decimal>);
+    fn set_cumqty(&mut self, qty: Option<Decimal18>);
 
     /// How much of it is still open, where it states it.
-    fn get_leavesqty(&self) -> Option<Decimal>;
+    fn get_leavesqty(&self) -> Option<Decimal18>;
 
     /// Records how much of it is still open; `None` states none.
-    fn set_leavesqty(&mut self, qty: Option<Decimal>);
+    fn set_leavesqty(&mut self, qty: Option<Decimal18>);
 
     /// The price stated before this element, where one was.
     ///
@@ -1260,22 +1260,22 @@ pub trait MarketElement: Element {
     /// closing price it carries - else what the statement before it in its
     /// chain stated, which a walk fills as it fills the instants. It is what
     /// a move is measured against: a price beside the price it moved from.
-    fn get_prevpx(&self) -> Option<Decimal>;
+    fn get_prevpx(&self) -> Option<Decimal18>;
 
     /// Records the price stated before this element; `None` states none.
-    fn set_prevpx(&mut self, px: Option<Decimal>);
+    fn set_prevpx(&mut self, px: Option<Decimal18>);
 
     /// The quantity stated before this element, where one was.
-    fn get_prevqty(&self) -> Option<Decimal>;
+    fn get_prevqty(&self) -> Option<Decimal18>;
 
     /// Records the quantity stated before this element; `None` states none.
-    fn set_prevqty(&mut self, qty: Option<Decimal>);
+    fn set_prevqty(&mut self, qty: Option<Decimal18>);
 
     /// The bid lane's price, where the element states one.
-    fn get_bidpx(&self) -> Option<Decimal>;
+    fn get_bidpx(&self) -> Option<Decimal18>;
 
     /// Records the bid lane's price; `None` states the lane has none.
-    fn set_bidpx(&mut self, px: Option<Decimal>);
+    fn set_bidpx(&mut self, px: Option<Decimal18>);
 
     /// The currency the bid lane is quoted in, where the element states one.
     fn get_bidcurrency(&self) -> Option<&Currency>;
@@ -1284,10 +1284,10 @@ pub trait MarketElement: Element {
     fn set_bidcurrency(&mut self, currency: Option<Currency>);
 
     /// The bid lane's quantity, where the element states one.
-    fn get_bidqty(&self) -> Option<Decimal>;
+    fn get_bidqty(&self) -> Option<Decimal18>;
 
     /// Records the bid lane's quantity.
-    fn set_bidqty(&mut self, qty: Option<Decimal>);
+    fn set_bidqty(&mut self, qty: Option<Decimal18>);
 
     /// The unit the bid lane's quantity is counted in, where stated.
     fn get_bidunit(&self) -> Option<&str>;
@@ -1296,10 +1296,10 @@ pub trait MarketElement: Element {
     fn set_bidunit(&mut self, unit: Option<String>);
 
     /// The ask lane's price, where the element states one.
-    fn get_askpx(&self) -> Option<Decimal>;
+    fn get_askpx(&self) -> Option<Decimal18>;
 
     /// Records the ask lane's price; `None` states the lane has none.
-    fn set_askpx(&mut self, px: Option<Decimal>);
+    fn set_askpx(&mut self, px: Option<Decimal18>);
 
     /// The currency the ask lane is quoted in, where the element states one.
     fn get_askcurrency(&self) -> Option<&Currency>;
@@ -1308,10 +1308,10 @@ pub trait MarketElement: Element {
     fn set_askcurrency(&mut self, currency: Option<Currency>);
 
     /// The ask lane's quantity, where the element states one.
-    fn get_askqty(&self) -> Option<Decimal>;
+    fn get_askqty(&self) -> Option<Decimal18>;
 
     /// Records the ask lane's quantity.
-    fn set_askqty(&mut self, qty: Option<Decimal>);
+    fn set_askqty(&mut self, qty: Option<Decimal18>);
 
     /// The unit the ask lane's quantity is counted in, where stated.
     fn get_askunit(&self) -> Option<&str>;
@@ -1401,12 +1401,12 @@ pub trait MarketElement: Element {
         } else {
             None
         };
-        if self.get_px() == Decimal::ZERO {
+        if self.get_px() == Decimal18::ZERO {
             if let Some(px) = self.get_lastpx().or_else(|| self.get_avgpx()).or(lane_px) {
                 self.set_px(px);
             }
         }
-        if self.get_qty() == Decimal::ZERO {
+        if self.get_qty() == Decimal18::ZERO {
             if let Some(qty) = self.get_lastqty().or(lane_qty) {
                 self.set_qty(qty);
             }
@@ -1435,8 +1435,8 @@ pub trait MarketElement: Element {
         }
         // Only a stated fact fills a lane: a price or a quantity of nothing,
         // no currency, no unit, is nothing to state on the lane either.
-        let px = Some(self.get_px()).filter(|px| *px != Decimal::ZERO);
-        let qty = Some(self.get_qty()).filter(|qty| *qty != Decimal::ZERO);
+        let px = Some(self.get_px()).filter(|px| *px != Decimal18::ZERO);
+        let qty = Some(self.get_qty()).filter(|qty| *qty != Decimal18::ZERO);
         let currency = Some(self.get_currency().clone()).filter(|held| *held != Currency::none());
         let unit = Some(self.get_unit().to_owned()).filter(|unit| !unit.is_empty());
         if bid {
@@ -1526,13 +1526,13 @@ pub trait MarketElement: Element {
 ///
 /// ```
 /// use yggdryl::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
-/// use yggdryl::{Cfi, Currency, Decimal, Side};
+/// use yggdryl::{Cfi, Currency, Decimal18, Side};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut trade = MarketEventData::at(10);
 /// trade.set_px("82.5".parse()?);
 /// trade.set_currency(Currency::new("USD")?);
-/// trade.set_qty(Decimal::from_int(1_000));
+/// trade.set_qty(Decimal18::from_int(1_000));
 /// trade.set_side(Side::read("1")?);
 /// trade.set_cficode(Some(Cfi::new("ESXXXR")?));
 /// trade.finalize();
@@ -1549,7 +1549,7 @@ pub trait MarketElement: Element {
 /// later.set_px("83".parse()?);
 /// later.set_cficode(Some(Cfi::new("ESVUFR")?));
 /// let merged = trade.merge_with(&later).expect("the same trade");
-/// assert_eq!(merged.get_px(), Decimal::from_int(83));
+/// assert_eq!(merged.get_px(), Decimal18::from_int(83));
 /// assert_eq!(merged.get_currunix(), 20);
 /// assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
 /// # Ok(())
@@ -1710,11 +1710,11 @@ fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
 pub(super) fn follow_market<E: MarketElement + ?Sized>(this: &mut E, previous: &E) -> bool {
     let mut changed = false;
     if this.get_prevpx().is_none() {
-        let px = Some(previous.get_px()).filter(|px| *px != Decimal::ZERO);
+        let px = Some(previous.get_px()).filter(|px| *px != Decimal18::ZERO);
         changed |= moved(this.get_prevpx(), px, |px| this.set_prevpx(px));
     }
     if this.get_prevqty().is_none() {
-        let qty = Some(previous.get_qty()).filter(|qty| *qty != Decimal::ZERO);
+        let qty = Some(previous.get_qty()).filter(|qty| *qty != Decimal18::ZERO);
         changed |= moved(this.get_prevqty(), qty, |qty| this.set_prevqty(qty));
     }
     changed | chain_market(this, previous)
@@ -2033,9 +2033,9 @@ fn merge_market<E: MarketElement + ?Sized>(this: &mut E, other: &E, later: bool)
 fn feed_lane(
     state: &mut Xxh3,
     lane: &str,
-    px: Option<Decimal>,
+    px: Option<Decimal18>,
     currency: Option<&Currency>,
-    qty: Option<Decimal>,
+    qty: Option<Decimal18>,
     unit: Option<&str>,
 ) {
     if let Some(px) = px {

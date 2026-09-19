@@ -11,11 +11,17 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::FieldValue as _;
-use yggdryl::{ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, Term};
+use yggdryl::{
+    ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, StructureType, Term,
+};
 use yggdryl::{Cusip, CusipField, Sedol, SedolField};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    Field::new("row", DataType::from_fields(fields).unwrap(), false)
+    Field::new(
+        "row",
+        DataType::from(StructureType::from_fields(fields).unwrap()),
+        false,
+    )
 }
 
 fn text(values: &[&str]) -> ArrayRef {
@@ -373,7 +379,7 @@ fn the_identifiers_are_appended_after_every_earlier_datatype() {
     assert_eq!(DataTypeId::Sedol.as_u8(), 65);
     assert_eq!(DataTypeId::Bloomberg.as_u8(), 66);
     assert_eq!(
-        &DataTypeId::ALL[DataTypeId::ALL.len() - 21..],
+        &DataTypeId::ALL[DataTypeId::ALL.len() - 22..],
         &[
             DataTypeId::MediaType,
             DataTypeId::Cusip,
@@ -395,7 +401,8 @@ fn the_identifiers_are_appended_after_every_earlier_datatype() {
             DataTypeId::Cp1252StringView,
             DataTypeId::LargeCp1252StringView,
             DataTypeId::FixedCp1252String,
-            DataTypeId::SizedCp1252String
+            DataTypeId::SizedCp1252String,
+            DataTypeId::Urn
         ]
     );
     // The datatype order is total and appends too, so no earlier pair

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "algosystemmodulename",
-          "fix:tag": "3026"
+          "FIX:field": "algosystemmodulename",
+          "FIX:tag": "3026"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "algosystemmoduleversion",
-          "fix:tag": "3027"
+          "FIX:field": "algosystemmoduleversion",
+          "FIX:tag": "3027"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "algosystemmodulelastupdatetime",
-          "fix:tag": "3080"
+          "FIX:field": "algosystemmodulelastupdatetime",
+          "FIX:tag": "3080"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "AlgoSystemModule",
-    "fix:tag": "418053"
+    "FIX:tag": "418053",
+    "display": "AlgoSystemModule"
   }
 }

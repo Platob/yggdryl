@@ -110,14 +110,14 @@ A Rust struct row is positional; Python and JavaScript key it by name.
 
     ```rust
     use yggdryl::arrow::scalar_value;
-    use yggdryl::{DataType, Field, Scalar};
+    use yggdryl::{DataType, Field, Scalar, StructureType};
 
     let schema = Field::new(
         "row",
-        DataType::from_fields([
+        DataType::from(StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
-        ])?,
+        ])?),
         false,
     );
 

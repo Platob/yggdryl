@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leginstrumentpartyid",
-          "fix:tag": "2255"
+          "FIX:field": "leginstrumentpartyid",
+          "FIX:tag": "2255"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leginstrumentpartyidsource",
-          "fix:tag": "2256"
+          "FIX:field": "leginstrumentpartyidsource",
+          "FIX:tag": "2256"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leginstrumentpartyrole",
-          "fix:tag": "2257"
+          "FIX:field": "leginstrumentpartyrole",
+          "FIX:tag": "2257"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "leginstrumentpartyrolequalifier",
-          "fix:tag": "2379"
+          "FIX:field": "leginstrumentpartyrolequalifier",
+          "FIX:tag": "2379"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noleginstrumentpartysubids",
-          "fix:tag": "2258"
+          "FIX:field": "noleginstrumentpartysubids",
+          "FIX:tag": "2258"
         }
       },
       {
@@ -65,14 +65,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "leginstrumentptyssubgrp"
+          "FIX:group": "leginstrumentptyssubgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegInstrumentParty",
-    "fix:tag": "460596"
+    "FIX:tag": "460596",
+    "display": "LegInstrumentParty"
   }
 }

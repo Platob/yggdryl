@@ -2489,9 +2489,9 @@ mod official_read_tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use crate::DataType;
     use crate::IOBase;
     use crate::holder::Buffer;
+    use crate::{DataType, StructureType};
 
     struct OversizedHandle {
         handle: Buffer,
@@ -2544,14 +2544,15 @@ mod official_read_tests {
     }
 
     fn field() -> Field {
-        let mut field = DataType::from_fields([
+        let mut field = StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("venue"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
         super::super::schema::assign_field_ids(&mut field, 1).unwrap();
-        field.insert_metadata("iceberg:schema-id", "0").unwrap();
+        field.insert_metadata("ICEBERG:schema-id", "0").unwrap();
         field
     }
 
@@ -3209,15 +3210,16 @@ mod official_read_tests {
 
     #[test]
     fn planning_reader_preserves_nonlexical_partition_spec_order() {
-        let mut field = DataType::from_fields([
+        let mut field = StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().required_field("z"),
             DataType::utf8().required_field("a"),
         ])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
         super::super::schema::assign_field_ids(&mut field, 1).unwrap();
-        field.insert_metadata("iceberg:schema-id", "0").unwrap();
+        field.insert_metadata("ICEBERG:schema-id", "0").unwrap();
         let spec = PartitionSpec::identity(3, &field, &["z", "a"]).unwrap();
         let input = ManifestEntry::added(
             41,

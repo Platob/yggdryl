@@ -57,7 +57,7 @@ impl Url {
     ///
     /// Stored data takes the other door. A `url` column holding `data/x` would
     /// otherwise name a different file on every machine that read it, so
-    /// [`DataType::Url`](crate::DataType::Url) keeps the strict parse.
+    /// [`DataType::url`](crate::DataType::url) keeps the strict parse.
     ///
     /// # Errors
     ///

@@ -64,7 +64,7 @@ def _select_identity(
 ) -> tuple[str, str]:
     """Resolve the class a materialized dataclass is given.
 
-    An explicit argument wins, then the field's own ``python:`` declaration,
+    An explicit argument wins, then the field's own ``PYTHON:`` declaration,
     then the field's name. Two rules apply, deliberately different ones: the
     native construction says what a declaration may be *stored* as - dotted,
     Unicode, and ``<locals>`` and all - and names the key a bad half failed

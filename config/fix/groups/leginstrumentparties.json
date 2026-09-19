@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "leginstrumentparty"
+        "FIX:component": "leginstrumentparty"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "leginstrumentparty",
+    "FIX:counter": "2254",
+    "FIX:tag": "290834",
     "description": "Repeating group below should contain unique combinations of LegInstrumentPartyID(2255), LegInstrumentPartyIDSource(2256) and LegInstrumentPartyRole(2257).",
-    "display": "LegInstrumentParties",
-    "fix:component": "leginstrumentparty",
-    "fix:counter": "2254",
-    "fix:tag": "290834"
+    "display": "LegInstrumentParties"
   }
 }

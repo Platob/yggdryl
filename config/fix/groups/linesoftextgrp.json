@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "linesoftextcomponent"
+        "FIX:component": "linesoftextcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "linesoftextcomponent",
+    "FIX:counter": "33",
+    "FIX:tag": "803592",
     "description": "Specifies the number of repeating lines of text specified",
-    "display": "LinesOfTextGrp",
-    "fix:component": "linesoftextcomponent",
-    "fix:counter": "33",
-    "fix:tag": "803592"
+    "display": "LinesOfTextGrp"
   }
 }

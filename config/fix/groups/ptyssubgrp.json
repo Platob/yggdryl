@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "ptyssub"
+        "FIX:component": "ptyssub"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "PtysSubGrp",
-    "fix:component": "ptyssub",
-    "fix:counter": "802",
-    "fix:tag": "605533"
+    "FIX:component": "ptyssub",
+    "FIX:counter": "802",
+    "FIX:tag": "605533",
+    "display": "PtysSubGrp"
   }
 }

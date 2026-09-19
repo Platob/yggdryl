@@ -101,6 +101,9 @@ fn describe(message: &FixMsg) -> String {
         message.get_crosscode(),
         message.get_seqnum(),
         message.get_prevuuid(),
-        message.capture().pluginid().unwrap_or("<no plugin stated>"),
+        message
+            .capture()
+            .msgpluginid()
+            .unwrap_or("<no plugin stated>"),
     )
 }

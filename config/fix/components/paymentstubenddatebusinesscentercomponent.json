@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddatebusinesscenter",
-          "fix:tag": "42697"
+          "FIX:field": "paymentstubenddatebusinesscenter",
+          "FIX:tag": "42697"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentStubEndDateBusinessCenter",
-    "fix:tag": "607367"
+    "FIX:tag": "607367",
+    "display": "PaymentStubEndDateBusinessCenter"
   }
 }

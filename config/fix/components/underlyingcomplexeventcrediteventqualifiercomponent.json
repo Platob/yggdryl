@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventcrediteventqualifier",
-          "fix:tag": "41725"
+          "FIX:field": "underlyingcomplexeventcrediteventqualifier",
+          "FIX:tag": "41725"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEventCreditEventQualifier",
-    "fix:tag": "1039537"
+    "FIX:tag": "1039537",
+    "display": "UnderlyingComplexEventCreditEventQualifier"
   }
 }

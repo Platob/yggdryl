@@ -28,9 +28,9 @@ The media type names the encoding, so no format argument is passed.
 
     ```rust
     use yggdryl::media::{IORecordOptions, RecordOptions};
-    use yggdryl::{DataType, MimeType, Url};
+    use yggdryl::{DataType, MimeType, StructureType, Url};
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
 
     let options = RecordOptions::for_media_type(&Url::from_str("file:///trades.parquet")?.media_type())?
         .with_field(schema.clone())
@@ -121,12 +121,12 @@ The media type names the encoding, so no format argument is passed.
 
     ```rust
     use yggdryl::media::{IORecordOptions, RecordOptions};
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
-    ])?
+    ])?)
     .required_field("trade");
     let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?
         .with_field(schema.clone())
@@ -242,19 +242,19 @@ The media type names the encoding, so no format argument is passed.
 
 `apply_arrow_batch` and `apply_arrow_reader` [apply](../types/field.md#applying-a-schemas-declarations) the declared schema, then run the `where` and `select` sections, then apply the optional `existing` root.
 
-A field shapes rows by applying, not by casting: a declaration is the cast *and* the `transform:` and `digest:` columns it derives, so a declared derived column arrives written rather than arriving as the default nothing filled. The selection after it only narrows, because deriving there would restore the columns it was asked to drop. A root declaring no derivation applies as the cast alone, at the safety `safe` names; the `existing` completion is always safe.
+A field shapes rows by applying, not by casting: a declaration is the cast *and* the `TRANSFORM:` and `DIGEST:` columns it derives, so a declared derived column arrives written rather than arriving as the default nothing filled. The selection after it only narrows, because deriving there would restore the columns it was asked to drop. A root declaring no derivation applies as the cast alone, at the safety `safe` names; the `existing` completion is always safe.
 
 Rust; Python binds the same `RecordOptions.apply_arrow_batch` / `apply_arrow_reader`, and JavaScript binds neither.
 
 ```rust
 use arrow_array::RecordBatch;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{DataType, MimeType};
+use yggdryl::{DataType, MimeType, StructureType};
 
-let declared = DataType::from_fields([
+let declared = DataType::from(StructureType::from_fields([
     DataType::utf8().required_field("symbol"),
     DataType::Int64.required_field("price"),
-])?
+])?)
 .required_field("row");
 
 let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?

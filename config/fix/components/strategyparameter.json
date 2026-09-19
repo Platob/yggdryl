@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "strategyparametername",
-          "fix:tag": "958"
+          "FIX:field": "strategyparametername",
+          "FIX:tag": "958"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "strategyparametertype",
-          "fix:tag": "959"
+          "FIX:field": "strategyparametertype",
+          "FIX:tag": "959"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "strategyparametervalue",
-          "fix:tag": "960"
+          "FIX:field": "strategyparametervalue",
+          "FIX:tag": "960"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "StrategyParameter",
-    "fix:tag": "329221"
+    "FIX:tag": "329221",
+    "display": "StrategyParameter"
   }
 }

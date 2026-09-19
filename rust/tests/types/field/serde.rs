@@ -3,20 +3,23 @@
 
 use yggdryl::DateTimeType;
 use yggdryl::Scalar;
-use yggdryl::{DataType, Field, Metadata, PythonKind, PythonMetadata, TimeUnit};
+use yggdryl::{DataType, Field, Metadata, PythonKind, PythonMetadata, StructureType, TimeUnit};
 
 /// One representative field per shape the model can carry.
 fn shapes() -> Vec<Field> {
-    let nested = DataType::from_fields([
+    let nested = StructureType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::from_fields([
-            DataType::from_fields([DataType::utf8().nullable_field("leaf")])
-                .unwrap()
-                .nullable_field("inner"),
+        StructureType::from_fields([StructureType::from_fields([
+            DataType::utf8().nullable_field("leaf")
         ])
+        .map(DataType::from)
+        .unwrap()
+        .nullable_field("inner")])
+        .map(DataType::from)
         .unwrap()
         .required_field("middle"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("deep");
 
@@ -39,12 +42,13 @@ fn shapes() -> Vec<Field> {
     );
     dictionary.set_dictionary_options(42, true).unwrap();
 
-    let partitioned = DataType::from_fields([
+    let partitioned = StructureType::from_fields([
         DataType::utf8()
             .required_field("venue")
             .with_partition(true),
         DataType::Int64.required_field("id"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
 
@@ -52,7 +56,8 @@ fn shapes() -> Vec<Field> {
         DataType::Int64.required_field("flat"),
         nested,
         DataType::list(
-            DataType::from_fields([DataType::Int64.required_field("id")])
+            StructureType::from_fields([DataType::Int64.required_field("id")])
+                .map(DataType::from)
                 .unwrap()
                 .nullable_field("item"),
         )
@@ -200,7 +205,8 @@ fn the_trait_forms_sit_beside_the_inherent_ones() {
 
 /// One representative small field, for literal-text assertions.
 fn small() -> Field {
-    DataType::from_fields([DataType::Int64.required_field("id")])
+    StructureType::from_fields([DataType::Int64.required_field("id")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
 }
@@ -460,13 +466,16 @@ fn indentation_reads_literally_in_every_format() {
 fn depth_three_indents_one_level_per_level() {
     use yggdryl::text::Formatting;
 
-    let deep = DataType::from_fields([DataType::from_fields([DataType::from_fields([
-        DataType::Int64.required_field("leaf"),
+    let deep = StructureType::from_fields([StructureType::from_fields([
+        StructureType::from_fields([DataType::Int64.required_field("leaf")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("inner"),
     ])
-    .unwrap()
-    .required_field("inner")])
+    .map(DataType::from)
     .unwrap()
     .required_field("middle")])
+    .map(DataType::from)
     .unwrap()
     .required_field("outer");
 
@@ -558,13 +567,15 @@ fn the_compact_form_is_unchanged_and_still_parses_back() {
 
 #[test]
 fn the_readable_form_indents_by_depth_and_omits_unset_attributes() {
-    let mut field = DataType::from_fields([
+    let mut field = StructureType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::from_fields([DataType::Float64.required_field("price")])
+        StructureType::from_fields([DataType::Float64.required_field("price")])
+            .map(DataType::from)
             .unwrap()
             .nullable_field("line"),
         DataType::list(DataType::utf8().nullable_field("tag")).nullable_field("tags"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("order");
     field.insert_metadata("owner", "trading").unwrap();
@@ -605,7 +616,8 @@ fn the_readable_form_is_stable_across_runs() {
     // Nothing here iterates a hash map, so two renderings of one value - and
     // of two equal values built independently - agree exactly.
     let build = || {
-        let mut field = DataType::from_fields([DataType::Int64.required_field("id")])
+        let mut field = StructureType::from_fields([DataType::Int64.required_field("id")])
+            .map(DataType::from)
             .unwrap()
             .required_field("row");
         for (key, value) in [("z", "last"), ("a", "first"), ("m", "middle")] {
@@ -625,18 +637,20 @@ fn the_readable_form_is_stable_across_runs() {
 fn json_bytes_and_text_carry_the_same_nested_document() {
     // struct > list > struct > map, so the assertion is about nesting rather
     // than about a flat field.
-    let inner = DataType::from_fields([
+    let inner = StructureType::from_fields([
         DataType::utf8().required_field("sym"),
         DataType::decimal128(18, 4).unwrap().nullable_field("px"),
     ])
+    .map(DataType::from)
     .unwrap();
-    let row = DataType::from_fields([
+    let row = StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::list(inner.nullable_field("item")).nullable_field("levels"),
         DataType::map_of(DataType::utf8(), DataType::Int64, true)
             .unwrap()
             .nullable_field("tags"),
     ])
+    .map(DataType::from)
     .unwrap();
     let mut field = row.required_field("row");
     field.set_comment("a deeply nested row").unwrap();
@@ -667,12 +681,14 @@ fn json_bytes_and_text_carry_the_same_nested_document() {
 
 #[test]
 fn every_format_round_trips_the_same_nested_field() {
-    let field = DataType::from_fields([
+    let field = StructureType::from_fields([
         DataType::list(DataType::Int64.nullable_field("item")).nullable_field("levels"),
-        DataType::from_fields([DataType::Boolean.required_field("ok")])
+        StructureType::from_fields([DataType::Boolean.required_field("ok")])
+            .map(DataType::from)
             .unwrap()
             .required_field("flags"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
 

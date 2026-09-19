@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddateunadjusted",
-          "fix:tag": "42689"
+          "FIX:field": "paymentstubenddateunadjusted",
+          "FIX:tag": "42689"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddatebusinessdayconvention",
-          "fix:tag": "42690"
+          "FIX:field": "paymentstubenddatebusinessdayconvention",
+          "FIX:tag": "42690"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstubenddatebusinesscenters",
-          "fix:tag": "42696"
+          "FIX:field": "nopaymentstubenddatebusinesscenters",
+          "FIX:tag": "42696"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "paymentstubenddatebusinesscentergrp"
+          "FIX:group": "paymentstubenddatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddaterelativeto",
-          "fix:tag": "42691"
+          "FIX:field": "paymentstubenddaterelativeto",
+          "FIX:tag": "42691"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddateoffsetperiod",
-          "fix:tag": "42692"
+          "FIX:field": "paymentstubenddateoffsetperiod",
+          "FIX:tag": "42692"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddateoffsetunit",
-          "fix:tag": "42693"
+          "FIX:field": "paymentstubenddateoffsetunit",
+          "FIX:tag": "42693"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddateoffsetdaytype",
-          "fix:tag": "42694"
+          "FIX:field": "paymentstubenddateoffsetdaytype",
+          "FIX:tag": "42694"
         }
       },
       {
@@ -97,16 +97,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstubenddateadjusted",
-          "fix:tag": "42695"
+          "FIX:field": "paymentstubenddateadjusted",
+          "FIX:tag": "42695"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "734084",
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this payment stub instance.",
-    "display": "PaymentStubEndDate",
-    "fix:tag": "734084"
+    "display": "PaymentStubEndDate"
   }
 }

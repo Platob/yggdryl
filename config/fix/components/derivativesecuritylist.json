@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityreportid",
-          "fix:tag": "964"
+          "FIX:field": "securityreportid",
+          "FIX:tag": "964"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityreqid",
-          "fix:tag": "320"
+          "FIX:field": "securityreqid",
+          "FIX:tag": "320"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityresponseid",
-          "fix:tag": "322"
+          "FIX:field": "securityresponseid",
+          "FIX:tag": "322"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityrequestresult",
-          "fix:tag": "560"
+          "FIX:field": "securityrequestresult",
+          "FIX:tag": "560"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityrejectreason",
-          "fix:tag": "1607"
+          "FIX:field": "securityrejectreason",
+          "FIX:tag": "1607"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingbusinessdate",
-          "fix:tag": "715"
+          "FIX:field": "clearingbusinessdate",
+          "FIX:tag": "715"
         }
       },
       {
@@ -96,7 +96,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyinginstrument"
+          "FIX:component": "underlyinginstrument"
         }
       },
       {
@@ -106,7 +106,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "derivativesecuritydefinition"
+          "FIX:component": "derivativesecuritydefinition"
         }
       },
       {
@@ -116,8 +116,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastupdatetime",
-          "fix:tag": "779"
+          "FIX:field": "lastupdatetime",
+          "FIX:tag": "779"
         }
       },
       {
@@ -127,8 +127,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -138,8 +138,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnorelatedsym",
-          "fix:tag": "393"
+          "FIX:field": "totnorelatedsym",
+          "FIX:tag": "393"
         }
       },
       {
@@ -149,8 +149,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment",
-          "fix:tag": "893"
+          "FIX:field": "lastfragment",
+          "FIX:tag": "893"
         }
       },
       {
@@ -160,8 +160,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedsym",
-          "fix:tag": "146"
+          "FIX:field": "norelatedsym",
+          "FIX:tag": "146"
         }
       },
       {
@@ -171,7 +171,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "relsymderivsecgrp"
+          "FIX:group": "relsymderivsecgrp"
         }
       },
       {
@@ -181,16 +181,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "AA",
+    "FIX:tag": "623843",
     "description": "MsgType = AA",
-    "display": "DerivativeSecurityList",
-    "fix:msgtype": "AA",
-    "fix:tag": "623843"
+    "display": "DerivativeSecurityList"
   }
 }

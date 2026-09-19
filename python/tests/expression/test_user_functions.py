@@ -38,7 +38,7 @@ def test_a_decorated_function_is_registered_with_the_signature_its_hints_spell()
     assert [field.name for field in signature.dtype] == ["value"]
     assert signature.dtype["value"].dtype == DataType("int64")
     assert not signature.dtype["value"].nullable
-    assert signature.metadata["function:returns"] == "int64 not null"
+    assert signature.metadata["FUNCTION:returns"] == "int64 not null"
     assert user_function_signature("py.double") == signature
 
     # The call is a term like any other, and the two tiers agree.
@@ -59,7 +59,7 @@ def test_defaults_fill_in_and_a_stored_column_derives_by_function() -> None:
     def add(value: int, amount: int = 1) -> int:
         return value + amount
 
-    assert add.signature.dtype["amount"].metadata["function:default"] == "1"
+    assert add.signature.dtype["amount"].metadata["FUNCTION:default"] == "1"
     assert Selector("test.add(size) as next, test.add(size, 10) as later").apply_arrow_batch(
         batch()
     ).to_pydict() == {"next": [2, None, 4], "later": [11, None, 13]}

@@ -125,7 +125,7 @@ def test_dataclass_reconstruction_requires_an_explicit_target() -> None:
     value = Point(2, 3)
     encoded = toml.dumps(value)
 
-    assert b"python:" not in encoded
+    assert b"PYTHON:" not in encoded
     assert toml.loads(encoded) == {"x": 2, "y": 3}
     assert toml.loads(encoded, cls=Point) == value
 

@@ -27,12 +27,12 @@ Add a column, then read the earlier file back with the new column null.
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, SchemaUpdate, Table};
     use yggdryl::local::Folder;
-    use yggdryl::{arrow, DataType};
+    use yggdryl::{StructureType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch};
     use std::sync::Arc;
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
 
     let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-evolution");
@@ -147,13 +147,13 @@ Add a column, then read the earlier file back with the new column null.
 
     ```rust
     use yggdryl::iceberg::{assign_field_ids, last_column_id, schema_into_json};
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
-    let leg = DataType::from_fields([DataType::decimal(18, 4)?.required_field("price")])?;
-    let mut schema = DataType::from_fields([
+    let leg = DataType::from(StructureType::from_fields([DataType::decimal(18, 4)?.required_field("price")])?);
+    let mut schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         leg.nullable_field("leg"),
-    ])?
+    ])?)
     .required_field("row");
 
     // An unnumbered tree is no schema document, and the refusal names the fix.
@@ -236,14 +236,14 @@ Add a column, then read the earlier file back with the new column null.
     ```rust
     use yggdryl::iceberg::{can_promote, FormatVersion, PartitionSpec, SchemaUpdate, Table};
     use yggdryl::local::Folder;
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-evolution");
     let _ = std::fs::remove_dir_all(&root);
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int32.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
-    ])?
+    ])?)
     .required_field("row");
     let mut table = Table::create(
         Folder::new(&root)?,
@@ -468,9 +468,9 @@ Documents pass through the core [JSON](../json/index.md) codec as [`Scalar`](../
 | root `name` | the name you pass; Iceberg names columns, not the schema |
 | `"required": true` | `is_nullable() == false` |
 | `id` | `PARQUET:field_id` metadata |
-| `schema-id` | `iceberg:schema-id` on the root |
-| `doc` | `iceberg:doc` |
-| v3 `initial-default`, `write-default` | `iceberg:initial-default`, `iceberg:write-default` |
+| `schema-id` | `ICEBERG:schema-id` on the root |
+| `doc` | `ICEBERG:doc` |
+| v3 `initial-default`, `write-default` | `ICEBERG:initial-default`, `ICEBERG:write-default` |
 
 ## Primitive types
 

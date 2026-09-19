@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legstipulation"
+        "FIX:component": "legstipulation"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legstipulation",
+    "FIX:counter": "683",
+    "FIX:tag": "924822",
     "description": "Required if NoLegStipulations(683) > 0.",
-    "display": "LegStipulations",
-    "fix:component": "legstipulation",
-    "fix:counter": "683",
-    "fix:tag": "924822"
+    "display": "LegStipulations"
   }
 }

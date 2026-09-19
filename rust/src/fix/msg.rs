@@ -14,7 +14,9 @@ use super::{FixId, FixKey, FixRegistry};
 use crate::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
 use crate::sequence::SequenceType;
 use crate::xxhash;
-use crate::{Bloomberg, Cfi, Currency, Cusip, Decimal, Isin, Mic, Sedol, Side, State, Uuid};
+use crate::{
+    Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol, Side, State, StructureType, Uuid,
+};
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 
 /// A FIX message: a market event with a FIX body around it.
@@ -63,7 +65,7 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 /// use std::sync::Arc;
 ///
 /// use yggdryl::graph::{Element, Event};
-/// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
+/// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructureType};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut symbol = DataType::utf8().required_field("Symbol");
@@ -73,7 +75,7 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 /// qty.as_fix_mut().set_tag(38)?;
 /// let registry = Arc::new(FixRegistry::from_fields([symbol.clone(), qty.clone()])?);
 ///
-/// let root = DataType::from_fields([symbol, qty, DataType::utf8().nullable_field("9999")])?
+/// let root = DataType::from(StructureType::from_fields([symbol, qty, DataType::utf8().nullable_field("9999")])?)
 ///     .required_field("NewOrderSingle");
 /// let value = Scalar::from_record([
 ///     ("Symbol", Scalar::from("AAPL")),
@@ -93,7 +95,7 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 /// // The row serializes through the paths every field and value share.
 /// let root = msg.as_field();
 /// let schema = root.clone().into_json()?;
-/// assert!(schema.contains("fix:tag"));
+/// assert!(schema.contains("FIX:tag"));
 /// # Ok(())
 /// # }
 /// ```
@@ -143,7 +145,7 @@ pub struct FixMsg {
     /// Derived from the field alone, and derived lazily, so a message nobody
     /// projects pays nothing for it.
     named: OnceLock<HashMap<SmolStr, usize>>,
-    /// Group positions keyed by their `fix:counter`, separate from tag values.
+    /// Group positions keyed by their `FIX:counter`, separate from tag values.
     groups: Vec<(i32, usize)>,
     field: Field,
     value: Scalar,
@@ -264,7 +266,7 @@ pub(super) fn stage_writes(
             appended,
         });
     }
-    let dtype = DataType::from_fields(members)?;
+    let dtype = DataType::from(StructureType::from_fields(members)?);
     let field = Field::new_with_metadata(
         root.name(),
         dtype,
@@ -424,7 +426,7 @@ impl FixMsg {
                     }
                     stated_sending |= tag == 52;
                     stated_unix |= tag == super::CURRUNIX_TAG_NAME.0;
-                    stated_creation |= tag == super::CREATUNIX_TAG_NAME.0;
+                    stated_creation |= tag == super::CREAUNIX_TAG_NAME.0;
                 }
                 // A key spelled under a namespace - `TECH.CLIENTID` - is a
                 // bridge's own statement and goes to the metadata, under
@@ -483,11 +485,11 @@ impl FixMsg {
         // only by the resend would otherwise be created at the moment it
         // was replayed.
         if !stated_creation {
-            event.set_creatunix(Some(origin.unwrap_or_else(|| event.get_currunix())));
+            event.set_creaunix(Some(origin.unwrap_or_else(|| event.get_currunix())));
         }
         let field = Field::new_with_metadata(
             field.name(),
-            DataType::from_fields(members)?,
+            DataType::from(StructureType::from_fields(members)?),
             field.is_nullable(),
             field.as_metadata().clone(),
         );
@@ -546,7 +548,7 @@ impl FixMsg {
         }
         self.field = Field::new_with_metadata(
             field.name(),
-            DataType::from_fields(members)?,
+            DataType::from(StructureType::from_fields(members)?),
             field.is_nullable(),
             field.as_metadata().clone(),
         );
@@ -667,7 +669,7 @@ impl FixMsg {
                 .filter(|held| !held.is_empty())
         };
         let by_tag = |tag: i32| self.get_by_tag(tag).filter(|held| !held.is_null());
-        let number = |tag: i32| by_tag(tag).as_ref().and_then(Decimal::from_scalar);
+        let number = |tag: i32| by_tag(tag).as_ref().and_then(Decimal18::from_scalar);
         let word = |tag: i32| text(by_tag(tag));
 
         // The numbers, each from its own lifted slot.
@@ -742,8 +744,8 @@ impl FixMsg {
         // Assigned rather than filled: a write can change what the FIX
         // fields say, and a fact that no longer derives must stop being
         // answered. What a walk forced is kept by the early return above.
-        event.set_px(price.unwrap_or(Decimal::ZERO));
-        event.set_qty(orderqty.or(quantity).unwrap_or(Decimal::ZERO));
+        event.set_px(price.unwrap_or(Decimal18::ZERO));
+        event.set_qty(orderqty.or(quantity).unwrap_or(Decimal18::ZERO));
         event.set_lastpx(lastpx);
         event.set_lastqty(lastqty);
         event.set_avgpx(avgpx);
@@ -1001,7 +1003,7 @@ impl FixMsg {
     /// owns it, and a `Null` clears it. Any other key lands in the row: a
     /// field the dictionary knows types the value through [`Field::scalar`]
     /// under the dictionary's own field, so a written child is
-    /// indistinguishable from a stated one and carries the same `fix:tag` a
+    /// indistinguishable from a stated one and carries the same `FIX:tag` a
     /// reader resolves it by; a `Null` is stored as a stated null. An
     /// existing child is replaced where it stands and an absent one is
     /// appended, so the positions every reader already holding the row
@@ -1017,7 +1019,7 @@ impl FixMsg {
     /// use std::sync::Arc;
     ///
     /// use yggdryl::graph::MarketElement;
-    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
+    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructureType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut clordid = DataType::utf8().nullable_field("clordid");
@@ -1026,7 +1028,7 @@ impl FixMsg {
     /// symbol.as_fix_mut().set_tag(55)?;
     /// let registry = Arc::new(FixRegistry::from_fields([clordid, symbol])?);
     ///
-    /// let root = DataType::from_fields([DataType::utf8().required_field("symbol")])?
+    /// let root = DataType::from(StructureType::from_fields([DataType::utf8().required_field("symbol")])?)
     ///     .required_field("D");
     /// let value = Scalar::from_record([("symbol", Scalar::from("AAPL"))])?;
     /// let mut msg = FixMsg::with_registry(registry, root, value)?;
@@ -1242,13 +1244,13 @@ impl FixMsg {
     /// ```
     /// use std::sync::Arc;
     ///
-    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
+    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructureType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut symbol = DataType::utf8().nullable_field("symbol");
     /// symbol.as_fix_mut().set_tag(55)?;
     /// let registry = Arc::new(FixRegistry::from_fields([symbol.clone()])?);
-    /// let root = DataType::from_fields([symbol, DataType::utf8().nullable_field("9999")])?
+    /// let root = DataType::from(StructureType::from_fields([symbol, DataType::utf8().nullable_field("9999")])?)
     ///     .required_field("D");
     /// let value = Scalar::from_record([
     ///     ("symbol", Scalar::from("AAPL")),
@@ -1294,7 +1296,7 @@ impl FixMsg {
         }
         members.remove(at);
         let removed = values.remove(at);
-        let dtype = DataType::from_fields(members)?;
+        let dtype = DataType::from(StructureType::from_fields(members)?);
         let field = self.rerooted(dtype);
         let plan = super::schema::column_plan_of(&field, &self.registry)?;
         self.field = field;
@@ -2173,12 +2175,12 @@ impl Event for FixMsg {
         self.event.set_seqnum(seqnum);
     }
 
-    fn get_creatunix(&self) -> Option<i64> {
-        self.event.get_creatunix()
+    fn get_creaunix(&self) -> Option<i64> {
+        self.event.get_creaunix()
     }
 
-    fn set_creatunix(&mut self, unix: Option<i64>) {
-        self.event.set_creatunix(unix);
+    fn set_creaunix(&mut self, unix: Option<i64>) {
+        self.event.set_creaunix(unix);
     }
 
     fn get_expirunix(&self) -> Option<i64> {
@@ -2216,11 +2218,11 @@ impl Event for FixMsg {
 }
 
 impl MarketElement for FixMsg {
-    fn get_px(&self) -> Decimal {
+    fn get_px(&self) -> Decimal18 {
         self.event.get_px()
     }
 
-    fn set_px(&mut self, px: Decimal) {
+    fn set_px(&mut self, px: Decimal18) {
         self.forced = true;
         self.event.set_px(px);
     }
@@ -2234,11 +2236,11 @@ impl MarketElement for FixMsg {
         self.event.set_currency(currency);
     }
 
-    fn get_qty(&self) -> Decimal {
+    fn get_qty(&self) -> Decimal18 {
         self.event.get_qty()
     }
 
-    fn set_qty(&mut self, qty: Decimal) {
+    fn set_qty(&mut self, qty: Decimal18) {
         self.forced = true;
         self.event.set_qty(qty);
     }
@@ -2315,20 +2317,20 @@ impl MarketElement for FixMsg {
         self.event.set_miccode(miccode);
     }
 
-    fn get_lastpx(&self) -> Option<Decimal> {
+    fn get_lastpx(&self) -> Option<Decimal18> {
         self.event.get_lastpx()
     }
 
-    fn set_lastpx(&mut self, px: Option<Decimal>) {
+    fn set_lastpx(&mut self, px: Option<Decimal18>) {
         self.forced = true;
         self.event.set_lastpx(px);
     }
 
-    fn get_lastqty(&self) -> Option<Decimal> {
+    fn get_lastqty(&self) -> Option<Decimal18> {
         self.event.get_lastqty()
     }
 
-    fn set_lastqty(&mut self, qty: Option<Decimal>) {
+    fn set_lastqty(&mut self, qty: Option<Decimal18>) {
         self.forced = true;
         self.event.set_lastqty(qty);
     }
@@ -2360,56 +2362,56 @@ impl MarketElement for FixMsg {
         self.event.set_symbolticker(ticker);
     }
 
-    fn get_avgpx(&self) -> Option<Decimal> {
+    fn get_avgpx(&self) -> Option<Decimal18> {
         self.event.get_avgpx()
     }
 
-    fn set_avgpx(&mut self, px: Option<Decimal>) {
+    fn set_avgpx(&mut self, px: Option<Decimal18>) {
         self.forced = true;
         self.event.set_avgpx(px);
     }
 
-    fn get_cumqty(&self) -> Option<Decimal> {
+    fn get_cumqty(&self) -> Option<Decimal18> {
         self.event.get_cumqty()
     }
 
-    fn set_cumqty(&mut self, qty: Option<Decimal>) {
+    fn set_cumqty(&mut self, qty: Option<Decimal18>) {
         self.forced = true;
         self.event.set_cumqty(qty);
     }
 
-    fn get_leavesqty(&self) -> Option<Decimal> {
+    fn get_leavesqty(&self) -> Option<Decimal18> {
         self.event.get_leavesqty()
     }
 
-    fn set_leavesqty(&mut self, qty: Option<Decimal>) {
+    fn set_leavesqty(&mut self, qty: Option<Decimal18>) {
         self.forced = true;
         self.event.set_leavesqty(qty);
     }
 
-    fn get_prevpx(&self) -> Option<Decimal> {
+    fn get_prevpx(&self) -> Option<Decimal18> {
         self.event.get_prevpx()
     }
 
-    fn set_prevpx(&mut self, px: Option<Decimal>) {
+    fn set_prevpx(&mut self, px: Option<Decimal18>) {
         self.forced = true;
         self.event.set_prevpx(px);
     }
 
-    fn get_prevqty(&self) -> Option<Decimal> {
+    fn get_prevqty(&self) -> Option<Decimal18> {
         self.event.get_prevqty()
     }
 
-    fn set_prevqty(&mut self, qty: Option<Decimal>) {
+    fn set_prevqty(&mut self, qty: Option<Decimal18>) {
         self.forced = true;
         self.event.set_prevqty(qty);
     }
 
-    fn get_bidpx(&self) -> Option<Decimal> {
+    fn get_bidpx(&self) -> Option<Decimal18> {
         self.event.get_bidpx()
     }
 
-    fn set_bidpx(&mut self, px: Option<Decimal>) {
+    fn set_bidpx(&mut self, px: Option<Decimal18>) {
         self.forced = true;
         self.event.set_bidpx(px);
     }
@@ -2423,11 +2425,11 @@ impl MarketElement for FixMsg {
         self.event.set_bidcurrency(currency);
     }
 
-    fn get_bidqty(&self) -> Option<Decimal> {
+    fn get_bidqty(&self) -> Option<Decimal18> {
         self.event.get_bidqty()
     }
 
-    fn set_bidqty(&mut self, qty: Option<Decimal>) {
+    fn set_bidqty(&mut self, qty: Option<Decimal18>) {
         self.forced = true;
         self.event.set_bidqty(qty);
     }
@@ -2441,11 +2443,11 @@ impl MarketElement for FixMsg {
         self.event.set_bidunit(unit);
     }
 
-    fn get_askpx(&self) -> Option<Decimal> {
+    fn get_askpx(&self) -> Option<Decimal18> {
         self.event.get_askpx()
     }
 
-    fn set_askpx(&mut self, px: Option<Decimal>) {
+    fn set_askpx(&mut self, px: Option<Decimal18>) {
         self.forced = true;
         self.event.set_askpx(px);
     }
@@ -2459,11 +2461,11 @@ impl MarketElement for FixMsg {
         self.event.set_askcurrency(currency);
     }
 
-    fn get_askqty(&self) -> Option<Decimal> {
+    fn get_askqty(&self) -> Option<Decimal18> {
         self.event.get_askqty()
     }
 
-    fn set_askqty(&mut self, qty: Option<Decimal>) {
+    fn set_askqty(&mut self, qty: Option<Decimal18>) {
         self.forced = true;
         self.event.set_askqty(qty);
     }

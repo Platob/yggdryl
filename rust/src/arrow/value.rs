@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use crate::UriType;
 use crate::budget::{
     MAX_PHYSICAL_SLOTS, MaterializationBudget, checked_physical_mul, invalid_value,
     physical_limit_error, physical_union_branch, unsupported,
@@ -187,13 +188,23 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
-        DataType::Url => Arc::new(StringArray::from(
+        DataType::Uri(UriType::Url) => Arc::new(StringArray::from(
             values
                 .iter()
                 .map(|value| match value {
                     Scalar::Null => Ok(None),
                     Scalar::Url(url) => Ok(Some(url.to_string())),
                     other => Err(invalid_value("url", other.kind())),
+                })
+                .collect::<Result<Vec<_>>>()?,
+        )),
+        DataType::Uri(UriType::Urn) => Arc::new(StringArray::from(
+            values
+                .iter()
+                .map(|value| match value {
+                    Scalar::Null => Ok(None),
+                    Scalar::Urn(urn) => Ok(Some(urn.to_string())),
+                    other => Err(invalid_value("urn", other.kind())),
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
@@ -431,8 +442,12 @@ pub(crate) fn value_from_array(
                 .parse()
                 .map_err(crate::arrow::Error::from)?,
         ),
-        DataType::Url => Scalar::Url(std::sync::Arc::new(
+        DataType::Uri(UriType::Url) => Scalar::Url(std::sync::Arc::new(
             crate::Url::from_str(downcast::<StringArray>(array)?.value(index))
+                .map_err(crate::arrow::Error::from)?,
+        )),
+        DataType::Uri(UriType::Urn) => Scalar::Urn(std::sync::Arc::new(
+            crate::Urn::from_str(downcast::<StringArray>(array)?.value(index))
                 .map_err(crate::arrow::Error::from)?,
         )),
         DataType::Timezone => Scalar::Timezone(

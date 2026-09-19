@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refseqnum",
-          "fix:tag": "45"
+          "FIX:field": "refseqnum",
+          "FIX:tag": "45"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "refmsgtype",
-          "fix:tag": "372"
+          "FIX:field": "refmsgtype",
+          "FIX:tag": "372"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refapplverid",
-          "fix:tag": "1130"
+          "FIX:field": "refapplverid",
+          "FIX:tag": "1130"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refapplextid",
-          "fix:tag": "1406"
+          "FIX:field": "refapplextid",
+          "FIX:tag": "1406"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refcstmapplverid",
-          "fix:tag": "1131"
+          "FIX:field": "refcstmapplverid",
+          "FIX:tag": "1131"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "businessrejectrefid",
-          "fix:tag": "379"
+          "FIX:field": "businessrejectrefid",
+          "FIX:tag": "379"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "businessrejectreason",
-          "fix:tag": "380"
+          "FIX:field": "businessrejectreason",
+          "FIX:tag": "380"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -130,16 +130,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "j",
+    "FIX:tag": "345093",
     "description": "MsgType = j (lowercase J)",
-    "display": "BusinessMessageReject",
-    "fix:msgtype": "j",
-    "fix:tag": "345093"
+    "display": "BusinessMessageReject"
   }
 }

@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingdatesbusinesscenter",
-          "fix:tag": "42621"
+          "FIX:field": "paymentstreamcompoundingdatesbusinesscenter",
+          "FIX:tag": "42621"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentStreamCompoundingDatesBusinessCenter",
-    "fix:tag": "438897"
+    "FIX:tag": "438897",
+    "display": "PaymentStreamCompoundingDatesBusinessCenter"
   }
 }

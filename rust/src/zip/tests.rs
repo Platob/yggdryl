@@ -6,7 +6,7 @@ use smol_str::SmolStr;
 
 use super::{Archive, Entry, Node, Path, format, name};
 use crate::holder::{Buffer, Holder};
-use crate::{Codec, Error, IOBase, IOFolder, IOKind, IOPath, Level, MimeType, Url};
+use crate::{Codec, Error, IOBase, IOFolder, IOKind, IOPath, Level, MimeType, StructureType, Url};
 
 /// The archive root of a fresh in-memory archive.
 fn root() -> Node {
@@ -1638,7 +1638,8 @@ fn a_member_reads_through_the_record_surface() {
 
     use crate::{DataType, IOMedia};
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])
+    let schema = StructureType::from_fields([DataType::Int64.required_field("id")])
+        .map(DataType::from)
         .expect("a struct")
         .required_field("row");
     let arrow_schema = schema.clone().into_arrow_schema().expect("an arrow schema");

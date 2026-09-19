@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "party"
+        "FIX:component": "party"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "party",
+    "FIX:counter": "453",
+    "FIX:tag": "209321",
     "description": "Repeating group below should contain unique combinations of PartyID, PartyIDSource, and PartyRole",
-    "display": "Parties",
-    "fix:component": "party",
-    "fix:counter": "453",
-    "fix:tag": "209321"
+    "display": "Parties"
   }
 }

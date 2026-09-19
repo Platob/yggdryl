@@ -114,13 +114,13 @@ A Struct Field yields a row `Sequence` in Rust; bindings restore field names, an
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Scalar};
+    use yggdryl::{DataType, Field, Scalar, StructureType};
     use yggdryl::toml;
 
     let amount = Field::new("amount", DataType::decimal128(8, 2)?, false);
     let row = Field::new(
         "row",
-        DataType::from_fields([amount])?,
+        DataType::from(StructureType::from_fields([amount])?),
         false,
     );
     let decoded = toml::from_utf8_with_field("amount = '12.50'\n", &row)?;

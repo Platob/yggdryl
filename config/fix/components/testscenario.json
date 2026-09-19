@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenarioid",
-          "fix:tag": "3029"
+          "FIX:field": "testscenarioid",
+          "FIX:tag": "3029"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenariostatus",
-          "fix:tag": "3030"
+          "FIX:field": "testscenariostatus",
+          "FIX:tag": "3030"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenariostarttime",
-          "fix:tag": "3031"
+          "FIX:field": "testscenariostarttime",
+          "FIX:tag": "3031"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenarioendtime",
-          "fix:tag": "3032"
+          "FIX:field": "testscenarioendtime",
+          "FIX:tag": "3032"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notestscenarioparameters",
-          "fix:tag": "3130"
+          "FIX:field": "notestscenarioparameters",
+          "FIX:tag": "3130"
         }
       },
       {
@@ -65,7 +65,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "testscenarioparametergrp"
+          "FIX:group": "testscenarioparametergrp"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedpartyids",
-          "fix:tag": "539"
+          "FIX:field": "nonestedpartyids",
+          "FIX:tag": "539"
         }
       },
       {
@@ -86,7 +86,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "nestedparties"
+          "FIX:group": "nestedparties"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noinstrumentscopes",
-          "fix:tag": "1656"
+          "FIX:field": "noinstrumentscopes",
+          "FIX:tag": "1656"
         }
       },
       {
@@ -107,7 +107,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrumentscopegrp"
+          "FIX:group": "instrumentscopegrp"
         }
       },
       {
@@ -117,8 +117,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdorigintype",
-          "fix:tag": "1024"
+          "FIX:field": "mdorigintype",
+          "FIX:tag": "1024"
         }
       },
       {
@@ -128,8 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdorigindesc",
-          "fix:tag": "3033"
+          "FIX:field": "mdorigindesc",
+          "FIX:tag": "3033"
         }
       },
       {
@@ -139,8 +139,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdorigintime",
-          "fix:tag": "3034"
+          "FIX:field": "mdorigintime",
+          "FIX:tag": "3034"
         }
       },
       {
@@ -150,8 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepgroupid",
-          "fix:tag": "3035"
+          "FIX:field": "teststepgroupid",
+          "FIX:tag": "3035"
         }
       },
       {
@@ -161,8 +161,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noteststeps",
-          "fix:tag": "3036"
+          "FIX:field": "noteststeps",
+          "FIX:tag": "3036"
         }
       },
       {
@@ -172,7 +172,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "teststepgrp"
+          "FIX:group": "teststepgrp"
         }
       },
       {
@@ -182,8 +182,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notestsystemmodules",
-          "fix:tag": "3049"
+          "FIX:field": "notestsystemmodules",
+          "FIX:tag": "3049"
         }
       },
       {
@@ -193,7 +193,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "testsystemmodulegrp"
+          "FIX:group": "testsystemmodulegrp"
         }
       },
       {
@@ -203,8 +203,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notestmeasures",
-          "fix:tag": "3052"
+          "FIX:field": "notestmeasures",
+          "FIX:tag": "3052"
         }
       },
       {
@@ -214,7 +214,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "testmeasuregrp"
+          "FIX:group": "testmeasuregrp"
         }
       },
       {
@@ -224,8 +224,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notestorders",
-          "fix:tag": "3082"
+          "FIX:field": "notestorders",
+          "FIX:tag": "3082"
         }
       },
       {
@@ -235,14 +235,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "testordergrp"
+          "FIX:group": "testordergrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TestScenario",
-    "fix:tag": "642873"
+    "FIX:tag": "642873",
+    "display": "TestScenario"
   }
 }

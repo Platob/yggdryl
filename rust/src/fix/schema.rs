@@ -13,7 +13,7 @@
 //! on the way in - so a row reads the way a message reads, in every binding
 //! and every catalog, and a reader spelling `row["msgseqnum"]` finds the
 //! sequence number without a dictionary in hand. The tag is still the
-//! identity: each column carries its field's `fix:tag` and its code set, and
+//! identity: each column carries its field's `FIX:tag` and its code set, and
 //! the row is filled by that tag rather than by the spelling,
 //! so a venue that renames a field between versions changes nothing about
 //! where its value lands.
@@ -161,15 +161,14 @@ const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
 #[must_use]
 pub fn fix_schema_tags() -> Vec<i32> {
     use super::crated::{
-        CREATUNIX_TAG_NAME as CREATUNIX, CROSSCODE_TAG_NAME as CROSSCODE,
+        CREAUNIX_TAG_NAME as CREAUNIX, CROSSCODE_TAG_NAME as CROSSCODE,
         CROSSHASHCODE_TAG_NAME as CROSSHASHCODE, CROSSUUID_TAG_NAME as CROSSUUID,
         CURRHASHCODE_TAG_NAME as HASHCODE, CURRUNIX_TAG_NAME as UNIX,
         CURRUUID_TAG_NAME as CURRUUID, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
         METADATA_TAG_NAME as METADATA, MSGCTXID_TAG_NAME as MSGCTXID,
-        MSGDIRECTION_TAG_NAME as MSGDIRECTION, MSGSESSIONID_TAG_NAME as MSGSESSIONID,
-        PARENTUUIDS_TAG_NAME as PARENTUUIDS, PLUGINID_TAG_NAME as PLUGINID,
-        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID,
-        RECORDEDAT_TAG_NAME as RECORDEDAT, SEQNUM_TAG_NAME as SEQNUM,
+        MSGDIRECTION_TAG_NAME as MSGDIRECTION, MSGPLUGINID_TAG_NAME as MSGPLUGINID,
+        MSGSESSIONID_TAG_NAME as MSGSESSIONID, PARENTUUIDS_TAG_NAME as PARENTUUIDS,
+        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID, SEQNUM_TAG_NAME as SEQNUM,
         SNAPUNIX_TAG_NAME as SNAPUNIX, SOURCEURL_TAG_NAME as SOURCEURL,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
@@ -185,24 +184,12 @@ pub fn fix_schema_tags() -> Vec<i32> {
         }
     };
     // When it happened: the instant itself, then the instants that instant
-    // is read against - created, followed, expiring, snapped, recorded -
+    // is read against - created, followed, expiring, snapped -
     // then the clocks the protocol states.
     band(
         &mut tags,
         &[
-            UNIX.0,
-            CREATUNIX.0,
-            PREVUNIX.0,
-            SNAPUNIX.0,
-            RECORDEDAT.0,
-            52,
-            122,
-            60,
-            64,
-            75,
-            126,
-            62,
-            432,
+            UNIX.0, CREAUNIX.0, PREVUNIX.0, SNAPUNIX.0, 52, 122, 60, 64, 75, 126, 62, 432,
         ],
     );
     // Which event: its own identity, the chain it stands in and what it
@@ -234,7 +221,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
             43,
             MSGDIRECTION.0,
             SOURCEURL.0,
-            PLUGINID.0,
+            MSGPLUGINID.0,
             MSGCTXID.0,
             MSGSESSIONID.0,
         ],
@@ -302,7 +289,7 @@ fn is_required(tag: i32) -> bool {
     tag == 8
         || [
             super::CURRUNIX_TAG_NAME.0,
-            super::CREATUNIX_TAG_NAME.0,
+            super::CREAUNIX_TAG_NAME.0,
             super::CURRHASHCODE_TAG_NAME.0,
             super::CROSSHASHCODE_TAG_NAME.0,
             super::CURRUUID_TAG_NAME.0,
@@ -375,7 +362,7 @@ pub(super) fn fixmsg_definition(registry: &FixRegistry) -> Result<Field> {
     }
     let mut root = Field::new_with_metadata(
         schema.name(),
-        DataType::from_fields(members)?,
+        DataType::from(StructureType::from_fields(members)?),
         schema.is_nullable(),
         schema.as_metadata().clone(),
     );
@@ -450,7 +437,7 @@ pub(super) fn rooted(
         }
     }
     fields.push(entries_field()?);
-    let schema = DataType::from_fields(fields)?.required_field(name);
+    let schema = DataType::from(StructureType::from_fields(fields)?).required_field(name);
     column_plan(&schema, registry)?;
     Ok(schema)
 }
@@ -487,16 +474,17 @@ pub(super) fn rooted(
 /// every one of them and never write that null.
 ///
 /// ```
+/// use yggdryl::StructureType;
 /// # fn main() -> yggdryl::Result<()> {
 /// # use yggdryl::local::Folder;
 /// # use yggdryl::{DataType, FixRegistry, fix_schema, fix_schema_carrying};
 /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-/// let capture = DataType::from_fields([
+/// let capture = DataType::from(StructureType::from_fields([
 ///     DataType::utf8().required_field("url"),
 ///     DataType::Int64.required_field("rownum"),
 ///     DataType::utf8().required_field("body"),
-/// ])?
+/// ])?)
 /// .required_field("line");
 ///
 /// let read = fix_schema(&registry, "fix")?;
@@ -526,7 +514,7 @@ pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field> {
         })
         .collect();
     fields.extend(read.fields().iter().cloned());
-    Ok(DataType::from_fields(fields)?.required_field(read.name()))
+    Ok(DataType::from(StructureType::from_fields(fields)?).required_field(read.name()))
 }
 
 /// Where each of a capture's own columns sits, in the order they lead the row.
@@ -585,7 +573,7 @@ pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>> {
 
 /// What one column answers for, read off its field once per schema.
 ///
-/// A column declaring a group's `fix:counter` answers with that group; any
+/// A column declaring a group's `FIX:counter` answers with that group; any
 /// other column answers for the tag its field carries; one carrying neither
 /// is a capture's own. Both are metadata reads, and a row is filled through
 /// this so a batch of a million rows reads the schema once.
@@ -725,12 +713,12 @@ fn entry_item(level: usize) -> Result<Field> {
         field.set_display(display)?;
         Ok(field)
     };
-    Ok(DataType::from_fields([
+    Ok(DataType::from(StructureType::from_fields([
         named(DataType::Int32, TAG_COLUMN, true)?,
         named(DataType::utf8(), NAME_COLUMN, true)?,
         named(DataType::utf8(), VALUE_COLUMN, false)?,
         tail,
-    ])?
+    ])?)
     .required_field(ENTRY_COMPONENT))
 }
 
@@ -1035,7 +1023,7 @@ fn group_from_entry(
         },
         |item| item.name().to_owned(),
     );
-    let occurrence = DataType::from_fields(union)?.required_field(name);
+    let occurrence = DataType::from(StructureType::from_fields(union)?).required_field(name);
     let dtype = match known.dtype() {
         DataType::Sequence(SequenceType::LargeList(_)) => DataType::large_list(occurrence),
         DataType::Mapping(map) => DataType::map(occurrence, map.keys_sorted())?,
@@ -1130,7 +1118,7 @@ fn child_from_entry(
                 .collect();
             let field = Field::new_with_metadata(
                 known.name(),
-                DataType::from_fields(fields)?,
+                DataType::from(StructureType::from_fields(fields)?),
                 false,
                 known.as_metadata().clone(),
             );
@@ -1164,9 +1152,8 @@ impl super::FixMsg {
     ///
     /// A column no tag and no counter names is the capture's own - the body
     /// the line was cut from, its place in the object, its media type, what
-    /// a bound dropped - and so are the two the crate does tag,
-    /// [`sourceurl`](crate::SOURCEURL_TAG_NAME) and
-    /// [`recordedat`](crate::RECORDEDAT_TAG_NAME). All of them are read
+    /// a bound dropped - and so is the one the crate does tag,
+    /// [`sourceurl`](crate::SOURCEURL_TAG_NAME). All of them are read
     /// past: a message is what parsing one line answered, and what a
     /// *reader* said about that line is not it. Nothing on the message
     /// holds them, so none can reach a digest, an entry, or a `body=` at a
@@ -1306,7 +1293,7 @@ impl super::FixMsg {
         }
         let root = Field::new_with_metadata(
             schema.name(),
-            DataType::from_fields(members)?,
+            DataType::from(StructureType::from_fields(members)?),
             schema.is_nullable(),
             schema.as_metadata().clone(),
         );
@@ -1316,17 +1303,17 @@ impl super::FixMsg {
     /// This message as the fixed row a table holds.
     ///
     /// The columns are the schema's own, in its own order, and each is filled
-    /// by its scalar tag or logical group's `fix:counter`. A message carrying
+    /// by its scalar tag or logical group's `FIX:counter`. A message carrying
     /// nothing at a column answers null there rather than shifting its neighbours, which
     /// is what makes two rows of one capture comparable at all.
     ///
     /// [The capture's own columns](Self::from_row) answer null here, because
-    /// a message holds no fact for any of them: the two the crate tags,
-    /// `sourceurl` and `recordedat`, and every column no tag and no counter
-    /// names. Whoever read the rows states them instead, each at its own
-    /// column and before the field contract runs, which is what the capture
-    /// readers do. Nothing derives one either: when a capture wrote a line
-    /// down is whoever read it to say, so a column nobody stated is null.
+    /// a message holds no fact for any of them: the one the crate tags,
+    /// `sourceurl`, and every column no tag and no counter names. Whoever
+    /// read the rows states them instead, each at its own column and before
+    /// the field contract runs, which is what the capture readers do.
+    /// Nothing derives one either: where a line was read from is whoever
+    /// read it to say, so a column nobody stated is null.
     ///
     /// The arrival record closes the row under [`FIXENTRIES_COLUMN`], so the row
     /// stays lossless whatever the columns made of it. Keys no dictionary
@@ -1430,7 +1417,7 @@ impl super::FixMsg {
                 NOFIXENTRIES_COLUMN => {
                     crate::Scalar::from(i32::try_from(self.entries().len()).unwrap_or(i32::MAX))
                 }
-                // A column declaring a group's `fix:counter` answers with
+                // A column declaring a group's `FIX:counter` answers with
                 // that group, read from the message's own occurrences. Any
                 // other column answers for the tag its field carries; one
                 // that carries none is a capture's own column, which no
@@ -1527,7 +1514,7 @@ impl super::FixMsg {
     /// lane it never wrote is still true of it, and a one-sided quote implies
     /// the side it never wrote either. Then the derived facts this crate
     /// computes - `BeginString` here, and every crate column whose field
-    /// declares a `fix:derivation` through the one evaluator the
+    /// declares a `FIX:derivation` through the one evaluator the
     /// [enriching pass](super::enrich) runs, so `isincode`, `miccode` and
     /// `state` fill a row of an unenriched message exactly as the pass
     /// would fill the message.
@@ -1541,7 +1528,7 @@ impl super::FixMsg {
     /// # Errors
     ///
     /// Returns the registry's refusal of its own derivations, naming the
-    /// field whose `fix:derivation` does not compile: a dictionary whose
+    /// field whose `FIX:derivation` does not compile: a dictionary whose
     /// rules do not compile fills no row, exactly as it enriches no message.
     fn column_value(
         &self,
@@ -1681,7 +1668,7 @@ pub(super) fn narrowed(column: &Field, value: crate::Scalar) -> crate::Scalar {
     if !float || !decimal {
         return value;
     }
-    crate::Decimal::from_scalar(&value).map_or(value, |held| crate::Scalar::from(held.to_f64()))
+    crate::Decimal18::from_scalar(&value).map_or(value, |held| crate::Scalar::from(held.to_f64()))
 }
 
 /// One value rebuilt under one field with every leaf that will not fit nulled.

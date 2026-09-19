@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41600",
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
-      "display": "LegPhysicalSettlTermXID",
-      "fix:tag": "41600"
+      "display": "LegPhysicalSettlTermXID"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41601",
       "description": "Specifies the currency of physical settlement. Uses ISO 4217 currency codes.",
-      "display": "LegPhysicalSettlCurency",
-      "fix:tag": "41601"
+      "display": "LegPhysicalSettlCurency"
     }
   },
   {
@@ -30,9 +30,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41602",
       "description": "The number of business days used in the determination of physical settlement. Its precise meaning depends on the context in which this is used.",
-      "display": "LegPhysicalSettlBusinessDays",
-      "fix:tag": "41602"
+      "display": "LegPhysicalSettlBusinessDays"
     }
   },
   {
@@ -42,9 +42,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41603",
       "description": "A maximum number of business days. Its precise meaning depends on the context in which this element is used. Intended to be used to limit a particular ISDA fallback provision.",
-      "display": "LegPhysicalSettlMaximumBusinessDays",
-      "fix:tag": "41603"
+      "display": "LegPhysicalSettlMaximumBusinessDays"
     }
   },
   {
@@ -54,9 +54,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41604",
       "description": "Number of entries in the repeating group.",
-      "display": "NoLegPhysicalSettlDeliverableObligations",
-      "fix:tag": "41604"
+      "display": "NoLegPhysicalSettlDeliverableObligations"
     }
   },
   {
@@ -66,9 +66,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41605",
       "description": "Specifies the type of delivery obligation applicable for physical settlement.",
-      "display": "LegPhysicalSettlDeliverableObligationType",
-      "fix:tag": "41605"
+      "display": "LegPhysicalSettlDeliverableObligationType"
     }
   },
   {
@@ -78,9 +78,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41606",
       "description": "Physical settlement delivery obligation value appropriate to LegPhysicalSettlDeliverableObligationType(41605). See https://fixtrading.org/packages/deliverable-obligation-type for code list for applicable deliverable obligation types.",
-      "display": "LegPhysicalSettlDeliverableObligationValue",
-      "fix:tag": "41606"
+      "display": "LegPhysicalSettlDeliverableObligationValue"
     }
   },
   {
@@ -90,9 +90,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41607",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegPricingDateBusinessCenters",
-      "fix:tag": "41607"
+      "display": "NoLegPricingDateBusinessCenters"
     }
   },
   {
@@ -102,9 +102,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41608",
       "description": "The business center calendar used to adjust the pricing or fixing date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegPricingDateBusinessCenter",
-      "fix:tag": "41608"
+      "display": "LegPricingDateBusinessCenter"
     }
   },
   {
@@ -115,9 +115,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41609",
       "description": "The unadjusted pricing or fixing date.",
-      "display": "LegPricingDateUnadjusted",
-      "fix:tag": "41609"
+      "display": "LegPricingDateUnadjusted"
     }
   },
   {
@@ -127,9 +127,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the pricing or fixing date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
-      "display": "LegPricingDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -171,7 +169,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "41610"
+      "FIX:tag": "41610",
+      "description": "The business day convention used to adjust the pricing or fixing date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
+      "display": "LegPricingDateBusinessDayConvention"
     }
   },
   {
@@ -182,9 +182,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41611",
       "description": "The adjusted pricing or fixing date.",
-      "display": "LegPricingDateAdjusted",
-      "fix:tag": "41611"
+      "display": "LegPricingDateAdjusted"
     }
   },
   {
@@ -195,9 +195,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41612",
       "description": "The local market pricing or fixing time.",
-      "display": "LegPricingTime",
-      "fix:tag": "41612"
+      "display": "LegPricingTime"
     }
   },
   {
@@ -207,9 +207,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41613",
       "description": "Specifies the business center for determining the pricing or fixing time. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegPricingTimeBusinessCenter",
-      "fix:tag": "41613"
+      "display": "LegPricingTimeBusinessCenter"
     }
   },
   {
@@ -219,9 +219,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41614",
       "description": "Number of event sources in the repeating group.",
-      "display": "NoLegProtectionTermEventNewsSources",
-      "fix:tag": "41614"
+      "display": "NoLegProtectionTermEventNewsSources"
     }
   },
   {
@@ -231,9 +231,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41615",
       "description": "A newspaper or electronic news service that may publish relevant information used in the determination of whether or not a credit event has occurred.",
-      "display": "LegProtectionTermEventNewsSource",
-      "fix:tag": "41615"
+      "display": "LegProtectionTermEventNewsSource"
     }
   },
   {
@@ -243,9 +243,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41616",
       "description": "Number of protection terms in the repeating group.",
-      "display": "NoLegProtectionTerms",
-      "fix:tag": "41616"
+      "display": "NoLegProtectionTerms"
     }
   },
   {
@@ -255,9 +255,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41617",
       "description": "A named string value referenced from UnderlyingProtectionTermXIDRef(41314).",
-      "display": "LegProtectionTermXID",
-      "fix:tag": "41617"
+      "display": "LegProtectionTermXID"
     }
   },
   {
@@ -269,9 +269,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41618",
       "description": "The notional amount of protection coverage.",
-      "display": "LegProtectionTermNotional",
-      "fix:tag": "41618"
+      "display": "LegProtectionTermNotional"
     }
   },
   {
@@ -281,9 +281,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41619",
       "description": "The currency of LegProtectionTermNotional(41618). Uses ISO 4217 currency codes.",
-      "display": "LegProtectionTermCurrency",
-      "fix:tag": "41619"
+      "display": "LegProtectionTermCurrency"
     }
   },
   {
@@ -293,9 +293,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41620",
       "description": "The notifying party is the party that notifies the other party when a credit event has occurred by means of a credit event notice. If more than one party is referenced as being the notifying party then either party may notify the other of a credit event occurring. LegProtectionTermSellerNotifies(41620)=Y indicates that the seller notifies.",
-      "display": "LegProtectionTermSellerNotifies",
-      "fix:tag": "41620"
+      "display": "LegProtectionTermSellerNotifies"
     }
   },
   {
@@ -305,9 +305,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41621",
       "description": "The notifying party is the party that notifies the other party when a credit event has occurred by means of a credit event notice. If more than one party is referenced as being the notifying party then either party may notify the other of a credit event occurring. LegProtectionTermBuyerNotifies(41621)=Y indicates that the buyer notifies.",
-      "display": "LegProtectionTermBuyerNotifies",
-      "fix:tag": "41621"
+      "display": "LegProtectionTermBuyerNotifies"
     }
   },
   {
@@ -317,9 +317,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41622",
       "description": "When used, the business center indicates the local time of the business center that replaces the Greenwich Mean Time in Section 3.3 of the 2003 ISDA Credit Derivatives Definitions. See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegProtectionTermEventBusinessCenter",
-      "fix:tag": "41622"
+      "display": "LegProtectionTermEventBusinessCenter"
     }
   },
   {
@@ -329,9 +329,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41623",
       "description": "Indicates whether ISDA defined Standard Public Sources are applicable (LegProtectionTermStandardSources(41623)=Y) or not.",
-      "display": "LegProtectionTermStandardSources",
-      "fix:tag": "41623"
+      "display": "LegProtectionTermStandardSources"
     }
   },
   {
@@ -341,9 +341,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41624",
       "description": "The minimum number of the specified public information sources that must publish information that reasonably confirms that a credit event has occurred. The market convention is two.",
-      "display": "LegProtectionTermEventMinimumSources",
-      "fix:tag": "41624"
+      "display": "LegProtectionTermEventMinimumSources"
     }
   },
   {
@@ -353,9 +353,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41625",
       "description": "Number of protection term events in the repeating group.",
-      "display": "NoLegProtectionTermEvents",
-      "fix:tag": "41625"
+      "display": "NoLegProtectionTermEvents"
     }
   },
   {
@@ -365,9 +365,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41626",
       "description": "Specifies the type of credit event applicable to the protection terms. See https://fixtrading.org/packages/protection-term-event-type for code list of applicable event types.",
-      "display": "LegProtectionTermEventType",
-      "fix:tag": "41626"
+      "display": "LegProtectionTermEventType"
     }
   },
   {
@@ -377,9 +377,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41627",
       "description": "Specifies the protection term event value appropriate to LegProtectionTermEventType(41626). See https://fixtrading.org/packages/protection-term-event-type/protection-term-event-type for applicable event type values.",
-      "display": "LegProtectionTermEventValue",
-      "fix:tag": "41627"
+      "display": "LegProtectionTermEventValue"
     }
   },
   {
@@ -389,9 +389,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41628",
       "description": "Applicable currency if the event value is an amount. Uses ISO 4217 currency codes.",
-      "display": "LegProtectionTermEventCurrency",
-      "fix:tag": "41628"
+      "display": "LegProtectionTermEventCurrency"
     }
   },
   {
@@ -401,9 +401,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41629",
       "description": "Time unit multiplier for protection term events.",
-      "display": "LegProtectionTermEventPeriod",
-      "fix:tag": "41629"
+      "display": "LegProtectionTermEventPeriod"
     }
   },
   {
@@ -413,9 +413,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with protection term events.",
-      "display": "LegProtectionTermEventUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -437,7 +435,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41630"
+      "FIX:tag": "41630",
+      "description": "Time unit associated with protection term events.",
+      "display": "LegProtectionTermEventUnit"
     }
   },
   {
@@ -447,9 +447,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Day type for events that specify a period and unit.",
-      "display": "LegProtectionTermEventDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -481,7 +479,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "41631"
+      "FIX:tag": "41631",
+      "description": "Day type for events that specify a period and unit.",
+      "display": "LegProtectionTermEventDayType"
     }
   },
   {
@@ -491,9 +491,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41632",
       "description": "Rate source for events that specify a rate source, e.g. floating rate interest shortfall.",
-      "display": "LegProtectionTermEventRateSource",
-      "fix:tag": "41632"
+      "display": "LegProtectionTermEventRateSource"
     }
   },
   {
@@ -503,9 +503,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41633",
       "description": "Number of qualifiers in the repeating group.",
-      "display": "NoLegProtectionTermEventQualifiers",
-      "fix:tag": "41633"
+      "display": "NoLegProtectionTermEventQualifiers"
     }
   },
   {
@@ -515,9 +515,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the protection term event qualifier. Used to further qualify LegProtectionTermEventType(41626).",
-      "display": "LegProtectionTermEventQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "H",
           "name": "RestructuringMultipleHoldingObligations",
@@ -534,7 +532,9 @@
           "doc": "Floating rate interest shortfall"
         }
       ],
-      "fix:tag": "41634"
+      "FIX:tag": "41634",
+      "description": "Specifies the protection term event qualifier. Used to further qualify LegProtectionTermEventType(41626).",
+      "display": "LegProtectionTermEventQualifier"
     }
   },
   {
@@ -544,9 +544,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41635",
       "description": "Number of obligations in the repeating group.",
-      "display": "NoLegProtectionTermObligations",
-      "fix:tag": "41635"
+      "display": "NoLegProtectionTermObligations"
     }
   },
   {
@@ -556,9 +556,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41636",
       "description": "Specifies the type of obligation applicable to the protection terms. See https://fixtrading.org/packages/protection-term-obligation-type for code list of applicable obligation types.",
-      "display": "LegProtectionTermObligationType",
-      "fix:tag": "41636"
+      "display": "LegProtectionTermObligationType"
     }
   },
   {
@@ -568,9 +568,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41637",
       "description": "The value associated with the protection term obligation specified in LegProtectionTermObligationType(41636). See https://fixtrading.org/packages/protection-term-obligation-type for applicable obligation type values.",
-      "display": "LegProtectionTermObligationValue",
-      "fix:tag": "41637"
+      "display": "LegProtectionTermObligationValue"
     }
   },
   {
@@ -580,9 +580,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41638",
       "description": "Number of calculation period dates in the repeating group.",
-      "display": "NoLegStreamCalculationPeriodDates",
-      "fix:tag": "41638"
+      "display": "NoLegStreamCalculationPeriodDates"
     }
   },
   {
@@ -593,9 +593,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41639",
       "description": "The adjusted or unadjusted fixed calculation period date.",
-      "display": "LegStreamCalculationPeriodDate",
-      "fix:tag": "41639"
+      "display": "LegStreamCalculationPeriodDate"
     }
   },
   {
@@ -605,9 +605,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of fixed calculation period date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
-      "display": "LegStreamCalculationPeriodDateType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Unadjusted",
@@ -619,7 +617,9 @@
           "doc": "Adjusted"
         }
       ],
-      "fix:tag": "41640"
+      "FIX:tag": "41640",
+      "description": "Specifies the type of fixed calculation period date. When specified it applies not only to the current date but to all subsequent dates in the group until overridden with a new type.",
+      "display": "LegStreamCalculationPeriodDateType"
     }
   },
   {
@@ -629,9 +629,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41641",
       "description": "Identifier of this calculation period for cross referencing elsewhere in the message.",
-      "display": "LegStreamCalculationPeriodDatesXID",
-      "fix:tag": "41641"
+      "display": "LegStreamCalculationPeriodDatesXID"
     }
   },
   {
@@ -641,9 +641,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41642",
       "description": "Cross reference to another calculation period for duplicating its properties.",
-      "display": "LegStreamCalculationPeriodDatesXIDRef",
-      "fix:tag": "41642"
+      "display": "LegStreamCalculationPeriodDatesXIDRef"
     }
   },
   {
@@ -653,9 +653,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41643",
       "description": "When specified and set to 'Y', it indicates that the first calculation period should run from the effective date to the end of the calendar period in which the effective date falls (e.g. Jan 15 - Jan 31 if the calculation periods are one month long and effective date is Jan 15.). If 'N' or not specified, it indicates that the first calculation period should run from the effective date for one whole period (e.g. Jan 15 to Feb 14 if the calculation periods are one month long and the effective date is Jan 15.).",
-      "display": "LegStreamCalculationBalanceOfFirstPeriod",
-      "fix:tag": "41643"
+      "display": "LegStreamCalculationBalanceOfFirstPeriod"
     }
   },
   {
@@ -665,9 +665,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41644",
       "description": "Time unit multiplier for the length of time after the publication of the data when corrections can be made.",
-      "display": "LegStreamCalculationCorrectionPeriod",
-      "fix:tag": "41644"
+      "display": "LegStreamCalculationCorrectionPeriod"
     }
   },
   {
@@ -677,9 +677,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the length of time after the publication of the data when corrections can be made.",
-      "display": "LegStreamCalculationCorrectionUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -701,7 +699,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41645"
+      "FIX:tag": "41645",
+      "description": "Time unit associated with the length of time after the publication of the data when corrections can be made.",
+      "display": "LegStreamCalculationCorrectionUnit"
     }
   },
   {
@@ -711,9 +711,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41646",
       "description": "Number of business centers in the repeating group.",
-      "display": "NoLegStreamCommoditySettlBusinessCenters",
-      "fix:tag": "41646"
+      "display": "NoLegStreamCommoditySettlBusinessCenters"
     }
   },
   {
@@ -723,9 +723,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41647",
       "description": "The business center calendar used to adjust the commodity delivery date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "LegStreamCommoditySettlBusinessCenter",
-      "fix:tag": "41647"
+      "display": "LegStreamCommoditySettlBusinessCenter"
     }
   },
   {
@@ -735,9 +735,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41648",
       "description": "Specifies the general base type of the commodity traded. Where possible, this should follow the naming convention used in the 2005 ISDA Commodity Definitions.",
-      "display": "LegStreamCommodityBase",
-      "fix:tag": "41648"
+      "display": "LegStreamCommodityBase"
     }
   },
   {
@@ -747,9 +747,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41649",
       "description": "Specifies the type of commodity product. For coal see https://fpml.org/coding-scheme/commodity-coal-product-type for values. For metals see https://fpml.org/coding-scheme/commodity-metal-product-type for values. For bullion see https://fixtrading.org/packages/bullion-type for the external code list of bullion types.",
-      "display": "LegStreamCommodityType",
-      "fix:tag": "41649"
+      "display": "LegStreamCommodityType"
     }
   },
   {
@@ -759,9 +759,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41650",
       "description": "Specifies the market identifier for the commodity.",
-      "display": "LegStreamCommoditySecurityID",
-      "fix:tag": "41650"
+      "display": "LegStreamCommoditySecurityID"
     }
   },
   {
@@ -771,9 +771,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the class or source of the LegStreamCommoditySecurityIDSource(41650) value.",
-      "display": "LegStreamCommoditySecurityIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -940,7 +938,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "41651"
+      "FIX:tag": "41651",
+      "description": "Identifies the class or source of the LegStreamCommoditySecurityIDSource(41650) value.",
+      "display": "LegStreamCommoditySecurityIDSource"
     }
   },
   {
@@ -950,9 +950,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41652",
       "description": "Description of the commodity asset.",
-      "display": "LegStreamCommodityDesc",
-      "fix:tag": "41652"
+      "display": "LegStreamCommodityDesc"
     }
   },
   {
@@ -962,9 +962,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41653",
       "description": "Byte length of encoded (non-ASCII characters) EncodedLegStreamCommodityDesc(41654) field.",
-      "display": "EncodedLegStreamCommodityDescLen",
-      "fix:tag": "41653"
+      "display": "EncodedLegStreamCommodityDescLen"
     }
   },
   {
@@ -974,9 +974,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41654",
       "description": "Encoded (non-ASCII characters) representation of the LegStreamCommodityDesc(41652) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the LegStreamCommodityDesc(41652) field.",
-      "display": "EncodedLegStreamCommodityDesc",
-      "fix:tag": "41654"
+      "display": "EncodedLegStreamCommodityDesc"
     }
   },
   {
@@ -986,9 +986,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The unit of measure (UOM) of the commodity asset.",
-      "display": "LegStreamCommodityUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -1470,7 +1468,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41655"
+      "FIX:tag": "41655",
+      "description": "The unit of measure (UOM) of the commodity asset.",
+      "display": "LegStreamCommodityUnitOfMeasure"
     }
   },
   {
@@ -1480,9 +1480,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41656",
       "description": "Identifies the currency of the commodity asset. Uses ISO 4217 currency codes.",
-      "display": "LegStreamCommodityCurrency",
-      "fix:tag": "41656"
+      "display": "LegStreamCommodityCurrency"
     }
   },
   {
@@ -1492,9 +1492,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41657",
       "description": "Identifies the exchange where the commodity is traded.",
-      "display": "LegStreamCommodityExchange",
-      "fix:tag": "41657"
+      "display": "LegStreamCommodityExchange"
     }
   },
   {
@@ -1504,9 +1504,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41658",
       "description": "Identifies the source of rate information used for commodities. See https://fixtrading.org/packages/commodity-rate-source for code list of applicable sources.",
-      "display": "LegStreamCommodityRateSource",
-      "fix:tag": "41658"
+      "display": "LegStreamCommodityRateSource"
     }
   },
   {
@@ -1516,9 +1516,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41659",
       "description": "Identifies the reference \"page\" from the rate source.",
-      "display": "LegStreamCommodityRateReferencePage",
-      "fix:tag": "41659"
+      "display": "LegStreamCommodityRateReferencePage"
     }
   },
   {
@@ -1528,9 +1528,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41660",
       "description": "Identifies the page heading from the rate source.",
-      "display": "LegStreamCommodityRateReferencePageHeading",
-      "fix:tag": "41660"
+      "display": "LegStreamCommodityRateReferencePageHeading"
     }
   },
   {
@@ -1540,9 +1540,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41661",
       "description": "Specifies the commodity data or information provider. See https://fpml.org/coding-scheme/commodity-information-provider for values.",
-      "display": "LegStreamDataProvider",
-      "fix:tag": "41661"
+      "display": "LegStreamDataProvider"
     }
   },
   {
@@ -1552,9 +1552,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41662",
       "description": "Specifies how the pricing or rate setting of the trade is to be determined or based upon. See https://fixtrading.org/packages/commodity-rate-pricing-type for code list of applicable commodity pricing types.",
-      "display": "LegStreamCommodityPricingType",
-      "fix:tag": "41662"
+      "display": "LegStreamCommodityPricingType"
     }
   },
   {
@@ -1564,9 +1564,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41663",
       "description": "Time unit multiplier for the nearby settlement day.",
-      "display": "LegStreamCommodityNearbySettlDayPeriod",
-      "fix:tag": "41663"
+      "display": "LegStreamCommodityNearbySettlDayPeriod"
     }
   },
   {
@@ -1576,9 +1576,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the nearby settlement day.",
-      "display": "LegStreamCommodityNearbySettlDayUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Wk",
           "name": "Week",
@@ -1590,7 +1588,9 @@
           "doc": "Month"
         }
       ],
-      "fix:tag": "41664"
+      "FIX:tag": "41664",
+      "description": "Time unit associated with the nearby settlement day.",
+      "display": "LegStreamCommodityNearbySettlDayUnit"
     }
   },
   {
@@ -1601,9 +1601,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41665",
       "description": "The unadjusted commodity delivery date.",
-      "display": "LegStreamCommoditySettlDateUnadjusted",
-      "fix:tag": "41665"
+      "display": "LegStreamCommoditySettlDateUnadjusted"
     }
   },
   {
@@ -1613,9 +1613,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used to adjust the commodity delivery date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
-      "display": "LegStreamCommoditySettlDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1657,7 +1655,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "41666"
+      "FIX:tag": "41666",
+      "description": "The business day convention used to adjust the commodity delivery date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
+      "display": "LegStreamCommoditySettlDateBusinessDayConvention"
     }
   },
   {
@@ -1668,9 +1668,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41667",
       "description": "The adjusted commodity delivery date.",
-      "display": "LegStreamCommoditySettlDateAdjusted",
-      "fix:tag": "41667"
+      "display": "LegStreamCommoditySettlDateAdjusted"
     }
   },
   {
@@ -1680,9 +1680,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41668",
       "description": "Specifies a fixed single month for commodity delivery.",
-      "display": "LegStreamCommoditySettlMonth",
-      "fix:tag": "41668"
+      "display": "LegStreamCommoditySettlMonth"
     }
   },
   {
@@ -1692,9 +1692,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41669",
       "description": "Time unit multiplier for the commodity delivery date roll.",
-      "display": "LegStreamCommoditySettlDateRollPeriod",
-      "fix:tag": "41669"
+      "display": "LegStreamCommoditySettlDateRollPeriod"
     }
   },
   {
@@ -1704,16 +1704,16 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the commodity delivery date roll.",
-      "display": "LegStreamCommoditySettlDateRollUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
           "doc": "Day"
         }
       ],
-      "fix:tag": "41670"
+      "FIX:tag": "41670",
+      "description": "Time unit associated with the commodity delivery date roll.",
+      "display": "LegStreamCommoditySettlDateRollUnit"
     }
   },
   {
@@ -1723,9 +1723,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the commodity delivery roll day type.",
-      "display": "LegStreamCommoditySettlDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -1757,7 +1755,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "41671"
+      "FIX:tag": "41671",
+      "description": "Specifies the commodity delivery roll day type.",
+      "display": "LegStreamCommoditySettlDayType"
     }
   },
   {
@@ -1767,9 +1767,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41672",
       "description": "Identifier of this stream commodity for cross referencing elsewhere in the message.",
-      "display": "LegStreamCommodityXID",
-      "fix:tag": "41672"
+      "display": "LegStreamCommodityXID"
     }
   },
   {
@@ -1779,9 +1779,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41673",
       "description": "Reference to a stream commodity elsewhere in the message.",
-      "display": "LegStreamCommodityXIDRef",
-      "fix:tag": "41673"
+      "display": "LegStreamCommodityXIDRef"
     }
   },
   {
@@ -1791,9 +1791,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41674",
       "description": "Number of alternate security identifers.",
-      "display": "NoLegStreamCommodityAltIDs",
-      "fix:tag": "41674"
+      "display": "NoLegStreamCommodityAltIDs"
     }
   },
   {
@@ -1803,9 +1803,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41675",
       "description": "Alternate security identifier value for the commodity.",
-      "display": "LegStreamCommodityAltID",
-      "fix:tag": "41675"
+      "display": "LegStreamCommodityAltID"
     }
   },
   {
@@ -1815,9 +1815,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41676",
       "description": "Identifies the class or source of the alternate commodity security identifier.",
-      "display": "LegStreamCommodityAltIDSource",
-      "fix:tag": "41676"
+      "display": "LegStreamCommodityAltIDSource"
     }
   },
   {
@@ -1827,9 +1827,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41677",
       "description": "Number of data sources in the repeating group. The order of entry determines priority – first is the main source, second is fallback, third is second fallback.",
-      "display": "NoLegStreamCommodityDataSources",
-      "fix:tag": "41677"
+      "display": "NoLegStreamCommodityDataSources"
     }
   },
   {
@@ -1839,9 +1839,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41678",
       "description": "Specifies the data source identifier.",
-      "display": "LegStreamCommodityDataSourceID",
-      "fix:tag": "41678"
+      "display": "LegStreamCommodityDataSourceID"
     }
   },
   {
@@ -1851,9 +1851,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of data source identifier.",
-      "display": "LegStreamCommodityDataSourceIDType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "City",
@@ -1875,7 +1873,9 @@
           "doc": "Weather index WMO (World Meteorological Organization)"
         }
       ],
-      "fix:tag": "41679"
+      "FIX:tag": "41679",
+      "description": "Specifies the type of data source identifier.",
+      "display": "LegStreamCommodityDataSourceIDType"
     }
   },
   {
@@ -1885,9 +1885,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41680",
       "description": "Number of days in the repeating group.",
-      "display": "NoLegStreamCommoditySettlDays",
-      "fix:tag": "41680"
+      "display": "NoLegStreamCommoditySettlDays"
     }
   },
   {
@@ -1897,9 +1897,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day or group of days for delivery.",
-      "display": "LegStreamCommoditySettlDay",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Monday",
@@ -1951,7 +1949,9 @@
           "doc": "All weekends"
         }
       ],
-      "fix:tag": "41681"
+      "FIX:tag": "41681",
+      "description": "Specifies the day or group of days for delivery.",
+      "display": "LegStreamCommoditySettlDay"
     }
   },
   {
@@ -1961,9 +1961,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41682",
       "description": "Sum of the hours specified in LegStreamCommoditySettlTimeGrp.",
-      "display": "LegStreamCommoditySettlTotalHours",
-      "fix:tag": "41682"
+      "display": "LegStreamCommoditySettlTotalHours"
     }
   },
   {
@@ -1973,9 +1973,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41683",
       "description": "Number of hour ranges in the repeating group.",
-      "display": "NoLegStreamCommoditySettlTimes",
-      "fix:tag": "41683"
+      "display": "NoLegStreamCommoditySettlTimes"
     }
   },
   {
@@ -1985,9 +1985,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41684",
       "description": "The start time for commodity settlement where delivery occurs over time. The time format is specified by the settlement time type.",
-      "display": "LegStreamCommoditySettlStart",
-      "fix:tag": "41684"
+      "display": "LegStreamCommoditySettlStart"
     }
   },
   {
@@ -1997,9 +1997,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41685",
       "description": "The end time for commodity settlement where delivery occurs over time. The time format is specified by the settlement time type.",
-      "display": "LegStreamCommoditySettlEnd",
-      "fix:tag": "41685"
+      "display": "LegStreamCommoditySettlEnd"
     }
   },
   {
@@ -2009,9 +2009,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41686",
       "description": "Number of commodity settlement periods in the repeating group.",
-      "display": "NoLegStreamCommoditySettlPeriods",
-      "fix:tag": "41686"
+      "display": "NoLegStreamCommoditySettlPeriods"
     }
   },
   {
@@ -2021,9 +2021,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41687",
       "description": "Specifies the country where delivery takes place. Uses ISO 3166 2-character country code.",
-      "display": "LegStreamCommoditySettlCountry",
-      "fix:tag": "41687"
+      "display": "LegStreamCommoditySettlCountry"
     }
   },
   {
@@ -2033,9 +2033,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41688",
       "description": "Commodity delivery timezone specified as \"prevailing\" rather than \"standard\" or \"daylight\". See https://fixtrading.org/packages/prevailing-timezones for code list of applicable prevailing timezones.",
-      "display": "LegStreamCommoditySettlTimeZone",
-      "fix:tag": "41688"
+      "display": "LegStreamCommoditySettlTimeZone"
     }
   },
   {
@@ -2045,9 +2045,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the commodity delivery flow type.",
-      "display": "LegStreamCommoditySettlFlowType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "AllTimes",
@@ -2079,7 +2077,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "41689"
+      "FIX:tag": "41689",
+      "description": "Specifies the commodity delivery flow type.",
+      "display": "LegStreamCommoditySettlFlowType"
     }
   },
   {
@@ -2091,9 +2091,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41690",
       "description": "Delivery quantity associated with this settlement period.",
-      "display": "LegStreamCommoditySettlPeriodNotional",
-      "fix:tag": "41690"
+      "display": "LegStreamCommoditySettlPeriodNotional"
     }
   },
   {
@@ -2103,9 +2103,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the unit of measure (UOM) of the delivery quantity associated with this settlement period.",
-      "display": "LegStreamCommoditySettlPeriodNotionalUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -2587,7 +2585,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41691"
+      "FIX:tag": "41691",
+      "description": "Specifies the unit of measure (UOM) of the delivery quantity associated with this settlement period.",
+      "display": "LegStreamCommoditySettlPeriodNotionalUnitOfMeasure"
     }
   },
   {
@@ -2597,9 +2597,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41692",
       "description": "Time unit multiplier for the settlement period frequency.",
-      "display": "LegStreamCommoditySettlPeriodFrequencyPeriod",
-      "fix:tag": "41692"
+      "display": "LegStreamCommoditySettlPeriodFrequencyPeriod"
     }
   },
   {
@@ -2609,9 +2609,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the settlement period frequency.",
-      "display": "LegStreamCommoditySettlPeriodFrequencyUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -2633,7 +2631,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "41693"
+      "FIX:tag": "41693",
+      "description": "Time unit associated with the settlement period frequency.",
+      "display": "LegStreamCommoditySettlPeriodFrequencyUnit"
     }
   },
   {
@@ -2645,9 +2645,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41694",
       "description": "The settlement period price.",
-      "display": "LegStreamCommoditySettlPeriodPrice",
-      "fix:tag": "41694"
+      "display": "LegStreamCommoditySettlPeriodPrice"
     }
   },
   {
@@ -2657,9 +2657,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The settlement period price unit of measure (UOM).",
-      "display": "LegStreamCommoditySettlPeriodPriceUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -3141,7 +3139,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "41695"
+      "FIX:tag": "41695",
+      "description": "The settlement period price unit of measure (UOM).",
+      "display": "LegStreamCommoditySettlPeriodPriceUnitOfMeasure"
     }
   },
   {
@@ -3151,9 +3151,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41696",
       "description": "The currency of the settlement period price. Uses ISO 4217 currency codes.",
-      "display": "LegStreamCommoditySettlPeriodPriceCurrency",
-      "fix:tag": "41696"
+      "display": "LegStreamCommoditySettlPeriodPriceCurrency"
     }
   },
   {
@@ -3163,9 +3163,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether holidays are included in the settlement periods. Required for electricity contracts.",
-      "display": "LegStreamCommoditySettlHolidaysProcessingInstruction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "DoNotIncludeHolidays",
@@ -3177,7 +3175,9 @@
           "doc": "Include holidays"
         }
       ],
-      "fix:tag": "41697"
+      "FIX:tag": "41697",
+      "description": "Indicates whether holidays are included in the settlement periods. Required for electricity contracts.",
+      "display": "LegStreamCommoditySettlHolidaysProcessingInstruction"
     }
   },
   {
@@ -3187,9 +3187,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41698",
       "description": "Identifier of this settlement period for cross referencing elsewhere in the message.",
-      "display": "LegStreamCommoditySettlPeriodXID",
-      "fix:tag": "41698"
+      "display": "LegStreamCommoditySettlPeriodXID"
     }
   },
   {
@@ -3199,9 +3199,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "41699",
       "description": "Cross reference to another settlement period for duplicating its properties.",
-      "display": "LegStreamCommoditySettlPeriodXIDRef",
-      "fix:tag": "41699"
+      "display": "LegStreamCommoditySettlPeriodXIDRef"
     }
   }
 ]

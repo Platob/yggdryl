@@ -20,10 +20,10 @@ const CHILD_DOMAIN: u64 = 0x4d53_475f_4348_4c44;
 /// the registry's message-definition methods.
 ///
 /// ```
-/// use yggdryl::{DataType, FixRegistry};
+/// use yggdryl::{DataType, FixRegistry, StructureType};
 ///
 /// let mut registry = FixRegistry::new();
-/// let mut field = DataType::from_fields([])?.required_field("Order");
+/// let mut field = DataType::from(StructureType::from_fields([])?).required_field("Order");
 /// field.as_fix_mut().set_msgtype("D")?;
 /// registry.insert(field)?;
 /// let message = registry.msgtype("D")?;
@@ -79,7 +79,7 @@ pub(super) fn wire_value(spelling: &str) -> &str {
 pub(super) fn validate_code(value: &str) -> Result<()> {
     if value.is_empty() || value.chars().any(char::is_control) {
         return Err(Error::InvalidMetadataValue {
-            key: "fix:msgtype".into(),
+            key: "FIX:msgtype".into(),
             reason: "expected nonempty message-code text without control characters".into(),
         });
     }
@@ -104,7 +104,7 @@ impl MsgType {
         let code = field
             .as_fix()
             .msgtype()
-            .ok_or_else(|| Error::absent("fix:msgtype", field.name()))?;
+            .ok_or_else(|| Error::absent("FIX:msgtype", field.name()))?;
         validate_code(code)?;
         let tags = field
             .fields()
@@ -162,10 +162,10 @@ impl MsgType {
     ///
     /// ```
     /// use std::sync::Arc;
-    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
+    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructureType};
     /// let mut id = DataType::utf8().nullable_field("clordid");
     /// id.as_fix_mut().set_tag(11)?;
-    /// let mut field = DataType::from_fields([id])?.required_field("order");
+    /// let mut field = DataType::from(StructureType::from_fields([id])?).required_field("order");
     /// field.as_fix_mut().set_msgtype("D")?;
     /// field.as_fix_mut().set_identifiers(["11"])?;
     /// let mut registry = FixRegistry::new();

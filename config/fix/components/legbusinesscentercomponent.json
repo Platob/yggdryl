@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbusinesscenter",
-          "fix:tag": "40924"
+          "FIX:field": "legbusinesscenter",
+          "FIX:tag": "40924"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegBusinessCenter",
-    "fix:tag": "437055"
+    "FIX:tag": "437055",
+    "display": "LegBusinessCenter"
   }
 }

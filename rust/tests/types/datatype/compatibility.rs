@@ -3,14 +3,18 @@ use std::sync::Arc;
 
 use yggdryl::DecimalType;
 use yggdryl::SequenceType;
-use yggdryl::{DataType, DataTypeId, Error, Field, Scheme, TimeUnit, Timezone, UnionMode};
+use yggdryl::{
+    DataType, DataTypeId, Error, Field, Scheme, StructureType, TimeUnit, Timezone, UnionMode,
+};
 use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 #[test]
 fn arrow_is_a_cache_preserving_validated_noop() {
     let field = Field::from_parts(
         "value",
-        DataType::from_fields([Field::new("child", DataType::utf8(), true)]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([Field::new("child", DataType::utf8(), true)]).unwrap(),
+        ),
         false,
         [("owner", "yggdryl")],
     )
@@ -28,7 +32,7 @@ fn arrow_is_a_cache_preserving_validated_noop() {
 
 #[test]
 fn spark_applies_only_the_conservative_recursive_matrix() {
-    let source = DataType::from_fields([
+    let source = StructureType::from_fields([
         Field::new("small", DataType::UInt8, false),
         Field::new("wide", DataType::UInt64, true),
         Field::new(
@@ -42,6 +46,7 @@ fn spark_applies_only_the_conservative_recursive_matrix() {
             false,
         ),
     ])
+    .map(DataType::from)
     .unwrap();
     let transformed = source.into_scheme_compat(&Scheme::SPARK).unwrap();
     let fields = transformed.as_fields().unwrap();
@@ -99,7 +104,7 @@ fn spark_physical_rewrite_table_covers_offset_numeric_and_decimal_families() {
 
 #[test]
 fn spark_errors_are_path_aware_and_extension_rewrites_are_atomic() {
-    let source = DataType::from_fields([Field::new(
+    let source = StructureType::from_fields([Field::new(
         "a.b",
         DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Nanosecond,
@@ -107,6 +112,7 @@ fn spark_errors_are_path_aware_and_extension_rewrites_are_atomic() {
         }),
         false,
     )])
+    .map(DataType::from)
     .unwrap();
     let error = source
         .into_scheme_compat(&Scheme::SPARK)
@@ -239,10 +245,11 @@ fn polars_and_pandas_reject_maps_with_a_named_alternative() {
     let map = DataType::map(
         Field::new(
             "entries",
-            DataType::from_fields(vec![
+            StructureType::from_fields(vec![
                 Field::new("key", DataType::utf8(), false),
                 Field::new("value", DataType::Int64, true),
             ])
+            .map(DataType::from)
             .unwrap(),
             false,
         ),
@@ -301,7 +308,7 @@ fn temporal_resolution_errors_name_the_expected_and_actual_unit() {
 
 #[test]
 fn every_target_reports_a_path_for_a_nested_failure() {
-    let nested = DataType::from_fields(vec![Field::new(
+    let nested = StructureType::from_fields(vec![Field::new(
         "outer",
         DataType::list(Field::new(
             "item",
@@ -313,6 +320,7 @@ fn every_target_reports_a_path_for_a_nested_failure() {
         )),
         true,
     )])
+    .map(DataType::from)
     .unwrap();
 
     for target in [Scheme::SPARK, Scheme::POLARS, Scheme::PANDAS] {
@@ -647,8 +655,9 @@ fn iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual() {
         ),
     ];
     for (rejected, fragments) in cases {
-        let source =
-            DataType::from_fields([Field::new("created", rejected.clone(), true)]).unwrap();
+        let source = DataType::from(
+            StructureType::from_fields([Field::new("created", rejected.clone(), true)]).unwrap(),
+        );
         let error = source.into_scheme_compat(&Scheme::ICEBERG).unwrap_err();
         let message = error.to_string();
         assert!(message.contains("$.created"), "{rejected:?}: {message}");
@@ -667,7 +676,7 @@ fn iceberg_refusals_carry_a_path_and_name_the_expectation_and_the_actual() {
 
 #[test]
 fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_list() {
-    let source = DataType::from_fields([
+    let source = StructureType::from_fields([
         Field::new("id", DataType::UInt16, false),
         Field::new(
             "tags",
@@ -676,7 +685,9 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
         ),
         Field::new(
             "nested",
-            DataType::from_fields([Field::new("half", DataType::Float16, true)]).unwrap(),
+            DataType::from(
+                StructureType::from_fields([Field::new("half", DataType::Float16, true)]).unwrap(),
+            ),
             true,
         ),
         // Iceberg has a first-class map, so it recurses rather than refusing.
@@ -686,6 +697,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
             true,
         ),
     ])
+    .map(DataType::from)
     .unwrap();
     let transformed = source.into_scheme_compat(&Scheme::ICEBERG).unwrap();
     let fields = transformed.as_fields().unwrap();
@@ -716,7 +728,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
     );
 
     // A union has none, and says so where it is.
-    let union = DataType::from_fields([Field::new(
+    let union = StructureType::from_fields([Field::new(
         "choice",
         DataType::union(
             [(1, Field::new("value", DataType::Int32, false))],
@@ -725,6 +737,7 @@ fn iceberg_recurses_through_nested_layouts_and_declares_union_and_fixed_size_lis
         .unwrap(),
         true,
     )])
+    .map(DataType::from)
     .unwrap();
     let message = union
         .into_scheme_compat(&Scheme::ICEBERG)

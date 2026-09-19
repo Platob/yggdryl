@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdateunadjusted",
-          "fix:tag": "41389"
+          "FIX:field": "legcomplexeventdateunadjusted",
+          "FIX:tag": "41389"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdaterelativeto",
-          "fix:tag": "41390"
+          "FIX:field": "legcomplexeventdaterelativeto",
+          "FIX:tag": "41390"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdateoffsetperiod",
-          "fix:tag": "41391"
+          "FIX:field": "legcomplexeventdateoffsetperiod",
+          "FIX:tag": "41391"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdateoffsetunit",
-          "fix:tag": "41392"
+          "FIX:field": "legcomplexeventdateoffsetunit",
+          "FIX:tag": "41392"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdateoffsetdaytype",
-          "fix:tag": "41393"
+          "FIX:field": "legcomplexeventdateoffsetdaytype",
+          "FIX:tag": "41393"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdatebusinessdayconvention",
-          "fix:tag": "41394"
+          "FIX:field": "legcomplexeventdatebusinessdayconvention",
+          "FIX:tag": "41394"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventdatebusinesscenters",
-          "fix:tag": "41387"
+          "FIX:field": "nolegcomplexeventdatebusinesscenters",
+          "FIX:tag": "41387"
         }
       },
       {
@@ -87,7 +87,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legcomplexeventdatebusinesscentergrp"
+          "FIX:group": "legcomplexeventdatebusinesscentergrp"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventdateadjusted",
-          "fix:tag": "41395"
+          "FIX:field": "legcomplexeventdateadjusted",
+          "FIX:tag": "41395"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventfixingtime",
-          "fix:tag": "41396"
+          "FIX:field": "legcomplexeventfixingtime",
+          "FIX:tag": "41396"
         }
       },
       {
@@ -119,16 +119,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventfixingtimebusinesscenter",
-          "fix:tag": "41397"
+          "FIX:field": "legcomplexeventfixingtimebusinesscenter",
+          "FIX:tag": "41397"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "523163",
     "description": "Conditionally required when LegComplexEventDateOffsetUnit(41392) is specified.",
-    "display": "LegComplexEventRelativeDate",
-    "fix:tag": "523163"
+    "display": "LegComplexEventRelativeDate"
   }
 }

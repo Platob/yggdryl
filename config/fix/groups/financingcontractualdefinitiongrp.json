@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "financingcontractualdefinition"
+        "FIX:component": "financingcontractualdefinition"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "financingcontractualdefinition",
+    "FIX:counter": "40040",
+    "FIX:tag": "494237",
     "description": "Required if NoContractualDefinitions(40040) > 0.",
-    "display": "FinancingContractualDefinitionGrp",
-    "fix:component": "financingcontractualdefinition",
-    "fix:counter": "40040",
-    "fix:tag": "494237"
+    "display": "FinancingContractualDefinitionGrp"
   }
 }

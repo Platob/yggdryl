@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "businessdayconvention",
-          "fix:tag": "40921"
+          "FIX:field": "businessdayconvention",
+          "FIX:tag": "40921"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nobusinesscenters",
-          "fix:tag": "40278"
+          "FIX:field": "nobusinesscenters",
+          "FIX:tag": "40278"
         }
       },
       {
@@ -32,7 +32,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "businesscentergrp"
+          "FIX:group": "businesscentergrp"
         }
       },
       {
@@ -42,16 +42,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "daterollconvention",
-          "fix:tag": "40922"
+          "FIX:field": "daterollconvention",
+          "FIX:tag": "40922"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "614339",
     "description": "DateAdjustment is a subcomponent in the Instrument component. It is used to specify date adjustment parameters and rules. The date adjustments specified here applies to all adjustable dates for the instrument, unless specifically overridden in the respective specified components elsewhere.",
-    "display": "DateAdjustment",
-    "fix:tag": "614339"
+    "display": "DateAdjustment"
   }
 }

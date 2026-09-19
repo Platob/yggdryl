@@ -6,7 +6,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 56 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, URL, the [string and byte families](text.md), the ten [codes](codes.md) |
+| Owns | 56 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text.md), the ten [codes](codes.md) |
 | Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly |
 | Identity | `id()`, `kind()`: 86 ids, 12 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |
@@ -349,12 +349,12 @@ The core computes one default; each binding projects it.
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Scalar};
+    use yggdryl::{DataType, Field, Scalar, StructureType};
 
-    let value = DataType::from_fields([
+    let value = DataType::from(StructureType::from_fields([
         Field::new("id", DataType::Int32, false),
         Field::new("note", DataType::utf8(), true),
-    ])?;
+    ])?);
 
     // One positional slot per child, each honoring its own nullability.
     assert_eq!(
@@ -465,10 +465,10 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 === "Rust"
 
     ```rust
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
     let rows = DataType::list(
-        DataType::from_fields([DataType::utf8().nullable_field("venue")])?.nullable_field("item"),
+        DataType::from(StructureType::from_fields([DataType::utf8().nullable_field("venue")])?).nullable_field("item"),
     );
 
     // Compact still round-trips.
@@ -508,9 +508,9 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Scheme, TimeUnit, Timezone};
+    use yggdryl::{DataType, Field, Scheme, StructureType, TimeUnit, Timezone};
 
-    let source = DataType::from_fields([
+    let source = DataType::from(StructureType::from_fields([
         Field::new("small", DataType::UInt8, false),
         Field::new("wide", DataType::UInt64, true),
         Field::new(
@@ -518,7 +518,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
             DataType::large_list(DataType::utf8_view().nullable_field("item")),
             false,
         ),
-    ])?;
+    ])?);
 
     let spark = source.clone().into_scheme_compat(&Scheme::SPARK)?;
     let rewritten = spark.as_fields().unwrap();
@@ -534,11 +534,11 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
     assert_eq!(DataType::UInt32.into_scheme_compat(&Scheme::POLARS)?, DataType::UInt32);
 
     // A rewrite that would reinterpret values is refused, and the path is named.
-    let error = DataType::from_fields([Field::new(
+    let error = DataType::from(StructureType::from_fields([Field::new(
         "created",
         DataType::datetime64(TimeUnit::Nanosecond, Timezone::NAIVE)?,
         false,
-    )])?
+    )])?)
     .into_scheme_compat(&Scheme::SPARK)
     .unwrap_err()
     .to_string();

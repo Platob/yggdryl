@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocrequestid",
-          "fix:tag": "2758"
+          "FIX:field": "allocrequestid",
+          "FIX:tag": "2758"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocgroupid",
-          "fix:tag": "1730"
+          "FIX:field": "allocgroupid",
+          "FIX:tag": "1730"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "avgpxgroupid",
-          "fix:tag": "1731"
+          "FIX:field": "avgpxgroupid",
+          "FIX:tag": "1731"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradedate",
-          "fix:tag": "75"
+          "FIX:field": "tradedate",
+          "FIX:tag": "75"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -75,7 +75,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -85,16 +85,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "DU",
+    "FIX:tag": "986383",
     "description": "MsgType = DU",
-    "display": "AllocationInstructionAlertRequest",
-    "fix:msgtype": "DU",
-    "fix:tag": "986383"
+    "display": "AllocationInstructionAlertRequest"
   }
 }

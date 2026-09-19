@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "affectedmarketsegmentid",
-          "fix:tag": "1792"
+          "FIX:field": "affectedmarketsegmentid",
+          "FIX:tag": "1792"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "AffectedMarketSegment",
-    "fix:tag": "583031"
+    "FIX:tag": "583031",
+    "display": "AffectedMarketSegment"
   }
 }

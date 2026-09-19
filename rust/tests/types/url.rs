@@ -9,15 +9,17 @@ use yggdryl::DataType;
 use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
-    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Url, UrlField,
+    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StructureType,
+    UriField, UriType, Url,
 };
 
 fn url(text: &str) -> Scalar {
-    DataType::Url.scalar(text).unwrap()
+    DataType::url().scalar(text).unwrap()
 }
 
 fn root(field: Field) -> Field {
-    DataType::from_fields([field])
+    StructureType::from_fields([field])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
 }
@@ -31,7 +33,7 @@ fn text_of(value: &Scalar) -> String {
 
 #[test]
 fn datatype_identity_naming_and_serde_are_total() {
-    let dtype = DataType::Url;
+    let dtype = DataType::url();
     assert_eq!(dtype.id(), DataTypeId::Url);
     assert_eq!(dtype.kind(), DataTypeKind::Text);
     assert_eq!(dtype.name(), "url");
@@ -67,11 +69,11 @@ fn a_value_is_canonicalized_and_refuses_what_is_not_a_location() {
     assert_eq!(url(&text_of(&once)), once);
 
     // Relative text names no location, so it is not one.
-    assert!(DataType::Url.scalar("./relative").is_err());
-    assert!(DataType::Url.scalar("example.com/x").is_err());
+    assert!(DataType::url().scalar("./relative").is_err());
+    assert!(DataType::url().scalar("example.com/x").is_err());
     // An empty text cell entering a non-text column is no value.
-    assert_eq!(DataType::Url.scalar("").unwrap(), Scalar::Null);
-    assert_eq!(DataType::Url.scalar(Scalar::Null).unwrap(), Scalar::Null);
+    assert_eq!(DataType::url().scalar("").unwrap(), Scalar::Null);
+    assert_eq!(DataType::url().scalar(Scalar::Null).unwrap(), Scalar::Null);
 }
 
 #[test]
@@ -121,7 +123,7 @@ fn structured_text_round_trips_the_canonical_spelling() {
 
 #[test]
 fn arrow_stores_canonical_utf8_under_an_extension_name_that_survives_a_round_trip() {
-    let field = Field::new("location", DataType::Url, true);
+    let field = Field::new("location", DataType::url(), true);
     let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(
@@ -135,7 +137,7 @@ fn arrow_stores_canonical_utf8_under_an_extension_name_that_survives_a_round_tri
     // rather than prose that happens to look like one.
     assert_eq!(
         Field::from_arrow_field(&arrow).unwrap().dtype(),
-        &DataType::Url
+        &DataType::url()
     );
 
     let value = url("https://example.com/a");
@@ -154,7 +156,7 @@ fn arrow_stores_canonical_utf8_under_an_extension_name_that_survives_a_round_tri
 
 #[test]
 fn a_text_column_is_ingested_and_canonicalized_and_a_bad_row_names_itself() {
-    let target = root(Field::new("location", DataType::Url, true));
+    let target = root(Field::new("location", DataType::url(), true));
     let source_schema = root(Field::new("location", DataType::utf8(), true))
         .into_arrow_schema()
         .unwrap();
@@ -196,27 +198,31 @@ fn a_text_column_is_ingested_and_canonicalized_and_a_bad_row_names_itself() {
 fn defaults_merges_and_typed_fields_do_not_fall_through() {
     // A location has no zero, so the default is the shortest URL the
     // validator accepts.
-    assert_eq!(text_of(&DataType::Url.default_value().unwrap()), "file:///");
-    assert!(DataType::Url.is_default_value(&url("file:///")).unwrap());
+    assert_eq!(
+        text_of(&DataType::url().default_value().unwrap()),
+        "file:///"
+    );
+    assert!(DataType::url().is_default_value(&url("file:///")).unwrap());
 
     // Merging into text would drop the validation that makes it a URL, so
     // only an equal type merges.
     assert_eq!(
-        DataType::Url.merge_with(&DataType::Url, true).unwrap(),
-        DataType::Url
+        DataType::url().merge_with(&DataType::url(), true).unwrap(),
+        DataType::url()
     );
-    let refused = DataType::Url
+    let refused = DataType::url()
         .merge_with(&DataType::utf8(), true)
         .unwrap_err()
         .to_string();
     assert!(refused.contains("url"), "{refused}");
     assert!(refused.contains("utf8"), "{refused}");
 
-    let typed = UrlField::unit("location", true);
-    assert_eq!(typed.dtype(), &DataType::Url);
+    let typed = UriField::new("location", UriType::Url, true);
+    assert_eq!(typed.dtype(), &DataType::url());
+    assert_eq!(typed.typed_dtype(), UriType::Url);
     let typed_field = typed.to_field();
     let scalar = FieldScalar::new(&typed_field, url("https://example.com/a")).unwrap();
-    assert_eq!(scalar.dtype(), &DataType::Url);
+    assert_eq!(scalar.dtype(), &DataType::url());
     assert!(FieldScalar::new(&typed.to_field(), 7_i64).is_err());
 }
 

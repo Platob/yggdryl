@@ -105,13 +105,13 @@ test('the protocol view carries the typed fix vocabulary', () => {
   assert.equal(field.fix.description, 'Quantity ordered.')
   // Ordinary namespaced text, in the one metadata map: a list is the
   // compact JSON array it is.
-  assert.equal(field.get('fix:names'), '["Qty","Quantity"]')
-  assert.equal(field.get('fix:tags'), '[1088]')
+  assert.equal(field.get('FIX:names'), '["Qty","Quantity"]')
+  assert.equal(field.get('FIX:tags'), '[1088]')
   assert.equal(field.fix.get('tag'), '38')
   // Three, not four: a description is a fact about the column rather than a
   // FIX fact, so it lives on the generic key every catalog reads.
   assert.equal(field.get('description'), 'Quantity ordered.')
-  assert.equal(field.has('fix:description'), false)
+  assert.equal(field.has('FIX:description'), false)
   assert.equal(field.fix.size, 3)
 
   // An empty array removes a list property; `delete` removes any of them.
@@ -181,13 +181,13 @@ test('identifier declarations resolve aliases and decimal tags into direct membe
   assert.deepEqual(view.identifiers, [])
   view.identifiers = ['37', 'ClientOrder']
   assert.deepEqual(view.identifiers, ['clordid', 'orderid'])
-  assert.equal(declaration.get('fix:identifiers'), 'clordid,orderid')
+  assert.equal(declaration.get('FIX:identifiers'), 'clordid,orderid')
   assert.deepEqual(Field.fromJSON(declaration.toJSON()).fix.identifiers, ['clordid', 'orderid'])
   view.identifiers = ['ORDERID']
   assert.deepEqual(view.identifiers, ['orderid'])
   view.identifiers = []
   assert.deepEqual(view.identifiers, [])
-  assert.equal(declaration.has('fix:identifiers'), false)
+  assert.equal(declaration.has('FIX:identifiers'), false)
 })
 
 test('identifier declaration refusals leave the entire field unchanged', () => {
@@ -218,7 +218,7 @@ test('a derivation crosses as canonical text', () => {
 
   field.fix.derivation = 'orderqty-cumqty'
   assert.equal(field.fix.derivation, 'orderqty - cumqty')
-  assert.equal(field.get('fix:derivation'), 'orderqty - cumqty')
+  assert.equal(field.get('FIX:derivation'), 'orderqty - cumqty')
 
   assert.throws(() => {
     field.fix.derivation = 'orderqty -'
@@ -238,7 +238,7 @@ test('a derivation crosses as canonical text', () => {
 
   field.fix.derivation = null
   assert.equal(field.fix.derivation, null)
-  assert.equal(field.has('fix:derivation'), false)
+  assert.equal(field.has('FIX:derivation'), false)
 })
 
 test('direction rules cross as a typed list', () => {
@@ -255,11 +255,11 @@ test('direction rules cross as a typed list', () => {
   assert.deepEqual(field.fix.directions, rules)
   // The stored text is the canonical document, backslashes escaped.
   assert.equal(
-    field.get('fix:directions'),
+    field.get('FIX:directions'),
     '[{"code":"S","patterns":["(?i)^TX\\\\b"]},' +
       '{"code":"R","patterns":["(?i)^RX\\\\b"]}]',
   )
-  assert.deepEqual(JSON.parse(field.get('fix:directions')), rules)
+  assert.deepEqual(JSON.parse(field.get('FIX:directions')), rules)
 
   // A codec compiles the rules of the dictionary it is built over, once,
   // and the line door fills tag 385 from them; the verb table no longer
@@ -281,7 +281,7 @@ test('direction rules cross as a typed list', () => {
   // An empty array removes the property.
   field.fix.directions = []
   assert.deepEqual(field.fix.directions, [])
-  assert.equal(field.has('fix:directions'), false)
+  assert.equal(field.has('FIX:directions'), false)
   assert.deepEqual(new Field('MsgDirection', 'utf8').fix.directions, [])
 })
 
@@ -306,23 +306,23 @@ test('a tag crosses as a number and is never narrowed', () => {
   for (const tag of [0, -1, -(2 ** 31)]) {
     assert.throws(() => {
       field.fix.tag = tag
-    }, /fix:tag.*from 1 to 2147483647/)
+    }, /FIX:tag.*from 1 to 2147483647/)
     assert.throws(() => {
       field.fix.counter = tag
-    }, /fix:counter.*from 1 to 2147483647/)
+    }, /FIX:counter.*from 1 to 2147483647/)
     assert.throws(() => {
       field.fix.tags = [4, tag]
-    }, /fix:tags.*from 1 to 2147483647/)
+    }, /FIX:tags.*from 1 to 2147483647/)
   }
   assert.throws(() => {
     field.fix.tags = [55, 55]
-  }, /fix:tags/)
+  }, /FIX:tags/)
   assert.throws(() => {
     field.fix.names = ['Sym', 'sym']
-  }, /fix:names/)
+  }, /FIX:names/)
   assert.throws(() => {
     field.fix.names = ['Sym"bol']
-  }, /fix:names/)
+  }, /FIX:names/)
   assert.equal(field.fix.tag, null)
   assert.equal(field.fix.counter, null)
   assert.deepEqual(field.fix.tags, [])
@@ -340,9 +340,9 @@ test('an externally stated nonpositive tag is refused where it is read', () => {
   // positive tag, never signed and never wider than an i32. A registry refuses
   // the field and is left exactly as it was. The alternates are one JSON
   // array, and their elements are held to the same shape.
-  for (const [key, property] of [['fix:tag', 'tag'], ['fix:counter', 'counter'], ['fix:tags', 'tags']]) {
+  for (const [key, property] of [['FIX:tag', 'tag'], ['FIX:counter', 'counter'], ['FIX:tags', 'tags']]) {
     for (const digits of ['0', '000', '-1', '+1', '2147483648']) {
-      const text = key === 'fix:tags' ? `[${digits}]` : digits
+      const text = key === 'FIX:tags' ? `[${digits}]` : digits
       const field = fixField('incoming', 'utf8', 90_001)
       field.set(key, text)
       assert.throws(() => field.fix[property], new RegExp(key), `${key}=${text}`)
@@ -355,13 +355,13 @@ test('an externally stated nonpositive tag is refused where it is read', () => {
   // Leading zeros are still the tag on the two bare decimals, and never in
   // the array: a JSON number spells none, and the array is JSON.
   const field = fixField('positive', 'utf8', 1)
-  for (const key of ['fix:tag', 'fix:counter']) field.set(key, '0001')
-  field.set('fix:tags', '[1]')
+  for (const key of ['FIX:tag', 'FIX:counter']) field.set(key, '0001')
+  field.set('FIX:tags', '[1]')
   assert.equal(field.fix.tag, 1)
   assert.equal(field.fix.counter, 1)
   assert.deepEqual(field.fix.tags, [1])
-  field.set('fix:tags', '[0001]')
-  assert.throws(() => field.fix.tags, /fix:tags/)
+  field.set('FIX:tags', '[0001]')
+  assert.throws(() => field.fix.tags, /FIX:tags/)
 })
 
 test('the identifier is a number derived from the tag and the name', () => {
@@ -376,7 +376,7 @@ test('the identifier is a number derived from the tag and the name', () => {
   assert.ok(id >= -(2 ** 31) && id < 2 ** 31, 'a signed 32-bit digest')
   // Derived on every read, never stored: the view holds the tag alone.
   assert.equal(trade.fix.size, 1)
-  assert.equal(trade.has('fix:id'), false)
+  assert.equal(trade.has('FIX:id'), false)
   // What the field answers is what the registry answers by it.
   assert.equal(fix.FixRegistry.fromFields([trade]).fieldById(id).name, 'TradeID')
 
@@ -417,7 +417,7 @@ test('the identifier is a number derived from the tag and the name', () => {
   const zero = Field.from('Any: utf8')
   assert.throws(() => {
     zero.fix.tag = 0
-  }, /fix:tag/)
+  }, /FIX:tag/)
   assert.equal(zero.fix.id, null)
 })
 
@@ -426,14 +426,14 @@ test('membership is a sorted list of dictionary names on the field', () => {
   // An absent property is an empty list, and no field the specification
   // alone defines states one.
   assert.deepEqual(trade.fix.branches, [])
-  assert.equal(trade.has('fix:branches'), false)
+  assert.equal(trade.has('FIX:branches'), false)
   assert.equal(trade.fix.hasBranch('cme'), false)
 
   // Assigning replaces the list: folded once, deduplicated under the fold,
-  // sorted, and stored comma-joined under `fix:branches`.
+  // sorted, and stored comma-joined under `FIX:branches`.
   trade.fix.branches = ['CME', 'Bloomberg', 'cme']
   assert.deepEqual(trade.fix.branches, ['bloomberg', 'cme'])
-  assert.equal(trade.get('fix:branches'), 'bloomberg,cme')
+  assert.equal(trade.get('FIX:branches'), 'bloomberg,cme')
   assert.equal(trade.fix.hasBranch('CME'), true)
   assert.equal(trade.fix.hasBranch('bloomberg'), true)
   assert.equal(trade.fix.hasBranch('ice'), false)
@@ -452,7 +452,7 @@ test('membership is a sorted list of dictionary names on the field', () => {
   // An empty array removes the property, as every list property is removed.
   trade.fix.branches = []
   assert.deepEqual(trade.fix.branches, [])
-  assert.equal(trade.has('fix:branches'), false)
+  assert.equal(trade.has('FIX:branches'), false)
 
   // A name that is empty or carries the separator is the core's refusal,
   // naming the key, and nothing is written by it.
@@ -460,10 +460,10 @@ test('membership is a sorted list of dictionary names on the field', () => {
   for (const bad of [[''], ['c,me'], ['ice', '']]) {
     assert.throws(() => {
       trade.fix.branches = bad
-    }, /fix:branches/)
+    }, /FIX:branches/)
   }
-  assert.throws(() => trade.fix.addBranch(''), /fix:branches/)
-  assert.throws(() => trade.fix.addBranch('a,b'), /fix:branches/)
+  assert.throws(() => trade.fix.addBranch(''), /FIX:branches/)
+  assert.throws(() => trade.fix.addBranch('a,b'), /FIX:branches/)
   assert.deepEqual(trade.fix.branches, ['cme'])
   // The list is strings, never a bare string or a number.
   assert.throws(() => {
@@ -818,7 +818,7 @@ test('the seed iterates in canonical-tag order and every field is standard', () 
   // SendingTime and TransactTime are what 52 and 60 answer: a loaded
   // definition supplies its metadata rather than colliding with a seed.
   assert.ok([...registry].every((field) => field.fix.branches.length === 0))
-  assert.ok([...registry].every((field) => !field.has('fix:branches')))
+  assert.ok([...registry].every((field) => !field.has('FIX:branches')))
   assert.deepEqual(registry.dialects(), [])
   assert.deepEqual(tags.filter((tag) => tag >= 65000), CRATE_TAGS)
   assert.equal(tags.length, STORED + CRATE_SCALARS.length)
@@ -926,7 +926,7 @@ test('membership is stored on the field, in the one shard tree', (t) => {
   // and nowhere else.
   const document = registry.toJSON()
   assert.deepEqual(Object.keys(document).sort(), ['components', 'fields', 'groups'])
-  assert.equal(document.fields.find((field) => field.name === 'TradeID').metadata['fix:branches'], 'cme')
+  assert.equal(document.fields.find((field) => field.name === 'TradeID').metadata['FIX:branches'], 'cme')
 })
 
 test('insert, update and remove carry the core rules across', () => {
@@ -968,7 +968,7 @@ test('insert, update and remove carry the core rules across', () => {
   assert.equal(registry.remove(9999), null)
 
   // A field with no tag cannot enter at all.
-  assert.throws(() => registry.insert(Field.from('Untagged: utf8')), /fix:tag/)
+  assert.throws(() => registry.insert(Field.from('Untagged: utf8')), /FIX:tag/)
 })
 
 test('addField answers whether the field arrived or folded into a stored one', () => {
@@ -1140,7 +1140,7 @@ test('a message holds its typed facts beside the content row it resolves through
   assert.equal(message.side, 'BUY')
   assert.equal(message.crosscode, 'C-1')
   assert.equal(message.currunix, SENDING_NS)
-  assert.equal(message.event().creatunix, SENDING_NS)
+  assert.equal(message.event().creaunix, SENDING_NS)
   assert.equal(message.state, '00UNKNOWN')
   assert.equal(message.seqnum, 0)
   assert.equal(message.prevuuid, null)
@@ -1155,7 +1155,7 @@ test('a message holds its typed facts beside the content row it resolves through
   // Nothing was captured: no plugin, no context, no session. Where the line
   // came from is the reader's statement, on the row, and never here.
   assert.deepEqual(message.capture(), {
-    pluginid: null,
+    msgpluginid: null,
     msgctxid: null,
     msgsessionid: null,
   })
@@ -1351,7 +1351,7 @@ test('a message is a value: equality, hash, clone and JSON', () => {
   // holders' to answer.
   const document = message.toJSON()
   assert.deepEqual(Object.keys(document), ['field', 'value'])
-  assert.equal(document.field.metadata['fix:tag'], undefined, 'the root carries no tag')
+  assert.equal(document.field.metadata['FIX:tag'], undefined, 'the root carries no tag')
   assert.equal(document.value[0], 'AAPL')
   assert.equal(document.value.length, CONTENT.length)
   assert.ok(JSON.stringify(message).includes('"NewOrderSingle"'))
@@ -1451,14 +1451,14 @@ test('a registry is a value: equality, hash, clone, JSON and text', () => {
   const held = JSON.parse(JSON.stringify(registry.fieldByTag(1)))
   assert.equal(stored.name, held.name)
   assert.deepEqual(stored.dtype, held.dtype)
-  assert.equal(stored.metadata['fix:tag'], '1')
+  assert.equal(stored.metadata['FIX:tag'], '1')
   // A snapshot is the store's shape, so a document property is the JSON it
   // is; a `Field`'s own JSON is the core shape, where metadata is text.
-  const coded = document.fields.find((field) => field.metadata['fix:codes'] !== undefined)
-  const codedHeld = JSON.parse(JSON.stringify(registry.fieldByTag(Number(coded.metadata['fix:tag']))))
-  assert.ok(Array.isArray(coded.metadata['fix:codes']))
-  assert.equal(typeof codedHeld.metadata['fix:codes'], 'string')
-  assert.deepEqual(coded.metadata['fix:codes'], JSON.parse(codedHeld.metadata['fix:codes']))
+  const coded = document.fields.find((field) => field.metadata['FIX:codes'] !== undefined)
+  const codedHeld = JSON.parse(JSON.stringify(registry.fieldByTag(Number(coded.metadata['FIX:tag']))))
+  assert.ok(Array.isArray(coded.metadata['FIX:codes']))
+  assert.equal(typeof codedHeld.metadata['FIX:codes'], 'string')
+  assert.deepEqual(coded.metadata['FIX:codes'], JSON.parse(codedHeld.metadata['FIX:codes']))
   assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
 })
 
@@ -1557,7 +1557,7 @@ test('a reader parses every frame shape the core reads', () => {
   assert.equal(pairs.header().sendingtime, SENDING_NS)
   assert.ok(pairs.byTag(52).equals(SENDING))
   assert.equal(pairs.currunix, SENDING_NS)
-  assert.equal(pairs.event().creatunix, SENDING_NS)
+  assert.equal(pairs.event().creaunix, SENDING_NS)
   assert.deepEqual(flat(pairs), [[55, 'symbol', 'AAPL']])
   assert.equal(pairs.intoText('|'), '8=FIX.4.4|55=AAPL|')
   // The stated clock is the one that goes back out, and the event is the
@@ -1628,7 +1628,7 @@ test('a parse derives what the dictionary derives and states it on the wire', ()
   const reader = fixedCodec(seed())
 
   // There is no enriching pass: the parse runs the dictionary's own
-  // `fix:derivation` rules. A `SecurityID` an ISIN's check digit closes has
+  // `FIX:derivation` rules. A `SecurityID` an ISIN's check digit closes has
   // stated its source, and under that source the event's ISIN and the
   // country its prefix names; an order stating no time in force is a day
   // order.
@@ -1710,7 +1710,7 @@ const DOCUMENT = Buffer.from(
 )
 
 test('a JSON document is one unknown message carrying only what the row stated', () => {
-  const codec = fixedCodec(new fix.FixRegistry(), { captureNames: ['pluginid'] })
+  const codec = fixedCodec(new fix.FixRegistry(), { captureNames: ['msgpluginid'] })
   const messages = codec.parseTextLine(new TextLine(0, DOCUMENT, ['Router_OrderRouting']))
   const message = messages.next().value
   assert.equal(messages.next().done, true)
@@ -1729,7 +1729,7 @@ test('a JSON document is one unknown message carrying only what the row stated',
   // prose in front of it spells, and the capture its header declared.
   assert.equal(message.header().msgdirection, 'R')
   assert.equal(message.byTag(385).asJs(), 'R')
-  assert.equal(message.capture().pluginid, 'Router_OrderRouting')
+  assert.equal(message.capture().msgpluginid, 'Router_OrderRouting')
   assert.equal(message.byTag(65009).asJs(), 'Router_OrderRouting')
 })
 
@@ -1789,14 +1789,14 @@ test("a capture's own columns lead the row", () => {
   // A capture column whose folded name a FIX column takes is not carried in
   // front: `msgSessionId` and `msgsessionid` are one name, and the FIX
   // column is the one a reader spelling it means - so the bridge's session
-  // instance reaches that column instead of riding in front. `threadId`
+  // instance reaches that column instead of riding in front. `msgthreadid`
   // names no FIX column, so it is carried and leads the row.
   const stamped = fields.struct(
     'line',
     [
       fields.utf8('url', { nullable: false }),
       fields.binary('body', { nullable: false }),
-      fields.utf8('threadId'),
+      fields.utf8('msgthreadid'),
       fields.utf8('msgSessionId'),
     ],
     { nullable: false },
@@ -1804,7 +1804,7 @@ test("a capture's own columns lead the row", () => {
   const folded = fix.schemaCarrying(stamped, plain)
   assert.equal(folded.fieldLen, plain.fieldLen + 3)
   assert.equal(folded.indexOf('msgSessionId'), null)
-  assert.equal(folded.indexOf('threadId'), 2)
+  assert.equal(folded.indexOf('msgthreadid'), 2)
   assert.equal(folded.indexOf('msgsessionid'), plain.indexOf('msgsessionid') + 3)
 })
 
@@ -1857,8 +1857,8 @@ test('a CBlock read under a dialect stamps membership on everything it produced'
   assert.deepEqual(unstamped.fieldByTag(10001).fix.branches, [])
   assert.deepEqual(unstamped.dialects(), [])
   assert.equal(fix.FixRegistry.fromCfbFile(file, null)[0].dialects().length, 0)
-  assert.throws(() => fix.FixRegistry.fromCfbFile(file, 'a,b'), /fix:branches/)
-  assert.throws(() => fix.FixRegistry.fromCfbFile(file, ''), /fix:branches/)
+  assert.throws(() => fix.FixRegistry.fromCfbFile(file, 'a,b'), /FIX:branches/)
+  assert.throws(() => fix.FixRegistry.fromCfbFile(file, ''), /FIX:branches/)
 })
 
 test('a message type keeps its complete wire code and immutable schema', () => {
@@ -1867,8 +1867,8 @@ test('a message type keeps its complete wire code and immutable schema', () => {
   const value = registry.registerMsgtype('P Report Ack', 'AllocationReportAck', 'Allocation Report ACK')
   assert.equal(value.asStr(), 'P Report Ack')
   assert.equal(value.name, 'allocationreportack')
-  assert.match(registry.fieldByTag(35).get('fix:codes'), /"name":"AllocationReportAck"/)
-  assert.match(registry.fieldByTag(35).get('fix:codes'), /P Report Ack/)
+  assert.match(registry.fieldByTag(35).get('FIX:codes'), /"name":"AllocationReportAck"/)
+  assert.match(registry.fieldByTag(35).get('FIX:codes'), /P Report Ack/)
   assert.equal(value.asField().fix.msgtype, 'P Report Ack')
   // The registered definition is a component of the registry, reached
   // through the field doors like every definition.

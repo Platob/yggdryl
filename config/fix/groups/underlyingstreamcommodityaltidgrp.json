@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingstreamcommodityaltidcomponent"
+        "FIX:component": "underlyingstreamcommodityaltidcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingstreamcommodityaltidcomponent",
+    "FIX:counter": "41990",
+    "FIX:tag": "444689",
     "description": "Required if NoUnderlyingStreamCommodityAltIDs(41990) > 0.",
-    "display": "UnderlyingStreamCommodityAltIDGrp",
-    "fix:component": "underlyingstreamcommodityaltidcomponent",
-    "fix:counter": "41990",
-    "fix:tag": "444689"
+    "display": "UnderlyingStreamCommodityAltIDGrp"
   }
 }

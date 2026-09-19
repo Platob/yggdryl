@@ -330,5 +330,5 @@ fn format_target(registry: &yggdryl::FixRegistry) -> yggdryl::Field {
 /// `decimal128(38, 18)`, so a pin states the number in text and never as a
 /// float: `41.25` is a value a `f64` cannot hold and a decimal can.
 fn decimal(text: &str) -> yggdryl::Scalar {
-    yggdryl::Scalar::from(yggdryl::Decimal::parse(text).expect("an exact number"))
+    yggdryl::Scalar::from(yggdryl::Decimal18::parse(text).expect("an exact number"))
 }

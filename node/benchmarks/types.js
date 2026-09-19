@@ -53,10 +53,10 @@ const wideRight = DataType.fromFields(
 // one already held next to the two-argument property call it replaces.
 const property = fields.decimal128('price', 18, 6, {
   metadata: {
-    'iceberg:doc': 'closing price',
-    'iceberg:field-id': '7',
-    'iceberg:schema-id': '3',
-    'postgres:type': 'numeric(18,6)',
+    'ICEBERG:doc': 'closing price',
+    'ICEBERG:field-id': '7',
+    'ICEBERG:schema-id': '3',
+    'POSTGRES:type': 'numeric(18,6)',
   },
 })
 const iceberg = property.iceberg

@@ -52,7 +52,7 @@ use super::{
 };
 use crate::FieldValue as _;
 use crate::media::DEFAULT_ROOT_NAME;
-use crate::{ArrowCastOptions, DataType, Field, Scalar};
+use crate::{ArrowCastOptions, DataType, Field, Scalar, StructureType};
 
 /// Which of Arrow's four payload shapes an [`ArrowScalar`] holds.
 ///
@@ -730,7 +730,8 @@ fn root_of(field: &Field) -> Result<Field> {
     if is_own_root(field) {
         return Ok(field.clone());
     }
-    Ok(DataType::from_fields([field.clone()])?.required_field(DEFAULT_ROOT_NAME))
+    Ok(DataType::from(StructureType::from_fields([field.clone()])?)
+        .required_field(DEFAULT_ROOT_NAME))
 }
 
 /// Refuse an array whose physical layout is not the one the Field declares.

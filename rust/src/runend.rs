@@ -106,7 +106,7 @@ mod arrow {
     use arrow_schema::DataType as ArrowDataType;
 
     use super::{RunEndEncodedType, validate_run_ends};
-    use crate::family::ArrowFfiParts;
+    use crate::value::ArrowFfiParts;
     use crate::{DataType, Field, Result};
 
     impl RunEndEncodedType {

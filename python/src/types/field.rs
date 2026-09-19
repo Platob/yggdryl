@@ -580,8 +580,8 @@ impl PyField {
     /// Applies this schema's metadata-declared columns to one `RecordBatch`.
     ///
     /// `cast` reconciles the batch to this root first, `transform` computes
-    /// every column a `transform:expression` or a `partition:transform` over
-    /// `partition:sources` declares, and `digest` fills every holder last,
+    /// every column a `TRANSFORM:expression` or a `PARTITION:transform` over
+    /// `PARTITION:sources` declares, and `digest` fills every holder last,
     /// over the rows as they finally stand. Each protocol walks the declared Structs beneath this
     /// root and leaves a column holding anything but its canonical default
     /// alone, so applying twice writes nothing the first pass already did.
@@ -1072,7 +1072,7 @@ impl PyField {
 
     /// The enum this field's values name, ``None`` when it declares none.
     ///
-    /// The declaration is one ``field:enum`` document, so it reaches Arrow, a
+    /// The declaration is one ``FIELD:enum`` document, so it reaches Arrow, a
     /// file, and another runtime as ordinary field metadata and comes back the
     /// enum that was written.
     #[getter]
@@ -1696,7 +1696,7 @@ impl PyField {
     /// Returns one protocol's properties as a live view of this field.
     ///
     /// The scheme accepts every spelling `get_property` accepts, so `HTTPS`
-    /// selects the one canonical `http:` namespace.
+    /// selects the one canonical `HTTP:` namespace.
     fn protocol(slf: Py<Self>, scheme: &str) -> PyResult<PyProtocolField> {
         let scheme = CoreScheme::from_str(scheme).map_err(value_error)?;
         Ok(PyProtocolField::new(slf, scheme))
@@ -2420,7 +2420,7 @@ impl PyProtocolField {
         )))
     }
 
-    /// The same rule for the `digest:` vocabulary.
+    /// The same rule for the `DIGEST:` vocabulary.
     fn require_digest(&self, property: &str) -> PyResult<()> {
         if self.scheme == CoreScheme::DIGEST {
             return Ok(());
@@ -2431,7 +2431,7 @@ impl PyProtocolField {
         )))
     }
 
-    /// The same rule for the `python:` vocabulary.
+    /// The same rule for the `PYTHON:` vocabulary.
     fn require_python(&self, property: &str) -> PyResult<()> {
         if self.scheme == CoreScheme::PYTHON {
             return Ok(());
@@ -2471,7 +2471,7 @@ impl PyProtocolField {
     #[getter]
     fn prefix(&self, py: Python<'_>) -> PyResult<String> {
         let field = self.borrow_field(py)?;
-        Ok(field.inner.protocol(&self.scheme).prefix().to_owned())
+        Ok(field.inner.protocol(&self.scheme).prefix().into_owned())
     }
 
     /// Returns the full metadata key one property name is stored under.
@@ -2598,7 +2598,7 @@ impl PyProtocolField {
 
     /// The dictionaries that contributed this field, on the `fix` view.
     ///
-    /// `fix:branches` read as a list: folded to ASCII lowercase, sorted, and
+    /// `FIX:branches` read as a list: folded to ASCII lowercase, sorted, and
     /// empty when the specification alone defines the field. Membership is
     /// provenance a caller filters on; no lookup consults it. Assigning a
     /// sequence of names stores them deduplicated under the fold, and an
@@ -2652,7 +2652,7 @@ impl PyProtocolField {
     /// The `int` the core derives from the canonical tag and the field's own
     /// name under the one fold - so `MsgType`, `msg_type` and `MSGTYPE`
     /// under tag 35 are one id - on every read and never stored, so it is
-    /// `None` exactly when `fix:tag` is absent and a rename is never stale.
+    /// `None` exactly when `FIX:tag` is absent and a rename is never stale.
     /// It is what `FixRegistry.get_field_by_id` and `FixMsg.get_by_id` take.
     #[getter]
     fn id(&self, py: Python<'_>) -> PyResult<Option<i32>> {
@@ -2668,7 +2668,7 @@ impl PyProtocolField {
 
     /// The canonical FIX tag, on the `fix` view.
     ///
-    /// Reads and writes `fix:tag` through the core's own typed accessors, so
+    /// Reads and writes `FIX:tag` through the core's own typed accessors, so
     /// the property name is never spelled at a call site. `del view["tag"]`
     /// removes it, the way every other property is removed. A tag is a
     /// positive `i32`: 0 or a negative is the core's `ValueError`, because
@@ -3198,7 +3198,7 @@ impl PyProtocolField {
             .map_err(value_error)
     }
 
-    /// Remove the coupled instant, refusing while `digest:unit` still stands.
+    /// Remove the coupled instant, refusing while `DIGEST:unit` still stands.
     fn remove_time(&self, py: Python<'_>) -> PyResult<Option<String>> {
         self.require_digest("remove_time")?;
         let mut field = self.borrow_field_mut(py)?;

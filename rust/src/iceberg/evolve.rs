@@ -18,12 +18,13 @@
 //!     FormatVersion, PartitionSpec, SchemaUpdate, TableMetadata, assign_field_ids,
 //! };
 //! use yggdryl::DataType;
+//! use yggdryl::StructureType;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut schema = DataType::from_fields([
+//! let mut schema = DataType::from(StructureType::from_fields([
 //!     DataType::Int32.required_field("id"),
 //!     DataType::utf8().nullable_field("symbol"),
-//! ])?
+//! ])?)
 //! .required_field("row");
 //! assign_field_ids(&mut schema, 1)?;
 //! let mut metadata = TableMetadata::new(
@@ -53,7 +54,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::TableMetadata;
 use crate::DecimalType;
 use crate::text::elide_to;
-use crate::{DataType, Error, Field, Result};
+use crate::{DataType, Error, Field, Result, StructureType};
 
 /// How many bytes of a caller-supplied path an error message shows.
 const PATH_LIMIT: usize = 64;
@@ -147,7 +148,7 @@ enum Op {
     DropColumn { path: SmolStr },
     /// Rename a column, keeping its identifier.
     RenameColumn { path: SmolStr, name: SmolStr },
-    /// Set a column's `iceberg:doc` documentation string.
+    /// Set a column's `ICEBERG:doc` documentation string.
     UpdateDoc { path: SmolStr, doc: SmolStr },
     /// Relax a required column to optional.
     MakeNullable { path: SmolStr },
@@ -206,7 +207,7 @@ impl SchemaUpdate {
         });
     }
 
-    /// Record a new `iceberg:doc` documentation string on the column at
+    /// Record a new `ICEBERG:doc` documentation string on the column at
     /// `path`, through the field's Iceberg protocol view.
     pub fn update_doc(&mut self, path: &str, doc: impl Into<SmolStr>) {
         self.ops.push(Op::UpdateDoc {
@@ -325,7 +326,7 @@ fn apply_rename(schema: &mut Field, path: &str, name: SmolStr) -> Result<()> {
     })
 }
 
-/// Set the `iceberg:doc` property on the column at `path`.
+/// Set the `ICEBERG:doc` property on the column at `path`.
 fn apply_doc(schema: &mut Field, path: &str, doc: &str) -> Result<()> {
     let (segments, target) = split_column_path(path)?;
     edit_children(schema, &segments, path, |children| {
@@ -396,7 +397,7 @@ where
     let mut children = node.fields().to_vec();
     let Some((first, rest)) = segments.split_first() else {
         edit(&mut children)?;
-        return node.set_dtype(DataType::from_fields(children)?);
+        return node.set_dtype(DataType::from(StructureType::from_fields(children)?));
     };
     let Some(index) = children.iter().position(|child| child.name() == *first) else {
         return Err(missing_column(first, &children, path));
@@ -410,7 +411,7 @@ where
         )));
     }
     edit_children(&mut children[index], rest, path, edit)?;
-    node.set_dtype(DataType::from_fields(children)?)
+    node.set_dtype(DataType::from(StructureType::from_fields(children)?))
 }
 
 /// Report a path segment that names no column, and the columns that exist.

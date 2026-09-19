@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamformulalength",
-          "fix:tag": "43111"
+          "FIX:field": "underlyingpaymentstreamformulalength",
+          "FIX:tag": "43111"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamformula",
-          "fix:tag": "42982"
+          "FIX:field": "underlyingpaymentstreamformula",
+          "FIX:tag": "42982"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamformuladesc",
-          "fix:tag": "42983"
+          "FIX:field": "underlyingpaymentstreamformuladesc",
+          "FIX:tag": "42983"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentStreamFormulaMath",
-    "fix:tag": "657558"
+    "FIX:tag": "657558",
+    "display": "UnderlyingPaymentStreamFormulaMath"
   }
 }

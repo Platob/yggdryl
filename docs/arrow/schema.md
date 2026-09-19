@@ -9,7 +9,7 @@ A non-null Struct root projected to an Arrow `Schema` and back, in process or ac
 | Owns | `Field::into_arrow_schema`, `Field::into_arrow_exchange_schema`, `Field::from_arrow_schema` |
 | Validates | Bounded, non-nullable Struct root; refused, never coerced |
 | Metadata | Root metadata becomes schema metadata and comes back |
-| Sidecar | `yggdryl:ipc:dictionary-ids` = `v1;<path>=<id>` per non-zero ID, keyed by deterministic numeric field paths; transport only |
+| Sidecar | `YGGDRYL:ipc:dictionary-ids` = `v1;<path>=<id>` per non-zero ID, keyed by deterministic numeric field paths; transport only |
 | Errors | `Error::IncompatibleSchema` (root), `Error::Core(InvalidMetadataValue)` (sidecar) |
 | Feature flag | `arrow` (default) |
 | Bindings | Rust; Python `Field.from_arrow_schema(schema, name="row")`, `Field.into_arrow_schema()`; JavaScript none |
@@ -23,7 +23,7 @@ Rust only.
 
     ```rust
     use arrow_schema::{Schema, ffi::FFI_ArrowSchema};
-    use yggdryl::{DataType, Field};
+    use yggdryl::{DataType, Field, StructureType};
 
     let mut symbol = DataType::dictionary(DataType::Int16, DataType::utf8())?
         .nullable_field("symbol");
@@ -31,10 +31,10 @@ Rust only.
 
     let schema = Field::from_parts(
         "row",
-        DataType::from_fields([
+        DataType::from(StructureType::from_fields([
             DataType::Int64.required_field("id"),
             symbol,
-        ])?,
+        ])?),
         false,
         [("owner", "trading")],
     )?;
@@ -50,7 +50,7 @@ Rust only.
     assert_eq!(
         projected
             .metadata()
-            .get("yggdryl:ipc:dictionary-ids")
+            .get("YGGDRYL:ipc:dictionary-ids")
             .map(String::as_str),
         Some("v1;1=-7"),
     );
@@ -62,7 +62,7 @@ Rust only.
     }
     let restored = Field::from_arrow_schema("row", &crossed)?;
     assert_eq!(restored, schema);
-    assert!(!restored.has_metadata("yggdryl:ipc:dictionary-ids"));
+    assert!(!restored.has_metadata("YGGDRYL:ipc:dictionary-ids"));
 
     // Field::into_arrow_schema is the shared in-process projection. It retains the ID
     // on Arrow's Field directly and needs no transport sidecar.

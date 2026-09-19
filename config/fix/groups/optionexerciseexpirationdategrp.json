@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "optionexerciseexpirationdatecomponent"
+        "FIX:component": "optionexerciseexpirationdatecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "optionexerciseexpirationdatecomponent",
+    "FIX:counter": "41152",
+    "FIX:tag": "795700",
     "description": "Required if NoOptionExpirationDates(41152) > 0.",
-    "display": "OptionExerciseExpirationDateGrp",
-    "fix:component": "optionexerciseexpirationdatecomponent",
-    "fix:counter": "41152",
-    "fix:tag": "795700"
+    "display": "OptionExerciseExpirationDateGrp"
   }
 }

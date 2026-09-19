@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legmarketdisruptionfallback"
+        "FIX:component": "legmarketdisruptionfallback"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legmarketdisruptionfallback",
+    "FIX:counter": "41469",
+    "FIX:tag": "466438",
     "description": "Required if NoLegMarketDisruptionFallbacks(41469) > 0.",
-    "display": "LegMarketDisruptionFallbackGrp",
-    "fix:component": "legmarketdisruptionfallback",
-    "fix:counter": "41469",
-    "fix:tag": "466438"
+    "display": "LegMarketDisruptionFallbackGrp"
   }
 }

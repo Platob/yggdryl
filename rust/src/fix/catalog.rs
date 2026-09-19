@@ -11,7 +11,7 @@ use super::store::{DefinitionKey, compact, reference};
 use super::{FixId, FixRegistry, MsgType};
 use crate::folds_equal;
 use crate::sequence::SequenceType;
-use crate::{DataType, Error, Field, FixCategory, Result};
+use crate::{DataType, Error, Field, FixCategory, Result, StructureType};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Definition {
@@ -48,7 +48,7 @@ impl DefinitionField {
         }
     }
 
-    /// A component carrying `fix:msgtype` is a message: the
+    /// A component carrying `FIX:msgtype` is a message: the
     /// marker, not the category, decides whether it compiles as one.
     fn from_field(category: FixCategory, field: Field) -> Result<Self> {
         match category {
@@ -95,7 +95,7 @@ pub(super) struct Catalog {
     /// Each wire code, and the message a bare code answers: the one named
     /// as tag 35's code set names the code, else the first in name order.
     message_codes: HashMap<SmolStr, usize>,
-    /// The components carrying `fix:msgtype`, in name order: what
+    /// The components carrying `FIX:msgtype`, in name order: what
     /// `msgtypes` iterates and `msgtype_at` indexes.
     messages: Vec<usize>,
     message_aliases: super::registry::FixMap<u64, MessageAlias>,
@@ -291,7 +291,7 @@ impl Catalog {
             field
                 .as_fix()
                 .counter()?
-                .ok_or_else(|| Error::absent("fix:counter", field.name()))?;
+                .ok_or_else(|| Error::absent("FIX:counter", field.name()))?;
         }
         let key = Self::key(category, field.name());
         if let Some(position) = self.names.get(&key).copied() {
@@ -432,7 +432,7 @@ fn is_column_list(field: &Field) -> bool {
 ///
 /// A repeating group holds non-null Struct occurrences, in a List or a Map,
 /// and every Struct is a component, a message among them
-/// being the component whose `fix:msgtype` names a wire code.
+/// being the component whose `FIX:msgtype` names a wire code.
 /// The shape alone answers; the marker is a property of the component. A
 /// nested datatype that is neither is no definition at all, and answers
 /// nothing.
@@ -507,7 +507,7 @@ fn describe(field: &Field, resolved: Option<&DataType>) -> SmolStr {
 ///
 /// Name, nullability and tag are the stored definition's, and the fold has
 /// the precedence a scalar [`FixRegistry::update`] has: the generic keys
-/// through the metadata merge every protocol shares, the `fix:` keys through
+/// through the metadata merge every protocol shares, the `FIX:` keys through
 /// the rule each one has - which is also what holds the two sides to one
 /// message code, one counter, one component. The datatype is left for the
 /// caller, who merges the children.
@@ -618,13 +618,13 @@ fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
         field.remove_metadata(super::field::TAG_KEY);
     }
     let dtype = match field.dtype() {
-        DataType::Structure(children) => Some(DataType::from_fields(
+        DataType::Structure(children) => Some(DataType::from(StructureType::from_fields(
             children
                 .iter()
                 .cloned()
                 .map(|child| canonical_occurrences(child, false))
                 .collect::<Result<Vec<_>>>()?,
-        )?),
+        )?)),
         DataType::Sequence(SequenceType::List(_))
         | DataType::Sequence(SequenceType::LargeList(_))
         | DataType::Mapping(_) => {
@@ -841,7 +841,7 @@ impl FixRegistry {
     /// stated inline as `utf8` restates a reference to the `utf8` field
     /// `PartyID`, and the stored form is what stays. Metadata folds as
     /// [`Self::add_field`] folds it: the incoming side wins a shared key, the
-    /// identity keys excepted, and the `fix:` keys follow
+    /// identity keys excepted, and the `FIX:` keys follow
     /// [`FixFieldMut::merge_with`](crate::FixFieldMut::merge_with), which
     /// holds both sides to one message code, counter and component.
     ///
@@ -851,19 +851,19 @@ impl FixRegistry {
     /// appended members without holding a copy of anything.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry};
+    /// use yggdryl::{DataType, FixRegistry, StructureType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut party_id = DataType::utf8().nullable_field("PartyID");
     /// party_id.as_fix_mut().set_tag(448)?;
     /// let mut registry = FixRegistry::from_fields([party_id.clone()])?;
     /// party_id.as_fix_mut().set_field_ref("PartyID")?;
-    /// let party = DataType::from_fields([party_id])?.required_field("Party");
+    /// let party = DataType::from(StructureType::from_fields([party_id])?).required_field("Party");
     /// registry.insert(party)?;
     /// // A message restates the component through a reference to it.
     /// let mut party = registry.field_by_name("Party")?.clone();
     /// party.as_fix_mut().set_component("Party")?;
-    /// let mut order = DataType::from_fields([party])?.required_field("Order");
+    /// let mut order = DataType::from(StructureType::from_fields([party])?).required_field("Order");
     /// order.as_fix_mut().set_msgtype("D")?;
     /// registry.insert(order)?;
     ///
@@ -871,7 +871,7 @@ impl FixRegistry {
     /// let mut extended = registry.field_by_name("Party")?.clone();
     /// let note = DataType::utf8().nullable_field("PartyNote");
     /// let members = extended.fields().iter().cloned().chain([note]);
-    /// extended.set_dtype(DataType::from_fields(members)?)?;
+    /// extended.set_dtype(DataType::from(StructureType::from_fields(members)?))?;
     /// assert!(!registry.add_field(extended)?, "merged");
     /// let member = yggdryl::FieldPath::from_str("Order.Party.PartyNote")?;
     /// assert_eq!(registry.field_by_path(&member)?.dtype(), &DataType::utf8());
@@ -977,7 +977,10 @@ impl FixRegistry {
                         component.fields(),
                         item.fields(),
                     )?;
-                    set_merged_dtype(&mut component, DataType::from_fields(members)?)?;
+                    set_merged_dtype(
+                        &mut component,
+                        DataType::from(StructureType::from_fields(members)?),
+                    )?;
                     documents.put(key, component);
                     held.clone()
                 }
@@ -989,7 +992,10 @@ impl FixRegistry {
                         held.fields(),
                         item.fields(),
                     )?;
-                    set_merged_dtype(&mut occurrence, DataType::from_fields(members)?)?;
+                    set_merged_dtype(
+                        &mut occurrence,
+                        DataType::from(StructureType::from_fields(members)?),
+                    )?;
                     occurrence
                 }
                 _ => {
@@ -999,12 +1005,12 @@ impl FixRegistry {
             };
             group_dtype(stored, occurrence)?
         } else {
-            DataType::from_fields(self.merge_children(
+            DataType::from(StructureType::from_fields(self.merge_children(
                 documents,
                 stored.name(),
                 stored.fields(),
                 incoming.fields(),
-            )?)?
+            )?)?)
         };
         set_merged_dtype(&mut merged, dtype)?;
         Ok(merged)
@@ -1217,14 +1223,14 @@ impl FixRegistry {
             let tag = field
                 .as_fix()
                 .tag()?
-                .ok_or_else(|| Error::absent("fix:tag", field.name()))?;
-            let counter = counter.ok_or_else(|| Error::absent("fix:counter", field.name()))?;
+                .ok_or_else(|| Error::absent("FIX:tag", field.name()))?;
+            let counter = counter.ok_or_else(|| Error::absent("FIX:counter", field.name()))?;
             if !super::is_crate_tag(tag) || counter != tag {
                 return Err(Error::InvalidRecord {
                     path: field.name().into(),
                     reason: crate::text::expected_got(
                         "equal fix:tag and fix:counter in the crate's reserved range",
-                        format_args!("fix:tag={tag}, fix:counter={counter}"),
+                        format_args!("FIX:tag={tag}, fix:counter={counter}"),
                     ),
                 });
             }
@@ -1320,7 +1326,7 @@ impl FixRegistry {
         }
         check_shape(category, field)?;
         if category == FixCategory::Groups {
-            let tag = counter.ok_or_else(|| Error::absent("fix:counter", field.name()))?;
+            let tag = counter.ok_or_else(|| Error::absent("FIX:counter", field.name()))?;
             if !map_group {
                 let counter = self.field_by_tag(tag)?;
                 if counter.dtype() != &DataType::Int32 {
@@ -1402,9 +1408,9 @@ impl FixRegistry {
                 ));
             }
             let marker = match category {
-                FixCategory::Fields => "fix:field",
-                FixCategory::Groups => "fix:group",
-                _ => "fix:component",
+                FixCategory::Fields => "FIX:field",
+                FixCategory::Groups => "FIX:group",
+                _ => "FIX:component",
             };
             // A named definition carries a derived tag of its own, which is
             // its identity in the catalog rather than anything a reference

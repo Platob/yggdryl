@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "relatedpartydetailaltsub"
+        "FIX:component": "relatedpartydetailaltsub"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "relatedpartydetailaltsub",
+    "FIX:counter": "1572",
+    "FIX:tag": "551324",
     "description": "Required when NoRelatedPartyDetailAltSubIDs > 0.",
-    "display": "RelatedPartyDetailAltSubGrp",
-    "fix:component": "relatedpartydetailaltsub",
-    "fix:counter": "1572",
-    "fix:tag": "551324"
+    "display": "RelatedPartyDetailAltSubGrp"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legprovisionoptionexpirationdatebusinesscentercomponent"
+        "FIX:component": "legprovisionoptionexpirationdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legprovisionoptionexpirationdatebusinesscentercomponent",
+    "FIX:counter": "40937",
+    "FIX:tag": "425218",
     "description": "Required if NoLegProvisionOptionExpirationDateBusinessCenters(40937) > 0.",
-    "display": "LegProvisionOptionExpirationDateBusinessCenterGrp",
-    "fix:component": "legprovisionoptionexpirationdatebusinesscentercomponent",
-    "fix:counter": "40937",
-    "fix:tag": "425218"
+    "display": "LegProvisionOptionExpirationDateBusinessCenterGrp"
   }
 }

@@ -40,7 +40,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Field, Result, Scalar, i256};
+use crate::{DataType, Error, Field, Result, Scalar, StructureType, i256};
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
 const MAX_DECIMAL_PRECISION: usize = 76;
@@ -195,7 +195,8 @@ impl Scalar {
             Self::Sedol(_) => Ok(DataType::Sedol),
             Self::Bloomberg(_) => Ok(DataType::Bloomberg),
             Self::Version(_) => Ok(DataType::Version),
-            Self::Url(_) => Ok(DataType::Url),
+            Self::Url(_) => Ok(DataType::url()),
+            Self::Urn(_) => Ok(DataType::urn()),
             Self::Timezone(_) => Ok(DataType::Timezone),
             Self::MimeType(_) => Ok(DataType::MimeType),
             Self::MediaType(_) => Ok(DataType::MediaType),
@@ -241,7 +242,7 @@ impl Scalar {
                 let (value, _) = agreed(values, "mapping value", depth)?;
                 DataType::map_of(key, value, false)
             }
-            Self::Record(entries) => DataType::from_fields(
+            Self::Record(entries) => StructureType::from_fields(
                 entries
                     .as_map()
                     .iter()
@@ -252,7 +253,8 @@ impl Scalar {
                             .map(|dtype| Field::new(name.as_str(), dtype, nullable))
                     })
                     .collect::<Result<Vec<_>>>()?,
-            ),
+            )
+            .map(DataType::from),
         }
     }
 }

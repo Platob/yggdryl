@@ -14,7 +14,7 @@ use yggdryl::holder::Buffer;
 use yggdryl::ipc::Ipc;
 use yggdryl::media::RecordOptions;
 use yggdryl::parquet::Parquet;
-use yggdryl::{IOBase, IOMedia};
+use yggdryl::{IOBase, IOMedia, StructureType};
 
 use super::{ROWS, batch, handle, stored_with};
 
@@ -173,9 +173,10 @@ fn geospatial_fixture() -> Buffer {
     point.extend_from_slice(&1_u32.to_le_bytes());
     point.extend_from_slice(&1_f64.to_le_bytes());
     point.extend_from_slice(&2_f64.to_le_bytes());
-    let field = DataType::from_fields([DataType::geometry(None)
+    let field = StructureType::from_fields([DataType::geometry(None)
         .expect("the default CRS is valid")
         .nullable_field("shape")])
+    .map(DataType::from)
     .expect("a valid geospatial root")
     .required_field("row");
     let shapes = BinaryArray::from_iter_values((0..ROWS).map(|_| point.as_slice()));

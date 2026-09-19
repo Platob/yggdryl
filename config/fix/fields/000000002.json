@@ -3,15 +3,14 @@
     "name": "maturitymonthyear",
     "dtype": {
       "type": "string",
-      "layout": "fixed_string",
-      "charset": "us-ascii",
+      "layout": "fixed_ascii",
       "fixed": 8
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "200",
       "description": "Can be used with standardized derivatives vs. the MaturityDate (541) field. Month and Year of the maturity (used for standardized futures and options).",
-      "display": "MaturityMonthYear",
-      "fix:tag": "200"
+      "display": "MaturityMonthYear"
     }
   },
   {
@@ -21,9 +20,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether an option contract is a put, call, chooser or undetermined.",
-      "display": "PutOrCall",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Put",
@@ -45,8 +42,10 @@
           "doc": "Chooser"
         }
       ],
-      "fix:derivation": "case when cficode ilike 'OC%' then 1 when cficode ilike 'OP%' then 0 when cficode ilike 'HC%' then 1 when cficode ilike 'HP%' then 0 end",
-      "fix:tag": "201"
+      "FIX:derivation": "case when cficode ilike 'OC%' then 1 when cficode ilike 'OP%' then 0 when cficode ilike 'HC%' then 1 when cficode ilike 'HP%' then 0 end",
+      "FIX:tag": "201",
+      "description": "Indicates whether an option contract is a put, call, chooser or undetermined.",
+      "display": "PutOrCall"
     }
   },
   {
@@ -58,9 +57,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "202",
       "description": "Strike Price for an Option.",
-      "display": "StrikePrice",
-      "fix:tag": "202"
+      "display": "StrikePrice"
     }
   },
   {
@@ -70,9 +69,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used for derivative products, such as options",
-      "display": "CoveredOrUncovered",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Covered",
@@ -84,7 +81,9 @@
           "doc": "Uncovered"
         }
       ],
-      "fix:tag": "203"
+      "FIX:tag": "203",
+      "description": "Used for derivative products, such as options",
+      "display": "CoveredOrUncovered"
     }
   },
   {
@@ -94,8 +93,7 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "CustomerOrFirm",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Customer"
@@ -105,7 +103,7 @@
           "name": "Firm"
         }
       ],
-      "fix:replacements": [
+      "FIX:replacements": [
         {
           "plan": "select 'A' as ordercapacity where customerorfirm = '0'",
           "doc": "CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)"
@@ -115,7 +113,8 @@
           "doc": "CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)"
         }
       ],
-      "fix:tag": "204"
+      "FIX:tag": "204",
+      "display": "CustomerOrFirm"
     }
   },
   {
@@ -125,14 +124,14 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "MaturityDay",
-      "fix:replacements": [
+      "FIX:replacements": [
         {
           "plan": "select concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2)) as maturitydate",
           "doc": "MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)"
         }
       ],
-      "fix:tag": "205"
+      "FIX:tag": "205",
+      "display": "MaturityDay"
     }
   },
   {
@@ -142,9 +141,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "206",
       "description": "Provided to support versioning of option contracts as a result of corporate actions or events. Use of this field is defined by counterparty agreement or market conventions.",
-      "display": "OptAttribute",
-      "fix:tag": "206"
+      "display": "OptAttribute"
     }
   },
   {
@@ -154,9 +153,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "207",
       "description": "Market used to help identify a security.",
-      "display": "SecurityExchange",
-      "fix:tag": "207"
+      "display": "SecurityExchange"
     }
   },
   {
@@ -166,9 +165,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether or not details should be communicated to BrokerOfCredit (i.e. step-in broker).",
-      "display": "NotifyBrokerOfCredit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "DetailsShouldNotBeCommunicated",
@@ -186,7 +183,9 @@
           "doc": "Details should be communicated"
         }
       ],
-      "fix:tag": "208"
+      "FIX:tag": "208",
+      "description": "Indicates whether or not details should be communicated to BrokerOfCredit (i.e. step-in broker).",
+      "display": "NotifyBrokerOfCredit"
     }
   },
   {
@@ -196,9 +195,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates how the receiver (i.e. third party) of allocation information should handle/process the account details.",
-      "display": "AllocHandlInst",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Match",
@@ -220,7 +217,9 @@
           "doc": "Auto claim give-up"
         }
       ],
-      "fix:tag": "209"
+      "FIX:tag": "209",
+      "description": "Indicates how the receiver (i.e. third party) of allocation information should handle/process the account details.",
+      "display": "AllocHandlInst"
     }
   },
   {
@@ -232,15 +231,15 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Maximum quantity (e.g. number of shares) within an order to be shown to other customers (i.e. sent via an IOI).",
-      "display": "MaxShow",
-      "fix:deprecated": "5.0",
-      "fix:replacements": [
+      "FIX:deprecated": "5.0",
+      "FIX:replacements": [
         {
           "plan": "select maxshow as secondarydisplayqty"
         }
       ],
-      "fix:tag": "210"
+      "FIX:tag": "210",
+      "description": "Maximum quantity (e.g. number of shares) within an order to be shown to other customers (i.e. sent via an IOI).",
+      "display": "MaxShow"
     }
   },
   {
@@ -250,12 +249,12 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Amount (signed) added to the peg for a pegged order in the context of the PegOffsetType (836)",
-      "display": "PegOffsetValue",
-      "fix:names": [
+      "FIX:names": [
         "pegdifference"
       ],
-      "fix:tag": "211"
+      "FIX:tag": "211",
+      "description": "Amount (signed) added to the peg for a pegged order in the context of the PegOffsetType (836)",
+      "display": "PegOffsetValue"
     }
   },
   {
@@ -265,9 +264,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "212",
       "description": "Length of the XmlData data block.",
-      "display": "XmlDataLen",
-      "fix:tag": "212"
+      "display": "XmlDataLen"
     }
   },
   {
@@ -277,9 +276,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "213",
       "description": "Actual XML data stream (e.g. FIXML). See appropriate XML reference (e.g. FIXML). Note: may contain embedded SOH characters.",
-      "display": "XmlData",
-      "fix:tag": "213"
+      "display": "XmlData"
     }
   },
   {
@@ -289,9 +288,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "214",
       "description": "Reference identifier for the SettlInstID (162) with Cancel and Replace SettlInstTransType (163) transaction types.",
-      "display": "SettlInstRefID",
-      "fix:tag": "214"
+      "display": "SettlInstRefID"
     }
   },
   {
@@ -301,9 +300,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "215",
       "description": "Number of repeating groups of RoutingID (217) and RoutingType (216) values.",
-      "display": "NoRoutingIDs",
-      "fix:tag": "215"
+      "display": "NoRoutingIDs"
     }
   },
   {
@@ -313,9 +312,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the type of RoutingID (217) specified.",
-      "display": "RoutingType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "TargetFirm",
@@ -347,7 +344,9 @@
           "doc": "Block Person"
         }
       ],
-      "fix:tag": "216"
+      "FIX:tag": "216",
+      "description": "Indicates the type of RoutingID (217) specified.",
+      "display": "RoutingType"
     }
   },
   {
@@ -357,9 +356,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "217",
       "description": "Assigned value used to identify a specific routing destination.",
-      "display": "RoutingID",
-      "fix:tag": "217"
+      "display": "RoutingID"
     }
   },
   {
@@ -371,12 +370,12 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "For Fixed Income. Either Swap Spread or Spread to Benchmark depending upon the order type.",
-      "display": "Spread",
-      "fix:names": [
+      "FIX:names": [
         "spreadtobenchmark"
       ],
-      "fix:tag": "218"
+      "FIX:tag": "218",
+      "description": "For Fixed Income. Either Swap Spread or Spread to Benchmark depending upon the order type.",
+      "display": "Spread"
     }
   },
   {
@@ -386,8 +385,7 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "Benchmark",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Curve"
@@ -425,7 +423,7 @@
           "name": "SixMolibor"
         }
       ],
-      "fix:replacements": [
+      "FIX:replacements": [
         {
           "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, 'INTERPOLATED' as benchmarkcurvepoint where benchmark = '1'",
           "doc": "Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)"
@@ -463,7 +461,8 @@
           "doc": "Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)"
         }
       ],
-      "fix:tag": "219"
+      "FIX:tag": "219",
+      "display": "Benchmark"
     }
   },
   {
@@ -473,9 +472,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "220",
       "description": "Specifies currency used for benchmark curve.",
-      "display": "BenchmarkCurveCurrency",
-      "fix:tag": "220"
+      "display": "BenchmarkCurveCurrency"
     }
   },
   {
@@ -485,9 +484,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Name of benchmark curve.",
-      "display": "BenchmarkCurveName",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "EONIA",
           "name": "EONIA",
@@ -777,7 +774,9 @@
           "doc": "Overnight Bank Funding Rate"
         }
       ],
-      "fix:tag": "221"
+      "FIX:tag": "221",
+      "description": "Name of benchmark curve.",
+      "display": "BenchmarkCurveName"
     }
   },
   {
@@ -787,9 +786,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "222",
       "description": "Point on benchmark curve. Free form values: e.g. \"Y\", \"7Y\", \"INTERPOLATED\".",
-      "display": "BenchmarkCurvePoint",
-      "fix:tag": "222"
+      "display": "BenchmarkCurvePoint"
     }
   },
   {
@@ -799,9 +798,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "223",
       "description": "The rate of interest that, when multiplied by the principal, par value, or face value of a bond, provides the currency amount of the periodic interest payment. The coupon is always cited, along with maturity, in any quotation of a bond's price.",
-      "display": "CouponRate",
-      "fix:tag": "223"
+      "display": "CouponRate"
     }
   },
   {
@@ -812,9 +811,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "224",
       "description": "Date interest is to be paid. Used in identifying Corporate Bond issues.",
-      "display": "CouponPaymentDate",
-      "fix:tag": "224"
+      "display": "CouponPaymentDate"
     }
   },
   {
@@ -825,9 +824,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "225",
       "description": "The date on which a bond or stock offering is issued. It may or may not be the same as the effective date (\"Dated Date\") or the date on which interest begins to accrue (\"Interest Accrual Date\")",
-      "display": "IssueDate",
-      "fix:tag": "225"
+      "display": "IssueDate"
     }
   },
   {
@@ -837,10 +836,8 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Number of business days before repurchase of a repo. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
-      "display": "RepurchaseTerm",
-      "fix:deprecated": "4.4",
-      "fix:replacements": [
+      "FIX:deprecated": "4.4",
+      "FIX:replacements": [
         {
           "plan": "select '1' as terminationtype where repurchaseterm = '1'",
           "doc": "A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)"
@@ -850,7 +847,9 @@
           "doc": "A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)"
         }
       ],
-      "fix:tag": "226"
+      "FIX:tag": "226",
+      "description": "Number of business days before repurchase of a repo. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
+      "display": "RepurchaseTerm"
     }
   },
   {
@@ -860,15 +859,15 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Percent of par at which a Repo will be repaid. Represented as a percent, e.g. .9525 represents 95-/4 percent of par. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
-      "display": "RepurchaseRate",
-      "fix:deprecated": "4.4",
-      "fix:replacements": [
+      "FIX:deprecated": "4.4",
+      "FIX:replacements": [
         {
           "plan": "select repurchaserate as price"
         }
       ],
-      "fix:tag": "227"
+      "FIX:tag": "227",
+      "description": "Percent of par at which a Repo will be repaid. Represented as a percent, e.g. .9525 represents 95-/4 percent of par. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
+      "display": "RepurchaseRate"
     }
   },
   {
@@ -878,9 +877,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "228",
       "description": "For Fixed Income: Amorization Factor for deriving Current face from Original face for ABS or MBS securities, note the fraction may be greater than, equal to or less than . In TIPS securities this is the Inflation index.",
-      "display": "Factor",
-      "fix:tag": "228"
+      "display": "Factor"
     }
   },
   {
@@ -891,9 +890,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "229",
       "description": "Used with Fixed Income for Muncipal New Issue Market. Agreement in principal between counter-parties prior to actual trade date.",
-      "display": "TradeOriginationDate",
-      "fix:tag": "229"
+      "display": "TradeOriginationDate"
     }
   },
   {
@@ -904,9 +903,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "230",
       "description": "The date when a distribution of interest is deducted from a securities assets or set aside for payment to bondholders. On the ex-date, the securities price drops by the amount of the distribution (plus or minus any market activity).",
-      "display": "ExDate",
-      "fix:tag": "230"
+      "display": "ExDate"
     }
   },
   {
@@ -916,9 +915,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "231",
       "description": "Specifies the ratio or multiply factor to convert from \"nominal\" units (e.g. contracts) to total units (e.g. shares) (e.g. 1.0, 100, 1000, etc). Applicable For Fixed Income, Convertible Bonds, Derivatives, etc.",
-      "display": "ContractMultiplier",
-      "fix:tag": "231"
+      "display": "ContractMultiplier"
     }
   },
   {
@@ -928,9 +927,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "232",
       "description": "Number of stipulation entries",
-      "display": "NoStipulations",
-      "fix:tag": "232"
+      "display": "NoStipulations"
     }
   },
   {
@@ -940,9 +939,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "For Fixed Income.",
-      "display": "StipulationType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "ABS",
           "name": "AbsolutePrepaymentSpeed",
@@ -1479,7 +1476,9 @@
           "doc": "Interest payoff of rolling or amending trade"
         }
       ],
-      "fix:tag": "233"
+      "FIX:tag": "233",
+      "description": "For Fixed Income.",
+      "display": "StipulationType"
     }
   },
   {
@@ -1489,9 +1488,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "234",
       "description": "For Fixed Income. Value of stipulation.",
-      "display": "StipulationValue",
-      "fix:tag": "234"
+      "display": "StipulationValue"
     }
   },
   {
@@ -1501,9 +1500,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of yield. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
-      "display": "YieldType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "AFTERTAX",
           "name": "AfterTaxYield",
@@ -1691,7 +1688,9 @@
           "name": "YieldValueOf132"
         }
       ],
-      "fix:tag": "235"
+      "FIX:tag": "235",
+      "description": "Type of yield. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
+      "display": "YieldType"
     }
   },
   {
@@ -1701,9 +1700,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "236",
       "description": "Yield percentage.",
-      "display": "Yield",
-      "fix:tag": "236"
+      "display": "Yield"
     }
   },
   {
@@ -1715,9 +1714,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "237",
       "description": "The price at which the securities are distributed to the different members of an underwriting group for the primary market in Municipals, total gross underwriter's spread.",
-      "display": "TotalTakedown",
-      "fix:tag": "237"
+      "display": "TotalTakedown"
     }
   },
   {
@@ -1729,9 +1728,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "238",
       "description": "Provides the reduction in price for the secondary market in Muncipals.",
-      "display": "Concession",
-      "fix:tag": "238"
+      "display": "Concession"
     }
   },
   {
@@ -1741,15 +1740,15 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the collateral used in the transaction.",
-      "display": "RepoCollateralSecurityType",
-      "fix:deprecated": "4.4",
-      "fix:replacements": [
+      "FIX:deprecated": "4.4",
+      "FIX:replacements": [
         {
           "plan": "select repocollateralsecuritytype as underlyingsecuritytype"
         }
       ],
-      "fix:tag": "239"
+      "FIX:tag": "239",
+      "description": "Identifies the collateral used in the transaction.",
+      "display": "RepoCollateralSecurityType"
     }
   },
   {
@@ -1760,15 +1759,15 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Return of investor's principal in a security. Bond redemption can occur before maturity date.(Note tag # was reserved in FIX 4.1, added in FIX 4.3) (prior to FIX 4.4 field was of type UTCDate)",
-      "display": "RedemptionDate",
-      "fix:deprecated": "4.4",
-      "fix:replacements": [
+      "FIX:deprecated": "4.4",
+      "FIX:replacements": [
         {
           "plan": "select redemptiondate as yieldredemptiondate"
         }
       ],
-      "fix:tag": "240"
+      "FIX:tag": "240",
+      "description": "Return of investor's principal in a security. Bond redemption can occur before maturity date.(Note tag # was reserved in FIX 4.1, added in FIX 4.3) (prior to FIX 4.4 field was of type UTCDate)",
+      "display": "RedemptionDate"
     }
   },
   {
@@ -1779,9 +1778,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "241",
       "description": "Underlying security's CouponPaymentDate.",
-      "display": "UnderlyingCouponPaymentDate",
-      "fix:tag": "241"
+      "display": "UnderlyingCouponPaymentDate"
     }
   },
   {
@@ -1792,9 +1791,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "242",
       "description": "Underlying security's IssueDate.",
-      "display": "UnderlyingIssueDate",
-      "fix:tag": "242"
+      "display": "UnderlyingIssueDate"
     }
   },
   {
@@ -1804,10 +1803,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "4.4",
+      "FIX:tag": "243",
       "description": "Underlying security's RepoCollateralSecurityType. See RepoCollateralSecurityType (239) field for description.(Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
-      "display": "UnderlyingRepoCollateralSecurityType",
-      "fix:deprecated": "4.4",
-      "fix:tag": "243"
+      "display": "UnderlyingRepoCollateralSecurityType"
     }
   },
   {
@@ -1817,10 +1816,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "4.4",
+      "FIX:tag": "244",
       "description": "Underlying security's RepurchaseTerm. See RepurchaseTerm (226) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
-      "display": "UnderlyingRepurchaseTerm",
-      "fix:deprecated": "4.4",
-      "fix:tag": "244"
+      "display": "UnderlyingRepurchaseTerm"
     }
   },
   {
@@ -1830,10 +1829,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "4.4",
+      "FIX:tag": "245",
       "description": "Underlying security's RepurchaseRate. See RepurchaseRate (227) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
-      "display": "UnderlyingRepurchaseRate",
-      "fix:deprecated": "4.4",
-      "fix:tag": "245"
+      "display": "UnderlyingRepurchaseRate"
     }
   },
   {
@@ -1843,9 +1842,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "246",
       "description": "Underlying security's Factor.",
-      "display": "UnderlyingFactor",
-      "fix:tag": "246"
+      "display": "UnderlyingFactor"
     }
   },
   {
@@ -1856,10 +1855,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "4.4",
+      "FIX:tag": "247",
       "description": "Underlying security's RedemptionDate. See RedemptionDate (240) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3) (prior to FIX 4.4 field was of type UTCDate)",
-      "display": "UnderlyingRedemptionDate",
-      "fix:deprecated": "4.4",
-      "fix:tag": "247"
+      "display": "UnderlyingRedemptionDate"
     }
   },
   {
@@ -1870,9 +1869,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "248",
       "description": "Multileg instrument's individual leg security's CouponPaymentDate.",
-      "display": "LegCouponPaymentDate",
-      "fix:tag": "248"
+      "display": "LegCouponPaymentDate"
     }
   },
   {
@@ -1883,9 +1882,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "249",
       "description": "Multileg instrument's individual leg security's IssueDate.",
-      "display": "LegIssueDate",
-      "fix:tag": "249"
+      "display": "LegIssueDate"
     }
   },
   {
@@ -1895,10 +1894,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "4.4",
+      "FIX:tag": "250",
       "description": "Multileg instrument's individual leg security's RepoCollateralSecurityType. See RepoCollateralSecurityType (239) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
-      "display": "LegRepoCollateralSecurityType",
-      "fix:deprecated": "4.4",
-      "fix:tag": "250"
+      "display": "LegRepoCollateralSecurityType"
     }
   },
   {
@@ -1908,10 +1907,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "4.4",
+      "FIX:tag": "251",
       "description": "Multileg instrument's individual leg security's RepurchaseTerm. See RepurchaseTerm (226) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
-      "display": "LegRepurchaseTerm",
-      "fix:deprecated": "4.4",
-      "fix:tag": "251"
+      "display": "LegRepurchaseTerm"
     }
   },
   {
@@ -1921,10 +1920,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "4.4",
+      "FIX:tag": "252",
       "description": "Multileg instrument's individual leg security's RepurchaseRate. See RepurchaseRate (227) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
-      "display": "LegRepurchaseRate",
-      "fix:deprecated": "4.4",
-      "fix:tag": "252"
+      "display": "LegRepurchaseRate"
     }
   },
   {
@@ -1934,9 +1933,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "253",
       "description": "Multileg instrument's individual leg security's Factor.",
-      "display": "LegFactor",
-      "fix:tag": "253"
+      "display": "LegFactor"
     }
   },
   {
@@ -1947,10 +1946,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "4.4",
+      "FIX:tag": "254",
       "description": "Multileg instrument's individual leg security's RedemptionDate. See RedemptionDate (240) field for description (Note tag # was reserved in FIX 4.1, added in FIX 4.3) (prior to FIX 4.4 field was of type UTCDate)",
-      "display": "LegRedemptionDate",
-      "fix:deprecated": "4.4",
-      "fix:tag": "254"
+      "display": "LegRedemptionDate"
     }
   },
   {
@@ -1960,9 +1959,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "255",
       "description": "An evaluation of a company's ability to repay obligations or its likelihood of not defaulting. These evaluation are provided by Credit Rating Agencies, i.e. S&P, Moody's.",
-      "display": "CreditRating",
-      "fix:tag": "255"
+      "display": "CreditRating"
     }
   },
   {
@@ -1972,9 +1971,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "256",
       "description": "Underlying security's CreditRating.",
-      "display": "UnderlyingCreditRating",
-      "fix:tag": "256"
+      "display": "UnderlyingCreditRating"
     }
   },
   {
@@ -1984,9 +1983,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "257",
       "description": "Multileg instrument's individual leg security's CreditRating.",
-      "display": "LegCreditRating",
-      "fix:tag": "257"
+      "display": "LegCreditRating"
     }
   },
   {
@@ -1996,9 +1995,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Driver and part of trade in the event that the Security Master file was wrong at the point of entry(Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
-      "display": "TradedFlatSwitch",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "NotTradedFlat",
@@ -2016,7 +2013,9 @@
           "doc": "Traded Flat"
         }
       ],
-      "fix:tag": "258"
+      "FIX:tag": "258",
+      "description": "Driver and part of trade in the event that the Security Master file was wrong at the point of entry(Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
+      "display": "TradedFlatSwitch"
     }
   },
   {
@@ -2027,9 +2026,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "259",
       "description": "BasisFeatureDate allows requesting firms within fixed income the ability to request an alternative yield-to-worst, -maturity, -extended or other call. This flows through the confirm process.",
-      "display": "BasisFeatureDate",
-      "fix:tag": "259"
+      "display": "BasisFeatureDate"
     }
   },
   {
@@ -2041,9 +2040,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "260",
       "description": "Price for BasisFeatureDate.",
-      "display": "BasisFeaturePrice",
-      "fix:tag": "260"
+      "display": "BasisFeaturePrice"
     }
   },
   {
@@ -2053,9 +2052,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "262",
       "description": "Unique identifier for Market Data Request",
-      "display": "MDReqID",
-      "fix:tag": "262"
+      "display": "MDReqID"
     }
   },
   {
@@ -2065,9 +2064,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Subscription Request Type",
-      "display": "SubscriptionRequestType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Snapshot",
@@ -2084,7 +2081,9 @@
           "doc": "Disable previous Snapshot + Update Request (Unsubscribe)"
         }
       ],
-      "fix:tag": "263"
+      "FIX:tag": "263",
+      "description": "Subscription Request Type",
+      "display": "SubscriptionRequestType"
     }
   },
   {
@@ -2094,9 +2093,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "264",
       "description": "Depth of market for Book Snapshot / Incremental updates",
-      "display": "MarketDepth",
-      "fix:tag": "264"
+      "display": "MarketDepth"
     }
   },
   {
@@ -2106,9 +2105,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of Market Data update.",
-      "display": "MDUpdateType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "FullRefresh",
@@ -2120,7 +2117,9 @@
           "doc": "Incremental refresh"
         }
       ],
-      "fix:tag": "265"
+      "FIX:tag": "265",
+      "description": "Specifies the type of Market Data update.",
+      "display": "MDUpdateType"
     }
   },
   {
@@ -2130,9 +2129,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies whether or not book entries should be aggregated. (Not specified) = broker option",
-      "display": "AggregatedBook",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Y",
           "name": "BookEntriesToBeAggregated",
@@ -2150,7 +2147,9 @@
           "doc": "book entries should not be aggregated"
         }
       ],
-      "fix:tag": "266"
+      "FIX:tag": "266",
+      "description": "Specifies whether or not book entries should be aggregated. (Not specified) = broker option",
+      "display": "AggregatedBook"
     }
   },
   {
@@ -2160,9 +2159,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "267",
       "description": "Number of MDEntryType (269) fields requested.",
-      "display": "NoMDEntryTypes",
-      "fix:tag": "267"
+      "display": "NoMDEntryTypes"
     }
   },
   {
@@ -2172,9 +2171,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "268",
       "description": "Number of entries in Market Data message.",
-      "display": "NoMDEntries",
-      "fix:tag": "268"
+      "display": "NoMDEntries"
     }
   },
   {
@@ -2184,9 +2183,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of market data entry.",
-      "display": "MDEntryType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bid",
@@ -2416,7 +2413,9 @@
           "doc": "Time Weighted Average Price"
         }
       ],
-      "fix:tag": "269"
+      "FIX:tag": "269",
+      "description": "Type of market data entry.",
+      "display": "MDEntryType"
     }
   },
   {
@@ -2428,9 +2427,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "270",
       "description": "Price of the Market Data Entry.",
-      "display": "MDEntryPx",
-      "fix:tag": "270"
+      "display": "MDEntryPx"
     }
   },
   {
@@ -2442,9 +2441,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "271",
       "description": "Quantity or volume represented by the Market Data Entry.",
-      "display": "MDEntrySize",
-      "fix:tag": "271"
+      "display": "MDEntrySize"
     }
   },
   {
@@ -2456,9 +2455,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "272",
       "description": "Date of Market Data Entry.",
-      "display": "MDEntryDate",
-      "fix:tag": "272"
+      "display": "MDEntryDate"
     }
   },
   {
@@ -2469,9 +2468,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "273",
       "description": "Time of Market Data Entry.",
-      "display": "MDEntryTime",
-      "fix:tag": "273"
+      "display": "MDEntryTime"
     }
   },
   {
@@ -2481,9 +2480,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Direction of the \"tick\".",
-      "display": "TickDirection",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "PlusTick",
@@ -2505,7 +2502,9 @@
           "doc": "Zero-Minus Tick"
         }
       ],
-      "fix:tag": "274"
+      "FIX:tag": "274",
+      "description": "Direction of the \"tick\".",
+      "display": "TickDirection"
     }
   },
   {
@@ -2515,10 +2514,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "5.0",
+      "FIX:tag": "275",
       "description": "Market posting quote / trade.",
-      "display": "MDMkt",
-      "fix:deprecated": "5.0",
-      "fix:tag": "275"
+      "display": "MDMkt"
     }
   },
   {
@@ -2528,9 +2527,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Space-delimited list of conditions describing a quote.",
-      "display": "QuoteCondition",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "A",
           "name": "Open",
@@ -2832,7 +2829,9 @@
           "doc": "Flat Curve"
         }
       ],
-      "fix:tag": "276"
+      "FIX:tag": "276",
+      "description": "Space-delimited list of conditions describing a quote.",
+      "display": "QuoteCondition"
     }
   },
   {
@@ -2842,9 +2841,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of market data entry.",
-      "display": "TradeCondition",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "A",
           "name": "Cash",
@@ -3300,7 +3297,9 @@
           "doc": "Benchmark"
         }
       ],
-      "fix:tag": "277"
+      "FIX:tag": "277",
+      "description": "Type of market data entry.",
+      "display": "TradeCondition"
     }
   },
   {
@@ -3310,9 +3309,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "278",
       "description": "Unique Market Data Entry identifier.",
-      "display": "MDEntryID",
-      "fix:tag": "278"
+      "display": "MDEntryID"
     }
   },
   {
@@ -3322,9 +3321,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of Market Data update action.",
-      "display": "MDUpdateAction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "New",
@@ -3356,7 +3353,9 @@
           "doc": "Overlay"
         }
       ],
-      "fix:tag": "279"
+      "FIX:tag": "279",
+      "description": "Type of Market Data update action.",
+      "display": "MDUpdateAction"
     }
   },
   {
@@ -3366,9 +3365,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "280",
       "description": "Refers to a previous MDEntryID (278).",
-      "display": "MDEntryRefID",
-      "fix:tag": "280"
+      "display": "MDEntryRefID"
     }
   },
   {
@@ -3378,9 +3377,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason for the rejection of a Market Data request.",
-      "display": "MDReqRejReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "UnknownSymbol",
@@ -3452,7 +3449,9 @@
           "doc": "Insufficient credit"
         }
       ],
-      "fix:tag": "281"
+      "FIX:tag": "281",
+      "description": "Reason for the rejection of a Market Data request.",
+      "display": "MDReqRejReason"
     }
   },
   {
@@ -3462,10 +3461,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "5.0",
+      "FIX:tag": "282",
       "description": "Originator of a Market Data Entry",
-      "display": "MDEntryOriginator",
-      "fix:deprecated": "5.0",
-      "fix:tag": "282"
+      "display": "MDEntryOriginator"
     }
   },
   {
@@ -3475,9 +3474,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "283",
       "description": "Identification of a Market Maker's location",
-      "display": "LocationID",
-      "fix:tag": "283"
+      "display": "LocationID"
     }
   },
   {
@@ -3487,9 +3486,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "284",
       "description": "Identification of a Market Maker's desk",
-      "display": "DeskID",
-      "fix:tag": "284"
+      "display": "DeskID"
     }
   },
   {
@@ -3499,9 +3498,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason for deletion.",
-      "display": "DeleteReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Cancellation",
@@ -3513,7 +3510,9 @@
           "doc": "Error"
         }
       ],
-      "fix:tag": "285"
+      "FIX:tag": "285",
+      "description": "Reason for deletion.",
+      "display": "DeleteReason"
     }
   },
   {
@@ -3523,9 +3522,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Flag that identifies a market data entry. (Prior to FIX 4.3 this field was of type char)",
-      "display": "OpenCloseSettlFlag",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "DailyOpen",
@@ -3557,10 +3554,12 @@
           "doc": "Theoretical Price value"
         }
       ],
-      "fix:names": [
+      "FIX:names": [
         "openclosesettleflag"
       ],
-      "fix:tag": "286"
+      "FIX:tag": "286",
+      "description": "Flag that identifies a market data entry. (Prior to FIX 4.3 this field was of type char)",
+      "display": "OpenCloseSettlFlag"
     }
   },
   {
@@ -3570,9 +3569,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "287",
       "description": "Specifies the number of days that may elapse before delivery of the security",
-      "display": "SellerDays",
-      "fix:tag": "287"
+      "display": "SellerDays"
     }
   },
   {
@@ -3582,9 +3581,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "288",
       "description": "Buying party in a trade",
-      "display": "MDEntryBuyer",
-      "fix:tag": "288"
+      "display": "MDEntryBuyer"
     }
   },
   {
@@ -3594,9 +3593,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "289",
       "description": "Selling party in a trade",
-      "display": "MDEntrySeller",
-      "fix:tag": "289"
+      "display": "MDEntrySeller"
     }
   },
   {
@@ -3606,9 +3605,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "290",
       "description": "Display position of a bid or offer, numbered from most competitive to least competitive, per market side, beginning with 1.",
-      "display": "MDEntryPositionNo",
-      "fix:tag": "290"
+      "display": "MDEntryPositionNo"
     }
   },
   {
@@ -3618,9 +3617,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies a firm's or a security's financial status",
-      "display": "FinancialStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Bankrupt",
@@ -3637,7 +3634,9 @@
           "doc": "Restricted"
         }
       ],
-      "fix:tag": "291"
+      "FIX:tag": "291",
+      "description": "Identifies a firm's or a security's financial status",
+      "display": "FinancialStatus"
     }
   },
   {
@@ -3647,9 +3646,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of Corporate Action.",
-      "display": "CorporateAction",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "A",
           "name": "ExDividend",
@@ -3766,7 +3763,9 @@
           "doc": "Succession Event"
         }
       ],
-      "fix:tag": "292"
+      "FIX:tag": "292",
+      "description": "Identifies the type of Corporate Action.",
+      "display": "CorporateAction"
     }
   },
   {
@@ -3778,9 +3777,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "293",
       "description": "Default Bid Size.",
-      "display": "DefBidSize",
-      "fix:tag": "293"
+      "display": "DefBidSize"
     }
   },
   {
@@ -3792,9 +3791,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "294",
       "description": "Default Offer Size.",
-      "display": "DefOfferSize",
-      "fix:tag": "294"
+      "display": "DefOfferSize"
     }
   },
   {
@@ -3804,9 +3803,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "295",
       "description": "The number of quote entries for a QuoteSet.",
-      "display": "NoQuoteEntries",
-      "fix:tag": "295"
+      "display": "NoQuoteEntries"
     }
   },
   {
@@ -3816,9 +3815,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "296",
       "description": "The number of sets of quotes in the message.",
-      "display": "NoQuoteSets",
-      "fix:tag": "296"
+      "display": "NoQuoteSets"
     }
   },
   {
@@ -3828,9 +3827,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the status of the quote acknowledgement.",
-      "display": "QuoteStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Accepted",
@@ -3952,10 +3949,12 @@
           "doc": "Contract terminated"
         }
       ],
-      "fix:names": [
+      "FIX:names": [
         "quoteackstatus"
       ],
-      "fix:tag": "297"
+      "FIX:tag": "297",
+      "description": "Identifies the status of the quote acknowledgement.",
+      "display": "QuoteStatus"
     }
   },
   {
@@ -3965,9 +3964,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of quote cancel.",
-      "display": "QuoteCancelType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CancelForOneOrMoreSecurities",
@@ -4012,7 +4009,9 @@
           "doc": "Cancel quotes for an issuer of underlying security"
         }
       ],
-      "fix:tag": "298"
+      "FIX:tag": "298",
+      "description": "Identifies the type of quote cancel.",
+      "display": "QuoteCancelType"
     }
   },
   {
@@ -4022,9 +4021,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "299",
       "description": "Unique identifier for a quote. The QuoteEntryID stays with the quote as a static identifier even if the quote is updated.",
-      "display": "QuoteEntryID",
-      "fix:tag": "299"
+      "display": "QuoteEntryID"
     }
   }
 ]

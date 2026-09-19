@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "secondaryasset"
+        "FIX:component": "secondaryasset"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "secondaryasset",
+    "FIX:counter": "1976",
+    "FIX:tag": "1012895",
     "description": "Required if NoSecondaryAssetClasses(1976) > 0.",
-    "display": "SecondaryAssetGrp",
-    "fix:component": "secondaryasset",
-    "fix:counter": "1976",
-    "fix:tag": "1012895"
+    "display": "SecondaryAssetGrp"
   }
 }

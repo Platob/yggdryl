@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingservicetype",
-          "fix:tag": "3135"
+          "FIX:field": "tradingservicetype",
+          "FIX:tag": "3135"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingservicedesc",
-          "fix:tag": "3136"
+          "FIX:field": "tradingservicedesc",
+          "FIX:tag": "3136"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TradingService",
-    "fix:tag": "109312"
+    "FIX:tag": "109312",
+    "display": "TradingService"
   }
 }

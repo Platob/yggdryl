@@ -33,7 +33,7 @@ use arrow_array::{
 use arrow_buffer::NullBuffer;
 use arrow_select::zip::zip;
 
-use crate::TemporalFamily;
+use crate::TemporalKind;
 use crate::arrow::{Error, Result};
 use crate::cast::{ArrowCastOptions, Nullability, Representation};
 use crate::metadata::is_all_sources;
@@ -244,27 +244,27 @@ impl<'field> StructPlan<'field> {
                 if sources.is_some() {
                     return Err(digest_sources_error(
                         &field_path,
-                        "digest:sources belongs only to a digest holder",
+                        "DIGEST:sources belongs only to a digest holder",
                     ));
                 }
                 if declared_algorithm.is_some() {
                     return Err(digest_algorithm_error(
                         &field_path,
-                        "digest:algorithm belongs only to a digest holder",
+                        "DIGEST:algorithm belongs only to a digest holder",
                     ));
                 }
                 if field.as_digest().time().is_some() {
                     return Err(digest_metadata_error(
                         DIGEST_TIME_KEY,
                         &field_path,
-                        "digest:time belongs only to a digest holder",
+                        "DIGEST:time belongs only to a digest holder",
                     ));
                 }
                 if declared_unit.is_some() {
                     return Err(digest_metadata_error(
                         DIGEST_UNIT_KEY,
                         &field_path,
-                        "digest:unit belongs only to a digest holder",
+                        "DIGEST:unit belongs only to a digest holder",
                     ));
                 }
                 continue;
@@ -312,7 +312,7 @@ impl<'field> StructPlan<'field> {
                         return Err(digest_metadata_error(
                             DIGEST_UNIT_KEY,
                             &field_path,
-                            "digest:unit belongs only to a holder naming digest:time",
+                            "DIGEST:unit belongs only to a holder naming DIGEST:time",
                         ));
                     }
                     None
@@ -419,7 +419,7 @@ fn digest_metadata_error(key: &'static str, holder: &str, reason: impl std::fmt:
 /// layout a holder is written by nobody and left at its canonical default,
 /// which a containing holder would then read as though it were an answer. The
 /// declaration is refused where it is written rather than silently ignored,
-/// exactly as a `digest:sources` path that descends through a collection is.
+/// exactly as a `DIGEST:sources` path that descends through a collection is.
 fn reject_unreachable_digests(dtype: &DataType, path: &str, container: &str) -> Result<()> {
     // A dictionary encodes a value type rather than a child column, so what it
     // holds carries no name of its own to extend the path with.
@@ -449,7 +449,7 @@ fn reject_unreachable_digests(dtype: &DataType, path: &str, container: &str) -> 
         {
             return Err(digest_sources_error(
                 &child_path,
-                "digest:sources belongs only to a digest holder",
+                "DIGEST:sources belongs only to a digest holder",
             ));
         }
         if digest
@@ -464,14 +464,14 @@ fn reject_unreachable_digests(dtype: &DataType, path: &str, container: &str) -> 
         {
             return Err(digest_algorithm_error(
                 &child_path,
-                "digest:algorithm belongs only to a digest holder",
+                "DIGEST:algorithm belongs only to a digest holder",
             ));
         }
         if digest.time().is_some() {
             return Err(digest_metadata_error(
                 DIGEST_TIME_KEY,
                 &child_path,
-                "digest:time belongs only to a digest holder",
+                "DIGEST:time belongs only to a digest holder",
             ));
         }
         if digest
@@ -488,7 +488,7 @@ fn reject_unreachable_digests(dtype: &DataType, path: &str, container: &str) -> 
             return Err(digest_metadata_error(
                 DIGEST_UNIT_KEY,
                 &child_path,
-                "digest:unit belongs only to a digest holder",
+                "DIGEST:unit belongs only to a digest holder",
             ));
         }
         reject_unreachable_digests(child.dtype(), &child_path, container)?;
@@ -548,7 +548,7 @@ fn resolve_holder_algorithm(
 /// Resolve an exact-name-first path through Struct children only.
 ///
 /// `key` names the property the path was written under, so a refusal points
-/// at `digest:sources` or `digest:time` as the holder spelled it.
+/// at `DIGEST:sources` or `DIGEST:time` as the holder spelled it.
 fn resolve_selection<'field>(
     fields: &'field [Field],
     path: &str,
@@ -733,7 +733,7 @@ fn fill_struct<S: ArrowDigestState>(
                 if !holder.field.is_nullable() {
                     if let Some(row) = (0..row_count).find(|row| mask[*row] && unix.is_null(*row)) {
                         return Err(Error::IncompatibleSchema(format!(
-                            "holder {} row {row}: digest:time source is null and the holder is required",
+                            "holder {} row {row}: DIGEST:time source is null and the holder is required",
                             holder.path
                         )));
                     }
@@ -821,7 +821,7 @@ fn feed_selected_cell(
 
 /// Digest every row of a batch, in schema order.
 ///
-/// Every field contributes except one carrying `digest:role=holder`, which is
+/// Every field contributes except one carrying `DIGEST:role=holder`, which is
 /// an output rather than an input. `holder` is the only digest role, so a
 /// schema marks the field it fills and leaves the ones that field reads
 /// ordinary columns. The contributing values remain an ordered sequence, which
@@ -1126,14 +1126,14 @@ fn feed_cell(
         ),
         DataType::Date(DateType::Date32) => temporal(
             digester,
-            TemporalFamily::Date,
+            TemporalKind::Date,
             i64::from(downcast::<Date32Array>(array)?.value(index)),
             TimeUnit::Day,
             &Timezone::NAIVE,
         ),
         DataType::Date(DateType::Date64) => temporal(
             digester,
-            TemporalFamily::Date,
+            TemporalKind::Date,
             downcast::<Date64Array>(array)?.value(index),
             TimeUnit::Millisecond,
             &Timezone::NAIVE,
@@ -1146,7 +1146,7 @@ fn feed_cell(
             };
             temporal(
                 digester,
-                TemporalFamily::Time,
+                TemporalKind::Time,
                 i64::from(count),
                 *unit,
                 &Timezone::NAIVE,
@@ -1158,13 +1158,7 @@ fn feed_cell(
                 TimeUnit::Nanosecond => downcast::<Time64NanosecondArray>(array)?.value(index),
                 _ => return fallback(digester, dtype, array, index),
             };
-            temporal(
-                digester,
-                TemporalFamily::Time,
-                count,
-                *unit,
-                &Timezone::NAIVE,
-            );
+            temporal(digester, TemporalKind::Time, count, *unit, &Timezone::NAIVE);
         }
         DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
             let count = match unit {
@@ -1174,7 +1168,7 @@ fn feed_cell(
                 TimeUnit::Nanosecond => downcast::<TimestampNanosecondArray>(array)?.value(index),
                 _ => return fallback(digester, dtype, array, index),
             };
-            temporal(digester, TemporalFamily::DateTime, count, *unit, timezone);
+            temporal(digester, TemporalKind::DateTime, count, *unit, timezone);
         }
         DataType::Duration(DurationType::Duration64(unit)) => {
             let count = match unit {
@@ -1186,7 +1180,7 @@ fn feed_cell(
             };
             temporal(
                 digester,
-                TemporalFamily::Duration,
+                TemporalKind::Duration,
                 count,
                 *unit,
                 &Timezone::NAIVE,
@@ -1217,7 +1211,7 @@ fn feed_cell(
         | DataType::TimeInForce
         | DataType::Uuid
         | DataType::Version
-        | DataType::Url
+        | DataType::Uri(_)
         | DataType::Timezone
         | DataType::MimeType
         | DataType::MediaType
@@ -1241,7 +1235,7 @@ fn feed_cell(
 /// Feed a temporal read straight from a buffer.
 fn temporal(
     digester: &mut impl Hasher,
-    family: TemporalFamily,
+    family: TemporalKind,
     count: i64,
     unit: TimeUnit,
     zone: &Timezone,

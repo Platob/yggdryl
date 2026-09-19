@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "marginamountcomponent"
+        "FIX:component": "marginamountcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "marginamountcomponent",
+    "FIX:counter": "1643",
+    "FIX:tag": "664835",
     "description": "Number of margin amount entries",
-    "display": "MarginAmount",
-    "fix:component": "marginamountcomponent",
-    "fix:counter": "1643",
-    "fix:tag": "664835"
+    "display": "MarginAmount"
   }
 }

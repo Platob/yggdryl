@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermobligationtype",
-          "fix:tag": "41636"
+          "FIX:field": "legprotectiontermobligationtype",
+          "FIX:tag": "41636"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprotectiontermobligationvalue",
-          "fix:tag": "41637"
+          "FIX:field": "legprotectiontermobligationvalue",
+          "FIX:tag": "41637"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProtectionTermObligation",
-    "fix:tag": "723117"
+    "FIX:tag": "723117",
+    "display": "LegProtectionTermObligation"
   }
 }

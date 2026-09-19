@@ -14,7 +14,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple, PyType};
 use yggdryl::{
     DataType as CoreDataType, DateTimeType, EdgeAlgorithm as CoreEdgeAlgorithm,
-    Scheme as CoreScheme, StringEnum as CoreStringEnum, TimeUnit as CoreTimeUnit,
+    Scheme as CoreScheme, StringEnum as CoreStringEnum, StructureType, TimeUnit as CoreTimeUnit,
     UnionMode as CoreUnionMode,
 };
 use yggdryl::{DataTypeValue as _, FieldValue as _, SequenceType};
@@ -140,7 +140,7 @@ pub(crate) fn is_parsed_text(dtype: &CoreDataType) -> bool {
         dtype,
         CoreDataType::Uuid
             | CoreDataType::Version
-            | CoreDataType::Url
+            | CoreDataType::Uri(_)
             | CoreDataType::Timezone
             | CoreDataType::MimeType
             | CoreDataType::MediaType
@@ -479,7 +479,8 @@ impl PyDataType {
             "timeinforce" => CoreDataType::TimeInForce,
             "uuid" => CoreDataType::uuid(),
             "version" => CoreDataType::Version,
-            "url" => CoreDataType::Url,
+            "url" => CoreDataType::url(),
+            "urn" => CoreDataType::urn(),
             "timezone" => CoreDataType::Timezone,
             "mimetype" => CoreDataType::MimeType,
             "mediatype" => CoreDataType::MediaType,
@@ -909,7 +910,8 @@ impl PyDataType {
     /// Builds a native Struct directly from native child fields.
     #[staticmethod]
     fn from_fields(fields: &Bound<'_, PyAny>) -> PyResult<Self> {
-        CoreDataType::from_fields(core_fields_from_iterable(fields)?)
+        StructureType::from_fields(core_fields_from_iterable(fields)?)
+            .map(CoreDataType::from)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -1936,7 +1938,7 @@ impl PyDataType {
 ///
 /// A dictionary is a vocabulary and derives its member names; this is the
 /// vocabulary a declaration named itself, and it is what a ``Field`` stores
-/// under ``field:enum`` so the enum crosses Arrow, a file, and another runtime
+/// under ``FIELD:enum`` so the enum crosses Arrow, a file, and another runtime
 /// intact. The width lives in the field's datatype - a fixed US-ASCII string
 /// of at most sixteen bytes, or a code - so a member's code is its packed
 /// value under that width and never a position.
@@ -1995,7 +1997,7 @@ impl PyStringEnum {
             .map_err(value_error)
     }
 
-    /// Parses the ``field:enum`` document.
+    /// Parses the ``FIELD:enum`` document.
     #[staticmethod]
     fn from_json(document: &str) -> PyResult<Self> {
         CoreStringEnum::from_json(document)
@@ -2003,7 +2005,7 @@ impl PyStringEnum {
             .map_err(value_error)
     }
 
-    /// Renders the ``field:enum`` document, which is one text per enum.
+    /// Renders the ``FIELD:enum`` document, which is one text per enum.
     #[allow(clippy::wrong_self_convention)]
     fn into_json(&self) -> String {
         self.inner.into_json()

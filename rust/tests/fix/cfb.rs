@@ -1419,7 +1419,7 @@ fn a_stem_that_cannot_be_a_membership_is_refused_rather_than_folded_into_one() {
         .expect("bytes held in memory are named by the caller or not at all");
     assert!(branches(&fields[4]).is_empty());
 
-    let refused = |error: &Error| matches!(error, Error::InvalidMetadataValue { key, .. } if key == "fix:branches");
+    let refused = |error: &Error| matches!(error, Error::InvalidMetadataValue { key, .. } if key == "FIX:branches");
     let error = FixField::from_cfb_file(&handle(CBLOCK), Some("ms,bloomberg")).unwrap_err();
     assert!(refused(&error), "{error}");
     assert!(error.to_string().contains("','"), "{error}");

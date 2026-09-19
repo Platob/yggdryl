@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "pricerangerule"
+        "FIX:component": "pricerangerule"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "pricerangerule",
+    "FIX:counter": "2550",
+    "FIX:tag": "272317",
     "description": "Required if NoPriceRangeRules(2550) > 0.",
-    "display": "PriceRangeRuleGrp",
-    "fix:component": "pricerangerule",
-    "fix:counter": "2550",
-    "fix:tag": "272317"
+    "display": "PriceRangeRuleGrp"
   }
 }

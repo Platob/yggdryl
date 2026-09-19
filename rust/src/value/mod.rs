@@ -1,4 +1,5 @@
-//! What a datatype, a field and a value each owe the root that holds them.
+//! What a datatype, a field and a value each owe the root that holds them,
+//! and what a family owes its leaves.
 //!
 //! [`DataType`], [`Field`] and [`Scalar`] are redirectors: each holds one
 //! variant per family, and the family answers which leaf it is. The traits
@@ -9,21 +10,295 @@
 //! | --- | --- | --- | --- |
 //! | datatype | [`DataTypeValue`] | `into_dtype` | `from_dtype` |
 //! | field | [`FieldValue`] | `into_field` | `from_field` |
-//! | value | [`crate::Value`] | `into_scalar` | `from_scalar` |
+//! | value | [`Value`] | `into_scalar` | `from_scalar` |
+//! | family value | [`FamilyValue`] | `into_scalar` | `from_scalar` |
 //!
 //! The roots implement their own trait too - [`DataType`] is a
 //! [`DataTypeValue`] and [`Field`] is a `FieldValue<DataType>` - so code that
 //! is generic over a family works unchanged on the root that redirects to it.
 //!
+//! On the value side a family with several leaves is an enum over them -
+//! [`Integer`], [`Floating`], [`Decimal`], [`Temporal`], [`Code`],
+//! [`Geospatial`] and [`Nested`] - each a [`FamilyValue`]: it stands for any
+//! one leaf, answers that leaf's datatype, widens to the scalar the leaf
+//! widens to and narrows a scalar whose variant is one of its leaves. A kind
+//! with one leaf value - a boolean, a string, a byte value, a UUID, and the
+//! self-families a version, a URL, a time zone, a MIME type and a media type
+//! are - has no enum: the leaf is the family. What the leaves of one family
+//! share beyond that is the family's own trait - [`IntegerValue`],
+//! [`FloatingValue`], [`DecimalValue`], [`TemporalValue`],
+//! [`GeospatialValue`], [`CodeValue`] and [`NestedValue`] - declared here
+//! and implemented beside each leaf.
+//!
+//! `canonical` is the schema-directed validation and canonicalization of row
+//! values: a struct [`Field`] is the schema of the rows it describes, so
+//! validating a row is validating one [`crate::sequence::Sequence`] against
+//! that field's children, and canonicalization is the same walk with
+//! rewriting - integers, floats and nested containers narrowed into the exact
+//! representation the schema declares, and the input answered untouched when
+//! nothing needed changing.
+//!
 //! [`Field`]: crate::Field
 //! [`Scalar`]: crate::Scalar
+//! [`Integer`]: crate::Integer
+//! [`Floating`]: crate::Floating
+//! [`Decimal`]: crate::Decimal
+//! [`Temporal`]: crate::Temporal
+//! [`Code`]: crate::Code
+//! [`Geospatial`]: crate::Geospatial
+
+mod canonical;
+
+pub(crate) use canonical::*;
 
 use std::fmt;
 use std::hash::Hash;
+use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::{DataType, DataTypeId, DataTypeKind, Field, Metadata, Result, Scalar};
+use crate::{
+    DataType, DataTypeId, DataTypeKind, Field, Metadata, Result, Scalar, TimeUnit, Timezone, i256,
+};
+use crate::{Mapping, Record, Sequence};
+
+/// One concrete scalar representation.
+///
+/// Implementors are the final representation a [`Scalar`] variant holds.
+/// Narrowing an existing scalar only projects a reference; validation remains
+/// owned by [`DataType::scalar`](crate::DataType::scalar) and
+/// [`Field::scalar`](crate::Field::scalar).
+pub trait Value:
+    Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static
+{
+    /// Return the datatype this value materializes into.
+    ///
+    /// Values whose physical parameters cannot be represented by a valid
+    /// [`DataType`] return a typed error instead of guessing or panicking.
+    fn dtype(&self) -> Result<DataType>;
+    /// Widen this leaf to the dynamic scalar root.
+    fn into_scalar(self) -> Scalar;
+    /// Narrow a dynamic scalar to this leaf without re-validating it.
+    fn from_scalar(value: &Scalar) -> Option<&Self>;
+}
+
+/// What a family's value enum owes: it stands for any one leaf of the family,
+/// so it answers the leaf's datatype, widens to the scalar the leaf widens to,
+/// and narrows a scalar whose variant is one of its leaves - by value, because
+/// the scalar holds the leaf and not the family, and every leaf is `Copy` or one
+/// shared pointer.
+pub trait FamilyValue:
+    Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static
+{
+    /// The kind every leaf of this family shares.
+    const KIND: DataTypeKind;
+
+    /// Return the datatype the held leaf materializes into.
+    ///
+    /// # Errors
+    ///
+    /// Returns the leaf's own refusal when its physical parameters cannot be
+    /// represented by a valid [`DataType`].
+    fn dtype(&self) -> Result<DataType>;
+    /// Widen the held leaf to the dynamic scalar root.
+    fn into_scalar(self) -> Scalar;
+    /// Narrow a dynamic scalar to this family when its variant is one of the
+    /// family's leaves.
+    fn from_scalar(value: &Scalar) -> Option<Self>;
+}
+
+/// Emit one family's value enum over its leaves.
+///
+/// Every variant is named for the leaf it wraps, which is also the [`Scalar`]
+/// variant that leaf widens to, so the enum, the scalar and the leaf share
+/// one spelling: `Integer::Int32(Int32)` is `Scalar::Int32(Int32)`.
+macro_rules! family_value {
+    (
+        $(#[$meta:meta])*
+        $family:ident, $kind:ident, [$($leaf:ident),+ $(,)?]
+    ) => {
+        $(#[$meta])*
+        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+        pub enum $family {
+            $(
+                #[doc = concat!("One `", stringify!($leaf), "`.")]
+                $leaf($leaf),
+            )+
+        }
+
+        impl ::std::fmt::Display for $family {
+            fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                match self {
+                    $(Self::$leaf(value) => ::std::fmt::Display::fmt(value, formatter),)+
+                }
+            }
+        }
+
+        impl $crate::FamilyValue for $family {
+            const KIND: $crate::DataTypeKind = $crate::DataTypeKind::$kind;
+
+            fn dtype(&self) -> $crate::Result<$crate::DataType> {
+                match self {
+                    $(Self::$leaf(value) => $crate::Value::dtype(value),)+
+                }
+            }
+
+            fn into_scalar(self) -> $crate::Scalar {
+                match self {
+                    $(Self::$leaf(value) => $crate::Scalar::$leaf(value),)+
+                }
+            }
+
+            fn from_scalar(value: &$crate::Scalar) -> Option<Self> {
+                match value {
+                    $($crate::Scalar::$leaf(value) => Some(Self::$leaf(value.clone())),)+
+                    _ => None,
+                }
+            }
+        }
+
+        $(
+            impl From<$leaf> for $family {
+                fn from(value: $leaf) -> Self {
+                    Self::$leaf(value)
+                }
+            }
+        )+
+
+        impl From<$family> for $crate::Scalar {
+            fn from(value: $family) -> Self {
+                $crate::FamilyValue::into_scalar(value)
+            }
+        }
+    };
+}
+
+pub(crate) use family_value;
+
+/// Operations shared by every signed and unsigned integer representation.
+pub trait IntegerValue: Value {
+    /// Whether this representation is signed.
+    const SIGNED: bool;
+    /// The physical width in bits.
+    const BIT_WIDTH: u8;
+
+    /// Return this integer as a signed 128-bit value when it fits.
+    fn as_i128(&self) -> Option<i128>;
+    /// Return this integer as an unsigned 128-bit value when it is non-negative.
+    fn as_u128(&self) -> Option<u128>;
+    /// Build this width from a signed 128-bit value.
+    fn from_i128(value: i128) -> Result<Self>;
+}
+
+/// Operations shared by every IEEE floating-point representation.
+pub trait FloatingValue: Value {
+    /// The physical width in bits.
+    const BIT_WIDTH: u8;
+
+    /// Return this value widened to binary64.
+    fn as_f64(&self) -> f64;
+}
+
+/// Operations shared by every exact-decimal representation.
+pub trait DecimalValue: Value {
+    /// Return the coefficient widened to 256 bits.
+    fn coefficient(&self) -> i256;
+    /// Return the decimal scale.
+    fn scale(&self) -> i8;
+    /// Return this value represented at `scale` without losing precision.
+    fn rescale(self, scale: i8) -> Result<Self>;
+}
+
+/// Operations shared by every temporal representation.
+pub trait TemporalValue: Value {
+    /// The family's name: `date`, `time`, `datetime`, `duration` or
+    /// `interval`, as a datatype spells it.
+    const FAMILY: &'static str;
+    /// The physical count width in bits.
+    const BIT_WIDTH: u8;
+
+    /// Return the stored count widened to 64 bits.
+    fn count(&self) -> i64;
+    /// Return the count's unit.
+    fn unit(&self) -> TimeUnit;
+    /// Return the explicit timezone marker.
+    fn timezone(&self) -> Timezone;
+    /// Convert this value to another valid unit.
+    fn with_unit(self, unit: TimeUnit) -> Result<Self>;
+    /// Restate this value with another valid timezone marker.
+    fn with_timezone(self, timezone: Timezone) -> Result<Self>;
+}
+
+/// Borrowing access shared by geometry and geography values.
+pub trait GeospatialValue: Value {
+    /// Borrow the validated Well-Known Binary payload.
+    fn as_bytes(&self) -> &[u8];
+    /// Borrow the shared storage behind the payload.
+    ///
+    /// The payload is already validated WKB, so reinterpreting a geometry as
+    /// a geography clones this handle rather than copying and re-reading it.
+    fn storage(&self) -> &Arc<[u8]>;
+}
+
+/// Borrowing access shared by every code representation.
+pub trait CodeValue: Value {
+    /// The fixed storage width, in bytes.
+    const WIDTH: usize;
+
+    /// Borrow the validated code.
+    fn as_str(&self) -> &str;
+    /// Borrow the shared storage behind the validated code.
+    ///
+    /// The stored text is already trimmed and checked, so a rewrite that
+    /// keeps it clones this handle rather than re-validating and copying.
+    fn storage(&self) -> &SmolStr;
+
+    /// The better statement of this code and another of the same kind: this
+    /// one, unless it states less than `other` does.
+    ///
+    /// What "less" means is each code's own, and the codes that can state
+    /// nothing say so: a [`Cfi`](crate::Cfi) fills every `X` position from the other
+    /// where the two describe one instrument; a
+    /// [`State`](crate::State) that reached none, `00UNKNOWN`, takes the other, and
+    /// otherwise the further along stands; a [`Side`](crate::Side) `UNKNOWN`, a
+    /// [`Currency`](crate::Currency) `XXX` and a [`Mic`](crate::Mic) `XXXX` take the other. Every other
+    /// code is an identifier with nothing partial about it, so this one
+    /// stands as it is. This is what a graph element folds two statements
+    /// of one fact with.
+    #[must_use]
+    fn merge_with(self, other: &Self) -> Self {
+        let _ = other;
+        self
+    }
+}
+
+/// What every nested value answers: its direct children, counted and walked.
+pub trait NestedValue: Value {
+    /// Return the number of direct children.
+    fn len(&self) -> usize;
+    /// Return whether this value has no direct children.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    /// Iterate over direct sequence values, mapping keys, or record values.
+    fn children(&self) -> Children<'_>;
+}
+
+family_value!(
+    /// The nested family as one value: a sequence, a mapping or a record.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, FamilyValue, Nested, Scalar};
+    ///
+    /// let value = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]);
+    /// let held = Nested::from_scalar(&value).expect("a sequence");
+    /// assert!(matches!(held, Nested::Sequence(_)));
+    /// assert_eq!(held.dtype().unwrap(), DataType::list(DataType::Int64.required_field("item")));
+    /// assert_eq!(held.into_scalar(), value);
+    /// assert_eq!(Nested::from_scalar(&Scalar::from(1_i64)), None);
+    /// ```
+    Nested, Nested, [Sequence, Mapping, Record]
+);
 
 /// The per-column facts a field carries that only one datatype has.
 ///
@@ -385,17 +660,6 @@ impl DataTypeValue for DataType {
     fn from_dtype(dtype: &DataType) -> Option<Self> {
         Some(dtype.clone())
     }
-}
-
-pub trait NestedValue: crate::Value {
-    /// Return the number of direct children.
-    fn len(&self) -> usize;
-    /// Return whether this value has no direct children.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-    /// Iterate over direct sequence values, mapping keys, or record values.
-    fn children(&self) -> Children<'_>;
 }
 
 /// A borrowed iterator over sequence values, mapping keys or record values.

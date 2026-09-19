@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "confirmreqid",
-          "fix:tag": "859"
+          "FIX:field": "confirmreqid",
+          "FIX:tag": "859"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "confirmtype",
-          "fix:tag": "773"
+          "FIX:field": "confirmtype",
+          "FIX:tag": "773"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noorders",
-          "fix:tag": "73"
+          "FIX:field": "noorders",
+          "FIX:tag": "73"
         }
       },
       {
@@ -53,7 +53,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "ordallocgrp"
+          "FIX:group": "ordallocgrp"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocid",
-          "fix:tag": "70"
+          "FIX:field": "allocid",
+          "FIX:tag": "70"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryallocid",
-          "fix:tag": "793"
+          "FIX:field": "secondaryallocid",
+          "FIX:tag": "793"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "individualallocid",
-          "fix:tag": "467"
+          "FIX:field": "individualallocid",
+          "FIX:tag": "467"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocaccount",
-          "fix:tag": "79"
+          "FIX:field": "allocaccount",
+          "FIX:tag": "79"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocacctidsource",
-          "fix:tag": "661"
+          "FIX:field": "allocacctidsource",
+          "FIX:tag": "661"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocaccounttype",
-          "fix:tag": "798"
+          "FIX:field": "allocaccounttype",
+          "FIX:tag": "798"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -162,8 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -173,17 +173,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "allocid,secondaryallocid,individualallocid",
+    "FIX:msgtype": "BH",
+    "FIX:tag": "162059",
     "description": "MsgType = BH",
-    "display": "ConfirmationRequest",
-    "fix:identifiers": "allocid,secondaryallocid,individualallocid",
-    "fix:msgtype": "BH",
-    "fix:tag": "162059"
+    "display": "ConfirmationRequest"
   }
 }

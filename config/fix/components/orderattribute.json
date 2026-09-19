@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderattributetype",
-          "fix:tag": "2594"
+          "FIX:field": "orderattributetype",
+          "FIX:tag": "2594"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderattributevalue",
-          "fix:tag": "2595"
+          "FIX:field": "orderattributevalue",
+          "FIX:tag": "2595"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "OrderAttribute",
-    "fix:tag": "816370"
+    "FIX:tag": "816370",
+    "display": "OrderAttribute"
   }
 }

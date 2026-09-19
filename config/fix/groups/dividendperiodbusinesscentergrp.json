@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "dividendperiodbusinesscentercomponent"
+        "FIX:component": "dividendperiodbusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "dividendperiodbusinesscentercomponent",
+    "FIX:counter": "42294",
+    "FIX:tag": "735066",
     "description": "Required if NoDividendPeriodBusinessCenters(42294) > 0.",
-    "display": "DividendPeriodBusinessCenterGrp",
-    "fix:component": "dividendperiodbusinesscentercomponent",
-    "fix:counter": "42294",
-    "fix:tag": "735066"
+    "display": "DividendPeriodBusinessCenterGrp"
   }
 }

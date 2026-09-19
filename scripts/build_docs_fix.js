@@ -12,7 +12,7 @@
  *
  * docs/assets/fix.json carries the native catalog, registry counts, fixed
  * capture columns, and recorded decoded/emitted sample results. Codes and
- * membership (`fix:branches`, the dictionaries that contributed a field)
+ * membership (`FIX:branches`, the dictionaries that contributed a field)
  * stay inline in their owning native Field metadata.
  *
  * The manifest is committed, so the same build runs on any machine: fixed corpus,
@@ -182,8 +182,8 @@ function dictionary() {
   return fix.FixRegistry.fromHandle(CONFIG)
 }
 
-/** The `fix:` properties a store writes as the JSON they are. */
-const DOCUMENT_KEYS = ['fix:codes', 'fix:replacements', 'fix:directions', 'fix:names', 'fix:tags']
+/** The `FIX:` properties a store writes as the JSON they are. */
+const DOCUMENT_KEYS = ['FIX:codes', 'FIX:replacements', 'FIX:directions', 'FIX:names', 'FIX:tags']
 
 /**
  * One native Field document in the shape a store writes.
@@ -260,10 +260,10 @@ function liveCatalog(registry) {
   if (catalog.fields.length + catalog.components.length + catalog.groups.length !== registry.size) {
     throw new Error('live catalog count differs from the native registry')
   }
-  // A message is a component carrying `fix:msgtype`, and every code a
+  // A message is a component carrying `FIX:msgtype`, and every code a
   // component declares is one the registry answers.
   const declared = catalog.components
-    .map((field) => field.metadata?.['fix:msgtype'])
+    .map((field) => field.metadata?.['FIX:msgtype'])
     .filter((code) => code !== undefined)
   if (declared.some((code) => registry.getMsgtype(code) === null)) {
     throw new Error('live message catalog differs from the native message inventory')
@@ -286,7 +286,7 @@ function fieldRecords(registry) {
     const view = field.fix
     const tag = view.tag
     if (tag === null) continue
-    const codes = document(field, 'fix:codes')
+    const codes = document(field, 'FIX:codes')
     const record = { t: tag, n: field.name, y: field.dtype.toString() }
     if (field.display !== null && field.display !== field.name) record.d = field.display
     const memberships = view.branches
@@ -306,7 +306,7 @@ function fieldRecords(registry) {
 
 /** What the dictionary is, counted once so the page states no arithmetic. */
 function counts(records, catalog, row, dialects) {
-  // Membership is provenance on the field: `fix:branches` lists every
+  // Membership is provenance on the field: `FIX:branches` lists every
   // dictionary that contributed it, and a field the specification alone
   // defines lists none. The shipped dictionary carries no membership at all.
   const members = new Map(dialects.map((name) => [name, 0]))
@@ -336,8 +336,8 @@ function counts(records, catalog, row, dialects) {
     codes,
     aliases,
     alternates,
-    // A message is a component carrying `fix:msgtype`.
-    messages: catalog.components.filter((field) => field.metadata?.['fix:msgtype'] !== undefined).length,
+    // A message is a component carrying `FIX:msgtype`.
+    messages: catalog.components.filter((field) => field.metadata?.['FIX:msgtype'] !== undefined).length,
     components: catalog.components.length,
     columns: row.columns.length,
     memberships,

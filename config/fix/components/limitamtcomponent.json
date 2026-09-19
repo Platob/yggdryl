@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitamttype",
-          "fix:tag": "1631"
+          "FIX:field": "limitamttype",
+          "FIX:tag": "1631"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastlimitamt",
-          "fix:tag": "1632"
+          "FIX:field": "lastlimitamt",
+          "FIX:tag": "1632"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitamtremaining",
-          "fix:tag": "1633"
+          "FIX:field": "limitamtremaining",
+          "FIX:tag": "1633"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitutilizationamt",
-          "fix:tag": "2394"
+          "FIX:field": "limitutilizationamt",
+          "FIX:tag": "2394"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitamt",
-          "fix:tag": "2395"
+          "FIX:field": "limitamt",
+          "FIX:tag": "2395"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitamtcurrency",
-          "fix:tag": "1634"
+          "FIX:field": "limitamtcurrency",
+          "FIX:tag": "1634"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitamtcurrencycodesource",
-          "fix:tag": "2935"
+          "FIX:field": "limitamtcurrencycodesource",
+          "FIX:tag": "2935"
         }
       },
       {
@@ -87,15 +87,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "limitrole",
-          "fix:tag": "2396"
+          "FIX:field": "limitrole",
+          "FIX:tag": "2396"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LimitAmt",
-    "fix:tag": "931862"
+    "FIX:tag": "931862",
+    "display": "LimitAmt"
   }
 }

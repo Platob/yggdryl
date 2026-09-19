@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnrateinformationsource",
-          "fix:tag": "43061"
+          "FIX:field": "underlyingreturnrateinformationsource",
+          "FIX:tag": "43061"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratereferencepage",
-          "fix:tag": "43062"
+          "FIX:field": "underlyingreturnratereferencepage",
+          "FIX:tag": "43062"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingreturnratereferencepageheading",
-          "fix:tag": "43063"
+          "FIX:field": "underlyingreturnratereferencepageheading",
+          "FIX:tag": "43063"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingReturnRateInformationSource",
-    "fix:tag": "366535"
+    "FIX:tag": "366535",
+    "display": "UnderlyingReturnRateInformationSource"
   }
 }

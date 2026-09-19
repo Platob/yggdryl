@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "paymentscheduleratesourcecomponent"
+        "FIX:component": "paymentscheduleratesourcecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "paymentscheduleratesourcecomponent",
+    "FIX:counter": "40868",
+    "FIX:tag": "851817",
     "description": "Required if NoPaymentScheduleRateSources(40868) > 0.",
-    "display": "PaymentScheduleRateSourceGrp",
-    "fix:component": "paymentscheduleratesourcecomponent",
-    "fix:counter": "40868",
-    "fix:tag": "851817"
+    "display": "PaymentScheduleRateSourceGrp"
   }
 }

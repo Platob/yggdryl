@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbenchmarkcurvecurrency",
-          "fix:tag": "676"
+          "FIX:field": "legbenchmarkcurvecurrency",
+          "FIX:tag": "676"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbenchmarkcurvecurrencycodesource",
-          "fix:tag": "2951"
+          "FIX:field": "legbenchmarkcurvecurrencycodesource",
+          "FIX:tag": "2951"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbenchmarkcurvename",
-          "fix:tag": "677"
+          "FIX:field": "legbenchmarkcurvename",
+          "FIX:tag": "677"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbenchmarkcurvepoint",
-          "fix:tag": "678"
+          "FIX:field": "legbenchmarkcurvepoint",
+          "FIX:tag": "678"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbenchmarkprice",
-          "fix:tag": "679"
+          "FIX:field": "legbenchmarkprice",
+          "FIX:tag": "679"
         }
       },
       {
@@ -65,16 +65,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legbenchmarkpricetype",
-          "fix:tag": "680"
+          "FIX:field": "legbenchmarkpricetype",
+          "FIX:tag": "680"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "305085",
     "description": "The LegBenchmarkCurveData is used to convey the benchmark information used for pricing in a multi-legged Fixed Income security.",
-    "display": "LegBenchmarkCurveData",
-    "fix:tag": "305085"
+    "display": "LegBenchmarkCurveData"
   }
 }

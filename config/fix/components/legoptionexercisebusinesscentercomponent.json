@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legoptionexercisebusinesscenter",
-          "fix:tag": "41492"
+          "FIX:field": "legoptionexercisebusinesscenter",
+          "FIX:tag": "41492"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegOptionExerciseBusinessCenter",
-    "fix:tag": "941637"
+    "FIX:tag": "941637",
+    "display": "LegOptionExerciseBusinessCenter"
   }
 }

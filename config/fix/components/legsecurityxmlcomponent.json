@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsecurityxmllen",
-          "fix:tag": "1871"
+          "FIX:field": "legsecurityxmllen",
+          "FIX:tag": "1871"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsecurityxml",
-          "fix:tag": "1872"
+          "FIX:field": "legsecurityxml",
+          "FIX:tag": "1872"
         }
       },
       {
@@ -32,16 +32,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsecurityxmlschema",
-          "fix:tag": "1873"
+          "FIX:field": "legsecurityxmlschema",
+          "FIX:tag": "1873"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "617791",
     "description": "Must be provided if LegSecurityXML(1872) field is specified and must immediately precede it.",
-    "display": "LegSecurityXML",
-    "fix:tag": "617791"
+    "display": "LegSecurityXML"
   }
 }

@@ -676,7 +676,7 @@ assert partition_properties is not None
 assert postgres_properties
 assert protocol_scheme == "iceberg"
 assert protocol_prefix == "iceberg"
-assert protocol_key == "iceberg:doc"
+assert protocol_key == "ICEBERG:doc"
 assert protocol_names == ["doc", "schema-id", "snapshot"]
 assert protocol_values
 assert protocol_entries
@@ -1466,7 +1466,7 @@ fix_header_stated: bool = fix_message_header.stated_sendingtime
 fix_header_possdupflag: bool | None = fix_message_header.possdupflag
 fix_header_msgdirection: str | None = fix_message_header.msgdirection
 
-fix_capture_pluginid: str | None = fix_message_capture.pluginid
+fix_capture_msgpluginid: str | None = fix_message_capture.msgpluginid
 fix_capture_msgctxid: str | None = fix_message_capture.msgctxid
 fix_capture_msgsessionid: str | None = fix_message_capture.msgsessionid
 
@@ -1480,7 +1480,7 @@ fix_event_parentuuids: list[Scalar] = fix_message_event.parentuuids
 fix_event_currunix: int = fix_message_event.currunix
 fix_event_state: Scalar = fix_message_event.state
 fix_event_seqnum: int = fix_message_event.seqnum
-fix_event_creatunix: int | None = fix_message_event.creatunix
+fix_event_creaunix: int | None = fix_message_event.creaunix
 fix_event_expirunix: int | None = fix_message_event.expirunix
 fix_event_prevunix: int | None = fix_message_event.prevunix
 fix_event_prevuuid: Scalar | None = fix_message_event.prevuuid
@@ -1663,7 +1663,7 @@ assert python_declared_module == "trading.book" and python_declared_kind == "cla
 assert python_declared_qualname == python_declared_class_name == "Quote"
 assert python_declared_path == "trading.book.Quote" and python_declared_importable
 assert not python_declared_keyword and python_declared_hash
-assert python_declared_properties["python:module"] == "trading.book"
+assert python_declared_properties["PYTHON:module"] == "trading.book"
 assert python_from_type.class_name == "Field"
 assert python_properties.scheme == "python"
 assert fix_by_id and fix_maybe_by_id
@@ -1699,13 +1699,13 @@ assert fix_header_targetcompid is None or fix_header_targetcompid
 assert fix_header_msgseqnum is None or fix_header_msgseqnum
 assert fix_header_possdupflag is None or fix_header_possdupflag
 assert fix_header_msgdirection is None or fix_header_msgdirection
-assert fix_capture_pluginid is None or fix_capture_pluginid
+assert fix_capture_msgpluginid is None or fix_capture_msgpluginid
 assert fix_capture_msgctxid is None or fix_capture_msgctxid
 assert fix_capture_msgsessionid is None or fix_capture_msgsessionid
 assert isinstance(fix_event_currunix, int) and isinstance(fix_event_crosscode, str)
 assert isinstance(fix_event_currhashcode, int) and isinstance(fix_event_crosshashcode, int)
 assert isinstance(fix_event_seqnum, int) and isinstance(fix_event_unit, str)
-assert fix_event_creatunix is None or fix_event_creatunix
+assert fix_event_creaunix is None or fix_event_creaunix
 assert fix_event_expirunix is None or fix_event_expirunix
 assert fix_event_prevunix is None or fix_event_prevunix
 assert fix_event_snapunix is None or fix_event_snapunix

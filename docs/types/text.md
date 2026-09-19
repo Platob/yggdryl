@@ -1,12 +1,12 @@
 # Strings & bytes
 
-One string family in eighteen real leaves, one byte family in six, the canonical text values - version, URL, time zone, MIME type, media type - and the regex that turns named captures into a schema.
+One string family in eighteen real leaves, one byte family in six, the canonical text values - version, URL, URN, time zone, MIME type, media type - and the regex that turns named captures into a schema.
 
 ## Contract
 
 | | |
 | --- | --- |
-| Owns | `DataType::String(StringType)`, `DataType::Bytes(BytesType)`, the values `Str` and `Bytes`, `Version`, `Url`, `Timezone`, `MimeType`, `MediaType` |
+| Owns | `DataType::String(StringType)`, `DataType::Bytes(BytesType)`, the values `Str` and `Bytes`, `Version`, `Url`, `Urn`, `Timezone`, `MimeType`, `MediaType` |
 | Constructors | `DataType::string` / `DataType::bytes` take the whole declaration; one constructor per leaf picks it once - `utf8`, `large_utf8`, `utf8_view`, `large_utf8_view`, `fixed_utf8(n)`, `sized_utf8(n)`, the same six as `ascii` and as `cp1252`, and `binary`, `large_binary`, `binary_view`, `large_binary_view`, `fixed_binary(n)`, `sized_binary(n)` |
 | Reads back | `string_parameters`, `bytes_parameters`, `charset`, `fixed_byte_width`, `is_string`; a [code](codes.md), a [UUID](uuid.md) and a geospatial value answer no parameters, and a code answers `code_width` instead |
 | Bound | the number *is* the leaf: the exact width on `fixed_*(n)`, the maximum stored bytes on `sized_*(n)`; neither stands without one, every other leaf refuses one, and zero is refused |
@@ -63,6 +63,7 @@ datatype.
 | `large_cp1252`, `cp1252_view`, `large_cp1252_view` | unbounded windows-1252 in that shape | `large_windows_1252`, `large_string(windows-1252)`, `string_view(cp1252)` |
 | `version` | `Version` | - |
 | `url` | `Url` | - |
+| `urn` | `Urn` | - |
 | `timezone` | `Timezone` | `tz`, `timezone_name` |
 | `mimetype` | `MimeType` | `mime` |
 | `mediatype` | `MediaType` | `content_type` |
@@ -607,7 +608,7 @@ read back under `utf8` trims.
 
     use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
     use yggdryl::FieldValue as _;
-use yggdryl::{ArrowCastOptions, DataType, Field};
+use yggdryl::{ArrowCastOptions, DataType, Field, StructureType};
 
     let strict = ArrowCastOptions::new().with_safe(false);
     let ccy = Field::new("ccy", DataType::fixed_ascii(4)?, true);
@@ -624,7 +625,7 @@ use yggdryl::{ArrowCastOptions, DataType, Field};
         Arc::new(arrow_schema::Schema::new(vec![stored])),
         vec![padded],
     )?;
-    let text = DataType::from_fields([DataType::utf8().required_field("ccy")])?.required_field("row");
+    let text = DataType::from(StructureType::from_fields([DataType::utf8().required_field("ccy")])?).required_field("row");
     let trimmed = text.cast_arrow_batch(batch, strict)?;
     let trimmed = trimmed.column(0).as_any().downcast_ref::<StringArray>().unwrap();
     assert_eq!(trimmed.value(1), "EU");
@@ -956,60 +957,7 @@ native Version example corpus.
 
 ## Locations
 
-`Url` is the crate's own [`Url`](../holder/index.md) carried as a column: a value read out of a table is a value a handle can be opened from, not prose that happens to look like one. Parsing canonicalizes and validates, so a column holds one spelling per location and nothing that is not a location.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{DataType, Field, Scalar, Url};
-
-    let location = Url::from_str("HTTPS://example.com/a%2fb")?;
-    assert_eq!(location.to_string(), "https://example.com/a%2Fb");
-    // A bare platform path is a `file:` URL, which is what a local handle is.
-    assert_eq!(Url::from_str("/lake/part.txt")?.to_string(), "file:///lake/part.txt");
-
-    let field = Field::new("location", DataType::Url, false);
-    assert_eq!(field.scalar("HTTPS://example.com/a%2fb")?, Scalar::from(location));
-    // Relative text names no location, so it is not one.
-    assert!(field.scalar("./relative").is_err());
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import DataType, Scalar, types
-    from yggdryl.text import json
-
-    dtype = DataType("url")
-    field = types.url("location", nullable=False)
-    value = json.loads('"HTTPS://example.com/a"', field=field, cls=Scalar)
-    assert dtype.kind == "text"
-    assert value.as_py() == "https://example.com/a"
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { DataType, fields, json } = require('yggdryl')
-
-    const dtype = new DataType('url')
-    const value = json.loads('"HTTPS://example.com/a"', {
-      field: fields.url('location', { nullable: false }),
-      scalar: true,
-    })
-    assert.equal(dtype.kind, 'text')
-    assert.equal(value.asJs(), 'https://example.com/a')
-    ```
-
-| rule | behaviour |
-| --- | --- |
-| Kind | `text`; the aliases are `UrlField`, `types.url`, `fields.url` |
-| Value | `crate::Url` behind one shared pointer, so a row clone moves a reference count rather than a URI |
-| Storage | `Utf8` holding the canonical text, extension name `yggdryl.url` |
-| Ordering | the canonical text's, which is Arrow's own string order; there is no numeric component to sort by |
-| Default | `file:///`, the shortest URL the validator accepts, because a location has no zero |
-| Merging | only with itself: merging into text would drop the validation that makes it a URL |
+A column of locations declares `url` and a column of names declares `urn`, the two leaves of the `uri` family: each holds the crate's own [`Url` or `Urn`](../uri/url-urn.md) carried as a column, and both are documented on [the URI page](../uri/index.md#as-a-column).
 
 ## Time zones
 

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentschedulefixingdayofweek",
-          "fix:tag": "41162"
+          "FIX:field": "paymentschedulefixingdayofweek",
+          "FIX:tag": "41162"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentschedulefixingdaynumber",
-          "fix:tag": "41163"
+          "FIX:field": "paymentschedulefixingdaynumber",
+          "FIX:tag": "41163"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentScheduleFixingDay",
-    "fix:tag": "690641"
+    "FIX:tag": "690641",
+    "display": "PaymentScheduleFixingDay"
   }
 }

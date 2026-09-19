@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "ioiid",
-          "fix:tag": "23"
+          "FIX:field": "ioiid",
+          "FIX:tag": "23"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "ioitranstype",
-          "fix:tag": "28"
+          "FIX:field": "ioitranstype",
+          "FIX:tag": "28"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ioirefid",
-          "fix:tag": "26"
+          "FIX:field": "ioirefid",
+          "FIX:tag": "26"
         }
       },
       {
@@ -63,7 +63,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -73,7 +73,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrumentextension"
+          "FIX:component": "instrumentextension"
         }
       },
       {
@@ -83,8 +83,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -94,7 +94,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -104,7 +104,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "financingdetails"
+          "FIX:component": "financingdetails"
         }
       },
       {
@@ -114,8 +114,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings",
-          "fix:tag": "711"
+          "FIX:field": "nounderlyings",
+          "FIX:tag": "711"
         }
       },
       {
@@ -125,7 +125,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "undinstrmtgrp"
+          "FIX:group": "undinstrmtgrp"
         }
       },
       {
@@ -135,8 +135,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedinstruments",
-          "fix:tag": "1647"
+          "FIX:field": "norelatedinstruments",
+          "FIX:tag": "1647"
         }
       },
       {
@@ -146,7 +146,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "relatedinstrumentgrp"
+          "FIX:group": "relatedinstrumentgrp"
         }
       },
       {
@@ -156,8 +156,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "side",
-          "fix:tag": "54"
+          "FIX:field": "side",
+          "FIX:tag": "54"
         }
       },
       {
@@ -167,8 +167,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "qtytype",
-          "fix:tag": "854"
+          "FIX:field": "qtytype",
+          "FIX:tag": "854"
         }
       },
       {
@@ -178,7 +178,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "orderqtydata"
+          "FIX:component": "orderqtydata"
         }
       },
       {
@@ -188,8 +188,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "ioiqty",
-          "fix:tag": "27"
+          "FIX:field": "ioiqty",
+          "FIX:tag": "27"
         }
       },
       {
@@ -199,8 +199,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency",
-          "fix:tag": "15"
+          "FIX:field": "currency",
+          "FIX:tag": "15"
         }
       },
       {
@@ -210,8 +210,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource",
-          "fix:tag": "2897"
+          "FIX:field": "currencycodesource",
+          "FIX:tag": "2897"
         }
       },
       {
@@ -221,8 +221,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nostipulations",
-          "fix:tag": "232"
+          "FIX:field": "nostipulations",
+          "FIX:tag": "232"
         }
       },
       {
@@ -232,7 +232,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "stipulations"
+          "FIX:group": "stipulations"
         }
       },
       {
@@ -242,8 +242,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs",
-          "fix:tag": "555"
+          "FIX:field": "nolegs",
+          "FIX:tag": "555"
         }
       },
       {
@@ -253,7 +253,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrmtlegioigrp"
+          "FIX:group": "instrmtlegioigrp"
         }
       },
       {
@@ -263,8 +263,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricetype",
-          "fix:tag": "423"
+          "FIX:field": "pricetype",
+          "FIX:tag": "423"
         }
       },
       {
@@ -274,8 +274,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopricequalifiers",
-          "fix:tag": "2709"
+          "FIX:field": "nopricequalifiers",
+          "FIX:tag": "2709"
         }
       },
       {
@@ -285,7 +285,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "pricequalifiergrp"
+          "FIX:group": "pricequalifiergrp"
         }
       },
       {
@@ -295,8 +295,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "price",
-          "fix:tag": "44"
+          "FIX:field": "price",
+          "FIX:tag": "44"
         }
       },
       {
@@ -306,8 +306,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "validuntiltime",
-          "fix:tag": "62"
+          "FIX:field": "validuntiltime",
+          "FIX:tag": "62"
         }
       },
       {
@@ -317,8 +317,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ioiqltyind",
-          "fix:tag": "25"
+          "FIX:field": "ioiqltyind",
+          "FIX:tag": "25"
         }
       },
       {
@@ -328,8 +328,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ioinaturalflag",
-          "fix:tag": "130"
+          "FIX:field": "ioinaturalflag",
+          "FIX:tag": "130"
         }
       },
       {
@@ -339,8 +339,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noioiqualifiers",
-          "fix:tag": "199"
+          "FIX:field": "noioiqualifiers",
+          "FIX:tag": "199"
         }
       },
       {
@@ -350,7 +350,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "ioiqualgrp"
+          "FIX:group": "ioiqualgrp"
         }
       },
       {
@@ -360,8 +360,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -371,8 +371,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -382,8 +382,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -393,8 +393,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -404,8 +404,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "urllink",
-          "fix:tag": "149"
+          "FIX:field": "urllink",
+          "FIX:tag": "149"
         }
       },
       {
@@ -415,8 +415,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noroutingids",
-          "fix:tag": "215"
+          "FIX:field": "noroutingids",
+          "FIX:tag": "215"
         }
       },
       {
@@ -426,7 +426,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "routinggrp"
+          "FIX:group": "routinggrp"
         }
       },
       {
@@ -436,7 +436,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "spreadorbenchmarkcurvedata"
+          "FIX:component": "spreadorbenchmarkcurvedata"
         }
       },
       {
@@ -446,8 +446,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelativevalues",
-          "fix:tag": "2529"
+          "FIX:field": "norelativevalues",
+          "FIX:tag": "2529"
         }
       },
       {
@@ -457,7 +457,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "relativevaluegrp"
+          "FIX:group": "relativevaluegrp"
         }
       },
       {
@@ -467,7 +467,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "yielddata"
+          "FIX:component": "yielddata"
         }
       },
       {
@@ -477,16 +477,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "6",
+    "FIX:tag": "405524",
     "description": "MsgType = 6",
-    "display": "IOI",
-    "fix:msgtype": "6",
-    "fix:tag": "405524"
+    "display": "IOI"
   }
 }

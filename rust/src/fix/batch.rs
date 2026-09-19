@@ -22,7 +22,7 @@
 //!
 //! | group | columns |
 //! | --- | --- |
-//! | identity | `currunix`, `creatunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `snapunix`, `sendingtime` |
+//! | identity | `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid`, `snapunix`, `sendingtime` |
 //! | meaning | one per lifted facet, typed as that facet's field is typed |
 //! | arrival | `entries`, a list of `tag`/`branch`/`key`/`value` |
 //!
@@ -97,19 +97,19 @@ impl FixCodec {
     /// the `beginstring` column as
     /// [`Self::parse_text_line`] reads the captures of those names, the
     /// `msgdirection` column as the direction the row states, and every
-    /// other column named after a field the dictionary knows - `pluginid`
+    /// other column named after a field the dictionary knows - `msgpluginid`
     /// among them - filling that field where the line left it unsaid. Where each
     /// column sits and which field it fills is decided once from the schema,
     /// so no row copies the codec or asks the dictionary a question the row
     /// before it asked.
     ///
     /// [The capture's own columns](FixMsg::from_row) fill nothing: the
-    /// carried ones, and the two the crate tags - a `sourceurl` column and a
-    /// `recordedat` one - are read off the source row and written straight
-    /// into the row this answers, each at its own column, because where a
-    /// line was read from is this reader's statement and never the message's.
-    /// This is the one door that can state them, and it is why they survive
-    /// a parse without a message holding one.
+    /// carried ones, and the one the crate tags - a `sourceurl` column - are
+    /// read off the source row and written straight into the row this
+    /// answers, each at its own column, because where a line was read from
+    /// is this reader's statement and never the message's. This is the one
+    /// door that can state them, and it is why they survive a parse without
+    /// a message holding one.
     ///
     /// A line the reader
     /// cannot classify yields no message; malformed-body recovery still obeys
@@ -576,10 +576,10 @@ fn wire_size(entries: &[FixEntry]) -> u64 {
 
 /// Where a row schema's own capture columns sit.
 ///
-/// [The capture's own columns](FixMsg::from_row): the two the crate tags,
-/// `sourceurl` and `recordedat`, and every column no tag and no counter
-/// names - the body a line was cut from, its place in the object, its media
-/// type, what a bound dropped. A namespaced key is not one of them: that is
+/// [The capture's own columns](FixMsg::from_row): the one the crate tags,
+/// `sourceurl`, and every column no tag and no counter names - the body a
+/// line was cut from, its place in the object, its media type, when the
+/// reader read it, what a bound dropped. A namespaced key is not one of them: that is
 /// a bridge's own statement, which the message keeps in its metadata.
 fn capture_columns(schema: &Field, plan: &super::schema::Columns) -> Vec<usize> {
     schema
@@ -823,10 +823,9 @@ struct Columns {
     /// beside the target column it is stated at, in ascending target order.
     ///
     /// Both kinds at once: the carried columns, which lead the row in the
-    /// order they were kept, and the two the crate tags - `sourceurl`,
-    /// `recordedat` - wherever the fixed columns put them. No message holds
-    /// any of them, so this is the whole of what says where a row's line
-    /// came from and when it was written down.
+    /// order they were kept, and the one the crate tags - `sourceurl` -
+    /// wherever the fixed columns put it. No message holds any of them, so
+    /// this is the whole of what says where a row's line came from.
     restated: Vec<(usize, usize)>,
     /// Each source column's datatype, so a cell is read under its own.
     dtypes: Vec<DataType>,
@@ -887,7 +886,7 @@ impl Columns {
             }
         }
         // One column is stated once, by the leftmost source that reaches it:
-        // `mtime` and `recordedat` both answer tag 65028, and a row cannot
+        // two captures folding to one name answer one tag, and a row cannot
         // hold one column twice. Stably, so which one wins is the schema's
         // order and never the sort's.
         restated.sort_by_key(|(_, at)| *at);

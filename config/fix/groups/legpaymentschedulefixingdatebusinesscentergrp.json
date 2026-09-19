@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legpaymentschedulefixingdatebusinesscentercomponent"
+        "FIX:component": "legpaymentschedulefixingdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legpaymentschedulefixingdatebusinesscentercomponent",
+    "FIX:counter": "40927",
+    "FIX:tag": "1029358",
     "description": "Required if NoLegPaymentScheduleFixingDateBusinessCenters(40927) > 0.",
-    "display": "LegPaymentScheduleFixingDateBusinessCenterGrp",
-    "fix:component": "legpaymentschedulefixingdatebusinesscentercomponent",
-    "fix:counter": "40927",
-    "fix:tag": "1029358"
+    "display": "LegPaymentScheduleFixingDateBusinessCenterGrp"
   }
 }

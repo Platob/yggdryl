@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlementamount",
-          "fix:tag": "1701"
+          "FIX:field": "settlementamount",
+          "FIX:tag": "1701"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlementamountcurrency",
-          "fix:tag": "1702"
+          "FIX:field": "settlementamountcurrency",
+          "FIX:tag": "1702"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlementamountcurrencycodesource",
-          "fix:tag": "2903"
+          "FIX:field": "settlementamountcurrencycodesource",
+          "FIX:tag": "2903"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SettlementAmount",
-    "fix:tag": "371730"
+    "FIX:tag": "371730",
+    "display": "SettlementAmount"
   }
 }

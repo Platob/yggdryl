@@ -13,9 +13,9 @@
 //! A signature is a struct [`Field`] named `namespace.name`: each child is one
 //! parameter, in position order, typed by its datatype and nullability, and a
 //! child declaring a [default](FunctionSignature::parameter_default) is
-//! optional. The return is the field's `function:returns` property. This is
+//! optional. The return is the field's `FUNCTION:returns` property. This is
 //! what a binding registers from a decorated callable, what a stored field
-//! carries as its [`transform:function`](crate::TransformField), and what
+//! carries as its [`TRANSFORM:function`](crate::TransformField), and what
 //! [`FunctionSignature::as_field`] and [`FunctionSignature::from_field`] turn
 //! into each other without loss.
 //!
@@ -35,13 +35,13 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::term::Term;
 use super::{Function, named};
-use crate::{DataType, Error, Field, Result, Scalar};
+use crate::{DataType, Error, Field, Result, Scalar, StructureType};
 
 /// The metadata property naming a signature's return field.
-const RETURNS_KEY: &str = "function:returns";
+const RETURNS_KEY: &str = "FUNCTION:returns";
 
 /// The metadata property holding a parameter's default, in literal spelling.
-const DEFAULT_KEY: &str = "function:default";
+const DEFAULT_KEY: &str = "FUNCTION:default";
 
 /// The qualified name of a user-defined function: `namespace.name`.
 ///
@@ -279,7 +279,7 @@ impl FunctionSignature {
     }
 
     /// The struct field this signature is: one child per parameter under the
-    /// qualified name, the return spelled as the `function:returns` property.
+    /// qualified name, the return spelled as the `FUNCTION:returns` property.
     ///
     /// # Errors
     ///
@@ -294,7 +294,7 @@ impl FunctionSignature {
                 "not null"
             }
         );
-        DataType::from_fields(self.parameters.clone())?
+        DataType::from(StructureType::from_fields(self.parameters.clone())?)
             .required_field(self.reference.as_str())
             .try_with_metadata_entries([(RETURNS_KEY, returns.as_str())])
     }

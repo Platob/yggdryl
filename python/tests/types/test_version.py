@@ -177,17 +177,19 @@ def test_retired_msgtype_datatype_is_absent_and_url_keeps_its_new_index():
     # real leaves, then the thirteen string leaves - `sized_utf8`, the six
     # US-ASCII ones and the six windows-1252 ones - when the string family
     # became eighteen; the five UTF-8 leaves kept the slots of the layouts
-    # they replaced. An identifier is a wire contract, so nothing ever moves.
+    # they replaced - and `urn` last, the name beside the `url` location. An
+    # identifier is a wire contract, so nothing ever moves.
     assert "msgdirection" not in enums.DATA_TYPE_IDS
-    assert len(enums.DATA_TYPE_IDS) == 83
+    assert len(enums.DATA_TYPE_IDS) == 84
     assert enums.DATA_TYPE_IDS.index("url") == 58
+    assert enums.DATA_TYPE_IDS.index("urn") == 83
     assert enums.DATA_TYPE_IDS.index("sized_utf8") == 70
     assert list(enums.DATA_TYPE_IDS[-5:]) == [
-        "large_cp1252",
         "cp1252_view",
         "large_cp1252_view",
         "fixed_cp1252",
         "sized_cp1252",
+        "urn",
     ]
     with pytest.raises(ValueError):
         DataType("msgtype")

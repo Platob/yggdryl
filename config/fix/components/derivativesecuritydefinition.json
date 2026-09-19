@@ -10,7 +10,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "derivativeinstrument"
+          "FIX:component": "derivativeinstrument"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noderivativeinstrattrib",
-          "fix:tag": "1311"
+          "FIX:field": "noderivativeinstrattrib",
+          "FIX:tag": "1311"
         }
       },
       {
@@ -31,7 +31,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "derivativeinstrumentattribute"
+          "FIX:group": "derivativeinstrumentattribute"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomarketsegments",
-          "fix:tag": "1310"
+          "FIX:field": "nomarketsegments",
+          "FIX:tag": "1310"
         }
       },
       {
@@ -52,7 +52,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "marketsegmentgrp"
+          "FIX:group": "marketsegmentgrp"
         }
       },
       {
@@ -62,8 +62,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosecurityclassifications",
-          "fix:tag": "1582"
+          "FIX:field": "nosecurityclassifications",
+          "FIX:tag": "1582"
         }
       },
       {
@@ -73,15 +73,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "securityclassificationgrp"
+          "FIX:group": "securityclassificationgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "142042",
     "description": "Optional block which can be used to to summarize common attributes shared across a set of option instruments which belong to the same series.",
-    "display": "DerivativeSecurityDefinition",
-    "fix:tag": "142042"
+    "display": "DerivativeSecurityDefinition"
   }
 }

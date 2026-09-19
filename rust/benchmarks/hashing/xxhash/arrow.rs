@@ -7,7 +7,7 @@ use criterion::Criterion;
 
 use arrow_array::{ArrayRef, Float64Array, Int64Array, RecordBatch, StringArray, UInt64Array};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-use yggdryl::{DataType, DigestAlgorithm, Field};
+use yggdryl::{DataType, DigestAlgorithm, Field, StructureType};
 
 /// Rows per fixture, enough that the per-row cost dominates the setup.
 const ROWS: usize = crate::bench_profile::corpus(65_536, 4_096);
@@ -113,7 +113,8 @@ fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatc
         .as_digest_mut()
         .set_sources(["symbol"])
         .expect("a valid holder path");
-    let root = DataType::from_fields([symbol.clone(), digest.clone()])
+    let root = StructureType::from_fields([symbol.clone(), digest.clone()])
+        .map(DataType::from)
         .expect("a valid Struct")
         .required_field("row");
 

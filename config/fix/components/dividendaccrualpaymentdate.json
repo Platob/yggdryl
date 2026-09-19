@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymentdaterelativeto",
-          "fix:tag": "42238"
+          "FIX:field": "dividendaccrualpaymentdaterelativeto",
+          "FIX:tag": "42238"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymentdateoffsetperiod",
-          "fix:tag": "42239"
+          "FIX:field": "dividendaccrualpaymentdateoffsetperiod",
+          "FIX:tag": "42239"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymentdateoffsetunit",
-          "fix:tag": "42240"
+          "FIX:field": "dividendaccrualpaymentdateoffsetunit",
+          "FIX:tag": "42240"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymentdateoffsetdaytype",
-          "fix:tag": "42241"
+          "FIX:field": "dividendaccrualpaymentdateoffsetdaytype",
+          "FIX:tag": "42241"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymentdateunadjusted",
-          "fix:tag": "42242"
+          "FIX:field": "dividendaccrualpaymentdateunadjusted",
+          "FIX:tag": "42242"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymeentdatebusinessdayconvention",
-          "fix:tag": "42243"
+          "FIX:field": "dividendaccrualpaymeentdatebusinessdayconvention",
+          "FIX:tag": "42243"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nodividendaccrualpaymentdatebusinesscenters",
-          "fix:tag": "42236"
+          "FIX:field": "nodividendaccrualpaymentdatebusinesscenters",
+          "FIX:tag": "42236"
         }
       },
       {
@@ -87,7 +87,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "dividendaccrualpaymentdatebusinesscentergrp"
+          "FIX:group": "dividendaccrualpaymentdatebusinesscentergrp"
         }
       },
       {
@@ -97,16 +97,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "dividendaccrualpaymentdateadjusted",
-          "fix:tag": "42244"
+          "FIX:field": "dividendaccrualpaymentdateadjusted",
+          "FIX:tag": "42244"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "643229",
     "description": "Conditionally required when DividendAccrualPaymentDateOffsetUnit(42240) is specified.",
-    "display": "DividendAccrualPaymentDate",
-    "fix:tag": "643229"
+    "display": "DividendAccrualPaymentDate"
   }
 }

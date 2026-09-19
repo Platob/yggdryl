@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,7 +20,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "applicationsequencecontrol"
+          "FIX:component": "applicationsequencecontrol"
         }
       },
       {
@@ -30,8 +30,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesreqid",
-          "fix:tag": "335"
+          "FIX:field": "tradsesreqid",
+          "FIX:tag": "335"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "notradingsessions",
-          "fix:tag": "386"
+          "FIX:field": "notradingsessions",
+          "FIX:tag": "386"
         }
       },
       {
@@ -52,7 +52,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "trdsesslstgrp"
+          "FIX:group": "trdsesslstgrp"
         }
       },
       {
@@ -62,16 +62,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "BS",
+    "FIX:tag": "323972",
     "description": "MsgType = BS",
-    "display": "TradingSessionListUpdateReport",
-    "fix:msgtype": "BS",
-    "fix:tag": "323972"
+    "display": "TradingSessionListUpdateReport"
   }
 }

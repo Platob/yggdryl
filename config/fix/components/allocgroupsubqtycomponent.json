@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocgroupsubqty",
-          "fix:tag": "2976"
+          "FIX:field": "allocgroupsubqty",
+          "FIX:tag": "2976"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocgroupsubqtyoffset",
-          "fix:tag": "2977"
+          "FIX:field": "allocgroupsubqtyoffset",
+          "FIX:tag": "2977"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocgroupremainingsubqty",
-          "fix:tag": "2978"
+          "FIX:field": "allocgroupremainingsubqty",
+          "FIX:tag": "2978"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allocgroupsubqtyid",
-          "fix:tag": "2974"
+          "FIX:field": "allocgroupsubqtyid",
+          "FIX:tag": "2974"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noallocgroupsubqtyattributes",
-          "fix:tag": "2979"
+          "FIX:field": "noallocgroupsubqtyattributes",
+          "FIX:tag": "2979"
         }
       },
       {
@@ -65,14 +65,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "allocgroupsubqtyattributegrp"
+          "FIX:group": "allocgroupsubqtyattributegrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "AllocGroupSubQty",
-    "fix:tag": "399371"
+    "FIX:tag": "399371",
+    "display": "AllocGroupSubQty"
   }
 }

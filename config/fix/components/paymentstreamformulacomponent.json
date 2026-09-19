@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamformulacurrency",
-          "fix:tag": "42686"
+          "FIX:field": "paymentstreamformulacurrency",
+          "FIX:tag": "42686"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamformulacurrencydeterminationmethod",
-          "fix:tag": "42687"
+          "FIX:field": "paymentstreamformulacurrencydeterminationmethod",
+          "FIX:tag": "42687"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamformulareferenceamount",
-          "fix:tag": "42688"
+          "FIX:field": "paymentstreamformulareferenceamount",
+          "FIX:tag": "42688"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstreamformulas",
-          "fix:tag": "42683"
+          "FIX:field": "nopaymentstreamformulas",
+          "FIX:tag": "42683"
         }
       },
       {
@@ -54,7 +54,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "paymentstreamformulamathgrp"
+          "FIX:group": "paymentstreamformulamathgrp"
         }
       },
       {
@@ -64,15 +64,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "paymentstreamformulaimagecomponent"
+          "FIX:component": "paymentstreamformulaimagecomponent"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "668983",
     "description": "PaymentStreamFormula is a subcomponent of the PaymentStreamFloatingRate component used to report the parameters for determining the floating rate of the stream e.g. for equity swaps.",
-    "display": "PaymentStreamFormula",
-    "fix:tag": "668983"
+    "display": "PaymentStreamFormula"
   }
 }

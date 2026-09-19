@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "rootsubparty"
+        "FIX:component": "rootsubparty"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "rootsubparty",
+    "FIX:counter": "1120",
+    "FIX:tag": "473702",
     "description": "Repeating group of RootParty sub-identifiers.",
-    "display": "RootSubParties",
-    "fix:component": "rootsubparty",
-    "fix:counter": "1120",
-    "fix:tag": "473702"
+    "display": "RootSubParties"
   }
 }

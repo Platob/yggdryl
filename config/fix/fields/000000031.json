@@ -6,9 +6,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of trade attribute defining a subgroup in an allocation group.",
-      "display": "IndividualAllocSubQtyType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "TradeType",
@@ -25,7 +23,9 @@
           "doc": "Order handling instruction"
         }
       ],
-      "fix:tag": "3100"
+      "FIX:tag": "3100",
+      "description": "Type of trade attribute defining a subgroup in an allocation group.",
+      "display": "IndividualAllocSubQtyType"
     }
   },
   {
@@ -35,9 +35,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3101",
       "description": "Value of the trade attribute defining a subgroup in an allocation group.",
-      "display": "IndividualAllocSubQtyValue",
-      "fix:tag": "3101"
+      "display": "IndividualAllocSubQtyValue"
     }
   },
   {
@@ -47,9 +47,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3102",
       "description": "Identifies the most liquid market for a given instrument.",
-      "display": "MostLiquidMarketID",
-      "fix:tag": "3102"
+      "display": "MostLiquidMarketID"
     }
   },
   {
@@ -59,9 +59,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3103",
       "description": "Identifies whether a given market is the most liquid for a given instrument.",
-      "display": "MostLiquidMarketIndicator",
-      "fix:tag": "3103"
+      "display": "MostLiquidMarketIndicator"
     }
   },
   {
@@ -71,9 +71,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3104",
       "description": "Number of trades or transactions included in an aggregated trade or transaction.",
-      "display": "NumberOfTrades",
-      "fix:tag": "3104"
+      "display": "NumberOfTrades"
     }
   },
   {
@@ -83,9 +83,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the quality of the market data being provided.",
-      "display": "MDQualityIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NoQualityIssue",
@@ -97,7 +95,9 @@
           "doc": "Data quality issue"
         }
       ],
-      "fix:tag": "3105"
+      "FIX:tag": "3105",
+      "description": "Indicates the quality of the market data being provided.",
+      "display": "MDQualityIndicator"
     }
   },
   {
@@ -107,9 +107,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the acceptance status of a market data entry.",
-      "display": "MDEntryStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Accepted",
@@ -126,7 +124,9 @@
           "doc": "Rejected"
         }
       ],
-      "fix:tag": "3106"
+      "FIX:tag": "3106",
+      "description": "Indicates the acceptance status of a market data entry.",
+      "display": "MDEntryStatus"
     }
   },
   {
@@ -136,9 +136,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3107",
       "description": "Free form text to specify information related to the status provided with MDEntryStatus(3106).",
-      "display": "MDEntryStatusText",
-      "fix:tag": "3107"
+      "display": "MDEntryStatusText"
     }
   },
   {
@@ -148,9 +148,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3108",
       "description": "Byte length of encoded (non-ASCII characters) EncodedMDEntryStatusText(3109) field.",
-      "display": "EncodedMDEntryStatusTextLen",
-      "fix:tag": "3108"
+      "display": "EncodedMDEntryStatusTextLen"
     }
   },
   {
@@ -160,9 +160,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3109",
       "description": "Encoded (non-ASCII characters) representation of the MDEntryStatusText(3107) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the MDEntryStatusText(3107) field. Data length controlled by field EncodedMDEntryStatusTextLen(3108).",
-      "display": "EncodedMDEntryStatusText",
-      "fix:tag": "3109"
+      "display": "EncodedMDEntryStatusText"
     }
   },
   {
@@ -172,9 +172,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3110",
       "description": "Unique message identifier for MarketDataSnapshotFullRefresh(35=W) or MarketDataIncrementalRefresh(35=X) message.",
-      "display": "MDMsgID",
-      "fix:tag": "3110"
+      "display": "MDMsgID"
     }
   },
   {
@@ -184,9 +184,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3111",
       "description": "Unique identifier for a SecurityStatus(35=f) message.",
-      "display": "SecurityStatusReportID",
-      "fix:tag": "3111"
+      "display": "SecurityStatusReportID"
     }
   },
   {
@@ -196,9 +196,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3112",
       "description": "Unique identifier for a TradingSessionStatus(35=h) message.",
-      "display": "TradingSessionStatusReportID",
-      "fix:tag": "3112"
+      "display": "TradingSessionStatusReportID"
     }
   },
   {
@@ -208,9 +208,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates the status of a report.",
-      "display": "ReportStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ReceivedNotYetProcessed",
@@ -232,7 +230,9 @@
           "doc": "Accepted with errors"
         }
       ],
-      "fix:tag": "3113"
+      "FIX:tag": "3113",
+      "description": "Indicates the status of a report.",
+      "display": "ReportStatus"
     }
   },
   {
@@ -244,9 +244,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3114",
       "description": "Specifies margined price of a security.",
-      "display": "MarginPrice",
-      "fix:tag": "3114"
+      "display": "MarginPrice"
     }
   },
   {
@@ -256,9 +256,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3115",
       "description": "Specifies the dividend payout ratio associated with an equity or a bond security.",
-      "display": "DividendPayoutRatio",
-      "fix:tag": "3115"
+      "display": "DividendPayoutRatio"
     }
   },
   {
@@ -268,9 +268,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3116",
       "description": "Number of LegRateSource entries in the repeating group.",
-      "display": "NoLegRateSources",
-      "fix:tag": "3116"
+      "display": "NoLegRateSources"
     }
   },
   {
@@ -280,9 +280,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source of rate information. For FX, the reference source to be used for the FX spot rate.",
-      "display": "LegRateSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bloomberg",
@@ -309,7 +307,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "3117"
+      "FIX:tag": "3117",
+      "description": "Identifies the source of rate information. For FX, the reference source to be used for the FX spot rate.",
+      "display": "LegRateSource"
     }
   },
   {
@@ -319,9 +319,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether the rate source specified is a primary or secondary source.",
-      "display": "LegRateSourceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Primary",
@@ -333,7 +331,9 @@
           "doc": "Secondary"
         }
       ],
-      "fix:tag": "3118"
+      "FIX:tag": "3118",
+      "description": "Indicates whether the rate source specified is a primary or secondary source.",
+      "display": "LegRateSourceType"
     }
   },
   {
@@ -343,9 +343,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3119",
       "description": "Identifies the reference \"page\" from the rate source.",
-      "display": "LegReferencePage",
-      "fix:tag": "3119"
+      "display": "LegReferencePage"
     }
   },
   {
@@ -355,9 +355,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3120",
       "description": "Identifies the page heading from the rate source.",
-      "display": "LegRateSourceReferencePageHeading",
-      "fix:tag": "3120"
+      "display": "LegRateSourceReferencePageHeading"
     }
   },
   {
@@ -367,9 +367,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3121",
       "description": "Identifies the currency pair/symbol that the instance of the rate source information is applicable for the fixing.",
-      "display": "LegRateSourceSymbol",
-      "fix:tag": "3121"
+      "display": "LegRateSourceSymbol"
     }
   },
   {
@@ -379,9 +379,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The source of where to obtain the FX benchmark rate to use for fixing the rate.",
-      "display": "LegFXBenchmark",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Bloomberg",
@@ -418,7 +416,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "3122"
+      "FIX:tag": "3122",
+      "description": "The source of where to obtain the FX benchmark rate to use for fixing the rate.",
+      "display": "LegFXBenchmark"
     }
   },
   {
@@ -429,9 +429,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3123",
       "description": "The local date of the FX rate fixing. The time applicable on the fixing date is specified in LegFXBenchmarkTime(3124).",
-      "display": "LegFXBenchmarkDate",
-      "fix:tag": "3123"
+      "display": "LegFXBenchmarkDate"
     }
   },
   {
@@ -442,9 +442,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3124",
       "description": "The local time of the FX rate fixing. The date applicable for the fixing time is specified in LegFXBenchmarkDate(3123).",
-      "display": "LegFXBenchmarkTime",
-      "fix:tag": "3124"
+      "display": "LegFXBenchmarkTime"
     }
   },
   {
@@ -454,9 +454,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3125",
       "description": "A business center whose calendar is used for date/time adjustment. See https://www.fpml.org/coding-scheme/business-center to download the current (ISDA/FpML) standard 4-character code values for business center identification.",
-      "display": "LegFXBenchmarkBusinessCenter",
-      "fix:tag": "3125"
+      "display": "LegFXBenchmarkBusinessCenter"
     }
   },
   {
@@ -466,9 +466,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3126",
       "description": "Number of test suite parameters.",
-      "display": "NoTestSuiteParameters",
-      "fix:tag": "3126"
+      "display": "NoTestSuiteParameters"
     }
   },
   {
@@ -478,9 +478,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3127",
       "description": "Name of the test suite parameter.",
-      "display": "TestSuiteParameterName",
-      "fix:tag": "3127"
+      "display": "TestSuiteParameterName"
     }
   },
   {
@@ -490,9 +490,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Datatype of the test suite parameter.",
-      "display": "TestSuiteParameterType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Int",
@@ -639,7 +637,9 @@
           "doc": "Tenor"
         }
       ],
-      "fix:tag": "3128"
+      "FIX:tag": "3128",
+      "description": "Datatype of the test suite parameter.",
+      "display": "TestSuiteParameterType"
     }
   },
   {
@@ -649,9 +649,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3129",
       "description": "Value of the test scenario parameter.",
-      "display": "TestSuiteParameterValue",
-      "fix:tag": "3129"
+      "display": "TestSuiteParameterValue"
     }
   },
   {
@@ -661,9 +661,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3130",
       "description": "Number of test scenario parameters.",
-      "display": "NoTestScenarioParameters",
-      "fix:tag": "3130"
+      "display": "NoTestScenarioParameters"
     }
   },
   {
@@ -673,9 +673,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3131",
       "description": "Name of the test scenario parameter.",
-      "display": "TestScenarioParameterName",
-      "fix:tag": "3131"
+      "display": "TestScenarioParameterName"
     }
   },
   {
@@ -685,9 +685,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Datatype of the test scenario parameter.",
-      "display": "TestScenarioParameterType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Int",
@@ -834,7 +832,9 @@
           "doc": "Tenor"
         }
       ],
-      "fix:tag": "3132"
+      "FIX:tag": "3132",
+      "description": "Datatype of the test scenario parameter.",
+      "display": "TestScenarioParameterType"
     }
   },
   {
@@ -844,9 +844,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3133",
       "description": "Value of the test scenario parameter.",
-      "display": "TestScenarioParameterValue",
-      "fix:tag": "3133"
+      "display": "TestScenarioParameterValue"
     }
   },
   {
@@ -856,9 +856,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3134",
       "description": "Number of trading service entries.",
-      "display": "NoTradingServices",
-      "fix:tag": "3134"
+      "display": "NoTradingServices"
     }
   },
   {
@@ -868,9 +868,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies a type of service offered as part of a trading session.",
-      "display": "TradingServiceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Unknown",
@@ -917,7 +915,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "3135"
+      "FIX:tag": "3135",
+      "description": "Identifies a type of service offered as part of a trading session.",
+      "display": "TradingServiceType"
     }
   },
   {
@@ -927,9 +927,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3136",
       "description": "Description of a trading service.",
-      "display": "TradingServiceDesc",
-      "fix:tag": "3136"
+      "display": "TradingServiceDesc"
     }
   },
   {
@@ -939,9 +939,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Denotes the reason for an outage.",
-      "display": "OutageReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Unknown",
@@ -978,7 +976,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "3137"
+      "FIX:tag": "3137",
+      "description": "Denotes the reason for an outage.",
+      "display": "OutageReason"
     }
   },
   {
@@ -988,9 +988,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of action to be taken when trading is halted.",
-      "display": "HaltActionType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OrderQuoteCancellation",
@@ -1007,7 +1005,9 @@
           "doc": "Execution halted"
         }
       ],
-      "fix:tag": "3138"
+      "FIX:tag": "3138",
+      "description": "Specifies the type of action to be taken when trading is halted.",
+      "display": "HaltActionType"
     }
   },
   {
@@ -1017,9 +1017,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3139",
       "description": "Identification of a specific trading environment.",
-      "display": "TradingSessionEnvironment",
-      "fix:tag": "3139"
+      "display": "TradingSessionEnvironment"
     }
   }
 ]

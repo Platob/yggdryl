@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreampricingbusinesscenter",
-          "fix:tag": "41562"
+          "FIX:field": "legpaymentstreampricingbusinesscenter",
+          "FIX:tag": "41562"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPaymentStreamPricingBusinessCenter",
-    "fix:tag": "481917"
+    "FIX:tag": "481917",
+    "display": "LegPaymentStreamPricingBusinessCenter"
   }
 }

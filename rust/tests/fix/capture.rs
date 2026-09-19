@@ -490,11 +490,12 @@ fn a_document_is_one_unknown_row_at_every_door() {
 
     // And on the batch door a row that carried a document is a row carrying
     // its own source columns, exactly as it is at the other two.
-    let field = yggdryl::DataType::from_fields([
+    let field = yggdryl::StructureType::from_fields([
         yggdryl::DataType::utf8().required_field("url"),
         yggdryl::DataType::Int64.required_field("rownum"),
         yggdryl::DataType::binary().required_field("body"),
     ])
+    .map(yggdryl::DataType::from)
     .unwrap()
     .required_field("capture");
     let value = Scalar::from_sequence([(41_i64, WILDCARD), (42_i64, WORKING)].map(

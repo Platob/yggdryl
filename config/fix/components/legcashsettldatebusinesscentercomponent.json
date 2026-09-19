@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldatebusinesscenter",
-          "fix:tag": "42307"
+          "FIX:field": "legcashsettldatebusinesscenter",
+          "FIX:tag": "42307"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegCashSettlDateBusinessCenter",
-    "fix:tag": "590424"
+    "FIX:tag": "590424",
+    "display": "LegCashSettlDateBusinessCenter"
   }
 }

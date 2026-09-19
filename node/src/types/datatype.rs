@@ -6,7 +6,7 @@ use napi::bindgen_prelude::{
     BigInt, ClassInstance, Either, Either3, Env, Error, Object, Result, Unknown,
 };
 use napi_derive::napi;
-use yggdryl::{BytesType as CoreBytesType, StringType as CoreStringType};
+use yggdryl::{BytesType as CoreBytesType, StringType as CoreStringType, StructureType};
 use yggdryl::{
     DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField,
     Scheme as CoreScheme, StringEnum as CoreStringEnum, TimeUnit as CoreTimeUnit,
@@ -134,7 +134,8 @@ impl JsDataType {
             "timeinforce" => CoreDataType::TimeInForce,
             "uuid" => CoreDataType::uuid(),
             "version" => CoreDataType::Version,
-            "url" => CoreDataType::Url,
+            "url" => CoreDataType::url(),
+            "urn" => CoreDataType::urn(),
             "timezone" => CoreDataType::Timezone,
             "mimetype" => CoreDataType::MimeType,
             "mediatype" => CoreDataType::MediaType,
@@ -368,7 +369,8 @@ impl JsDataType {
     /// Internal direct Struct constructor preserving exact child Fields.
     #[napi(factory, js_name = "_fromFields", skip_typescript)]
     pub fn from_fields(fields: Vec<ClassInstance<'_, JsField>>) -> Result<Self> {
-        let inner = CoreDataType::from_fields(fields.into_iter().map(|field| field.inner.clone()))
+        let inner = StructureType::from_fields(fields.into_iter().map(|field| field.inner.clone()))
+            .map(CoreDataType::from)
             .map_err(napi_error)?;
         Ok(Self::from_core(inner))
     }
@@ -1106,7 +1108,7 @@ fn bytes_parameters_from_input(input: BytesParametersInput) -> Result<CoreBytesT
 ///
 /// A dictionary is a vocabulary and derives its member names; this is the
 /// vocabulary a declaration named itself, and it is what a `Field` stores
-/// under `field:enum` so the enum crosses Arrow, a file, and another runtime
+/// under `FIELD:enum` so the enum crosses Arrow, a file, and another runtime
 /// intact. The width lives in the field's datatype - a fixed US-ASCII string
 /// of at most sixteen bytes or a code - so a member's code is its packed
 /// ASCII value under that width and never a position.
@@ -1135,7 +1137,7 @@ impl JsStringEnum {
             .map_err(napi_error)
     }
 
-    /// Parse the `field:enum` document.
+    /// Parse the `FIELD:enum` document.
     #[napi(factory)]
     pub fn from_json(document: String) -> Result<Self> {
         CoreStringEnum::from_json(&document)
@@ -1143,7 +1145,7 @@ impl JsStringEnum {
             .map_err(napi_error)
     }
 
-    /// Render the `field:enum` document, which is one text per enum.
+    /// Render the `FIELD:enum` document, which is one text per enum.
     #[napi]
     #[allow(clippy::wrong_self_convention)]
     pub fn into_json(&self) -> String {
@@ -1253,7 +1255,7 @@ impl JsStringEnum {
         Self::from_core(self.inner.clone())
     }
 
-    /// The `field:enum` document, which is the enum's one canonical text.
+    /// The `FIELD:enum` document, which is the enum's one canonical text.
     #[napi(js_name = "toString")]
     pub fn js_string(&self) -> String {
         self.inner.into_json()

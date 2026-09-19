@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "strikeruleid",
-          "fix:tag": "1223"
+          "FIX:field": "strikeruleid",
+          "FIX:tag": "1223"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "startstrikepxrange",
-          "fix:tag": "1202"
+          "FIX:field": "startstrikepxrange",
+          "FIX:tag": "1202"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "endstrikepxrange",
-          "fix:tag": "1203"
+          "FIX:field": "endstrikepxrange",
+          "FIX:tag": "1203"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "strikeincrement",
-          "fix:tag": "1204"
+          "FIX:field": "strikeincrement",
+          "FIX:tag": "1204"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "strikeexercisestyle",
-          "fix:tag": "1304"
+          "FIX:field": "strikeexercisestyle",
+          "FIX:tag": "1304"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nomaturityrules",
-          "fix:tag": "1236"
+          "FIX:field": "nomaturityrules",
+          "FIX:tag": "1236"
         }
       },
       {
@@ -76,14 +76,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "maturityrules"
+          "FIX:group": "maturityrules"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "StrikeRule",
-    "fix:tag": "912785"
+    "FIX:tag": "912785",
+    "display": "StrikeRule"
   }
 }

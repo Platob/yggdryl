@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clordid",
-          "fix:tag": "11"
+          "FIX:field": "clordid",
+          "FIX:tag": "11"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderid",
-          "fix:tag": "37"
+          "FIX:field": "orderid",
+          "FIX:tag": "37"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryorderid",
-          "fix:tag": "198"
+          "FIX:field": "secondaryorderid",
+          "FIX:tag": "198"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryclordid",
-          "fix:tag": "526"
+          "FIX:field": "secondaryclordid",
+          "FIX:tag": "526"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listid",
-          "fix:tag": "66"
+          "FIX:field": "listid",
+          "FIX:tag": "66"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonested2partyids",
-          "fix:tag": "756"
+          "FIX:field": "nonested2partyids",
+          "FIX:tag": "756"
         }
       },
       {
@@ -76,7 +76,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "nestedparties2"
+          "FIX:group": "nestedparties2"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderqty",
-          "fix:tag": "38"
+          "FIX:field": "orderqty",
+          "FIX:tag": "38"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderavgpx",
-          "fix:tag": "799"
+          "FIX:field": "orderavgpx",
+          "FIX:tag": "799"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderbookingqty",
-          "fix:tag": "800"
+          "FIX:field": "orderbookingqty",
+          "FIX:tag": "800"
         }
       },
       {
@@ -119,16 +119,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordtype",
-          "fix:tag": "40"
+          "FIX:field": "ordtype",
+          "FIX:tag": "40"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "OrdAlloc",
-    "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid,listid",
-    "fix:tag": "171733"
+    "FIX:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid,listid",
+    "FIX:tag": "171733",
+    "display": "OrdAlloc"
   }
 }

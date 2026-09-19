@@ -1,4 +1,4 @@
-use yggdryl::{Bytes, BytesType, DataType};
+use yggdryl::{Bytes, BytesType, DataType, StructureType};
 use yggdryl::{Field, Scalar, Scheme};
 
 /// Bytes bounded to `max` on the `binary` layout.
@@ -69,13 +69,14 @@ fn serde_and_the_structural_value_round_trip() {
 
 #[test]
 fn only_plain_binary_crosses_a_foreign_target_unchanged() {
-    let schema = DataType::from_fields([
+    let schema = StructureType::from_fields([
         DataType::binary().required_field("plain"),
         bounded_binary(16).required_field("bounded"),
         DataType::large_binary().required_field("large"),
         DataType::binary_view().required_field("view"),
         DataType::fixed_binary(4).unwrap().required_field("fixed"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     for scheme in [Scheme::SPARK, Scheme::POLARS, Scheme::PANDAS] {

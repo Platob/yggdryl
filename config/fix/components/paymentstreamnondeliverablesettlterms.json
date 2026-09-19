@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablerefcurrency",
-          "fix:tag": "40817"
+          "FIX:field": "paymentstreamnondeliverablerefcurrency",
+          "FIX:tag": "40817"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablefixingdatesbusinessdayconvention",
-          "fix:tag": "40818"
+          "FIX:field": "paymentstreamnondeliverablefixingdatesbusinessdayconvention",
+          "FIX:tag": "40818"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstreamnondeliverablefixingdatesbusinesscenters",
-          "fix:tag": "40946"
+          "FIX:field": "nopaymentstreamnondeliverablefixingdatesbusinesscenters",
+          "FIX:tag": "40946"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "paymentstreamnondeliverablefixingdatesbusinesscentergrp"
+          "FIX:group": "paymentstreamnondeliverablefixingdatesbusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablefixingdatesrelativeto",
-          "fix:tag": "40820"
+          "FIX:field": "paymentstreamnondeliverablefixingdatesrelativeto",
+          "FIX:tag": "40820"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablefixingdatesoffsetperiod",
-          "fix:tag": "40821"
+          "FIX:field": "paymentstreamnondeliverablefixingdatesoffsetperiod",
+          "FIX:tag": "40821"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablefixingdatesoffsetunit",
-          "fix:tag": "40822"
+          "FIX:field": "paymentstreamnondeliverablefixingdatesoffsetunit",
+          "FIX:tag": "40822"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamnondeliverablefixingdatesoffsetdaytype",
-          "fix:tag": "40823"
+          "FIX:field": "paymentstreamnondeliverablefixingdatesoffsetdaytype",
+          "FIX:tag": "40823"
         }
       },
       {
@@ -97,7 +97,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "paymentstreamnondeliverablesettlratesourcecomponent"
+          "FIX:component": "paymentstreamnondeliverablesettlratesourcecomponent"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonondeliverablefixingdates",
-          "fix:tag": "40825"
+          "FIX:field": "nonondeliverablefixingdates",
+          "FIX:tag": "40825"
         }
       },
       {
@@ -118,7 +118,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "paymentstreamnondeliverablefixingdategrp"
+          "FIX:group": "paymentstreamnondeliverablefixingdategrp"
         }
       },
       {
@@ -128,8 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosettlratefallbacks",
-          "fix:tag": "40085"
+          "FIX:field": "nosettlratefallbacks",
+          "FIX:tag": "40085"
         }
       },
       {
@@ -139,15 +139,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "settlratedisruptionfallbackgrp"
+          "FIX:group": "settlratedisruptionfallbackgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "1061486",
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of the payment stream's non-deliverable fixing dates.",
-    "display": "PaymentStreamNonDeliverableSettlTerms",
-    "fix:tag": "1061486"
+    "display": "PaymentStreamNonDeliverableSettlTerms"
   }
 }

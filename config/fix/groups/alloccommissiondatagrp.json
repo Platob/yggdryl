@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "alloccommissiondata"
+        "FIX:component": "alloccommissiondata"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "alloccommissiondata",
+    "FIX:counter": "2653",
+    "FIX:tag": "545842",
     "description": "Required if NoAllocCommissions(2653) > 0.",
-    "display": "AllocCommissionDataGrp",
-    "fix:component": "alloccommissiondata",
-    "fix:counter": "2653",
-    "fix:tag": "545842"
+    "display": "AllocCommissionDataGrp"
   }
 }

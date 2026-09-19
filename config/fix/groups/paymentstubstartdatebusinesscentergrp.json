@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "paymentstubstartdatebusinesscentercomponent"
+        "FIX:component": "paymentstubstartdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "paymentstubstartdatebusinesscentercomponent",
+    "FIX:counter": "42705",
+    "FIX:tag": "1039177",
     "description": "Required if NoPaymentStubStartDateBusinessCenters(42705) > 0.",
-    "display": "PaymentStubStartDateBusinessCenterGrp",
-    "fix:component": "paymentstubstartdatebusinesscentercomponent",
-    "fix:counter": "42705",
-    "fix:tag": "1039177"
+    "display": "PaymentStubStartDateBusinessCenterGrp"
   }
 }

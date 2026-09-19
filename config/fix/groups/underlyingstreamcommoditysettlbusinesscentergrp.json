@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingstreamcommoditysettlbusinesscentercomponent"
+        "FIX:component": "underlyingstreamcommoditysettlbusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingstreamcommoditysettlbusinesscentercomponent",
+    "FIX:counter": "41962",
+    "FIX:tag": "712101",
     "description": "Required if NoUnderlyingStreamCommoditySettlBusinessCenters(41962) > 0.",
-    "display": "UnderlyingStreamCommoditySettlBusinessCenterGrp",
-    "fix:component": "underlyingstreamcommoditysettlbusinesscentercomponent",
-    "fix:counter": "41962",
-    "fix:tag": "712101"
+    "display": "UnderlyingStreamCommoditySettlBusinessCenterGrp"
   }
 }

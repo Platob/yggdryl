@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "settlmethodelectiondatebusinesscentercomponent"
+        "FIX:component": "settlmethodelectiondatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "settlmethodelectiondatebusinesscentercomponent",
+    "FIX:counter": "42775",
+    "FIX:tag": "786950",
     "description": "Required if NoSettlMethodElectionDateBusinessCenters(42775) > 0.",
-    "display": "SettlMethodElectionDateBusinessCenterGrp",
-    "fix:component": "settlmethodelectiondatebusinesscentercomponent",
-    "fix:counter": "42775",
-    "fix:tag": "786950"
+    "display": "SettlMethodElectionDateBusinessCenterGrp"
   }
 }

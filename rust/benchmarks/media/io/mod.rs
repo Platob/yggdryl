@@ -9,7 +9,7 @@ use std::sync::Arc;
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::IOMedia;
 use yggdryl::holder::Buffer;
-use yggdryl::{DataType, Field, Url};
+use yggdryl::{DataType, Field, StructureType, Url};
 
 /// Rows per fixture, chosen so a column chunk is worth skipping.
 pub(crate) const ROWS: i64 = crate::bench_profile::corpus(65_536, 2_048) as i64;
@@ -19,22 +19,24 @@ pub(crate) const ROWS: i64 = crate::bench_profile::corpus(65_536, 2_048) as i64;
 /// The split is the point of the pushdown measurements - a projection that
 /// keeps only the numeric pair leaves the bulk of the payload untouched.
 pub(crate) fn wide() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
         DataType::Float64.required_field("price"),
         DataType::utf8().required_field("venue"),
     ])
+    .map(DataType::from)
     .expect("a valid struct root")
     .required_field("row")
 }
 
 /// The two columns a projected read asks for.
 pub(crate) fn narrow() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float64.required_field("price"),
     ])
+    .map(DataType::from)
     .expect("a valid struct root")
     .required_field("row")
 }

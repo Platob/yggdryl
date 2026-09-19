@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "payreportid",
-          "fix:tag": "2799"
+          "FIX:field": "payreportid",
+          "FIX:tag": "2799"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "payrequestid",
-          "fix:tag": "2812"
+          "FIX:field": "payrequestid",
+          "FIX:tag": "2812"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "payreporttranstype",
-          "fix:tag": "2804"
+          "FIX:field": "payreporttranstype",
+          "FIX:tag": "2804"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "payreportrefid",
-          "fix:tag": "2803"
+          "FIX:field": "payreportrefid",
+          "FIX:tag": "2803"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "replacetext",
-          "fix:tag": "2805"
+          "FIX:field": "replacetext",
+          "FIX:tag": "2805"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedreplacetextlen",
-          "fix:tag": "2802"
+          "FIX:field": "encodedreplacetextlen",
+          "FIX:tag": "2802"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedreplacetext",
-          "fix:tag": "2801"
+          "FIX:field": "encodedreplacetext",
+          "FIX:tag": "2801"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "payrequeststatus",
-          "fix:tag": "2813"
+          "FIX:field": "payrequeststatus",
+          "FIX:tag": "2813"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paydisputereason",
-          "fix:tag": "2800"
+          "FIX:field": "paydisputereason",
+          "FIX:tag": "2800"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rejecttext",
-          "fix:tag": "1328"
+          "FIX:field": "rejecttext",
+          "FIX:tag": "1328"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttextlen",
-          "fix:tag": "1664"
+          "FIX:field": "encodedrejecttextlen",
+          "FIX:tag": "1664"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedrejecttext",
-          "fix:tag": "1665"
+          "FIX:field": "encodedrejecttext",
+          "FIX:tag": "1665"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clearingbusinessdate",
-          "fix:tag": "715"
+          "FIX:field": "clearingbusinessdate",
+          "FIX:tag": "715"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -174,8 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -185,8 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -196,8 +196,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -207,7 +207,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -217,8 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelatedtrades",
-          "fix:tag": "1855"
+          "FIX:field": "norelatedtrades",
+          "FIX:tag": "1855"
         }
       },
       {
@@ -228,7 +228,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "relatedtradegrp"
+          "FIX:group": "relatedtradegrp"
         }
       },
       {
@@ -238,8 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -249,7 +249,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -259,7 +259,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "posttradepayment"
+          "FIX:component": "posttradepayment"
         }
       },
       {
@@ -269,8 +269,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosettldetails",
-          "fix:tag": "1158"
+          "FIX:field": "nosettldetails",
+          "FIX:tag": "1158"
         }
       },
       {
@@ -280,7 +280,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "settldetails"
+          "FIX:group": "settldetails"
         }
       },
       {
@@ -290,16 +290,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "EA",
+    "FIX:tag": "673100",
     "description": "MsgType = EA",
-    "display": "PayManagementReport",
-    "fix:msgtype": "EA",
-    "fix:tag": "673100"
+    "display": "PayManagementReport"
   }
 }

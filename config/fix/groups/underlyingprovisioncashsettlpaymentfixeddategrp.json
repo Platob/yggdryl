@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingprovisioncashsettlpaymentfixeddate"
+        "FIX:component": "underlyingprovisioncashsettlpaymentfixeddate"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingprovisioncashsettlpaymentfixeddate",
+    "FIX:counter": "42099",
+    "FIX:tag": "988090",
     "description": "Required if NoUnderlyingProvisionCashSettlPaymentDates (42099) > 0.",
-    "display": "UnderlyingProvisionCashSettlPaymentFixedDateGrp",
-    "fix:component": "underlyingprovisioncashsettlpaymentfixeddate",
-    "fix:counter": "42099",
-    "fix:tag": "988090"
+    "display": "UnderlyingProvisionCashSettlPaymentFixedDateGrp"
   }
 }

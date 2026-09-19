@@ -9,7 +9,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::path::{Path, Segment};
 use crate::text::{elide_display, expected_got};
-use crate::{Error, Field, Result, Scheme, TimeUnit};
+use crate::{Error, Field, Result, Scheme, StructureType, TimeUnit};
 
 use crate::enums::EnumType;
 use crate::sequence::SequenceType;
@@ -247,7 +247,10 @@ fn normalize_struct(
             let remaining_path = path.field(remaining.name());
             transformed.push(normalize_field(target, remaining, &remaining_path)?.0);
         }
-        return Ok((DataType::from_fields(transformed)?, true));
+        return Ok((
+            DataType::from(StructureType::from_fields(transformed)?),
+            true,
+        ));
     }
     Ok((dtype.clone(), false))
 }
@@ -371,7 +374,7 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
-        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
+        D::Version | D::Uri(_) | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
         D::Decimal(DecimalType::Decimal32 { precision, scale })
         | D::Decimal(DecimalType::Decimal64 { precision, scale })
         | D::Decimal(DecimalType::Decimal128 { precision, scale }) => {
@@ -495,7 +498,7 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
-        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
+        D::Version | D::Uri(_) | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
         D::Decimal(DecimalType::Decimal32 { precision, scale })
         | D::Decimal(DecimalType::Decimal64 { precision, scale })
         | D::Decimal(DecimalType::Decimal128 { precision, scale }) => {
@@ -592,7 +595,7 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
-        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
+        D::Version | D::Uri(_) | D::Timezone | D::MimeType | D::MediaType => Ok((D::utf8(), true)),
         D::Decimal(DecimalType::Decimal32 { precision, scale })
         | D::Decimal(DecimalType::Decimal64 { precision, scale })
         | D::Decimal(DecimalType::Decimal128 { precision, scale }) => {
@@ -650,7 +653,7 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         D::String(parameters) if *parameters == StringType::default() => {
             Ok((dtype.clone(), false))
         }
-        D::Version | D::Url | D::Timezone | D::MimeType | D::MediaType => {
+        D::Version | D::Uri(_) | D::Timezone | D::MimeType | D::MediaType => {
             Ok((D::utf8(), true))
         }
         D::Int8 | D::Int16 | D::UInt8 | D::UInt16 => Ok((D::Int32, true)),

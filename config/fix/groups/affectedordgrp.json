@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "affectedord"
+        "FIX:component": "affectedord"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "affectedord",
+    "FIX:counter": "534",
+    "FIX:tag": "156679",
     "description": "Required if NoAffectedOrders(534) > 0.",
-    "display": "AffectedOrdGrp",
-    "fix:component": "affectedord",
-    "fix:counter": "534",
-    "fix:tag": "156679"
+    "display": "AffectedOrdGrp"
   }
 }

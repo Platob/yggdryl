@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionprovision",
-          "fix:tag": "41462"
+          "FIX:field": "legmarketdisruptionprovision",
+          "FIX:tag": "41462"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegmarketdisruptionevents",
-          "fix:tag": "41467"
+          "FIX:field": "nolegmarketdisruptionevents",
+          "FIX:tag": "41467"
         }
       },
       {
@@ -32,7 +32,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legmarketdisruptioneventgrp"
+          "FIX:group": "legmarketdisruptioneventgrp"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionfallbackprovision",
-          "fix:tag": "41463"
+          "FIX:field": "legmarketdisruptionfallbackprovision",
+          "FIX:tag": "41463"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegmarketdisruptionfallbacks",
-          "fix:tag": "41469"
+          "FIX:field": "nolegmarketdisruptionfallbacks",
+          "FIX:tag": "41469"
         }
       },
       {
@@ -64,7 +64,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legmarketdisruptionfallbackgrp"
+          "FIX:group": "legmarketdisruptionfallbackgrp"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegmarketdisruptionfallbackreferenceprices",
-          "fix:tag": "41471"
+          "FIX:field": "nolegmarketdisruptionfallbackreferenceprices",
+          "FIX:tag": "41471"
         }
       },
       {
@@ -85,7 +85,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legmarketdisruptionfallbackreferencepricegrp"
+          "FIX:group": "legmarketdisruptionfallbackreferencepricegrp"
         }
       },
       {
@@ -95,8 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionmaximumdays",
-          "fix:tag": "41464"
+          "FIX:field": "legmarketdisruptionmaximumdays",
+          "FIX:tag": "41464"
         }
       },
       {
@@ -106,8 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionmaterialitypercentage",
-          "fix:tag": "41465"
+          "FIX:field": "legmarketdisruptionmaterialitypercentage",
+          "FIX:tag": "41465"
         }
       },
       {
@@ -117,16 +117,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionminimumfuturescontracts",
-          "fix:tag": "41466"
+          "FIX:field": "legmarketdisruptionminimumfuturescontracts",
+          "FIX:tag": "41466"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "255772",
     "description": "If specified, the disruption event should be specified in LegMarketDisruptionEventGrp.",
-    "display": "LegMarketDisruption",
-    "fix:tag": "255772"
+    "display": "LegMarketDisruption"
   }
 }

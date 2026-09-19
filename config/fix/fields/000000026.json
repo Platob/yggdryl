@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2600",
       "description": "The point on the floating rate index curve. Sample values:",
-      "display": "StrikeIndexCurvePoint",
-      "fix:tag": "2600"
+      "display": "StrikeIndexCurvePoint"
     }
   },
   {
@@ -18,9 +18,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The quote side from which the index price is to be determined.",
-      "display": "StrikeIndexQuote",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bid",
@@ -37,7 +35,9 @@
           "doc": "Offer"
         }
       ],
-      "fix:tag": "2601"
+      "FIX:tag": "2601",
+      "description": "The quote side from which the index price is to be determined.",
+      "display": "StrikeIndexQuote"
     }
   },
   {
@@ -47,9 +47,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Defines how adjustments will be made to the contract should one or more of the extraordinary events occur.",
-      "display": "ExtraordinaryEventAdjustmentMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "CalculationAgent",
@@ -61,7 +59,9 @@
           "doc": "Options exchange"
         }
       ],
-      "fix:tag": "2602"
+      "FIX:tag": "2602",
+      "description": "Defines how adjustments will be made to the contract should one or more of the extraordinary events occur.",
+      "display": "ExtraordinaryEventAdjustmentMethod"
     }
   },
   {
@@ -71,9 +71,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2603",
       "description": "For a share option trade, indicates whether the instrument is to be treated as an 'exchange look-alike'.",
-      "display": "ExchangeLookAlike",
-      "fix:tag": "2603"
+      "display": "ExchangeLookAlike"
     }
   },
   {
@@ -83,9 +83,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2604",
       "description": "The point on the floating rate index curve. Sample values:",
-      "display": "LegStrikeIndexCurvePoint",
-      "fix:tag": "2604"
+      "display": "LegStrikeIndexCurvePoint"
     }
   },
   {
@@ -95,9 +95,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The quote side from which the index price is to be determined.",
-      "display": "LegStrikeIndexQuote",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bid",
@@ -114,7 +112,9 @@
           "doc": "Offer"
         }
       ],
-      "fix:tag": "2605"
+      "FIX:tag": "2605",
+      "description": "The quote side from which the index price is to be determined.",
+      "display": "LegStrikeIndexQuote"
     }
   },
   {
@@ -124,9 +124,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Defines how adjustments will be made to the contract should one or more of the extraordinary events occur.",
-      "display": "LegExtraordinaryEventAdjustmentMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "CalculationAgent",
@@ -138,7 +136,9 @@
           "doc": "Options exchange"
         }
       ],
-      "fix:tag": "2606"
+      "FIX:tag": "2606",
+      "description": "Defines how adjustments will be made to the contract should one or more of the extraordinary events occur.",
+      "display": "LegExtraordinaryEventAdjustmentMethod"
     }
   },
   {
@@ -148,9 +148,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2607",
       "description": "For a share option trade, indicates whether the instrument is to be treated as an 'exchange look-alike'.",
-      "display": "LegExchangeLookAlike",
-      "fix:tag": "2607"
+      "display": "LegExchangeLookAlike"
     }
   },
   {
@@ -160,9 +160,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2608",
       "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to futures contracts.",
-      "display": "LegComplexEventFuturesPriceValuation",
-      "fix:tag": "2608"
+      "display": "LegComplexEventFuturesPriceValuation"
     }
   },
   {
@@ -172,9 +172,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2609",
       "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to options contracts.",
-      "display": "LegComplexEventOptionsPriceValuation",
-      "fix:tag": "2609"
+      "display": "LegComplexEventOptionsPriceValuation"
     }
   },
   {
@@ -184,9 +184,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the fallback provisions for the hedging party in the determination of the final settlement price",
-      "display": "LegComplexEventPVFinalPriceElectionFallback",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Close",
@@ -198,7 +196,9 @@
           "doc": "Hedge election"
         }
       ],
-      "fix:tag": "2610"
+      "FIX:tag": "2610",
+      "description": "Specifies the fallback provisions for the hedging party in the determination of the final settlement price",
+      "display": "LegComplexEventPVFinalPriceElectionFallback"
     }
   },
   {
@@ -208,9 +208,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2611",
       "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to futures contracts.",
-      "display": "UnderlyingComplexEventFuturesPriceValuation",
-      "fix:tag": "2611"
+      "display": "UnderlyingComplexEventFuturesPriceValuation"
     }
   },
   {
@@ -220,9 +220,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2612",
       "description": "Indicates whether the official settlement price as announced by the related exchange is applicable, in accordance with the ISDA 2002 definitions. Applicable only to options contracts.",
-      "display": "UnderlyingComplexEventOptionsPriceValuation",
-      "fix:tag": "2612"
+      "display": "UnderlyingComplexEventOptionsPriceValuation"
     }
   },
   {
@@ -232,9 +232,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the fallback provisions for the hedging party in the determination of the final settlement price",
-      "display": "UnderlyingComplexEventPVFinalPriceElectionFallback",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Close",
@@ -246,7 +244,9 @@
           "doc": "Hedge election"
         }
       ],
-      "fix:tag": "2613"
+      "FIX:tag": "2613",
+      "description": "Specifies the fallback provisions for the hedging party in the determination of the final settlement price",
+      "display": "UnderlyingComplexEventPVFinalPriceElectionFallback"
     }
   },
   {
@@ -258,9 +258,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2614",
       "description": "Notional value for the equity or bond underlier.",
-      "display": "UnderlyingNotional",
-      "fix:tag": "2614"
+      "display": "UnderlyingNotional"
     }
   },
   {
@@ -270,9 +270,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2615",
       "description": "Specifies the currency denomination of the notional value.",
-      "display": "UnderlyingNotionalCurrency",
-      "fix:tag": "2615"
+      "display": "UnderlyingNotionalCurrency"
     }
   },
   {
@@ -282,9 +282,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2616",
       "description": "Specifies the method of determining the notional amount. See: https://fpml.org/coding-scheme/determination-method for values.",
-      "display": "UnderlyingNotionalDeterminationMethod",
-      "fix:tag": "2616"
+      "display": "UnderlyingNotionalDeterminationMethod"
     }
   },
   {
@@ -294,9 +294,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the conditions that govern the adjustment to the number of units of the return swap.",
-      "display": "UnderlyingNotionalAdjustments",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Execution",
@@ -313,7 +311,9 @@
           "doc": "Standrd"
         }
       ],
-      "fix:tag": "2617"
+      "FIX:tag": "2617",
+      "description": "Specifies the conditions that govern the adjustment to the number of units of the return swap.",
+      "display": "UnderlyingNotionalAdjustments"
     }
   },
   {
@@ -323,9 +323,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2618",
       "description": "Unique identifier for a position entity. Refer to PosMaintRptID(721) for a unique identifier of a position report message.",
-      "display": "PositionID",
-      "fix:tag": "2618"
+      "display": "PositionID"
     }
   },
   {
@@ -335,9 +335,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2619",
       "description": "Cross reference to another notional amount for duplicating its properties.",
-      "display": "UnderlyingNotionalXIDRef",
-      "fix:tag": "2619"
+      "display": "UnderlyingNotionalXIDRef"
     }
   },
   {
@@ -347,9 +347,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2620",
       "description": "In the case of an index underlier specifies the unique identifier for the referenced futures contract.",
-      "display": "UnderlyingFutureID",
-      "fix:tag": "2620"
+      "display": "UnderlyingFutureID"
     }
   },
   {
@@ -359,9 +359,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source of the UnderlyingFutureID(2620).",
-      "display": "UnderlyingFutureIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -528,7 +526,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "2621"
+      "FIX:tag": "2621",
+      "description": "Identifies the source of the UnderlyingFutureID(2620).",
+      "display": "UnderlyingFutureIDSource"
     }
   },
   {
@@ -538,9 +538,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2622",
       "description": "The point on the floating rate index curve. Sample values:",
-      "display": "UnderlyingStrikeIndexCurvePoint",
-      "fix:tag": "2622"
+      "display": "UnderlyingStrikeIndexCurvePoint"
     }
   },
   {
@@ -550,9 +550,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The quote side from which the index price is to be determined.",
-      "display": "UnderlyingStrikeIndexQuote",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bid",
@@ -569,7 +567,9 @@
           "doc": "Offer"
         }
       ],
-      "fix:tag": "2623"
+      "FIX:tag": "2623",
+      "description": "The quote side from which the index price is to be determined.",
+      "display": "UnderlyingStrikeIndexQuote"
     }
   },
   {
@@ -579,9 +579,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Defines how adjustments will be made to the contract should one or more of the extraordinary events occur.",
-      "display": "UnderlyingExtraordinaryEventAdjustmentMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "CalculationAgent",
@@ -593,7 +591,9 @@
           "doc": "Options exchange"
         }
       ],
-      "fix:tag": "2624"
+      "FIX:tag": "2624",
+      "description": "Defines how adjustments will be made to the contract should one or more of the extraordinary events occur.",
+      "display": "UnderlyingExtraordinaryEventAdjustmentMethod"
     }
   },
   {
@@ -603,9 +603,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2625",
       "description": "For a share option trade, indicates whether the instrument is to be treated as an 'exchange look-alike'.",
-      "display": "UnderlyingExchangeLookAlike",
-      "fix:tag": "2625"
+      "display": "UnderlyingExchangeLookAlike"
     }
   },
   {
@@ -617,9 +617,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2626",
       "description": "The limit of average percentage of individual securities traded in a day or a number of days.",
-      "display": "UnderlyingAverageVolumeLimitationPercentage",
-      "fix:tag": "2626"
+      "display": "UnderlyingAverageVolumeLimitationPercentage"
     }
   },
   {
@@ -629,9 +629,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2627",
       "description": "Specifies the limitation period for average daily trading volume in number of days.",
-      "display": "UnderlyingAverageVolumeLimitationPeriodDays",
-      "fix:tag": "2627"
+      "display": "UnderlyingAverageVolumeLimitationPeriodDays"
     }
   },
   {
@@ -641,9 +641,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2628",
       "description": "Indicates whether the underlier is a depository receipt.",
-      "display": "UnderlyingDepositoryReceiptIndicator",
-      "fix:tag": "2628"
+      "display": "UnderlyingDepositoryReceiptIndicator"
     }
   },
   {
@@ -655,9 +655,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2629",
       "description": "The number of units (units of the index or number of securities, par amount of a bond) that constitute the underlier. In the case of a basket swap, this is used to reference both the number of basket units, and the number of each asset components of the basket when these are expressed in absolute terms.",
-      "display": "UnderlyingOpenUnits",
-      "fix:tag": "2629"
+      "display": "UnderlyingOpenUnits"
     }
   },
   {
@@ -667,9 +667,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2630",
       "description": "Specifies the basket divisor amount. This value is normally used to adjust the constituent weight for pricing or to adjust for dividends, or other corporate actions.",
-      "display": "UnderlyingBasketDivisor",
-      "fix:tag": "2630"
+      "display": "UnderlyingBasketDivisor"
     }
   },
   {
@@ -679,9 +679,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2631",
       "description": "Identifier for referencing this UnderlyingInstrument from a parent instrument or a convertible instrument.",
-      "display": "UnderlyingInstrumentXID",
-      "fix:tag": "2631"
+      "display": "UnderlyingInstrumentXID"
     }
   },
   {
@@ -691,9 +691,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The type of value in CurrentCollateralAmount(1704).",
-      "display": "CollateralAmountType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "MarketValuation",
@@ -725,7 +723,9 @@
           "doc": "Estimated market valuation"
         }
       ],
-      "fix:tag": "2632"
+      "FIX:tag": "2632",
+      "description": "The type of value in CurrentCollateralAmount(1704).",
+      "display": "CollateralAmountType"
     }
   },
   {
@@ -735,9 +735,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2633",
       "description": "Specifies the number of miscellaneous fee sub-types.",
-      "display": "NoMiscFeeSubTypes",
-      "fix:tag": "2633"
+      "display": "NoMiscFeeSubTypes"
     }
   },
   {
@@ -747,9 +747,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2634",
       "description": "Used to provide more granular fee types related to a value of MiscFeeType(139). See https://fixtrading.org/packages/misc-fee-sub-types for code list of applicable fees. Other fee sub-types may be used by mutual agreement of the counterparties.",
-      "display": "MiscFeeSubType",
-      "fix:tag": "2634"
+      "display": "MiscFeeSubType"
     }
   },
   {
@@ -761,9 +761,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2635",
       "description": "The amount of the specified MiscFeeSubType(2634).",
-      "display": "MiscFeeSubTypeAmt",
-      "fix:tag": "2635"
+      "display": "MiscFeeSubTypeAmt"
     }
   },
   {
@@ -773,9 +773,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2636",
       "description": "Can be used to provide an optional textual description of the fee sub-type.",
-      "display": "MiscFeeSubTypeDesc",
-      "fix:tag": "2636"
+      "display": "MiscFeeSubTypeDesc"
     }
   },
   {
@@ -785,9 +785,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2637",
       "description": "Byte length of encoded (non-ASCII characters) EncodedMiscFeeSubTypeDesc(2638) field.",
-      "display": "EncodedMiscFeeSubTypeDescLen",
-      "fix:tag": "2637"
+      "display": "EncodedMiscFeeSubTypeDescLen"
     }
   },
   {
@@ -797,9 +797,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2638",
       "description": "Encoded (non-ASCII characters) representation of the MiscFeeSubTypeDesc(2636) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the MiscFeeSubTypeDesc(2636) field.",
-      "display": "EncodedMiscFeeSubTypeDesc",
-      "fix:tag": "2638"
+      "display": "EncodedMiscFeeSubTypeDesc"
     }
   },
   {
@@ -809,9 +809,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2639",
       "description": "Number of commissions in the repeating group.",
-      "display": "NoCommissions",
-      "fix:tag": "2639"
+      "display": "NoCommissions"
     }
   },
   {
@@ -823,9 +823,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2640",
       "description": "The commission amount.",
-      "display": "CommissionAmount",
-      "fix:tag": "2640"
+      "display": "CommissionAmount"
     }
   },
   {
@@ -835,9 +835,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates what type of commission is being expressed in CommissionAmount(2640).",
-      "display": "CommissionAmountType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Unspecified",
@@ -879,7 +877,9 @@
           "doc": "Research payment"
         }
       ],
-      "fix:tag": "2641"
+      "FIX:tag": "2641",
+      "description": "Indicates what type of commission is being expressed in CommissionAmount(2640).",
+      "display": "CommissionAmountType"
     }
   },
   {
@@ -889,9 +889,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the basis or unit used to calculate the commission.",
-      "display": "CommissionBasis",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "PerUnit",
@@ -933,7 +931,9 @@
           "doc": "Amount per contract"
         }
       ],
-      "fix:tag": "2642"
+      "FIX:tag": "2642",
+      "description": "Specifies the basis or unit used to calculate the commission.",
+      "display": "CommissionBasis"
     }
   },
   {
@@ -943,9 +943,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2643",
       "description": "Specifies the currency denomination of the commission amount if different from the trade's currency.",
-      "display": "CommissionCurrency",
-      "fix:tag": "2643"
+      "display": "CommissionCurrency"
     }
   },
   {
@@ -955,9 +955,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The commission rate unit of measure.",
-      "display": "CommissionUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -1439,7 +1437,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "2644"
+      "FIX:tag": "2644",
+      "description": "The commission rate unit of measure.",
+      "display": "CommissionUnitOfMeasure"
     }
   },
   {
@@ -1449,9 +1449,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2645",
       "description": "Indicates the currency of the unit of measure. Conditionally required when CommissionUnitOfMeasure(2644) = Ccy (Amount of currency).",
-      "display": "CommissionUnitOfMeasureCurrency",
-      "fix:tag": "2645"
+      "display": "CommissionUnitOfMeasureCurrency"
     }
   },
   {
@@ -1461,9 +1461,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2646",
       "description": "The commission rate when CommissionAmount(2640) is based on a percentage of quantity, amount per unit or a factor of \"unit of measure\". If the rate is a percentage or expressed in basis points, use the decimalized form, e.g. \"0.05\" for a 5% commission or \"0.005\" for 50 basis points.",
-      "display": "CommissionRate",
-      "fix:tag": "2646"
+      "display": "CommissionRate"
     }
   },
   {
@@ -1473,9 +1473,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2647",
       "description": "Indicates whether the amount in CommissionAmount(2640) is to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement.",
-      "display": "CommissionSharedIndicator",
-      "fix:tag": "2647"
+      "display": "CommissionSharedIndicator"
     }
   },
   {
@@ -1487,9 +1487,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2648",
       "description": "Commission amount to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement. If specified, this amount should not exceed the amount in CommissionAmount(2640).",
-      "display": "CommissionAmountShared",
-      "fix:tag": "2648"
+      "display": "CommissionAmountShared"
     }
   },
   {
@@ -1499,9 +1499,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2649",
       "description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
-      "display": "CommissionLegRefID",
-      "fix:tag": "2649"
+      "display": "CommissionLegRefID"
     }
   },
   {
@@ -1511,9 +1511,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2650",
       "description": "Description of the commission.",
-      "display": "CommissionDesc",
-      "fix:tag": "2650"
+      "display": "CommissionDesc"
     }
   },
   {
@@ -1523,9 +1523,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2651",
       "description": "Byte length of the encoded (non-ASCII characters) EncodedCommissionDesc(2652) field.",
-      "display": "EncodedCommissionDescLen",
-      "fix:tag": "2651"
+      "display": "EncodedCommissionDescLen"
     }
   },
   {
@@ -1535,9 +1535,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2652",
       "description": "Encoded (non-ASCII characters) representation of the CommissionDesc(2650) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the CommissionDesc(2650) field.",
-      "display": "EncodedCommissionDesc",
-      "fix:tag": "2652"
+      "display": "EncodedCommissionDesc"
     }
   },
   {
@@ -1547,9 +1547,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2653",
       "description": "Number of commissions in the repeating group.",
-      "display": "NoAllocCommissions",
-      "fix:tag": "2653"
+      "display": "NoAllocCommissions"
     }
   },
   {
@@ -1561,9 +1561,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2654",
       "description": "The commission amount.",
-      "display": "AllocCommissionAmount",
-      "fix:tag": "2654"
+      "display": "AllocCommissionAmount"
     }
   },
   {
@@ -1573,9 +1573,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates what type of commission is being expressed in AllocCommissionAmount(2654).",
-      "display": "AllocCommissionAmountType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Unspecified",
@@ -1617,7 +1615,9 @@
           "doc": "Research payment"
         }
       ],
-      "fix:tag": "2655"
+      "FIX:tag": "2655",
+      "description": "Indicates what type of commission is being expressed in AllocCommissionAmount(2654).",
+      "display": "AllocCommissionAmountType"
     }
   },
   {
@@ -1627,9 +1627,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the basis or unit used to calculate the commission.",
-      "display": "AllocCommissionBasis",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "PerUnit",
@@ -1671,7 +1669,9 @@
           "doc": "Amount per contract"
         }
       ],
-      "fix:tag": "2656"
+      "FIX:tag": "2656",
+      "description": "Specifies the basis or unit used to calculate the commission.",
+      "display": "AllocCommissionBasis"
     }
   },
   {
@@ -1681,9 +1681,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2657",
       "description": "Specifies the currency denomination of the commission amount if different from the trade's currency.",
-      "display": "AllocCommissionCurrency",
-      "fix:tag": "2657"
+      "display": "AllocCommissionCurrency"
     }
   },
   {
@@ -1693,9 +1693,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The commission rate unit of measure.",
-      "display": "AllocCommissionUnitOfMeasure",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "Alw",
           "name": "Allowances",
@@ -2177,7 +2175,9 @@
           "doc": "US Dollars"
         }
       ],
-      "fix:tag": "2658"
+      "FIX:tag": "2658",
+      "description": "The commission rate unit of measure.",
+      "display": "AllocCommissionUnitOfMeasure"
     }
   },
   {
@@ -2187,9 +2187,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2659",
       "description": "Indicates the currency of the unit of measure. Conditionally required when AllocCommissionUnitOfMeasure(2658) = Ccy (Currency).",
-      "display": "AllocCommissionUnitOfMeasureCurrency",
-      "fix:tag": "2659"
+      "display": "AllocCommissionUnitOfMeasureCurrency"
     }
   },
   {
@@ -2199,9 +2199,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2660",
       "description": "The commission rate when AllocCommissionAmount(2654) is based on a percentage of quantity, amount per unit or a factor of \"unit of measure\". If the rate is a percentage or expressed in basis points, use the decimalized form, e.g. \"0.05\" for a 5% commission or \"0.005\" for 50 basis points.",
-      "display": "AllocCommissionRate",
-      "fix:tag": "2660"
+      "display": "AllocCommissionRate"
     }
   },
   {
@@ -2211,9 +2211,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2661",
       "description": "Indicates whether the amount in AllocCommissionAmount(2654) is to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement.",
-      "display": "AllocCommissionSharedIndicator",
-      "fix:tag": "2661"
+      "display": "AllocCommissionSharedIndicator"
     }
   },
   {
@@ -2225,9 +2225,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2662",
       "description": "Commission amount to be shared with a third party, e.g. as part of a directed brokerage commission sharing arrangement. If specified, this amount should not exceed the amount in AllocCommissionAmount(2654).",
-      "display": "AllocCommissionAmountShared",
-      "fix:tag": "2662"
+      "display": "AllocCommissionAmountShared"
     }
   },
   {
@@ -2237,9 +2237,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2663",
       "description": "Identifies the leg of the trade the entry applies to by referencing the leg's LegID(1788).",
-      "display": "AllocCommissionLegRefID",
-      "fix:tag": "2663"
+      "display": "AllocCommissionLegRefID"
     }
   },
   {
@@ -2249,9 +2249,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2664",
       "description": "Description of the commission.",
-      "display": "AllocCommissionDesc",
-      "fix:tag": "2664"
+      "display": "AllocCommissionDesc"
     }
   },
   {
@@ -2261,9 +2261,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2665",
       "description": "Byte length of the encoded (non-ASCII characters) EncodedAllocCommissionDesc(2666) field.",
-      "display": "EncodedAllocCommissionDescLen",
-      "fix:tag": "2665"
+      "display": "EncodedAllocCommissionDescLen"
     }
   },
   {
@@ -2273,9 +2273,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2666",
       "description": "Encoded (non-ASCII characters) representation of the AllocCommissionDesc(2664) field in the encoded format specified via the MessageEncoding(347) field. If used, the ASCII (English) representation should also be specified in the AllocCommissionDesc(2664) field.",
-      "display": "EncodedAllocCommissionDesc",
-      "fix:tag": "2666"
+      "display": "EncodedAllocCommissionDesc"
     }
   },
   {
@@ -2285,9 +2285,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates that the order or trade originates from a computer program or algorithm requiring little-to-no human intervention.",
-      "display": "AlgorithmicTradeIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NonAlgorithmicTrade",
@@ -2299,7 +2297,9 @@
           "doc": "Algorithmic trade"
         }
       ],
-      "fix:tag": "2667"
+      "FIX:tag": "2667",
+      "description": "Indicates that the order or trade originates from a computer program or algorithm requiring little-to-no human intervention.",
+      "display": "AlgorithmicTradeIndicator"
     }
   },
   {
@@ -2309,9 +2309,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2668",
       "description": "Number of regulatory publication rules in repeating group.",
-      "display": "NoTrdRegPublications",
-      "fix:tag": "2668"
+      "display": "NoTrdRegPublications"
     }
   },
   {
@@ -2321,9 +2321,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of regulatory trade publication.",
-      "display": "TrdRegPublicationType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "PreTradeTransparencyWaiver",
@@ -2360,7 +2358,9 @@
           "doc": "Publication internal to execution venue"
         }
       ],
-      "fix:tag": "2669"
+      "FIX:tag": "2669",
+      "description": "Specifies the type of regulatory trade publication.",
+      "display": "TrdRegPublicationType"
     }
   },
   {
@@ -2370,9 +2370,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Additional reason for trade publication type specified in TrdRegPublicationType(2669).",
-      "display": "TrdRegPublicationReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NoBookOrderDueToAverageSpreadPrice",
@@ -2499,7 +2497,9 @@
           "doc": "Deferral due to asset class"
         }
       ],
-      "fix:tag": "2670"
+      "FIX:tag": "2670",
+      "description": "Additional reason for trade publication type specified in TrdRegPublicationType(2669).",
+      "display": "TrdRegPublicationReason"
     }
   },
   {
@@ -2509,9 +2509,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used between parties to convey trade reporting status.",
-      "display": "SideTradeReportingIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotReported",
@@ -2563,7 +2561,9 @@
           "doc": "Trade is not reportable"
         }
       ],
-      "fix:tag": "2671"
+      "FIX:tag": "2671",
+      "description": "Used between parties to convey trade reporting status.",
+      "display": "SideTradeReportingIndicator"
     }
   },
   {
@@ -2573,9 +2573,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2672",
       "description": "Unique message identifier for a cross request as assigned by the submitter of the request.",
-      "display": "CrossRequestID",
-      "fix:tag": "2672"
+      "display": "CrossRequestID"
     }
   },
   {
@@ -2585,9 +2585,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2673",
       "description": "Identifier assigned by a matching system to a match event containing multiple executions.",
-      "display": "FillMatchID",
-      "fix:tag": "2673"
+      "display": "FillMatchID"
     }
   },
   {
@@ -2597,9 +2597,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2674",
       "description": "Identifier assigned by a matching system to a price level (e.g. match step, clip) within a match event containing multiple executions.",
-      "display": "FillMatchSubID",
-      "fix:tag": "2674"
+      "display": "FillMatchSubID"
     }
   },
   {
@@ -2609,9 +2609,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason for submission of mass action.",
-      "display": "MassActionReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "None",
@@ -2678,7 +2676,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "2675"
+      "FIX:tag": "2675",
+      "description": "Reason for submission of mass action.",
+      "display": "MassActionReason"
     }
   },
   {
@@ -2688,9 +2688,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2676",
       "description": "Maximum deviation, in percentage terms, of an execution price from a reference price, e.g. the initial price of a match event.",
-      "display": "MaximumPriceDeviation",
-      "fix:tag": "2676"
+      "display": "MaximumPriceDeviation"
     }
   },
   {
@@ -2700,9 +2700,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason for order being unaffected by mass action even though it belongs to the orders covered by MassActionScope(1374).",
-      "display": "NotAffectedReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OrderSuspended",
@@ -2714,7 +2712,9 @@
           "doc": "Instrument suspended"
         }
       ],
-      "fix:tag": "2677"
+      "FIX:tag": "2677",
+      "description": "Reason for order being unaffected by mass action even though it belongs to the orders covered by MassActionScope(1374).",
+      "display": "NotAffectedReason"
     }
   },
   {
@@ -2724,9 +2724,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2678",
       "description": "Total number of orders unaffected by either the OrderMassActionRequest(35=CA) or OrderMassCancelRequest(35=Q).",
-      "display": "TotalNotAffectedOrders",
-      "fix:tag": "2678"
+      "display": "TotalNotAffectedOrders"
     }
   },
   {
@@ -2736,9 +2736,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Change of ownership of an order to a specific party.",
-      "display": "OrderOwnershipIndicator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NoChange",
@@ -2760,7 +2758,9 @@
           "doc": "Change of ownership to specified party"
         }
       ],
-      "fix:tag": "2679"
+      "FIX:tag": "2679",
+      "description": "Change of ownership of an order to a specific party.",
+      "display": "OrderOwnershipIndicator"
     }
   },
   {
@@ -2770,9 +2770,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2680",
       "description": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager.",
-      "display": "LegAccount",
-      "fix:tag": "2680"
+      "display": "LegAccount"
     }
   },
   {
@@ -2782,9 +2782,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies an option instrument's \"in the money\" condition.",
-      "display": "InTheMoneyCondition",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "StandardITM",
@@ -2806,7 +2804,9 @@
           "doc": "At-the-money put is in-the-money"
         }
       ],
-      "fix:tag": "2681"
+      "FIX:tag": "2681",
+      "description": "Specifies an option instrument's \"in the money\" condition.",
+      "display": "InTheMoneyCondition"
     }
   },
   {
@@ -2816,9 +2816,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies an option instrument's \"in the money\" condition in general terms.",
-      "display": "LegInTheMoneyCondition",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "StandardITM",
@@ -2840,7 +2838,9 @@
           "doc": "At-the-money put is in-the-money"
         }
       ],
-      "fix:tag": "2682"
+      "FIX:tag": "2682",
+      "description": "Specifies an option instrument's \"in the money\" condition in general terms.",
+      "display": "LegInTheMoneyCondition"
     }
   },
   {
@@ -2850,9 +2850,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies an option instrument's \"in the money\" condition in general terms.",
-      "display": "UnderlyingInTheMoneyCondition",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "StandardITM",
@@ -2874,7 +2872,9 @@
           "doc": "At-the-money put is in-the-money"
         }
       ],
-      "fix:tag": "2683"
+      "FIX:tag": "2683",
+      "description": "Specifies an option instrument's \"in the money\" condition in general terms.",
+      "display": "UnderlyingInTheMoneyCondition"
     }
   },
   {
@@ -2884,9 +2884,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies an option instrument's \"in the money\" condition in general terms.",
-      "display": "DerivativeInTheMoneyCondition",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "StandardITM",
@@ -2908,7 +2906,9 @@
           "doc": "At-the-money put is in-the-money"
         }
       ],
-      "fix:tag": "2684"
+      "FIX:tag": "2684",
+      "description": "Specifies an option instrument's \"in the money\" condition in general terms.",
+      "display": "DerivativeInTheMoneyCondition"
     }
   },
   {
@@ -2918,9 +2918,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2685",
       "description": "Identifies whether the option instrument is eligible for contrary instructions at the time of exercise. The contrariness of an instruction will be determined in the context of InTheMoneyCondition(2681). When not specified, the eligibility is undefined or not applicable.",
-      "display": "ContraryInstructionEligibilityIndicator",
-      "fix:tag": "2685"
+      "display": "ContraryInstructionEligibilityIndicator"
     }
   },
   {
@@ -2930,9 +2930,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2686",
       "description": "Identifies whether the option instrument is eligible for contrary instructions at the time of exercise. The contrariness of an instruction will be determined in the context of LegInTheMoneyCondition(2682). When not specified, the eligibility is undefined or not applicable.",
-      "display": "LegContraryInstructionEligibilityIndicator",
-      "fix:tag": "2686"
+      "display": "LegContraryInstructionEligibilityIndicator"
     }
   },
   {
@@ -2942,9 +2942,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2687",
       "description": "Identifies whether the option instrument is eligible for contrary instructions at the time of exercise. The contrariness of an instruction will be determined in the context of UnderlyingInTheMoneyCondition(2683). When not specified, the eligibility is undefined or not applicable.",
-      "display": "UnderlyingContraryInstructionEligibilityIndicator",
-      "fix:tag": "2687"
+      "display": "UnderlyingContraryInstructionEligibilityIndicator"
     }
   },
   {
@@ -2954,9 +2954,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2688",
       "description": "Identifies whether the option instrument is eligible for contrary instructions at the time of exercise. The contrariness of an instruction will be determined in the context of DerivativeInTheMoneyCondition(2684). When not specified, the eligibility is undefined or not applicable.",
-      "display": "DerivativeContraryInstructionEligibilityIndicator",
-      "fix:tag": "2688"
+      "display": "DerivativeContraryInstructionEligibilityIndicator"
     }
   },
   {
@@ -2968,9 +2968,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2689",
       "description": "Market price of the collateral, either from market sources or pre-agreed by the counterparties.",
-      "display": "CollateralMarketPrice",
-      "fix:tag": "2689"
+      "display": "CollateralMarketPrice"
     }
   },
   {
@@ -2980,9 +2980,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2690",
       "description": "Percentage of over-collateralization particularly when CollateralAmountType(2632) = 4 (Additional collateral value)",
-      "display": "CollateralPercentOverage",
-      "fix:tag": "2690"
+      "display": "CollateralPercentOverage"
     }
   },
   {
@@ -2992,9 +2992,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2691",
       "description": "Number of side collateral amount entries.",
-      "display": "NoSideCollateralAmounts",
-      "fix:tag": "2691"
+      "display": "NoSideCollateralAmounts"
     }
   },
   {
@@ -3004,9 +3004,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2692",
       "description": "Market associated with the collateral amount.",
-      "display": "SideCollateralAmountMarketID",
-      "fix:tag": "2692"
+      "display": "SideCollateralAmountMarketID"
     }
   },
   {
@@ -3016,9 +3016,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2693",
       "description": "Market segment associated with the collateral amount.",
-      "display": "SideCollateralAmountMarketSegmentID",
-      "fix:tag": "2693"
+      "display": "SideCollateralAmountMarketSegmentID"
     }
   },
   {
@@ -3028,9 +3028,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The type of value in CurrentCollateralAmount(1704).",
-      "display": "SideCollateralAmountType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "MarketValuation",
@@ -3062,7 +3060,9 @@
           "doc": "Estimated market valuation"
         }
       ],
-      "fix:tag": "2694"
+      "FIX:tag": "2694",
+      "description": "The type of value in CurrentCollateralAmount(1704).",
+      "display": "SideCollateralAmountType"
     }
   },
   {
@@ -3072,9 +3072,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2695",
       "description": "Specifies the currency of the collateral; optional, defaults to settlement currency if not specified.",
-      "display": "SideCollateralCurrency",
-      "fix:tag": "2695"
+      "display": "SideCollateralCurrency"
     }
   },
   {
@@ -3084,9 +3084,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2696",
       "description": "Foreign exchange rate used to compute the SideCurrentCollateralAmount(2702) from the SideCollateralCurrency(2695) and the Currency(15).",
-      "display": "SideCollateralFXRate",
-      "fix:tag": "2696"
+      "display": "SideCollateralFXRate"
     }
   },
   {
@@ -3096,9 +3096,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies whether or not SideCollateralFXRate(2696) should be multiplied or divided.",
-      "display": "SideCollateralFXRateCalc",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Divide",
@@ -3110,7 +3108,9 @@
           "doc": "Multiply"
         }
       ],
-      "fix:tag": "2697"
+      "FIX:tag": "2697",
+      "description": "Specifies whether or not SideCollateralFXRate(2696) should be multiplied or divided.",
+      "display": "SideCollateralFXRateCalc"
     }
   },
   {
@@ -3122,9 +3122,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2698",
       "description": "Market price of the collateral, either from market sources or pre-agreed by the counterparties.",
-      "display": "SideCollateralMarketPrice",
-      "fix:tag": "2698"
+      "display": "SideCollateralMarketPrice"
     }
   },
   {
@@ -3134,9 +3134,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "2699",
       "description": "Percentage of over-collateralization particularly when SideCollateralAmountType(2694) = 4 (Additional collateral value).",
-      "display": "SideCollateralPercentOverage",
-      "fix:tag": "2699"
+      "display": "SideCollateralPercentOverage"
     }
   }
 ]

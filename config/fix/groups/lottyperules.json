@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "lottyperule"
+        "FIX:component": "lottyperule"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "lottyperule",
+    "FIX:counter": "1234",
+    "FIX:tag": "733809",
     "description": "Number of Lot Types",
-    "display": "LotTypeRules",
-    "fix:component": "lottyperule",
-    "fix:counter": "1234",
-    "fix:tag": "733809"
+    "display": "LotTypeRules"
   }
 }

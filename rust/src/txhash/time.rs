@@ -13,7 +13,7 @@ use smol_str::format_smolstr;
 
 use crate::temporal as iso;
 use crate::temporal::scalars::nanoseconds_per;
-use crate::{Error, Result, Scalar, TemporalFamily, TimeUnit};
+use crate::{Error, Result, Scalar, TemporalKind, TimeUnit};
 
 /// The resolution a unix count carries when a caller names none.
 ///
@@ -148,13 +148,13 @@ pub fn unix_from_scalar(value: &Scalar, unit: TimeUnit) -> Result<i64> {
         });
     }
     if let (Some(family), Some(count), Some(source)) = (
-        value.temporal_family(),
+        value.temporal_kind(),
         value.temporal_count(),
         value.temporal_unit(),
     ) {
         return match family {
-            TemporalFamily::DateTime | TemporalFamily::Date => restate_unix(count, source, unit),
-            TemporalFamily::Time | TemporalFamily::Duration | TemporalFamily::Interval => {
+            TemporalKind::DateTime | TemporalKind::Date => restate_unix(count, source, unit),
+            TemporalKind::Time | TemporalKind::Duration | TemporalKind::Interval => {
                 Err(not_an_instant(family.as_str()))
             }
         };

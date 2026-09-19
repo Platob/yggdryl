@@ -23,7 +23,7 @@ member under its own packed code, registered once and announced once on the
 `yggdryl.enums.string` logger.
 
 A class declares itself onto a field with `into_field()`, which stores the
-members under `field:enum` as a `StringEnum`, so the enum crosses Arrow, a
+members under `FIELD:enum` as a `StringEnum`, so the enum crosses Arrow, a
 file, and another runtime as ordinary field metadata; `from_field()` reads
 that declaration back as a class.
 
@@ -57,7 +57,7 @@ _LOGGER = logging.getLogger(__name__)
 #: enum member takes the name it is spelled with, so a member named for one of
 #: these replaces the method it names. The call that needed it then fails far
 #: from the declaration, and the shadow travels: a declaration read back through
-#: `field:enum` rebuilds the same broken class in every process.
+#: `FIELD:enum` rebuilds the same broken class in every process.
 _RESERVED_MEMBER_NAMES = frozenset(
     {
         "as_enum",

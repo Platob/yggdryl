@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "listid",
-          "fix:tag": "66"
+          "FIX:field": "listid",
+          "FIX:tag": "66"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidid",
-          "fix:tag": "390"
+          "FIX:field": "bidid",
+          "FIX:tag": "390"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clientbidid",
-          "fix:tag": "391"
+          "FIX:field": "clientbidid",
+          "FIX:tag": "391"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "progrptreqs",
-          "fix:tag": "414"
+          "FIX:field": "progrptreqs",
+          "FIX:tag": "414"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "bidtype",
-          "fix:tag": "394"
+          "FIX:field": "bidtype",
+          "FIX:tag": "394"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "progperiodinterval",
-          "fix:tag": "415"
+          "FIX:field": "progperiodinterval",
+          "FIX:tag": "415"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "cancellationrights",
-          "fix:tag": "480"
+          "FIX:field": "cancellationrights",
+          "FIX:tag": "480"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "moneylaunderingstatus",
-          "fix:tag": "481"
+          "FIX:field": "moneylaunderingstatus",
+          "FIX:tag": "481"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "registid",
-          "fix:tag": "513"
+          "FIX:field": "registid",
+          "FIX:tag": "513"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listexecinsttype",
-          "fix:tag": "433"
+          "FIX:field": "listexecinsttype",
+          "FIX:tag": "433"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listexecinst",
-          "fix:tag": "69"
+          "FIX:field": "listexecinst",
+          "FIX:tag": "69"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contingencytype",
-          "fix:tag": "1385"
+          "FIX:field": "contingencytype",
+          "FIX:tag": "1385"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlistexecinstlen",
-          "fix:tag": "352"
+          "FIX:field": "encodedlistexecinstlen",
+          "FIX:tag": "352"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedlistexecinst",
-          "fix:tag": "353"
+          "FIX:field": "encodedlistexecinst",
+          "FIX:tag": "353"
         }
       },
       {
@@ -174,8 +174,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allowableonesidednesspct",
-          "fix:tag": "765"
+          "FIX:field": "allowableonesidednesspct",
+          "FIX:tag": "765"
         }
       },
       {
@@ -185,8 +185,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allowableonesidednessvalue",
-          "fix:tag": "766"
+          "FIX:field": "allowableonesidednessvalue",
+          "FIX:tag": "766"
         }
       },
       {
@@ -196,8 +196,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "allowableonesidednesscurr",
-          "fix:tag": "767"
+          "FIX:field": "allowableonesidednesscurr",
+          "FIX:tag": "767"
         }
       },
       {
@@ -207,8 +207,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "listmanualorderindicator",
-          "fix:tag": "2401"
+          "FIX:field": "listmanualorderindicator",
+          "FIX:tag": "2401"
         }
       },
       {
@@ -218,8 +218,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "totnoorders",
-          "fix:tag": "68"
+          "FIX:field": "totnoorders",
+          "FIX:tag": "68"
         }
       },
       {
@@ -229,8 +229,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment",
-          "fix:tag": "893"
+          "FIX:field": "lastfragment",
+          "FIX:tag": "893"
         }
       },
       {
@@ -240,8 +240,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norootpartyids",
-          "fix:tag": "1116"
+          "FIX:field": "norootpartyids",
+          "FIX:tag": "1116"
         }
       },
       {
@@ -251,7 +251,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "rootparties"
+          "FIX:group": "rootparties"
         }
       },
       {
@@ -261,8 +261,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "noorders",
-          "fix:tag": "73"
+          "FIX:field": "noorders",
+          "FIX:tag": "73"
         }
       },
       {
@@ -272,7 +272,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "listordgrp"
+          "FIX:group": "listordgrp"
         }
       },
       {
@@ -282,8 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "throttleinst",
-          "fix:tag": "1685"
+          "FIX:field": "throttleinst",
+          "FIX:tag": "1685"
         }
       },
       {
@@ -293,17 +293,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "listid",
+    "FIX:msgtype": "E",
+    "FIX:tag": "962450",
     "description": "MsgType = E",
-    "display": "NewOrderList",
-    "fix:identifiers": "listid",
-    "fix:msgtype": "E",
-    "fix:tag": "962450"
+    "display": "NewOrderList"
   }
 }

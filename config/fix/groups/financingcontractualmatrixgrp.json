@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "financingcontractualmatrix"
+        "FIX:component": "financingcontractualmatrix"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "financingcontractualmatrix",
+    "FIX:counter": "40042",
+    "FIX:tag": "935698",
     "description": "Required if NoContractualMatrices(40042) > 0.",
-    "display": "FinancingContractualMatrixGrp",
-    "fix:component": "financingcontractualmatrix",
-    "fix:counter": "40042",
-    "fix:tag": "935698"
+    "display": "FinancingContractualMatrixGrp"
   }
 }

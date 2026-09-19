@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use arrow_array::{Array, FixedSizeBinaryArray};
 use arrow_schema::DataType as ArrowDataType;
 
-use yggdryl::{Charset, DataTypeId, DataTypeKind};
+use yggdryl::{Charset, DataTypeId, DataTypeKind, StructureType};
 use yggdryl::{DataType, Str, StringType};
 use yggdryl::{Error, Field, Scalar, Scheme};
 
@@ -472,7 +472,8 @@ fn the_default_is_the_empty_string_stored_as_all_nul() {
 #[test]
 fn values_validate_and_canonicalize_under_the_one_ascii_rule() {
     let dtype = DataType::fixed_ascii(4).unwrap();
-    let root = DataType::from_fields([dtype.clone().required_field("ccy")])
+    let root = StructureType::from_fields([dtype.clone().required_field("ccy")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let row = |value: Scalar| Scalar::from_sequence([value]);
@@ -596,7 +597,7 @@ fn arrow_storage_is_padded_and_reads_back_trimmed() {
 
 #[test]
 fn compatibility_reads_every_width_as_str() {
-    let schema = DataType::from_fields([
+    let schema = StructureType::from_fields([
         DataType::fixed_ascii(4).unwrap().nullable_field("ccy"),
         DataType::fixed_ascii(16).unwrap().required_field("code"),
         bounded_ascii(3).required_field("bounded"),
@@ -605,6 +606,7 @@ fn compatibility_reads_every_width_as_str() {
             .unwrap()
             .required_field("latin"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     for scheme in [

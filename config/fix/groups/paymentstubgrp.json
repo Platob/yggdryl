@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "paymentstub"
+        "FIX:component": "paymentstub"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "paymentstub",
+    "FIX:counter": "40872",
+    "FIX:tag": "285342",
     "description": "Required if NoPaymentStubs(40872) > 0.",
-    "display": "PaymentStubGrp",
-    "fix:component": "paymentstub",
-    "fix:counter": "40872",
-    "fix:tag": "285342"
+    "display": "PaymentStubGrp"
   }
 }

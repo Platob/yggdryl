@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdateunadjusted",
-          "fix:tag": "42497"
+          "FIX:field": "legpaymentstubstartdateunadjusted",
+          "FIX:tag": "42497"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdatebusinessdayconvention",
-          "fix:tag": "42498"
+          "FIX:field": "legpaymentstubstartdatebusinessdayconvention",
+          "FIX:tag": "42498"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentstubstartdatebusinesscenters",
-          "fix:tag": "42504"
+          "FIX:field": "nolegpaymentstubstartdatebusinesscenters",
+          "FIX:tag": "42504"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legpaymentstubstartdatebusinesscentergrp"
+          "FIX:group": "legpaymentstubstartdatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdaterelativeto",
-          "fix:tag": "42499"
+          "FIX:field": "legpaymentstubstartdaterelativeto",
+          "FIX:tag": "42499"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdateoffsetperiod",
-          "fix:tag": "42500"
+          "FIX:field": "legpaymentstubstartdateoffsetperiod",
+          "FIX:tag": "42500"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdateoffsetunit",
-          "fix:tag": "42501"
+          "FIX:field": "legpaymentstubstartdateoffsetunit",
+          "FIX:tag": "42501"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdateoffsetdaytype",
-          "fix:tag": "42502"
+          "FIX:field": "legpaymentstubstartdateoffsetdaytype",
+          "FIX:tag": "42502"
         }
       },
       {
@@ -97,16 +97,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstubstartdateadjusted",
-          "fix:tag": "42503"
+          "FIX:field": "legpaymentstubstartdateadjusted",
+          "FIX:tag": "42503"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "170194",
     "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this payment stub instance.",
-    "display": "LegPaymentStubStartDate",
-    "fix:tag": "170194"
+    "display": "LegPaymentStubStartDate"
   }
 }

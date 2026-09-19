@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexerciseexpirationdate",
-          "fix:tag": "41857"
+          "FIX:field": "underlyingoptionexerciseexpirationdate",
+          "FIX:tag": "41857"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingoptionexerciseexpirationdatetype",
-          "fix:tag": "41858"
+          "FIX:field": "underlyingoptionexerciseexpirationdatetype",
+          "FIX:tag": "41858"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingOptionExerciseExpirationDate",
-    "fix:tag": "329558"
+    "FIX:tag": "329558",
+    "display": "UnderlyingOptionExerciseExpirationDate"
   }
 }

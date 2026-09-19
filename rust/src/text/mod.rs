@@ -733,6 +733,7 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::Uuid(_)
             | Scalar::Version(_)
             | Scalar::Url(_)
+            | Scalar::Urn(_)
             | Scalar::Timezone(_)
             | Scalar::MimeType(_)
             | Scalar::MediaType(_)

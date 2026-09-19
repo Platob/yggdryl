@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventstarttime",
-          "fix:tag": "2057"
+          "FIX:field": "underlyingcomplexeventstarttime",
+          "FIX:tag": "2057"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingcomplexeventendtime",
-          "fix:tag": "2058"
+          "FIX:field": "underlyingcomplexeventendtime",
+          "FIX:tag": "2058"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingComplexEventTime",
-    "fix:tag": "116002"
+    "FIX:tag": "116002",
+    "display": "UnderlyingComplexEventTime"
   }
 }

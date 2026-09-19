@@ -12,7 +12,7 @@ use crate::BytesType;
 use crate::DecimalType;
 use crate::StringType;
 use crate::UnionMode;
-use crate::{DataType, TimeUnit};
+use crate::{DataType, StructureType, TimeUnit};
 use crate::{EdgeAlgorithm, Error, Field, Result};
 
 /// Recursive field grammar and FromStr implementation.
@@ -882,7 +882,7 @@ impl fmt::Display for DataType {
             | D::Timezone
             | D::MimeType
             | D::MediaType
-            | D::Url
+            | D::Uri(_)
             | D::Variant => formatter.write_str(self.name()),
             // Each temporal family spells its own leaf and parameters.
             D::DateTime(leaf) => fmt::Display::fmt(leaf, formatter),
@@ -1193,7 +1193,8 @@ impl<'a> Parser<'a> {
             "timezone" | "timezonename" | "tz" => DataType::Timezone,
             "mimetype" | "mime" => DataType::MimeType,
             "mediatype" | "contenttype" => DataType::MediaType,
-            "url" => DataType::Url,
+            "url" => DataType::url(),
+            "urn" => DataType::urn(),
             "list" | "array" => self.parse_list(ListKind::List, depth + 1)?,
             "listview" | "arrayview" => self.parse_list(ListKind::ListView, depth + 1)?,
             "fixedsizelist" | "fixedarray" => self.parse_fixed_size_list(depth + 1)?,
@@ -2073,7 +2074,7 @@ impl Parser<'_> {
         if collection_close.is_some() {
             self.expect_symbol(close)?;
         }
-        DataType::from_fields(fields)
+        StructureType::from_fields(fields).map(DataType::from)
     }
 
     pub(crate) fn parse_dictionary(&mut self, depth: usize) -> Result<DataType> {

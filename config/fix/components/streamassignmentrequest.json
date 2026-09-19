@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "streamasgnreqid",
-          "fix:tag": "1497"
+          "FIX:field": "streamasgnreqid",
+          "FIX:tag": "1497"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "streamasgnreqtype",
-          "fix:tag": "1498"
+          "FIX:field": "streamasgnreqtype",
+          "FIX:tag": "1498"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "noasgnreqs",
-          "fix:tag": "1499"
+          "FIX:field": "noasgnreqs",
+          "FIX:tag": "1499"
         }
       },
       {
@@ -53,7 +53,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "strmasgnreqgrp"
+          "FIX:group": "strmasgnreqgrp"
         }
       },
       {
@@ -63,16 +63,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "CC",
+    "FIX:tag": "1083748",
     "description": "MsgType = CC",
-    "display": "StreamAssignmentRequest",
-    "fix:msgtype": "CC",
-    "fix:tag": "1083748"
+    "display": "StreamAssignmentRequest"
   }
 }

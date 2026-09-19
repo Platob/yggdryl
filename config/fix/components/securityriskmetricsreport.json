@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "securityriskmetricsreportid",
-          "fix:tag": "2988"
+          "FIX:field": "securityriskmetricsreportid",
+          "FIX:tag": "2988"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "riskmetricssecuritygroup",
-          "fix:tag": "2989"
+          "FIX:field": "riskmetricssecuritygroup",
+          "FIX:tag": "2989"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "riskmetricssecuritysubgroup",
-          "fix:tag": "2990"
+          "FIX:field": "riskmetricssecuritysubgroup",
+          "FIX:tag": "2990"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -64,7 +64,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyinginstrument"
+          "FIX:component": "underlyinginstrument"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingbidpx",
-          "fix:tag": "2991"
+          "FIX:field": "underlyingbidpx",
+          "FIX:tag": "2991"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingofferpx",
-          "fix:tag": "2992"
+          "FIX:field": "underlyingofferpx",
+          "FIX:tag": "2992"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "metricscalculationpricesource",
-          "fix:tag": "2993"
+          "FIX:field": "metricscalculationpricesource",
+          "FIX:tag": "2993"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "riskfreerate",
-          "fix:tag": "1190"
+          "FIX:field": "riskfreerate",
+          "FIX:tag": "1190"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "assetvaluationmodel",
-          "fix:tag": "2994"
+          "FIX:field": "assetvaluationmodel",
+          "FIX:tag": "2994"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lastfragment",
-          "fix:tag": "893"
+          "FIX:field": "lastfragment",
+          "FIX:tag": "893"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosecurityriskmetrics",
-          "fix:tag": "2995"
+          "FIX:field": "nosecurityriskmetrics",
+          "FIX:tag": "2995"
         }
       },
       {
@@ -151,7 +151,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "securityriskmetricgrp"
+          "FIX:group": "securityriskmetricgrp"
         }
       },
       {
@@ -161,16 +161,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "EG",
+    "FIX:tag": "201842",
     "description": "MsgType = EG",
-    "display": "SecurityRiskMetricsReport",
-    "fix:msgtype": "EG",
-    "fix:tag": "201842"
+    "display": "SecurityRiskMetricsReport"
   }
 }

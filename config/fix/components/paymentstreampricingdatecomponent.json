@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreampricingdate",
-          "fix:tag": "41225"
+          "FIX:field": "paymentstreampricingdate",
+          "FIX:tag": "41225"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreampricingdatetype",
-          "fix:tag": "41226"
+          "FIX:field": "paymentstreampricingdatetype",
+          "FIX:tag": "41226"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentStreamPricingDate",
-    "fix:tag": "1014313"
+    "FIX:tag": "1014313",
+    "display": "PaymentStreamPricingDate"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "algosystemmodule"
+        "FIX:component": "algosystemmodule"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "algosystemmodule",
+    "FIX:counter": "3025",
+    "FIX:tag": "795983",
     "description": "Required if NoAlgoSystemModules(3025) > 0.",
-    "display": "AlgoSystemModuleGrp",
-    "fix:component": "algosystemmodule",
-    "fix:counter": "3025",
-    "fix:tag": "795983"
+    "display": "AlgoSystemModuleGrp"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "instrmtstrkpx"
+        "FIX:component": "instrmtstrkpx"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "instrmtstrkpx",
+    "FIX:counter": "428",
+    "FIX:tag": "347386",
     "description": "Number of strike price entries",
-    "display": "InstrmtStrkPxGrp",
-    "fix:component": "instrmtstrkpx",
-    "fix:counter": "428",
-    "fix:tag": "347386"
+    "display": "InstrmtStrkPxGrp"
   }
 }

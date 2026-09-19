@@ -21,7 +21,7 @@ def wire_field(name: str, tag: int, dtype: str = "string") -> dict:
         "name": name,
         "dtype": {"type": dtype},
         "nullable": True,
-        "metadata": {"fix:tag": str(tag)},
+        "metadata": {"FIX:tag": str(tag)},
     }
 
 
@@ -31,7 +31,7 @@ def member(kind: str, identifier: int, required: bool = False) -> dict:
 
 def definition_tags(catalog: dict) -> dict:
     return {
-        field["name"]: int(field["metadata"]["fix:tag"])
+        field["name"]: int(field["metadata"]["FIX:tag"])
         for category in ("components", "groups", "messages")
         for field in catalog[category]
     }
@@ -60,24 +60,24 @@ class FixCatalogGeneration(unittest.TestCase):
         groups = {field["name"]: field for field in catalog["groups"]}
         components = {field["name"]: field for field in catalog["components"]}
         self.assertEqual({"type": "int32"}, catalog["fields"][1]["dtype"])
-        self.assertEqual("453", groups["parties"]["metadata"]["fix:counter"])
-        self.assertNotIn("fix:tag", groups["parties"]["metadata"])
+        self.assertEqual("453", groups["parties"]["metadata"]["FIX:counter"])
+        self.assertNotIn("FIX:tag", groups["parties"]["metadata"])
         item = groups["parties"]["dtype"]["field"]
         self.assertEqual("party", item["name"])
         self.assertFalse(item["nullable"])
-        self.assertEqual({"fix:component": "party"}, item["metadata"])
+        self.assertEqual({"FIX:component": "party"}, item["metadata"])
         children = components["party"]["dtype"]["fields"]
         self.assertEqual(["partyid", "nopartysubids", "ptyssubgrp"], [field["name"] for field in children])
-        self.assertEqual({"fix:field": "nopartysubids"}, children[1]["metadata"])
-        self.assertEqual({"fix:group": "ptyssubgrp"}, children[2]["metadata"])
+        self.assertEqual({"FIX:field": "nopartysubids"}, children[1]["metadata"])
+        self.assertEqual({"FIX:group": "ptyssubgrp"}, children[2]["metadata"])
         message = catalog["messages"][0]
-        self.assertEqual("D", message["metadata"]["fix:msgtype"])
+        self.assertEqual("D", message["metadata"]["FIX:msgtype"])
         self.assertEqual([False, False], [field["nullable"] for field in message["dtype"]["fields"]])
 
     def test_one_counter_keeps_every_group_context(self) -> None:
         self.latest["groups"]["RequestedParties"] = {"id": 9001, "tag": 453, "members": [member("field", 448, True)]}
         catalog = GENERATOR.build_catalog(self.latest, self.fields)
-        matching = [field["name"] for field in catalog["groups"] if field["metadata"]["fix:counter"] == "453"]
+        matching = [field["name"] for field in catalog["groups"] if field["metadata"]["FIX:counter"] == "453"]
         self.assertEqual(["parties", "requestedparties"], matching)
 
     def test_global_names_do_not_collide_with_wire_fields(self) -> None:
@@ -96,7 +96,7 @@ class FixCatalogGeneration(unittest.TestCase):
         self.assertEqual("SecAltID", GENERATOR.entry_name("SecAltIDGrp"))
 
     def test_catalog_names_do_not_shadow_scalar_names(self) -> None:
-        self.fields[0]["metadata"]["fix:names"] = ["parties", "party"]
+        self.fields[0]["metadata"]["FIX:names"] = ["parties", "party"]
         catalog = GENERATOR.build_catalog(self.latest, self.fields)
         self.assertIn("partiesgrp", [field["name"] for field in catalog["groups"]])
         self.assertIn("partycomponent", [field["name"] for field in catalog["components"]])
@@ -140,10 +140,10 @@ class FixCatalogGeneration(unittest.TestCase):
         catalog = GENERATOR.build(parsed)
         self.assertEqual({"fields", "messages", "components", "groups"}, set(catalog))
         self.assertEqual(2, len(catalog["fields"]))
-        enums = [field["metadata"]["fix:codes"] for field in catalog["fields"]]
+        enums = [field["metadata"]["FIX:codes"] for field in catalog["fields"]]
         self.assertEqual(enums[0], enums[1])
         self.assertIn('"name":"CUSIP"', enums[0])
-        self.assertTrue(all("fix:codeset" not in field["metadata"] for field in catalog["fields"]))
+        self.assertTrue(all("FIX:codeset" not in field["metadata"] for field in catalog["fields"]))
 
     def test_message_type_is_text_with_its_inline_enum(self) -> None:
         latest = GENERATOR.parse_orchestra(b'''<repository xmlns="http://fixprotocol.io/2020/orchestra/repository" version="FIX.5.0SP2">
@@ -154,7 +154,7 @@ class FixCatalogGeneration(unittest.TestCase):
         parsed["orchestra-latest"] = latest
         field = GENERATOR.build(parsed)["fields"][0]
         self.assertEqual({"type": "string"}, field["dtype"])
-        self.assertIn('"name":"NewOrderSingle"', field["metadata"]["fix:codes"])
+        self.assertIn('"name":"NewOrderSingle"', field["metadata"]["FIX:codes"])
 
     def test_datatypes_are_stored_as_the_crate_writes_them(self) -> None:
         # One `string` tag for every string, stating only what it declares;

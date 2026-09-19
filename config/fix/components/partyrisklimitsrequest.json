@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "risklimitrequestid",
-          "fix:tag": "1666"
+          "FIX:field": "risklimitrequestid",
+          "FIX:tag": "1666"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitrequesttype",
-          "fix:tag": "1760"
+          "FIX:field": "risklimitrequesttype",
+          "FIX:tag": "1760"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "subscriptionrequesttype",
-          "fix:tag": "263"
+          "FIX:field": "subscriptionrequesttype",
+          "FIX:tag": "263"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norequestingpartyids",
-          "fix:tag": "1657"
+          "FIX:field": "norequestingpartyids",
+          "FIX:tag": "1657"
         }
       },
       {
@@ -64,7 +64,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "requestingpartygrp"
+          "FIX:group": "requestingpartygrp"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopartyids",
-          "fix:tag": "453"
+          "FIX:field": "nopartyids",
+          "FIX:tag": "453"
         }
       },
       {
@@ -85,7 +85,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "parties"
+          "FIX:group": "parties"
         }
       },
       {
@@ -95,8 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norequestedpartyroles",
-          "fix:tag": "1508"
+          "FIX:field": "norequestedpartyroles",
+          "FIX:tag": "1508"
         }
       },
       {
@@ -106,7 +106,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "requestedpartyrolegrp"
+          "FIX:group": "requestedpartyrolegrp"
         }
       },
       {
@@ -116,8 +116,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norequestedrisklimittype",
-          "fix:tag": "1668"
+          "FIX:field": "norequestedrisklimittype",
+          "FIX:tag": "1668"
         }
       },
       {
@@ -127,7 +127,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "requestedrisklimittypesgrp"
+          "FIX:group": "requestedrisklimittypesgrp"
         }
       },
       {
@@ -137,8 +137,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "risklimitplatform",
-          "fix:tag": "1533"
+          "FIX:field": "risklimitplatform",
+          "FIX:tag": "1533"
         }
       },
       {
@@ -148,8 +148,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noriskinstrumentscopes",
-          "fix:tag": "1534"
+          "FIX:field": "noriskinstrumentscopes",
+          "FIX:tag": "1534"
         }
       },
       {
@@ -159,7 +159,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "riskinstrumentscopegrp"
+          "FIX:group": "riskinstrumentscopegrp"
         }
       },
       {
@@ -169,8 +169,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -180,8 +180,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -191,8 +191,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -202,16 +202,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "CL",
+    "FIX:tag": "352800",
     "description": "MsgType = CL",
-    "display": "PartyRiskLimitsRequest",
-    "fix:msgtype": "CL",
-    "fix:tag": "352800"
+    "display": "PartyRiskLimitsRequest"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "teststep"
+        "FIX:component": "teststep"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "teststep",
+    "FIX:counter": "3036",
+    "FIX:tag": "107802",
     "description": "Required if NoTestSteps(3036) > 0.",
-    "display": "TestStepGrp",
-    "fix:component": "teststep",
-    "fix:counter": "3036",
-    "fix:tag": "107802"
+    "display": "TestStepGrp"
   }
 }

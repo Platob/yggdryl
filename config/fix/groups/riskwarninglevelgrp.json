@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "riskwarninglevel"
+        "FIX:component": "riskwarninglevel"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "riskwarninglevel",
+    "FIX:counter": "1559",
+    "FIX:tag": "547323",
     "description": "Required if NoRiskWarningLevels(1559) > 0.",
-    "display": "RiskWarningLevelGrp",
-    "fix:component": "riskwarninglevel",
-    "fix:counter": "1559",
-    "fix:tag": "547323"
+    "display": "RiskWarningLevelGrp"
   }
 }

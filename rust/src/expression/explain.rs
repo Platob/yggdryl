@@ -8,13 +8,13 @@
 //! constant folded into, and the cost class that ordered the operands.
 //!
 //! ```
-//! use yggdryl::{DataType, Term};
+//! use yggdryl::{DataType, StructureType, Term};
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! let schema = DataType::from_fields([
+//! let schema = DataType::from(StructureType::from_fields([
 //!     DataType::utf8().nullable_field("ccy"),
 //!     DataType::Int64.nullable_field("size"),
-//! ])?
+//! ])?)
 //! .required_field("trades");
 //! let bound: Term = "ccy = 'EUR' and size > 2 * 50".parse::<Term>()?.bind(&schema)?.term().clone();
 //! assert_eq!(
@@ -231,10 +231,10 @@ impl Bound {
     /// column it resolved to, the constant it folded into, and its cost.
     ///
     /// ```
-    /// use yggdryl::{DataType, Term};
+    /// use yggdryl::{DataType, StructureType, Term};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let schema = DataType::from_fields([DataType::Int32.nullable_field("size")])?
+    /// let schema = DataType::from(StructureType::from_fields([DataType::Int32.nullable_field("size")])?)
     ///     .required_field("trades");
     /// let bound = "size > 2 * 50".parse::<Term>()?.bind(&schema)?;
     /// assert_eq!(

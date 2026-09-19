@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "undinstrmt"
+        "FIX:component": "undinstrmt"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "undinstrmt",
+    "FIX:counter": "711",
+    "FIX:tag": "524175",
     "description": "Number of underlyings",
-    "display": "UndInstrmtGrp",
-    "fix:component": "undinstrmt",
-    "fix:counter": "711",
-    "fix:tag": "524175"
+    "display": "UndInstrmtGrp"
   }
 }

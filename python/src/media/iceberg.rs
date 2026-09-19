@@ -25,7 +25,7 @@ use yggdryl::iceberg::{
     schema_into_json,
 };
 use yggdryl::media::{DEFAULT_ROOT_NAME, IORecordOptions as _};
-use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar};
+use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar, StructureType};
 
 use crate::enums::{PyMimeType, core_mime_type_from_value};
 use crate::iobase::PyIOBase;
@@ -190,7 +190,9 @@ fn catalog_schema_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
         for item in items {
             fields.push(core_field_from_value(&item?)?);
         }
-        let dtype = CoreDataType::from_fields(fields).map_err(value_error)?;
+        let dtype = StructureType::from_fields(fields)
+            .map(CoreDataType::from)
+            .map_err(value_error)?;
         return Ok(dtype.required_field(DEFAULT_ROOT_NAME));
     }
     core_root_field_from_value(value, DEFAULT_ROOT_NAME)
@@ -919,7 +921,7 @@ impl PyCatalog {
     /// `updates` is a mapping or a sequence of `(key, value)` pairs and
     /// `removes` an iterable of keys; the updates land first, so a key named
     /// by both ends up removed. A call given neither writes nothing at all.
-    /// Keys under the reserved `iceberg:` prefix are refused by name.
+    /// Keys under the reserved `ICEBERG:` prefix are refused by name.
     #[pyo3(signature = (updates = None, removes = None))]
     fn update_properties(
         &self,
@@ -1638,7 +1640,7 @@ impl PyTable {
     /// The size a data file aims for, in bytes.
     ///
     /// The table property `write.target-file-size-bytes` decides, falling back
-    /// to the schema root's `iceberg:` protocol property of the same name and
+    /// to the schema root's `ICEBERG:` protocol property of the same name and
     /// then to Iceberg's own 512 MiB default.
     #[getter]
     fn target_file_size(&self) -> PyResult<u64> {
@@ -1768,7 +1770,7 @@ enum RecordedOp {
         /// The new name.
         name: String,
     },
-    /// Set a column's `iceberg:doc` documentation string.
+    /// Set a column's `ICEBERG:doc` documentation string.
     UpdateDoc {
         /// The dotted path of the column.
         path: String,
@@ -1870,7 +1872,7 @@ impl PySchemaUpdate {
         Ok(slf)
     }
 
-    /// Record a new `iceberg:doc` documentation string on the column at
+    /// Record a new `ICEBERG:doc` documentation string on the column at
     /// `path`.
     fn update_doc<'py>(
         mut slf: PyRefMut<'py, Self>,
@@ -3264,7 +3266,7 @@ impl PyNamespace {
     /// `updates` is a mapping or a sequence of `(key, value)` pairs and
     /// `removes` an iterable of keys; the updates land first, so a key named
     /// by both ends up removed. A call given neither writes nothing at all.
-    /// Keys under the reserved `iceberg:` prefix are refused by name.
+    /// Keys under the reserved `ICEBERG:` prefix are refused by name.
     #[pyo3(signature = (updates = None, removes = None))]
     fn update_properties(
         &self,

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamnondeliverablerefcurrency",
-          "fix:tag": "40648"
+          "FIX:field": "underlyingpaymentstreamnondeliverablerefcurrency",
+          "FIX:tag": "40648"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesbizdayconvention",
-          "fix:tag": "40649"
+          "FIX:field": "underlyingpaymentstreamnondeliverablefixingdatesbizdayconvention",
+          "FIX:tag": "40649"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingpaymentstreamnondeliverablefixingdatesbizcenters",
-          "fix:tag": "40968"
+          "FIX:field": "nounderlyingpaymentstreamnondeliverablefixingdatesbizcenters",
+          "FIX:tag": "40968"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscentergrp"
+          "FIX:group": "underlyingpaymentstreamnondeliverablefixingdatesbusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesrelativeto",
-          "fix:tag": "40651"
+          "FIX:field": "underlyingpaymentstreamnondeliverablefixingdatesrelativeto",
+          "FIX:tag": "40651"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetperiod",
-          "fix:tag": "40652"
+          "FIX:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetperiod",
+          "FIX:tag": "40652"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetunit",
-          "fix:tag": "40653"
+          "FIX:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetunit",
+          "FIX:tag": "40653"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetdaytype",
-          "fix:tag": "40654"
+          "FIX:field": "underlyingpaymentstreamnondeliverablefixingdatesoffsetdaytype",
+          "FIX:tag": "40654"
         }
       },
       {
@@ -97,7 +97,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "underlyingpaymentstreamnondeliverablesettlratesourcecomponent"
+          "FIX:component": "underlyingpaymentstreamnondeliverablesettlratesourcecomponent"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingnondeliverablefixingdates",
-          "fix:tag": "40656"
+          "FIX:field": "nounderlyingnondeliverablefixingdates",
+          "FIX:tag": "40656"
         }
       },
       {
@@ -118,7 +118,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingpaymentstreamnondeliverablefixingdategrp"
+          "FIX:group": "underlyingpaymentstreamnondeliverablefixingdategrp"
         }
       },
       {
@@ -128,8 +128,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingsettlratefallbacks",
-          "fix:tag": "40659"
+          "FIX:field": "nounderlyingsettlratefallbacks",
+          "FIX:tag": "40659"
         }
       },
       {
@@ -139,15 +139,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingsettlratedisruptionfallbackgrp"
+          "FIX:group": "underlyingsettlratedisruptionfallbackgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "342321",
     "description": "When specified, this overrides the business day convention defined in the UnderlyingDateAdjustment component in UnderlyingInstrument. The specified value would be specific to this instance of the underlying instrument's non-deliverable settlement terms.",
-    "display": "UnderlyingPaymentStreamNonDeliverableSettlTerms",
-    "fix:tag": "342321"
+    "display": "UnderlyingPaymentStreamNonDeliverableSettlTerms"
   }
 }

@@ -26,15 +26,15 @@ The target names the columns to keep; the cast to the scan's root reads an evolv
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::local::Folder;
-    use yggdryl::{arrow, DataType};
+    use yggdryl::{StructureType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
     use std::sync::Arc;
 
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
-    ])?
+    ])?)
     .required_field("row");
 
     let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-pushdown");
@@ -153,12 +153,12 @@ The `where` clause a record read carries is the scan's plan: ranges, `in` lists,
     use yggdryl::media::IORecordOptions;
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
     use yggdryl::local::Folder;
-    use yggdryl::{arrow, DataType, IOMedia};
+    use yggdryl::{StructureType, arrow, DataType, IOMedia};
 
-    let mut schema = DataType::from_fields([
+    let mut schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
-    ])?
+    ])?)
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-where-pushdown");
@@ -319,12 +319,12 @@ Nothing a commit writes is mutated in place, so a retained snapshot is read by a
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::local::Folder;
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-time-travel");
     let _ = std::fs::remove_dir_all(&root);
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let mut table = Table::create(
         Folder::new(&root)?,
@@ -453,13 +453,13 @@ The filter is the vocabulary [`IOBase::children_where`](../../holder/iobase/part
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::iceberg::{DataFile, FormatVersion, PartitionSpec, Table, assign_field_ids};
     use yggdryl::local::Folder;
-    use yggdryl::{arrow, DataType};
+    use yggdryl::{StructureType, arrow, DataType};
 
-    let mut schema = DataType::from_fields([
+    let mut schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
         DataType::Int64.nullable_field("qty"),
-    ])?
+    ])?)
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
 
@@ -705,12 +705,12 @@ Rust only; the fan-out is inside the core scan, so every binding gets it through
         FormatVersion, IcebergOptions, PartitionSpec, Table,
     };
     use yggdryl::local::Folder;
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-parallel-read");
     let _ = std::fs::remove_dir_all(&root);
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let mut table = Table::create(
         Folder::new(&root)?,

@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingsettlmethodelectiondatebusinesscenter",
-          "fix:tag": "43075"
+          "FIX:field": "underlyingsettlmethodelectiondatebusinesscenter",
+          "FIX:tag": "43075"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingSettlMethodElectionDateBusinessCenter",
-    "fix:tag": "708860"
+    "FIX:tag": "708860",
+    "display": "UnderlyingSettlMethodElectionDateBusinessCenter"
   }
 }

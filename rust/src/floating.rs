@@ -12,6 +12,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::arithmetic::{Arithmetic, invalid_binary};
 use crate::typed::define_field_types;
+use crate::value::{FloatingValue, family_value};
 use crate::{DataType, DataTypeId, Error, Result, Scalar, Value};
 
 // ------------------------------------------------------------------------
@@ -79,14 +80,21 @@ define_field_types!(Float64Type, Float64);
 // Floating scalar canonicalization.
 // ------------------------------------------------------------------------
 
-/// Operations shared by every IEEE floating-point representation.
-pub trait FloatingValue: Value {
-    /// The physical width in bits.
-    const BIT_WIDTH: u8;
-
-    /// Return this value widened to binary64.
-    fn as_f64(&self) -> f64;
-}
+family_value!(
+    /// The floating family as one value: any of the three widths.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, FamilyValue, Floating, Scalar};
+    ///
+    /// let value = Scalar::from(1.5_f64);
+    /// let held = Floating::from_scalar(&value).expect("a float");
+    /// assert!(matches!(held, Floating::Float64(_)));
+    /// assert_eq!(held.dtype().unwrap(), DataType::Float64);
+    /// assert_eq!(held.into_scalar(), value);
+    /// assert_eq!(Floating::from_scalar(&Scalar::from(1_i64)), None);
+    /// ```
+    Floating, Floating, [Float16, Float32, Float64]
+);
 
 pub(crate) enum FloatWidth {
     Float16,

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legcomplexeventaveragingobservation"
+        "FIX:component": "legcomplexeventaveragingobservation"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legcomplexeventaveragingobservation",
+    "FIX:counter": "41363",
+    "FIX:tag": "222057",
     "description": "Required if NoLegComplexEventAveragingObservations(41363) > 0.",
-    "display": "LegComplexEventAveragingObservationGrp",
-    "fix:component": "legcomplexeventaveragingobservation",
-    "fix:counter": "41363",
-    "fix:tag": "222057"
+    "display": "LegComplexEventAveragingObservationGrp"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "complexeventschedule"
+        "FIX:component": "complexeventschedule"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "complexeventschedule",
+    "FIX:counter": "41031",
+    "FIX:tag": "778363",
     "description": "Required if NoComplexEventSchedules(41031) > 0.",
-    "display": "ComplexEventScheduleGrp",
-    "fix:component": "complexeventschedule",
-    "fix:counter": "41031",
-    "fix:tag": "778363"
+    "display": "ComplexEventScheduleGrp"
   }
 }

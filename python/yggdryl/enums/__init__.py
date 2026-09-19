@@ -72,7 +72,7 @@ DIGEST_ALGORITHMS: tuple[str, ...] = tuple(_LISTING["digest_algorithms"])
 #: Every answer a handle gives about what it addresses, e.g. ``"file"``.
 IO_KINDS: tuple[str, ...] = tuple(_LISTING["io_kinds"])
 
-#: Every Python form a `python:kind` declaration names, e.g. ``"dataclass"``.
+#: Every Python form a `PYTHON:kind` declaration names, e.g. ``"dataclass"``.
 PYTHON_KINDS: tuple[str, ...] = tuple(_LISTING["python_kinds"])
 
 #: The compatibility targets ``into_scheme_compat`` accepts, e.g. ``"arrow"``.

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quoteentryid",
-          "fix:tag": "299"
+          "FIX:field": "quoteentryid",
+          "FIX:tag": "299"
         }
       },
       {
@@ -21,7 +21,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs",
-          "fix:tag": "555"
+          "FIX:field": "nolegs",
+          "FIX:tag": "555"
         }
       },
       {
@@ -42,7 +42,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrmtleggrp"
+          "FIX:group": "instrmtleggrp"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidpx",
-          "fix:tag": "132"
+          "FIX:field": "bidpx",
+          "FIX:tag": "132"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "offerpx",
-          "fix:tag": "133"
+          "FIX:field": "offerpx",
+          "FIX:tag": "133"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidsize",
-          "fix:tag": "134"
+          "FIX:field": "bidsize",
+          "FIX:tag": "134"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "offersize",
-          "fix:tag": "135"
+          "FIX:field": "offersize",
+          "FIX:tag": "135"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "validuntiltime",
-          "fix:tag": "62"
+          "FIX:field": "validuntiltime",
+          "FIX:tag": "62"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidspotrate",
-          "fix:tag": "188"
+          "FIX:field": "bidspotrate",
+          "FIX:tag": "188"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "offerspotrate",
-          "fix:tag": "190"
+          "FIX:field": "offerspotrate",
+          "FIX:tag": "190"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidforwardpoints",
-          "fix:tag": "189"
+          "FIX:field": "bidforwardpoints",
+          "FIX:tag": "189"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "offerforwardpoints",
-          "fix:tag": "191"
+          "FIX:field": "offerforwardpoints",
+          "FIX:tag": "191"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "midpx",
-          "fix:tag": "631"
+          "FIX:field": "midpx",
+          "FIX:tag": "631"
         }
       },
       {
@@ -162,8 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidyield",
-          "fix:tag": "632"
+          "FIX:field": "bidyield",
+          "FIX:tag": "632"
         }
       },
       {
@@ -173,8 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "midyield",
-          "fix:tag": "633"
+          "FIX:field": "midyield",
+          "FIX:tag": "633"
         }
       },
       {
@@ -184,8 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "offeryield",
-          "fix:tag": "634"
+          "FIX:field": "offeryield",
+          "FIX:tag": "634"
         }
       },
       {
@@ -195,8 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -206,8 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionid",
-          "fix:tag": "336"
+          "FIX:field": "tradingsessionid",
+          "FIX:tag": "336"
         }
       },
       {
@@ -217,8 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid",
-          "fix:tag": "625"
+          "FIX:field": "tradingsessionsubid",
+          "FIX:tag": "625"
         }
       },
       {
@@ -228,8 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settldate",
-          "fix:tag": "64"
+          "FIX:field": "settldate",
+          "FIX:tag": "64"
         }
       },
       {
@@ -239,8 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordtype",
-          "fix:tag": "40"
+          "FIX:field": "ordtype",
+          "FIX:tag": "40"
         }
       },
       {
@@ -250,8 +250,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settldate2",
-          "fix:tag": "193"
+          "FIX:field": "settldate2",
+          "FIX:tag": "193"
         }
       },
       {
@@ -261,8 +261,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderqty2",
-          "fix:tag": "192"
+          "FIX:field": "orderqty2",
+          "FIX:tag": "192"
         }
       },
       {
@@ -272,8 +272,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidforwardpoints2",
-          "fix:tag": "642"
+          "FIX:field": "bidforwardpoints2",
+          "FIX:tag": "642"
         }
       },
       {
@@ -283,8 +283,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "offerforwardpoints2",
-          "fix:tag": "643"
+          "FIX:field": "offerforwardpoints2",
+          "FIX:tag": "643"
         }
       },
       {
@@ -294,8 +294,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currency",
-          "fix:tag": "15"
+          "FIX:field": "currency",
+          "FIX:tag": "15"
         }
       },
       {
@@ -305,8 +305,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "currencycodesource",
-          "fix:tag": "2897"
+          "FIX:field": "currencycodesource",
+          "FIX:tag": "2897"
         }
       },
       {
@@ -316,8 +316,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bookingtype",
-          "fix:tag": "775"
+          "FIX:field": "bookingtype",
+          "FIX:tag": "775"
         }
       },
       {
@@ -327,8 +327,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ordercapacity",
-          "fix:tag": "528"
+          "FIX:field": "ordercapacity",
+          "FIX:tag": "528"
         }
       },
       {
@@ -338,8 +338,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderrestrictions",
-          "fix:tag": "529"
+          "FIX:field": "orderrestrictions",
+          "FIX:tag": "529"
         }
       },
       {
@@ -349,8 +349,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quoteentrystatus",
-          "fix:tag": "1167"
+          "FIX:field": "quoteentrystatus",
+          "FIX:tag": "1167"
         }
       },
       {
@@ -360,16 +360,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quoteentryrejectreason",
-          "fix:tag": "368"
+          "FIX:field": "quoteentryrejectreason",
+          "FIX:tag": "368"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "QuotEntryAck",
-    "fix:identifiers": "quoteentryid",
-    "fix:tag": "174647"
+    "FIX:identifiers": "quoteentryid",
+    "FIX:tag": "174647",
+    "display": "QuotEntryAck"
   }
 }

@@ -47,7 +47,6 @@ use crate::date::{Date32, Date64};
 use crate::datetime::DateTime64;
 use crate::decimal::{Decimal32, Decimal64, Decimal128, Decimal256};
 use crate::duration::{Duration32, Duration64};
-use crate::family::Children;
 use crate::floating::{Float16, Float32, Float64};
 use crate::geospatial::{Geography, Geometry};
 use crate::integer::{
@@ -62,35 +61,18 @@ use crate::structure::Record;
 use crate::temporal::scalars::temporal_key;
 use crate::time::{Time32, Time64};
 use crate::uuid::Uuid;
+use crate::value::Children;
 use crate::version::Version;
 use crate::{
     Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce, decimal,
 };
 use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone,
-    i256,
+    DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256,
 };
 use std::ops::Index;
 
-/// One concrete scalar representation.
-///
-/// Implementors are the final representation a [`Scalar`] variant holds.
-/// Narrowing an existing scalar only projects a reference; validation remains
-/// owned by [`DataType::scalar`](crate::DataType::scalar) and
-/// [`Field::scalar`](crate::Field::scalar).
-pub trait Value:
-    Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static
-{
-    /// Return the datatype this value materializes into.
-    ///
-    /// Values whose physical parameters cannot be represented by a valid
-    /// [`DataType`] return a typed error instead of guessing or panicking.
-    fn dtype(&self) -> Result<DataType>;
-    /// Widen this leaf to the dynamic scalar root.
-    fn into_scalar(self) -> Scalar;
-    /// Narrow a dynamic scalar to this leaf without re-validating it.
-    fn from_scalar(value: &Scalar) -> Option<&Self>;
-}
+use crate::value::{FamilyValue, Nested};
+use crate::{Code, Floating, Geospatial, Integer, Temporal};
 
 /// Make one canonical text value a scalar leaf of its own.
 ///
@@ -218,6 +200,9 @@ pub enum Scalar {
     /// Behind one shared pointer: a parsed [`crate::Url`] is far wider than
     /// this enum, and a column of them is cloned once per row.
     Url(Arc<crate::Url>),
+    /// A validated, canonical resource name, behind one shared pointer for
+    /// the reason a URL is.
+    Urn(Arc<crate::Urn>),
     /// A canonical time zone name, a fixed offset, or the zone-free marker.
     Timezone(Timezone),
     /// A validated, canonical MIME type.
@@ -370,6 +355,7 @@ impl Serialize for Scalar {
             Self::MimeType(value) => tagged(serializer, "mimetype", &value.as_str()),
             Self::MediaType(value) => tagged(serializer, "mediatype", &value.to_string()),
             Self::Url(value) => tagged(serializer, "url", &value.to_string()),
+            Self::Urn(value) => tagged(serializer, "urn", &value.to_string()),
             // One tag for every byte value: the ordinary payload writes its
             // bytes and nothing else, and a layout or a fixed width is what
             // makes a value carry more than that.
@@ -576,6 +562,7 @@ impl<'de> Deserialize<'de> for Scalar {
             #[serde(rename = "mediatype")]
             MediaType(SmolStr),
             Url(SmolStr),
+            Urn(SmolStr),
             Bytes(Bytes),
             Geometry(Arc<[u8]>),
             Geography(Arc<[u8]>),
@@ -668,6 +655,9 @@ impl<'de> Deserialize<'de> for Scalar {
                 .map_err(D::Error::custom),
             StructuralWire::Url(value) => crate::Url::from_str(value.as_str())
                 .map(|value| Self::Url(Arc::new(value)))
+                .map_err(D::Error::custom),
+            StructuralWire::Urn(value) => crate::Urn::from_str(value.as_str())
+                .map(|value| Self::Urn(Arc::new(value)))
                 .map_err(D::Error::custom),
             StructuralWire::Bytes(value) => Ok(Self::Bytes(value)),
             StructuralWire::Geometry(value) => crate::geospatial::Geometry::new(value)
@@ -879,6 +869,7 @@ impl Ord for Scalar {
             Self::MimeType(left) => same_kind!(Self::MimeType(right) => left.cmp(right)),
             Self::MediaType(left) => same_kind!(Self::MediaType(right) => left.cmp(right)),
             Self::Url(left) => same_kind!(Self::Url(right) => left.cmp(right)),
+            Self::Urn(left) => same_kind!(Self::Urn(right) => left.cmp(right)),
             Self::Bytes(left) => same_kind!(Self::Bytes(right) => left.cmp(right)),
             Self::Geometry(_) | Self::Geography(_) => {
                 unreachable!("both geospatial readings returned above")
@@ -965,6 +956,7 @@ impl Hash for Scalar {
             Self::MimeType(value) => value.hash(state),
             Self::MediaType(value) => value.hash(state),
             Self::Url(value) => value.hash(state),
+            Self::Urn(value) => value.hash(state),
             Self::Bytes(value) => value.hash(state),
             Self::Geometry(value) => value.hash(state),
             Self::Geography(value) => value.hash(state),
@@ -1006,12 +998,12 @@ fn geospatial_bytes(value: &Scalar) -> Option<&[u8]> {
 ///
 /// An interval answers `None`: its three components have no one count to
 /// normalize, so it orders and hashes as itself.
-fn temporal_value(value: &Scalar) -> Option<(crate::TemporalFamily, (u8, i128), Timezone)> {
+fn temporal_value(value: &Scalar) -> Option<(crate::TemporalKind, (u8, i128), Timezone)> {
     if matches!(value, Scalar::Interval(_)) {
         return None;
     }
     Some((
-        value.temporal_family()?,
+        value.temporal_kind()?,
         temporal_key(value.temporal_count()?, value.temporal_unit()?),
         value.temporal_timezone()?,
     ))
@@ -1111,6 +1103,7 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::MimeType(_) => 22,
         Scalar::MediaType(_) => 23,
         Scalar::Arrow(_) => 24,
+        Scalar::Urn(_) => 25,
     }
 }
 
@@ -1178,6 +1171,7 @@ impl Scalar {
             Self::MimeType(_) => DataTypeId::MimeType,
             Self::MediaType(_) => DataTypeId::MediaType,
             Self::Url(_) => DataTypeId::Url,
+            Self::Urn(_) => DataTypeId::Urn,
             Self::Bytes(bytes) => bytes.parameters().id(),
             Self::Geometry(_) => DataTypeId::Geometry,
             Self::Geography(_) => DataTypeId::Geography,
@@ -1240,6 +1234,7 @@ impl Scalar {
             Self::MimeType(_) => "mimetype",
             Self::MediaType(_) => "mediatype",
             Self::Url(_) => "url",
+            Self::Urn(_) => "urn",
             Self::Bytes(bytes) => match bytes.parameters() {
                 crate::bytes::BytesType::Binary => "bytes",
                 other => other.as_str(),
@@ -1554,6 +1549,47 @@ impl Scalar {
             .find_map(|(candidate, value)| (candidate.as_str() == Some(key)).then_some(value))
     }
 
+    /// The integer family's value, when this scalar holds one of its widths.
+    ///
+    /// By value, as every family accessor here is: the scalar holds the leaf
+    /// and not the family, and every leaf is `Copy` or one shared pointer.
+    #[must_use]
+    pub fn as_integer(&self) -> Option<Integer> {
+        Integer::from_scalar(self)
+    }
+
+    /// The floating family's value, when this scalar holds one of its widths.
+    #[must_use]
+    pub fn as_floating(&self) -> Option<Floating> {
+        Floating::from_scalar(self)
+    }
+
+    /// The temporal family's value, when this scalar holds one of its leaves.
+    #[must_use]
+    pub fn as_temporal(&self) -> Option<Temporal> {
+        Temporal::from_scalar(self)
+    }
+
+    /// The code family's value, when this scalar holds a registered code.
+    #[must_use]
+    pub fn as_code(&self) -> Option<Code> {
+        Code::from_scalar(self)
+    }
+
+    /// The geospatial family's value, when this scalar holds a geometry or a
+    /// geography.
+    #[must_use]
+    pub fn as_geospatial(&self) -> Option<Geospatial> {
+        Geospatial::from_scalar(self)
+    }
+
+    /// The nested family's value, when this scalar holds a sequence, a
+    /// mapping or a record.
+    #[must_use]
+    pub fn as_nested(&self) -> Option<Nested> {
+        Nested::from_scalar(self)
+    }
+
     /// Iterate over sequence values, mapping keys, or record field values.
     ///
     /// Use [`Self::record_iter`] when both a record field's name and value are
@@ -1664,6 +1700,7 @@ impl Scalar {
             | Self::Uuid(_)
             | Self::Version(_)
             | Self::Url(_)
+            | Self::Urn(_)
             | Self::Bytes(_)
             | Self::Geometry(_)
             | Self::Geography(_)

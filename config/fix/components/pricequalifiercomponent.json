@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricequalifier",
-          "fix:tag": "2710"
+          "FIX:field": "pricequalifier",
+          "FIX:tag": "2710"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PriceQualifier",
-    "fix:tag": "784443"
+    "FIX:tag": "784443",
+    "display": "PriceQualifier"
   }
 }

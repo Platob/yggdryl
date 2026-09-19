@@ -10,7 +10,7 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, Env, FnArgs, Function, JsObjectValue, JsValue, Null, Object, Result,
     ToNapiValue, Unknown,
 };
-use yggdryl::{DataType, Field as CoreField, Scalar, TemporalFamily, TimeUnit, i256};
+use yggdryl::{DataType, Field as CoreField, Scalar, TimeUnit, UriType, i256};
 use yggdryl::{DateType, DecimalType, DurationType, IntervalType, TimeType};
 
 use crate::napi_error;
@@ -100,7 +100,7 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::State
         | D::TimeInForce
         | D::Uuid
-        | D::Url
+        | D::Uri(_)
         | D::Timezone
         | D::MimeType
         | D::MediaType => JsValueHint::String,
@@ -265,11 +265,11 @@ fn temporal_to_js<'env>(
 fn temporal_value_to_js<'env>(
     env: &'env Env,
     value: &Scalar,
-    family: TemporalFamily,
+    family: &'static str,
     unit: TimeUnit,
     bit_width: u8,
 ) -> Result<Unknown<'env>> {
-    let temporal = value.temporal_family();
+    let temporal = value.as_temporal().map(|held| held.family());
     if temporal.is_some_and(|held| held != family) {
         return Err(napi_error("invalid native temporal family"));
     }
@@ -326,9 +326,13 @@ fn text_or_binary_to_js<'env>(
         },
         // A location crosses as the canonical text it validated to, exactly as
         // the other parsed text families do.
-        D::Url => match value {
+        D::Uri(UriType::Url) => match value {
             Scalar::Url(value) => value.to_string().into_unknown(env)?,
             _ => return Err(napi_error("invalid native url record value")),
+        },
+        D::Uri(UriType::Urn) => match value {
+            Scalar::Urn(value) => value.to_string().into_unknown(env)?,
+            _ => return Err(napi_error("invalid native urn record value")),
         },
         // A zone, a MIME type and a media type each render their own
         // canonical spelling, so they cross as that text rather than as a

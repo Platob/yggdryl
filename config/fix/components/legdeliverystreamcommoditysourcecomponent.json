@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdeliverystreamcommoditysource",
-          "fix:tag": "41461"
+          "FIX:field": "legdeliverystreamcommoditysource",
+          "FIX:tag": "41461"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegDeliveryStreamCommoditySource",
-    "fix:tag": "472012"
+    "FIX:tag": "472012",
+    "display": "LegDeliveryStreamCommoditySource"
   }
 }

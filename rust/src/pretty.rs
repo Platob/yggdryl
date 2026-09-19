@@ -20,14 +20,14 @@
 //! stable across runs: nothing here iterates a hash map.
 //!
 //! ```
-//! use yggdryl::{DataType, Field};
+//! use yggdryl::{DataType, Field, StructureType};
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! let order = DataType::from_fields([
+//! let order = DataType::from(StructureType::from_fields([
 //!     DataType::Int64.required_field("id"),
-//!     DataType::from_fields([DataType::Float64.required_field("price")])?
+//!     DataType::from(StructureType::from_fields([DataType::Float64.required_field("price")])?)
 //!         .nullable_field("line"),
-//! ])?
+//! ])?)
 //! .required_field("order");
 //!
 //! // Compact stays compact, and still parses back.
@@ -85,10 +85,11 @@ impl DataType {
     ///
     /// ```
     /// use yggdryl::DataType;
+    /// use yggdryl::StructureType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let rows = DataType::list(
-    ///     DataType::from_fields([DataType::utf8().nullable_field("venue")])?.nullable_field("item"),
+    ///     DataType::from(StructureType::from_fields([DataType::utf8().nullable_field("venue")])?).nullable_field("item"),
     /// );
     ///
     /// assert_eq!(

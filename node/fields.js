@@ -227,11 +227,9 @@ function createFields(DataType, Field, native) {
     },
     sizedCp1252: sizedString('sized_cp1252'),
     uuid: simple('uuid'),
-    uuidv4: simple('uuidv4'),
-    uuidv7: simple('uuidv7'),
-    uuidv8: simple('uuidv8'),
     version: simple('version'),
     url: simple('url'),
+    urn: simple('urn'),
     // Canonical text the crate already owns: a zone, a MIME type, and a
     // media type each parse, canonicalize and render themselves, so each is a
     // datatype rather than prose that happens to look like one.

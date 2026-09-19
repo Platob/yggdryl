@@ -372,7 +372,7 @@ mod limits {
                     return Err(unsupported(dtype, "invalid interval layout"));
                 }
                 DataType::Version
-                | DataType::Url
+                | DataType::Uri(_)
                 | DataType::Timezone
                 | DataType::MimeType
                 | DataType::MediaType
@@ -485,7 +485,7 @@ mod limits {
                     return Err(unsupported(dtype, "invalid interval layout"));
                 }
                 DataType::Version
-                | DataType::Url
+                | DataType::Uri(_)
                 | DataType::Timezone
                 | DataType::MimeType
                 | DataType::MediaType

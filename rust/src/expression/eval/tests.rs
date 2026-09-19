@@ -6,7 +6,7 @@
 //! `tests/expression/grammar.rs`.
 
 use crate::expression::Safety;
-use crate::{DataType, DataTypeId, Scalar, Version};
+use crate::{DataType, DataTypeId, Scalar, StructureType, Version};
 
 #[test]
 fn scalar_casts_return_the_exact_target_leaf() {
@@ -92,7 +92,8 @@ fn versions_do_not_fall_through_text_or_numeric_expression_paths() {
         Some(std::cmp::Ordering::Less)
     );
 
-    let schema = DataType::from_fields([DataType::Version.required_field("v")])
+    let schema = StructureType::from_fields([DataType::Version.required_field("v")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let row = Scalar::from_sequence([patch2]);

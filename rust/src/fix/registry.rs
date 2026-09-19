@@ -270,7 +270,7 @@ pub(super) fn canonical_identity(field: &Field) -> Result<(i32, FixId)> {
     let view = field.as_fix();
     let tag = view
         .tag()?
-        .ok_or_else(|| Error::absent("fix:tag", field.name()))?;
+        .ok_or_else(|| Error::absent("FIX:tag", field.name()))?;
     Ok((tag, FixId::of(tag, field.name())?))
 }
 
@@ -297,7 +297,7 @@ pub struct FixRegistry {
     /// field's own view costs. Kept in step by [`Self::index`], which runs
     /// after every change to `fields`.
     identities: Vec<Option<(i32, FixId)>>,
-    /// The `fix:derivation` of every field, compiled once on the first
+    /// The `FIX:derivation` of every field, compiled once on the first
     /// enrichment or row fill and shared by every codec and message reading
     /// this registry - or the refusal that compile answered, kept the same
     /// way so a registry whose rules do not compile refuses every ask and
@@ -762,9 +762,9 @@ impl FixRegistry {
         // merging its lowest-priority source first leaves the highest as the
         // last `update`, which wins.
         //
-        // Two halves, because the `fix:` view reaches only its own namespace
+        // Two halves, because the `FIX:` view reaches only its own namespace
         // by design. The generic keys fold through the metadata merge every
-        // protocol shares, and the `fix:` keys through the rule each one has.
+        // protocol shares, and the `FIX:` keys through the rule each one has.
         let mut merged = field.clone();
         merged.set_name(stored.name());
         merged.set_metadata(field.as_metadata().merge_with(stored.as_metadata())?.iter())?;
@@ -804,7 +804,7 @@ impl FixRegistry {
         merged.set_nullable(stored.is_nullable());
         merged.set_metadata(field.as_metadata().merge_with(stored.as_metadata())?.iter())?;
         // The identity is the stored field's, and it is written before the
-        // `fix:` fold, which holds both sides to one tag.
+        // `FIX:` fold, which holds both sides to one tag.
         merged.as_fix_mut().set_tag(tag)?;
         merged.as_fix_mut().merge_with(&stored.as_fix())?;
         // Stored order first, then what only the incoming field states. The
@@ -881,7 +881,7 @@ impl FixRegistry {
     /// 1. A nested field is a named definition and goes to
     ///    [`Self::insert`] under the category its shape names: a
     ///    `List` or `LargeList` of non-null Struct occurrences is a group, a
-    ///    Struct declaring `fix:msgtype` is a message, any other Struct is a
+    ///    Struct declaring `FIX:msgtype` is a message, any other Struct is a
     ///    component. Any other nested datatype is refused as a scalar field
     ///    would refuse it.
     /// 2. One of this crate's own tags is every dictionary's already, so it is
@@ -901,7 +901,7 @@ impl FixRegistry {
     ///    aliases unless it is the canonical one; the incoming canonical tag
     ///    joins the alternate tags unless a field already answers it, in
     ///    which case it is left out and noted through `log` at debug level;
-    ///    generic metadata and the `fix:` keys fold with the precedence of
+    ///    generic metadata and the `FIX:` keys fold with the precedence of
     ///    rule 3. A datatype that disagrees is refused as rule 3 refuses it.
     /// 5. Otherwise it is inserted - beside the holder of its tag where one
     ///    holds it under another name, which then gains the arrival's name
@@ -944,7 +944,7 @@ impl FixRegistry {
     ///
     /// Returns what [`Self::insert`] and [`Self::update`] return: absence
     /// for a scalar carrying no
-    /// `fix:tag`, a conflict for an alias or alternate tag another field
+    /// `FIX:tag`, a conflict for an alias or alternate tag another field
     /// holds, and [`Error::InvalidRecord`] for a datatype
     /// that disagrees with the stored definition. An incoming `float32` field
     /// meeting a stored `float64` field is refused: merging metadata does not
@@ -975,7 +975,7 @@ impl FixRegistry {
     /// last and wins.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry};
+    /// use yggdryl::{DataType, FixRegistry, StructureType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut symbol = DataType::utf8().nullable_field("Symbol");
@@ -986,7 +986,7 @@ impl FixRegistry {
     /// symbol.as_fix_mut().set_description("Ticker symbol")?;
     /// let mut price = DataType::Float64.nullable_field("Price");
     /// price.as_fix_mut().set_tag(44)?;
-    /// let instrument = DataType::from_fields([DataType::utf8().nullable_field("Symbol")])?
+    /// let instrument = DataType::from(StructureType::from_fields([DataType::utf8().nullable_field("Symbol")])?)
     ///     .required_field("Instrument");
     /// assert_eq!(registry.add_fields([symbol, price, instrument])?, (2, 1));
     /// assert_eq!(registry.field_by_tag(55)?.description(), Some("Ticker symbol"));
@@ -1030,13 +1030,13 @@ impl FixRegistry {
     /// Answers the count added and the count merged, over the fields.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry};
+    /// use yggdryl::{DataType, FixRegistry, StructureType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut symbol = DataType::utf8().nullable_field("Symbol");
     /// symbol.as_fix_mut().set_tag(55)?;
     /// let mut held = FixRegistry::from_fields([symbol.clone()])?;
-    /// held.insert(DataType::from_fields([symbol.clone()])?.required_field("Instrument"))?;
+    /// held.insert(DataType::from(StructureType::from_fields([symbol.clone()])?).required_field("Instrument"))?;
     ///
     /// // The other dictionary holds the same field under its own tag, with a
     /// // second name, and knows one more member of the component.
@@ -1045,7 +1045,7 @@ impl FixRegistry {
     /// ticker.as_fix_mut().set_names(["Ticker"])?;
     /// let mut other = FixRegistry::from_fields([ticker])?;
     /// let venue = DataType::utf8().nullable_field("VenueSymbol");
-    /// other.insert(DataType::from_fields([symbol, venue])?.required_field("Instrument"))?;
+    /// other.insert(DataType::from(StructureType::from_fields([symbol, venue])?).required_field("Instrument"))?;
     ///
     /// // Symbol and the two standard clock seeds merge.
     /// assert_eq!(held.merge_with(&other)?, (0, 3));
@@ -1102,7 +1102,7 @@ impl FixRegistry {
     /// The one call an ingest takes, and a parse in front of
     /// [`Self::merge_with`]: the file's vocabulary folds the way any source
     /// folds, and every field, group, component and message it produces
-    /// carries the dialect's name in `fix:branches`, which is what the merge
+    /// carries the dialect's name in `FIX:branches`, which is what the merge
     /// unions onto whatever this dictionary already held.
     ///
     /// `dialect` names the dictionary, and the file names it when the caller
@@ -1686,7 +1686,7 @@ impl FixRegistry {
         super::MsgDirection::from_registry(self)
     }
 
-    /// The `fix:derivation` of every field, compiled once and shared.
+    /// The `FIX:derivation` of every field, compiled once and shared.
     ///
     /// Built from what the registry holds on the first ask and kept until a
     /// field or a definition changes, so a stream of a million messages

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralreinvestmenttype",
-          "fix:tag": "2844"
+          "FIX:field": "collateralreinvestmenttype",
+          "FIX:tag": "2844"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralreinvestmentamount",
-          "fix:tag": "2842"
+          "FIX:field": "collateralreinvestmentamount",
+          "FIX:tag": "2842"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralreinvestmentcurrency",
-          "fix:tag": "2843"
+          "FIX:field": "collateralreinvestmentcurrency",
+          "FIX:tag": "2843"
         }
       },
       {
@@ -43,15 +43,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "collateralreinvestmentcurrencycodesource",
-          "fix:tag": "2931"
+          "FIX:field": "collateralreinvestmentcurrencycodesource",
+          "FIX:tag": "2931"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "CollateralReinvestment",
-    "fix:tag": "1032740"
+    "FIX:tag": "1032740",
+    "display": "CollateralReinvestment"
   }
 }

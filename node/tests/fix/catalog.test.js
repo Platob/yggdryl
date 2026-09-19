@@ -63,7 +63,7 @@ test('a definition is filed by the shape it has and reached through the field do
   const registry = catalog()
 
   // A Struct is a component, a List of Structs a group, and a Struct
-  // carrying `fix:msgtype` a message; each is reached by its name, and a
+  // carrying `FIX:msgtype` a message; each is reached by its name, and a
   // group by the counter it opens.
   assert.equal(registry.fieldByName('Party').dtype.id, 'struct')
   assert.equal(registry.fieldByName('Parties').dtype.id, 'list')
@@ -138,9 +138,9 @@ test('insert, update and remove carry a definition as they carry a field', () =>
 test('the complete native catalog survives a snapshot and a store', (t) => {
   const registry = catalog()
   const coded = registry.field(448)
-  coded.set('fix:codes', '[{"value":"B","name":"Broker"}]')
+  coded.set('FIX:codes', '[{"value":"B","name":"Broker"}]')
   registry.update(coded)
-  assert.match(registry.fieldByPath('NewOrderSingle.Parties.PartyID').get('fix:codes'), /Broker/)
+  assert.match(registry.fieldByPath('NewOrderSingle.Parties.PartyID').get('FIX:codes'), /Broker/)
   const vendor = tagged('Vendor', 9001)
   vendor.fix.branches = ['venue']
   registry.insert(vendor)
@@ -149,7 +149,7 @@ test('the complete native catalog survives a snapshot and a store', (t) => {
   // on the field it contributed to, so it travels inside `fields`.
   const document = registry.toJSON()
   assert.deepEqual(Object.keys(document).sort(), ['components', 'fields', 'groups'])
-  assert.equal(document.fields.find((value) => value.name === 'Vendor').metadata['fix:branches'], 'venue')
+  assert.equal(document.fields.find((value) => value.name === 'Vendor').metadata['FIX:branches'], 'venue')
   assert.ok(document.components.some((value) => value.name === 'Party'))
   assert.ok(document.groups.some((value) => value.name === 'Parties'))
 
@@ -277,9 +277,9 @@ test('identifier declarations replace whole on update and reload in member order
   assert.deepEqual(restored.fieldByName('order').fix.identifiers, ['orderid', 'clordid'])
 
   const malformed = incoming.clone()
-  malformed.set('fix:identifiers', 'clordid,,orderid')
+  malformed.set('FIX:identifiers', 'clordid,,orderid')
   const before = registry.intoJson()
-  assert.throws(() => registry.update(malformed), /fix:identifiers/)
+  assert.throws(() => registry.update(malformed), /FIX:identifiers/)
   assert.equal(registry.intoJson(), before)
 })
 

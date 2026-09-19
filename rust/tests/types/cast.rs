@@ -14,7 +14,7 @@ fn bits() -> ArrowCastOptions {
     ArrowCastOptions::new().with_representation(yggdryl::Representation::Bits)
 }
 use yggdryl::FieldValue as _;
-use yggdryl::{DataType, EdgeAlgorithm, Field};
+use yggdryl::{DataType, EdgeAlgorithm, Field, StructureType};
 use yggdryl::{
     DateTimeField, DateTimeType, GeometryField, Int32Field, Int64Field, StringField,
     StructureField, UInt32Field, UInt64Field, VariantField,
@@ -82,10 +82,11 @@ fn a_nullable_field_keeps_the_null_a_safe_cast_produced() {
 fn a_struct_field_casts_children_by_name() {
     let field = StructureField::try_from_field(Field::new(
         "row",
-        DataType::from_fields([
+        StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
         ])
+        .map(DataType::from)
         .unwrap(),
         false,
     ))
@@ -358,7 +359,7 @@ fn variant_storage_array(rows: usize) -> ArrayRef {
 fn geospatial_batch(dtype: DataType, cells: Vec<Option<Vec<u8>>>) -> arrow_array::RecordBatch {
     let root = Field::new(
         "row",
-        DataType::from_fields([Field::new("shape", dtype, true)]).unwrap(),
+        DataType::from(StructureType::from_fields([Field::new("shape", dtype, true)]).unwrap()),
         false,
     );
     let schema = root.clone().into_arrow_schema().unwrap();
@@ -370,7 +371,11 @@ fn cast_shape_to(
     batch: arrow_array::RecordBatch,
     target: Field,
 ) -> yggdryl::arrow::Result<arrow_array::RecordBatch> {
-    let root = Field::new("row", DataType::from_fields([target]).unwrap(), false);
+    let root = Field::new(
+        "row",
+        DataType::from(StructureType::from_fields([target]).unwrap()),
+        false,
+    );
     root.cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
 }
 
@@ -548,14 +553,18 @@ fn a_variant_casts_only_to_itself_until_the_codec_lands() {
 fn a_variant_column_refuses_to_leave_the_type_until_the_codec_lands() {
     let root = Field::new(
         "row",
-        DataType::from_fields([Field::new("payload", DataType::variant(), true)]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([Field::new("payload", DataType::variant(), true)]).unwrap(),
+        ),
         false,
     );
     let schema = root.clone().into_arrow_schema().unwrap();
     let batch = arrow_array::RecordBatch::try_new(schema, vec![variant_storage_array(1)]).unwrap();
     let target = Field::new(
         "row",
-        DataType::from_fields([Field::new("payload", DataType::utf8(), true)]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([Field::new("payload", DataType::utf8(), true)]).unwrap(),
+        ),
         false,
     );
     let refused = target
@@ -785,6 +794,7 @@ mod strings {
         array.as_any().downcast_ref::<T>()
     }
     use std::sync::Arc;
+    use yggdryl::StructureType;
 
     use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
 
@@ -803,7 +813,11 @@ mod strings {
     /// One column under a declared field, so its extension identity rides
     /// into the cast.
     fn batch(field: Field, column: ArrayRef) -> arrow_array::RecordBatch {
-        let root = Field::new("row", DataType::from_fields([field]).unwrap(), false);
+        let root = Field::new(
+            "row",
+            DataType::from(StructureType::from_fields([field]).unwrap()),
+            false,
+        );
         let schema = root.clone().into_arrow_schema().unwrap();
         arrow_array::RecordBatch::try_new(schema, vec![column]).unwrap()
     }
@@ -815,7 +829,7 @@ mod strings {
     ) -> yggdryl::arrow::Result<ArrayRef> {
         let root = Field::new(
             "row",
-            DataType::from_fields([Field::new("text", target, true)]).unwrap(),
+            DataType::from(StructureType::from_fields([Field::new("text", target, true)]).unwrap()),
             false,
         );
         Ok(Arc::clone(
@@ -1008,6 +1022,7 @@ mod bytes {
         array.as_any().downcast_ref::<T>()
     }
     use std::sync::Arc;
+    use yggdryl::StructureType;
 
     use arrow_array::{Array, ArrayRef, BinaryArray, LargeBinaryArray, StringArray};
 
@@ -1026,7 +1041,11 @@ mod bytes {
     /// One column under a declared field, so its extension identity rides
     /// into the cast.
     fn batch(field: Field, column: ArrayRef) -> arrow_array::RecordBatch {
-        let root = Field::new("row", DataType::from_fields([field]).unwrap(), false);
+        let root = Field::new(
+            "row",
+            DataType::from(StructureType::from_fields([field]).unwrap()),
+            false,
+        );
         let schema = root.clone().into_arrow_schema().unwrap();
         arrow_array::RecordBatch::try_new(schema, vec![column]).unwrap()
     }
@@ -1094,7 +1113,10 @@ mod bytes {
         let source = batch(Field::new("payload", dtype("binary(4)"), true), cells);
         let root = Field::new(
             "row",
-            DataType::from_fields([Field::new("payload", dtype("binary(4)"), true)]).unwrap(),
+            DataType::from(
+                StructureType::from_fields([Field::new("payload", dtype("binary(4)"), true)])
+                    .unwrap(),
+            ),
             false,
         );
         let exact = root.cast_arrow_batch(source.clone(), strict()).unwrap();
@@ -1176,7 +1198,7 @@ mod empty_text {
             DataType::time64(TimeUnit::Nanosecond).unwrap(),
             DataType::uuid(),
             DataType::Version,
-            DataType::Url,
+            DataType::url(),
             DataType::Timezone,
             DataType::MimeType,
             DataType::MediaType,
@@ -1446,7 +1468,7 @@ mod empty_text {
             DataType::uuid(),
             DataType::Cusip,
             DataType::Version,
-            DataType::Url,
+            DataType::url(),
             DataType::Timezone,
             DataType::MimeType,
             DataType::MediaType,

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleratesource",
-          "fix:tag": "40415"
+          "FIX:field": "legpaymentscheduleratesource",
+          "FIX:tag": "40415"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentscheduleratesourcetype",
-          "fix:tag": "40416"
+          "FIX:field": "legpaymentscheduleratesourcetype",
+          "FIX:tag": "40416"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentschedulereferencepage",
-          "fix:tag": "40417"
+          "FIX:field": "legpaymentschedulereferencepage",
+          "FIX:tag": "40417"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPaymentScheduleRateSource",
-    "fix:tag": "630061"
+    "FIX:tag": "630061",
+    "display": "LegPaymentScheduleRateSource"
   }
 }

@@ -25,31 +25,31 @@ pub(crate) const ALIAS_KEY: &str = "alias";
 pub(crate) const COMMENT_KEY: &str = "comment";
 pub(crate) const DESCRIPTION_KEY: &str = "description";
 pub(crate) const DISPLAY_KEY: &str = "display";
-pub(crate) const HTTP_ACCEPT_ENCODING_KEY: &str = "http:accept-encoding";
-pub(crate) const HTTP_ACCEPT_KEY: &str = "http:accept";
-pub(crate) const HTTP_ACCEPT_LANGUAGE_KEY: &str = "http:accept-language";
-pub(crate) const HTTP_ACCEPT_RANGES_KEY: &str = "http:accept-ranges";
-pub(crate) const HTTP_CACHE_CONTROL_KEY: &str = "http:cache-control";
-pub(crate) const HTTP_CONTENT_DISPOSITION_KEY: &str = "http:content-disposition";
-pub(crate) const HTTP_CONTENT_ENCODING_KEY: &str = "http:content-encoding";
-pub(crate) const HTTP_CONTENT_LANGUAGE_KEY: &str = "http:content-language";
-pub(crate) const HTTP_CONTENT_LENGTH_KEY: &str = "http:content-length";
-pub(crate) const HTTP_CONTENT_LOCATION_KEY: &str = "http:content-location";
-pub(crate) const HTTP_CONTENT_RANGE_KEY: &str = "http:content-range";
-pub(crate) const HTTP_CONTENT_TYPE_KEY: &str = "http:content-type";
-pub(crate) const HTTP_ETAG_KEY: &str = "http:etag";
-pub(crate) const HTTP_EXPIRES_KEY: &str = "http:expires";
-pub(crate) const HTTP_LAST_MODIFIED_KEY: &str = "http:last-modified";
-pub(crate) const HTTP_LOCATION_KEY: &str = "http:location";
-pub(crate) const HTTP_RANGE_KEY: &str = "http:range";
-pub(crate) const HTTP_VARY_KEY: &str = "http:vary";
+pub(crate) const HTTP_ACCEPT_ENCODING_KEY: &str = "HTTP:accept-encoding";
+pub(crate) const HTTP_ACCEPT_KEY: &str = "HTTP:accept";
+pub(crate) const HTTP_ACCEPT_LANGUAGE_KEY: &str = "HTTP:accept-language";
+pub(crate) const HTTP_ACCEPT_RANGES_KEY: &str = "HTTP:accept-ranges";
+pub(crate) const HTTP_CACHE_CONTROL_KEY: &str = "HTTP:cache-control";
+pub(crate) const HTTP_CONTENT_DISPOSITION_KEY: &str = "HTTP:content-disposition";
+pub(crate) const HTTP_CONTENT_ENCODING_KEY: &str = "HTTP:content-encoding";
+pub(crate) const HTTP_CONTENT_LANGUAGE_KEY: &str = "HTTP:content-language";
+pub(crate) const HTTP_CONTENT_LENGTH_KEY: &str = "HTTP:content-length";
+pub(crate) const HTTP_CONTENT_LOCATION_KEY: &str = "HTTP:content-location";
+pub(crate) const HTTP_CONTENT_RANGE_KEY: &str = "HTTP:content-range";
+pub(crate) const HTTP_CONTENT_TYPE_KEY: &str = "HTTP:content-type";
+pub(crate) const HTTP_ETAG_KEY: &str = "HTTP:etag";
+pub(crate) const HTTP_EXPIRES_KEY: &str = "HTTP:expires";
+pub(crate) const HTTP_LAST_MODIFIED_KEY: &str = "HTTP:last-modified";
+pub(crate) const HTTP_LOCATION_KEY: &str = "HTTP:location";
+pub(crate) const HTTP_RANGE_KEY: &str = "HTTP:range";
+pub(crate) const HTTP_VARY_KEY: &str = "HTTP:vary";
 pub(crate) const LOCATION_KEY: &str = "location";
-pub(crate) const FIELD_ENUM_KEY: &str = "field:enum";
-pub(crate) const FIELD_INIT_KEY: &str = "field:init";
-pub(crate) const FIELD_PARTITION_KEY: &str = "field:partition";
+pub(crate) const FIELD_ENUM_KEY: &str = "FIELD:enum";
+pub(crate) const FIELD_INIT_KEY: &str = "FIELD:init";
+pub(crate) const FIELD_PARTITION_KEY: &str = "FIELD:partition";
 pub(crate) const PARQUET_FIELD_ID_KEY: &str = "PARQUET:field_id";
-pub(crate) const PARTITION_SOURCES_KEY: &str = "partition:sources";
-pub(crate) const PARTITION_TRANSFORM_KEY: &str = "partition:transform";
+pub(crate) const PARTITION_SOURCES_KEY: &str = "PARTITION:sources";
+pub(crate) const PARTITION_TRANSFORM_KEY: &str = "PARTITION:transform";
 
 type MetadataMap = BTreeMap<String, String>;
 
@@ -59,7 +59,7 @@ type MetadataMap = BTreeMap<String, String>;
 /// protocol added here appears on the metadata snapshot, on [`crate::Field`]
 /// and in [`crate::protocol`] in the same change rather than in
 /// whichever of them someone remembered. `https` is deliberately absent: it
-/// shares the canonical `http:` prefix, and one spelling of one namespace is
+/// shares the canonical `HTTP:` prefix, and one spelling of one namespace is
 /// what keeps a header from being stored twice.
 ///
 /// Every emitter matches all six tokens even where it ignores some, which is
@@ -329,13 +329,15 @@ impl Metadata {
 
     /// Returns a borrowed value by key.
     ///
-    /// Canonical metadata lookup is exact. HTTP field names additionally use
-    /// their protocol-defined ASCII case-insensitive comparison, while the
-    /// stored key remains one lowercase `http:<field-name>` spelling. The
-    /// canonical spelling takes one exact allocation-free tree lookup; only a
-    /// noncanonical HTTP lookup allocates its lowercase search key.
+    /// Canonical metadata lookup is exact. A protocol key is stored with its
+    /// scheme upper case - `FIX:tag`, `HTTP:content-type` - and a scheme is
+    /// case-insensitive, so a lookup spelling it otherwise reads the same
+    /// key; an HTTP field name folds to lower case beside that, as the
+    /// protocol defines it. The stored spelling takes one exact
+    /// allocation-free tree lookup; only another spelling allocates its
+    /// search key.
     pub fn get(&self, key: &str) -> Option<&str> {
-        let key = canonical_http_lookup_key(key);
+        let key = canonical_lookup_key(key);
         self.0.get(key.as_ref()).map(String::as_str)
     }
 
@@ -361,7 +363,7 @@ impl Metadata {
     pub fn next_entry(&self, after_key: Option<&str>) -> Option<(&str, &str)> {
         let entry = match after_key {
             Some(key) => {
-                let key = canonical_http_lookup_key(key);
+                let key = canonical_lookup_key(key);
                 self.0
                     .range::<str, _>((Bound::Excluded(key.as_ref()), Bound::Unbounded))
                     .next()
@@ -377,7 +379,7 @@ impl Metadata {
     /// for [`SmolStr`]'s inline storage never allocates - and answered by one
     /// exact tree lookup rather than by scanning the protocol's range. HTTP
     /// keeps its protocol-defined ASCII case-insensitive comparison, because
-    /// [`Self::get`] canonicalizes an `http:` key before it looks it up.
+    /// [`Self::get`] canonicalizes an `HTTP:` key before it looks it up.
     pub fn get_property(&self, scheme: &Scheme, name: &str) -> Option<&str> {
         self.get(&property_lookup_key(scheme, name))
     }
@@ -396,7 +398,7 @@ impl Metadata {
         PropertyIter {
             entries: self
                 .0
-                .range::<str, _>((Bound::Included(prefix), Bound::Unbounded)),
+                .range::<str, _>((Bound::Included(prefix.as_ref()), Bound::Unbounded)),
             prefix,
             finished: false,
         }
@@ -412,19 +414,18 @@ impl Metadata {
             return self.property_iter(scheme).next();
         };
         let prefix = protocol_metadata_prefix(scheme);
-        let after_name = if prefix == Scheme::HTTP.as_str()
-            && after_name.bytes().any(|byte| byte.is_ascii_uppercase())
-        {
-            Cow::Owned(after_name.to_ascii_lowercase())
-        } else {
-            Cow::Borrowed(after_name)
-        };
+        let after_name =
+            if prefix == HTTP_PREFIX && after_name.bytes().any(|byte| byte.is_ascii_uppercase()) {
+                Cow::Owned(after_name.to_ascii_lowercase())
+            } else {
+                Cow::Borrowed(after_name)
+            };
         let lower = format_smolstr!("{prefix}:{after_name}");
         for (key, value) in self
             .0
             .range::<str, _>((Bound::Excluded(lower.as_str()), Bound::Unbounded))
         {
-            match property_key_position(key, prefix) {
+            match property_key_position(key, &prefix) {
                 PropertyKeyPosition::Match(name) => return Some((name, value)),
                 PropertyKeyPosition::Before => {}
                 PropertyKeyPosition::After => return None,
@@ -468,11 +469,11 @@ impl Metadata {
     /// use yggdryl::{Metadata, Scheme};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let metadata = Metadata::from_entries([("iceberg:doc", "closing price")])?;
+    /// let metadata = Metadata::from_entries([("ICEBERG:doc", "closing price")])?;
     ///
     /// assert_eq!(metadata.protocol(&Scheme::ICEBERG).get("doc"), Some("closing price"));
     /// assert_eq!(metadata.as_iceberg().get("doc"), Some("closing price"));
-    /// assert_eq!(metadata.as_iceberg().key("doc"), "iceberg:doc");
+    /// assert_eq!(metadata.as_iceberg().key("doc"), "ICEBERG:doc");
     /// # Ok(())
     /// # }
     /// ```
@@ -511,8 +512,8 @@ impl Metadata {
     /// publishes one - FIX, Iceberg, a SQL dialect - is publishing this.
     ///
     /// One key rather than one per protocol, because a field has one meaning:
-    /// a dictionary that wrote `fix:description` and a catalog that read
-    /// `iceberg:doc` were carrying the same sentence twice and disagreeing
+    /// a dictionary that wrote `FIX:description` and a catalog that read
+    /// `ICEBERG:doc` were carrying the same sentence twice and disagreeing
     /// about it once.
     pub fn description(&self) -> Option<&str> {
         self.get(DESCRIPTION_KEY)
@@ -556,7 +557,7 @@ impl Metadata {
     }
 
     pub(crate) fn remove(&mut self, key: &str) -> Option<String> {
-        let key = canonical_http_lookup_key(key);
+        let key = canonical_lookup_key(key);
         self.get(key.as_ref())?;
         let previous = Arc::make_mut(&mut self.0).remove(key.as_ref());
         if self.0.is_empty() {
@@ -592,7 +593,7 @@ impl Metadata {
             return false;
         }
         let prefix = protocol_metadata_prefix(scheme);
-        Arc::make_mut(&mut self.0).retain(|key, _| property_name(key, prefix).is_none());
+        Arc::make_mut(&mut self.0).retain(|key, _| property_name(key, &prefix).is_none());
         if self.0.is_empty() {
             self.0 = empty_metadata();
         }
@@ -853,7 +854,7 @@ impl std::iter::FusedIterator for MetadataIntoIter {}
 #[derive(Clone)]
 pub struct PropertyIter<'metadata, 'scheme> {
     entries: btree_map::Range<'metadata, String, String>,
-    prefix: &'scheme str,
+    prefix: Cow<'scheme, str>,
     finished: bool,
 }
 
@@ -865,7 +866,7 @@ impl<'metadata> Iterator for PropertyIter<'metadata, '_> {
             return None;
         }
         for (key, value) in self.entries.by_ref() {
-            match property_key_position(key, self.prefix) {
+            match property_key_position(key, &self.prefix) {
                 PropertyKeyPosition::Match(name) => return Some((name, value)),
                 PropertyKeyPosition::Before => {}
                 PropertyKeyPosition::After => {
@@ -885,7 +886,7 @@ impl DoubleEndedIterator for PropertyIter<'_, '_> {
             return None;
         }
         while let Some((key, value)) = self.entries.next_back() {
-            match property_key_position(key, self.prefix) {
+            match property_key_position(key, &self.prefix) {
                 PropertyKeyPosition::Match(name) => return Some((name, value)),
                 PropertyKeyPosition::After => {}
                 PropertyKeyPosition::Before => {

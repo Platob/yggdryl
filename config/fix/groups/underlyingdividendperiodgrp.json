@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingdividendperiod"
+        "FIX:component": "underlyingdividendperiod"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingdividendperiod",
+    "FIX:counter": "42862",
+    "FIX:tag": "844678",
     "description": "Required if NoUnderlyingDividendPeriods(42862) > 0.",
-    "display": "UnderlyingDividendPeriodGrp",
-    "fix:component": "underlyingdividendperiod",
-    "fix:counter": "42862",
-    "fix:tag": "844678"
+    "display": "UnderlyingDividendPeriodGrp"
   }
 }

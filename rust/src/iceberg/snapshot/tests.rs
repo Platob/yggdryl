@@ -5,15 +5,16 @@ use smol_str::SmolStr;
 use super::{MAIN_BRANCH, Snapshot, SnapshotRef};
 use crate::iceberg::metadata::now_ms;
 use crate::iceberg::{FormatVersion, PartitionSpec, TableMetadata, assign_field_ids};
-use crate::{DataType, Field};
+use crate::{DataType, Field, StructureType};
 
 /// The one-column schema every branching test starts from.
 fn schema() -> Field {
-    let mut schema = DataType::from_fields([DataType::Int64.required_field("id")])
+    let mut schema = StructureType::from_fields([DataType::Int64.required_field("id")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     assign_field_ids(&mut schema, 1).unwrap();
-    schema.insert_metadata("iceberg:schema-id", "0").unwrap();
+    schema.insert_metadata("ICEBERG:schema-id", "0").unwrap();
     schema
 }
 

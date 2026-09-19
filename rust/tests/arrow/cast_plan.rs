@@ -13,7 +13,7 @@ use arrow_array::{ArrayRef, Int32Array, Int64Array, RecordBatch, RecordBatchRead
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema, SchemaRef};
 use yggdryl::FieldValue as _;
 use yggdryl::arrow::{BatchReader, cast_reader};
-use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability};
+use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, StructureType};
 
 fn stored() -> SchemaRef {
     Arc::new(Schema::new(vec![
@@ -199,10 +199,11 @@ fn a_reader_plans_once_and_casts_when_a_batch_is_pulled() {
 fn an_exact_reader_is_the_reader_itself() {
     let exact = Field::new(
         "row",
-        DataType::from_fields([
+        StructureType::from_fields([
             DataType::Int32.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
         ])
+        .map(DataType::from)
         .unwrap(),
         false,
     );

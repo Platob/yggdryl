@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamassetattributetype",
-          "fix:tag": "41238"
+          "FIX:field": "streamassetattributetype",
+          "FIX:tag": "41238"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamassetattributevalue",
-          "fix:tag": "41239"
+          "FIX:field": "streamassetattributevalue",
+          "FIX:tag": "41239"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "streamassetattributelimit",
-          "fix:tag": "41240"
+          "FIX:field": "streamassetattributelimit",
+          "FIX:tag": "41240"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "StreamAssetAttribute",
-    "fix:tag": "350039"
+    "FIX:tag": "350039",
+    "display": "StreamAssetAttribute"
   }
 }

@@ -26,12 +26,12 @@ The handle's media type selects Parquet, so no call names a format. The three in
     use yggdryl::media::IORecordOptions;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, Url};
+    use yggdryl::{DataType, StructureType, Url};
 
-    let field = DataType::from_fields([
+    let field = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
-    ])?
+    ])?)
     .required_field("row");
     let schema = field.into_arrow_schema()?;
     let batch = RecordBatch::try_new(
@@ -116,14 +116,14 @@ A non-null struct root naming a subset of the stored columns reads only those ch
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
     use yggdryl::parquet::Parquet;
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
-    let stored = DataType::from_fields([
+    let stored = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
         DataType::Float64.required_field("price"),
         DataType::utf8().required_field("venue"),
-    ])?
+    ])?)
     .required_field("row");
     let arrow_schema = stored.into_arrow_schema()?;
 
@@ -142,10 +142,10 @@ A non-null struct root naming a subset of the stored columns reads only those ch
     media.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options)?;
 
     // Two of the four columns, named by a root Field of its own.
-    let wanted = DataType::from_fields([
+    let wanted = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float64.required_field("price"),
-    ])?
+    ])?)
     .required_field("row");
 
     let projected = media.read_arrow_reader(&options.clone().with_field(wanted))?;

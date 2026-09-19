@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -47,6 +48,9 @@ enum SchemeWire {
 
 /// A validated, canonical lowercase URI scheme and protocol namespace.
 ///
+/// As a metadata namespace it is spelled upper case: a protocol's keys are
+/// `SCHEME:name`, the way `ARROW:extension:name` and `PARQUET:field_id` are.
+///
 /// Common protocol flavors use allocation-free internal values. Any valid
 /// RFC scheme remains supported through [`Self::from_str`].
 #[derive(Clone, Debug)]
@@ -85,7 +89,7 @@ impl Scheme {
     pub const IDENTITY: Self = Self(SchemeWire::Identity);
     /// The generic field partition metadata namespace.
     pub const PARTITION: Self = Self(SchemeWire::Partition);
-    /// The `transform:` field namespace: how a column is computed.
+    /// The `TRANSFORM:` field namespace: how a column is computed.
     pub const TRANSFORM: Self = Self(SchemeWire::Transform);
     /// The Amazon S3 object protocol scheme.
     pub const S3: Self = Self(SchemeWire::S3);
@@ -133,6 +137,47 @@ impl Scheme {
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(value: &str) -> Result<Self> {
         <Self as FromStr>::from_str(value)
+    }
+
+    /// The prefix this scheme's metadata keys carry: its spelling in upper
+    /// case - `FIX:tag`, `PARTITION:sources`, `ICEBERG:doc` - so the crate's
+    /// own keys read like the `ARROW:extension:name` and `PARQUET:field_id`
+    /// every catalog already carries. HTTPS shares HTTP's one namespace. A
+    /// known scheme answers a static string; only a custom one allocates.
+    pub(crate) fn metadata_prefix(&self) -> Cow<'_, str> {
+        Cow::Borrowed(match &self.0 {
+            SchemeWire::Http | SchemeWire::Https => "HTTP",
+            SchemeWire::File => "FILE",
+            SchemeWire::Urn => "URN",
+            SchemeWire::Postgres => "POSTGRES",
+            SchemeWire::Postgresql => "POSTGRESQL",
+            SchemeWire::Mysql => "MYSQL",
+            SchemeWire::Arrow => "ARROW",
+            SchemeWire::Sql => "SQL",
+            SchemeWire::Glue => "GLUE",
+            SchemeWire::Iceberg => "ICEBERG",
+            SchemeWire::Fix => "FIX",
+            SchemeWire::Field => "FIELD",
+            SchemeWire::Digest => "DIGEST",
+            SchemeWire::Identity => "IDENTITY",
+            SchemeWire::Partition => "PARTITION",
+            SchemeWire::Transform => "TRANSFORM",
+            SchemeWire::S3 => "S3",
+            SchemeWire::S3a => "S3A",
+            SchemeWire::S3n => "S3N",
+            SchemeWire::Gs => "GS",
+            SchemeWire::Gcs => "GCS",
+            SchemeWire::Az => "AZ",
+            SchemeWire::Abfs => "ABFS",
+            SchemeWire::Abfss => "ABFSS",
+            SchemeWire::Wasb => "WASB",
+            SchemeWire::Wasbs => "WASBS",
+            SchemeWire::Spark => "SPARK",
+            SchemeWire::Polars => "POLARS",
+            SchemeWire::Pandas => "PANDAS",
+            SchemeWire::Python => "PYTHON",
+            SchemeWire::Custom(value) => return Cow::Owned(value.to_ascii_uppercase()),
+        })
     }
 
     /// Return the canonical lowercase spelling without allocating.

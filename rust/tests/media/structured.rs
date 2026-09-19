@@ -2,7 +2,9 @@
 
 use yggdryl::DecimalType;
 use yggdryl::holder::Buffer;
-use yggdryl::{ArrowScalar, ArrowShape, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Url};
+use yggdryl::{
+    ArrowScalar, ArrowShape, DataType, Field, IOBase, IOMedia, IOMode, Scalar, StructureType, Url,
+};
 
 fn handle(name: &str) -> Buffer {
     Buffer::new().with_media_type(
@@ -27,10 +29,11 @@ fn options_declaring(field: &Field) -> yggdryl::media::RecordOptions {
 }
 
 fn quote_root() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("size"),
     ])
+    .map(DataType::from)
     .expect("the root datatype is valid")
     .required_field("row")
 }
@@ -91,7 +94,7 @@ fn a_declared_root_types_the_documents_natural_strings() {
         .write_all_bytes(br#"{"symbol": "AAPL", "size": "100.00"}"#)
         .expect("the bytes write");
 
-    let widened = DataType::from_fields([
+    let widened = StructureType::from_fields([
         DataType::utf8().required_field("symbol"),
         DataType::Decimal(DecimalType::Decimal128 {
             precision: 12,
@@ -99,6 +102,7 @@ fn a_declared_root_types_the_documents_natural_strings() {
         })
         .required_field("size"),
     ])
+    .map(DataType::from)
     .expect("the root datatype is valid")
     .required_field("row");
 

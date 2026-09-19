@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "provisiondatebusinesscenter",
-          "fix:tag": "40094"
+          "FIX:field": "provisiondatebusinesscenter",
+          "FIX:tag": "40094"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ProvisionDateBusinessCenter",
-    "fix:tag": "965759"
+    "FIX:tag": "965759",
+    "display": "ProvisionDateBusinessCenter"
   }
 }

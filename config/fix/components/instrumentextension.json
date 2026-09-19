@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryform",
-          "fix:tag": "668"
+          "FIX:field": "deliveryform",
+          "FIX:tag": "668"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pctatrisk",
-          "fix:tag": "869"
+          "FIX:field": "pctatrisk",
+          "FIX:tag": "869"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noinstrattrib",
-          "fix:tag": "870"
+          "FIX:field": "noinstrattrib",
+          "FIX:tag": "870"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "attrbgrp"
+          "FIX:group": "attrbgrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commodityfinalpricetype",
-          "fix:tag": "2736"
+          "FIX:field": "commodityfinalpricetype",
+          "FIX:tag": "2736"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noindexrollmonths",
-          "fix:tag": "2734"
+          "FIX:field": "noindexrollmonths",
+          "FIX:tag": "2734"
         }
       },
       {
@@ -75,7 +75,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "indexrollmonthgrp"
+          "FIX:group": "indexrollmonthgrp"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nextindexrolldate",
-          "fix:tag": "2738"
+          "FIX:field": "nextindexrolldate",
+          "FIX:tag": "2738"
         }
       },
       {
@@ -96,7 +96,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "floatingrateindex"
+          "FIX:component": "floatingrateindex"
         }
       },
       {
@@ -106,8 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noreferencedatadates",
-          "fix:tag": "2746"
+          "FIX:field": "noreferencedatadates",
+          "FIX:tag": "2746"
         }
       },
       {
@@ -117,15 +117,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "referencedatadategrp"
+          "FIX:group": "referencedatadategrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "708834",
     "description": "Identifies the form of delivery.",
-    "display": "InstrumentExtension",
-    "fix:tag": "708834"
+    "display": "InstrumentExtension"
   }
 }

@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "userrequestid",
-          "fix:tag": "923"
+          "FIX:field": "userrequestid",
+          "FIX:tag": "923"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "userrequesttype",
-          "fix:tag": "924"
+          "FIX:field": "userrequesttype",
+          "FIX:tag": "924"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "username",
-          "fix:tag": "553"
+          "FIX:field": "username",
+          "FIX:tag": "553"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "password",
-          "fix:tag": "554"
+          "FIX:field": "password",
+          "FIX:tag": "554"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "newpassword",
-          "fix:tag": "925"
+          "FIX:field": "newpassword",
+          "FIX:tag": "925"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptedpasswordmethod",
-          "fix:tag": "1400"
+          "FIX:field": "encryptedpasswordmethod",
+          "FIX:tag": "1400"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptedpasswordlen",
-          "fix:tag": "1401"
+          "FIX:field": "encryptedpasswordlen",
+          "FIX:tag": "1401"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptedpassword",
-          "fix:tag": "1402"
+          "FIX:field": "encryptedpassword",
+          "FIX:tag": "1402"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptednewpasswordlen",
-          "fix:tag": "1403"
+          "FIX:field": "encryptednewpasswordlen",
+          "FIX:tag": "1403"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encryptednewpassword",
-          "fix:tag": "1404"
+          "FIX:field": "encryptednewpassword",
+          "FIX:tag": "1404"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rawdatalength",
-          "fix:tag": "95"
+          "FIX:field": "rawdatalength",
+          "FIX:tag": "95"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rawdata",
-          "fix:tag": "96"
+          "FIX:field": "rawdata",
+          "FIX:tag": "96"
         }
       },
       {
@@ -152,16 +152,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "BE",
+    "FIX:tag": "291769",
     "description": "MsgType = BE",
-    "display": "UserRequest",
-    "fix:msgtype": "BE",
-    "fix:tag": "291769"
+    "display": "UserRequest"
   }
 }

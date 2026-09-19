@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingpaymentscheduleratesourcecomponent"
+        "FIX:component": "underlyingpaymentscheduleratesourcecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingpaymentscheduleratesourcecomponent",
+    "FIX:counter": "40704",
+    "FIX:tag": "264718",
     "description": "Required if NoUnderlyingPaymentScheduleRates(40704) > 0.",
-    "display": "UnderlyingPaymentScheduleRateSourceGrp",
-    "fix:component": "underlyingpaymentscheduleratesourcecomponent",
-    "fix:counter": "40704",
-    "fix:tag": "264718"
+    "display": "UnderlyingPaymentScheduleRateSourceGrp"
   }
 }

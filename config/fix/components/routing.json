@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "routingtype",
-          "fix:tag": "216"
+          "FIX:field": "routingtype",
+          "FIX:tag": "216"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "routingid",
-          "fix:tag": "217"
+          "FIX:field": "routingid",
+          "FIX:tag": "217"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "Routing",
-    "fix:tag": "222679"
+    "FIX:tag": "222679",
+    "display": "Routing"
   }
 }

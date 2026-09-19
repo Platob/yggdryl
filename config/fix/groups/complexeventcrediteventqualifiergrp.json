@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "complexeventcrediteventqualifiercomponent"
+        "FIX:component": "complexeventcrediteventqualifiercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "complexeventcrediteventqualifiercomponent",
+    "FIX:counter": "41005",
+    "FIX:tag": "928111",
     "description": "Required if NoComplexEventCreditEventQualifiers(41005) > 0.",
-    "display": "ComplexEventCreditEventQualifierGrp",
-    "fix:component": "complexeventcrediteventqualifiercomponent",
-    "fix:counter": "41005",
-    "fix:tag": "928111"
+    "display": "ComplexEventCreditEventQualifierGrp"
   }
 }

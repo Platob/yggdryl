@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegphysicalsettldeliverableobligations",
-          "fix:tag": "41604"
+          "FIX:field": "nolegphysicalsettldeliverableobligations",
+          "FIX:tag": "41604"
         }
       },
       {
@@ -21,7 +21,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legphysicalsettldeliverableobligationgrp"
+          "FIX:group": "legphysicalsettldeliverableobligationgrp"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legphysicalsettlcurency",
-          "fix:tag": "41601"
+          "FIX:field": "legphysicalsettlcurency",
+          "FIX:tag": "41601"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legphysicalsettlbusinessdays",
-          "fix:tag": "41602"
+          "FIX:field": "legphysicalsettlbusinessdays",
+          "FIX:tag": "41602"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legphysicalsettlmaximumbusinessdays",
-          "fix:tag": "41603"
+          "FIX:field": "legphysicalsettlmaximumbusinessdays",
+          "FIX:tag": "41603"
         }
       },
       {
@@ -64,15 +64,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legphysicalsettltermxid",
-          "fix:tag": "41600"
+          "FIX:field": "legphysicalsettltermxid",
+          "FIX:tag": "41600"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegPhysicalSettlTerm",
-    "fix:tag": "445770"
+    "FIX:tag": "445770",
+    "display": "LegPhysicalSettlTerm"
   }
 }

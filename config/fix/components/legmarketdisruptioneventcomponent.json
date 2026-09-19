@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionevent",
-          "fix:tag": "41468"
+          "FIX:field": "legmarketdisruptionevent",
+          "FIX:tag": "41468"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legmarketdisruptionvalue",
-          "fix:tag": "40223"
+          "FIX:field": "legmarketdisruptionvalue",
+          "FIX:tag": "40223"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegMarketDisruptionEvent",
-    "fix:tag": "255924"
+    "FIX:tag": "255924",
+    "display": "LegMarketDisruptionEvent"
   }
 }

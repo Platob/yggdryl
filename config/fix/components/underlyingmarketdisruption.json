@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionprovision",
-          "fix:tag": "41859"
+          "FIX:field": "underlyingmarketdisruptionprovision",
+          "FIX:tag": "41859"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingmarketdisruptionevents",
-          "fix:tag": "41864"
+          "FIX:field": "nounderlyingmarketdisruptionevents",
+          "FIX:tag": "41864"
         }
       },
       {
@@ -32,7 +32,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingmarketdisruptioneventgrp"
+          "FIX:group": "underlyingmarketdisruptioneventgrp"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionfallbackprovision",
-          "fix:tag": "41860"
+          "FIX:field": "underlyingmarketdisruptionfallbackprovision",
+          "FIX:tag": "41860"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingmarketdisruptionfallbacks",
-          "fix:tag": "41866"
+          "FIX:field": "nounderlyingmarketdisruptionfallbacks",
+          "FIX:tag": "41866"
         }
       },
       {
@@ -64,7 +64,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingmarketdisruptionfallbackgrp"
+          "FIX:group": "underlyingmarketdisruptionfallbackgrp"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingmarketdisruptionfallbackreferenceprices",
-          "fix:tag": "41868"
+          "FIX:field": "nounderlyingmarketdisruptionfallbackreferenceprices",
+          "FIX:tag": "41868"
         }
       },
       {
@@ -85,7 +85,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingmarketdisruptionfallbackreferencepricegrp"
+          "FIX:group": "underlyingmarketdisruptionfallbackreferencepricegrp"
         }
       },
       {
@@ -95,8 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionmaximumdays",
-          "fix:tag": "41861"
+          "FIX:field": "underlyingmarketdisruptionmaximumdays",
+          "FIX:tag": "41861"
         }
       },
       {
@@ -106,8 +106,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionmaterialitypercentage",
-          "fix:tag": "41862"
+          "FIX:field": "underlyingmarketdisruptionmaterialitypercentage",
+          "FIX:tag": "41862"
         }
       },
       {
@@ -117,16 +117,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmarketdisruptionminimumfuturescontracts",
-          "fix:tag": "41863"
+          "FIX:field": "underlyingmarketdisruptionminimumfuturescontracts",
+          "FIX:tag": "41863"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "406372",
     "description": "If specified, the disruption event should be specified in UnderlyingMarketDisruptionEventGrp.",
-    "display": "UnderlyingMarketDisruption",
-    "fix:tag": "406372"
+    "display": "UnderlyingMarketDisruption"
   }
 }

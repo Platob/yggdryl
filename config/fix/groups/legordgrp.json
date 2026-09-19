@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legord"
+        "FIX:component": "legord"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legord",
+    "FIX:counter": "555",
+    "FIX:tag": "968102",
     "description": "Required if NoLegs(555) > 0.",
-    "display": "LegOrdGrp",
-    "fix:component": "legord",
-    "fix:counter": "555",
-    "fix:tag": "968102"
+    "display": "LegOrdGrp"
   }
 }

@@ -24,14 +24,14 @@
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
-    let left_root = DataType::from_fields([DataType::Int64.nullable_field("id")])?
+    let left_root = DataType::from(StructureType::from_fields([DataType::Int64.nullable_field("id")])?)
         .required_field("row");
-    let right_root = DataType::from_fields([
+    let right_root = DataType::from(StructureType::from_fields([
         DataType::Int64.nullable_field("id"),
         DataType::utf8().nullable_field("venue"),
-    ])?
+    ])?)
     .required_field("row");
 
     let left_schema = left_root.into_arrow_schema()?;
@@ -110,10 +110,11 @@ use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
 use yggdryl::holder::Buffer;
+use yggdryl::StructureType;
 use yggdryl::ipc::{self, IpcOptions};
 use yggdryl::DataType;
 
-let projected = DataType::from_fields([DataType::Int64.required_field("id")])?
+let projected = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
     .required_field("row")
     .into_arrow_schema()?;
 let batch = |ids: Vec<i64>| {

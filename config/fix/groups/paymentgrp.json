@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "payment"
+        "FIX:component": "payment"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "payment",
+    "FIX:counter": "40212",
+    "FIX:tag": "318108",
     "description": "Required if NoPayments(40212) > 0.",
-    "display": "PaymentGrp",
-    "fix:component": "payment",
-    "fix:counter": "40212",
-    "fix:tag": "318108"
+    "display": "PaymentGrp"
   }
 }

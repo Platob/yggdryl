@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisefixeddate",
-          "fix:tag": "40496"
+          "FIX:field": "legprovisionoptionexercisefixeddate",
+          "FIX:tag": "40496"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionoptionexercisefixeddatetype",
-          "fix:tag": "40497"
+          "FIX:field": "legprovisionoptionexercisefixeddatetype",
+          "FIX:tag": "40497"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProvisionOptionExerciseFixedDate",
-    "fix:tag": "852013"
+    "FIX:tag": "852013",
+    "display": "LegProvisionOptionExerciseFixedDate"
   }
 }

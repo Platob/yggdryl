@@ -78,12 +78,12 @@ A table's columns are the children of a struct field with `nullable` false, the 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field};
+    use yggdryl::{DataType, Field, StructureType};
 
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
-    ])?
+    ])?)
     .required_field("trade");
 
     schema.validate_struct_root()?;
@@ -157,7 +157,7 @@ Each lookup exists by position, by path, or either:
 | replacing | `set_field_at` | `set_field_by_path` | `set_field` |
 | removing | `remove_field_at` | `remove_field_by_path` | `remove_field` |
 
-`DataType` answers the same calls, plus `fields`, `field_len`, `index_of`, and `named_field`. The [`field:`](protocol.md) view is `as_field_properties`, `field_properties`, or `fieldProperties`.
+`DataType` answers the same calls, plus `fields`, `field_len`, `index_of`, and `named_field`. The [`FIELD:`](protocol.md) view is `as_field_properties`, `field_properties`, or `fieldProperties`.
 
 ## Flattening and expanding
 
@@ -166,14 +166,14 @@ Each lookup exists by position, by path, or either:
 === "Rust"
 
     ```rust
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
-    let row = DataType::from_fields([
+    let row = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::from_fields([DataType::Float64.required_field("px")])?
+        DataType::from(StructureType::from_fields([DataType::Float64.required_field("px")])?)
             .nullable_field("line"),
         DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
-    ])?;
+    ])?);
 
     // Structs flatten to leaves; the list stays one column.
     let leaves = row.unnest_fields();
@@ -241,16 +241,16 @@ Anything left is refused. Every rule answers in Python and JavaScript too; the p
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field};
+    use yggdryl::{DataType, Field, StructureType};
 
-    let left = DataType::from_fields([
+    let left = DataType::from(StructureType::from_fields([
         DataType::Int32.required_field("id"),
         DataType::utf8().required_field("venue"),
-    ])?;
-    let right = DataType::from_fields([
+    ])?);
+    let right = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float64.required_field("price"),
-    ])?;
+    ])?);
 
     let merged = left.merge_with(&right, true)?;
 
@@ -378,13 +378,13 @@ Subscripting a `Field` or a `DataType` reaches a child: a `str` is a name, an `i
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field};
+    use yggdryl::{DataType, Field, StructureType};
 
-    let mut order = DataType::from_fields([
+    let mut order = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::from_fields([DataType::Float64.required_field("price")])?
+        DataType::from(StructureType::from_fields([DataType::Float64.required_field("price")])?)
             .required_field("line"),
-    ])?
+    ])?)
     .required_field("order");
     order.insert_metadata("owner", "trading")?;
 
@@ -620,12 +620,12 @@ Keys and values are strings in lexical key order, so equal entries compare and h
     assert.equal(at.dtype.toString(), 'datetime64(us)')
     ```
 
-`Int64Field` and its siblings are `FieldOf<D>`: one field carrying its family's own datatype. There is no marker to check, because `Field` is an enum over exactly these leaves - the variant *is* the proof, and the payload holds whatever parameters the family declares.
+`Int64Field` and its siblings are `FieldOf<D>`: one field carrying its family's own datatype. There is no marker to check, because `Field` is an enum over exactly these leaves - the variant *is* the proof, and the payload holds whatever parameters the family declares. `FieldValue` and `DataTypeValue` are the contracts a leaf and its payload answer - `Field` and `DataType` answer them too - declared beside the value contracts `Value` and `FamilyValue` in `rust/src/value/` and re-exported at the crate root.
 
 | alias | constructors |
 | --- | --- |
-| a datatype that carries no parameters (`Int64Field`, `VariantField`, `VersionField`, `UrlField`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`, `IsinField`, `SideField`, `StateField`, `TimeInForceField`) | `unit(name, nullable)`: there is nothing to pass, so naming the datatype again would say it twice |
-| a family with leaves or parameters (`StringField`, `BytesField`, `UuidField`, `DecimalField`, `DateField`, `TimeField`, `DateTimeField`, `DurationField`, `IntervalField`, `SequenceField`, `GeometryField`, `GeographyField`) | `new(name, dtype, nullable)`, taking that family's own payload |
+| a datatype that carries no parameters (`Int64Field`, `VariantField`, `VersionField`, `CountryField`, `CurrencyField`, `MicField`, `CfiField`, `IsinField`, `SideField`, `StateField`, `TimeInForceField`) | `unit(name, nullable)`: there is nothing to pass, so naming the datatype again would say it twice |
+| a family with leaves or parameters (`StringField`, `BytesField`, `UuidField`, `DecimalField`, `UriField`, `DateField`, `TimeField`, `DateTimeField`, `DurationField`, `IntervalField`, `SequenceField`, `GeometryField`, `GeographyField`) | `new(name, dtype, nullable)`, taking that family's own payload |
 | from a `Field` | `FieldValue::from_field` borrows the leaf, `None` for another variant; `into_field` widens back to the root |
 | bindings | `types.int64` / `fields.int64` return the native `Field`, typed for a checker only; `types.string(name, layout=, charset=, fixed=, max=)` / `fields.string(name, { layout, charset, fixed, max })`, `types.bytes` / `fields.bytes`, `types.fixed_ascii(name, width)` / `fields.fixedAscii(name, width)`, `types.version` / `fields.version` |
 
@@ -646,8 +646,8 @@ Python spells the class accessor `into_field` because a `@scalar` class converts
 ## Applying a schema's declarations
 
 A `Field` states more about a batch than its shape. A
-[`partition:`](../holder/iobase/partitions.md#derived-partition-columns) declaration says a
-column is *derived* from another; a [`digest:`](../hashing.md) role says a column *holds*
+[`PARTITION:`](../holder/iobase/partitions.md#derived-partition-columns) declaration says a
+column is *derived* from another; a [`DIGEST:`](../hashing.md) role says a column *holds*
 the row's hash. `apply_arrow_batch` is the one entry point that asks every declaring protocol,
 in the order their answers depend on: `cast` reconciles the batch to this root, `partition`
 computes the derived columns, and `digest` fills the holders last, over the rows as they
@@ -675,18 +675,18 @@ protocol is done, so a required column its protocol did not write is still refus
 
     use arrow_array::{ArrayRef, Date32Array, RecordBatch};
     use yggdryl::expression::Function;
-    use yggdryl::{ArrowCastOptions, DataType};
+    use yggdryl::{ArrowCastOptions, DataType, StructureType};
 
     let mut year = DataType::Int32.nullable_field("year");
     year.as_partition_mut().set_sources(["event"])?;
     year.as_partition_mut().set_transform(Function::Year)?;
     let mut row_digest = DataType::UInt64.nullable_field("row_digest");
     row_digest.as_digest_mut().set_holder()?;
-    let root = DataType::from_fields([
+    let root = DataType::from(StructureType::from_fields([
         DataType::date32().required_field("event"),
         year,
         row_digest,
-    ])?
+    ])?)
     .required_field("row");
 
     let batch = RecordBatch::try_from_iter([(
@@ -840,13 +840,13 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field};
+    use yggdryl::{DataType, Field, StructureType};
 
-    let order = DataType::from_fields([
+    let order = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::from_fields([DataType::Float64.required_field("price")])?
+        DataType::from(StructureType::from_fields([DataType::Float64.required_field("price")])?)
             .nullable_field("line"),
-    ])?
+    ])?)
     .required_field("order");
 
     // Compact still round-trips.
@@ -967,7 +967,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - `unnest_fields` names -> each one resolves through `field_by_path`.
 - `explode_fields` -> a list gives its item, a map its entries, a dictionary or run-end its values.
 - `explode_fields` -> one level per call; the column keeps its name and place; nullable when the collection or its element is.
-- both projections -> a list of fields, not a node; `DataType::from_fields` rebuilds one.
+- both projections -> a list of fields, not a node; `DataType::from(StructureType::from_fields(..)?)` rebuilds one.
 - `merge_with(other, upscale)` -> `upscale` widens by default and loses nothing; `false` meets at the tightest type naming both, keeping a code, a `uuid`, or a fixed string over the plainer shape storing it.
 - widening a decimal -> the widest backing either side declared, never a re-encoding down to what the merged precision needs.
 - `Field::merge_with` -> receiver's name; nullable when either side is; dictionary options only where both encode; metadata unioned, receiver winning.

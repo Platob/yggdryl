@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "provisionoptionexercisebusinesscentercomponent"
+        "FIX:component": "provisionoptionexercisebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "provisionoptionexercisebusinesscentercomponent",
+    "FIX:counter": "40954",
+    "FIX:tag": "307265",
     "description": "Required if NoProvisionOptionExerciseBusinessCenters(40954) > 0.",
-    "display": "ProvisionOptionExerciseBusinessCenterGrp",
-    "fix:component": "provisionoptionexercisebusinesscentercomponent",
-    "fix:counter": "40954",
-    "fix:tag": "307265"
+    "display": "ProvisionOptionExerciseBusinessCenterGrp"
   }
 }

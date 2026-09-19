@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionpartysubid",
-          "fix:tag": "40538"
+          "FIX:field": "legprovisionpartysubid",
+          "FIX:tag": "40538"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legprovisionpartysubidtype",
-          "fix:tag": "40539"
+          "FIX:field": "legprovisionpartysubidtype",
+          "FIX:tag": "40539"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegProvisionPtysSub",
-    "fix:tag": "904176"
+    "FIX:tag": "904176",
+    "display": "LegProvisionPtysSub"
   }
 }

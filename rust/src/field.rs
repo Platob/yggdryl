@@ -21,7 +21,7 @@ use crate::{
     IntervalType, IsinType, MappingType, MediaTypeType, MicType, MimeTypeType, NullType,
     RunEndType, SedolType, SequenceType, SideType, StateType, StringType, StructureType,
     TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
-    UnionType, UrlType, UuidType, VariantType, VersionType,
+    UnionType, UriType, UuidType, VariantType, VersionType,
 };
 use crate::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
@@ -312,7 +312,7 @@ impl<D: DataTypeValue> FieldOf<D> {
 
     /// Returns whether this field participates in caller-side initialization.
     ///
-    /// The reserved `field:init` metadata key is absent for an ordinary field,
+    /// The reserved `FIELD:init` metadata key is absent for an ordinary field,
     /// which reports `true`. Set it to `false` to mark a field that a schema
     /// still declares but a constructor must not accept, such as a value
     /// derived after construction.
@@ -1609,7 +1609,7 @@ field_leaves! {
     TimeInForce => TimeInForceField / TimeInForceType,
     Uuid => UuidField / UuidType,
     Version => VersionField / VersionType,
-    Url => UrlField / UrlType,
+    Uri => UriField / UriType,
     Sequence => SequenceField / SequenceType,
     Structure => StructureField / StructureType,
     Union => UnionField / UnionType,
@@ -1705,12 +1705,13 @@ impl Field {
     ///
     /// ```
     /// use yggdryl::DataType;
+    /// use yggdryl::StructureType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut schema = DataType::from_fields([
+    /// let mut schema = DataType::from(StructureType::from_fields([
     ///     DataType::Int64.required_field("id"),
     ///     DataType::list(DataType::utf8().nullable_field("item")).nullable_field("tags"),
-    /// ])?
+    /// ])?)
     /// .required_field("row");
     ///
     /// assert_eq!(schema.assign_parquet_field_ids(1)?, 4);
@@ -1818,14 +1819,14 @@ impl Field {
 /// [`Field::get_field_by_path`] is the non-panicking form.
 ///
 /// ```
-/// use yggdryl::{DataType, Field};
+/// use yggdryl::{DataType, Field, StructureType};
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let order = DataType::from_fields([
+/// let order = DataType::from(StructureType::from_fields([
 ///     DataType::Int64.required_field("id"),
-///     DataType::from_fields([DataType::Float64.required_field("price")])?
+///     DataType::from(StructureType::from_fields([DataType::Float64.required_field("price")])?)
 ///         .required_field("line"),
-/// ])?
+/// ])?)
 /// .required_field("order");
 ///
 /// assert_eq!(order["id"].dtype(), &DataType::Int64);
@@ -1849,16 +1850,17 @@ impl Index<&str> for Field {
 /// Subscripting a schema node by position reaches that nested child.
 ///
 /// The positional companion of [`Index<&str>`], matching how
-/// [`Fields`](crate::Fields) already indexes.
+/// [`StructType`](crate::StructType) already indexes.
 ///
 /// ```
 /// use yggdryl::DataType;
+/// use yggdryl::StructureType;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let order = DataType::from_fields([
+/// let order = DataType::from(StructureType::from_fields([
 ///     DataType::Int64.required_field("id"),
 ///     DataType::utf8().required_field("venue"),
-/// ])?
+/// ])?)
 /// .required_field("order");
 ///
 /// assert_eq!(order[0].name(), "id");
@@ -1905,8 +1907,8 @@ mod arrow {
     use crate::{
         BYTES_EXTENSION_NAME, BytesType, GEOARROW_WKB_EXTENSION_NAME, MEDIATYPE_EXTENSION_NAME,
         MIMETYPE_EXTENSION_NAME, STRING_EXTENSION_NAME, StringType, TIMEZONE_EXTENSION_NAME,
-        URL_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME, VERSION_EXTENSION_NAME,
-        code_for_extension, is_variant_storage,
+        URL_EXTENSION_NAME, URN_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME,
+        VERSION_EXTENSION_NAME, code_for_extension, is_variant_storage,
     };
     use crate::{DataType, Error, GeospatialParameters, Metadata, Result};
     use crate::{Field, FieldRef};
@@ -2066,9 +2068,9 @@ mod arrow {
         /// Apply this schema's metadata-declared columns to one Arrow batch.
         ///
         /// A [`Field`] states more about a batch than its shape: a
-        /// [`transform:`](crate::TransformField::apply_arrow_batch) declaration
+        /// [`TRANSFORM:`](crate::TransformField::apply_arrow_batch) declaration
         /// says a column is *derived* from others, and a
-        /// [`digest:`](crate::DigestField::apply_arrow_batch) role says a column
+        /// [`DIGEST:`](crate::DigestField::apply_arrow_batch) role says a column
         /// *holds* the row's hash. Each protocol owns how it answers, including
         /// how far down it walks, and this is the one entry point that asks them
         /// all in the order their answers depend on.
@@ -2100,7 +2102,7 @@ mod arrow {
         ///
         /// use arrow_array::{ArrayRef, Date32Array, RecordBatch};
         /// use yggdryl::expression::Function;
-        /// use yggdryl::{ArrowCastOptions, DataType};
+        /// use yggdryl::{ArrowCastOptions, DataType, StructureType};
         ///
         /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
         /// let mut year = DataType::Int32.nullable_field("year");
@@ -2108,11 +2110,11 @@ mod arrow {
         /// year.as_partition_mut().set_transform(Function::Year)?;
         /// let mut stored = DataType::UInt64.nullable_field("row_digest");
         /// stored.as_digest_mut().set_holder()?;
-        /// let root = DataType::from_fields([
+        /// let root = DataType::from(StructureType::from_fields([
         ///     DataType::date32().required_field("event"),
         ///     year,
         ///     stored,
-        /// ])?
+        /// ])?)
         /// .required_field("row");
         ///
         /// let batch = RecordBatch::try_from_iter([(
@@ -2166,13 +2168,13 @@ mod arrow {
         /// ```
         /// use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
         /// use yggdryl::expression::Function;
-        /// use yggdryl::{ArrowCastOptions, DataType};
+        /// use yggdryl::{ArrowCastOptions, DataType, StructureType};
         ///
         /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
         /// let mut year = DataType::Int32.nullable_field("year");
         /// year.as_partition_mut().set_sources(["event"])?;
         /// year.as_partition_mut().set_transform(Function::Year)?;
-        /// let root = DataType::from_fields([DataType::date32().required_field("event"), year])?
+        /// let root = DataType::from(StructureType::from_fields([DataType::date32().required_field("event"), year])?)
         ///     .required_field("row");
         ///
         /// let stored = Schema::new(vec![ArrowField::new(
@@ -2337,6 +2339,8 @@ mod arrow {
         Version,
         /// The canonical URL text over Utf8.
         Url,
+        /// The canonical URN text over Utf8.
+        Urn,
         /// The canonical time zone name over Utf8.
         Timezone,
         /// The canonical MIME type over Utf8.
@@ -2360,7 +2364,8 @@ mod arrow {
                 Self::Code(dtype) | Self::String(dtype) | Self::Bytes(dtype) => dtype,
                 Self::Uuid => DataType::Uuid,
                 Self::Version => DataType::Version,
-                Self::Url => DataType::Url,
+                Self::Url => DataType::url(),
+                Self::Urn => DataType::urn(),
                 Self::Timezone => DataType::Timezone,
                 Self::MimeType => DataType::MimeType,
                 Self::MediaType => DataType::MediaType,
@@ -2469,6 +2474,9 @@ mod arrow {
             }
             URL_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
                 Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Url))
+            }
+            URN_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+                Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Urn))
             }
             TIMEZONE_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
                 Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Timezone))

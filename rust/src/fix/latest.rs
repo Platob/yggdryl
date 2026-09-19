@@ -8,7 +8,7 @@
 //! independently, which is how two systems come to disagree about one
 //! message. This pass restates a message once, from what the dictionary
 //! itself says: the registry's field for every tag, the aliases that reach
-//! it, and the [`fix:replacements`](super::replacements) each retired field
+//! it, and the [`FIX:replacements`](super::replacements) each retired field
 //! or value carries. Nothing here holds a table of rules.
 //!
 //! # The row only
@@ -42,7 +42,7 @@ use super::schema::item_fields;
 use super::{FixRegistry, occurrence_name};
 use crate::expression::Term;
 use crate::sequence::SequenceType;
-use crate::{DataType, Field, Plan, Result, Scalar};
+use crate::{DataType, Field, Plan, Result, Scalar, StructureType};
 
 /// One level of the row: the root, or one occurrence of a repeating group.
 ///
@@ -260,7 +260,7 @@ impl Child {
 
     /// One child, its occurrences unpacked when it is a repeating group.
     ///
-    /// A group is a List of Structs carrying `fix:counter`; a List no counter
+    /// A group is a List of Structs carrying `FIX:counter`; a List no counter
     /// heads is a repeated flat field and stays whole, because the registry's
     /// scalar field cannot hold it.
     fn unpack(field: Field, value: Scalar) -> Self {
@@ -312,7 +312,8 @@ fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Sc
             members.push(member);
         }
     }
-    let mut item = DataType::from_fields(members)?.required_field(occurrence_name(&list));
+    let mut item =
+        DataType::from(StructureType::from_fields(members)?).required_field(occurrence_name(&list));
     if finished.iter().any(Option::is_none) {
         item.set_nullable(true);
     }
@@ -718,7 +719,10 @@ impl<'msg> Restater<'msg> {
     /// writes land, because the next rule reads the level as it then is.
     fn view(level: &Level) -> Option<(Field, Scalar)> {
         let (fields, values) = level.clone().pack().ok()?;
-        let root = DataType::from_fields(fields).ok()?.required_field("row");
+        let root = StructureType::from_fields(fields)
+            .map(DataType::from)
+            .ok()?
+            .required_field("row");
         Some((root, Scalar::from_sequence(values)))
     }
 
@@ -1012,7 +1016,7 @@ pub(super) fn restate(mut msg: FixMsg) -> Result<FixMsg> {
     // root's setter would check a second time before comparing every child.
     let root = Field::new_with_metadata(
         root.name(),
-        DataType::from_fields(fields)?,
+        DataType::from(StructureType::from_fields(fields)?),
         root.is_nullable(),
         root.as_metadata().clone(),
     );

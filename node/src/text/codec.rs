@@ -2333,6 +2333,7 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         // zone, a MIME type and a media type each render their own canonical
         // spelling the same way.
         Scalar::Url(value) => Ok(JsonValue::String(value.to_string())),
+        Scalar::Urn(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Timezone(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::MimeType(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::MediaType(value) => Ok(JsonValue::String(value.to_string())),

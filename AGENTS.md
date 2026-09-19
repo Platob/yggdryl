@@ -54,6 +54,86 @@ results and exact skipped checks.
 Rust-only is complete work when the core is the requested scope; a missing
 binding is documented as Rust-only.
 
+### Pace
+
+The steps above are what a change is; what makes a wide one fast is how each
+step is run, never which step is skipped.
+
+- **One script per sweep.** A rename, a moved constructor or a changed
+  signature that reaches every caller is one script of exact-string edits,
+  each asserting that its anchor matches once, driven by the compiler's own
+  list: the `it builds` row of the [smoke loop](#smoke-loop) with its two
+  flags names every site the compiler has reached, and the script is re-run
+  from that list until the check is clean. A site edited by hand is the slow
+  way to the same text, and a regex with no exact anchor edits the site it
+  did not mean.
+- **One phase per change, each settled narrowly.** Several changes on one
+  branch are phases in the order of the steps above - each core change, then
+  the bindings, then the docs - and a phase is settled by its build check and
+  the one suite it touched, never by the whole run. The theme is the one
+  whose `src/` subtree the phase changes - `types` for `field.rs`, `fix` for
+  `fix/` - so a change altering two subtrees is two phases; a test in another
+  theme that a sweep only re-spelled is proven compiling by the build check
+  and behaving by the whole run, and a surface with a cost pin adds its
+  filtered `iobase_calls` or `allocations` row. A binding phase's build check
+  is `cargo check --workspace --all-targets --keep-going
+  --message-format=short`, which lists the bindings' broken call sites
+  without building an extension or an addon, and its suite is one area of
+  the §3 or §4 loop, run from the chain step that built what it needs. The
+  docs phase is settled by `mkdocs build --strict`, seconds in the
+  foreground; the example runner has no per-page filter, so it is a chain
+  step per language after the step that built what it runs on.
+- **One whole run, its pins re-pinned once.** The whole run - the
+  `cargo test --all-targets` line of [Before you push](#before-you-push) in
+  the `--all-features` lane, with `--no-fail-fast` so every failure is
+  listed - leads the chain below, launched when the last phase that takes
+  the cargo lock is settled, so every pin that moved surfaces in one pass
+  and is re-pinned in one edit with the sentence that says why. A pin is
+  re-pinned when the change accounts for its move exactly - one retired
+  crate field is one tag fewer in the census, one re-spelled key is one
+  dictionary hash - and a number the change does not account for is a defect
+  found before the pin is touched; a cost pin - `iobase_calls`,
+  `allocations`, a benchmark - is never re-pinned from that pass, because a
+  moved count is a design answer ([Read the cost](#smoke-loop)). A re-pinned
+  test is re-run by its own row of the smoke loop, never by the whole run
+  again.
+- **Disjoint files per worker.** A sweep that spans tests, bindings and docs
+  is split across workers by file set, never by concern: the sets are a
+  partition of the `it builds` list by path, so no two workers touch one
+  file; a worker returns its script and the files it edited rather than a
+  check of its own, and the one `cargo check` after the last worker returns
+  is the next list. While workers edit, nobody runs `cargo fmt --all`,
+  because a reformat moves the anchors their scripts match; the formatter
+  runs once after the last worker returns.
+- **Long runs in the background, one log, read once.** Anything over a minute -
+  the whole run, clippy, a binding build, the example runner - is one chained
+  script writing a log with a marker per step, and the foreground keeps
+  editing: the docs phase, the inventories and the commit message are its
+  work while the chain holds the cargo lock. Steps that take the lock are
+  chained in that one script rather than launched side by side, because the
+  workspace shares one target directory and parallel cargo invocations wait
+  on each other. The chain's order is the layer order, each step reading
+  what the one before wrote: the whole run, clippy, the rustdoc examples,
+  §3's pre-push block, §4's, the two docs manifests, the example runner per
+  language; the whole run leads because its pins are the foreground's next
+  edit, and a clippy warning or a broken example is an edit that moves no
+  pin.
+- **One regeneration each, in dependency order.** The generated files, their
+  tools, their triggers and their order are the table under [Before you
+  push](#before-you-push); one regenerated before its input settles is
+  regenerated twice. The dictionary and the crate dump are regenerated
+  before the whole run, because the hash the run reports is the committed
+  store's, the crate's own documents included.
+- **The model fits the step.** A worker runs on the model its step needs,
+  never the most capable one by default: a review, a verification or a check
+  that reads and reports runs on the tier below the foreground's - `opus`
+  where the foreground is `fable` - and a mechanical sweep on a cheaper one
+  still. The most capable model is the foreground's alone, for the design
+  and the edits no script makes.
+- **One commit.** The phases land as one commit that says what the tree is,
+  its pins and its regenerated files included, never a commit per phase: a
+  phase alone is a tree that does not build.
+
 ### Common changes, in order
 
 | Change | Touch, in this order |
@@ -66,7 +146,7 @@ binding is documented as Rust-only.
 | charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant; a charset that gets string leaves is a root file of its own beside `utf8.rs`, `ascii.rs` and `cp1252.rs`, holding its codec and those leaves -> interop both directions -> bench -> bindings -> `docs/charset/` |
 | storage backend | `<name>/` at the root with a location/container/leaf trio over the root traits - `Path`, `Folder`, `File` over a host tree; `Path`, `Node`, `Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
 | media format | `<name>/` at the root, free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
-| metadata property | a protocol view keyed `<scheme>:<property>`; never a new `Field` accessor |
+| metadata property | a protocol view keyed `<SCHEME>:<property>`, the scheme upper case; never a new `Field` accessor |
 | binding method | core method first; the binding only infers, coerces, redirects - plus a parity test, a boundary benchmark, a docs entry |
 
 ## Smoke loop
@@ -80,7 +160,7 @@ passes.
 
 | Loop | Command | Answers |
 | --- | --- | --- |
-| it builds | `cargo check -p yggdryl --all-targets` | types and borrows, and every test and benchmark still compiling against the changed signature |
+| it builds | `cargo check -p yggdryl --all-targets`, plus `--keep-going --message-format=short` when a change reaches every caller | types and borrows, and every test and benchmark still compiling against the changed signature; with the two flags, one line per diagnostic across every target rather than a stop at the first failing one, re-run because the compiler reports the errors of the phase it reached |
 | it behaves | `cargo test -p yggdryl --test <theme> <filter>` | the `rust/tests/<theme>.rs` suite mirroring the `src/` subtree touched |
 | a private pin holds | `cargo test -p yggdryl --lib <module>::` | the `#[cfg(test)]` module beside code no integration test can reach |
 | the published example runs | `cargo test -p yggdryl --doc <path::to::item>` | the rustdoc example on the item, which is also what a docs page shows |
@@ -89,7 +169,7 @@ passes.
 | a gated path works | the loop above plus `--features "parquet iceberg"` or `--features object` | only when the change is under that gate |
 | the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<area> -x -q` | the binding against the core it redirects to, with no wheel built |
 | the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<area>/<file>.test.js` | the same, with no package audit |
-| the inventories are not stale | `python scripts/check_api_inventory.py` | every section names a source file that still exists |
+| the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file that exists, and every listed name still occurs somewhere in that crate's `src/`; an omitted name is counted, never failed |
 | a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language - there is no per-page filter, so this is a pre-push check, not a loop |
 
 The measured costs that shape the loop: an already-built theme suite is under a
@@ -205,10 +285,12 @@ Every member has `src/`, `tests/`, `benchmarks/`; root owns pins and lints with
 `default-members = ["rust"]`; features are `default = []`, `parquet`,
 `iceberg` (implies `parquet`), `object`. Examples live in docs - no `examples/`
 dir. The crate is flat: every type and every shared trait, enum or value is a
-root file; every implementation - a medium, a codec, a storage backend, a
-digest, a charset with string leaves - is a root file or folder of its own
-name; a parent folder (`media/`, `text/`, `coding/`, `holder/`, `hashing/`,
-`charset/`) holds only what its implementations share. A folder is never a
+root file, and `value/` - the contracts a datatype, a field and a value each
+owe the root that holds them - is the one folder among them; every
+implementation - a medium, a codec, a storage backend, a digest, a charset
+with string leaves - is a root file or folder of its own name; a parent
+folder (`media/`, `text/`, `coding/`, `holder/`, `hashing/`, `charset/`)
+holds only what its implementations share. A folder is never a
 facade over root-owned vocabulary, and a module owns implementation rather
 than an empty facade. Tests, benchmarks, bindings and docs are grouped by
 theme - `types`, `holder`, `media` and the rest - which is a caller's
@@ -221,13 +303,14 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `<name>.rs` | one shared trait, enum, value or type each, re-exported from the crate root; a type file holds its datatype, its field and its scalar in that order ([One type, one file](#one-type-one-file)) |
 | `iobase.rs` + `iobase/` | the single `IOBase` trait and its behavior modules; `iopath.rs`, `iofolder.rs`, `iofile.rs` the three roles every storage backend implements, `iocursor.rs` the one retained position, `iomedia.rs` the record operations derived from the byte trait, `iokind.rs` and `iomode.rs` their vocabulary |
 | `datatype.rs` | `DataType`, the shared logical datatype enum and its cross-family value contract; `datatype_id.rs` and `datatype_kind.rs` the exact-variant and family enums, `parser.rs` the canonical display and the Arrow, SQL, Hive and Spark parsing, `serde.rs` the structural document, `compatibility.rs` the concrete targets, `vocabulary.rs` the logical names, `default.rs` the canonical defaults, `diff.rs` schema equality and its differences, `merge.rs` the one place two schemas become one |
-| `field.rs` | `Field`, one variant per `DataType` shape, each carrying name, nullability, metadata and the Arrow projection cache; `metadata.rs` + `metadata/` the `<scheme>:<property>` map and its validation, `protocol.rs` the borrowed protocol views, `family.rs` what a datatype, a field and a value each owe the root that holds them |
-| `scalar.rs` | `Scalar`, the one value every part of the project speaks; `value.rs` schema-directed validation and canonicalization of row values, `arithmetic.rs` checked arithmetic over exact natives, `path.rs` the one allocation-free value path every recursive walk uses, `pretty.rs` the indented rendering of a schema |
+| `field.rs` | `Field`, one variant per `DataType` shape, each carrying name, nullability, metadata and the Arrow projection cache; `metadata.rs` + `metadata/` the `<SCHEME>:<property>` map and its validation, `protocol.rs` the borrowed protocol views |
+| `scalar.rs` | `Scalar`, the one value every part of the project speaks; `arithmetic.rs` checked arithmetic over exact natives, `path.rs` the one allocation-free value path every recursive walk uses, `pretty.rs` the indented rendering of a schema |
+| `value/` | what a datatype, a field and a value each owe the root that holds them, and what a family owes its leaves: the `Value` and `FamilyValue` contracts, `DataTypeValue`, `FieldValue`, `FieldSidecar` and the payload datatypes `GeometryType`, `GeographyType`, `UnionType`, `RunEndType`, the family traits `IntegerValue`, `FloatingValue`, `DecimalValue`, `TemporalValue`, `GeospatialValue`, `CodeValue` and `NestedValue` - declared here, implemented beside each leaf - and the `Nested` value enum; the other six family value enums, `Integer`, `Floating`, `Decimal`, `Temporal`, `Code` and `Geospatial`, live in their family files; `canonical.rs` the schema-directed validation and canonicalization of row values. The module is private, and every name is `yggdryl::<Name>` at the crate root |
 | `typed.rs` | the typed markers and the field-borrowing values: `TypedField<K>`, `FieldScalar<'_>`, `UncheckedFieldScalar<'_>`, `FieldRecord<'_>` and the prebuilt shared fields |
 | `cast.rs` | casting an Arrow array into the exact array a typed field describes: `ArrowCastPlan` and the strict rules; `budget.rs` the bounded scratch and output reservations it draws on |
-| `integer.rs`, `floating.rs`, `decimal.rs`, `boolean.rs`, `bytes.rs`, `uuid.rs`, `geospatial.rs`, `enums.rs`, `structure.rs`, `sequence.rs`, `mapping.rs`, `union.rs`, `runend.rs`, `url.rs`, `version.rs` | one family per file, each the whole of its datatype, field and scalar; `int256.rs` holds the `i256`/`u256` pair the exact decimals compute in, the one type file not named for its type because a module and a struct share one namespace at the root; `wkb.rs` the Well-Known Binary reader three types need; `regex.rs` the Struct inference from named captures |
+| `integer.rs`, `floating.rs`, `decimal.rs`, `boolean.rs`, `bytes.rs`, `uuid.rs`, `geospatial.rs`, `enums.rs`, `structure.rs`, `sequence.rs`, `mapping.rs`, `union.rs`, `runend.rs`, `version.rs` | one family per file, each the whole of its datatype, field and scalar; `int256.rs` holds the `i256`/`u256` pair the exact decimals compute in, the one type file not named for its type because a module and a struct share one namespace at the root; `wkb.rs` the Well-Known Binary reader three types need; `regex.rs` the Struct inference from named captures |
 | `code.rs` | the contract every registered code answers - the trait and the two builders; the eleven codes are one file each: `currency.rs`, `country.rs`, `mic.rs`, `cfi.rs`, `isin.rs`, `cusip.rs`, `sedol.rs`, `bloomberg.rs`, `side.rs`, `state.rs`, `timeinforce.rs` |
-| `temporal.rs` | what the five temporal families share and nothing any one of them owns: `TemporalValue`, `TemporalFamily`, the `temporal_leaf!` macro the family files build their count-unit-zone values with, the unit validators the constructors call, the ISO 8601 spellings every text codec and the scalar renderer write through, the Arrow casts that take any temporal, and the `Scalar` readers that answer across the families (`temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`); no datatype, no field and no value live here |
+| `temporal.rs` | what the five temporal families share and nothing any one of them owns: the `Temporal` value enum over the eight leaves, whose `family()` answers `date`, `time`, `datetime`, `duration` or `interval`, the `temporal_leaf!` macro the family files build their count-unit-zone values with, the unit validators the constructors call, the ISO 8601 spellings every text codec and the scalar renderer write through, the Arrow casts that take any temporal, and the `Scalar` readers that answer across the families (`as_temporal`, `temporal_unit`, `temporal_timezone`, `temporal_count`); `TemporalValue`, the contract every leaf answers, is in `value/`; no datatype, no field and no leaf value live here |
 | `date.rs` | the date family: `DateType` - `Date32`, `Date64`, no parameter, the unit being what the leaf is - `DataType::Date(DateType)` with `date32()`, `date64()` and `date_type()`, the `Date32` and `Date64` values with their `Scalar` constructors, one Arrow projection (`Date32`, `Date64`) |
 | `time.rs` | the time family: `TimeType` - `Time32(unit)`, `Time64(unit)`, the resolution a parameter of the leaf and `for_unit` the one rule `DataType::time` picks a width by - `DataType::Time(TimeType)` with `time`, `time32`, `time64`, `time_of` and `time_type`, SQL's `time(p)` grammar, the `Time32` and `Time64` values, one Arrow projection (`Time32`, `Time64`) |
 | `datetime.rs` | the datetime family: `DateTimeType` - one leaf, `DateTime64 { unit, timezone }` - `DataType::DateTime(DateTimeType)` with `datetime64` and `datetime_type`, every `timestamp` spelling of the grammar, the `DateTime64` value, one Arrow projection (`Timestamp`, carrying the zone only when the datatype states one) |
@@ -235,7 +318,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `interval.rs` | the interval family: `IntervalType` - one leaf, `Interval(layout)`, the layout a `TimeUnit` interval member - `DataType::Interval(IntervalType)` with the validating `interval(unit)` and `interval_type`, the `interval` grammar with SQL's bare `interval day`, the `Interval` value holding every component of every layout, one Arrow projection (`Interval`) |
 | `timezone.rs` | the `Timezone` value, its bundled IANA registry, and the `timezone` datatype a column of zones declares |
 | `mime_type.rs` + `mime_type/`, `media_type.rs` + `media_type/` | the root `MimeType` and `MediaType` values, which stay the media routing vocabulary, each with a `datatype.rs` beneath it for the `mimetype` and `mediatype` datatypes a column declares; `mime_type/` also holds the extension registry and the line classifier |
-| `string.rs` | every string the crate has, one family: the `StringType` enum of eighteen leaves - six shapes in each of UTF-8, US-ASCII and windows-1252 - the one string datatype `DataType::String(StringType)`, the one string value `Str`, the `field:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. The eleven registered codes are not strings and are not here: each is its own file - `currency.rs`, `country.rs`, `isin.rs` and the eight beside them - over the contract in `code.rs`. `utf8`, `large_utf8`, `sized_ascii(4)`, `fixed_cp1252(8)` and the spelling `string(windows-1252,32)` are all leaves of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::code_width` and `is_code` instead, because it is an identity over a registry rather than a charset, and rides `Utf8` under its own extension name. The per-charset arms - `charset()`, the fixed and sized leaf constructors, `with_charset`, the decode and encode behind `Str::from_bytes` and `encode`, a value's repertoire check - dispatch to `utf8.rs`, `ascii.rs` and `cp1252.rs`; the eighteen-variant enum itself stays here, because a variant is not a type of its own |
+| `string.rs` | every string the crate has, one family: the `StringType` enum of eighteen leaves - six shapes in each of UTF-8, US-ASCII and windows-1252 - the one string datatype `DataType::String(StringType)`, the one string value `Str`, the `FIELD:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. The eleven registered codes are not strings and are not here: each is its own file - `currency.rs`, `country.rs`, `isin.rs` and the eight beside them - over the contract in `code.rs`. `utf8`, `large_utf8`, `sized_ascii(4)`, `fixed_cp1252(8)` and the spelling `string(windows-1252,32)` are all leaves of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::code_width` and `is_code` instead, because it is an identity over a registry rather than a charset, and rides `Utf8` under its own extension name. The per-charset arms - `charset()`, the fixed and sized leaf constructors, `with_charset`, the decode and encode behind `Str::from_bytes` and `encode`, a value's repertoire check - dispatch to `utf8.rs`, `ascii.rs` and `cp1252.rs`; the eighteen-variant enum itself stays here, because a variant is not a type of its own |
 | `utf8.rs`, `ascii.rs`, `cp1252.rs` | one root file per charset that has string leaves, each holding that charset's codec and its six leaves together. `utf8.rs`: the UTF-8 decode, transcribe, pending and fault rules under the `utf-8` name, and `Utf8String` through `SizedUtf8String` with `utf8()`, `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(w)`, `sized_utf8(n)`. `ascii.rs`: the `ascii_len` scan, `decode`/`encode` and their `_into` forms, `text`, the `us-ascii` name, the `ascii_text`/`ascii_bytes`/`ascii_repertoire` helpers, the `ascii_packed`/`ascii_value`/`packed_width` pair the codes and `StringEnum` ride on, and the six ASCII leaves. `cp1252.rs`: a thin codec over `charset::single_byte` with `tables::CP1252` under the `windows-1252` name, and the six windows-1252 leaves. Each owns its leaves' `DataType` constructors, its `LEAVES` list, and the decode and encode that `Str::from_bytes` and `Str::encode` in `string.rs` dispatch to; only `ascii.rs` judges a repertoire (`ascii_repertoire`) and holds the `i128` packing; `Charset` and `StringType` dispatch to them and duplicate nothing |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside what every code page shares: `single_byte` and the generated `tables.rs` own the code pages, `utf16` owns UTF-16, `bom` the byte-order mark, `Decoder`/`Reader`/`Writer`/`sink` the chunked doors, `Transcoded` the decoding handle. The three charsets with string leaves are root files; every other code page reaches `single_byte` through `Charset` and is not a public module of its own |
 | `holder/` | what every backend shares: `Holder`, the one concrete handle unifying every backend, `Buffer`, `Buffered<H>`, `Counted<H>`. The root traits follow no backend: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every one |
@@ -247,9 +330,9 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `iceberg/` | separate modules: types, schema, partition, snapshots, metadata, manifests, statistics, scalar rendering, scan, table, options, catalog, evolution, inspection |
 | `text/` | the plain-text medium - `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering, `TextBytes`/`TextLine`/`TextEntries` - beside what the structured codecs share: `Format`, `Limits`, `Formatting`, `Loading`, placeholders, `TextCodec`, io, wire, typed |
 | `json/`, `toml/`, `yaml/` | one root folder per structured codec over `Scalar`, each its own parser over the machinery in `text/` |
-| `uri/` | URI, URL, URN |
+| `uri/` | the URI, URL and URN values and, in `datatype.rs`, the `uri` family - `UriType` with its `url` and `urn` leaves - and the fields and scalars over them |
 | `arrow/` | Arrow interop; recursive cast planning stays with `Field` |
-| `expression/` | one term grammar and one plan grammar: `Term`/`Bound`, `Filter`, `Selector`/`BoundSelector`, `Plan` (create, write verbs, `select`, `from`, `where`, `order by`, `limit`, `offset`), `Expression` (clause, plan, or `;` sequence), `Records`, `Attribute`, `Bounds`, `explain`, `FieldPath`/`FieldSegment`, `user` (registered `namespace.name` functions, `FunctionSignature` as a struct field, `Function::User`), `transform` (`transform:function`/`transform:sources`, else `transform:expression`); every application (`apply_datatype` first and `apply_field` derived from it, `apply_scalar`, `apply_arrow_reader` first and `apply_arrow_batch` derived from it, `apply_records`, `from_scalar` readers) lives here and nowhere else |
+| `expression/` | one term grammar and one plan grammar: `Term`/`Bound`, `Filter`, `Selector`/`BoundSelector`, `Plan` (create, write verbs, `select`, `from`, `where`, `order by`, `limit`, `offset`), `Expression` (clause, plan, or `;` sequence), `Records`, `Attribute`, `Bounds`, `explain`, `FieldPath`/`FieldSegment`, `user` (registered `namespace.name` functions, `FunctionSignature` as a struct field, `Function::User`), `transform` (`TRANSFORM:function`/`TRANSFORM:sources`, else `TRANSFORM:expression`); every application (`apply_datatype` first and `apply_field` derived from it, `apply_scalar`, `apply_arrow_reader` first and `apply_arrow_batch` derived from it, `apply_records`, `from_scalar` readers) lives here and nowhere else |
 | `graph/` | the graph vocabulary: `element.rs` holds `Element` - an element's `Uuid` and its parents' UUIDs, read and written - and `TimeElement`, an element with an instant (`currunix`, `i128` nanoseconds since the epoch, UTC) and a `currhashcode`; signatures only, no storage and no walk |
 | `hashing/` | the private structural/display stable-hash adapters the digests share; shared dispatch vocabulary is `digest.rs` |
 | `xxhash/` | one-shot digests, four resumable states, `reader`/`writer`, `Hashed<H>`, the canonical `Scalar` byte feed, Arrow row digests |
@@ -299,10 +382,11 @@ would put a test fixture in the crate's API.
   `DataType` shape, each carrying name, nullability, metadata and the Arrow
   projection cache, so a datatype is never stored beside a name and
   `dictionary_id`/`dictionary_is_ordered` exist only on `Field::Dictionary`.
-  Protocol metadata is inert `<scheme>:<property>` text in one map; a protocol
+  Protocol metadata is inert `<SCHEME>:<property>` text in one map, the scheme
+  spelled upper case as `ARROW:extension:name` and `PARQUET:field_id` are; a protocol
   view borrows a whole `Field` and derefs to it, and typed protocol vocabulary
-  (`digest:role`, the `partition:` pair, the `python:` class declaration) lives
-  there, never on `Field`. `Field` owns `field:init`, `field:partition`,
+  (`DIGEST:role`, the `PARTITION:` pair, the `PYTHON:` class declaration) lives
+  there, never on `Field`. `Field` owns `FIELD:init`, `FIELD:partition`,
   `alias`, `comment`, `display`, `location` under any key; `PARQUET:field_id`
   is the reserved typed exception.
 - `holder` is the only digest role: a declaration says what a field holds or
@@ -382,7 +466,7 @@ Equivalences a change keeps lossless, in both directions:
   value a declaring protocol's `apply_arrow_batch` leaves alone.
 - widths: a family constructor picks the physical width once, and shared logic
   reads across widths with `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
-  `temporal_family`/`temporal_unit`/`temporal_timezone`/`temporal_count`.
+  `as_temporal`/`temporal_unit`/`temporal_timezone`/`temporal_count`.
 
 ### Stack: holder -> media -> arrow
 
@@ -501,8 +585,8 @@ rendering allocate by contract.
 ## Public vocabulary
 
 Names describe ownership and return type; alternate-verb aliases are forbidden.
-Check a name in `.api-inventory.txt` before writing it; edit that file in the
-change that adds or retires one.
+Check a name in `.api-inventory.txt` before writing it; the change that adds or
+retires one regenerates it ([Before you push](#before-you-push)).
 
 | Verb | Contract |
 | --- | --- |
@@ -584,8 +668,10 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   each registered code likewise - a code is `Scalar::Currency`, the way its
   type is `DataType::Currency`; shared logic goes through the
   cross-width readers `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
-  `temporal_family`/`temporal_unit`/`temporal_timezone`/`temporal_count`, and a
-  family constructor picks the physical width once.
+  `as_temporal`/`temporal_unit`/`temporal_timezone`/`temporal_count`, or
+  narrows to a family value enum - `as_integer`, `as_floating`,
+  `Decimal::from_scalar`, `as_temporal`, `as_code`, `as_geospatial`,
+  `as_nested` - and a family constructor picks the physical width once.
 - A typed view compares, orders, and hashes over `(dtype, value)` - never the
   field's name, nullability, or metadata - so a value is one value whichever
   column holds it, and its `stable_hash` is the value's own. A borrowing view
@@ -821,8 +907,8 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   contradictions are typed errors naming both declarations.
   `media::partition::partition_text` is the only partition renderer: partition
   columns move between paths and rows through one typed implementation.
-- A derived column names its own input: `partition:transform` is an expression
-  grammar function over the field paths in `partition:sources`, both stored on
+- A derived column names its own input: `PARTITION:transform` is an expression
+  grammar function over the field paths in `PARTITION:sources`, both stored on
   the derived column in the one shape every `sources` property has. One source
   per transform today; a longer list is stored and refused on apply.
   `apply_arrow_batch` is the one verb every declaring protocol answers - it walks
@@ -839,7 +925,7 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   signed is a bit-preserving view, normalized to unsigned before feed on nested
   reuse.
 - A row digest reads direct Struct children in declaration order.
-  `digest:sources` is the exact input, resolved against its own Struct; `["*"]`
+  `DIGEST:sources` is the exact input, resolved against its own Struct; `["*"]`
   and an absent list both select every field except a holder; `"*"` may not
   travel beside a named path. A holder never feeds itself back; a selected Struct
   holding exactly one direct holder feeds that holder's value instead of being
@@ -1213,9 +1299,20 @@ Then the pre-push block of each layer the change actually touched - §3 for
 Python, §4 for Node, §5 for docs - and nothing at all for a layer it did not.
 
 A file that is generated and was not regenerated is the cheapest CI failure to
-prevent and the most common one: `rust/src/charset/tables.rs`, `node/index.js`,
-`node/index.d.ts`, the manifests under `docs/assets/`, and the hand-maintained
-`.api-inventory.txt` / `.api-bindings.txt`, which nothing checks at all.
+prevent and the most common one. Each is regenerated by its own tool once its
+input has settled, in this order, because some read an earlier one: the dump
+and the hash read the dictionary, and the two manifests read the addon and the
+dictionary:
+
+| Generated | Regenerated by | Once |
+| --- | --- | --- |
+| `rust/src/charset/tables.rs` | `python scripts/generate_charset_tables.py` | a charset row changes |
+| `config/fix/`, `provenance.json` and `rust/src/fix/constants.rs` | `python scripts/generate_fix_dictionary.py`, which fetches the FIX standard | a pinned source commit, `StringEnum::COUNTRIES` in `rust/src/string.rs` or the generator changes, the `FIX:` keys it writes included; never a crate field alone, which the generator neither writes nor checks |
+| the crate's own documents under `config/fix/` - the crate's field shard, the fixed row and its two groups | `YGGDRYL_FIX_DUMP_WRITE=1 cargo test --locked -p yggdryl --test fix the_committed_store_carries_the_crate_dump` | a crate field, the fixed row or one of its two groups changes (`rust/src/fix/crated.rs`), or the dictionary is regenerated |
+| the dictionary hash in `rust/tests/fix/dictionary.rs` | the `left` value `cargo test -p yggdryl --test fix the_committed_dictionary_hashes_to_one_pinned_value` reports, pinned in that test with the reason as the newest `It last moved when` sentence of its rustdoc, every earlier one kept; the census counts beside it move in the same edit | the dump is written |
+| `node/index.js`, `node/index.d.ts` | `npm run --prefix node build:debug` | any Node binding or its doc comments change |
+| `docs/assets/fix.json`, `docs/assets/playground.json` | `node scripts/build_docs_fix.js`, `node scripts/build_docs_playground.js` | the dictionary, the crate dump or the addon changes, the addon rebuilt first: `build_docs_fix.js` runs the addon over `config/fix` |
+| `.api-inventory.txt`, `.api-bindings.txt` | by hand, in the same change; the inventories row of the [smoke loop](#smoke-loop) proves it | a public name is added or retired |
 
 ## What CI proves
 
@@ -1257,9 +1354,10 @@ python python/benchmarks/<name>.py                  # boundary benchmarks, relea
 CI compiles the benchmark targets and executes them at smoke corpus; it never
 measures. A Performance table on a page is regenerated by the release run above,
 on the machine that table names, or it is not changed at all.
-`scripts/generate_fix_dictionary.py --check` needs the upstream dictionaries and
-belongs to a FIX data change. `.api-inventory.txt` and `.api-bindings.txt` are
-hand-maintained.
+`scripts/generate_fix_dictionary.py --check` needs the upstream dictionaries, so
+it runs with a regeneration ([Before you push](#before-you-push)) and never in
+CI; `python -m unittest discover -s scripts/tests`, the generator's own suite,
+runs in the change that edits the generator and has no job either.
 
 ## A red run
 
@@ -1475,9 +1573,6 @@ python scripts/check_docs_examples.py --lang javascript   # needs the built addo
 
 - Sweep for dead code, duplicated logic, retired symbols, stale docs, Rust-only
   bindings a stable core no longer justifies.
-- `.api-inventory.txt` and `.api-bindings.txt` are hand-maintained and checked
-  by nothing: a change adding or retiring a public name edits them in the same
-  change.
 - Run the §2 local-only checks the change made stale - charset table drift,
   charset interop, and the benchmark behind any number a page now states.
 - Push, then read the run. A branch whose CI has not been read is not handed

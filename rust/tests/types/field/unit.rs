@@ -13,20 +13,20 @@ fn a_field_declares_the_enum_its_string_values_name() {
         .try_with_string_enum(&side)
         .unwrap();
 
-    // One reserved document, readable through the `field:` protocol view
+    // One reserved document, readable through the `FIELD:` protocol view
     // and through the typed accessor that owns it.
     assert_eq!(
-        field.get_metadata("field:enum"),
+        field.get_metadata("FIELD:enum"),
         Some(r#"{"members":{"BUY":"B","SELL":"S"},"name":"Side"}"#)
     );
     assert_eq!(
         field.as_field_properties().get("enum"),
-        field.get_metadata("field:enum")
+        field.get_metadata("FIELD:enum")
     );
     assert_eq!(field.string_enum().unwrap(), Some(side.clone()));
     assert_eq!(
         field.as_metadata().as_field_properties().get("enum"),
-        field.get_metadata("field:enum")
+        field.get_metadata("FIELD:enum")
     );
 
     // The members carry the packed codes of this field's own width.
@@ -39,13 +39,13 @@ fn a_field_declares_the_enum_its_string_values_name() {
     // whichever spelling reached the field.
     let restated = Field::new("side", DataType::fixed_ascii(4).unwrap(), false)
         .try_with_metadata(
-            "field:enum",
+            "FIELD:enum",
             r#"{"name":"Side","members":{"SELL":"S","BUY":"B"}}"#,
         )
         .unwrap();
     assert_eq!(
-        restated.get_metadata("field:enum"),
-        field.get_metadata("field:enum")
+        restated.get_metadata("FIELD:enum"),
+        field.get_metadata("FIELD:enum")
     );
     assert_eq!(restated.stable_hash(), field.stable_hash());
 
@@ -75,10 +75,10 @@ fn a_field_declares_the_enum_its_string_values_name() {
 
     // A stored document that is not one is refused where it is written.
     let refused = Field::new("side", DataType::fixed_ascii(4).unwrap(), false)
-        .try_with_metadata("field:enum", "[]")
+        .try_with_metadata("FIELD:enum", "[]")
         .unwrap_err()
         .to_string();
-    assert!(refused.contains("field:enum"), "{refused}");
+    assert!(refused.contains("FIELD:enum"), "{refused}");
 
     let mut removed = field.clone();
     assert_eq!(removed.remove_string_enum().unwrap(), Some(side));

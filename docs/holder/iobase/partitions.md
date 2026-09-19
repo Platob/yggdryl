@@ -6,14 +6,14 @@ This page owns globbing and Hive partitions over a folder: lazy listings, prunin
 
 | Item | Rule |
 | --- | --- |
-| Owns | `ls`, `glob`, `rglob`, `children_where`, `children_matching`, the partition equalities a `filter` pins, partition columns in folder records, the `partition:` derivation vocabulary |
+| Owns | `ls`, `glob`, `rglob`, `children_where`, `children_matching`, the partition equalities a `filter` pins, partition columns in folder records, the `PARTITION:` derivation vocabulary |
 | Listing | Lazy until the first `next`; items are `Result`; fused after the first failure; deterministic order |
 | Pattern location | `kind` is `IOKind::Directory` before any backend call; `ls` expands from the fixed root; syntax in [Patterns](../../uri/patterns.md) |
 | `children_where` | Leaves only, carrying every pair; what a folder-addressed record method resolves through; sugar over `children_matching` with `&holder.partition['column'] = 'value'` |
 | `filter` | the options' `where` section; the equalities it pins (`partition_pairs`) are spelled as paths spell them, a pruned leaf is never listed or decoded, a carried column is filtered row by row, the rest of the predicate runs over the rows |
 | Layout authority | Leaves spelling `column=value`, else partition-marked schema fields, else one leaf named after the encoding |
 | Restored values | Declared type with a schema; text without |
-| Derived values | `partition:transform` over `partition:sources`; `apply_arrow_batch` adds a declared column the rows do not carry |
+| Derived values | `PARTITION:transform` over `PARTITION:sources`; `apply_arrow_batch` adds a declared column the rows do not carry |
 | Retries | Listings and whole-leaf rewrites retry a bounded number of times with a growing pause; an append never retries |
 | Routing | Batch by batch; the first batch to reach a leaf performs the operation, later ones append |
 | Bindings | Python listings are `pathlib`-style iterators (`iterdir`, `glob`, `rglob`); JavaScript listings are iterables |
@@ -210,17 +210,17 @@ Addressing the folder restores the columns its directories spell and routes each
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::local::Folder;
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-partitioned");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("year=2024").join("month=01"))?;
 
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("price"),
         DataType::Int32.required_field("year"),
         DataType::utf8().required_field("month"),
-    ])?
+    ])?)
     .required_field("row");
     let arrow_schema = schema.clone().into_arrow_schema()?;
     let batch = arrow_array::RecordBatch::try_new(
@@ -351,17 +351,17 @@ A folder that spells nothing takes its layout from the schema's [partition-marke
     use yggdryl::media::{IORecordOptions, RecordOptions};
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::local::Folder;
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-declared-layout");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root)?;
 
     // Nothing is on disk, so nothing spells a layout. The schema does.
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int64.required_field("price"),
         DataType::Int32.required_field("year"),
-    ])?
+    ])?)
     .required_field("row")
     .with_partition_fields(&["year"])?;
     assert_eq!(schema.partition_field_names().collect::<Vec<_>>(), ["year"]);
@@ -398,8 +398,8 @@ A folder that spells nothing takes its layout from the schema's [partition-marke
 ## Derived partition columns
 
 A path is not the only place a partition value can come from. A column can also be *computed* from
-another column of the same rows, and the [`partition:`](../../types/protocol.md) view is where that
-is declared: `partition:sources` names the field path it reads, `partition:transform` names the
+another column of the same rows, and the [`PARTITION:`](../../types/protocol.md) view is where that
+is declared: `PARTITION:sources` names the field path it reads, `PARTITION:transform` names the
 [expression](../../expression/grammar.md) function that produces it. An absent transform is the
 identity.
 
@@ -414,12 +414,12 @@ column that is absent, or present holding nothing but nulls, is filled.
 
     use arrow_array::{ArrayRef, Date32Array, Int32Array, RecordBatch};
     use yggdryl::expression::Function;
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
     let mut year = DataType::Int32.nullable_field("year");
     year.as_partition_mut().set_sources(["event"])?;
     year.as_partition_mut().set_transform(Function::Year)?;
-    let root = DataType::from_fields([DataType::date32().required_field("event"), year])?
+    let root = DataType::from(StructureType::from_fields([DataType::date32().required_field("event"), year])?)
         .required_field("row");
 
     let batch = RecordBatch::try_from_iter([(
@@ -479,9 +479,9 @@ column that is absent, or present holding nothing but nulls, is filled.
 - A declared schema contradicting the stored layout -> refused, naming both.
 - A column the data already carries -> left alone; the mismatch stays visible.
 - A derived column holding nothing but nulls -> filled; a null-filled placeholder was never written.
-- A filled derived column -> not marked `field:partition`: that marker says a directory spells it out.
-- `partition:transform` naming a function of two arguments, `truncate` among them -> refused, naming the arity.
-- A `partition:sources` the batch does not carry -> the bind refuses, naming the column.
+- A filled derived column -> not marked `FIELD:partition`: that marker says a directory spells it out.
+- `PARTITION:transform` naming a function of two arguments, `truncate` among them -> refused, naming the arity.
+- A `PARTITION:sources` the batch does not carry -> the bind refuses, naming the column.
 - Directory value `null` on a nullable declared column -> read back as null.
 - Creating a tree -> address one partition directly, or declare the partition columns on the schema.
 - An append racing another writer -> fails; a replayed append would duplicate rows.

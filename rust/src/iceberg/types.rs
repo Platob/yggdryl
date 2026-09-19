@@ -215,7 +215,7 @@ impl PrimitiveType {
             // nothing but the name of the type - unlike `version`, whose
             // numeric ordering text cannot carry, and which Iceberg therefore
             // still refuses.
-            DataType::Url => Self::String,
+            DataType::Uri(_) => Self::String,
             DataType::Uuid => Self::Uuid,
             // Iceberg's `binary` has no maximum, so a bound is dropped here;
             // the cast on the way in already held every value to it.

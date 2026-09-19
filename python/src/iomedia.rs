@@ -1720,7 +1720,7 @@ impl PyRecordOptions {
     /// nothing.
     ///
     /// A field shapes rows by applying, not by casting: a declaration is a
-    /// cast *and* the `transform:` and `digest:` columns it derives, so a
+    /// cast *and* the `TRANSFORM:` and `DIGEST:` columns it derives, so a
     /// declared derived column arrives written. The selection after it only
     /// narrows, because deriving there would restore what it was asked to
     /// drop.
@@ -2256,7 +2256,7 @@ impl PyTextOptions {
     /// nothing.
     ///
     /// A field shapes rows by applying, not by casting: a declaration is a
-    /// cast *and* the `transform:` and `digest:` columns it derives, so a
+    /// cast *and* the `TRANSFORM:` and `DIGEST:` columns it derives, so a
     /// declared derived column arrives written. The selection after it only
     /// narrows, because deriving there would restore what it was asked to
     /// drop.

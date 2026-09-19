@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rootpartyid",
-          "fix:tag": "1117"
+          "FIX:field": "rootpartyid",
+          "FIX:tag": "1117"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rootpartyidsource",
-          "fix:tag": "1118"
+          "FIX:field": "rootpartyidsource",
+          "FIX:tag": "1118"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rootpartyrole",
-          "fix:tag": "1119"
+          "FIX:field": "rootpartyrole",
+          "FIX:tag": "1119"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rootpartyrolequalifier",
-          "fix:tag": "2388"
+          "FIX:field": "rootpartyrolequalifier",
+          "FIX:tag": "2388"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norootpartysubids",
-          "fix:tag": "1120"
+          "FIX:field": "norootpartysubids",
+          "FIX:tag": "1120"
         }
       },
       {
@@ -65,14 +65,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "rootsubparties"
+          "FIX:group": "rootsubparties"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "RootParty",
-    "fix:tag": "269127"
+    "FIX:tag": "269127",
+    "display": "RootParty"
   }
 }

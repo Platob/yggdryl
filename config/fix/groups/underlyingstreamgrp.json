@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingstream"
+        "FIX:component": "underlyingstream"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingstream",
+    "FIX:counter": "40540",
+    "FIX:tag": "699318",
     "description": "Required if NoUnderlyingStreams(40540) > 0.",
-    "display": "UnderlyingStreamGrp",
-    "fix:component": "underlyingstream",
-    "fix:counter": "40540",
-    "fix:tag": "699318"
+    "display": "UnderlyingStreamGrp"
   }
 }

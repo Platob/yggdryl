@@ -93,7 +93,7 @@ fn the_committed_dictionary_is_no_dialects_member_and_a_field_is_its_tag_and_its
     assert_ne!(id, yggdryl::FixId::of(35, "MsgSeqNum").unwrap());
     assert_eq!(registry.field_by_id(id).unwrap().name(), "msgtype");
     assert!(
-        msgtype.as_metadata().get("fix:id").is_none(),
+        msgtype.as_metadata().get("FIX:id").is_none(),
         "an id is derived, never stored"
     );
 }
@@ -195,11 +195,11 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
     let source = registry.field_by_tag(22).expect("SecurityIDSource");
     let alternative = registry.field_by_tag(456).expect("SecurityAltIDSource");
     assert_eq!(
-        source.as_metadata().get("fix:codes"),
-        alternative.as_metadata().get("fix:codes")
+        source.as_metadata().get("FIX:codes"),
+        alternative.as_metadata().get("FIX:codes")
     );
-    assert!(source.as_metadata().get("fix:codes").is_some());
-    assert!(source.as_metadata().get("fix:codeset").is_none());
+    assert!(source.as_metadata().get("FIX:codes").is_some());
+    assert!(source.as_metadata().get("FIX:codeset").is_none());
 
     // A price, a quantity, a price offset and an amount are exact numbers,
     // at the one decimal width this crate keeps them at; a percentage and
@@ -326,8 +326,8 @@ fn every_stored_document_walks_to_its_end() {
         codes += seen;
     }
     for field in registry.iter() {
-        assert!(field.as_metadata().get("fix:codeset").is_none());
-        assert!(field.as_metadata().get("fix:lineage").is_none());
+        assert!(field.as_metadata().get("FIX:codeset").is_none());
+        assert!(field.as_metadata().get("FIX:lineage").is_none());
     }
     // A dictionary this size is the point: a truncation that hides one code
     // in twenty thousand is exactly what nobody notices by reading.
@@ -419,8 +419,8 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
-    // Sixty-eight shipped fields, plus the crate's six clocks: `currunix`,
-    // `creatunix`, `prevunix`, `snapunix`, `recordedat` and `expirunix`.
+    // Sixty-eight shipped fields, plus the crate's four clocks: `currunix`,
+    // `creaunix`, `prevunix` and `snapunix`.
     let crated = registry
         .iter()
         .filter(|field| {
@@ -433,7 +433,7 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
                     .is_some_and(yggdryl::is_crate_tag)
         })
         .count();
-    assert_eq!(crated, 5, "the crate's own clocks");
+    assert_eq!(crated, 4, "the crate's own clocks");
     assert_eq!(utc, 68 + crated, "instants stated in UTC");
 }
 
@@ -494,11 +494,11 @@ fn a_member_reference_carries_the_field_and_its_tag() {
         .and_then(|member| member.get_key_str("metadata"))
         .expect("the first member's metadata");
     assert_eq!(
-        member.get_key_str("fix:field").and_then(Scalar::as_str),
+        member.get_key_str("FIX:field").and_then(Scalar::as_str),
         Some("partyid")
     );
     assert_eq!(
-        member.get_key_str("fix:tag").and_then(Scalar::as_str),
+        member.get_key_str("FIX:tag").and_then(Scalar::as_str),
         Some("448")
     );
     // A field's shard is its tag over a hundred, named nine digits wide:
@@ -513,17 +513,28 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// The registry hash walks scalar fields, then the components and the groups
 /// in name order, so a change to that walk or to any shipped document moves
 /// this number on purpose, in the commit that says why. It last moved when
+/// every protocol key took its scheme upper case - `FIX:tag`, `FIX:codes`
+/// and `FIX:branches` beside `ARROW:extension:name` and `PARQUET:field_id` -
+/// so every stored key the dictionary hashes changed its spelling. It last
+/// moved when
+/// the capture's clock stopped being a crate field: `recordedat` (65028) is
+/// retired, a message's instant being what it states - `SendingTime(52)` and
+/// the settled `currunix` - and the plugin that logged a line is
+/// `msgpluginid` (`MsgPluginId`, tag 65009 unchanged), spelled like
+/// `msgctxid` and `msgsessionid`, and the instant a message was created is
+/// `creaunix` (`CreaUnix`, tag 65023 unchanged), spelled like `currunix`,
+/// `prevunix` and `snapunix`. It last moved when
 /// the message became a typed market event: the crate's columns are the
-/// event's facts - `currunix`, `creatunix`, `currhashcode`, `crosshashcode`,
+/// event's facts - `currunix`, `creaunix`, `currhashcode`, `crosshashcode`,
 /// `crosscode`, the identities as UUIDs, the lanes, the two Map groups
 /// `identifiers` and `metadata` - the shards are named nine digits wide,
-/// every member reference carries its `fix:tag`, and a field FIX Latest
-/// removed is marked `fix:deprecated`. It last moved when the market numbers
+/// every member reference carries its `FIX:tag`, and a field FIX Latest
+/// removed is marked `FIX:deprecated`. It last moved when the market numbers
 /// merged onto the event: `Price(44)`, `OrderQty(38)` and `Quantity(53)` stop
 /// being columns of their own and the crate's `px` and `qty` answer for them,
 /// and `prevpx`, `prevqty`, `tradable` and `symbolticker` join the block. It
 /// last moved when the capture's own columns stopped being facts of a
-/// message: `recordedat` states no `fix:derivation`, because when a capture
+/// message: `recordedat` states no `FIX:derivation`, because when a capture
 /// wrote a line down is whoever read it to say and never the message's own
 /// `SendingTime`. It last moved when the event's instant and its own digest
 /// took the names their columns carry: `unix` became `currunix` and
@@ -573,7 +584,7 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 7_419_238_164_786_729_799);
+    assert_eq!(registry.stable_hash(), 12_108_555_590_315_433_617);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

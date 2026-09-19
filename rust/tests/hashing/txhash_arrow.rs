@@ -14,7 +14,9 @@ use yggdryl::txhash::arrow::{column_txhashes, compose, decompose, row_txhashes, 
 use yggdryl::txhash::{TxHash, TxHasher};
 use yggdryl::xxhash::Xxh3;
 use yggdryl::xxhash::arrow::{column_digests, row_digests};
-use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::{
+    ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, StructureType, TimeUnit, Timezone,
+};
 
 const INSTANTS: [i64; 3] = [
     1_700_000_000_000_000,
@@ -24,7 +26,7 @@ const INSTANTS: [i64; 3] = [
 const UNIT: TimeUnit = TimeUnit::Microsecond;
 
 fn struct_root(fields: impl IntoIterator<Item = Field>) -> Field {
-    DataType::from_fields(fields).unwrap().required_field("row")
+    DataType::from(StructureType::from_fields(fields).unwrap()).required_field("row")
 }
 
 fn batch(fields: &[Field], columns: Vec<ArrayRef>) -> RecordBatch {
@@ -542,7 +544,8 @@ fn quantity_field() -> Field {
 
 #[test]
 fn a_dotted_time_path_reads_an_instant_under_a_nested_struct() {
-    let inner = DataType::from_fields([event_field(), symbol_field()]).unwrap();
+    let inner =
+        DataType::from(StructureType::from_fields([event_field(), symbol_field()]).unwrap());
     let meta = Field::new("meta", inner, true);
     let struct_fields = match meta.clone().into_arrow_field().unwrap().data_type() {
         ArrowDataType::Struct(fields) => fields.clone(),
@@ -669,13 +672,15 @@ fn a_null_instant_nulls_a_nullable_holder_and_refuses_a_required_one() {
     let required = struct_root([event, symbol_field(), coupled("key", 16, "event")]);
     let refused = required.as_digest().apply_arrow_batch(&source).unwrap_err();
     assert!(refused.to_string().contains("row 1"), "{refused}");
-    assert!(refused.to_string().contains("digest:time"), "{refused}");
+    assert!(refused.to_string().contains("DIGEST:time"), "{refused}");
 }
 
 #[test]
 fn a_coupled_holder_under_a_null_struct_stays_untouched() {
-    let inner = DataType::from_fields([event_field(), symbol_field(), coupled("key", 16, "event")])
-        .unwrap();
+    let inner =
+        StructureType::from_fields([event_field(), symbol_field(), coupled("key", 16, "event")])
+            .map(DataType::from)
+            .unwrap();
     let nested = Field::new("nested", inner.clone(), true);
     let root = struct_root([nested.clone()]);
     let children: Vec<ArrayRef> = vec![
@@ -706,8 +711,10 @@ fn a_coupled_holder_under_a_null_struct_stays_untouched() {
 
 #[test]
 fn a_containing_holder_reads_a_nested_coupled_holder_as_its_bytes() {
-    let inner = DataType::from_fields([event_field(), symbol_field(), coupled("key", 16, "event")])
-        .unwrap();
+    let inner =
+        StructureType::from_fields([event_field(), symbol_field(), coupled("key", 16, "event")])
+            .map(DataType::from)
+            .unwrap();
     let nested = Field::new("nested", inner, false);
     let mut outer = Field::new("digest", DataType::UInt64, false);
     outer.as_digest_mut().set_holder().unwrap();
@@ -753,7 +760,7 @@ fn coupling_declarations_that_cannot_be_filled_are_refused() {
     let missing = struct_root([event_field(), symbol_field(), coupled("key", 16, "arrival")]);
     let error = refused(missing);
     assert!(
-        error.contains("digest:time") && error.contains("arrival"),
+        error.contains("DIGEST:time") && error.contains("arrival"),
         "{error}"
     );
 
@@ -779,7 +786,7 @@ fn coupling_declarations_that_cannot_be_filled_are_refused() {
     unit_only.as_digest_mut().set_holder().unwrap();
     unit_only.as_digest_mut().insert("unit", "s").unwrap();
     let error = refused(struct_root([event_field(), symbol_field(), unit_only]));
-    assert!(error.contains("digest:unit"), "{error}");
+    assert!(error.contains("DIGEST:unit"), "{error}");
     let mut stray = symbol_field();
     stray.as_digest_mut().insert("time", "event").unwrap();
     let error = refused(struct_root([
@@ -796,7 +803,7 @@ fn coupling_declarations_that_cannot_be_filled_are_refused() {
         coupled("key", 16, "event"),
     ]));
     assert!(
-        error.contains("digest:unit belongs only to a digest holder"),
+        error.contains("DIGEST:unit belongs only to a digest holder"),
         "{error}"
     );
 
@@ -814,7 +821,7 @@ fn coupling_declarations_that_cannot_be_filled_are_refused() {
         ))
         .unwrap_err()
         .to_string();
-    assert!(error.contains("digest:time"), "{error}");
+    assert!(error.contains("DIGEST:time"), "{error}");
 }
 
 #[test]

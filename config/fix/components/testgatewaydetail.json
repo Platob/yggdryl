@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testgatewaydetailname",
-          "fix:tag": "3093"
+          "FIX:field": "testgatewaydetailname",
+          "FIX:tag": "3093"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testgatewaydetailtype",
-          "fix:tag": "3094"
+          "FIX:field": "testgatewaydetailtype",
+          "FIX:tag": "3094"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testgatewaydetailvalue",
-          "fix:tag": "3095"
+          "FIX:field": "testgatewaydetailvalue",
+          "FIX:tag": "3095"
         }
       },
       {
@@ -43,15 +43,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testgatewaymarketid",
-          "fix:tag": "3096"
+          "FIX:field": "testgatewaymarketid",
+          "FIX:tag": "3096"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TestGatewayDetail",
-    "fix:tag": "646928"
+    "FIX:tag": "646928",
+    "display": "TestGatewayDetail"
   }
 }

@@ -34,9 +34,9 @@ def test_field_options_resolve_left_to_right_before_caller_metadata() -> None:
     assert dict(field.metadata.items()) == {
         "PARQUET:field_id": "7",
         "nullable": "metadata-value",
-        "python:kind": "class",
-        "python:module": "decimal",
-        "python:qualname": "Decimal",
+        "PYTHON:kind": "class",
+        "PYTHON:module": "decimal",
+        "PYTHON:qualname": "Decimal",
         "role": "settlement",
         "source": "caller",
         "unit": "usd",
@@ -416,7 +416,7 @@ def test_pep695_aliases_compile_to_optional_and_union_fields() -> None:
 
 
 def test_a_field_annotation_contributes_its_metadata() -> None:
-    tag = Field("value", "int64", metadata={"unit": "ms", "iceberg:doc": "elapsed"})
+    tag = Field("value", "int64", metadata={"unit": "ms", "ICEBERG:doc": "elapsed"})
 
     @scalar
     class Reading:
@@ -424,4 +424,4 @@ def test_a_field_annotation_contributes_its_metadata() -> None:
 
     column = Reading.into_field().dtype["value"]
     assert column.metadata["unit"] == "ms"
-    assert column.metadata["iceberg:doc"] == "elapsed"
+    assert column.metadata["ICEBERG:doc"] == "elapsed"

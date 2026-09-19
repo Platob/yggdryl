@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "settlobligationinstruction"
+        "FIX:component": "settlobligationinstruction"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "settlobligationinstruction",
+    "FIX:counter": "1165",
+    "FIX:tag": "863876",
     "description": "Number of Settlement Obligations",
-    "display": "SettlObligationInstructions",
-    "fix:component": "settlobligationinstruction",
-    "fix:counter": "1165",
-    "fix:tag": "863876"
+    "display": "SettlObligationInstructions"
   }
 }

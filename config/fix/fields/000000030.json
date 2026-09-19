@@ -8,9 +8,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3000",
       "description": "Time at which volatility was computed.",
-      "display": "VolatilityTime",
-      "fix:tag": "3000"
+      "display": "VolatilityTime"
     }
   },
   {
@@ -20,9 +20,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3001",
       "description": "Volatility based on bid prices.",
-      "display": "BidVolatility",
-      "fix:tag": "3001"
+      "display": "BidVolatility"
     }
   },
   {
@@ -32,9 +32,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3002",
       "description": "Volatility based on offer prices.",
-      "display": "OfferVolatility",
-      "fix:tag": "3002"
+      "display": "OfferVolatility"
     }
   },
   {
@@ -44,9 +44,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3003",
       "description": "Volatility based on mid prices.",
-      "display": "MidVolatility",
-      "fix:tag": "3003"
+      "display": "MidVolatility"
     }
   },
   {
@@ -58,9 +58,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3004",
       "description": "Timestamp at which the relative valuation metric or analytic is calculated or captured.",
-      "display": "RelativeValueTimestamp",
-      "fix:tag": "3004"
+      "display": "RelativeValueTimestamp"
     }
   },
   {
@@ -70,9 +70,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3005",
       "description": "Number of trade types in repeating group.",
-      "display": "NoTradeTypes",
-      "fix:tag": "3005"
+      "display": "NoTradeTypes"
     }
   },
   {
@@ -82,9 +82,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of trade assigned to a trade.",
-      "display": "TradeType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "RegularTrade",
@@ -455,7 +453,9 @@
           "doc": "Net asset value calculated trade"
         }
       ],
-      "fix:tag": "3006"
+      "FIX:tag": "3006",
+      "description": "Type of trade assigned to a trade.",
+      "display": "TradeType"
     }
   },
   {
@@ -465,9 +465,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Further qualification to the trade type defined in TradeType(3006).",
-      "display": "TradeSubType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "CMTA",
@@ -751,7 +749,9 @@
           "doc": "Bilateral compression"
         }
       ],
-      "fix:tag": "3007"
+      "FIX:tag": "3007",
+      "description": "Further qualification to the trade type defined in TradeType(3006).",
+      "display": "TradeSubType"
     }
   },
   {
@@ -761,9 +761,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3008",
       "description": "Number of allocation timestamps.",
-      "display": "NoAllocTrdRegTimestamps",
-      "fix:tag": "3008"
+      "display": "NoAllocTrdRegTimestamps"
     }
   },
   {
@@ -775,9 +775,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3009",
       "description": "Same as TrdRegTimestamp(769). Used to provide relevant timestamp for the allocation account.",
-      "display": "AllocTrdRegTimestamp",
-      "fix:tag": "3009"
+      "display": "AllocTrdRegTimestamp"
     }
   },
   {
@@ -787,9 +787,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Same as TrdRegTimestampType(770). Used to indicate the timestamp type relevant for the allocation account.",
-      "display": "AllocTrdRegTimestampType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ExecutionTime",
@@ -971,7 +969,9 @@
           "doc": "Update time"
         }
       ],
-      "fix:tag": "3010"
+      "FIX:tag": "3010",
+      "description": "Same as TrdRegTimestampType(770). Used to indicate the timestamp type relevant for the allocation account.",
+      "display": "AllocTrdRegTimestampType"
     }
   },
   {
@@ -981,9 +981,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3011",
       "description": "Same as TrdRegTimestampOrigin(771). Used to indicate the \"origin\" or source of the timestamp relevant for the allocation account.",
-      "display": "AllocTrdRegTimestampSrc",
-      "fix:tag": "3011"
+      "display": "AllocTrdRegTimestampSrc"
     }
   },
   {
@@ -993,9 +993,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3012",
       "description": "Unique identifier for a certificate issued by an algorithmic trading firm.",
-      "display": "AlgoCertificateID",
-      "fix:tag": "3012"
+      "display": "AlgoCertificateID"
     }
   },
   {
@@ -1005,9 +1005,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3013",
       "description": "Description of a certificate issued by an algorithmic trading firm.",
-      "display": "AlgoCertificateDesc",
-      "fix:tag": "3013"
+      "display": "AlgoCertificateDesc"
     }
   },
   {
@@ -1017,9 +1017,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3014",
       "description": "Unique identifier of the AlgoCertificateRequest(35=EH).",
-      "display": "AlgoCertificateRequestID",
-      "fix:tag": "3014"
+      "display": "AlgoCertificateRequestID"
     }
   },
   {
@@ -1029,9 +1029,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3015",
       "description": "Reference identifier of the AlgoCertificateRequest(35=EH).",
-      "display": "AlgoCertificateRequestRefID",
-      "fix:tag": "3015"
+      "display": "AlgoCertificateRequestRefID"
     }
   },
   {
@@ -1041,9 +1041,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the message transaction type.",
-      "display": "AlgoCertificateRequestTransType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "New",
@@ -1060,7 +1058,9 @@
           "doc": "Replace"
         }
       ],
-      "fix:tag": "3016"
+      "FIX:tag": "3016",
+      "description": "Identifies the message transaction type.",
+      "display": "AlgoCertificateRequestTransType"
     }
   },
   {
@@ -1070,9 +1070,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of the AlgoCertificateRequest(35=EH) message being responded to.",
-      "display": "AlgoCertificateRequestStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Received",
@@ -1089,7 +1087,9 @@
           "doc": "Rejected"
         }
       ],
-      "fix:tag": "3017"
+      "FIX:tag": "3017",
+      "description": "Status of the AlgoCertificateRequest(35=EH) message being responded to.",
+      "display": "AlgoCertificateRequestStatus"
     }
   },
   {
@@ -1099,9 +1099,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3018",
       "description": "Unique identifier of the AlgoCertificateReport(35=EJ).",
-      "display": "AlgoCertificateReportID",
-      "fix:tag": "3018"
+      "display": "AlgoCertificateReportID"
     }
   },
   {
@@ -1111,9 +1111,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3019",
       "description": "Reference identifier of the AlgoCertificateReport(35=EJ).",
-      "display": "AlgoCertificateReportRefID",
-      "fix:tag": "3019"
+      "display": "AlgoCertificateReportRefID"
     }
   },
   {
@@ -1123,9 +1123,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the message transaction type.",
-      "display": "AlgoCertificateReportTransType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "New",
@@ -1142,7 +1140,9 @@
           "doc": "Replace"
         }
       ],
-      "fix:tag": "3020"
+      "FIX:tag": "3020",
+      "description": "Identifies the message transaction type.",
+      "display": "AlgoCertificateReportTransType"
     }
   },
   {
@@ -1152,9 +1152,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of the report being responded to.",
-      "display": "AlgoCertificateReportStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Received",
@@ -1171,7 +1169,9 @@
           "doc": "Rejected"
         }
       ],
-      "fix:tag": "3021"
+      "FIX:tag": "3021",
+      "description": "Status of the report being responded to.",
+      "display": "AlgoCertificateReportStatus"
     }
   },
   {
@@ -1181,9 +1181,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the current status of the certificate as established by the certificate issuer.",
-      "display": "AlgoCertificateStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Draft",
@@ -1210,7 +1208,9 @@
           "doc": "Cancelled"
         }
       ],
-      "fix:tag": "3022"
+      "FIX:tag": "3022",
+      "description": "Identifies the current status of the certificate as established by the certificate issuer.",
+      "display": "AlgoCertificateStatus"
     }
   },
   {
@@ -1222,9 +1222,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3023",
       "description": "Date and time the details within the message have been approved.",
-      "display": "ApprovalTime",
-      "fix:tag": "3023"
+      "display": "ApprovalTime"
     }
   },
   {
@@ -1234,9 +1234,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3024",
       "description": "Description of means of testing for an algorithm.",
-      "display": "AlgoTestDesc",
-      "fix:tag": "3024"
+      "display": "AlgoTestDesc"
     }
   },
   {
@@ -1246,9 +1246,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3025",
       "description": "Number of components making up a system for algorithmic trading.",
-      "display": "NoAlgoSystemModules",
-      "fix:tag": "3025"
+      "display": "NoAlgoSystemModules"
     }
   },
   {
@@ -1258,9 +1258,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3026",
       "description": "Name of the component of a system for algorithmic trading.",
-      "display": "AlgoSystemModuleName",
-      "fix:tag": "3026"
+      "display": "AlgoSystemModuleName"
     }
   },
   {
@@ -1270,9 +1270,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3027",
       "description": "Version (e.g. build or commit number) of the component of a system for algorithmic trading.",
-      "display": "AlgoSystemModuleVersion",
-      "fix:tag": "3027"
+      "display": "AlgoSystemModuleVersion"
     }
   },
   {
@@ -1282,9 +1282,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3028",
       "description": "Number of test scenarios for an algorithmic trading system.",
-      "display": "NoTestScenarios",
-      "fix:tag": "3028"
+      "display": "NoTestScenarios"
     }
   },
   {
@@ -1294,9 +1294,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3029",
       "description": "Unique identifier of a test scenario for a software system.",
-      "display": "TestScenarioID",
-      "fix:tag": "3029"
+      "display": "TestScenarioID"
     }
   },
   {
@@ -1306,9 +1306,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the overall result of a test scenario identified by TestScenarioID(3029).",
-      "display": "TestScenarioStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Undefined",
@@ -1330,7 +1328,9 @@
           "doc": "Warning"
         }
       ],
-      "fix:tag": "3030"
+      "FIX:tag": "3030",
+      "description": "Identifies the overall result of a test scenario identified by TestScenarioID(3029).",
+      "display": "TestScenarioStatus"
     }
   },
   {
@@ -1342,9 +1342,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3031",
       "description": "Starting date and time of test scenario execution for a software system.",
-      "display": "TestScenarioStartTime",
-      "fix:tag": "3031"
+      "display": "TestScenarioStartTime"
     }
   },
   {
@@ -1356,9 +1356,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3032",
       "description": "Ending date and time of test scenario execution for a software system.",
-      "display": "TestScenarioEndTime",
-      "fix:tag": "3032"
+      "display": "TestScenarioEndTime"
     }
   },
   {
@@ -1368,9 +1368,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3033",
       "description": "Description of the origin of the market data.",
-      "display": "MDOriginDesc",
-      "fix:tag": "3033"
+      "display": "MDOriginDesc"
     }
   },
   {
@@ -1382,9 +1382,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3034",
       "description": "Date and time of the market data.",
-      "display": "MDOriginTime",
-      "fix:tag": "3034"
+      "display": "MDOriginTime"
     }
   },
   {
@@ -1394,9 +1394,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3035",
       "description": "Unique identifier for the group of test steps constituting a test scenario.",
-      "display": "TestStepGroupID",
-      "fix:tag": "3035"
+      "display": "TestStepGroupID"
     }
   },
   {
@@ -1406,9 +1406,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3036",
       "description": "Number of test steps.",
-      "display": "NoTestSteps",
-      "fix:tag": "3036"
+      "display": "NoTestSteps"
     }
   },
   {
@@ -1418,9 +1418,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3037",
       "description": "Unique identifier of a test step.",
-      "display": "TestStepID",
-      "fix:tag": "3037"
+      "display": "TestStepID"
     }
   },
   {
@@ -1430,9 +1430,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3038",
       "description": "Description of a test step.",
-      "display": "TestStepDesc",
-      "fix:tag": "3038"
+      "display": "TestStepDesc"
     }
   },
   {
@@ -1444,9 +1444,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3039",
       "description": "Starting time of a test step.",
-      "display": "TestStepStartTime",
-      "fix:tag": "3039"
+      "display": "TestStepStartTime"
     }
   },
   {
@@ -1456,9 +1456,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3040",
       "description": "Time unit multiplier for the starting time of a test step relative to the starting time of a test scenario.",
-      "display": "TestStepStartOffsetPeriod",
-      "fix:tag": "3040"
+      "display": "TestStepStartOffsetPeriod"
     }
   },
   {
@@ -1468,9 +1468,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the starting time of a test step relative to the starting time of a test scenario.",
-      "display": "TestStepStartOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Seconds",
@@ -1532,7 +1530,9 @@
           "doc": "years"
         }
       ],
-      "fix:tag": "3041"
+      "FIX:tag": "3041",
+      "description": "Time unit associated with the starting time of a test step relative to the starting time of a test scenario.",
+      "display": "TestStepStartOffsetUnit"
     }
   },
   {
@@ -1544,9 +1544,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3042",
       "description": "Ending time of a test step.",
-      "display": "TestStepEndTime",
-      "fix:tag": "3042"
+      "display": "TestStepEndTime"
     }
   },
   {
@@ -1556,9 +1556,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3043",
       "description": "Time unit multiplier for the ending time of a test step relative to the starting time of a test scenario.",
-      "display": "TestStepEndOffsetPeriod",
-      "fix:tag": "3043"
+      "display": "TestStepEndOffsetPeriod"
     }
   },
   {
@@ -1568,9 +1568,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the starting time of a test step relative to the ending time of a test scenario.",
-      "display": "TestStepEndOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Seconds",
@@ -1632,7 +1630,9 @@
           "doc": "years"
         }
       ],
-      "fix:tag": "3044"
+      "FIX:tag": "3044",
+      "description": "Time unit associated with the starting time of a test step relative to the ending time of a test scenario.",
+      "display": "TestStepEndOffsetUnit"
     }
   },
   {
@@ -1642,9 +1642,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3045",
       "description": "Number of test step parameters.",
-      "display": "NoTestStepParameters",
-      "fix:tag": "3045"
+      "display": "NoTestStepParameters"
     }
   },
   {
@@ -1654,9 +1654,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3046",
       "description": "Name of the test step parameter.",
-      "display": "TestStepParameterName",
-      "fix:tag": "3046"
+      "display": "TestStepParameterName"
     }
   },
   {
@@ -1666,9 +1666,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Datatype of the test step parameter.",
-      "display": "TestStepParameterType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Int",
@@ -1815,7 +1813,9 @@
           "doc": "Tenor"
         }
       ],
-      "fix:tag": "3047"
+      "FIX:tag": "3047",
+      "description": "Datatype of the test step parameter.",
+      "display": "TestStepParameterType"
     }
   },
   {
@@ -1825,9 +1825,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3048",
       "description": "Value of the test step parameter.",
-      "display": "TestStepParameterValue",
-      "fix:tag": "3048"
+      "display": "TestStepParameterValue"
     }
   },
   {
@@ -1837,9 +1837,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3049",
       "description": "Number of components making up a testing system.",
-      "display": "NoTestSystemModules",
-      "fix:tag": "3049"
+      "display": "NoTestSystemModules"
     }
   },
   {
@@ -1849,9 +1849,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3050",
       "description": "Name of the component of a testing system.",
-      "display": "TestSystemModuleName",
-      "fix:tag": "3050"
+      "display": "TestSystemModuleName"
     }
   },
   {
@@ -1861,9 +1861,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3051",
       "description": "Version (e.g. build or commit number) of the component of a testing system.",
-      "display": "TestSystemModuleVersion",
-      "fix:tag": "3051"
+      "display": "TestSystemModuleVersion"
     }
   },
   {
@@ -1873,9 +1873,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3052",
       "description": "Number of results for a test scenario.",
-      "display": "NoTestMeasures",
-      "fix:tag": "3052"
+      "display": "NoTestMeasures"
     }
   },
   {
@@ -1885,9 +1885,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3053",
       "description": "Name of a test measure.",
-      "display": "TestMeasureName",
-      "fix:tag": "3053"
+      "display": "TestMeasureName"
     }
   },
   {
@@ -1897,9 +1897,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3054",
       "description": "Description of a test measure.",
-      "display": "TestMeasureDesc",
-      "fix:tag": "3054"
+      "display": "TestMeasureDesc"
     }
   },
   {
@@ -1909,9 +1909,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Datatype of the metric being used for a test.",
-      "display": "TestMeasureType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Int",
@@ -2058,7 +2056,9 @@
           "doc": "Tenor"
         }
       ],
-      "fix:tag": "3055"
+      "FIX:tag": "3055",
+      "description": "Datatype of the metric being used for a test.",
+      "display": "TestMeasureType"
     }
   },
   {
@@ -2068,9 +2068,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3056",
       "description": "Number of decimal places for TestMeasureType(3055).",
-      "display": "TestMeasurePrecision",
-      "fix:tag": "3056"
+      "display": "TestMeasurePrecision"
     }
   },
   {
@@ -2080,9 +2080,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the result of an individual test based on a measure.",
-      "display": "TestMeasureResult",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Undefined",
@@ -2104,7 +2102,9 @@
           "doc": "Warning"
         }
       ],
-      "fix:tag": "3057"
+      "FIX:tag": "3057",
+      "description": "Identifies the result of an individual test based on a measure.",
+      "display": "TestMeasureResult"
     }
   },
   {
@@ -2114,9 +2114,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies whether the value of a measure needs to be over or under a specific threshold to be successful.",
-      "display": "TestThresholdType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Under",
@@ -2128,7 +2126,9 @@
           "doc": "Over"
         }
       ],
-      "fix:tag": "3058"
+      "FIX:tag": "3058",
+      "description": "Identifies whether the value of a measure needs to be over or under a specific threshold to be successful.",
+      "display": "TestThresholdType"
     }
   },
   {
@@ -2138,9 +2138,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3059",
       "description": "Value of the measure upon which a warning is issued for the test.",
-      "display": "TestWarningLevelValue",
-      "fix:tag": "3059"
+      "display": "TestWarningLevelValue"
     }
   },
   {
@@ -2150,9 +2150,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3060",
       "description": "Value of the measure upon which the test is considered to have failed.",
-      "display": "TestFailLevelValue",
-      "fix:tag": "3060"
+      "display": "TestFailLevelValue"
     }
   },
   {
@@ -2162,9 +2162,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3061",
       "description": "Peak value of the measure achieved in testing.",
-      "display": "TestPeakLevelValue",
-      "fix:tag": "3061"
+      "display": "TestPeakLevelValue"
     }
   },
   {
@@ -2174,9 +2174,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3062",
       "description": "Unique identifier of the TestSuiteDefinitionRequest(35=EL).",
-      "display": "TestSuiteRequestID",
-      "fix:tag": "3062"
+      "display": "TestSuiteRequestID"
     }
   },
   {
@@ -2186,9 +2186,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3063",
       "description": "Reference identifier of the TestSuiteDefinitionRequest(35=EL).",
-      "display": "TestSuiteRequestRefID",
-      "fix:tag": "3063"
+      "display": "TestSuiteRequestRefID"
     }
   },
   {
@@ -2198,9 +2198,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the message transaction type.",
-      "display": "TestSuiteRequestTransType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "New",
@@ -2212,7 +2210,9 @@
           "doc": "Cancel"
         }
       ],
-      "fix:tag": "3064"
+      "FIX:tag": "3064",
+      "description": "Identifies the message transaction type.",
+      "display": "TestSuiteRequestTransType"
     }
   },
   {
@@ -2222,9 +2222,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of the TestSuiteDefinitionRequest(35=EL) message being responded to.",
-      "display": "TestSuiteRequestStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Received",
@@ -2241,7 +2239,9 @@
           "doc": "Rejected"
         }
       ],
-      "fix:tag": "3065"
+      "FIX:tag": "3065",
+      "description": "Status of the TestSuiteDefinitionRequest(35=EL) message being responded to.",
+      "display": "TestSuiteRequestStatus"
     }
   },
   {
@@ -2251,9 +2251,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3066",
       "description": "Unique identifier of the TestActionRequest(35=EN).",
-      "display": "TestActionRequestID",
-      "fix:tag": "3066"
+      "display": "TestActionRequestID"
     }
   },
   {
@@ -2263,9 +2263,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of action to take or that was taken for a given test suite.",
-      "display": "TestActionType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Start",
@@ -2282,7 +2280,9 @@
           "doc": "State"
         }
       ],
-      "fix:tag": "3067"
+      "FIX:tag": "3067",
+      "description": "Specifies the type of action to take or that was taken for a given test suite.",
+      "display": "TestActionType"
     }
   },
   {
@@ -2292,9 +2292,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Status of the TestActionRequest(35=EN) message being responded to.",
-      "display": "TestActionRequestStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Received",
@@ -2311,7 +2309,9 @@
           "doc": "Rejected"
         }
       ],
-      "fix:tag": "3068"
+      "FIX:tag": "3068",
+      "description": "Status of the TestActionRequest(35=EN) message being responded to.",
+      "display": "TestActionRequestStatus"
     }
   },
   {
@@ -2321,9 +2321,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the activity state the test suite is in.",
-      "display": "TestSuiteActivityState",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Scheduled",
@@ -2345,7 +2343,9 @@
           "doc": "Cancelled"
         }
       ],
-      "fix:tag": "3069"
+      "FIX:tag": "3069",
+      "description": "Specifies the activity state the test suite is in.",
+      "display": "TestSuiteActivityState"
     }
   },
   {
@@ -2355,9 +2355,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the overall test result of a group of individual test scenarios.",
-      "display": "TestSuiteStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Undefined",
@@ -2379,7 +2377,9 @@
           "doc": "Warning"
         }
       ],
-      "fix:tag": "3070"
+      "FIX:tag": "3070",
+      "description": "Identifies the overall test result of a group of individual test scenarios.",
+      "display": "TestSuiteStatus"
     }
   },
   {
@@ -2389,9 +2389,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3071",
       "description": "Identifier of the test action report.",
-      "display": "TestActionReportID",
-      "fix:tag": "3071"
+      "display": "TestActionReportID"
     }
   },
   {
@@ -2401,9 +2401,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3072",
       "description": "Identifies the currency pair/symbol that the instance of the rate source information is applicable for the fixing.",
-      "display": "RateSourceSymbol",
-      "fix:tag": "3072"
+      "display": "RateSourceSymbol"
     }
   },
   {
@@ -2413,9 +2413,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The source of where to obtain the FX benchmark rate to use for fixing the rate.",
-      "display": "FXBenchmark",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Bloomberg",
@@ -2452,7 +2450,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "3073"
+      "FIX:tag": "3073",
+      "description": "The source of where to obtain the FX benchmark rate to use for fixing the rate.",
+      "display": "FXBenchmark"
     }
   },
   {
@@ -2463,9 +2463,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3074",
       "description": "The local date of the FX rate fixing. The time applicable on the fixing date is specified in FXBenchmarkTime(3075).",
-      "display": "FXBenchmarkDate",
-      "fix:tag": "3074"
+      "display": "FXBenchmarkDate"
     }
   },
   {
@@ -2476,9 +2476,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3075",
       "description": "The local time of the FX rate fixing. The date applicable for the fixing time is specified in FXBenchmarkDate(3074).",
-      "display": "FXBenchmarkTime",
-      "fix:tag": "3075"
+      "display": "FXBenchmarkTime"
     }
   },
   {
@@ -2488,9 +2488,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3076",
       "description": "A business center whose calendar is used for date/time adjustment. See https://www.fpml.org/coding-scheme/business-center to download the current (ISDA/FpML) standard 4-character code values for business center identification.",
-      "display": "FXBenchmarkBusinessCenter",
-      "fix:tag": "3076"
+      "display": "FXBenchmarkBusinessCenter"
     }
   },
   {
@@ -2500,9 +2500,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of business event related to an algo certification request.",
-      "display": "AlgoCertificateRequestType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "CertificateInformation",
@@ -2524,7 +2522,9 @@
           "doc": "Forward certificate"
         }
       ],
-      "fix:tag": "3077"
+      "FIX:tag": "3077",
+      "description": "Specifies the type of business event related to an algo certification request.",
+      "display": "AlgoCertificateRequestType"
     }
   },
   {
@@ -2534,9 +2534,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the type of business event related to an algo certification report.",
-      "display": "AlgoCertificateReportType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "CertificateInformation",
@@ -2553,7 +2551,9 @@
           "doc": "Certificate revoked"
         }
       ],
-      "fix:tag": "3078"
+      "FIX:tag": "3078",
+      "description": "Specifies the type of business event related to an algo certification report.",
+      "display": "AlgoCertificateReportType"
     }
   },
   {
@@ -2563,9 +2563,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3079",
       "description": "Unique identifier for the group of test scenarios constituting a test suite.",
-      "display": "TestScenarioGroupID",
-      "fix:tag": "3079"
+      "display": "TestScenarioGroupID"
     }
   },
   {
@@ -2577,9 +2577,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3080",
       "description": "Support Timestamp of last update to Algo System Module.",
-      "display": "AlgoSystemModuleLastUpdateTime",
-      "fix:tag": "3080"
+      "display": "AlgoSystemModuleLastUpdateTime"
     }
   },
   {
@@ -2591,9 +2591,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3081",
       "description": "Support Timestamp of last update to Algo Test System Module.",
-      "display": "TestSystemModuleLastUpdateTime",
-      "fix:tag": "3081"
+      "display": "TestSystemModuleLastUpdateTime"
     }
   },
   {
@@ -2603,9 +2603,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3082",
       "description": "Number of orders for testing.",
-      "display": "NoTestOrders",
-      "fix:tag": "3082"
+      "display": "NoTestOrders"
     }
   },
   {
@@ -2615,9 +2615,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3083",
       "description": "Identifier of a test order.",
-      "display": "TestOrderID",
-      "fix:tag": "3083"
+      "display": "TestOrderID"
     }
   },
   {
@@ -2627,9 +2627,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3084",
       "description": "Used for the security symbol of a test order. See Symbol(55) field for description.",
-      "display": "TestOrderSymbol",
-      "fix:tag": "3084"
+      "display": "TestOrderSymbol"
     }
   },
   {
@@ -2639,9 +2639,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3085",
       "description": "Used for the security identifier of a test order. See Security(48) field for description.",
-      "display": "TestOrderSecurityID",
-      "fix:tag": "3085"
+      "display": "TestOrderSecurityID"
     }
   },
   {
@@ -2651,9 +2651,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3086",
       "description": "Used for the source of the security identifier of a test order. See SecurityIDSource(22) field for description.",
-      "display": "TestOrderSecurityIDSource",
-      "fix:tag": "3086"
+      "display": "TestOrderSecurityIDSource"
     }
   },
   {
@@ -2665,9 +2665,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3087",
       "description": "Used for the price of a test order. See Price(44) field for description.",
-      "display": "TestOrderPrice",
-      "fix:tag": "3087"
+      "display": "TestOrderPrice"
     }
   },
   {
@@ -2677,9 +2677,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of price of TestOrderPrice(3087).",
-      "display": "TestOrderPriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Percentage",
@@ -2806,7 +2804,9 @@
           "doc": "Percentage of notional"
         }
       ],
-      "fix:tag": "3088"
+      "FIX:tag": "3088",
+      "description": "Type of price of TestOrderPrice(3087).",
+      "display": "TestOrderPriceType"
     }
   },
   {
@@ -2818,9 +2818,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3089",
       "description": "Used for the quantity of a test order. See OrderQty(80) field for description.",
-      "display": "TestOrderQty",
-      "fix:tag": "3089"
+      "display": "TestOrderQty"
     }
   },
   {
@@ -2830,9 +2830,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3090",
       "description": "Time unit multiplier for the effective time of an order relative to the starting time of a test scenario.",
-      "display": "TestOrderOffsetPeriod",
-      "fix:tag": "3090"
+      "display": "TestOrderOffsetPeriod"
     }
   },
   {
@@ -2842,9 +2842,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the effective time of an order relative to the starting time of a test scenario.",
-      "display": "TestOrderOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Seconds",
@@ -2906,7 +2904,9 @@
           "doc": "years"
         }
       ],
-      "fix:tag": "3091"
+      "FIX:tag": "3091",
+      "description": "Time unit associated with the effective time of an order relative to the starting time of a test scenario.",
+      "display": "TestOrderOffsetUnit"
     }
   },
   {
@@ -2916,9 +2916,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3092",
       "description": "Number of test gateway details.",
-      "display": "NoTestGatewayDetails",
-      "fix:tag": "3092"
+      "display": "NoTestGatewayDetails"
     }
   },
   {
@@ -2928,9 +2928,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3093",
       "description": "Name of test gateway information.",
-      "display": "TestGatewayDetailName",
-      "fix:tag": "3093"
+      "display": "TestGatewayDetailName"
     }
   },
   {
@@ -2940,9 +2940,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of test gateway information.",
-      "display": "TestGatewayDetailType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "MarketDataGatewayIPAddress",
@@ -2994,7 +2992,9 @@
           "doc": "Order entry gateway routing IP address"
         }
       ],
-      "fix:tag": "3094"
+      "FIX:tag": "3094",
+      "description": "Type of test gateway information.",
+      "display": "TestGatewayDetailType"
     }
   },
   {
@@ -3004,9 +3004,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3095",
       "description": "Value of test gateway information.",
-      "display": "TestGatewayDetailValue",
-      "fix:tag": "3095"
+      "display": "TestGatewayDetailValue"
     }
   },
   {
@@ -3016,9 +3016,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3096",
       "description": "Execution venue of test system.",
-      "display": "TestGatewayMarketID",
-      "fix:tag": "3096"
+      "display": "TestGatewayMarketID"
     }
   },
   {
@@ -3028,9 +3028,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3097",
       "description": "Identifies the behaviour or configuration that has been selected by the executing party for this order.",
-      "display": "AlgoTrialID",
-      "fix:tag": "3097"
+      "display": "AlgoTrialID"
     }
   },
   {
@@ -3040,9 +3040,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3098",
       "description": "Identifies the algorithm a broker has opted to use when executing an order.",
-      "display": "LastAlgoID",
-      "fix:tag": "3098"
+      "display": "LastAlgoID"
     }
   },
   {
@@ -3052,9 +3052,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "3099",
       "description": "Indicates number of trade attributes used to define a subgroup in an allocation group.",
-      "display": "NoIndividualAllocSubQtyAttributes",
-      "fix:tag": "3099"
+      "display": "NoIndividualAllocSubQtyAttributes"
     }
   }
 ]

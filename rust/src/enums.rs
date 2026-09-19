@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::family::DataTypeValue;
 use crate::invalid;
+use crate::value::DataTypeValue;
 use crate::{DataType, DataTypeId, DataTypeKind, Result};
 use smol_str::format_smolstr;
 
@@ -181,7 +181,7 @@ mod arrow {
     use arrow_schema::ffi::Flags;
 
     use super::{EnumType, validate_dictionary_key};
-    use crate::family::ArrowFfiParts;
+    use crate::value::ArrowFfiParts;
     use crate::{DataType, Result};
 
     impl EnumType {

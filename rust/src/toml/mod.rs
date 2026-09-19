@@ -55,10 +55,10 @@ pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar> {
 /// through [`from_bytes_with_field_and_limits`].
 ///
 /// ```
-/// use yggdryl::{DataType, Field, Scalar, from_toml_scalar_with_field};
+/// use yggdryl::{DataType, Field, Scalar, StructureType, from_toml_scalar_with_field};
 ///
 /// let amount = Field::new("amount", DataType::decimal128(10, 2)?, false);
-/// let field = Field::new("row", DataType::from_fields([amount])?, false);
+/// let field = Field::new("row", DataType::from(StructureType::from_fields([amount])?), false);
 /// let value = from_toml_scalar_with_field("amount = \"12.50\"\n", &field)?;
 /// assert_eq!(value, Scalar::from_sequence([Scalar::d128(1250, 2)]));
 /// # Ok::<(), yggdryl::Error>(())

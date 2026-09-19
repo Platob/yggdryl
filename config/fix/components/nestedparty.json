@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nestedpartyid",
-          "fix:tag": "524"
+          "FIX:field": "nestedpartyid",
+          "FIX:tag": "524"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nestedpartyidsource",
-          "fix:tag": "525"
+          "FIX:field": "nestedpartyidsource",
+          "FIX:tag": "525"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nestedpartyrole",
-          "fix:tag": "538"
+          "FIX:field": "nestedpartyrole",
+          "FIX:tag": "538"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nestedpartyrolequalifier",
-          "fix:tag": "2384"
+          "FIX:field": "nestedpartyrolequalifier",
+          "FIX:tag": "2384"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedpartysubids",
-          "fix:tag": "804"
+          "FIX:field": "nonestedpartysubids",
+          "FIX:tag": "804"
         }
       },
       {
@@ -65,14 +65,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "nstdptyssubgrp"
+          "FIX:group": "nstdptyssubgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "NestedParty",
-    "fix:tag": "218333"
+    "FIX:tag": "218333",
+    "display": "NestedParty"
   }
 }

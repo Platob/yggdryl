@@ -244,6 +244,7 @@ export type DataTypeId =
   | 'uuid'
   | 'version'
   | 'url'
+  | 'urn'
   | 'timezone'
   | 'mimetype'
   | 'mediatype'
@@ -266,9 +267,6 @@ export type DataTypeId =
   | 'geography'
   | 'sorted_map'
   | 'struct2'
-  | 'uuidv4'
-  | 'uuidv7'
-  | 'uuidv8'
   | 'large_binary_view'
   | 'sized_binary'
   | 'sized_utf8'
@@ -352,6 +350,7 @@ interface DataTypeKindById {
   uuid: 'uuid'
   version: 'text'
   url: 'text'
+  urn: 'text'
   timezone: 'text'
   mimetype: 'text'
   mediatype: 'text'
@@ -374,9 +373,6 @@ interface DataTypeKindById {
   geography: 'geospatial'
   sorted_map: 'nested'
   struct2: 'nested'
-  uuidv4: 'uuid'
-  uuidv7: 'uuid'
-  uuidv8: 'uuid'
   large_binary_view: 'bytes'
   sized_binary: 'bytes'
   sized_utf8: 'text'
@@ -616,7 +612,7 @@ declare module './index' {
      * The one walk over a whole stream of messages, lazily: sorted by
      * instant, each stated as the one after the live message it follows -
      * its `prevuuid`, `prevunix`, `seqnum`, the predecessor among its
-     * `parentuuids` and the chain's `creatunix` - and settled again.
+     * `parentuuids` and the chain's `creaunix` - and settled again.
      */
     lifecycle(messages: Iterable<FixMsg>): FixMessages
     /**
@@ -909,6 +905,7 @@ export type VersionField = FieldOf<'version', Version>
 
 /** One validated, canonical location. */
 export type UrlField = FieldOf<'url', string>
+export type UrnField = FieldOf<'urn', string>
 /** One canonical time zone name, a fixed offset, or the zone-free marker. */
 export type TimezoneField = FieldOf<'timezone', string>
 /** One validated, canonical MIME type. */
@@ -1137,6 +1134,7 @@ export interface FieldsNamespace {
   msghash(name: string, options?: FieldOptions): UuidField
   version(name: string, options?: FieldOptions): VersionField
   url(name: string, options?: FieldOptions): UrlField
+  urn(name: string, options?: FieldOptions): UrnField
   timezone(name: string, options?: FieldOptions): TimezoneField
   mimetype(name: string, options?: FieldOptions): MimeTypeField
   mediatype(name: string, options?: FieldOptions): MediaTypeField
@@ -2460,7 +2458,7 @@ export declare const enums: {
   readonly charsets: readonly Charset[]
   /** Every answer a handle gives about what it addresses, e.g. `'file'`. */
   readonly ioKinds: readonly string[]
-  /** Every Python form a `python:kind` declaration names, e.g. `'dataclass'`. */
+  /** Every Python form a `PYTHON:kind` declaration names, e.g. `'dataclass'`. */
   readonly pythonKinds: readonly string[]
   /** The compatibility targets `intoSchemeCompat` accepts, e.g. `'arrow'`. */
   readonly compatibilitySchemes: readonly CompatibilityScheme[]
@@ -3242,7 +3240,7 @@ export interface SchemaUpdate {
   dropColumn(path: string): SchemaUpdate
   /** Record a rename of the column at `path`; its identifier is kept. */
   renameColumn(path: string, name: string): SchemaUpdate
-  /** Record a new `iceberg:doc` documentation string on the column at `path`. */
+  /** Record a new `ICEBERG:doc` documentation string on the column at `path`. */
   updateDoc(path: string, doc: string): SchemaUpdate
   /** Record that the column at `path` becomes optional. */
   makeNullable(path: string): SchemaUpdate
@@ -3333,7 +3331,7 @@ export interface Fix {
    * FIX field definitions resolved by identifier, by tag, by name, or by
    * dotted path. One namespace: an identifier is the number `field.fix.id`
    * derives from a tag and a name, a bare number is a tag, and a
-   * dictionary's membership is `fix:branches` on the field it contributed
+   * dictionary's membership is `FIX:branches` on the field it contributed
    * to - provenance a caller filters on, never a lookup tier.
    */
   readonly FixRegistry: typeof FixRegistry
@@ -3360,7 +3358,7 @@ export interface Fix {
    *
    * Columns are spelled by the dictionary's folded canonical names, so
    * `schema.indexOf('msgtype')` is where the message type sits; the tag stays
-   * each column's identity, on its `fix:tag`, and is what fills it.
+   * each column's identity, on its `FIX:tag`, and is what fills it.
    */
   schema(registry?: FixRegistry | null, name?: string | null): Field
   /**
@@ -3372,7 +3370,7 @@ export interface Fix {
    * bridge's row header spells the session instance it handled a line on as
    * `senderSessionId` for that reason, so the value reaches the FIX column
    * rather than leading the row - never over a reading the message stated
-   * itself - and its `pluginid` capture reaches the crate's own column.
+   * itself - and its `msgpluginid` capture reaches the crate's own column.
    *
    * Each carried column is nullable whatever the capture declared it: a
    * capture's own column is the reading's statement and no message holds
@@ -3392,10 +3390,10 @@ export interface Fix {
    * and the sequence, the `identifiers` and `metadata` Map groups, the
    * state, the price, the quantity, the units and the lane currencies, the
    * instrument codes, what a bridge's capture states - `msgctxid`,
-   * `pluginid`, `msgsessionid` - the capture's own columns `sourceurl` and
-   * `recordedat`, which whoever read the line states on the row and no
-   * message holds, and the `nofixentries`
-   * counting the content record. Every registry holds them from
+   * `msgpluginid`, `msgsessionid` - the capture's own column `sourceurl`,
+   * which whoever read the line states on the row and no message holds,
+   * and the `nofixentries` counting the content record. Every registry
+   * holds them from
    * construction, beside the seeded `SendingTime` (52) and `TransactTime`
    * (60) clocks.
    */

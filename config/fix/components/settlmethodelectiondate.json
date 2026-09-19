@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlmethodelectiondateunadjusted",
-          "fix:tag": "42777"
+          "FIX:field": "settlmethodelectiondateunadjusted",
+          "FIX:tag": "42777"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlmethodelectiondatebusinessdayconvention",
-          "fix:tag": "42778"
+          "FIX:field": "settlmethodelectiondatebusinessdayconvention",
+          "FIX:tag": "42778"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosettlmethodelectiondatebusinesscenters",
-          "fix:tag": "42775"
+          "FIX:field": "nosettlmethodelectiondatebusinesscenters",
+          "FIX:tag": "42775"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "settlmethodelectiondatebusinesscentergrp"
+          "FIX:group": "settlmethodelectiondatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlmethodelectiondaterelativeto",
-          "fix:tag": "42779"
+          "FIX:field": "settlmethodelectiondaterelativeto",
+          "FIX:tag": "42779"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlmethodelectiondateoffsetperiod",
-          "fix:tag": "42780"
+          "FIX:field": "settlmethodelectiondateoffsetperiod",
+          "FIX:tag": "42780"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlmethodelectiondateoffsetunit",
-          "fix:tag": "42781"
+          "FIX:field": "settlmethodelectiondateoffsetunit",
+          "FIX:tag": "42781"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlmethodelectiondateoffsetdaytype",
-          "fix:tag": "42782"
+          "FIX:field": "settlmethodelectiondateoffsetdaytype",
+          "FIX:tag": "42782"
         }
       },
       {
@@ -97,16 +97,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlmethodelectiondateadjusted",
-          "fix:tag": "42783"
+          "FIX:field": "settlmethodelectiondateadjusted",
+          "FIX:tag": "42783"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "191135",
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to OptionExercise.",
-    "display": "SettlMethodElectionDate",
-    "fix:tag": "191135"
+    "display": "SettlMethodElectionDate"
   }
 }

@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "tradsesreqid",
-          "fix:tag": "335"
+          "FIX:field": "tradsesreqid",
+          "FIX:tag": "335"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid",
-          "fix:tag": "1301"
+          "FIX:field": "marketid",
+          "FIX:tag": "1301"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid",
-          "fix:tag": "1300"
+          "FIX:field": "marketsegmentid",
+          "FIX:tag": "1300"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "venuetype",
-          "fix:tag": "1430"
+          "FIX:field": "venuetype",
+          "FIX:tag": "1430"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionid",
-          "fix:tag": "336"
+          "FIX:field": "tradingsessionid",
+          "FIX:tag": "336"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionsubid",
-          "fix:tag": "625"
+          "FIX:field": "tradingsessionsubid",
+          "FIX:tag": "625"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesmethod",
-          "fix:tag": "338"
+          "FIX:field": "tradsesmethod",
+          "FIX:tag": "338"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradsesmode",
-          "fix:tag": "339"
+          "FIX:field": "tradsesmode",
+          "FIX:tag": "339"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingsessionenvironment",
-          "fix:tag": "3139"
+          "FIX:field": "tradingsessionenvironment",
+          "FIX:tag": "3139"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "notradingservices",
-          "fix:tag": "3134"
+          "FIX:field": "notradingservices",
+          "FIX:tag": "3134"
         }
       },
       {
@@ -130,7 +130,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "tradingservicegrp"
+          "FIX:group": "tradingservicegrp"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "subscriptionrequesttype",
-          "fix:tag": "263"
+          "FIX:field": "subscriptionrequesttype",
+          "FIX:tag": "263"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "securityexchange",
-          "fix:tag": "207"
+          "FIX:field": "securityexchange",
+          "FIX:tag": "207"
         }
       },
       {
@@ -162,16 +162,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "g",
+    "FIX:tag": "1065670",
     "description": "MsgType = g (lowercase G)",
-    "display": "TradingSessionStatusRequest",
-    "fix:msgtype": "g",
-    "fix:tag": "1065670"
+    "display": "TradingSessionStatusRequest"
   }
 }

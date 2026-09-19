@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprotectiontermeventqualifier",
-          "fix:tag": "42086"
+          "FIX:field": "underlyingprotectiontermeventqualifier",
+          "FIX:tag": "42086"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingProtectionTermEventQualifier",
-    "fix:tag": "652894"
+    "FIX:tag": "652894",
+    "display": "UnderlyingProtectionTermEventQualifier"
   }
 }

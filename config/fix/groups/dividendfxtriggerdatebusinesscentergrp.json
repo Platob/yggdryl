@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "dividendfxtriggerdatebusinesscentercomponent"
+        "FIX:component": "dividendfxtriggerdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "dividendfxtriggerdatebusinesscentercomponent",
+    "FIX:counter": "42272",
+    "FIX:tag": "147672",
     "description": "Required if NoDividendFXTriggerDateBusinessCenters(42272) > 0.",
-    "display": "DividendFXTriggerDateBusinessCenterGrp",
-    "fix:component": "dividendfxtriggerdatebusinesscentercomponent",
-    "fix:counter": "42272",
-    "fix:tag": "147672"
+    "display": "DividendFXTriggerDateBusinessCenterGrp"
   }
 }

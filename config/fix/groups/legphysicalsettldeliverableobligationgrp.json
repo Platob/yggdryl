@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legphysicalsettldeliverableobligation"
+        "FIX:component": "legphysicalsettldeliverableobligation"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legphysicalsettldeliverableobligation",
+    "FIX:counter": "41604",
+    "FIX:tag": "201235",
     "description": "Required if NoLegPhysicalSettlDeliverableObligations(41604) > 0.",
-    "display": "LegPhysicalSettlDeliverableObligationGrp",
-    "fix:component": "legphysicalsettldeliverableobligation",
-    "fix:counter": "41604",
-    "fix:tag": "201235"
+    "display": "LegPhysicalSettlDeliverableObligationGrp"
   }
 }

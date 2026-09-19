@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopricemovementvalues",
-          "fix:tag": "1920"
+          "FIX:field": "nopricemovementvalues",
+          "FIX:tag": "1920"
         }
       },
       {
@@ -21,7 +21,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "pricemovementvaluegrp"
+          "FIX:group": "pricemovementvaluegrp"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noclearingaccounttypes",
-          "fix:tag": "1918"
+          "FIX:field": "noclearingaccounttypes",
+          "FIX:tag": "1918"
         }
       },
       {
@@ -42,14 +42,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "clearingaccounttypegrp"
+          "FIX:group": "clearingaccounttypegrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PriceMovement",
-    "fix:tag": "613015"
+    "FIX:tag": "613015",
+    "display": "PriceMovement"
   }
 }

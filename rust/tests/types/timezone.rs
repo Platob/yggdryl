@@ -9,7 +9,8 @@ use yggdryl::DataType;
 use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
-    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Timezone, TimezoneField,
+    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StructureType,
+    Timezone, TimezoneField,
 };
 
 fn zone(text: &str) -> Scalar {
@@ -17,7 +18,8 @@ fn zone(text: &str) -> Scalar {
 }
 
 fn root(field: Field) -> Field {
-    DataType::from_fields([field])
+    StructureType::from_fields([field])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
 }

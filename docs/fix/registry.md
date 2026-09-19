@@ -7,27 +7,27 @@
 | Category | Native definition | Identity |
 | --- | --- | --- |
 | `fields` | Tagged scalar `Field`; group counters are `int32` | The tag and the folded name together; the id is derived from the pair on every read, never stored |
-| `components` | Named Struct `Field`; one carrying `fix:msgtype` is a message - non-null, owned by an immutable `MsgType` singleton, borrowed through `msgtype` | Folded name; `fix:msgtype` carries the complete wire code |
-| `groups` | Named List/LargeList of a non-null Struct occurrence, or Map with a non-null entries Struct | Folded name; a List/LargeList names its separate scalar counter, while a crate Map uses its own tag as `fix:counter` |
+| `components` | Named Struct `Field`; one carrying `FIX:msgtype` is a message - non-null, owned by an immutable `MsgType` singleton, borrowed through `msgtype` | Folded name; `FIX:msgtype` carries the complete wire code |
+| `groups` | Named List/LargeList of a non-null Struct occurrence, or Map with a non-null entries Struct | Folded name; a List/LargeList names its separate scalar counter, while a crate Map uses its own tag as `FIX:counter` |
 
 | Aspect | Rule |
 | --- | --- |
-| Enums | Each scalar field carries its own canonical `fix:codes` metadata, every version's values included: a code an older version declared and the newest dropped is a code of the set like any other, and an older spelling of a surviving code is one of its aliases. The list order is the specification's own rank |
-| History | The dictionary holds one reading of each tag; a spelling an earlier version used is written beside it in the field's `fix:names`, and a field FIX retired is still in the dictionary under its own tag |
-| Replacements | A field FIX retired or whose values it replaced carries `fix:replacements`: how a [parse](message.md#restated-under-the-dictionary) restates a message under the dictionary, and `fix:deprecated` marks the field FIX Latest removed, whose value is restated and then nulled; Rust holds no rule table, so a registry edit is a rule edit |
-| Directions | Tag 385's field may carry `fix:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
-| Identifiers | `fix:identifiers` declares a component's direct scalar identifiers, resolved to canonical member names in component order; a `MsgType` compiles their selection once |
-| Definition tags | Components and List/LargeList groups carry a `fix:tag` derived from their name into `[100000, 1100000)`; a reference occurrence never restates it. A crate Map group instead has one reserved tag, also its counter, with no scalar counterpart |
+| Enums | Each scalar field carries its own canonical `FIX:codes` metadata, every version's values included: a code an older version declared and the newest dropped is a code of the set like any other, and an older spelling of a surviving code is one of its aliases. The list order is the specification's own rank |
+| History | The dictionary holds one reading of each tag; a spelling an earlier version used is written beside it in the field's `FIX:names`, and a field FIX retired is still in the dictionary under its own tag |
+| Replacements | A field FIX retired or whose values it replaced carries `FIX:replacements`: how a [parse](message.md#restated-under-the-dictionary) restates a message under the dictionary, and `FIX:deprecated` marks the field FIX Latest removed, whose value is restated and then nulled; Rust holds no rule table, so a registry edit is a rule edit |
+| Directions | Tag 385's field may carry `FIX:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
+| Identifiers | `FIX:identifiers` declares a component's direct scalar identifiers, resolved to canonical member names in component order; a `MsgType` compiles their selection once |
+| Definition tags | Components and List/LargeList groups carry a `FIX:tag` derived from their name into `[100000, 1100000)`; a reference occurrence never restates it. A crate Map group instead has one reserved tag, also its counter, with no scalar counterpart |
 | Doors | one family, and every category answers it: `field_by_tag`, `field_by_name`, `field_by_id`, `field_by_path`, `field_by_counter` and the generic `field`, each with its `get_` twin; `insert` files a Struct as a component, a List/LargeList of a Struct or a Map as a group, anything else as a scalar, and `update`, `add_field`, `merge_with` and `remove` take any of the three |
-| References | `fix:field`, `fix:component`, and `fix:group` resolve once at catalog intake; live definitions hold resolved native fields |
+| References | `FIX:field`, `FIX:component`, and `FIX:group` resolve once at catalog intake; live definitions hold resolved native fields |
 | Planning | Message identity, contextual counter lookup, group layouts and identifier selection are compiled before parsing rows |
 | Mutation | A refusal leaves every category and index unchanged; metadata edits refresh referenced occurrences atomically |
 | Identity spelling | A case-only replacement preserves the stored canonical name; an identity or referenced datatype change is refused |
-| Membership | `fix:branches` lists the dialects that contributed a field - provenance a caller filters on; no lookup consults it, and a message root the codec builds carries none |
+| Membership | `FIX:branches` lists the dialects that contributed a field - provenance a caller filters on; no lookup consults it, and a message root the codec builds carries none |
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the three categories - `{fields, components, groups}` and no other key - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 20 definitions from tag 65003: 18 scalar fields and the sorted Map groups `identifiers(65020)` and `metadata(65049)`. `new()` registers every one, beside its own `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 20 fields and two groups and its `len()` is 22. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 19 definitions from tag 65003: 17 scalar fields and the sorted Map groups `identifiers(65020)` and `metadata(65049)`. `new()` registers every one, beside its own `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 19 fields and two groups and its `len()` is 21. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
 | Standard clocks | `new()` also seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields the [message clocks](capture.md#every-message-is-dated) are typed by, so an empty registry holds 20 scalar fields beside its two Map groups - 22 definitions; a loaded dictionary defining either supplies its own, which must keep that layout, and removing or overriding them stays an ordinary mutation |
 
 ## Use
@@ -37,7 +37,7 @@
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixRegistry, FieldPath};
+    use yggdryl::{DataType, FixRegistry, FieldPath, StructureType};
 
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
     counter.as_fix_mut().set_tag(453)?;
@@ -49,7 +49,7 @@
     // one a group, and a scalar a field.
     let mut member = registry.field(448)?.clone();
     member.as_fix_mut().set_field_ref("PartyID")?;
-    let party = DataType::from_fields([member])?.required_field("Party");
+    let party = DataType::from(StructureType::from_fields([member])?).required_field("Party");
     registry.insert(party.clone())?;
     let mut parties = DataType::list(party).nullable_field("Parties");
     parties.as_fix_mut().set_counter(453)?;
@@ -60,7 +60,7 @@
     group.as_fix_mut().set_group("Parties")?;
     let mut count = registry.field(453)?.clone();
     count.as_fix_mut().set_field_ref("NoPartyIDs")?;
-    let mut order = DataType::from_fields([count, group])?.required_field("Order");
+    let mut order = DataType::from(StructureType::from_fields([count, group])?).required_field("Order");
     order.as_fix_mut().set_msgtype("D")?;
     registry.insert(order)?;
 
@@ -162,24 +162,24 @@ The generator preserves official group names, including `Grp` suffixes. It deriv
 
 ## Component identifiers
 
-`fix:identifiers` names only a component's direct scalar members, including a message or a group's occurrence component; the setter accepts names, aliases and decimal tags, then stores canonical names in member order. `MsgType::identifier_values` reads that compiled selection from a message, returning declaration fields beside the values the message's content row holds, skipping absent or null members and never descending into groups; a [parse](capture.md#a-messages-direct-identifiers-fill-one-map) writes them into the message's `identifiers` Map.
+`FIX:identifiers` names only a component's direct scalar members, including a message or a group's occurrence component; the setter accepts names, aliases and decimal tags, then stores canonical names in member order. `MsgType::identifier_values` reads that compiled selection from a message, returning declaration fields beside the values the message's content row holds, skipping absent or null members and never descending into groups; a [parse](capture.md#a-messages-direct-identifiers-fill-one-map) writes them into the message's `identifiers` Map.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
+    use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructureType};
 
     let mut client = DataType::utf8().nullable_field("clordid");
     client.as_fix_mut().set_tag(11)?;
     client.as_fix_mut().set_names(["ClientOrder"])?;
     let mut server = DataType::utf8().nullable_field("orderid");
     server.as_fix_mut().set_tag(37)?;
-    let mut order = DataType::from_fields([client.clone(), server.clone()])?.required_field("order");
+    let mut order = DataType::from(StructureType::from_fields([client.clone(), server.clone()])?).required_field("order");
     order.as_fix_mut().set_msgtype("D")?;
     order.as_fix_mut().set_identifiers(["37", "ClientOrder"])?;
     assert_eq!(order.as_fix().identifiers().collect::<Vec<_>>(), ["clordid", "orderid"]);
-    assert_eq!(order.get_metadata("fix:identifiers"), Some("clordid,orderid"));
+    assert_eq!(order.get_metadata("FIX:identifiers"), Some("clordid,orderid"));
     let before = order.clone();
     assert!(order.as_fix_mut().set_identifiers(["clordid", "11"]).is_err());
     assert_eq!(order, before);
@@ -188,7 +188,7 @@ The generator preserves official group names, including `Grp` suffixes. It deriv
     registry.insert(order)?;
     let registry = Arc::new(registry);
     // The row is reordered; the result still follows declaration order.
-    let row = DataType::from_fields([server, client])?.required_field("row");
+    let row = DataType::from(StructureType::from_fields([server, client])?).required_field("row");
     let message = FixMsg::with_registry(
         Arc::clone(&registry), row,
         Scalar::from_sequence([Scalar::from("O-1"), Scalar::from("C-1")]),
@@ -218,9 +218,9 @@ The generator preserves official group names, including `Grp` suffixes. It deriv
     order.fix.msgtype = "D"
     order.fix.identifiers = ["37", "ClientOrder"]
     assert order.fix.identifiers == ["clordid", "orderid"]
-    assert order.metadata["fix:identifiers"] == "clordid,orderid"
+    assert order.metadata["FIX:identifiers"] == "clordid,orderid"
     before = order.into_json()
-    with pytest.raises(ValueError, match="fix:identifiers"):
+    with pytest.raises(ValueError, match="FIX:identifiers"):
         order.fix.identifiers = ["clordid", "11"]
     assert order.into_json() == before
 
@@ -250,9 +250,9 @@ The generator preserves official group names, including `Grp` suffixes. It deriv
     order.fix.msgtype = 'D'
     order.fix.identifiers = ['37', 'ClientOrder']
     assert.deepEqual(order.fix.identifiers, ['clordid', 'orderid'])
-    assert.equal(order.get('fix:identifiers'), 'clordid,orderid')
+    assert.equal(order.get('FIX:identifiers'), 'clordid,orderid')
     const before = order.toJSON()
-    assert.throws(() => { order.fix.identifiers = ['clordid', '11'] }, /fix:identifiers/)
+    assert.throws(() => { order.fix.identifiers = ['clordid', '11'] }, /FIX:identifiers/)
     assert.deepEqual(order.toJSON(), before)
 
     const registry = new fix.FixRegistry()
@@ -332,7 +332,7 @@ Names and aliases use separate indexes; a stored name is rechecked after hashing
     assert spelled.fix.id == held
     assert registry.field_by_id(held).name == "MsgType"
     # Exact: another name on the held tag is another id, and misses.
-    assert registry.get_field_by_id(Field("MsgSeqNum", "utf8", metadata={"fix:tag": "35"}).fix.id) is None
+    assert registry.get_field_by_id(Field("MsgSeqNum", "utf8", metadata={"FIX:tag": "35"}).fix.id) is None
     assert registry.get_field(held) is None, "a bare integer is a tag"
     assert Field("MsgType", "utf8").fix.id is None
     ```
@@ -490,7 +490,7 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
 
 ### Membership
 
-A dictionary is a membership, not a namespace: what it contributed is recorded on the field it contributed to, as `fix:branches` - a comma-separated list of dialect names, each held to the membership grammar (non-empty, no comma), folded to ASCII lowercase, deduplicated under the fold and kept sorted, so two registries built from the same dictionaries in any order hash alike. An empty list removes the key, which is what every field the specification alone defines states: the shipped `config/fix` carries none. Membership is provenance a caller filters on; resolution never consults it, and a message root the codec builds carries none.
+A dictionary is a membership, not a namespace: what it contributed is recorded on the field it contributed to, as `FIX:branches` - a comma-separated list of dialect names, each held to the membership grammar (non-empty, no comma), folded to ASCII lowercase, deduplicated under the fold and kept sorted, so two registries built from the same dictionaries in any order hash alike. An empty list removes the key, which is what every field the specification alone defines states: the shipped `config/fix` carries none. Membership is provenance a caller filters on; resolution never consults it, and a message root the codec builds carries none.
 
 | Rust | Python | JavaScript | Answer |
 | --- | --- | --- | --- |
@@ -608,7 +608,7 @@ Python registries are mutable and unhashable; `stable_hash()` explicitly compute
 
 ## A field carries its code set
 
-A scalar's enum vocabulary remains inline in `fix:codes`, with required `value` and `name`, plus optional aliases, documentation, and grouping. The list is the vocabulary in the rank the specification gives it, so where a code sits *is* its presentation rank. Typed borrowed code lookups and `FixCode` construction are Rust-only; both bindings preserve the same metadata through native validation and snapshots.
+A scalar's enum vocabulary remains inline in `FIX:codes`, with required `value` and `name`, plus optional aliases, documentation, and grouping. The list is the vocabulary in the rank the specification gives it, so where a code sits *is* its presentation rank. Typed borrowed code lookups and `FixCode` construction are Rust-only; both bindings preserve the same metadata through native validation and snapshots.
 
 === "Rust"
 
@@ -633,9 +633,9 @@ A scalar's enum vocabulary remains inline in `fix:codes`, with required `value` 
 
     side = Field("Side", "utf8")
     side.fix.tag = 54
-    side.metadata["fix:codes"] = '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
+    side.metadata["FIX:codes"] = '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
     registry = FixRegistry.from_fields([side])
-    assert '"name":"Buy"' in registry.field(54).metadata["fix:codes"]
+    assert '"name":"Buy"' in registry.field(54).metadata["FIX:codes"]
     assert FixRegistry.from_json(registry.into_json()) == registry
     ```
 
@@ -647,9 +647,9 @@ A scalar's enum vocabulary remains inline in `fix:codes`, with required `value` 
 
     const side = Field.from('Side: utf8')
     side.fix.tag = 54
-    side.set('fix:codes', '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]')
+    side.set('FIX:codes', '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]')
     const registry = fix.FixRegistry.fromFields([side])
-    assert.match(registry.field(54).get('fix:codes'), /"name":"Buy"/)
+    assert.match(registry.field(54).get('FIX:codes'), /"name":"Buy"/)
     assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
     ```
 
@@ -714,9 +714,9 @@ thirty-four more - so `field_by_tag` answers for it, because a capture holds
 what was sent.
 
 How a retired field or value is restated travels on the field it is about:
-[`fix:replacements`](#a-field-carries-what-replaced-it) says which field takes
+[`FIX:replacements`](#a-field-carries-what-replaced-it) says which field takes
 what, and a [code set](#a-field-carries-its-code-set) states one reading of
-every value it declares. `fix:deprecated` is the other half of that fact: it
+every value it declares. `FIX:deprecated` is the other half of that fact: it
 names the version at which FIX removed the field, and a
 [parse](message.md#restated-under-the-dictionary) then restates such a field's
 value under what replaced it and leaves the source null, so the row holds the
@@ -724,7 +724,7 @@ fact once under its latest name while the entries keep the pair as it arrived.
 The shipped dictionary marks 56 fields that way, `MaxFloor(111)` and
 `MaxShow(210)` among them.
 
-`fix:nulls` holds the field's explicit wire spellings for absence. These
+`FIX:nulls` holds the field's explicit wire spellings for absence. These
 metadata documents remain on the field and round-trip through both bindings.
 
 === "Rust"
@@ -749,13 +749,13 @@ metadata documents remain on the field and round-trip through both bindings.
     assert_eq!(registry.field_by_tag(55)?.as_fix().deprecated(), None);
     ```
 
-### `fix:nulls`, the spellings that mean nothing was sent
+### `FIX:nulls`, the spellings that mean nothing was sent
 
-`fix:nulls` is comma-separated, matched case-insensitively against trimmed input after the field is resolved. A matched spelling becomes null in the typed row while arrival entries retain the original bytes; `FixCodec::with_null_values` is the capture-wide counterpart applied before field lookup.
+`FIX:nulls` is comma-separated, matched case-insensitively against trimmed input after the field is resolved. A matched spelling becomes null in the typed row while arrival entries retain the original bytes; `FixCodec::with_null_values` is the capture-wide counterpart applied before field lookup.
 
 ## A field carries what replaced it
 
-The specification retires a field or a value and says what stands in for it: `Rule80A(47)` became `OrderCapacity(528)` beside `OrderRestrictions(529)`, the partial-fill values of `ExecType(150)` folded into `Trade`, `ExecBroker(76)` became one `Parties` occurrence with role `1`. Those rules are facts about the field being restated, so they travel on it as `fix:replacements`: one canonical document, read borrowed, that a [parse](message.md#restated-under-the-dictionary) applies as it builds the message. A registry adds or edits a rule by editing metadata; nothing in Rust holds a table of them.
+The specification retires a field or a value and says what stands in for it: `Rule80A(47)` became `OrderCapacity(528)` beside `OrderRestrictions(529)`, the partial-fill values of `ExecType(150)` folded into `Trade`, `ExecBroker(76)` became one `Parties` occurrence with role `1`. Those rules are facts about the field being restated, so they travel on it as `FIX:replacements`: one canonical document, read borrowed, that a [parse](message.md#restated-under-the-dictionary) applies as it builds the message. A registry adds or edits a rule by editing metadata; nothing in Rust holds a table of them.
 
 Entries are in **document order**, and the order is semantic: the first entry whose condition a message meets answers, so a catch-all entry stating no condition comes last.
 
@@ -768,7 +768,7 @@ Entries are in **document order**, and the order is semantic: the first entry wh
 | `plan` | yes | expression text | one [plan](../expression/grammar.md) of the crate's own grammar: its `select` names the columns the rule fills and the term each takes, its `where` is the condition the message must meet; a plan naming no column is refused |
 | `doc` | no | text | the specification's wording, where the mapping is not the plain "same value in the replacement field" |
 
-One rule is one plan, and the plan's vocabulary is the whole of what a rule can say - the same grammar [`fix:derivation`](#a-field-carries-how-it-is-derived) spells a derived column in, with a target list and a condition:
+One rule is one plan, and the plan's vocabulary is the whole of what a rule can say - the same grammar [`FIX:derivation`](#a-field-carries-how-it-is-derived) spells a derived column in, with a target list and a condition:
 
 | The rule says | Spelled as | Meaning |
 | --- | --- | --- |
@@ -787,7 +787,7 @@ How one entry is applied at one level - the root, or one occurrence of a repeati
 
 | Step | Rule |
 | --- | --- |
-| Source | each child whose field carries `fix:replacements`, in ascending tag order, so `ExecTransType(20)` writes `ExecType(150)` before `ExecType`'s own rule reads it |
+| Source | each child whose field carries `FIX:replacements`, in ascending tag order, so `ExecTransType(20)` writes `ExecType(150)` before `ExecType`'s own rule reads it |
 | Match | the first entry whose `where` holds over the level, with `:msgtype` and `:group` supplied; a condition the level cannot bind does not hold |
 | Plan | every projection evaluated over the level, its value re-typed for the target's field; a value the target cannot hold, or a term that answers null, ends the entry |
 | Check | every target writable: absent, null, or already equal to what would be written; the source field itself is always writable, and a constant written over a multi-valued source replaces the token the condition named |
@@ -796,7 +796,7 @@ How one entry is applied at one level - the root, or one occurrence of a repeati
 
 ### Configuring a rule
 
-A rule is metadata on the field, so it is configured the way any field fact is: edit the field, `update` the registry, and every reader linked to that registry restates by it. The typed builder - `FixReplacement`, over a `Plan` - and the borrowed read, `replacements()`, are Rust only; Python and JavaScript write the canonical text on the `fix:replacements` key. An empty list, or `remove_replacements`, takes the rules away from the field in hand; through `update` the incoming document replaces the stored one whole, because two documents have no order between them, and a stored document the incoming field does not state is kept, as every other protocol key is. So a rule is replaced through `update` by writing the document that should stand, and silenced by a registry built without it - never by omitting the key.
+A rule is metadata on the field, so it is configured the way any field fact is: edit the field, `update` the registry, and every reader linked to that registry restates by it. The typed builder - `FixReplacement`, over a `Plan` - and the borrowed read, `replacements()`, are Rust only; Python and JavaScript write the canonical text on the `FIX:replacements` key. An empty list, or `remove_replacements`, takes the rules away from the field in hand; through `update` the incoming document replaces the stored one whole, because two documents have no order between them, and a stored document the incoming field does not state is kept, as every other protocol key is. So a rule is replaced through `update` by writing the document that should stand, and silenced by a registry built without it - never by omitting the key.
 
 The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows its 4.2 counterparty meant a principal one edits the field, and nothing else:
 
@@ -818,7 +818,7 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
         .with_doc("Rule80A A on this venue was a principal order")])?;
     // The builder writes the one canonical text the reader reads back.
     assert_eq!(
-        rule80a.get_metadata("fix:replacements"),
+        rule80a.get_metadata("FIX:replacements"),
         Some(concat!(
             r#"[{"plan":"select 'P' as ordercapacity where rule80a = 'A'","#,
             r#""doc":"Rule80A A on this venue was a principal order"}]"#,
@@ -847,11 +847,11 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
 
     rule80a = registry.field_by_tag(47)
-    rule80a.metadata["fix:replacements"] = (
+    rule80a.metadata["FIX:replacements"] = (
         '[{"plan":"select \'P\' as ordercapacity where rule80a = \'A\'"}]'
     )
     registry.update(rule80a)
-    assert "'P' as ordercapacity" in registry.field_by_tag(47).metadata["fix:replacements"]
+    assert "'P' as ordercapacity" in registry.field_by_tag(47).metadata["FIX:replacements"]
 
     # Every reader linked to the registry restates by the edited rule.
     reader = FixCodec(registry)
@@ -871,11 +871,11 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
 
     const rule80a = registry.fieldByTag(47)
     rule80a.set(
-      'fix:replacements',
+      'FIX:replacements',
       '[{"plan":"select \'P\' as ordercapacity where rule80a = \'A\'"}]',
     )
     registry.update(rule80a)
-    assert.match(registry.fieldByTag(47).get('fix:replacements'), /'P' as ordercapacity/)
+    assert.match(registry.fieldByTag(47).get('FIX:replacements'), /'P' as ordercapacity/)
 
     // Every reader linked to the registry restates by the edited rule.
     const reader = new fix.FixCodec(registry)
@@ -923,7 +923,7 @@ Deliberately not covered, because the appendix states no value mapping a rule ca
 
 ## A field carries how it is derived
 
-A message implies values it need not carry: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a `SecurityID` a check digit closes has said what standard numbered it, a CFI has said what security type it is. Those are facts about the field being filled, so they travel on it as `fix:derivation`: one term of the [expression grammar](../expression/grammar.md) over the message's fields, in its canonical text, that a [parse](capture.md#what-a-message-implied-is-filled-in) evaluates where the message states no value for the field. A registry adds or edits a derivation by editing the field; nothing in Rust holds a table of them, and no column of this crate's derives at all - what a message says about its market is FIX's own field, and the market traits read it there.
+A message implies values it need not carry: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a `SecurityID` a check digit closes has said what standard numbered it, a CFI has said what security type it is. Those are facts about the field being filled, so they travel on it as `FIX:derivation`: one term of the [expression grammar](../expression/grammar.md) over the message's fields, in its canonical text, that a [parse](capture.md#what-a-message-implied-is-filled-in) evaluates where the message states no value for the field. A registry adds or edits a derivation by editing the field; nothing in Rust holds a table of them, and no column of this crate's derives at all - what a message says about its market is FIX's own field, and the market traits read it there.
 
 ```text
 case when msgtype in ('8', '9') and ordstatus in ('2', '3', '4', '8', 'C') then 0 when msgtype in ('8', '9') and ordstatus in ('0', '1', '6', 'E', '5', '7', '9') and orderqty - cumqty >= 0 then orderqty - cumqty end
@@ -931,10 +931,10 @@ case when msgtype in ('8', '9') and ordstatus in ('2', '3', '4', '8', 'C') then 
 
 | Contract | Rule |
 | --- | --- |
-| Key | `fix:derivation`, the canonical text of one term, read with `FixField::derivation() -> Result<Option<Term>>` (parsed through `Term::from_str`, then budget-checked; a text that is not a term is `InvalidMetadataValue` naming the key) and written with `FixFieldMut::set_derivation(&Term)` / `remove_derivation()`; Python `field.fix.derivation` and JavaScript `field.fix.derivation` cross it as text, `None` / `null` removing it |
+| Key | `FIX:derivation`, the canonical text of one term, read with `FixField::derivation() -> Result<Option<Term>>` (parsed through `Term::from_str`, then budget-checked; a text that is not a term is `InvalidMetadataValue` naming the key) and written with `FixFieldMut::set_derivation(&Term)` / `remove_derivation()`; Python `field.fix.derivation` and JavaScript `field.fix.derivation` cross it as text, `None` / `null` removing it |
 | Names | a field by its canonical folded name and a group by its name with a path into it - `secaltidgrp[securityaltidsource = '4'][0].securityaltid`; an alias is not resolved, because the pass reads the restated row, whose children are canonical |
 | Validated | at insert, update and load alike, the registry parses the text and checks the grammar's depth and node budget, refusing a malformed one by the field's name; whether every name is a field or a group of the registry, and whether the term binds against those fields, is proven once when the derivations compile - on the first parse or row fill - refusing by the field's name and reading no message for it; the refusal is kept exactly as a compiled list is, so a registry whose derivations refuse compiles once and refuses every ask, on every door, until a field changes |
-| Merge | `update` merges: an incoming derivation replaces the stored one whole, and a stored one the incoming field omits is kept, as every `fix:` key is; a derivation is taken away by `remove_derivation` on the field before an `insert`, which replaces the same identity whole, or by a registry built without it |
+| Merge | `update` merges: an incoming derivation replaces the stored one whole, and a stored one the incoming field omits is kept, as every `FIX:` key is; a derivation is taken away by `remove_derivation` on the field before an `insert`, which replaces the same identity whole, or by a registry built without it |
 | Evaluated | to a fixpoint, in tag order, a stated non-null value never overwritten, an absent input null, a refused value silence - the [parse's contract](capture.md#what-a-message-implied-is-filled-in) |
 | Typed | the answer lands through the dictionary's own field for the tag, so `then 0` on a `decimal128(38, 18)` field is that decimal zero, `then '2'` on a `state` field is the state `2` spells, and a prefix `CountryOfIssue`'s `in (...)` does not list - `XS`, `EU`, an unassigned pair - is refused by nothing but the term's own condition, because the `country` datatype validates width alone |
 
@@ -949,7 +949,7 @@ A derivation is metadata on the field, so it is configured the way any field fac
 
     use yggdryl::expression::Term;
     use yggdryl::local::Folder;
-    use yggdryl::{Decimal, FixCodec, FixRegistry, Scalar};
+    use yggdryl::{Decimal18, FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let mut registry = FixRegistry::from_handle(&Folder::new(root)?)?;
@@ -962,7 +962,7 @@ A derivation is metadata on the field, so it is configured the way any field fac
     )?;
     // The field stores the canonical text, whatever spelling was parsed.
     assert_eq!(
-        leaves.get_metadata("fix:derivation"),
+        leaves.get_metadata("FIX:derivation"),
         Some("case when msgtype in ('8', '9') then (orderqty - cumqty) / 10 end"),
     );
     registry.update(leaves)?;
@@ -971,7 +971,7 @@ A derivation is metadata on the field, so it is configured the way any field fac
     let reader = FixCodec::new(Arc::new(registry));
     let filled = reader.parse_line(b"8=FIX.4.4|35=8|37=A|39=0|38=100|14=20|10=0|")?.next().expect("one frame")?;
     // A quantity is exact, so the remainder reads back as the number it is.
-    assert_eq!(filled.by_tag(151)?, Scalar::from(Decimal::parse("8")?));
+    assert_eq!(filled.by_tag(151)?, Scalar::from(Decimal18::parse("8")?));
     ```
 
 === "Python"
@@ -1034,7 +1034,7 @@ digits, and a sum states a float operand at the exact scale it is added to.
 is a rule that answers nothing, which is what every uncertain rule does,
 rather than a refusal that would fail the message.
 
-| Fills | `fix:derivation` |
+| Fills | `FIX:derivation` |
 | --- | --- |
 | `AvgPx(6)` | `case when msgtype in ('8', '9') and cumqty = lastqty and lastqty > 0 then lastpx end` |
 | `CumQty(14)` | `case when msgtype in ('8', '9') and orderqty - leavesqty >= 0 then orderqty - leavesqty end` |
@@ -1074,13 +1074,13 @@ Deliberately not derived, because the answer would be a guess: no amount whose s
 
 | Metadata | Merge rule |
 | --- | --- |
-| `fix:tag` | Must agree; identity is not merged |
-| `fix:branches` | Union, folded, sorted: every dictionary that contributed either side |
-| `fix:tags` | Combine alternate tags under collision validation |
-| `fix:codes` | Merge by wire value, incoming code winning a shared value |
-| `fix:replacements` | Incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
-| `fix:directions` | Incoming wins whole: a rule table is one statement, and two tables have no order between them |
-| `fix:identifiers` | Incoming wins whole, then resolves against the final component's members into their canonical order; an omitted key preserves the stored declaration |
+| `FIX:tag` | Must agree; identity is not merged |
+| `FIX:branches` | Union, folded, sorted: every dictionary that contributed either side |
+| `FIX:tags` | Combine alternate tags under collision validation |
+| `FIX:codes` | Merge by wire value, incoming code winning a shared value |
+| `FIX:replacements` | Incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
+| `FIX:directions` | Incoming wins whole: a rule table is one statement, and two tables have no order between them |
+| `FIX:identifiers` | Incoming wins whole, then resolves against the final component's members into their canonical order; an omitted key preserves the stored declaration |
 | Other protocol keys | Incoming wins; preserve keys only the stored field declares |
 | Generic description, display, comment, aliases | The generic metadata merge accompanies the protocol merge |
 
@@ -1088,13 +1088,13 @@ Deliberately not derived, because the answer would be a guess: no amount whose s
 
 ## Folding a second source in
 
-Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as atomic native folds. `from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and inline enum codes, and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `fix:branches`; `None` stamps nothing. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
+Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as atomic native folds. `from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and inline enum codes, and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `FIX:branches`; `None` stamps nothing. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
 
 A `vocabulary-tag`'s `alt` names its tag where it names only that tag. A dialect that spells one `alt` over two tags - `TRTN_FX_TradeCapture` declares `HedgeCurrency` for the currency a hedge settles in and again for the one it is quoted in - has given a name to neither, and a tag whose `alt` is another tag's own decimal has done the same to that tag's identity. Both fall back to their own decimal, the name a tag declaring no `alt` already takes, and keep the declared spelling as `display`, so every tag is left named and nothing the file said is lost. Contention is decided by the key a name is indexed under, which folds case and drops `_`, `-` and space, so `Hedge_Currency` contends with `HedgeCurrency`. Two tags sharing a spelling record each other's tag among their alternate tags and so stay reachable as a pair; three record nothing, because an alternate identifier names one field. A `normalization-binding` cannot spell a contended name back onto one of them, and a `map` naming one decodes neither. The spelling survives where the file made it unambiguous: a `tag-constraint` binds one tag, so the message root, the component and the group each carry it, and a reader resolving a key against the message it arrived in - a bridge row's `MSGTYPE`, and the repeating group the key sits in - reaches the tag the file meant.
 
 A CBlock's `normalization-binding` is read for the names it spells its tags with, and for nothing else. A `tag-normalization` whose mapping is one bare `$602` says its `tag-name` is another spelling of tag 602, so that spelling joins the field as an alias while the `vocabulary-tag` keeps the name. A conditional mapping, a `lookup`, and a mapping built from several expressions each name nothing: this layer holds no evaluator. Most of a real binding spells names a tag already answers to - resolution folds ASCII case - so the pass pays where a `vocabulary-tag` declared no `alt` and the tag is otherwise reachable only by its own number. No name is refused: one the vocabulary never declared, one another tag already answers to, or one the core could not store drops on its own.
 
-`merge_with` combines another registry under the [fold table](#what-one-namespace-means-for-a-field-that-arrives), its named definitions folded member by member and each field's membership unioned; `add_fields` folds a scalar field iterable the same way; `add_cfb_file(location, dialect)` parses a CBlock and merges it, stamping the dialect - or, with none supplied, the file's stem where it reads as a name, opening with a letter - on everything the file produced; a supplied name that is empty or carries a comma is refused. `add_cfb_files(location, pattern, dialect)` is the plural, over the crate's one glob walk: `pattern` is anchored at `location` exactly as `IOBase::glob` anchors it, private entries are never matched, a pattern selecting nothing folds nothing, and the dialect is resolved per file - so `cblocks/*.cfb` with none supplied stamps `msfix44` and `blpfix44` from the two files' own stems, which is what globbing a folder of counterparty files is for. Files fold in **ascending URL order** whatever order the listing arrived in, because the fold's precedence is its input order and a glob's sequence varies with how the pattern decomposed and with the backend beneath; so where two files disagree about one tag the last-sorting file wins, and `cblocks/*.cfb`, `cblocks/**/*.cfb` and `**/venue-*.cfb` over the same files all answer the same dictionary. It answers `(files, added, merged)` - the file count is a fact only this call holds, since an empty match and a match whose files all merged into stored fields both answer zeroes for the other two. `add_json_file(location)` is the same door for a [JSON snapshot](store.md) and takes no dialect, because a snapshot is the crate's own format and every field and definition in it already carries the `fix:branches` its writer meant. These operations report their counts only after the entire staged fold succeeds, and a plural one pays one copy of the dictionary for the whole call rather than one per file: a file that will not parse leaves the dictionary exactly as it was and the refusal names that file among however many matched.
+`merge_with` combines another registry under the [fold table](#what-one-namespace-means-for-a-field-that-arrives), its named definitions folded member by member and each field's membership unioned; `add_fields` folds a scalar field iterable the same way; `add_cfb_file(location, dialect)` parses a CBlock and merges it, stamping the dialect - or, with none supplied, the file's stem where it reads as a name, opening with a letter - on everything the file produced; a supplied name that is empty or carries a comma is refused. `add_cfb_files(location, pattern, dialect)` is the plural, over the crate's one glob walk: `pattern` is anchored at `location` exactly as `IOBase::glob` anchors it, private entries are never matched, a pattern selecting nothing folds nothing, and the dialect is resolved per file - so `cblocks/*.cfb` with none supplied stamps `msfix44` and `blpfix44` from the two files' own stems, which is what globbing a folder of counterparty files is for. Files fold in **ascending URL order** whatever order the listing arrived in, because the fold's precedence is its input order and a glob's sequence varies with how the pattern decomposed and with the backend beneath; so where two files disagree about one tag the last-sorting file wins, and `cblocks/*.cfb`, `cblocks/**/*.cfb` and `**/venue-*.cfb` over the same files all answer the same dictionary. It answers `(files, added, merged)` - the file count is a fact only this call holds, since an empty match and a match whose files all merged into stored fields both answer zeroes for the other two. `add_json_file(location)` is the same door for a [JSON snapshot](store.md) and takes no dialect, because a snapshot is the crate's own format and every field and definition in it already carries the `FIX:branches` its writer meant. These operations report their counts only after the entire staged fold succeeds, and a plural one pays one copy of the dictionary for the whole call rather than one per file: a file that will not parse leaves the dictionary exactly as it was and the refusal names that file among however many matched.
 
 A CBlock is read for what it says. A real one is megabytes over hundreds of thousands of elements, so an element this reader cannot make sense of - a tag spelled in a way the core cannot store, a constraint naming a tag the file's own vocabulary never declared, a mapping to a type nothing listed, a `fix-version` the version grammar cannot read - is dropped and the rest of the file is still a dictionary. Each drop is a `log` record at warn level carrying the located sentence a refusal would have: the byte, what was expected, what arrived, and the element the file spells it in. Only a document that is not well-formed XML, or that stops with an element open, is refused across each binding as a native located error, because neither leaves anything to keep.
 
@@ -1163,7 +1163,7 @@ Environment and default-folder resolution happen once, on the first global looku
 
 ## Classifying a captured line
 
-`MimeType` owns protocol inference; `FixCodec` owns shallow raw message-code inference, which requires no registry. `FixRegistry::msgdirection` owns the reading of which way a line moved: FIX's own tag 385, its code set the dictionary's and the [rules that name one](#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) carried on the field as `fix:directions`.
+`MimeType` owns protocol inference; `FixCodec` owns shallow raw message-code inference, which requires no registry. `FixRegistry::msgdirection` owns the reading of which way a line moved: FIX's own tag 385, its code set the dictionary's and the [rules that name one](#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) carried on the field as `FIX:directions`.
 
 | Recognized payload | Protocol |
 | --- | --- |
@@ -1210,7 +1210,7 @@ reads such a row as [one message stating nothing](capture.md#a-json-document-is-
 
 ### A direction is what the rules on tag 385 read in front of the payload
 
-Which way a message moved is FIX's own fact, tag 385 `MsgDirection`, and nothing else in the crate has one. The dictionary types the field as it types every coded field - text carrying the code set `R = Receive`, `S = Send`, extendable like any set - and `FixRegistry::msgdirection` answers the registry's reading of it, a `fix::MsgDirection`. The rules that reading applies are the dictionary's too: tag 385's field carries them as `fix:directions`, one canonical document `[{"code":"S","patterns":["..."]},...]` with an entry per code in the order the dictionary lists them, each pattern a `regex::bytes` expression applied to the prefix - the bytes before the payload, exactly the bound `payload_at` answers, so a verb inside a payload is still the payload's word. A code matches where any of its patterns matches; exactly one matching code names the direction; two or more, or none, name nothing. An entry's code is any spelling of a code of the set - its value, its name, an alias - resolved once through `MsgDirection::code` exactly as a pin is.
+Which way a message moved is FIX's own fact, tag 385 `MsgDirection`, and nothing else in the crate has one. The dictionary types the field as it types every coded field - text carrying the code set `R = Receive`, `S = Send`, extendable like any set - and `FixRegistry::msgdirection` answers the registry's reading of it, a `fix::MsgDirection`. The rules that reading applies are the dictionary's too: tag 385's field carries them as `FIX:directions`, one canonical document `[{"code":"S","patterns":["..."]},...]` with an entry per code in the order the dictionary lists them, each pattern a `regex::bytes` expression applied to the prefix - the bytes before the payload, exactly the bound `payload_at` answers, so a verb inside a payload is still the payload's word. A code matches where any of its patterns matches; exactly one matching code names the direction; two or more, or none, name nothing. An entry's code is any spelling of a code of the set - its value, its name, an alias - resolved once through `MsgDirection::code` exactly as a pin is.
 
 Where the field carries no property the defaults answer, keyed by the set's `Send` and `Receive` codes so an extended set still reads `sending >>` as its own `Send`:
 
@@ -1225,14 +1225,14 @@ Where the field carries no property the defaults answer, keyed by the set's `Sen
 
 `Request:` and `Response:` prose names the half of an exchange a bridge logged - a request went out, an answer came back - and a bare JSON document states nothing of itself: the half is prose in front of the payload, read by the same rules as every other prose, so a document with no prose in front of it has no tag 385 on the line door and takes the pin on the batch door. The direction is the line's and the document is [one message stating nothing](capture.md#a-json-document-is-one-message-stating-nothing), so the half the prose names is the one thing that message states beyond its clock, its version and its row's captures.
 
-`set_directions` on the field's FIX view is the door: it resolves every code through the one resolution a pin goes through and refuses a code outside the set the field declares - its `fix:codes`, else the specification's `S` and `R` - a code named twice under any spelling (`S` beside `Send`), an empty code or one carrying a quote, backslash or control character, an entry with no pattern, an empty pattern, or a pattern `regex::bytes` refuses, leaving the field unchanged. A hand-edited dictionary reaches the reading without the door, and every entry the door would have refused is dropped with a warning that is that refusal word for word, so the table degrades to fewer rules - down to none, where a property the field carries states nothing readable - rather than to a wrong reading, and never falls back to the defaults, which are the absent property's alone; an empty list, or `remove_directions`, takes the property away; `directions()` walks it borrowed and `FixDirection` is the owned rule; through `update` the incoming table [wins whole](#one-merge-with-a-rule-per-key). The [CLI](cli.md#definition-flags) edits it through `--directions '<json>'` on `fields create` and `fields update` - `ygg fix fields update MsgDirection utf8 --tag 385 --codes '<json>' --directions '<json>'`, the set restated because an update replaces the definition whole - and the bindings read and write it as a list on `field.fix.directions`. `MsgDirection::directions` answers the rules in force - the field's, each code resolved to the set's value, or the defaults - as data, so what a dictionary reads by is never hidden in Rust. The codec compiles every pattern once into a `regex::bytes::Regex` when it takes its registry (`FixCodec::new`), so a codec is built after the field is edited, and a row applies the compiled patterns to its prefix allocating nothing. The committed dictionary carries no property and reads by the defaults: they have one owner, the crate, and a dictionary that ships a table states its own.
+`set_directions` on the field's FIX view is the door: it resolves every code through the one resolution a pin goes through and refuses a code outside the set the field declares - its `FIX:codes`, else the specification's `S` and `R` - a code named twice under any spelling (`S` beside `Send`), an empty code or one carrying a quote, backslash or control character, an entry with no pattern, an empty pattern, or a pattern `regex::bytes` refuses, leaving the field unchanged. A hand-edited dictionary reaches the reading without the door, and every entry the door would have refused is dropped with a warning that is that refusal word for word, so the table degrades to fewer rules - down to none, where a property the field carries states nothing readable - rather than to a wrong reading, and never falls back to the defaults, which are the absent property's alone; an empty list, or `remove_directions`, takes the property away; `directions()` walks it borrowed and `FixDirection` is the owned rule; through `update` the incoming table [wins whole](#one-merge-with-a-rule-per-key). The [CLI](cli.md#definition-flags) edits it through `--directions '<json>'` on `fields create` and `fields update` - `ygg fix fields update MsgDirection utf8 --tag 385 --codes '<json>' --directions '<json>'`, the set restated because an update replaces the definition whole - and the bindings read and write it as a list on `field.fix.directions`. `MsgDirection::directions` answers the rules in force - the field's, each code resolved to the set's value, or the defaults - as data, so what a dictionary reads by is never hidden in Rust. The codec compiles every pattern once into a `regex::bytes::Regex` when it takes its registry (`FixCodec::new`), so a codec is built after the field is edited, and a row applies the compiled patterns to its prefix allocating nothing. The committed dictionary carries no property and reads by the defaults: they have one owner, the crate, and a dictionary that ships a table states its own.
 
 Every door fills tag 385 from that reading where the wire states none - `parse_line`, `parse_text_line`, the single-dialect doors, the batch reader - and the batch reader's precedence is a stated `msgdirection` column, else the reading, else the codec's pin (`try_with_direction`, the `Send` code by default), which is a code of the set. `MsgDirection::code` resolves any spelling of a code - its value, its name, an alias - and a spelling outside the set is refused naming the set.
 
 ## Edges
 
-- A scalar without `fix:tag`, a nested tagged field, or a nullable message root is refused.
-- A List/LargeList group needs a valid `int32` counter and non-null Struct occurrence; the list's own nullability is independent. A crate Map group instead requires matching reserved `fix:tag`/`fix:counter` values that no scalar canonical or alternate tag occupies; its entries Struct and key remain non-null.
+- A scalar without `FIX:tag`, a nested tagged field, or a nullable message root is refused.
+- A List/LargeList group needs a valid `int32` counter and non-null Struct occurrence; the list's own nullability is independent. A crate Map group instead requires matching reserved `FIX:tag`/`FIX:counter` values that no scalar canonical or alternate tag occupies; its entries Struct and key remain non-null.
 - A component or List/LargeList group carries the tag derived from its name; its category and folded name identify it, and a stated tag outside `[100000, 1100000)` is refused. The crate Map's own reserved tag is not a derived definition tag.
 - A derived tag names a definition this crate derived rather than a tag anyone published; a definition keeps the tag it already has through an update, and one arriving on a tag another definition holds derives afresh.
 - Missing, cyclic, contradictory, or over-depth references fail at intake with location; the nesting limit is 64.
@@ -1240,7 +1240,7 @@ Every door fills tag 385 from that reading where the wire states none - `parse_l
 - A field-reference occurrence may vary name and nullability, but may not introduce independent metadata overrides.
 - Identifier declarations resolve only direct scalar members; an ambiguous spelling, nested selection, duplicate target or malformed list is a located atomic refusal, including raw stored metadata at intake.
 - A string lookup is a name or a dotted path, colon included; an id is an integer spelled only through `FixKey::Id` in Rust and `field_by_id` / `get_by_id` in the bindings, and a bare integer anywhere else is a tag.
-- `fix:branches` is never an argument: no lookup, definition or message-type accessor takes a dialect, and the only filter on membership is the one a caller writes over `branches()`.
+- `FIX:branches` is never an argument: no lookup, definition or message-type accessor takes a dialect, and the only filter on membership is the one a caller writes over `branches()`.
 - Generic scalar iteration and size exclude named definitions. Use the explicit category iterators to walk the catalog.
 
 ## Commands

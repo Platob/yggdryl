@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingprotectiontermeventnewssourcecomponent"
+        "FIX:component": "underlyingprotectiontermeventnewssourcecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingprotectiontermeventnewssourcecomponent",
+    "FIX:counter": "42090",
+    "FIX:tag": "297217",
     "description": "Required if NoUnderlyingProtectionTermEventNewsSources(42090) > 0.",
-    "display": "UnderlyingProtectionTermEventNewsSourceGrp",
-    "fix:component": "underlyingprotectiontermeventnewssourcecomponent",
-    "fix:counter": "42090",
-    "fix:tag": "297217"
+    "display": "UnderlyingProtectionTermEventNewsSourceGrp"
   }
 }

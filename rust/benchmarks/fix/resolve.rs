@@ -64,7 +64,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             let held = black_box(&identifier_message);
             black_box((
                 held.get_currunix(),
-                held.get_creatunix(),
+                held.get_creaunix(),
                 held.get_currhashcode(),
                 held.get_crosshashcode(),
             ))
@@ -260,10 +260,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .add_fields(mixed_categories(LARGE_FIELDS))
         .expect("the generated dictionary has no conflict");
     for index in (0..LARGE_FIELDS).step_by(50) {
-        let item =
-            yggdryl::DataType::from_fields([yggdryl::DataType::utf8().nullable_field("Member")])
-                .unwrap()
-                .required_field("item");
+        let item = yggdryl::StructureType::from_fields([
+            yggdryl::DataType::utf8().nullable_field("Member")
+        ])
+        .map(yggdryl::DataType::from)
+        .unwrap()
+        .required_field("item");
         let mut field = yggdryl::DataType::list(item).nullable_field(format!("Group{index:05}"));
         field
             .as_fix_mut()

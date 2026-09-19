@@ -13,7 +13,7 @@ use arrow_array::{Int64Array, RecordBatch, StringArray};
 use crate::arrow::BatchReader;
 use crate::holder::Buffer;
 use crate::ipc::Ipc;
-use crate::{DataType, Field, IOBase, IOMedia, Url};
+use crate::{DataType, Field, IOBase, IOMedia, StructureType, Url};
 
 /// A handle whose media type comes from a name, so codings are declared.
 fn handle(name: &str) -> Buffer {
@@ -26,10 +26,11 @@ fn handle(name: &str) -> Buffer {
 
 /// A struct field is the schema of the batches it describes.
 fn schema() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
 }
@@ -58,7 +59,8 @@ fn empty_reader_for(field: &Field) -> BatchReader {
 
 #[test]
 fn a_closed_stream_fetches_fresh_and_an_open_one_holds_what_it_cached() {
-    let renamed = DataType::from_fields([DataType::Int64.required_field("code")])
+    let renamed = StructureType::from_fields([DataType::Int64.required_field("code")])
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
     let mut first = Ipc::new(handle("first.arrows")).with_field(schema());

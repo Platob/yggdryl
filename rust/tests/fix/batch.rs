@@ -7,7 +7,9 @@ use arrow_array::RecordBatch;
 use yggdryl::arrow::BatchReader;
 use yggdryl::graph::{Element, Event};
 use yggdryl::text::{TextBytes, TextLine};
-use yggdryl::{DataType, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, fix_schema};
+use yggdryl::{
+    DataType, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, StructureType, fix_schema,
+};
 
 fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
@@ -58,7 +60,8 @@ const CAPTURE: &[&str] = &[
 /// The capture as the batches a text reader hands the codec: one `body`
 /// column of bytes, `rows` lines to an input batch.
 fn capture_reader(lines: &[&str], rows: usize) -> BatchReader {
-    let field = DataType::from_fields([DataType::binary().required_field("body")])
+    let field = StructureType::from_fields([DataType::binary().required_field("body")])
+        .map(DataType::from)
         .unwrap()
         .required_field("capture");
     let batches: Vec<RecordBatch> = lines
@@ -157,7 +160,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
             .position(|held| *held == name)
             .unwrap_or_else(|| panic!("a {name} column in {names:?}"))
     };
-    for pair in ["body", "currunix", "creatunix", "prevunix", "snapunix"].windows(2) {
+    for pair in ["body", "currunix", "creaunix", "prevunix", "snapunix"].windows(2) {
         assert!(at(pair[0]) < at(pair[1]), "{pair:?} in {names:?}");
     }
     assert_eq!(names.last(), Some(&"fixentries"));
@@ -181,7 +184,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         10,  // the trailer
         yggdryl::CURRHASHCODE_TAG_NAME.0,
         yggdryl::CURRUNIX_TAG_NAME.0,
-        yggdryl::CREATUNIX_TAG_NAME.0, // the digest and the clocks
+        yggdryl::CREAUNIX_TAG_NAME.0, // the digest and the clocks
         yggdryl::MSGSESSIONID_TAG_NAME.0,
         yggdryl::MSGCTXID_TAG_NAME.0, // what a bridge's own log states
         yggdryl::MSGDIRECTION_TAG_NAME.0, // which way the line moved
@@ -198,7 +201,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         .field_with_name("msgtype")
         .expect("the msgtype column");
     assert_eq!(
-        msgtype.metadata().get("fix:tag").map(String::as_str),
+        msgtype.metadata().get("FIX:tag").map(String::as_str),
         Some("35"),
     );
     assert_eq!(
@@ -438,7 +441,8 @@ fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() 
 
     // The column is named otherwise: refused, naming what was asked for and
     // what the source carries.
-    let named_line = DataType::from_fields([DataType::binary().required_field("line")])
+    let named_line = StructureType::from_fields([DataType::binary().required_field("line")])
+        .map(DataType::from)
         .unwrap()
         .required_field("capture");
     let rows = Scalar::from_sequence([Scalar::from_sequence([frame.clone()])]);
@@ -463,7 +467,8 @@ fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() 
     assert_eq!(first_tag_value(&read[0], 11).as_str(), Some("A"));
 
     // The column holds neither text nor bytes: refused, naming its type.
-    let numbered = DataType::from_fields([DataType::Int64.required_field("body")])
+    let numbered = StructureType::from_fields([DataType::Int64.required_field("body")])
+        .map(DataType::from)
         .unwrap()
         .required_field("capture");
     let numbers = Scalar::from_sequence([Scalar::from_sequence([Scalar::from(7_i64)])]);
@@ -641,7 +646,7 @@ fn composed_fallible_stages_are_lazy_preserve_errors_and_fuse_exhaustion() {
     }
     assert_eq!(read.len(), 2);
     assert_eq!(read[1].get_prevuuid(), Some(read[0].get_curruuid()));
-    assert_eq!(read[1].get_creatunix(), read[0].get_creatunix());
+    assert_eq!(read[1].get_creaunix(), read[0].get_creaunix());
     assert!(pipeline.next().is_none());
     assert!(pipeline.next().is_none());
     assert_eq!(pulls.get(), 4);
@@ -773,7 +778,7 @@ fn plugin_registry() -> Arc<FixRegistry> {
 }
 
 /// The capture a bridge row header declares: the plugin that logged the line.
-const PLUGIN_CAPTURES: [&str; 1] = ["pluginid"];
+const PLUGIN_CAPTURES: [&str; 1] = ["msgpluginid"];
 
 /// A bridge line naming the plugin that logged it, where it names one.
 fn plugin_line(body: &[u8], plugin: Option<&str>) -> TextLine {
@@ -793,7 +798,7 @@ fn one_of(codec: &FixCodec, line: &TextLine) -> FixMsg {
 }
 
 #[test]
-fn a_rows_pluginid_fills_its_own_column_and_selects_no_dialect() {
+fn a_rows_msgpluginid_fills_its_own_column_and_selects_no_dialect() {
     let registry = plugin_registry();
     let codec = super::fixed_codec(Arc::clone(&registry)).with_capture_names(PLUGIN_CAPTURES);
     let body: &[u8] = b"MSGTYPE=D|CLORDID=A|VENUETAG=dark";
@@ -831,7 +836,7 @@ fn a_rows_pluginid_fills_its_own_column_and_selects_no_dialect() {
         );
         assert_eq!(
             message
-                .by_tag(yggdryl::PLUGINID_TAG_NAME.0)
+                .by_tag(yggdryl::MSGPLUGINID_TAG_NAME.0)
                 .unwrap()
                 .as_str(),
             Some(spelled),
@@ -841,7 +846,7 @@ fn a_rows_pluginid_fills_its_own_column_and_selects_no_dialect() {
             message
                 .entries()
                 .iter()
-                .all(|entry| entry.tag() != yggdryl::PLUGINID_TAG_NAME.0),
+                .all(|entry| entry.tag() != yggdryl::MSGPLUGINID_TAG_NAME.0),
             "a fill is never an entry"
         );
     }
@@ -850,7 +855,7 @@ fn a_rows_pluginid_fills_its_own_column_and_selects_no_dialect() {
     let message = one_of(&codec, &plugin_line(body, None));
     assert!(
         message
-            .get_by_tag(yggdryl::PLUGINID_TAG_NAME.0)
+            .get_by_tag(yggdryl::MSGPLUGINID_TAG_NAME.0)
             .is_none_or(|held| held.is_null()),
         "nothing to fill from"
     );
@@ -1046,13 +1051,13 @@ fn dedup_composes_over_the_messages_a_batch_holds() {
 }
 
 #[test]
-fn a_payload_column_spelled_pluginid_is_the_payload_and_fills_no_plugin() {
+fn a_payload_column_spelled_msgpluginid_is_the_payload_and_fills_no_plugin() {
     // The column [`FixCodec::with_payload_column`] names is the payload and
     // nothing else, whatever it is spelled: its text never fills the crate's
-    // own `pluginid` field, or a capture whose payload column happened to be
+    // own `msgpluginid` field, or a capture whose payload column happened to be
     // spelled so would stamp every line with whatever its first bytes were.
     let registry = plugin_registry();
-    let codec = super::fixed_codec(registry).with_payload_column("pluginid");
+    let codec = super::fixed_codec(registry).with_payload_column("msgpluginid");
     // One payload spelling a dictionary's name exactly, and one that is a
     // frame, so the column is proven to be read as the payload.
     let bodies = ["venue", "8=FIX.4.4|35=D|11=A|10=0|"];
@@ -1077,7 +1082,8 @@ fn a_payload_column_spelled_pluginid_is_the_payload_and_fills_no_plugin() {
     );
     let alone = one_of(&codec, &lines[1]);
 
-    let capture = DataType::from_fields([DataType::utf8().required_field("pluginid")])
+    let capture = StructureType::from_fields([DataType::utf8().required_field("msgpluginid")])
+        .map(DataType::from)
         .unwrap()
         .required_field("capture");
     let values = Scalar::from_sequence(
@@ -1105,7 +1111,7 @@ fn a_payload_column_spelled_pluginid_is_the_payload_and_fills_no_plugin() {
         assert_eq!(message.as_field().as_fix().branches().count(), 0);
         assert!(
             message
-                .get_by_tag(yggdryl::PLUGINID_TAG_NAME.0)
+                .get_by_tag(yggdryl::MSGPLUGINID_TAG_NAME.0)
                 .is_none_or(|held| held.is_null()),
             "the payload never fills the plugin"
         );
@@ -1185,11 +1191,12 @@ fn a_capture_answers_one_row_per_message_and_a_sentence_is_no_row() {
 
 #[test]
 fn a_document_row_is_one_unknown_row_carrying_its_source_columns_and_stated_direction() {
-    let field = DataType::from_fields([
+    let field = StructureType::from_fields([
         DataType::Int64.required_field("rownum"),
         DataType::utf8().required_field("msgdirection"),
         DataType::binary().required_field("body"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("capture");
     let rows = Scalar::from_sequence([Scalar::from_sequence([
@@ -1219,7 +1226,7 @@ fn a_document_row_is_one_unknown_row_carrying_its_source_columns_and_stated_dire
 fn a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
     // Shaped the way the text line reader shapes a capture: where the line was
     // read from, which line it was, what stamped it, and the frame itself.
-    let capture = DataType::from_fields([
+    let capture = StructureType::from_fields([
         DataType::utf8().required_field("url"),
         DataType::Int64.required_field("rownum"),
         DataType::utf8().nullable_field("threadname"),
@@ -1228,6 +1235,7 @@ fn a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
         // per name, and the FIX one is what a reader spelling it means.
         DataType::utf8().nullable_field("fixentries"),
     ])
+    .map(DataType::from)
     .expect("a capture root")
     .required_field("line");
 
@@ -1343,7 +1351,7 @@ fn a_message_through_the_arrow_reader_and_back_states_the_same_entries() {
 fn a_stream_carries_nothing_from_a_document_to_the_rows_after_it() {
     let codec = super::fixed_codec(Arc::new(FixRegistry::new()))
         .with_exclude_msgtypes::<[&str; 0], &str>([])
-        .with_capture_names(["pluginid"]);
+        .with_capture_names(["msgpluginid"]);
     let line = |body: &[u8]| {
         TextLine::from_bytes(0, TextBytes::from_bytes(body).unwrap())
             .unwrap()
@@ -1364,7 +1372,7 @@ fn a_stream_carries_nothing_from_a_document_to_the_rows_after_it() {
     assert!(unknown.entries().is_empty());
     assert_eq!(
         unknown
-            .by_tag(yggdryl::PLUGINID_TAG_NAME.0)
+            .by_tag(yggdryl::MSGPLUGINID_TAG_NAME.0)
             .unwrap()
             .as_str(),
         Some("STREAM")
@@ -1378,7 +1386,7 @@ fn a_stream_carries_nothing_from_a_document_to_the_rows_after_it() {
     let filled = stream.next().unwrap().unwrap();
     assert_eq!(
         filled
-            .by_tag(yggdryl::PLUGINID_TAG_NAME.0)
+            .by_tag(yggdryl::MSGPLUGINID_TAG_NAME.0)
             .unwrap()
             .as_str(),
         Some("STREAM")
@@ -1390,7 +1398,7 @@ fn a_stream_carries_nothing_from_a_document_to_the_rows_after_it() {
 
 #[test]
 fn a_dated_capture_reads_a_retired_spelling_and_the_fact_it_names_is_the_events() {
-    let codec = codec().with_capture_names(["beginstring", "pluginid"]);
+    let codec = codec().with_capture_names(["beginstring", "msgpluginid"]);
     let page = |bytes: &[u8]| TextBytes::from_bytes(bytes).unwrap();
     let line = |body: &[u8], captures: [Option<&str>; 2]| {
         TextLine::from_bytes(0, page(body))

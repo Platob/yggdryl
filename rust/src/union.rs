@@ -268,7 +268,7 @@ mod arrow {
     };
 
     use super::UnionFields;
-    use crate::family::ArrowFfiParts;
+    use crate::value::ArrowFfiParts;
     use crate::{DataType, Field, Result, UnionMode};
 
     impl From<UnionMode> for ArrowUnionMode {

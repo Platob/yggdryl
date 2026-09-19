@@ -1,10 +1,5 @@
-//! Schema-directed validation and canonicalization of row values.
-//!
-//! A struct [`Field`] is the schema of the rows it describes, so validating a
-//! row is validating one [`crate::sequence::Sequence`] against that field's children.
-//! Canonicalization is the same walk with rewriting: it narrows integers,
-//! floats, and nested containers into the exact representation the schema
-//! declares, and returns the input untouched when nothing needed changing.
+//! Schema-directed validation and canonicalization of row values: the walk
+//! the module doc of [`super`] describes.
 
 use std::collections::HashSet;
 
@@ -24,8 +19,8 @@ use crate::sequence::SequenceType;
 use crate::string::str_from_value;
 use crate::structure::StructureType;
 use crate::temporal::{validate_date64, validate_time};
-use crate::{DataType, Error, Field, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
-use crate::{DateTimeType, DateType, DecimalType, DurationType, TimeType};
+use crate::{DataType, Error, Field, Result, Scalar, TemporalKind, TimeUnit, Timezone};
+use crate::{DateTimeType, DateType, DecimalType, DurationType, TimeType, UriType};
 use crate::{
     Decimal32, Decimal64, Decimal128, Interval, Str, StringType, ascii_bytes, ascii_text_sized,
     code_cell_text, default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null,
@@ -451,17 +446,17 @@ fn restated(dtype: &DataType, value: &Scalar) -> Option<i128> {
             value.decimal_unscaled_at(*scale)
         }
         D::DateTime(leaf)
-            if temporal_matches(value, TemporalFamily::DateTime, Some(&leaf.timezone())) =>
+            if temporal_matches(value, TemporalKind::DateTime, Some(&leaf.timezone())) =>
         {
             value.temporal_count_at(leaf.unit()).map(i128::from)
         }
-        D::Duration(leaf) if temporal_matches(value, TemporalFamily::Duration, None) => {
+        D::Duration(leaf) if temporal_matches(value, TemporalKind::Duration, None) => {
             value.temporal_count_at(leaf.unit()).map(i128::from)
         }
-        D::Time(leaf) if temporal_matches(value, TemporalFamily::Time, None) => {
+        D::Time(leaf) if temporal_matches(value, TemporalKind::Time, None) => {
             value.temporal_count_at(leaf.unit()).map(i128::from)
         }
-        D::Date(leaf) if temporal_matches(value, TemporalFamily::Date, None) => {
+        D::Date(leaf) if temporal_matches(value, TemporalKind::Date, None) => {
             value.temporal_count_at(leaf.unit()).map(i128::from)
         }
         _ => None,
@@ -560,18 +555,18 @@ fn read_text_as(dtype: &DataType, text: &str) -> Option<Result<Scalar>> {
 /// Check the logical temporal family and the zone a datatype can preserve.
 fn temporal_matches(
     value: &Scalar,
-    family: TemporalFamily,
+    family: TemporalKind,
     expected_zone: Option<&Timezone>,
 ) -> bool {
     let Some(zone) = value.temporal_timezone() else {
         return false;
     };
-    if value.temporal_family() != Some(family) {
+    if value.temporal_kind() != Some(family) {
         return false;
     }
     match (family, expected_zone) {
-        (TemporalFamily::DateTime, Some(expected)) => zone == *expected,
-        (TemporalFamily::DateTime, None) => zone.is_naive(),
+        (TemporalKind::DateTime, Some(expected)) => zone == *expected,
+        (TemporalKind::DateTime, None) => zone.is_naive(),
         _ => zone.is_naive(),
     }
 }
@@ -656,7 +651,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             return Ok((canonical, changed));
         }
         D::Date(DateType::Date32) => {
-            let count = temporal_or_integer(value, TimeUnit::Day, TemporalFamily::Date, None)?;
+            let count = temporal_or_integer(value, TimeUnit::Day, TemporalKind::Date, None)?;
             let canonical = Scalar::date32(
                 i32::try_from(count)
                     .map_err(|_| canonical_error("date32 count does not fit signed 32 bits"))?,
@@ -666,13 +661,13 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         }
         D::Date(DateType::Date64) => {
             let count =
-                temporal_or_integer(value, TimeUnit::Millisecond, TemporalFamily::Date, None)?;
+                temporal_or_integer(value, TimeUnit::Millisecond, TemporalKind::Date, None)?;
             let canonical = Scalar::date64(count);
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
         D::Time(TimeType::Time32(unit)) => {
-            let count = temporal_or_integer(value, *unit, TemporalFamily::Time, None)?;
+            let count = temporal_or_integer(value, *unit, TemporalKind::Time, None)?;
             let canonical = Scalar::time32(
                 i32::try_from(count)
                     .map_err(|_| canonical_error("time32 count does not fit signed 32 bits"))?,
@@ -683,20 +678,19 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             return Ok((canonical, changed));
         }
         D::Time(TimeType::Time64(unit)) => {
-            let count = temporal_or_integer(value, *unit, TemporalFamily::Time, None)?;
+            let count = temporal_or_integer(value, *unit, TemporalKind::Time, None)?;
             let canonical = Scalar::time64(count, *unit, Timezone::NAIVE)?;
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
         D::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
-            let count =
-                temporal_or_integer(value, *unit, TemporalFamily::DateTime, Some(timezone))?;
+            let count = temporal_or_integer(value, *unit, TemporalKind::DateTime, Some(timezone))?;
             let canonical = Scalar::datetime64(count, *unit, *timezone)?;
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
         D::Duration(DurationType::Duration32(unit)) => {
-            let count = temporal_or_integer(value, *unit, TemporalFamily::Duration, None)?;
+            let count = temporal_or_integer(value, *unit, TemporalKind::Duration, None)?;
             let canonical = Scalar::duration32(
                 i32::try_from(count)
                     .map_err(|_| canonical_error("duration32 count does not fit signed 32 bits"))?,
@@ -706,7 +700,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             return Ok((canonical, changed));
         }
         D::Duration(DurationType::Duration64(unit)) => {
-            let count = temporal_or_integer(value, *unit, TemporalFamily::Duration, None)?;
+            let count = temporal_or_integer(value, *unit, TemporalKind::Duration, None)?;
             let canonical = Scalar::duration64(count, *unit)?;
             let changed = !same_temporal_representation(value, &canonical);
             return Ok((canonical, changed));
@@ -829,7 +823,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 }),
             _ => canonicalization_failure(dtype),
         },
-        D::Url => match value {
+        D::Uri(UriType::Url) => match value {
             Scalar::Url(_) => Ok((value.clone(), false)),
             // Text is canonicalized on the way in, so a column of URLs holds
             // one spelling per location however it was written.
@@ -838,6 +832,16 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 .map_err(|error| Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
                     reason: format_smolstr!("expected url text: {error}"),
+                }),
+            _ => canonicalization_failure(dtype),
+        },
+        D::Uri(UriType::Urn) => match value {
+            Scalar::Urn(_) => Ok((value.clone(), false)),
+            Scalar::String(text) => crate::Urn::from_str(text.as_str())
+                .map(|urn| (Scalar::Urn(std::sync::Arc::new(urn)), true))
+                .map_err(|error| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!("expected urn text: {error}"),
                 }),
             _ => canonicalization_failure(dtype),
         },
@@ -927,7 +931,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
 fn temporal_or_integer(
     value: &Scalar,
     unit: TimeUnit,
-    family: TemporalFamily,
+    family: TemporalKind,
     zone: Option<&Timezone>,
 ) -> Result<i64> {
     if value.is_temporal() {
@@ -1503,12 +1507,19 @@ fn validate_dtype_value(
                 .map_err(|_| expected("version", value)),
             _ => Err(expected("version", value)),
         },
-        D::Url => match value {
+        D::Uri(UriType::Url) => match value {
             Scalar::Url(_) => Ok(()),
             Scalar::String(text) => crate::Url::from_str(text.as_str())
                 .map(|_| ())
                 .map_err(|_| expected("url", value)),
             _ => Err(expected("url", value)),
+        },
+        D::Uri(UriType::Urn) => match value {
+            Scalar::Urn(_) => Ok(()),
+            Scalar::String(text) => crate::Urn::from_str(text.as_str())
+                .map(|_| ())
+                .map_err(|_| expected("urn", value)),
+            _ => Err(expected("urn", value)),
         },
         D::Timezone => match value {
             Scalar::Timezone(_) => Ok(()),

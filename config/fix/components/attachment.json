@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "attachmentname",
-          "fix:tag": "2105"
+          "FIX:field": "attachmentname",
+          "FIX:tag": "2105"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "attachmentmediatype",
-          "fix:tag": "2106"
+          "FIX:field": "attachmentmediatype",
+          "FIX:tag": "2106"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "attachmentclassification",
-          "fix:tag": "2107"
+          "FIX:field": "attachmentclassification",
+          "FIX:tag": "2107"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "attachmentexternalurl",
-          "fix:tag": "2108"
+          "FIX:field": "attachmentexternalurl",
+          "FIX:tag": "2108"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "attachmentencodingtype",
-          "fix:tag": "2109"
+          "FIX:field": "attachmentencodingtype",
+          "FIX:tag": "2109"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "unencodedattachmentlen",
-          "fix:tag": "2110"
+          "FIX:field": "unencodedattachmentlen",
+          "FIX:tag": "2110"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedattachmentlen",
-          "fix:tag": "2111"
+          "FIX:field": "encodedattachmentlen",
+          "FIX:tag": "2111"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedattachment",
-          "fix:tag": "2112"
+          "FIX:field": "encodedattachment",
+          "FIX:tag": "2112"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noattachmentkeywords",
-          "fix:tag": "2113"
+          "FIX:field": "noattachmentkeywords",
+          "FIX:tag": "2113"
         }
       },
       {
@@ -109,14 +109,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "attachmentkeywordgrp"
+          "FIX:group": "attachmentkeywordgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "Attachment",
-    "fix:tag": "1008465"
+    "FIX:tag": "1008465",
+    "display": "Attachment"
   }
 }

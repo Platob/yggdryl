@@ -3,7 +3,7 @@ use std::sync::Arc;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::BytesType;
 use yggdryl::SequenceType;
-use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DataType, Field, StructureType, TimeUnit, Timezone, UnionMode};
 use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &str) {
@@ -118,10 +118,11 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
     let entries = || {
         Field::new(
             "entries",
-            DataType::from_fields([
+            StructureType::from_fields([
                 Field::new("key", DataType::utf8(), false),
                 Field::new("value", DataType::Int64, true),
             ])
+            .map(DataType::from)
             .unwrap(),
             false,
         )
@@ -164,7 +165,9 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
         DataType::fixed_size_list(item(), 4).unwrap(),
         DataType::large_list(item()),
         DataType::large_list_view(item()),
-        DataType::from_fields([Field::new("value", DataType::Int32, false)]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([Field::new("value", DataType::Int32, false)]).unwrap(),
+        ),
         DataType::union(
             [
                 (0, Field::new("number", DataType::Int64, false)),
@@ -234,7 +237,9 @@ fn every_extension_datatype_survives_arrow_projection_in_every_shape() {
             dtype.clone(),
             DataType::dictionary(DataType::Int32, dtype.clone()).unwrap(),
             DataType::list(Field::new("item", dtype.clone(), true)),
-            DataType::from_fields([Field::new("child", dtype.clone(), true)]).unwrap(),
+            DataType::from(
+                StructureType::from_fields([Field::new("child", dtype.clone(), true)]).unwrap(),
+            ),
             DataType::run_end_encoded(
                 Field::new("run_ends", DataType::Int32, false),
                 Field::new("values", dtype.clone(), true),
@@ -279,7 +284,7 @@ fn every_extension_datatype_survives_arrow_projection_in_every_shape() {
 
 #[test]
 fn an_extension_schema_survives_an_ipc_round_trip() {
-    let root = DataType::from_fields(
+    let root = StructureType::from_fields(
         extension_datatypes()
             .into_iter()
             .enumerate()
@@ -295,6 +300,7 @@ fn an_extension_schema_survives_an_ipc_round_trip() {
             })
             .collect::<Vec<_>>(),
     )
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
 
@@ -352,10 +358,11 @@ fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
         DataType::map(
             Field::new(
                 "entries",
-                DataType::from_fields([
+                StructureType::from_fields([
                     Field::new("key", DataType::utf8(), true),
                     Field::new("value", DataType::Int64, true),
                 ])
+                .map(DataType::from)
                 .unwrap(),
                 false,
             ),
@@ -455,7 +462,7 @@ fn every_extension_typed_datatype_keeps_its_identity_across_the_c_interface() {
         DataType::TimeInForce,
         DataType::Uuid,
         DataType::Version,
-        DataType::Url,
+        DataType::url(),
         DataType::Variant,
         DataType::from_str("string(windows-1252)").unwrap(),
         DataType::from_str("fixed_string(windows-1252,8)").unwrap(),

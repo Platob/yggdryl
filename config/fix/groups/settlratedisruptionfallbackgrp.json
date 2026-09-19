@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "settlratedisruptionfallback"
+        "FIX:component": "settlratedisruptionfallback"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "settlratedisruptionfallback",
+    "FIX:counter": "40085",
+    "FIX:tag": "1069611",
     "description": "Required if NoSettlRateFallbacks(40085) > 0.",
-    "display": "SettlRateDisruptionFallbackGrp",
-    "fix:component": "settlratedisruptionfallback",
-    "fix:counter": "40085",
-    "fix:tag": "1069611"
+    "display": "SettlRateDisruptionFallbackGrp"
   }
 }

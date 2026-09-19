@@ -56,12 +56,12 @@ test('the spellings are the ones the parsers accept', () => {
   assert.ok(enums.ioKinds.includes('file'))
   assert.ok(enums.digestAlgorithms.includes('xxh3-128'))
   assert.ok(enums.compatibilitySchemes.includes('arrow'))
-  // The typed `python:` vocabulary is Rust and Python only, so this listing is
-  // the whole of what JavaScript knows about the spellings `python:kind` takes.
+  // The typed `PYTHON:` vocabulary is Rust and Python only, so this listing is
+  // the whole of what JavaScript knows about the spellings `PYTHON:kind` takes.
   assert.ok(enums.pythonKinds.includes('dataclass'))
   assert.throws(
-    () => new Field('Quote', 'int64', false).set('python:kind', 'record'),
-    /python:kind/,
+    () => new Field('Quote', 'int64', false).set('PYTHON:kind', 'record'),
+    /PYTHON:kind/,
   )
 })
 

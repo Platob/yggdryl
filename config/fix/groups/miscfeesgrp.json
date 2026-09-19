@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "miscfee"
+        "FIX:component": "miscfee"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "miscfee",
+    "FIX:counter": "136",
+    "FIX:tag": "1003572",
     "description": "Required if any miscellaneous fees are reported. Indicates number of repeating entries.",
-    "display": "MiscFeesGrp",
-    "fix:component": "miscfee",
-    "fix:counter": "136",
-    "fix:tag": "1003572"
+    "display": "MiscFeesGrp"
   }
 }

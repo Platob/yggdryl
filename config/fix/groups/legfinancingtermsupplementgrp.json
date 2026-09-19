@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legfinancingtermsupplement"
+        "FIX:component": "legfinancingtermsupplement"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legfinancingtermsupplement",
+    "FIX:counter": "42200",
+    "FIX:tag": "874145",
     "description": "Required if NoLegFinancingTermSupplements(42200) > 0.",
-    "display": "LegFinancingTermSupplementGrp",
-    "fix:component": "legfinancingtermsupplement",
-    "fix:counter": "42200",
-    "fix:tag": "874145"
+    "display": "LegFinancingTermSupplementGrp"
   }
 }

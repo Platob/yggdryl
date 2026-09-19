@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "nestedparty2"
+        "FIX:component": "nestedparty2"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "nestedparty2",
+    "FIX:counter": "756",
+    "FIX:tag": "890592",
     "description": "Repeating group below should contain unique combinations of Nested2PartyID, Nested2PartyIDSource, and Nested2PartyRole",
-    "display": "NestedParties2",
-    "fix:component": "nestedparty2",
-    "fix:counter": "756",
-    "fix:tag": "890592"
+    "display": "NestedParties2"
   }
 }

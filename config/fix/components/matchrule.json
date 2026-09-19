@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchalgorithm",
-          "fix:tag": "1142"
+          "FIX:field": "matchalgorithm",
+          "FIX:tag": "1142"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchtype",
-          "fix:tag": "574"
+          "FIX:field": "matchtype",
+          "FIX:tag": "574"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "matchruleproductcomplex",
-          "fix:tag": "2569"
+          "FIX:field": "matchruleproductcomplex",
+          "FIX:tag": "2569"
         }
       },
       {
@@ -43,15 +43,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "customerpriority",
-          "fix:tag": "2570"
+          "FIX:field": "customerpriority",
+          "FIX:tag": "2570"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MatchRule",
-    "fix:tag": "133528"
+    "FIX:tag": "133528",
+    "display": "MatchRule"
   }
 }

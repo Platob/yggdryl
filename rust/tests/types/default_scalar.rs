@@ -5,7 +5,9 @@ use std::sync::Arc;
 use arrow_array::types::Int8Type;
 use arrow_array::{Array, ArrayRef, DictionaryArray, Int8Array, Int32Array, StringArray};
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::{DataType, DataTypeId, Field, FieldScalar, Scalar, TimeUnit, Timezone, UnionMode};
+use yggdryl::{
+    DataType, DataTypeId, Field, FieldScalar, Scalar, StructureType, TimeUnit, Timezone, UnionMode,
+};
 use yggdryl::{DateTimeType, DurationType, TimeType};
 
 fn representative_types() -> Vec<DataType> {
@@ -51,10 +53,11 @@ fn representative_types() -> Vec<DataType> {
         DataType::fixed_size_list(item(), 2).unwrap(),
         DataType::large_list(item()),
         DataType::large_list_view(item()),
-        DataType::from_fields([
+        StructureType::from_fields([
             Field::new("required", DataType::Int32, false),
             Field::new("optional", DataType::utf8(), true),
         ])
+        .map(DataType::from)
         .unwrap(),
         DataType::union(
             [

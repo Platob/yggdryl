@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42800",
       "description": "The business center calendar used for date adjustment of the instrument's dividend accrual payment date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "UnderlyingDividendAccrualPaymentDateBusinessCenter",
-      "fix:tag": "42800"
+      "display": "UnderlyingDividendAccrualPaymentDateBusinessCenter"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42801",
       "description": "The dividend accrual floating rate index.",
-      "display": "UnderlyingDividendFloatingRateIndex",
-      "fix:tag": "42801"
+      "display": "UnderlyingDividendFloatingRateIndex"
     }
   },
   {
@@ -30,9 +30,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42802",
       "description": "Time unit multiplier for the dividend accrual floating rate index curve.",
-      "display": "UnderlyingDividendFloatingRateIndexCurvePeriod",
-      "fix:tag": "42802"
+      "display": "UnderlyingDividendFloatingRateIndexCurvePeriod"
     }
   },
   {
@@ -42,9 +42,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the dividend accrual floating rate index curve period.",
-      "display": "UnderlyingDividendFloatingRateIndexCurveUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -66,7 +64,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42803"
+      "FIX:tag": "42803",
+      "description": "Time unit associated with the dividend accrual floating rate index curve period.",
+      "display": "UnderlyingDividendFloatingRateIndexCurveUnit"
     }
   },
   {
@@ -76,9 +76,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42804",
       "description": "A rate multiplier to apply to the floating rate. The multiplier can be less than or greater than 1 (one). This should only be included if the multiplier is not equal to 1 (one) for the term of the contract.",
-      "display": "UnderlyingDividendFloatingRateMultiplier",
-      "fix:tag": "42804"
+      "display": "UnderlyingDividendFloatingRateMultiplier"
     }
   },
   {
@@ -90,9 +90,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42805",
       "description": "The basis points spread from the index specified in UnderlyingDividendFloatingRateIndex(42801).",
-      "display": "UnderlyingDividendFloatingRateSpread",
-      "fix:tag": "42805"
+      "display": "UnderlyingDividendFloatingRateSpread"
     }
   },
   {
@@ -102,9 +102,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies whether the rate spread is applied to a long or short position.",
-      "display": "UnderlyingDividendFloatingRateSpreadPositionType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Short",
@@ -116,7 +114,9 @@
           "doc": "Long"
         }
       ],
-      "fix:tag": "42806"
+      "FIX:tag": "42806",
+      "description": "Identifies whether the rate spread is applied to a long or short position.",
+      "display": "UnderlyingDividendFloatingRateSpreadPositionType"
     }
   },
   {
@@ -126,9 +126,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the yield calculation treatment for the index.",
-      "display": "UnderlyingDividendFloatingRateTreatment",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "BondEquivalentYield",
@@ -140,7 +138,9 @@
           "doc": "Money market yield"
         }
       ],
-      "fix:tag": "42807"
+      "FIX:tag": "42807",
+      "description": "Specifies the yield calculation treatment for the index.",
+      "display": "UnderlyingDividendFloatingRateTreatment"
     }
   },
   {
@@ -150,9 +150,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42808",
       "description": "The cap rate, if any, which applies to the floating rate. It is only required where the floating rate is capped at a certain level. The cap rate is assumed to be exclusive of any spread and is a per annum rate, expressed as a decimal. A cap rate of 5% would be represented as \"0.05\".",
-      "display": "UnderlyingDividendCapRate",
-      "fix:tag": "42808"
+      "display": "UnderlyingDividendCapRate"
     }
   },
   {
@@ -162,9 +162,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the buyer of the cap rate option through its trade side.",
-      "display": "UnderlyingDividendCapRateBuySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -176,7 +174,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "42809"
+      "FIX:tag": "42809",
+      "description": "Reference to the buyer of the cap rate option through its trade side.",
+      "display": "UnderlyingDividendCapRateBuySide"
     }
   },
   {
@@ -186,9 +186,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the seller of the cap rate option through its trade side.",
-      "display": "UnderlyingDividendCapRateSellSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -200,7 +198,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "42810"
+      "FIX:tag": "42810",
+      "description": "Reference to the seller of the cap rate option through its trade side.",
+      "display": "UnderlyingDividendCapRateSellSide"
     }
   },
   {
@@ -210,9 +210,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42811",
       "description": "The floor rate, if any, which applies to the floating rate. The floor rate (strike) is only required where the floating rate is floored at a certain strike level. The floor rate is assumed to be exclusive of any spread and is a per annum rate. The rate is expressed as a decimal, e.g. 5% is represented as \"0.05\".",
-      "display": "UnderlyingDividendFloorRate",
-      "fix:tag": "42811"
+      "display": "UnderlyingDividendFloorRate"
     }
   },
   {
@@ -222,9 +222,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the buyer of the floor rate option through its trade side.",
-      "display": "UnderlyingDividendFloorRateBuySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -236,7 +234,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "42812"
+      "FIX:tag": "42812",
+      "description": "Reference to the buyer of the floor rate option through its trade side.",
+      "display": "UnderlyingDividendFloorRateBuySide"
     }
   },
   {
@@ -246,9 +246,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the seller of the floor rate option through its trade side.",
-      "display": "UnderlyingDividendFloorRateSellSide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -260,7 +258,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "42813"
+      "FIX:tag": "42813",
+      "description": "Reference to the seller of the floor rate option through its trade side.",
+      "display": "UnderlyingDividendFloorRateSellSide"
     }
   },
   {
@@ -270,9 +270,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42814",
       "description": "The initial floating rate reset agreed between the principal parties involved in the trade. This is assumed to be the first required reset rate for the first regular calculation period. It should only be included when the rate is not equal to the rate published on the source implied by the floating rate index. The initial rate is expressed in decimal form, e.g. 5% is represented as \"0.05\".",
-      "display": "UnderlyingDividendInitialRate",
-      "fix:tag": "42814"
+      "display": "UnderlyingDividendInitialRate"
     }
   },
   {
@@ -282,9 +282,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the rounding direction of the final rate.",
-      "display": "UnderlyingDividendFinalRateRoundingDirection",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "RoundToNearest",
@@ -301,7 +299,9 @@
           "doc": "Round up"
         }
       ],
-      "fix:tag": "42815"
+      "FIX:tag": "42815",
+      "description": "Specifies the rounding direction of the final rate.",
+      "display": "UnderlyingDividendFinalRateRoundingDirection"
     }
   },
   {
@@ -311,9 +311,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42816",
       "description": "Specifies the rounding precision of the final rate in terms of a number of decimal places. Note how a percentage rate rounding of 5 decimal places is expressed as a rounding precision of 7.",
-      "display": "UnderlyingDividendFinalRatePrecision",
-      "fix:tag": "42816"
+      "display": "UnderlyingDividendFinalRatePrecision"
     }
   },
   {
@@ -323,9 +323,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "When averaging is applicable, used to specify whether a weighted or unweighted average method of calculation is to be used.",
-      "display": "UnderlyingDividendAveragingMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Unweighted",
@@ -337,7 +335,9 @@
           "doc": "Weighted"
         }
       ],
-      "fix:tag": "42817"
+      "FIX:tag": "42817",
+      "description": "When averaging is applicable, used to specify whether a weighted or unweighted average method of calculation is to be used.",
+      "display": "UnderlyingDividendAveragingMethod"
     }
   },
   {
@@ -347,9 +347,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The specification of any provisions for calculating payment obligations when a floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
-      "display": "UnderlyingDividendNegativeRateTreatment",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ZeroInterestRateMethod",
@@ -361,7 +359,9 @@
           "doc": "Negative interest rate method"
         }
       ],
-      "fix:tag": "42818"
+      "FIX:tag": "42818",
+      "description": "The specification of any provisions for calculating payment obligations when a floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
+      "display": "UnderlyingDividendNegativeRateTreatment"
     }
   },
   {
@@ -371,9 +371,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42819",
       "description": "Specifies the anchor date when the accrual payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "UnderlyingDividendAccrualPaymentDateRelativeTo",
-      "fix:tag": "42819"
+      "display": "UnderlyingDividendAccrualPaymentDateRelativeTo"
     }
   },
   {
@@ -383,9 +383,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42820",
       "description": "Time unit multiplier for the relative accrual payment date offset.",
-      "display": "UnderlyingDividendAccrualPaymentDateOffsetPeriod",
-      "fix:tag": "42820"
+      "display": "UnderlyingDividendAccrualPaymentDateOffsetPeriod"
     }
   },
   {
@@ -395,9 +395,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative accrual payment date offset.",
-      "display": "UnderlyingDividendAccrualPaymentDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -419,7 +417,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42821"
+      "FIX:tag": "42821",
+      "description": "Time unit associated with the relative accrual payment date offset.",
+      "display": "UnderlyingDividendAccrualPaymentDateOffsetUnit"
     }
   },
   {
@@ -429,9 +429,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative accrual payment date offset.",
-      "display": "UnderlyingDividendAccrualPaymentDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -463,7 +461,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42822"
+      "FIX:tag": "42822",
+      "description": "Specifies the day type of the relative accrual payment date offset.",
+      "display": "UnderlyingDividendAccrualPaymentDateOffsetDayType"
     }
   },
   {
@@ -474,9 +474,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42823",
       "description": "The unadjusted accrual payment date.",
-      "display": "UnderlyingDividendAccrualPaymentDateUnadjusted",
-      "fix:tag": "42823"
+      "display": "UnderlyingDividendAccrualPaymentDateUnadjusted"
     }
   },
   {
@@ -486,9 +486,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Accrual payment date adjustment business day convention.",
-      "display": "UnderlyingDividendAccrualPaymentDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -530,7 +528,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "42824"
+      "FIX:tag": "42824",
+      "description": "Accrual payment date adjustment business day convention.",
+      "display": "UnderlyingDividendAccrualPaymentDateBusinessDayConvention"
     }
   },
   {
@@ -541,9 +541,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42825",
       "description": "The adjusted accrual payment date.",
-      "display": "UnderlyingDividendAccrualPaymentDateAdjusted",
-      "fix:tag": "42825"
+      "display": "UnderlyingDividendAccrualPaymentDateAdjusted"
     }
   },
   {
@@ -553,9 +553,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42826",
       "description": "Indicates whether the dividend will be reinvested.",
-      "display": "UnderlyingDividendReinvestmentIndicator",
-      "fix:tag": "42826"
+      "display": "UnderlyingDividendReinvestmentIndicator"
     }
   },
   {
@@ -565,9 +565,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Defines the contract event which the receiver of the derivative is entitled to the dividend.",
-      "display": "UnderlyingDividendEntitlementEvent",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ExDate",
@@ -579,7 +577,9 @@
           "doc": "Record date"
         }
       ],
-      "fix:tag": "42827"
+      "FIX:tag": "42827",
+      "description": "Defines the contract event which the receiver of the derivative is entitled to the dividend.",
+      "display": "UnderlyingDividendEntitlementEvent"
     }
   },
   {
@@ -589,9 +589,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates how the gross cash dividend amount per share is determined.",
-      "display": "UnderlyingDividendAmountType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "RecordAmount",
@@ -613,7 +611,9 @@
           "doc": "As specified in master confirmation"
         }
       ],
-      "fix:tag": "42828"
+      "FIX:tag": "42828",
+      "description": "Indicates how the gross cash dividend amount per share is determined.",
+      "display": "UnderlyingDividendAmountType"
     }
   },
   {
@@ -623,9 +623,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42829",
       "description": "References the dividend underlier through the instrument's UnderlyingSecurityID(309) which must be fully specified in a separate instance of the UnderlyingInstrument component.",
-      "display": "UnderlyingDividendUnderlierRefID",
-      "fix:tag": "42829"
+      "display": "UnderlyingDividendUnderlierRefID"
     }
   },
   {
@@ -635,9 +635,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reference to the party through its side in the trade who makes the determination whether dividends are extraordinary in relation to normal levels.",
-      "display": "UnderlyingExtraordinaryDividendPartySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buyer",
@@ -649,7 +647,9 @@
           "doc": "Seller of the trade"
         }
       ],
-      "fix:tag": "42830"
+      "FIX:tag": "42830",
+      "description": "Reference to the party through its side in the trade who makes the determination whether dividends are extraordinary in relation to normal levels.",
+      "display": "UnderlyingExtraordinaryDividendPartySide"
     }
   },
   {
@@ -659,9 +659,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates how the extraordinary gross cash dividend per share is determined.",
-      "display": "UnderlyingExtraordinaryDividendAmountType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "RecordAmount",
@@ -683,7 +681,9 @@
           "doc": "As specified in master confirmation"
         }
       ],
-      "fix:tag": "42831"
+      "FIX:tag": "42831",
+      "description": "Indicates how the extraordinary gross cash dividend per share is determined.",
+      "display": "UnderlyingExtraordinaryDividendAmountType"
     }
   },
   {
@@ -693,9 +693,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42832",
       "description": "The currency in which the excess dividend is denominated. Uses ISO 4217 currency codes.",
-      "display": "UnderlyingExtraordinaryDividendCurrency",
-      "fix:tag": "42832"
+      "display": "UnderlyingExtraordinaryDividendCurrency"
     }
   },
   {
@@ -705,9 +705,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42833",
       "description": "Specifies the method in which the excess amount is determined. See https://fpml.org/coding-scheme/determination-method for values.",
-      "display": "UnderlyingExtraordinaryDividendDeterminationMethod",
-      "fix:tag": "42833"
+      "display": "UnderlyingExtraordinaryDividendDeterminationMethod"
     }
   },
   {
@@ -717,9 +717,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42834",
       "description": "The dividend accrual fixed rate per annum expressed as a decimal.",
-      "display": "UnderlyingDividendAccrualFixedRate",
-      "fix:tag": "42834"
+      "display": "UnderlyingDividendAccrualFixedRate"
     }
   },
   {
@@ -729,9 +729,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The compounding method to be used when more than one dividend period contributes to a single payment.",
-      "display": "UnderlyingDividendCompoundingMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "None",
@@ -753,7 +751,9 @@
           "doc": "Spread exclusive"
         }
       ],
-      "fix:tag": "42835"
+      "FIX:tag": "42835",
+      "description": "The compounding method to be used when more than one dividend period contributes to a single payment.",
+      "display": "UnderlyingDividendCompoundingMethod"
     }
   },
   {
@@ -763,9 +763,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42836",
       "description": "The number of index units applicable to dividends.",
-      "display": "UnderlyingDividendNumOfIndexUnits",
-      "fix:tag": "42836"
+      "display": "UnderlyingDividendNumOfIndexUnits"
     }
   },
   {
@@ -775,9 +775,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42837",
       "description": "Declared cash dividend percentage.",
-      "display": "UnderlyingDividendCashPercentage",
-      "fix:tag": "42837"
+      "display": "UnderlyingDividendCashPercentage"
     }
   },
   {
@@ -787,9 +787,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42838",
       "description": "Declared cash-equivalent dividend percentage. A value of 5% would be represented as \"0.05\".",
-      "display": "UnderlyingDividendCashEquivalentPercentage",
-      "fix:tag": "42838"
+      "display": "UnderlyingDividendCashEquivalentPercentage"
     }
   },
   {
@@ -799,9 +799,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Defines the treatment of non-cash dividends.",
-      "display": "UnderlyingNonCashDividendTreatment",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "PotentialAdjustment",
@@ -813,7 +811,9 @@
           "doc": "Cash equivalent"
         }
       ],
-      "fix:tag": "42839"
+      "FIX:tag": "42839",
+      "description": "Defines the treatment of non-cash dividends.",
+      "display": "UnderlyingNonCashDividendTreatment"
     }
   },
   {
@@ -823,9 +823,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Defines how the composition of dividends is to be determined.",
-      "display": "UnderlyingDividendComposition",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "EquityAmountReceiver",
@@ -837,7 +835,9 @@
           "doc": "Calculation agent election"
         }
       ],
-      "fix:tag": "42840"
+      "FIX:tag": "42840",
+      "description": "Defines how the composition of dividends is to be determined.",
+      "display": "UnderlyingDividendComposition"
     }
   },
   {
@@ -847,9 +847,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42841",
       "description": "Indicates whether special dividends are applicable.",
-      "display": "UnderlyingSpecialDividendsIndicator",
-      "fix:tag": "42841"
+      "display": "UnderlyingSpecialDividendsIndicator"
     }
   },
   {
@@ -859,9 +859,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42842",
       "description": "Indicates whether material non-cash dividends are applicable.",
-      "display": "UnderlyingMaterialDividendsIndicator",
-      "fix:tag": "42842"
+      "display": "UnderlyingMaterialDividendsIndicator"
     }
   },
   {
@@ -871,9 +871,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42843",
       "description": "Indicates whether option exchange dividends are applicable.",
-      "display": "UnderlyingOptionsExchangeDividendsIndicator",
-      "fix:tag": "42843"
+      "display": "UnderlyingOptionsExchangeDividendsIndicator"
     }
   },
   {
@@ -883,9 +883,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42844",
       "description": "Indicates whether additional dividends are applicable.",
-      "display": "UnderlyingAdditionalDividendsIndicator",
-      "fix:tag": "42844"
+      "display": "UnderlyingAdditionalDividendsIndicator"
     }
   },
   {
@@ -895,9 +895,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42845",
       "description": "Represents the European Master Confirmation value of 'All Dividends' which, when applicable, signifies that, for a given Ex-Date, the daily observed share price for that day is adjusted (reduced) by the cash dividend and/or the cash value of any non-cash dividend per share (including extraordinary dividends) declared by the issuer.",
-      "display": "UnderlyingAllDividendsIndicator",
-      "fix:tag": "42845"
+      "display": "UnderlyingAllDividendsIndicator"
     }
   },
   {
@@ -907,9 +907,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42846",
       "description": "Specifies the anchor date when the FX trigger date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "UnderlyingDividendFXTriggerDateRelativeTo",
-      "fix:tag": "42846"
+      "display": "UnderlyingDividendFXTriggerDateRelativeTo"
     }
   },
   {
@@ -919,9 +919,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42847",
       "description": "Time unit multiplier for the relative FX trigger date offset.",
-      "display": "UnderlyingDividendFXTriggerDateOffsetPeriod",
-      "fix:tag": "42847"
+      "display": "UnderlyingDividendFXTriggerDateOffsetPeriod"
     }
   },
   {
@@ -931,9 +931,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative FX trigger date offset.",
-      "display": "UnderlyingDividendFXTriggerDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -955,7 +953,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42848"
+      "FIX:tag": "42848",
+      "description": "Time unit associated with the relative FX trigger date offset.",
+      "display": "UnderlyingDividendFXTriggerDateOffsetUnit"
     }
   },
   {
@@ -965,9 +965,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative FX trigger date offset.",
-      "display": "UnderlyingDividendFXTriggerDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -999,7 +997,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42849"
+      "FIX:tag": "42849",
+      "description": "Specifies the day type of the relative FX trigger date offset.",
+      "display": "UnderlyingDividendFXTriggerDateOffsetDayType"
     }
   },
   {
@@ -1010,9 +1010,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42850",
       "description": "The unadjusted FX trigger date.",
-      "display": "UnderlyingDividendFXTriggerDateUnadjusted",
-      "fix:tag": "42850"
+      "display": "UnderlyingDividendFXTriggerDateUnadjusted"
     }
   },
   {
@@ -1022,9 +1022,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The business day convention used for the FX trigger date adjustment.",
-      "display": "UnderlyingDividendFXTriggerDateBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1066,7 +1064,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "42851"
+      "FIX:tag": "42851",
+      "description": "The business day convention used for the FX trigger date adjustment.",
+      "display": "UnderlyingDividendFXTriggerDateBusinessDayConvention"
     }
   },
   {
@@ -1077,9 +1077,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42852",
       "description": "The adjusted FX trigger date.",
-      "display": "UnderlyingDividendFXTriggerDateAdjusted",
-      "fix:tag": "42852"
+      "display": "UnderlyingDividendFXTriggerDateAdjusted"
     }
   },
   {
@@ -1089,9 +1089,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42853",
       "description": "Number of entries in the UnderlyingDividendFXTriggerDateBusinessCenterGrp.",
-      "display": "NoUnderlyingDividendFXTriggerDateBusinessCenters",
-      "fix:tag": "42853"
+      "display": "NoUnderlyingDividendFXTriggerDateBusinessCenters"
     }
   },
   {
@@ -1101,9 +1101,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42854",
       "description": "The business center calendar used for date adjustment of the instrument's FX trigger date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "UnderlyingDividendFXTriggerDateBusinessCenter",
-      "fix:tag": "42854"
+      "display": "UnderlyingDividendFXTriggerDateBusinessCenter"
     }
   },
   {
@@ -1113,9 +1113,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42855",
       "description": "Number of entries in the repeating group.",
-      "display": "NoUnderlyingDividendPayments",
-      "fix:tag": "42855"
+      "display": "NoUnderlyingDividendPayments"
     }
   },
   {
@@ -1126,9 +1126,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42856",
       "description": "Specifies the date that the dividend or coupon payment is due.",
-      "display": "UnderlyingDividendPaymentDate",
-      "fix:tag": "42856"
+      "display": "UnderlyingDividendPaymentDate"
     }
   },
   {
@@ -1140,9 +1140,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42857",
       "description": "The amount of the dividend or coupon payment.",
-      "display": "UnderlyingDividendPaymentAmount",
-      "fix:tag": "42857"
+      "display": "UnderlyingDividendPaymentAmount"
     }
   },
   {
@@ -1152,9 +1152,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42858",
       "description": "Specifies the currency the UnderlyingDividendPaymentAmount(42857) is denominated in. Uses ISO 4217 currency codes.",
-      "display": "UnderlyingDividendPaymentCurrency",
-      "fix:tag": "42858"
+      "display": "UnderlyingDividendPaymentCurrency"
     }
   },
   {
@@ -1166,9 +1166,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42859",
       "description": "Accrued interest on the dividend or coupon payment.",
-      "display": "UnderlyingDividendAccruedInterest",
-      "fix:tag": "42859"
+      "display": "UnderlyingDividendAccruedInterest"
     }
   },
   {
@@ -1178,9 +1178,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42860",
       "description": "Specifies the actual dividend payout ratio associated with the equity or bond underlier.",
-      "display": "UnderlyingDividendPayoutRatio",
-      "fix:tag": "42860"
+      "display": "UnderlyingDividendPayoutRatio"
     }
   },
   {
@@ -1190,9 +1190,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42861",
       "description": "Specifies the dividend payout conditions that will be applied in the case where the actual ratio is not known, typically because of regulatory or legal uncertainties.",
-      "display": "UnderlyingDividendPayoutConditions",
-      "fix:tag": "42861"
+      "display": "UnderlyingDividendPayoutConditions"
     }
   },
   {
@@ -1202,9 +1202,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42862",
       "description": "Number of entries in the UnderlyingDividendPeriodGrp component.",
-      "display": "NoUnderlyingDividendPeriods",
-      "fix:tag": "42862"
+      "display": "NoUnderlyingDividendPeriods"
     }
   },
   {
@@ -1214,9 +1214,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42863",
       "description": "Defines the ordinal dividend period. E.g. 1 = First period, 2 = Second period, etc.",
-      "display": "UnderlyingDividendPeriodSequence",
-      "fix:tag": "42863"
+      "display": "UnderlyingDividendPeriodSequence"
     }
   },
   {
@@ -1227,9 +1227,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42864",
       "description": "The unadjusted date on which the dividend period will begin.",
-      "display": "UnderlyingDividendPeriodStartDateUnadjusted",
-      "fix:tag": "42864"
+      "display": "UnderlyingDividendPeriodStartDateUnadjusted"
     }
   },
   {
@@ -1240,9 +1240,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42865",
       "description": "The unadjusted date on which the dividend period will end.",
-      "display": "UnderlyingDividendPeriodEndDateUnadjusted",
-      "fix:tag": "42865"
+      "display": "UnderlyingDividendPeriodEndDateUnadjusted"
     }
   },
   {
@@ -1252,9 +1252,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42866",
       "description": "References the dividend underlier through the instrument's UnderlyingSecurityID(309) which must be fully specified in an instance of the UnderlyingInstrument component.",
-      "display": "UnderlyingDividendPeriodUnderlierRefID",
-      "fix:tag": "42866"
+      "display": "UnderlyingDividendPeriodUnderlierRefID"
     }
   },
   {
@@ -1266,9 +1266,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42867",
       "description": "Specifies the fixed strike price of the dividend period.",
-      "display": "UnderlyingDividendPeriodStrikePrice",
-      "fix:tag": "42867"
+      "display": "UnderlyingDividendPeriodStrikePrice"
     }
   },
   {
@@ -1278,9 +1278,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The dividend period dates business day convention.",
-      "display": "UnderlyingDividendPeriodBusinessDayConvention",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "NotApplicable",
@@ -1322,7 +1320,9 @@
           "doc": "Nearest day"
         }
       ],
-      "fix:tag": "42868"
+      "FIX:tag": "42868",
+      "description": "The dividend period dates business day convention.",
+      "display": "UnderlyingDividendPeriodBusinessDayConvention"
     }
   },
   {
@@ -1333,9 +1333,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42869",
       "description": "The unadjusted dividend period valuation date.",
-      "display": "UnderlyingDividendPeriodValuationDateUnadjusted",
-      "fix:tag": "42869"
+      "display": "UnderlyingDividendPeriodValuationDateUnadjusted"
     }
   },
   {
@@ -1345,9 +1345,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42870",
       "description": "Specifies the anchor date when the dividend period valuation date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "UnderlyingDividendPeriodValuationDateRelativeTo",
-      "fix:tag": "42870"
+      "display": "UnderlyingDividendPeriodValuationDateRelativeTo"
     }
   },
   {
@@ -1357,9 +1357,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42871",
       "description": "Time unit multiplier for the relative dividend period valuation date offset.",
-      "display": "UnderlyingDividendPeriodValuationDateOffsetPeriod",
-      "fix:tag": "42871"
+      "display": "UnderlyingDividendPeriodValuationDateOffsetPeriod"
     }
   },
   {
@@ -1369,9 +1369,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative dividend period valuation date offset.",
-      "display": "UnderlyingDividendPeriodValuationDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1393,7 +1391,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42872"
+      "FIX:tag": "42872",
+      "description": "Time unit associated with the relative dividend period valuation date offset.",
+      "display": "UnderlyingDividendPeriodValuationDateOffsetUnit"
     }
   },
   {
@@ -1403,9 +1403,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative dividend period valuation date offset.",
-      "display": "UnderlyingDividendPeriodValuationDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -1437,7 +1435,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42873"
+      "FIX:tag": "42873",
+      "description": "Specifies the day type of the relative dividend period valuation date offset.",
+      "display": "UnderlyingDividendPeriodValuationDateOffsetDayType"
     }
   },
   {
@@ -1448,9 +1448,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42874",
       "description": "The adjusted dividend period valuation date.",
-      "display": "UnderlyingDividendPeriodValuationDateAdjusted",
-      "fix:tag": "42874"
+      "display": "UnderlyingDividendPeriodValuationDateAdjusted"
     }
   },
   {
@@ -1461,9 +1461,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42875",
       "description": "The unadjusted dividend period payment date.",
-      "display": "UnderlyingDividendPeriodPaymentDateUnadjusted",
-      "fix:tag": "42875"
+      "display": "UnderlyingDividendPeriodPaymentDateUnadjusted"
     }
   },
   {
@@ -1473,9 +1473,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42876",
       "description": "Specifies the anchor date when the dividend period payment date is relative to an anchor date. See https://fixtrading.org/packages/relative-to-date for values.",
-      "display": "UnderlyingDividendPeriodPaymentDateRelativeTo",
-      "fix:tag": "42876"
+      "display": "UnderlyingDividendPeriodPaymentDateRelativeTo"
     }
   },
   {
@@ -1485,9 +1485,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42877",
       "description": "Time unit multiplier for the relative dividend period payment date offset.",
-      "display": "UnderlyingDividendPeriodPaymentDateOffsetPeriod",
-      "fix:tag": "42877"
+      "display": "UnderlyingDividendPeriodPaymentDateOffsetPeriod"
     }
   },
   {
@@ -1497,9 +1497,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Time unit associated with the relative dividend period payment date offset.",
-      "display": "UnderlyingDividendPeriodPaymentDateOffsetUnit",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "D",
           "name": "Day",
@@ -1521,7 +1519,9 @@
           "doc": "Year"
         }
       ],
-      "fix:tag": "42878"
+      "FIX:tag": "42878",
+      "description": "Time unit associated with the relative dividend period payment date offset.",
+      "display": "UnderlyingDividendPeriodPaymentDateOffsetUnit"
     }
   },
   {
@@ -1531,9 +1531,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the day type of the relative dividend period payment date offset.",
-      "display": "UnderlyingDividendPeriodPaymentDateOffsetDayType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Business",
@@ -1565,7 +1563,9 @@
           "doc": "Scheduled trading day"
         }
       ],
-      "fix:tag": "42879"
+      "FIX:tag": "42879",
+      "description": "Specifies the day type of the relative dividend period payment date offset.",
+      "display": "UnderlyingDividendPeriodPaymentDateOffsetDayType"
     }
   },
   {
@@ -1576,9 +1576,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42880",
       "description": "The adjusted dividend period payment date.",
-      "display": "UnderlyingDividendPeriodPaymentDateAdjusted",
-      "fix:tag": "42880"
+      "display": "UnderlyingDividendPeriodPaymentDateAdjusted"
     }
   },
   {
@@ -1588,9 +1588,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42881",
       "description": "Identifier for linking this stream dividend period to an underlier through an instance of RelatedInstrumentGrp.",
-      "display": "UnderlyingDividendPeriodXID",
-      "fix:tag": "42881"
+      "display": "UnderlyingDividendPeriodXID"
     }
   },
   {
@@ -1600,9 +1600,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42882",
       "description": "Number of entries in UnderlyingDividendPeriodBusinessCenterGrp.",
-      "display": "NoUnderlyingDividendPeriodBusinessCenters",
-      "fix:tag": "42882"
+      "display": "NoUnderlyingDividendPeriodBusinessCenters"
     }
   },
   {
@@ -1612,9 +1612,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42883",
       "description": "The business center calendar used for date adjustment of the instrument's dividend period date, e.g. \"GBLO\". See https://fpml.org/coding-scheme/business-center for standard 4-character code values.",
-      "display": "UnderlyingDividendPeriodBusinessCenter",
-      "fix:tag": "42883"
+      "display": "UnderlyingDividendPeriodBusinessCenter"
     }
   },
   {
@@ -1624,9 +1624,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42884",
       "description": "Number of extraordinary events in the repeating group.",
-      "display": "NoUnderlyingExtraordinaryEvents",
-      "fix:tag": "42884"
+      "display": "NoUnderlyingExtraordinaryEvents"
     }
   },
   {
@@ -1636,9 +1636,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42885",
       "description": "Identifies the type of extraordinary or disruptive event applicable to UnderlyingExtraordinaryEventType(42885). See https://fixtrading.org/packages/extraordinary-event-type for code list of extraordinary event types and values.",
-      "display": "UnderlyingExtraordinaryEventType",
-      "fix:tag": "42885"
+      "display": "UnderlyingExtraordinaryEventType"
     }
   },
   {
@@ -1648,9 +1648,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42886",
       "description": "The extraordinary or disruptive event value appropriate to UnderlyingExtraordinaryEventType(42885). See https://fixtrading.org/packages/extraordinary-event-type for code list of extraordinary event types and values.",
-      "display": "UnderlyingExtraordinaryEventValue",
-      "fix:tag": "42886"
+      "display": "UnderlyingExtraordinaryEventValue"
     }
   },
   {
@@ -1660,9 +1660,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Side value of the party electing the settlement method.",
-      "display": "UnderlyingSettlMethodElectingPartySide",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Buy",
@@ -1674,7 +1672,9 @@
           "doc": "Sell"
         }
       ],
-      "fix:tag": "42887"
+      "FIX:tag": "42887",
+      "description": "Side value of the party electing the settlement method.",
+      "display": "UnderlyingSettlMethodElectingPartySide"
     }
   },
   {
@@ -1685,9 +1685,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42888",
       "description": "The date through which the option cannot be exercised without penalty.",
-      "display": "UnderlyingMakeWholeDate",
-      "fix:tag": "42888"
+      "display": "UnderlyingMakeWholeDate"
     }
   },
   {
@@ -1699,9 +1699,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42889",
       "description": "Amount to be paid by the buyer of the option if the option is exercised prior to the UnderlyingMakeWholeDate(42888).",
-      "display": "UnderlyingMakeWholeAmount",
-      "fix:tag": "42889"
+      "display": "UnderlyingMakeWholeAmount"
     }
   },
   {
@@ -1711,9 +1711,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42890",
       "description": "Identifies the benchmark floating rate index.",
-      "display": "UnderlyingMakeWholeBenchmarkCurveName",
-      "fix:tag": "42890"
+      "display": "UnderlyingMakeWholeBenchmarkCurveName"
     }
   },
   {
@@ -1723,9 +1723,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42891",
       "description": "The point on the floating rate index curve.",
-      "display": "UnderlyingMakeWholeBenchmarkCurvePoint",
-      "fix:tag": "42891"
+      "display": "UnderlyingMakeWholeBenchmarkCurvePoint"
     }
   },
   {
@@ -1737,9 +1737,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42892",
       "description": "Spread over the floating rate index.",
-      "display": "UnderlyingMakeWholeRecallSpread",
-      "fix:tag": "42892"
+      "display": "UnderlyingMakeWholeRecallSpread"
     }
   },
   {
@@ -1749,9 +1749,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The quote side of the benchmark to be used for calculating the \"make whole\" amount.",
-      "display": "UnderlyingMakeWholeBenchmarkQuote",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Bid",
@@ -1768,7 +1766,9 @@
           "doc": "Offer"
         }
       ],
-      "fix:tag": "42893"
+      "FIX:tag": "42893",
+      "description": "The quote side of the benchmark to be used for calculating the \"make whole\" amount.",
+      "display": "UnderlyingMakeWholeBenchmarkQuote"
     }
   },
   {
@@ -1778,9 +1778,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The method used when calculating the \"make whole\" amount. The most common is linear method.",
-      "display": "UnderlyingMakeWholeInterpolationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "None",
@@ -1792,7 +1790,9 @@
           "doc": "Linear zero yield"
         }
       ],
-      "fix:tag": "42894"
+      "FIX:tag": "42894",
+      "description": "The method used when calculating the \"make whole\" amount. The most common is linear method.",
+      "display": "UnderlyingMakeWholeInterpolationMethod"
     }
   },
   {
@@ -1802,9 +1802,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42895",
       "description": "Indicates whether cash settlement is applicable.",
-      "display": "UnderlyingPaymentStreamCashSettlIndicator",
-      "fix:tag": "42895"
+      "display": "UnderlyingPaymentStreamCashSettlIndicator"
     }
   },
   {
@@ -1814,9 +1814,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42896",
       "description": "Reference to the stream which details the compounding fixed or floating rate.",
-      "display": "UnderlyingPaymentStreamCompoundingXIDRef",
-      "fix:tag": "42896"
+      "display": "UnderlyingPaymentStreamCompoundingXIDRef"
     }
   },
   {
@@ -1828,9 +1828,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "42897",
       "description": "The spread to be used for compounding. Used in scenarios where the interest payment is based on a compounding formula that uses a compounding spread in addition to the regular spread.",
-      "display": "UnderlyingPaymentStreamCompoundingSpread",
-      "fix:tag": "42897"
+      "display": "UnderlyingPaymentStreamCompoundingSpread"
     }
   },
   {
@@ -1840,9 +1840,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The method used when calculating the index rate from multiple points on the curve. The most common is linear method.",
-      "display": "UnderlyingPaymentStreamInterpolationMethod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "None",
@@ -1854,7 +1852,9 @@
           "doc": "Linear zero yield"
         }
       ],
-      "fix:tag": "42898"
+      "FIX:tag": "42898",
+      "description": "The method used when calculating the index rate from multiple points on the curve. The most common is linear method.",
+      "display": "UnderlyingPaymentStreamInterpolationMethod"
     }
   },
   {
@@ -1864,9 +1864,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Defines applicable periods for interpolation.",
-      "display": "UnderlyingPaymentStreamInterpolationPeriod",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Initial",
@@ -1888,7 +1886,9 @@
           "doc": "Any period"
         }
       ],
-      "fix:tag": "42899"
+      "FIX:tag": "42899",
+      "description": "Defines applicable periods for interpolation.",
+      "display": "UnderlyingPaymentStreamInterpolationPeriod"
     }
   }
 ]

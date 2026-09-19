@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "partyrisklimit"
+        "FIX:component": "partyrisklimit"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "partyrisklimit",
+    "FIX:counter": "1677",
+    "FIX:tag": "1048859",
     "description": "Required if NoPartyRiskLimits(1677) > 0.",
-    "display": "PartyRiskLimitsGrp",
-    "fix:component": "partyrisklimit",
-    "fix:counter": "1677",
-    "fix:tag": "1048859"
+    "display": "PartyRiskLimitsGrp"
   }
 }

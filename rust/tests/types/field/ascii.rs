@@ -11,7 +11,9 @@ use arrow_array::{
 use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema};
 use yggdryl::string;
-use yggdryl::{ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, StringEnum};
+use yggdryl::{
+    ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, StringEnum, StructureType,
+};
 use yggdryl::{CfiField, CountryField, CurrencyField, MicField, StringField};
 
 use super::typed::assert_typed_marker;
@@ -171,7 +173,11 @@ fn a_string_enum_is_accepted_on_fixed_us_ascii_up_to_sixteen_bytes_or_a_code() {
 // ---------------------------------------------------------------------------
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    Field::new("row", DataType::from_fields(fields).unwrap(), false)
+    Field::new(
+        "row",
+        DataType::from(StructureType::from_fields(fields).unwrap()),
+        false,
+    )
 }
 
 /// One column under the root's own Arrow schema, so it carries the
@@ -382,7 +388,10 @@ fn a_required_ascii_field_fills_nulls_with_the_all_nul_default() {
 fn a_hidden_struct_child_is_neither_validated_nor_copied() {
     let target = root([Field::new(
         "position",
-        DataType::from_fields([DataType::fixed_ascii(4).unwrap().required_field("ccy")]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([DataType::fixed_ascii(4).unwrap().required_field("ccy")])
+                .unwrap(),
+        ),
         true,
     )]);
     // Row 1 is null at the struct level; its child slot holds a value that

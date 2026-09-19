@@ -98,6 +98,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "uuid": types.uuid("value"),
         "version": types.version("value"),
         "url": types.url("value"),
+        "urn": types.urn("value"),
         "timezone": types.timezone("value"),
         "mimetype": types.mimetype("value"),
         "mediatype": types.mediatype("value"),

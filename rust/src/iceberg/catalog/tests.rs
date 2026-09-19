@@ -8,7 +8,7 @@ use super::{Catalog, Catalogs};
 use crate::IOBase;
 use crate::iceberg::Transform;
 use crate::local::Folder;
-use crate::{DataType, Field, IOKind};
+use crate::{DataType, Field, IOKind, StructureType};
 
 /// Build a catalog over a scratch warehouse unique to this test and process.
 fn warehouse(label: &str) -> (std::path::PathBuf, Catalog<Folder>) {
@@ -25,22 +25,24 @@ fn warehouse(label: &str) -> (std::path::PathBuf, Catalog<Folder>) {
 /// The two-column taxi schema the catalog tests write, deliberately
 /// unnumbered so the catalog has to number it.
 fn taxi_schema() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
 }
 
 /// The taxi schema with `venue` marked as its own partition column.
 fn marked_taxi_schema() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8()
             .nullable_field("venue")
             .with_partition(true),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
 }
@@ -588,10 +590,10 @@ fn properties_round_trip_at_all_three_levels() {
 
     // The reserved prefix is refused by name, and the refusal changes nothing.
     let refused = sales
-        .update_properties([("iceberg:spec".to_owned(), "x".to_owned())], [])
+        .update_properties([("ICEBERG:spec".to_owned(), "x".to_owned())], [])
         .unwrap_err()
         .to_string();
-    assert!(refused.contains("iceberg:"), "{refused}");
+    assert!(refused.contains("ICEBERG:"), "{refused}");
     assert_eq!(sales.properties().unwrap().len(), 1);
 
     // Table properties already ride TableMetadata - assert the level exists.
@@ -669,11 +671,11 @@ fn the_reserved_prefix_is_refused_at_the_catalog_level_too() {
     // The same refusal the namespace level gives, one level up, and the
     // refusal changes nothing: the document stays absent.
     let refused = catalog
-        .update_properties([("iceberg:spec".to_owned(), "x".to_owned())], [])
+        .update_properties([("ICEBERG:spec".to_owned(), "x".to_owned())], [])
         .unwrap_err()
         .to_string();
     assert!(refused.contains("reserved"), "{refused}");
-    assert!(refused.contains("iceberg:"), "{refused}");
+    assert!(refused.contains("ICEBERG:"), "{refused}");
     assert!(catalog.properties().unwrap().is_empty());
 }
 

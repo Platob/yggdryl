@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpricingdateunadjusted",
-          "fix:tag": "41609"
+          "FIX:field": "legpricingdateunadjusted",
+          "FIX:tag": "41609"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpricingdatebusinessdayconvention",
-          "fix:tag": "41610"
+          "FIX:field": "legpricingdatebusinessdayconvention",
+          "FIX:tag": "41610"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpricingdatebusinesscenters",
-          "fix:tag": "41607"
+          "FIX:field": "nolegpricingdatebusinesscenters",
+          "FIX:tag": "41607"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legpricingdatebusinesscentergrp"
+          "FIX:group": "legpricingdatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpricingdateadjusted",
-          "fix:tag": "41611"
+          "FIX:field": "legpricingdateadjusted",
+          "FIX:tag": "41611"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpricingtime",
-          "fix:tag": "41612"
+          "FIX:field": "legpricingtime",
+          "FIX:tag": "41612"
         }
       },
       {
@@ -75,16 +75,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpricingtimebusinesscenter",
-          "fix:tag": "41613"
+          "FIX:field": "legpricingtimebusinesscenter",
+          "FIX:tag": "41613"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "280634",
     "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to the pricing dates.",
-    "display": "LegPricingDateTime",
-    "fix:tag": "280634"
+    "display": "LegPricingDateTime"
   }
 }

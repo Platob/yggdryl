@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "paymentsettl"
+        "FIX:component": "paymentsettl"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "paymentsettl",
+    "FIX:counter": "40230",
+    "FIX:tag": "841061",
     "description": "Required if NoPaymentSettls(40230) > 0.",
-    "display": "PaymentSettlGrp",
-    "fix:component": "paymentsettl",
-    "fix:counter": "40230",
-    "fix:tag": "841061"
+    "display": "PaymentSettlGrp"
   }
 }

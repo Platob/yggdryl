@@ -443,7 +443,7 @@ fn the_writer_re_emits_each_rows_own_wire_and_none_of_the_captures_columns() {
         // The capture's columns are the capture's: the body the line was
         // read from, its place in the object and the bridge's row header
         // are not content, so none of them reaches a counterparty.
-        for carried in ["|body=", "|rownum=", "|mimetype=", "|url=", "|threadId="] {
+        for carried in ["|body=", "|rownum=", "|mimetype=", "|url=", "|msgthreadid="] {
             assert!(!written[at].contains(carried), "row {at}: {}", written[at]);
         }
         if PARTIES_NESTING_A_SUBGROUP.contains(&at) {

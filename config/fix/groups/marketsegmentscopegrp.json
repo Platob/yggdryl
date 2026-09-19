@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "marketsegmentscope"
+        "FIX:component": "marketsegmentscope"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "marketsegmentscope",
+    "FIX:counter": "1310",
+    "FIX:tag": "202985",
     "description": "Required if NoMarketSegments(1310) > 0.",
-    "display": "MarketSegmentScopeGrp",
-    "fix:component": "marketsegmentscope",
-    "fix:counter": "1310",
-    "fix:tag": "202985"
+    "display": "MarketSegmentScopeGrp"
   }
 }

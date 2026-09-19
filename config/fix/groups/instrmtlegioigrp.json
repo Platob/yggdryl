@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "instrmtlegioi"
+        "FIX:component": "instrmtlegioi"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "instrmtlegioi",
+    "FIX:counter": "555",
+    "FIX:tag": "481376",
     "description": "Required for multileg IOIs",
-    "display": "InstrmtLegIOIGrp",
-    "fix:component": "instrmtlegioi",
-    "fix:counter": "555",
-    "fix:tag": "481376"
+    "display": "InstrmtLegIOIGrp"
   }
 }

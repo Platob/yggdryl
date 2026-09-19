@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legfinancingcontractualdefinition"
+        "FIX:component": "legfinancingcontractualdefinition"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legfinancingcontractualdefinition",
+    "FIX:counter": "42198",
+    "FIX:tag": "1047868",
     "description": "Required if NoLegContractualDefinitions(42198) > 0.",
-    "display": "LegFinancingContractualDefinitionsGrp",
-    "fix:component": "legfinancingcontractualdefinition",
-    "fix:counter": "42198",
-    "fix:tag": "1047868"
+    "display": "LegFinancingContractualDefinitionsGrp"
   }
 }

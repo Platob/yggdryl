@@ -16,7 +16,7 @@
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `Uri`, the narrowed [`Url` / `Urn`](url-urn.md), `UriPath`, query [`Parameters`](parameters.md), path [patterns](patterns.md) |
+| Owns | `Uri`, the narrowed [`Url` / `Urn`](url-urn.md), the [`uri` family](#as-a-column) - the `url` and `urn` datatypes a column declares over them, `UriPath`, query [`Parameters`](parameters.md), path [patterns](patterns.md) |
 | Components | Scheme, authority, path: concrete, empty when absent; query, fragment: optional |
 | Validates | [`Scheme`](../types/index.md) and `UriPath` validate on construction |
 | Canonical form | Lowercase scheme, uppercase percent escapes, `/` for `\` under `file:`, the authority marker on every absolute `file:` path; re-parses to the same value |
@@ -254,6 +254,86 @@ three object stores - `s3`/`s3a`/`s3n`, `gs`/`gcs`, and
     const azure = Uri.from('abfss://lake@trades.dfs.core.windows.net/part.parquet')
     assert.deepEqual([azure.bucket, azure.account, azure.key], ['lake', 'trades', 'part.parquet'])
     ```
+
+## As a column
+
+A column of locations declares `url`; a column of names declares `urn`. The two are the leaves of one `uri` family, and each holds the crate's own value - [`Url` or `Urn`](url-urn.md) - the same parsed value a handle addresses itself by, so a value read out of a table is a value a handle can be opened from, not prose that happens to look like one. Text entering either column is parsed and canonicalized on the way in, so a column holds one spelling per identifier and nothing that is not one. There is no wider leaf: an identifier a column holds is a location or a name, and a scalar of either leaf answers the `Uri` both narrow through `as_uri`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field, Scalar, Uri, UriType, Url, Urn};
+
+    let location = Field::new("location", DataType::url(), false);
+    let name = Field::new("name", DataType::urn(), false);
+    assert_eq!(DataType::urn(), DataType::Uri(UriType::Urn));
+    assert_eq!(DataType::urn().uri_type(), Some(UriType::Urn));
+
+    // One spelling per identifier, whichever spelling the text carries.
+    assert_eq!(
+        location.scalar("HTTPS://example.com/a%2fb")?,
+        Scalar::from(Url::from_str("https://example.com/a%2Fb")?)
+    );
+    assert_eq!(
+        name.scalar("URN:ISBN:0451450523")?,
+        Scalar::from(Urn::from_str("urn:isbn:0451450523")?)
+    );
+    // A name is not a location and a location is not a name: each leaf
+    // refuses the other's identifier.
+    assert!(location.scalar("urn:isbn:0451450523").is_err());
+    assert!(name.scalar("https://example.com/a").is_err());
+    // A bare platform path is a `file:` URL, which is what a local handle is.
+    assert_eq!(
+        location.scalar("/lake/part.txt")?,
+        Scalar::from(Url::from_str("file:///lake/part.txt")?)
+    );
+    // Either leaf's scalar answers the identifier both narrow.
+    let held = name.scalar("urn:isbn:0451450523")?;
+    assert_eq!(held.as_uri(), Some(&Uri::from_str("urn:isbn:0451450523")?));
+    // Relative text names no location.
+    assert!(location.scalar("./relative").is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Scalar, types
+    from yggdryl.text import json
+
+    location = types.url("location", nullable=False)
+    name = types.urn("name", nullable=False)
+    assert DataType("urn").kind == "text"
+    located = json.loads('"HTTPS://example.com/a"', field=location, cls=Scalar)
+    assert located.as_py() == "https://example.com/a"
+    named = json.loads('"URN:ISBN:0451450523"', field=name, cls=Scalar)
+    assert named.as_py() == "urn:isbn:0451450523"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, fields, json } = require('yggdryl')
+
+    const location = fields.url('location', { nullable: false })
+    const name = fields.urn('name', { nullable: false })
+    assert.equal(new DataType('urn').kind, 'text')
+    const located = json.loads('"HTTPS://example.com/a"', { field: location, scalar: true })
+    assert.equal(located.asJs(), 'https://example.com/a')
+    const named = json.loads('"URN:ISBN:0451450523"', { field: name, scalar: true })
+    assert.equal(named.asJs(), 'urn:isbn:0451450523')
+    ```
+
+| rule | `url` (59) | `urn` (87) |
+| --- | --- | --- |
+| Kind | `text`; `UriField` over `UriType::Url`, `types.url`, `fields.url` | `text`; `UriField` over `UriType::Urn`, `types.urn`, `fields.urn` |
+| Value | `Url` behind one shared pointer, so a row clone moves a reference count rather than an identifier | `Urn`, the same way |
+| Admits | a location: hierarchical, with a host unless `file:`; never a name | a name: `urn:<namespace>:<specific>`, its namespace folded to lower case; never a location |
+| Storage | `Utf8` holding the canonical text, extension name `yggdryl.url` | `Utf8`, extension name `yggdryl.urn` |
+| Ordering | the canonical text's, which is Arrow's own string order | the same |
+| Default | `file:///`, the shortest location the validator accepts, because an identifier has no zero | `urn:nil:nil`, the shortest name it accepts |
+| Merging | only with itself: merging into text, or into the other leaf, would drop the rule that makes it a location | only with itself |
+| Refusal | a text cell that reads as no location is refused naming the field and the row; an empty cell is null | the same, naming `urn` |
 
 ## Edges
 

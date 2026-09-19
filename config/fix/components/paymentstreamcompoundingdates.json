@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingdatesbusinessdayconvention",
-          "fix:tag": "42609"
+          "FIX:field": "paymentstreamcompoundingdatesbusinessdayconvention",
+          "FIX:tag": "42609"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstreamcompoundingdatesbusinesscenters",
-          "fix:tag": "42620"
+          "FIX:field": "nopaymentstreamcompoundingdatesbusinesscenters",
+          "FIX:tag": "42620"
         }
       },
       {
@@ -32,7 +32,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "paymentstreamcompoundingdatesbusinesscentergrp"
+          "FIX:group": "paymentstreamcompoundingdatesbusinesscentergrp"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopaymentstreamcompoundingdates",
-          "fix:tag": "42606"
+          "FIX:field": "nopaymentstreamcompoundingdates",
+          "FIX:tag": "42606"
         }
       },
       {
@@ -53,7 +53,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "paymentstreamcompoundingdategrp"
+          "FIX:group": "paymentstreamcompoundingdategrp"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingdatesrelativeto",
-          "fix:tag": "42610"
+          "FIX:field": "paymentstreamcompoundingdatesrelativeto",
+          "FIX:tag": "42610"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingdatesoffsetperiod",
-          "fix:tag": "42611"
+          "FIX:field": "paymentstreamcompoundingdatesoffsetperiod",
+          "FIX:tag": "42611"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingdatesoffsetunit",
-          "fix:tag": "42612"
+          "FIX:field": "paymentstreamcompoundingdatesoffsetunit",
+          "FIX:tag": "42612"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingdatesoffsetdaytype",
-          "fix:tag": "42613"
+          "FIX:field": "paymentstreamcompoundingdatesoffsetdaytype",
+          "FIX:tag": "42613"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingperiodskip",
-          "fix:tag": "42614"
+          "FIX:field": "paymentstreamcompoundingperiodskip",
+          "FIX:tag": "42614"
         }
       },
       {
@@ -118,7 +118,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "paymentstreamcompoundingstartdate"
+          "FIX:component": "paymentstreamcompoundingstartdate"
         }
       },
       {
@@ -128,7 +128,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "paymentstreamcompoundingenddate"
+          "FIX:component": "paymentstreamcompoundingenddate"
         }
       },
       {
@@ -138,8 +138,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingfrequencyperiod",
-          "fix:tag": "42615"
+          "FIX:field": "paymentstreamcompoundingfrequencyperiod",
+          "FIX:tag": "42615"
         }
       },
       {
@@ -149,8 +149,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingfrequencyunit",
-          "fix:tag": "42616"
+          "FIX:field": "paymentstreamcompoundingfrequencyunit",
+          "FIX:tag": "42616"
         }
       },
       {
@@ -160,8 +160,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamcompoundingrollconvention",
-          "fix:tag": "42617"
+          "FIX:field": "paymentstreamcompoundingrollconvention",
+          "FIX:tag": "42617"
         }
       },
       {
@@ -171,8 +171,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamboundsfirstdateunadjusted",
-          "fix:tag": "42618"
+          "FIX:field": "paymentstreamboundsfirstdateunadjusted",
+          "FIX:tag": "42618"
         }
       },
       {
@@ -182,16 +182,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamboundslastdateunadjusted",
-          "fix:tag": "42619"
+          "FIX:field": "paymentstreamboundslastdateunadjusted",
+          "FIX:tag": "42619"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "616157",
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to payment stream compounding dates.",
-    "display": "PaymentStreamCompoundingDates",
-    "fix:tag": "616157"
+    "display": "PaymentStreamCompoundingDates"
   }
 }

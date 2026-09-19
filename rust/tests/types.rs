@@ -46,6 +46,8 @@ mod temporal;
 mod timezone;
 #[path = "types/typed/mod.rs"]
 mod typed;
+#[path = "types/uri.rs"]
+mod uri;
 #[path = "types/url.rs"]
 mod url;
 #[path = "types/uuid.rs"]

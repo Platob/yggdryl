@@ -4,7 +4,7 @@
 //! has structural slots for - the schema identifier, a doc string, the v3
 //! defaults, a declared type the physical one cannot distinguish - and a
 //! partition tuple states how each of its values was derived. All of it rides
-//! as `iceberg:` properties, so these two impls are the one place that
+//! as `ICEBERG:` properties, so these two impls are the one place that
 //! vocabulary is spelled, parsed and rendered.
 //!
 //! The impls live here rather than beside the other protocol views because the
@@ -22,7 +22,7 @@
 //!
 //! assert_eq!(field.as_iceberg().doc(), Some("row identifier"));
 //! assert_eq!(field.as_iceberg().partition_source_id()?, Some(3));
-//! assert_eq!(field.get_metadata("iceberg:partition-source-id"), Some("3"));
+//! assert_eq!(field.get_metadata("ICEBERG:partition-source-id"), Some("3"));
 //! # Ok(())
 //! # }
 //! ```

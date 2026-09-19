@@ -152,9 +152,9 @@ def test_invalid_python_root_name_is_refused() -> None:
     )
     # The class name a materialized dataclass would take crosses the native
     # declaration, so the refusal is the core's and names the key it failed.
-    with pytest.raises(ValueError, match="python:qualname.*invalid-root"):
+    with pytest.raises(ValueError, match="PYTHON:qualname.*invalid-root"):
         root.into_dataclass()
-    with pytest.raises(ValueError, match="python:module.*not-a-module"):
+    with pytest.raises(ValueError, match="PYTHON:module.*not-a-module"):
         root.into_dataclass(name="Row", module="not-a-module")
 
     # What a declaration may be stored as and what a generated class may be

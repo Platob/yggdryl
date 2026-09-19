@@ -38,13 +38,13 @@ use std::fmt;
 pub(crate) use arrow::{arrow_storage, from_arrow_storage};
 use smol_str::format_smolstr;
 
-use crate::family::DataTypeValue;
 use crate::invalid;
 use crate::parser::{Parser, precision_to_unit};
 use crate::temporal::scalars::{narrow_i32, require};
 use crate::temporal::{
-    TemporalFamily, invalid_record, temporal_leaf, validate_time32_unit, validate_time64_unit,
+    TemporalKind, invalid_record, temporal_leaf, validate_time32_unit, validate_time64_unit,
 };
+use crate::value::DataTypeValue;
 use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, TimeUnit, Timezone};
 
 // ------------------------------------------------------------------------
@@ -138,10 +138,10 @@ impl TimeType {
         }
     }
 
-    /// The temporal family every leaf belongs to.
+    /// The family's name, `time`, as a datatype spells it.
     #[must_use]
-    pub const fn family(self) -> TemporalFamily {
-        TemporalFamily::Time
+    pub const fn family(self) -> &'static str {
+        TemporalKind::Time.as_str()
     }
 
     /// The width a resolution fits in: seconds and milliseconds in 32 bits,

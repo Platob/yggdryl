@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "streamcommoditydatasource"
+        "FIX:component": "streamcommoditydatasource"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "streamcommoditydatasource",
+    "FIX:counter": "41280",
+    "FIX:tag": "555171",
     "description": "Required if NoStreamCommodityDataSources(41280) > 0.",
-    "display": "StreamCommodityDataSourceGrp",
-    "fix:component": "streamcommoditydatasource",
-    "fix:counter": "41280",
-    "fix:tag": "555171"
+    "display": "StreamCommodityDataSourceGrp"
   }
 }

@@ -10,7 +10,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricedelta",
-          "fix:tag": "811"
+          "FIX:field": "pricedelta",
+          "FIX:tag": "811"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "gamma",
-          "fix:tag": "2996"
+          "FIX:field": "gamma",
+          "FIX:tag": "2996"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "rho",
-          "fix:tag": "2997"
+          "FIX:field": "rho",
+          "FIX:tag": "2997"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "theta",
-          "fix:tag": "2998"
+          "FIX:field": "theta",
+          "FIX:tag": "2998"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "vega",
-          "fix:tag": "2999"
+          "FIX:field": "vega",
+          "FIX:tag": "2999"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "price",
-          "fix:tag": "44"
+          "FIX:field": "price",
+          "FIX:tag": "44"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidpx",
-          "fix:tag": "132"
+          "FIX:field": "bidpx",
+          "FIX:tag": "132"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "offerpx",
-          "fix:tag": "133"
+          "FIX:field": "offerpx",
+          "FIX:tag": "133"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "volatilitytime",
-          "fix:tag": "3000"
+          "FIX:field": "volatilitytime",
+          "FIX:tag": "3000"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "volatility",
-          "fix:tag": "1188"
+          "FIX:field": "volatility",
+          "FIX:tag": "1188"
         }
       },
       {
@@ -130,8 +130,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidvolatility",
-          "fix:tag": "3001"
+          "FIX:field": "bidvolatility",
+          "FIX:tag": "3001"
         }
       },
       {
@@ -141,8 +141,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "offervolatility",
-          "fix:tag": "3002"
+          "FIX:field": "offervolatility",
+          "FIX:tag": "3002"
         }
       },
       {
@@ -152,8 +152,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "midvolatility",
-          "fix:tag": "3003"
+          "FIX:field": "midvolatility",
+          "FIX:tag": "3003"
         }
       },
       {
@@ -163,8 +163,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norelativevalues",
-          "fix:tag": "2529"
+          "FIX:field": "norelativevalues",
+          "FIX:tag": "2529"
         }
       },
       {
@@ -174,14 +174,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "relativevaluegrp"
+          "FIX:group": "relativevaluegrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SecurityRiskMetric",
-    "fix:tag": "474749"
+    "FIX:tag": "474749",
+    "display": "SecurityRiskMetric"
   }
 }

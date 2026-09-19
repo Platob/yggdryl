@@ -14,7 +14,7 @@ use crate::metadata::write_json_string as write_quoted;
 use crate::sequence::SequenceType;
 use crate::structure::StructureType;
 use crate::{
-    DataType, Fields, Metadata, RunEndEncodedType, UnionFields, hashing::stable_hash_display,
+    DataType, Metadata, RunEndEncodedType, StructType, UnionFields, hashing::stable_hash_display,
 };
 use crate::{DateTimeType, DecimalType, DurationType, IntervalType, TimeType};
 
@@ -60,8 +60,8 @@ enum Work {
         path: String,
     },
     FieldSlices {
-        left: Fields,
-        right: Fields,
+        left: StructType,
+        right: StructType,
         path: String,
         phase: SlicePhase,
         index: usize,
@@ -574,8 +574,8 @@ impl DiffEngine {
 
     fn advance_field_slices(
         &mut self,
-        left: Fields,
-        right: Fields,
+        left: StructType,
+        right: StructType,
         path: String,
         mut phase: SlicePhase,
         mut index: usize,
@@ -1234,14 +1234,16 @@ impl DataType {
 /// cases have to be measured from inside. What a caller can observe lives
 /// in `tests/types/field/comparison.rs`.
 mod tests {
+
     use super::{Differences, OwnedDifferences};
-    use crate::{DataType, Field};
+    use crate::{DataType, Field, StructureType};
 
     fn wide_struct(prefix: &str) -> DataType {
-        DataType::from_fields(
+        StructureType::from_fields(
             (0..1_024)
                 .map(|index| Field::new(format!("{prefix}_{index:04}"), DataType::Int64, false)),
         )
+        .map(DataType::from)
         .unwrap()
     }
 
@@ -1262,7 +1264,7 @@ mod tests {
 
         let left = Field::new(
             "root",
-            DataType::from_fields(std::iter::empty()).unwrap(),
+            DataType::from(StructureType::from_fields(std::iter::empty()).unwrap()),
             false,
         );
         let right = Field::new("root", wide_struct("added"), false);

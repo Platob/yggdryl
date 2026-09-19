@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryscheduletype",
-          "fix:tag": "41038"
+          "FIX:field": "deliveryscheduletype",
+          "FIX:tag": "41038"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulexid",
-          "fix:tag": "41039"
+          "FIX:field": "deliveryschedulexid",
+          "FIX:tag": "41039"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulenotional",
-          "fix:tag": "41040"
+          "FIX:field": "deliveryschedulenotional",
+          "FIX:tag": "41040"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulenotionalunitofmeasure",
-          "fix:tag": "41041"
+          "FIX:field": "deliveryschedulenotionalunitofmeasure",
+          "FIX:tag": "41041"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulenotionalcommodityfrequency",
-          "fix:tag": "41042"
+          "FIX:field": "deliveryschedulenotionalcommodityfrequency",
+          "FIX:tag": "41042"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulenegativetolerance",
-          "fix:tag": "41043"
+          "FIX:field": "deliveryschedulenegativetolerance",
+          "FIX:tag": "41043"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulepositivetolerance",
-          "fix:tag": "41044"
+          "FIX:field": "deliveryschedulepositivetolerance",
+          "FIX:tag": "41044"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryscheduletoleranceunitofmeasure",
-          "fix:tag": "41045"
+          "FIX:field": "deliveryscheduletoleranceunitofmeasure",
+          "FIX:tag": "41045"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryscheduletolerancetype",
-          "fix:tag": "41046"
+          "FIX:field": "deliveryscheduletolerancetype",
+          "FIX:tag": "41046"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulesettlcountry",
-          "fix:tag": "41047"
+          "FIX:field": "deliveryschedulesettlcountry",
+          "FIX:tag": "41047"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulesettltimezone",
-          "fix:tag": "41048"
+          "FIX:field": "deliveryschedulesettltimezone",
+          "FIX:tag": "41048"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulesettlflowtype",
-          "fix:tag": "41049"
+          "FIX:field": "deliveryschedulesettlflowtype",
+          "FIX:tag": "41049"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "deliveryschedulesettlholidaysprocessinginstruction",
-          "fix:tag": "41050"
+          "FIX:field": "deliveryschedulesettlholidaysprocessinginstruction",
+          "FIX:tag": "41050"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nodeliveryschedulesettldays",
-          "fix:tag": "41051"
+          "FIX:field": "nodeliveryschedulesettldays",
+          "FIX:tag": "41051"
         }
       },
       {
@@ -164,14 +164,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "deliveryschedulesettldaygrp"
+          "FIX:group": "deliveryschedulesettldaygrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "DeliverySchedule",
-    "fix:tag": "1020673"
+    "FIX:tag": "1020673",
+    "display": "DeliverySchedule"
   }
 }

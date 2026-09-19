@@ -1,4 +1,4 @@
-use yggdryl::{DataType, DataTypeId, Field, TimeUnit, Timezone};
+use yggdryl::{DataType, DataTypeId, Field, StructureType, TimeUnit, Timezone};
 use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 #[test]
@@ -335,7 +335,7 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
         DataType::list_view(DataType::Int32.nullable_field("item")),
         DataType::large_list_view(DataType::Int32.nullable_field("item")),
         DataType::fixed_size_list(DataType::Int32.nullable_field("item"), 4).unwrap(),
-        DataType::from_fields([DataType::Int32.required_field("a")]).unwrap(),
+        DataType::from(StructureType::from_fields([DataType::Int32.required_field("a")]).unwrap()),
         DataType::map_of(DataType::utf8(), DataType::Int32, false).unwrap(),
         DataType::map_of(DataType::utf8(), DataType::Int32, true).unwrap(),
         DataType::dictionary(DataType::Int32, DataType::utf8()).unwrap(),

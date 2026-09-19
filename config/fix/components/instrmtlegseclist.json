@@ -10,7 +10,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrumentleg"
+          "FIX:component": "instrumentleg"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legswaptype",
-          "fix:tag": "690"
+          "FIX:field": "legswaptype",
+          "FIX:tag": "690"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettltype",
-          "fix:tag": "587"
+          "FIX:field": "legsettltype",
+          "FIX:tag": "587"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegstipulations",
-          "fix:tag": "683"
+          "FIX:field": "nolegstipulations",
+          "FIX:tag": "683"
         }
       },
       {
@@ -53,7 +53,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legstipulations"
+          "FIX:group": "legstipulations"
         }
       },
       {
@@ -63,14 +63,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legbenchmarkcurvedata"
+          "FIX:component": "legbenchmarkcurvedata"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "InstrmtLegSecList",
-    "fix:tag": "166359"
+    "FIX:tag": "166359",
+    "display": "InstrmtLegSecList"
   }
 }

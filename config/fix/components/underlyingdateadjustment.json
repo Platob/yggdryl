@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingbusinessdayconvention",
-          "fix:tag": "40964"
+          "FIX:field": "underlyingbusinessdayconvention",
+          "FIX:tag": "40964"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingbusinesscenters",
-          "fix:tag": "40962"
+          "FIX:field": "nounderlyingbusinesscenters",
+          "FIX:tag": "40962"
         }
       },
       {
@@ -32,7 +32,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingbusinesscentergrp"
+          "FIX:group": "underlyingbusinesscentergrp"
         }
       },
       {
@@ -42,16 +42,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdaterollconvention",
-          "fix:tag": "40965"
+          "FIX:field": "underlyingdaterollconvention",
+          "FIX:tag": "40965"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "533187",
     "description": "UnderlyingDateAdjustment is a subcomponent within the UnderlyingInstrument component. It is used to specify date adjustment parameters and rules. The date adjustments specified here applies to all adjustable dates for the underlying instrument, unless specifically overridden in the respective specified components further within the UnderlyingInstrument component.",
-    "display": "UnderlyingDateAdjustment",
-    "fix:tag": "533187"
+    "display": "UnderlyingDateAdjustment"
   }
 }

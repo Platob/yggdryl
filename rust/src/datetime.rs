@@ -43,11 +43,11 @@ pub(crate) use arrow::{
 };
 use smol_str::format_smolstr;
 
-use crate::family::DataTypeValue;
 use crate::invalid;
 use crate::parser::{Parser, fmt_quoted, precision_to_unit};
 use crate::temporal::scalars::require;
-use crate::temporal::{TemporalFamily, temporal_leaf};
+use crate::temporal::{TemporalKind, temporal_leaf};
+use crate::value::DataTypeValue;
 use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, TimeUnit, Timezone};
 
 // ------------------------------------------------------------------------
@@ -144,10 +144,10 @@ impl DateTimeType {
         }
     }
 
-    /// The temporal family every leaf belongs to.
+    /// The family's name, `datetime`, as a datatype spells it.
     #[must_use]
-    pub const fn family(self) -> TemporalFamily {
-        TemporalFamily::DateTime
+    pub const fn family(self) -> &'static str {
+        TemporalKind::DateTime.as_str()
     }
 
     /// This leaf at another resolution.

@@ -2,7 +2,7 @@
 
 use yggdryl::SequenceType;
 use yggdryl::expression::Term;
-use yggdryl::{DataType, Field, FieldPath, FieldSegment, Scalar};
+use yggdryl::{DataType, Field, FieldPath, FieldSegment, Scalar, StructureType};
 
 fn parse(text: &str) -> FieldPath {
     FieldPath::from_str(text).expect("path parses")
@@ -403,12 +403,14 @@ fn a_reserved_word_reached_after_a_dot_renders_quoted() {
 
 #[test]
 fn a_step_types_one_level_and_reads_one_value() {
-    let root = DataType::from_fields([
+    let root = StructureType::from_fields([
         DataType::list(DataType::Int64.required_field("item")).required_field("legs"),
-        DataType::from_fields([DataType::utf8().nullable_field("ccy")])
+        StructureType::from_fields([DataType::utf8().nullable_field("ccy")])
+            .map(DataType::from)
             .unwrap()
             .required_field("trade"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     let legs = FieldSegment::field("legs").apply_field(&root).unwrap();
@@ -463,13 +465,14 @@ fn a_step_types_one_level_and_reads_one_value() {
 
 /// A row holding one list of structs, the shape a predicate keeps elements of.
 fn legs_root() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::list(
-            DataType::from_fields([
+            StructureType::from_fields([
                 DataType::utf8().nullable_field("ccy"),
                 DataType::Int64.nullable_field("size"),
                 DataType::Boolean.nullable_field("active"),
             ])
+            .map(DataType::from)
             .unwrap()
             .nullable_field("item"),
         )
@@ -477,6 +480,7 @@ fn legs_root() -> Field {
         DataType::list(DataType::Int64.nullable_field("item")).nullable_field("xs"),
         DataType::utf8().nullable_field("ccy"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
 }

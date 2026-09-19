@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcashsettldealer",
-          "fix:tag": "41343"
+          "FIX:field": "legcashsettldealer",
+          "FIX:tag": "41343"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegCashSettlDealer",
-    "fix:tag": "107312"
+    "FIX:tag": "107312",
+    "display": "LegCashSettlDealer"
   }
 }

@@ -10,9 +10,11 @@ const POINT_EMPTY_WKB: [u8; 21] = [
 
 use std::sync::Arc;
 
-use yggdryl::floating::FloatingValue;
+use yggdryl::{Code, FamilyValue, FloatingValue, Geospatial, Nested, Temporal, TemporalValue};
 use yggdryl::{DataType, DataTypeId, DataTypeKind, TimeUnit, Timezone, Value, i256};
-use yggdryl::{Float16, Float32, Float64, Scalar};
+use yggdryl::{Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64};
+use yggdryl::{Float16, Float32, Float64, Floating, Scalar};
+use yggdryl::{Int8, Int16, Int32, Int64, Int128, Integer, UInt8, UInt16, UInt32, UInt64, UInt128};
 
 fn order() -> Scalar {
     Scalar::from_mapping([
@@ -515,6 +517,217 @@ fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
     assert_eq!(<Float32 as FloatingValue>::BIT_WIDTH, 32);
 }
 
+/// One leaf beside the family variant that shares its name, and what the
+/// family owes it: the widening `From<Leaf>`, the scalar variant of the same
+/// name, the leaf's own datatype and its rendering.
+#[macro_export]
+macro_rules! family_leaf {
+    ($family:ident :: $variant:ident, $leaf:expr) => {{
+        let leaf = $leaf;
+        (
+            $family::$variant(leaf.clone()),
+            $family::from(leaf.clone()),
+            yggdryl::Scalar::$variant(leaf.clone()),
+            yggdryl::Value::dtype(&leaf).unwrap(),
+            leaf.to_string(),
+        )
+    }};
+}
+
+/// One family leaf as [`family_leaf!`] states it: the family variant, the
+/// widened leaf, the scalar, the leaf's datatype and its rendering.
+pub(crate) type FamilyLeaf<F> = (F, F, Scalar, DataType, String);
+
+/// What a family enum answers for each of its leaves: `from_scalar` narrows
+/// the leaf's scalar to that variant, `dtype` and `Display` are the leaf's,
+/// `into_scalar` and `From<Family> for Scalar` widen back to the scalar the
+/// leaf widens to, `KIND` is the family's, and a scalar of another kind
+/// narrows to nothing.
+pub(crate) fn assert_family_round_trip<F>(
+    leaves: Vec<FamilyLeaf<F>>,
+    kind: DataTypeKind,
+    other: &Scalar,
+) where
+    F: FamilyValue,
+    Scalar: From<F>,
+{
+    assert_eq!(F::KIND, kind);
+    for (held, widened, scalar, dtype, display) in leaves {
+        assert_eq!(widened, held, "{scalar:?}");
+        assert_eq!(F::from_scalar(&scalar), Some(held.clone()), "{scalar:?}");
+        assert_eq!(scalar.family(), kind, "{scalar:?}");
+        assert_eq!(held.dtype().unwrap(), dtype, "{scalar:?}");
+        assert_eq!(held.to_string(), display, "{scalar:?}");
+        assert_eq!(held.clone().into_scalar(), scalar, "{scalar:?}");
+        assert_eq!(Scalar::from(held), scalar, "{scalar:?}");
+    }
+    assert_ne!(other.family(), kind, "{other:?}");
+    assert_eq!(F::from_scalar(other), None, "{other:?}");
+    assert_eq!(F::from_scalar(&Scalar::Null), None);
+}
+
+#[test]
+fn the_integer_family_stands_for_every_width() {
+    assert_family_round_trip(
+        vec![
+            family_leaf!(Integer::Int8, Int8::new(-8)),
+            family_leaf!(Integer::Int16, Int16::new(-16)),
+            family_leaf!(Integer::Int32, Int32::new(-32)),
+            family_leaf!(Integer::Int64, Int64::new(-64)),
+            family_leaf!(Integer::UInt8, UInt8::new(8)),
+            family_leaf!(Integer::UInt16, UInt16::new(16)),
+            family_leaf!(Integer::UInt32, UInt32::new(32)),
+            family_leaf!(Integer::UInt64, UInt64::new(64)),
+            family_leaf!(Integer::Int128, Int128::new(i128::MIN)),
+            family_leaf!(Integer::UInt128, UInt128::new(u128::MAX)),
+        ],
+        DataTypeKind::Integer,
+        &Scalar::from(1.5_f64),
+    );
+}
+
+#[test]
+fn the_floating_family_stands_for_every_width() {
+    assert_family_round_trip(
+        vec![
+            family_leaf!(
+                Floating::Float16,
+                Float16::from_f16(half::f16::from_f32(1.5))
+            ),
+            family_leaf!(Floating::Float32, Float32::from_f32(1.25)),
+            family_leaf!(Floating::Float64, Float64::from_f64(0.1)),
+        ],
+        DataTypeKind::Floating,
+        &Scalar::from(1_i64),
+    );
+}
+
+#[test]
+fn every_family_accessor_answers_its_own_kind_and_no_other() {
+    let mut point = vec![1, 1, 0, 0, 0];
+    point.extend_from_slice(&1.5_f64.to_le_bytes());
+    point.extend_from_slice(&2.5_f64.to_le_bytes());
+    // One value of every kind, so each accessor meets every other kind.
+    let values = [
+        Scalar::Null,
+        Scalar::from(true),
+        Scalar::from(7_i32),
+        Scalar::from(u128::MAX),
+        Scalar::from(1.5_f32),
+        Scalar::d128(125, 1),
+        Scalar::date32(1),
+        Scalar::interval(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
+        Scalar::from("text"),
+        Scalar::Currency(yggdryl::Currency::new("EUR").unwrap()),
+        Scalar::from(vec![1_u8, 2]),
+        Scalar::Uuid(yggdryl::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap()),
+        Scalar::Timezone(Timezone::UTC),
+        Scalar::Geometry(yggdryl::Geometry::new(point.clone()).unwrap()),
+        Scalar::Geography(yggdryl::Geography::new(point).unwrap()),
+        Scalar::from_sequence([Scalar::from(1_i64)]),
+        Scalar::from_mapping([(Scalar::from("k"), Scalar::from(1_i64))]).unwrap(),
+        Scalar::from_record([("id", Scalar::from(1_i64))]).unwrap(),
+    ];
+
+    // An accessor is the family's own narrowing: it answers exactly where
+    // the scalar's kind is the family's, and what it answers widens back to
+    // the scalar it read.
+    macro_rules! answers_its_own_kind {
+        ($accessor:ident, $family:ident) => {
+            for value in &values {
+                let held = value.$accessor();
+                assert_eq!(held, $family::from_scalar(value), "{value:?}");
+                assert_eq!(
+                    held.is_some(),
+                    value.family() == DataTypeKind::$family,
+                    "{value:?}"
+                );
+                if let Some(held) = held {
+                    assert_eq!(Scalar::from(held), *value, "{value:?}");
+                }
+            }
+        };
+    }
+    answers_its_own_kind!(as_integer, Integer);
+    answers_its_own_kind!(as_floating, Floating);
+    answers_its_own_kind!(as_temporal, Temporal);
+    answers_its_own_kind!(as_code, Code);
+    answers_its_own_kind!(as_geospatial, Geospatial);
+    answers_its_own_kind!(as_nested, Nested);
+
+    // The decimal family narrows through its own `from_scalar`; `as_decimal`
+    // is the coefficient-and-scale reader.
+    let price = Scalar::d128(125, 1);
+    assert_eq!(price.as_decimal(), Some((i256::from_i128(125), 1)));
+    assert!(matches!(
+        yggdryl::Decimal::from_scalar(&price),
+        Some(yggdryl::Decimal::Decimal128(_))
+    ));
+    assert_eq!(Scalar::from(7_i32).as_decimal(), None);
+}
+
+#[test]
+fn a_temporal_names_its_family_as_a_datatype_spells_it() {
+    // The five words are the datatypes' own, so the family read off a value
+    // is the word a column of it declares.
+    let cases = [
+        (
+            Temporal::from(Date32::new(1, TimeUnit::Day, Timezone::NAIVE).unwrap()),
+            "date",
+        ),
+        (
+            Temporal::from(
+                Date64::new(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
+            ),
+            "date",
+        ),
+        (
+            Temporal::from(Time32::new(1, TimeUnit::Second, Timezone::NAIVE).unwrap()),
+            "time",
+        ),
+        (
+            Temporal::from(Time64::new(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()),
+            "time",
+        ),
+        (
+            Temporal::from(DateTime64::new(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap()),
+            "datetime",
+        ),
+        (
+            Temporal::from(Duration32::new(-1, TimeUnit::Millisecond, Timezone::NAIVE).unwrap()),
+            "duration",
+        ),
+        (
+            Temporal::from(Duration64::new(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()),
+            "duration",
+        ),
+        (
+            Temporal::from(Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()),
+            "interval",
+        ),
+    ];
+    for (held, family) in &cases {
+        assert_eq!(held.family(), *family, "{held:?}");
+        assert_eq!(
+            Scalar::from(held.clone())
+                .as_temporal()
+                .map(|held| held.family()),
+            Some(*family),
+            "{held:?}"
+        );
+    }
+
+    // Each leaf type states the same word as a constant.
+    assert_eq!(Date32::FAMILY, "date");
+    assert_eq!(Date64::FAMILY, "date");
+    assert_eq!(Time32::FAMILY, "time");
+    assert_eq!(Time64::FAMILY, "time");
+    assert_eq!(DateTime64::FAMILY, "datetime");
+    assert_eq!(Duration32::FAMILY, "duration");
+    assert_eq!(Duration64::FAMILY, "duration");
+    assert_eq!(Interval::FAMILY, "interval");
+}
+
 #[test]
 fn every_scalar_family_exposes_its_leaf_contract() {
     use yggdryl::{
@@ -666,7 +879,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
 
 #[test]
 fn width_variants_keep_exact_members_and_logical_identity() {
-    use yggdryl::{bytes, datetime, decimal, geospatial, integer, sequence, string, temporal};
+    use yggdryl::{bytes, datetime, decimal, geospatial, integer, sequence, string};
 
     let signed = Scalar::Int32(integer::Int32::new(7));
     let unsigned = Scalar::UInt8(integer::UInt8::new(7));
@@ -726,12 +939,15 @@ fn width_variants_keep_exact_members_and_logical_identity() {
         datetime::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
     );
     assert_eq!(
-        datetime.temporal_family(),
-        Some(temporal::TemporalFamily::DateTime)
+        datetime.as_temporal().map(|held| held.family()),
+        Some("datetime")
     );
+    assert!(matches!(
+        datetime.as_temporal(),
+        Some(Temporal::DateTime64(_))
+    ));
     assert_eq!(datetime.kind(), "datetime64");
     assert_eq!(datetime.temporal_timezone(), Some(Timezone::UTC));
-    assert_eq!(temporal::TemporalFamily::Interval.as_str(), "interval");
 
     let encoded = serde_json::to_string(&sequence).unwrap();
     assert_eq!(serde_json::from_str::<Scalar>(&encoded).unwrap(), sequence);

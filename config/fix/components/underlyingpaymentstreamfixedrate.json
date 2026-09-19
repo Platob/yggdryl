@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamrate",
-          "fix:tag": "40615"
+          "FIX:field": "underlyingpaymentstreamrate",
+          "FIX:tag": "40615"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfixedamount",
-          "fix:tag": "40616"
+          "FIX:field": "underlyingpaymentstreamfixedamount",
+          "FIX:tag": "40616"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamrateoramountcurrency",
-          "fix:tag": "40617"
+          "FIX:field": "underlyingpaymentstreamrateoramountcurrency",
+          "FIX:tag": "40617"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfixedamountunitofmeasure",
-          "fix:tag": "41904"
+          "FIX:field": "underlyingpaymentstreamfixedamountunitofmeasure",
+          "FIX:tag": "41904"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamtotalfixedamount",
-          "fix:tag": "41905"
+          "FIX:field": "underlyingpaymentstreamtotalfixedamount",
+          "FIX:tag": "41905"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfuturevaluenotional",
-          "fix:tag": "40618"
+          "FIX:field": "underlyingpaymentstreamfuturevaluenotional",
+          "FIX:tag": "40618"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamfuturevaluedateadjusted",
-          "fix:tag": "40619"
+          "FIX:field": "underlyingpaymentstreamfuturevaluedateadjusted",
+          "FIX:tag": "40619"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamworldscalerate",
-          "fix:tag": "41906"
+          "FIX:field": "underlyingpaymentstreamworldscalerate",
+          "FIX:tag": "41906"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcontractprice",
-          "fix:tag": "41907"
+          "FIX:field": "underlyingpaymentstreamcontractprice",
+          "FIX:tag": "41907"
         }
       },
       {
@@ -109,16 +109,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcontractpricecurrency",
-          "fix:tag": "41908"
+          "FIX:field": "underlyingpaymentstreamcontractpricecurrency",
+          "FIX:tag": "41908"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "634693",
     "description": "Mutually exclusive with UnderlyingPaymentStreamFixedAmount(40616).",
-    "display": "UnderlyingPaymentStreamFixedRate",
-    "fix:tag": "634693"
+    "display": "UnderlyingPaymentStreamFixedRate"
   }
 }

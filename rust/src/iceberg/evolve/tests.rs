@@ -7,27 +7,29 @@ use crate::iceberg::{
     FormatVersion, PartitionSpec, Snapshot, SnapshotRef, SortField, SortOrder, TableMetadata,
     Transform, assign_field_ids,
 };
-use crate::{DataType, Field};
+use crate::{DataType, Field, StructureType};
 
 /// The nested quote schema every evolution test starts from.
 ///
 /// Ids run 1..=5 depth first: `id`, `symbol`, `quote`, `quote.price`,
 /// `quote.size`.
 fn quote_schema() -> Field {
-    let mut schema = DataType::from_fields([
+    let mut schema = StructureType::from_fields([
         DataType::Int32.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
-        DataType::from_fields([
+        StructureType::from_fields([
             DataType::Float32.required_field("price"),
             DataType::Int32.nullable_field("size"),
         ])
+        .map(DataType::from)
         .unwrap()
         .nullable_field("quote"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     assign_field_ids(&mut schema, 1).unwrap();
-    schema.insert_metadata("iceberg:schema-id", "0").unwrap();
+    schema.insert_metadata("ICEBERG:schema-id", "0").unwrap();
     schema
 }
 
@@ -135,7 +137,9 @@ mod promotions {
 }
 
 mod schema_updates {
+
     use super::{DataType, FormatVersion, SchemaUpdate, metadata};
+    use crate::StructureType;
 
     #[test]
     fn an_added_top_level_column_is_numbered_above_the_last_column_id() {
@@ -154,10 +158,11 @@ mod schema_updates {
         let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.add_column(
             "quote",
-            DataType::from_fields([
+            StructureType::from_fields([
                 DataType::Int64.required_field("bid"),
                 DataType::Int64.required_field("ask"),
             ])
+            .map(DataType::from)
             .unwrap()
             .nullable_field("depth"),
         );
@@ -241,7 +246,7 @@ mod schema_updates {
                 .unwrap()
                 .get_field_by_path("price")
                 .unwrap()
-                .get_metadata("iceberg:doc"),
+                .get_metadata("ICEBERG:doc"),
             Some("closing price")
         );
     }
@@ -339,7 +344,7 @@ mod schema_updates {
             evolved
                 .get_field_by_path("ticker")
                 .unwrap()
-                .get_metadata("iceberg:doc"),
+                .get_metadata("ICEBERG:doc"),
             Some("renamed first")
         );
     }
@@ -433,7 +438,7 @@ mod schema_updates {
         let mut with_default = metadata.current_schema().unwrap().clone();
         let mut quantity = DataType::Int64.required_field("quantity");
         quantity
-            .insert_metadata("iceberg:initial-default", "0")
+            .insert_metadata("ICEBERG:initial-default", "0")
             .unwrap();
         with_default
             .set_field_by_path("quantity", quantity)
@@ -444,7 +449,7 @@ mod schema_updates {
         let mut changed = metadata.current_schema().unwrap().clone();
         let mut quantity = changed.get_field_by_path("quantity").unwrap().clone();
         quantity
-            .insert_metadata("iceberg:initial-default", "1")
+            .insert_metadata("ICEBERG:initial-default", "1")
             .unwrap();
         changed.set_field_by_path("quantity", quantity).unwrap();
         let message = metadata.add_schema(changed).unwrap_err().to_string();
@@ -464,7 +469,7 @@ mod metadata_updates {
         DataType, FormatVersion, PartitionSpec, SchemaUpdate, SmolStr, SnapshotRef, TableMetadata,
         identity_order, metadata, quote_schema, snapshot,
     };
-    use crate::Scalar;
+    use crate::{Scalar, StructureType};
 
     #[test]
     fn properties_are_canonical_and_round_trip_through_the_document() {
@@ -902,7 +907,7 @@ mod metadata_updates {
         let mut fields = schema.fields().to_vec();
         fields[1].set_parquet_field_id(1);
         schema
-            .set_dtype(DataType::from_fields(fields).unwrap())
+            .set_dtype(DataType::from(StructureType::from_fields(fields).unwrap()))
             .unwrap();
         duplicated.schemas[0] = schema;
         let message = duplicated.validate().unwrap_err().to_string();

@@ -4,6 +4,7 @@ use std::collections::TryReserveError;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::UriType;
 use crate::push_field_name_path;
 use crate::{Error, Field, Result, Scalar, TimeUnit};
 
@@ -38,6 +39,7 @@ enum DefaultPlan {
     /// The minimum canonical version.
     Version,
     Url,
+    Urn,
     Timezone,
     MimeType,
     MediaType,
@@ -238,7 +240,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::TimeInForce
             | DataType::Uuid
             | DataType::Version
-            | DataType::Url
+            | DataType::Uri(_)
             | DataType::Timezone
             | DataType::MimeType
             | DataType::MediaType
@@ -323,7 +325,9 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         D::Version => scalar(DefaultPlan::Version, false),
         // A location has no zero, so the default is the shortest one the
         // validator accepts: the filesystem root.
-        D::Url => scalar(DefaultPlan::Url, false),
+        D::Uri(UriType::Url) => scalar(DefaultPlan::Url, false),
+        // A name has no zero either: the shortest URN the validator accepts.
+        D::Uri(UriType::Urn) => scalar(DefaultPlan::Urn, false),
         // The explicit zone-free marker: the one zone every temporal already
         // defaults to, so a zone column and a zone parameter agree.
         D::Timezone => scalar(DefaultPlan::Timezone, false),
@@ -652,11 +656,18 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         DefaultPlan::Url => {
             crate::Url::from_str(DEFAULT_URL).map(|url| Scalar::Url(std::sync::Arc::new(url)))
         }
+        DefaultPlan::Urn => {
+            crate::Urn::from_str(DEFAULT_URN).map(|urn| Scalar::Urn(std::sync::Arc::new(urn)))
+        }
     }
 }
 
 /// The filesystem root, which is the shortest URL the validator accepts.
 pub(crate) const DEFAULT_URL: &str = "file:///";
+
+/// The nil name: the shortest URN the validator accepts, a two-byte namespace
+/// and a one-byte specific string, spelled as the nothing it names.
+pub(crate) const DEFAULT_URN: &str = "urn:nil:nil";
 
 /// `POINT EMPTY` in little-endian ISO WKB: order byte, type 1, NaN NaN.
 pub(crate) const POINT_EMPTY_WKB: [u8; 21] = [
@@ -744,6 +755,9 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
         }
         DefaultPlan::Url => {
             matches!(value, Scalar::Url(url) if url.to_string() == DEFAULT_URL)
+        }
+        DefaultPlan::Urn => {
+            matches!(value, Scalar::Urn(urn) if urn.to_string() == DEFAULT_URN)
         }
     }
 }

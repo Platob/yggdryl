@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationperioddate",
-          "fix:tag": "41639"
+          "FIX:field": "legstreamcalculationperioddate",
+          "FIX:tag": "41639"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legstreamcalculationperioddatetype",
-          "fix:tag": "41640"
+          "FIX:field": "legstreamcalculationperioddatetype",
+          "FIX:tag": "41640"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegStreamCalculationPeriodDate",
-    "fix:tag": "1071689"
+    "FIX:tag": "1071689",
+    "display": "LegStreamCalculationPeriodDate"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contractualmatrixsource",
-          "fix:tag": "40043"
+          "FIX:field": "contractualmatrixsource",
+          "FIX:tag": "40043"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contractualmatrixdate",
-          "fix:tag": "40044"
+          "FIX:field": "contractualmatrixdate",
+          "FIX:tag": "40044"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contractualmatrixterm",
-          "fix:tag": "40045"
+          "FIX:field": "contractualmatrixterm",
+          "FIX:tag": "40045"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "FinancingContractualMatrix",
-    "fix:tag": "575558"
+    "FIX:tag": "575558",
+    "display": "FinancingContractualMatrix"
   }
 }

@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::{DataType, Field, OwnedDifferences};
+use yggdryl::{DataType, Field, OwnedDifferences, StructureType};
 
 use super::nested_field;
 
@@ -53,9 +53,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
         |prefix: &str| {
             Field::new(
                 "root",
-                DataType::from_fields((0..1_024).map(|index| {
+                StructureType::from_fields((0..1_024).map(|index| {
                     Field::new(format!("{prefix}_{index:04}"), DataType::Int64, false)
                 }))
+                .map(DataType::from)
                 .expect("the generated field names are unique"),
                 false,
             )

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "tradingsessionrule"
+        "FIX:component": "tradingsessionrule"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "tradingsessionrule",
+    "FIX:counter": "1309",
+    "FIX:tag": "397339",
     "description": "Allows trading rules to be expressed by trading session",
-    "display": "TradingSessionRulesGrp",
-    "fix:component": "tradingsessionrule",
-    "fix:counter": "1309",
-    "fix:tag": "397339"
+    "display": "TradingSessionRulesGrp"
   }
 }

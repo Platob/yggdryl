@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepid",
-          "fix:tag": "3037"
+          "FIX:field": "teststepid",
+          "FIX:tag": "3037"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepdesc",
-          "fix:tag": "3038"
+          "FIX:field": "teststepdesc",
+          "FIX:tag": "3038"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepstarttime",
-          "fix:tag": "3039"
+          "FIX:field": "teststepstarttime",
+          "FIX:tag": "3039"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepstartoffsetperiod",
-          "fix:tag": "3040"
+          "FIX:field": "teststepstartoffsetperiod",
+          "FIX:tag": "3040"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststepstartoffsetunit",
-          "fix:tag": "3041"
+          "FIX:field": "teststepstartoffsetunit",
+          "FIX:tag": "3041"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststependtime",
-          "fix:tag": "3042"
+          "FIX:field": "teststependtime",
+          "FIX:tag": "3042"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststependoffsetperiod",
-          "fix:tag": "3043"
+          "FIX:field": "teststependoffsetperiod",
+          "FIX:tag": "3043"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "teststependoffsetunit",
-          "fix:tag": "3044"
+          "FIX:field": "teststependoffsetunit",
+          "FIX:tag": "3044"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noteststepparameters",
-          "fix:tag": "3045"
+          "FIX:field": "noteststepparameters",
+          "FIX:tag": "3045"
         }
       },
       {
@@ -109,14 +109,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "teststepparametergrp"
+          "FIX:group": "teststepparametergrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TestStep",
-    "fix:tag": "970465"
+    "FIX:tag": "970465",
+    "display": "TestStep"
   }
 }

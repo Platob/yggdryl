@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingstartdateunadjusted",
-          "fix:tag": "42445"
+          "FIX:field": "legpaymentstreamcompoundingstartdateunadjusted",
+          "FIX:tag": "42445"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingstartdaterelativeto",
-          "fix:tag": "42446"
+          "FIX:field": "legpaymentstreamcompoundingstartdaterelativeto",
+          "FIX:tag": "42446"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingstartdateoffsetperiod",
-          "fix:tag": "42447"
+          "FIX:field": "legpaymentstreamcompoundingstartdateoffsetperiod",
+          "FIX:tag": "42447"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingstartdateoffsetunit",
-          "fix:tag": "42448"
+          "FIX:field": "legpaymentstreamcompoundingstartdateoffsetunit",
+          "FIX:tag": "42448"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingstartdateoffsetdaytype",
-          "fix:tag": "42449"
+          "FIX:field": "legpaymentstreamcompoundingstartdateoffsetdaytype",
+          "FIX:tag": "42449"
         }
       },
       {
@@ -65,16 +65,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamcompoundingstartdateadjusted",
-          "fix:tag": "42450"
+          "FIX:field": "legpaymentstreamcompoundingstartdateadjusted",
+          "FIX:tag": "42450"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "461934",
     "description": "Conditionally required when LegPaymentStreamCompoundingStartDateOffsetUnit(42448) is specified.",
-    "display": "LegPaymentStreamCompoundingStartDate",
-    "fix:tag": "461934"
+    "display": "LegPaymentStreamCompoundingStartDate"
   }
 }

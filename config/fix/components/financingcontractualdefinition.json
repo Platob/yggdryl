@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "contractualdefinition",
-          "fix:tag": "40041"
+          "FIX:field": "contractualdefinition",
+          "FIX:tag": "40041"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "FinancingContractualDefinition",
-    "fix:tag": "398930"
+    "FIX:tag": "398930",
+    "display": "FinancingContractualDefinition"
   }
 }

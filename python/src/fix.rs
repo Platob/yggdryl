@@ -3,7 +3,7 @@
 //! Nothing here resolves, folds, merges, shards or validates: the registry is
 //! one [`Arc`] over the core [`FixRegistry`], and every accessor coerces its
 //! key once at the boundary and redirects to the most specific native method.
-//! The typed `fix:` vocabulary is not here either - it lives on the protocol
+//! The typed `FIX:` vocabulary is not here either - it lives on the protocol
 //! view class [`crate::types::field::PyProtocolField`], which is what `field.fix`
 //! already answers.
 //!
@@ -27,8 +27,8 @@ use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
     FixCodec as CoreFixCodec, FixEntry as CoreFixEntry, FixField as CoreFixField,
     FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg,
-    FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType, Scalar, TimeUnit,
-    Timezone, from_json_scalar_with_field, into_json_scalar,
+    FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType, Scalar,
+    StructureType, TimeUnit, Timezone, from_json_scalar_with_field, into_json_scalar,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -98,7 +98,7 @@ where
 }
 
 /// One of the market's numbers, exact, as the decimal `Scalar` it is.
-fn decimal_scalar(held: yggdryl::Decimal) -> PyScalar {
+fn decimal_scalar(held: yggdryl::Decimal18) -> PyScalar {
     PyScalar::from_inner(Scalar::from(held))
 }
 
@@ -213,7 +213,7 @@ fn absent(error: &CoreError) -> PyErr {
 /// One namespace of scalar fields, components and repeating groups, each
 /// reached through the field doors alone: a Struct is a component, a List of
 /// Structs or a Map a group, and a message a component carrying
-/// `fix:msgtype`. The registry is mutable, so it is unhashable and compares
+/// `FIX:msgtype`. The registry is mutable, so it is unhashable and compares
 /// by the fields it holds. It is held as an `Arc` because a
 /// [`FixMsg`][PyFixMsg] links the very registry it was resolved against, a
 /// [`MsgType`][PyMsgType] view keeps it, and the process default is one too:
@@ -301,7 +301,7 @@ impl PyFixRegistry {
     /// Answers the dictionary its `vocabulary` states and the message roots
     /// its `grammar-binding`s describe. `dialect` names the dictionary, and
     /// every field, group, component and message root the file produces is
-    /// stamped with it in `fix:branches` - standard tags included, because
+    /// stamped with it in `FIX:branches` - standard tags included, because
     /// membership means the dictionary speaks the field; with none supplied
     /// nothing is stamped.
     ///
@@ -337,7 +337,7 @@ impl PyFixRegistry {
     /// category its shape names, and one of this crate's own tags is skipped
     /// as already held.
     ///
-    /// One mutation: a refusal - no `fix:tag`, a datatype disagreeing with
+    /// One mutation: a refusal - no `FIX:tag`, a datatype disagreeing with
     /// the stored field - leaves the dictionary exactly as it was.
     fn add_field(&mut self, field: &Bound<'_, PyAny>) -> PyResult<bool> {
         let field = core_field_from_value(field)?;
@@ -352,7 +352,7 @@ impl PyFixRegistry {
     /// that order.
     ///
     /// One mutation: the whole fold is staged and only then adopted, so a
-    /// refusal - a field with no `fix:tag`, a datatype disagreeing with the
+    /// refusal - a field with no `FIX:tag`, a datatype disagreeing with the
     /// stored definition - leaves the dictionary exactly as it was.
     fn add_fields(&mut self, fields: &Bound<'_, PyAny>) -> PyResult<(usize, usize)> {
         // Coerced whole before anything is written, so a value Python cannot
@@ -381,7 +381,7 @@ impl PyFixRegistry {
     ///
     /// The one call an ingest takes: the file's vocabulary folds in the way
     /// `add_fields` folds any source, every field it produces stamped with
-    /// the dialect in `fix:branches` and that membership unioned onto
+    /// the dialect in `FIX:branches` and that membership unioned onto
     /// whatever it merges into.
     ///
     /// `dialect` names the dictionary, and the location's own stem stands in
@@ -443,7 +443,7 @@ impl PyFixRegistry {
     /// No dialect is taken, and that is the point of the pair: a `CBlock`
     /// states no membership, so `add_cfb_file` has to be told one or guess it
     /// from the stem, while a snapshot is this package's own format and every
-    /// field and definition in it already carries the `fix:branches` its
+    /// field and definition in it already carries the `FIX:branches` its
     /// writer meant.
     ///
     /// Answers the count added and the count merged. One mutation: a document
@@ -707,7 +707,7 @@ impl PyFixRegistry {
     }
 
     /// Every dictionary name any field or definition carries in
-    /// `fix:branches`, distinct and sorted.
+    /// `FIX:branches`, distinct and sorted.
     ///
     /// Membership is provenance a caller filters on; no lookup consults it.
     fn dialects(&self) -> Vec<String> {
@@ -1345,9 +1345,9 @@ impl PyFixMsg {
     /// columns fill the holders, the content is rebuilt from the
     /// `fixentries` column - so `into_bytes` re-emits the line the row was
     /// read from, and a row without that column has no content - and a
-    /// capture's own column is read past - the two the crate tags,
-    /// `sourceurl` and `recordedat`, and every column no tag and no counter
-    /// names - so nothing on the message holds one; a column whose name
+    /// capture's own column is read past - the one the crate tags,
+    /// `sourceurl`, and every column no tag and no counter names - so
+    /// nothing on the message holds one; a column whose name
     /// holds a `.` is a bridge's own statement and lands in the metadata.
     /// They stay the row's, and whoever writes rows back restates them.
     /// Nothing is parsed again and no clock is read: a row carries the
@@ -1504,11 +1504,10 @@ impl PyFixMsg {
     /// `key` is a tag or a name, resolved as a lookup resolves one through
     /// the dictionary. A key reaching a typed fact - a header or trailer
     /// tag, a crate column, one of the FIX fields a message lifts - records
-    /// it on the holder that owns it, and `None` clears it. A key reaching one of the capture's
-    /// own columns - `sourceurl` (65026), `recordedat` (65028), by tag or by
-    /// name - is a located `ValueError`: a message holds no fact for one,
-    /// and a row child would put it on the wire. Any other key lands in
-    /// the row: a
+    /// it on the holder that owns it, and `None` clears it. A key reaching the capture's
+    /// own column - `sourceurl` (65026), by tag or by name - is a located
+    /// `ValueError`: a message holds no fact for it, and a row child would
+    /// put it on the wire. Any other key lands in the row: a
     /// known field types the value through the core's value contract, `None`
     /// is stored as a stated null, an existing child is replaced where it
     /// stands and an absent one appended, a name the dictionary does not
@@ -1609,7 +1608,11 @@ impl PyFixMsg {
         values.extend(typed_values);
         let mut field = root.clone();
         field
-            .set_dtype(CoreDataType::from_fields(members).map_err(value_error)?)
+            .set_dtype(
+                StructureType::from_fields(members)
+                    .map(CoreDataType::from)
+                    .map_err(value_error)?,
+            )
             .map_err(value_error)?;
         let field = field.into_json().map_err(value_error)?;
         let value = into_json_scalar(&Scalar::from_sequence(values)).map_err(value_error)?;
@@ -1912,9 +1915,9 @@ impl PyFixMsg {
     /// fact from its holder and the rest from the row, so a message that
     /// carried nothing at a column answers null there rather than shifting
     /// its neighbours, which is what makes two rows of one capture
-    /// comparable at all. The capture's own columns answer null - the two
-    /// the crate tags, `sourceurl` and `recordedat`, and every column no tag
-    /// and no counter names - because a message holds no fact for any of
+    /// comparable at all. The capture's own columns answer null - the one
+    /// the crate tags, `sourceurl`, and every column no tag and no counter
+    /// names - because a message holds no fact for any of
     /// them; the capture readers state them on the row instead. The `fixentries` list closes the row with the
     /// whole content, counted by `nofixentries`. A value a column will not
     /// hold is that column's null; a column that cannot be null keeps the
@@ -2260,13 +2263,13 @@ impl PyFixCodec {
     /// capture, else the codec's `default_sending_time`, else UTC now, and
     /// the instant `currunix` is `TransactTime`, else that `SendingTime`.
     ///
-    /// A `pluginid` capture fills the crate's `pluginid` field and selects
+    /// A `msgpluginid` capture fills the crate's `msgpluginid` field and selects
     /// nothing: the dictionary is one namespace.
     ///
     /// Nothing else the line holds is communicated: not the object it names,
     /// not its media type, not its place in that object, not the body as a
     /// value - and a capture named for one of the capture's own columns
-    /// (`sourceurl`, `recordedat`, or the `mtime` that aliases it) fills
+    /// (`sourceurl`, or a carried one like `mtime`) fills
     /// nothing either. The answer is the message the line's bytes parsed to
     /// and no more; where a line came from is the reader's to state, on the
     /// row, which is what `parse_text_arrow_reader` does.
@@ -2311,9 +2314,9 @@ impl PyFixCodec {
     /// parses one, and batches close on the raw bytes of the payload column
     /// against `batch_byte_size`.
     ///
-    /// The capture's own columns fill nothing: the carried ones, and the two
-    /// the crate tags - a `sourceurl` column and a `recordedat` one - are
-    /// read off the source row and written straight into the row this
+    /// The capture's own columns fill nothing: the carried ones, and the one
+    /// the crate tags - a `sourceurl` column - are read off the source row
+    /// and written straight into the row this
     /// answers, because where a line was read from is this reader's
     /// statement and never the message's. This is the one door that can
     /// state them, and it is why they survive a parse without a message
@@ -2460,7 +2463,7 @@ impl PyFixCodec {
     /// alive - so a chained message carries its predecessor's identity and
     /// instant as `prevuuid` and `prevunix`, its place in the chain as
     /// `seqnum`, the predecessor among its `parentuuids`, the lifecycle's
-    /// creation carried forward as `creatunix`, and is settled again around
+    /// creation carried forward as `creaunix`, and is settled again around
     /// them; a message that arrives before the live one it would follow is
     /// yielded as it came. A message the walk refuses raises `ValueError`
     /// where it is met and the stream continues; an item that is not a
@@ -2539,8 +2542,8 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// `fixentries` list that closes every row with the whole content under the
 /// `nofixentries` that counts it. Columns are spelled by the dictionary's
 /// folded canonical names - `msgtype`, never `35` - so a row reads the way a
-/// message reads; the tag stays each column's identity, on its `fix:tag`,
-/// and is what fills it. `beginstring`, `currunix`, `creatunix`, `currhashcode`,
+/// message reads; the tag stays each column's identity, on its `FIX:tag`,
+/// and is what fills it. `beginstring`, `currunix`, `creaunix`, `currhashcode`,
 /// `crosshashcode`, `curruuid` and `crossuuid` are the non-null columns,
 /// because every message settles them; a tag the dictionary does not hold
 /// is skipped rather than invented.
@@ -2563,9 +2566,9 @@ pub(crate) fn fix_schema(
 /// a monitor orders and joins on. A carried column whose folded name a FIX
 /// column already takes - `MsgCtxId` and `msgctxid` are one name - is dropped
 /// rather than renamed: the FIX column is the one a reader spelling it means,
-/// and the row fills it from what the capture stated - except the two the
-/// crate tags, `sourceurl` and `recordedat`, which no message holds and
-/// which whoever read the row states straight onto it.
+/// and the row fills it from what the capture stated - except the one the
+/// crate tags, `sourceurl`, which no message holds and which whoever read
+/// the row states straight onto it.
 ///
 /// A carried column is nullable whatever the capture declared it: a capture's
 /// own column is the *reading's* statement and no message holds one, so a
@@ -2593,14 +2596,13 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 
 /// The definitions this crate lists, in tag order from 65003.
 ///
-/// The event's clocks - `currunix`, `creatunix`, `prevunix`, `snapunix`, the
-/// `recordedat` a capture stamped - its identities - `currhashcode`,
-/// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`, `parentuuids`, the
-/// `crosscode` they derive from, its `seqnum` - what a bridge's own log
-/// states about a line - the `pluginid`, the `msgctxid`, the
-/// `msgsessionid` - the `sourceurl` a line was read from, the
+/// The event's clocks - `currunix`, `creaunix`, `prevunix`, `snapunix` - its
+/// identities - `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid`,
+/// `prevuuid`, `parentuuids`, the `crosscode` they derive from, its `seqnum` -
+/// what a bridge's own log states about a line - the `msgpluginid`, the
+/// `msgctxid`, the `msgsessionid` - the `sourceurl` a line was read from, the
 /// `nofixentries` that counts its content, and the two Map groups
-/// `identifiers` and `metadata`. Twenty in all, and every one a fact no
+/// `identifiers` and `metadata`. Nineteen in all, and every one a fact no
 /// dictionary publishes: what a message says about its *market* is FIX's
 /// own field, and the graph traits answer it off those.
 #[pyfunction]
@@ -2614,7 +2616,7 @@ pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
 /// The vocabulary one Ullink `CBlock` declares, in declaration order.
 ///
 /// The dictionary half of `FixRegistry.from_cfb_file`, answered on its own: every
-/// field carries the `fix:tag` that keys it, the dialect in `fix:branches`,
+/// field carries the `FIX:tag` that keys it, the dialect in `FIX:branches`,
 /// and whatever code set the file's maps decode for it, which is what
 /// `FixRegistry.add_fields` needs to fold one counterparty's file into a
 /// dictionary that exists. The message roots are what the registry form
@@ -2847,8 +2849,9 @@ impl PyFixHeader {
 /// digests to.
 ///
 /// What the *reader* said about the line is not here and is held nowhere on
-/// a message: the object it was read from and the instant it was recorded
-/// are the capture's own columns, stated on the row by whoever read it.
+/// a message: the object it was read from, and whatever else the reader
+/// carried, are the capture's own columns, stated on the row by whoever
+/// read it.
 ///
 /// A copy at the moment it was asked for; immutable, so it compares and
 /// hashes by its facts.
@@ -2867,8 +2870,8 @@ pub(crate) struct PyFixCapture {
 impl PyFixCapture {
     /// The plugin that logged the line, as a bridge names it, or `None`.
     #[getter]
-    fn pluginid(&self) -> Option<&str> {
-        self.inner.pluginid()
+    fn msgpluginid(&self) -> Option<&str> {
+        self.inner.msgpluginid()
     }
 
     /// The message context a bridge handled the line in, or `None`.
@@ -2896,7 +2899,7 @@ impl PyFixCapture {
     fn __hash__(&self) -> isize {
         let mut state = std::hash::DefaultHasher::new();
         (
-            self.inner.pluginid(),
+            self.inner.msgpluginid(),
             self.inner.msgctxid(),
             self.inner.msgsessionid(),
         )
@@ -2907,7 +2910,7 @@ impl PyFixCapture {
     fn __repr__(&self) -> String {
         format!(
             "FixCapture({}, {})",
-            repr_text(self.inner.pluginid()),
+            repr_text(self.inner.msgpluginid()),
             repr_text(self.inner.msgsessionid())
         )
     }
@@ -3014,8 +3017,8 @@ impl PyMarketEventData {
 
     /// When the lifecycle was created, or `None`.
     #[getter]
-    fn creatunix(&self) -> Option<i64> {
-        self.inner.get_creatunix()
+    fn creaunix(&self) -> Option<i64> {
+        self.inner.get_creaunix()
     }
 
     /// When the event stops being good, or `None`.

@@ -45,7 +45,7 @@
 
 use smol_str::format_smolstr;
 
-use crate::{Charset, DataType, Error, Field, Result};
+use crate::{Charset, DataType, Error, Field, Result, StructureType};
 use crate::{TimeUnit, UnionMode};
 
 use crate::bytes::BytesType;
@@ -197,7 +197,7 @@ impl DataType {
         let canonical_text = |dtype: &Self| {
             matches!(
                 dtype,
-                Self::Version | Self::Url | Self::Timezone | Self::MimeType | Self::MediaType
+                Self::Version | Self::Uri(_) | Self::Timezone | Self::MimeType | Self::MediaType
             )
         };
         if canonical_text(self) || canonical_text(other) {
@@ -345,7 +345,7 @@ fn merge_struct(
             merged.push(optional(field));
         }
     }
-    DataType::from_fields(merged)
+    StructureType::from_fields(merged).map(DataType::from)
 }
 
 /// The same field, but nullable, because one side never described it.

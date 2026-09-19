@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventperiodtype",
-          "fix:tag": "41380"
+          "FIX:field": "legcomplexeventperiodtype",
+          "FIX:tag": "41380"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventbusinesscenter",
-          "fix:tag": "41381"
+          "FIX:field": "legcomplexeventbusinesscenter",
+          "FIX:tag": "41381"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventschedules",
-          "fix:tag": "41400"
+          "FIX:field": "nolegcomplexeventschedules",
+          "FIX:tag": "41400"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legcomplexeventschedulegrp"
+          "FIX:group": "legcomplexeventschedulegrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventperioddatetimes",
-          "fix:tag": "41376"
+          "FIX:field": "nolegcomplexeventperioddatetimes",
+          "FIX:tag": "41376"
         }
       },
       {
@@ -64,7 +64,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legcomplexeventperioddategrp"
+          "FIX:group": "legcomplexeventperioddategrp"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegcomplexeventaveragingobservations",
-          "fix:tag": "41363"
+          "FIX:field": "nolegcomplexeventaveragingobservations",
+          "FIX:tag": "41363"
         }
       },
       {
@@ -85,14 +85,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legcomplexeventaveragingobservationgrp"
+          "FIX:group": "legcomplexeventaveragingobservationgrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEventPeriod",
-    "fix:tag": "959084"
+    "FIX:tag": "959084",
+    "display": "LegComplexEventPeriod"
   }
 }

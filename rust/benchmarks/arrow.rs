@@ -27,7 +27,7 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{
     ArrowCastOptions, ArrowScalar, DataType, Field, IOBase, IOMedia, IOMode, MediaType, MimeType,
-    Scalar, TimeUnit, Timezone, Url,
+    Scalar, StructureType, TimeUnit, Timezone, Url,
 };
 
 /// Rows per fixture: one small enough to stay warm, one at the size a
@@ -58,7 +58,7 @@ const EPOCH: i64 = 1_767_225_600_000_000;
 
 /// The trade root: what one commodity tick carries.
 fn root() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::utf8().required_field("symbol"),
         DataType::decimal128(12, 4)
             .expect("the price width is valid")
@@ -70,6 +70,7 @@ fn root() -> Field {
         })
         .required_field("timestamp"),
     ])
+    .map(DataType::from)
     .expect("the trade root is valid")
     .required_field("row")
 }
@@ -366,7 +367,7 @@ fn collect_benchmarks(criterion: &mut Criterion) {
 /// The root a cast reshapes trades onto: reordered, with the price restated at
 /// a wider scale so the cast is a cast rather than an identity.
 fn cast_target() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
@@ -378,6 +379,7 @@ fn cast_target() -> Field {
             .required_field("price"),
         DataType::Int64.required_field("size"),
     ])
+    .map(DataType::from)
     .expect("the cast target is valid")
     .required_field("row")
 }

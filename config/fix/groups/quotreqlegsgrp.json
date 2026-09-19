@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "quotreqleg"
+        "FIX:component": "quotreqleg"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "quotreqleg",
+    "FIX:counter": "555",
+    "FIX:tag": "858634",
     "description": "Required if NoLegs(555) > 0.",
-    "display": "QuotReqLegsGrp",
-    "fix:component": "quotreqleg",
-    "fix:counter": "555",
-    "fix:tag": "858634"
+    "display": "QuotReqLegsGrp"
   }
 }

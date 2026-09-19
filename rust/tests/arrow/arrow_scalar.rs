@@ -7,7 +7,7 @@ use yggdryl::arrow::{batch_reader, batch_to_value};
 use yggdryl::holder::Buffer;
 use yggdryl::{
     ArrowCastOptions, ArrowScalar, ArrowShape, DataType, Field, IOBase, IOMedia, IOMode, Scalar,
-    Url,
+    StructureType, Url,
 };
 
 /// An in-memory handle whose media type is the one its name implies.
@@ -106,10 +106,11 @@ fn shaped_values() -> Vec<(ArrowShape, ArrowScalar, Field, Scalar)> {
 
 fn nested_root() -> Field {
     root([
-        DataType::from_fields([
+        StructureType::from_fields([
             DataType::utf8().required_field("mic"),
             DataType::Int64.required_field("rank"),
         ])
+        .map(DataType::from)
         .expect("the child datatype is valid")
         .required_field("venue"),
         DataType::list(DataType::Int64.required_field("item")).required_field("sizes"),

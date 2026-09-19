@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "minbidsize",
-          "fix:tag": "647"
+          "FIX:field": "minbidsize",
+          "FIX:tag": "647"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "minoffersize",
-          "fix:tag": "648"
+          "FIX:field": "minoffersize",
+          "FIX:tag": "648"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fastmarketindicator",
-          "fix:tag": "2447"
+          "FIX:field": "fastmarketindicator",
+          "FIX:tag": "2447"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "QuoteSizeRule",
-    "fix:tag": "656399"
+    "FIX:tag": "656399",
+    "display": "QuoteSizeRule"
   }
 }

@@ -6,17 +6,17 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::metadata::{parse_source_list, render_source_list};
 use crate::protocol::{DigestField, DigestFieldMut};
-use crate::{DataType, DigestAlgorithm, Error, Field, Result};
+use crate::{DataType, DigestAlgorithm, Error, Field, Result, StructureType};
 
 use crate::txhash::{TIME, UNIT};
 
 const ALGORITHM: &str = "algorithm";
 const ROLE: &str = "role";
 const SOURCES: &str = "sources";
-pub(crate) const DIGEST_ALGORITHM_KEY: &str = "digest:algorithm";
-pub(crate) const DIGEST_ROLE_KEY: &str = "digest:role";
+pub(crate) const DIGEST_ALGORITHM_KEY: &str = "DIGEST:algorithm";
+pub(crate) const DIGEST_ROLE_KEY: &str = "DIGEST:role";
 pub(crate) const DIGEST_ROLE_HOLDER: &str = "holder";
-pub(crate) const DIGEST_SOURCES_KEY: &str = "digest:sources";
+pub(crate) const DIGEST_SOURCES_KEY: &str = "DIGEST:sources";
 
 /// Return whether a holder's storage carries this algorithm's exact width.
 ///
@@ -74,7 +74,7 @@ impl DigestField<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error naming `digest:algorithm` when externally supplied
+    /// Returns an error naming `DIGEST:algorithm` when externally supplied
     /// metadata is not a [`DigestAlgorithm`] token.
     pub fn algorithm(&self) -> Result<Option<DigestAlgorithm>> {
         self.get(ALGORITHM).map(parse_digest_algorithm).transpose()
@@ -109,7 +109,7 @@ impl DigestField<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error naming `digest:sources` when stored metadata is not a
+    /// Returns an error naming `DIGEST:sources` when stored metadata is not a
     /// JSON array of unique non-empty strings, or names `"*"` beside a path.
     pub fn sources(&self) -> Result<Option<Vec<String>>> {
         self.get(SOURCES)
@@ -133,7 +133,7 @@ impl DigestField<'_> {
     /// default, was never written and is filled.
     ///
     /// The algorithm is the one each holder resolves for itself: its own
-    /// `digest:algorithm`, else the one its width implies. This entry point
+    /// `DIGEST:algorithm`, else the one its width implies. This entry point
     /// carries no seed or secret, which is what makes its answer the same
     /// [`Scalar::stable_hash`](crate::Scalar::stable_hash) every other reader computes; a
     /// seeded state or a forced recomputation is
@@ -144,11 +144,12 @@ impl DigestField<'_> {
     ///
     /// use arrow_array::{ArrayRef, Int64Array, RecordBatch};
     /// use yggdryl::DataType;
+    /// use yggdryl::StructureType;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut stored = DataType::UInt64.nullable_field("row_digest");
     /// stored.as_digest_mut().set_holder()?;
-    /// let root = DataType::from_fields([DataType::Int64.required_field("id"), stored])?
+    /// let root = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id"), stored])?)
     ///     .required_field("row");
     ///
     /// let batch = RecordBatch::try_from_iter([(
@@ -198,7 +199,7 @@ impl DigestFieldMut<'_> {
     /// store the algorithm's width, leaving it unchanged.
     pub fn set_algorithm(&mut self, algorithm: DigestAlgorithm) -> Result<()> {
         if !self.as_protocol().is_holder() {
-            return Err(self.rejected(ALGORITHM, "requires digest:role=holder".into()));
+            return Err(self.rejected(ALGORITHM, "requires DIGEST:role=holder".into()));
         }
         if !holder_accepts(self.as_field(), algorithm) {
             return Err(self.rejected(
@@ -236,7 +237,7 @@ impl DigestFieldMut<'_> {
         P: AsRef<str>,
     {
         if !self.as_protocol().is_holder() {
-            return Err(self.rejected(SOURCES, "requires digest:role=holder".into()));
+            return Err(self.rejected(SOURCES, "requires DIGEST:role=holder".into()));
         }
         self.insert(SOURCES, render_source_list(DIGEST_SOURCES_KEY, sources)?)
             .map(|_| ())
@@ -257,7 +258,7 @@ impl DigestFieldMut<'_> {
         if self.has_holder_properties() {
             return Err(self.rejected(
                 ROLE,
-                "cannot remove holder role while digest:algorithm, digest:sources, digest:time, or digest:unit is present"
+                "cannot remove holder role while DIGEST:algorithm, DIGEST:sources, DIGEST:time, or DIGEST:unit is present"
                     .into(),
             ));
         }
@@ -284,7 +285,7 @@ impl Field {
     /// Returns the struct children a row digest reads by default.
     ///
     /// That is every child except a digest holder, in declaration order, which
-    /// is exactly what a holder's `digest:sources` of `["*"]` names and what
+    /// is exactly what a holder's `DIGEST:sources` of `["*"]` names and what
     /// storing no sources at all means. A holder naming its own sources
     /// selects from these same children; nothing marks them.
     pub fn digest_fields(&self) -> DigestFields<'_> {
@@ -312,7 +313,7 @@ impl Field {
         let kept: Vec<Self> = self.digest_fields().cloned().collect();
         Self::from_parts(
             self.name(),
-            DataType::from_fields(kept)?,
+            DataType::from(StructureType::from_fields(kept)?),
             self.is_nullable(),
             self.metadata_iter(),
         )

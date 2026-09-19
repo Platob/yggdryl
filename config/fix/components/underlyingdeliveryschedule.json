@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryscheduletype",
-          "fix:tag": "41757"
+          "FIX:field": "underlyingdeliveryscheduletype",
+          "FIX:tag": "41757"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulexid",
-          "fix:tag": "41758"
+          "FIX:field": "underlyingdeliveryschedulexid",
+          "FIX:tag": "41758"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulenotional",
-          "fix:tag": "41759"
+          "FIX:field": "underlyingdeliveryschedulenotional",
+          "FIX:tag": "41759"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulenotionalunitofmeasure",
-          "fix:tag": "41760"
+          "FIX:field": "underlyingdeliveryschedulenotionalunitofmeasure",
+          "FIX:tag": "41760"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulenotionalcommodityfrequency",
-          "fix:tag": "41761"
+          "FIX:field": "underlyingdeliveryschedulenotionalcommodityfrequency",
+          "FIX:tag": "41761"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulenegativetolerance",
-          "fix:tag": "41762"
+          "FIX:field": "underlyingdeliveryschedulenegativetolerance",
+          "FIX:tag": "41762"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulepositivetolerance",
-          "fix:tag": "41763"
+          "FIX:field": "underlyingdeliveryschedulepositivetolerance",
+          "FIX:tag": "41763"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryscheduletoleranceunitofmeasure",
-          "fix:tag": "41764"
+          "FIX:field": "underlyingdeliveryscheduletoleranceunitofmeasure",
+          "FIX:tag": "41764"
         }
       },
       {
@@ -98,8 +98,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryscheduletolerancetype",
-          "fix:tag": "41765"
+          "FIX:field": "underlyingdeliveryscheduletolerancetype",
+          "FIX:tag": "41765"
         }
       },
       {
@@ -109,8 +109,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulesettlcountry",
-          "fix:tag": "41766"
+          "FIX:field": "underlyingdeliveryschedulesettlcountry",
+          "FIX:tag": "41766"
         }
       },
       {
@@ -120,8 +120,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulesettltimezone",
-          "fix:tag": "41767"
+          "FIX:field": "underlyingdeliveryschedulesettltimezone",
+          "FIX:tag": "41767"
         }
       },
       {
@@ -131,8 +131,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulesettlflowtype",
-          "fix:tag": "41768"
+          "FIX:field": "underlyingdeliveryschedulesettlflowtype",
+          "FIX:tag": "41768"
         }
       },
       {
@@ -142,8 +142,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingdeliveryschedulesettlholidaysprocessinginstruction",
-          "fix:tag": "41769"
+          "FIX:field": "underlyingdeliveryschedulesettlholidaysprocessinginstruction",
+          "FIX:tag": "41769"
         }
       },
       {
@@ -153,8 +153,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyingdeliveryschedulesettldays",
-          "fix:tag": "41770"
+          "FIX:field": "nounderlyingdeliveryschedulesettldays",
+          "FIX:tag": "41770"
         }
       },
       {
@@ -164,14 +164,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "underlyingdeliveryschedulesettldaygrp"
+          "FIX:group": "underlyingdeliveryschedulesettldaygrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingDeliverySchedule",
-    "fix:tag": "962436"
+    "FIX:tag": "962436",
+    "display": "UnderlyingDeliverySchedule"
   }
 }

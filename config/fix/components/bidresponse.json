@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "bidid",
-          "fix:tag": "390"
+          "FIX:field": "bidid",
+          "FIX:tag": "390"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "clientbidid",
-          "fix:tag": "391"
+          "FIX:field": "clientbidid",
+          "FIX:tag": "391"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nobidcomponents",
-          "fix:tag": "420"
+          "FIX:field": "nobidcomponents",
+          "FIX:tag": "420"
         }
       },
       {
@@ -53,7 +53,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "bidcomprspgrp"
+          "FIX:group": "bidcomprspgrp"
         }
       },
       {
@@ -63,16 +63,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "l",
+    "FIX:tag": "1009512",
     "description": "MsgType = l (lowercase L)",
-    "display": "BidResponse",
-    "fix:msgtype": "l",
-    "fix:tag": "1009512"
+    "display": "BidResponse"
   }
 }

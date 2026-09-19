@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commission",
-          "fix:tag": "12"
+          "FIX:field": "commission",
+          "FIX:tag": "12"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commtype",
-          "fix:tag": "13"
+          "FIX:field": "commtype",
+          "FIX:tag": "13"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commcurrency",
-          "fix:tag": "479"
+          "FIX:field": "commcurrency",
+          "FIX:tag": "479"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commcurrencycodesource",
-          "fix:tag": "2922"
+          "FIX:field": "commcurrencycodesource",
+          "FIX:tag": "2922"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "commrate",
-          "fix:tag": "1233"
+          "FIX:field": "commrate",
+          "FIX:tag": "1233"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "communitofmeasure",
-          "fix:tag": "1238"
+          "FIX:field": "communitofmeasure",
+          "FIX:tag": "1238"
         }
       },
       {
@@ -76,16 +76,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "fundrenewwaiv",
-          "fix:tag": "497"
+          "FIX:field": "fundrenewwaiv",
+          "FIX:tag": "497"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "400420",
     "description": "The CommissionData component block is used to carry commission information such as the type of commission and the rate. Use the CommissionDataGrp component as an alternative if multiple commissions or enhanced attributes are needed.",
-    "display": "CommissionData",
-    "fix:tag": "400420"
+    "display": "CommissionData"
   }
 }

@@ -917,8 +917,8 @@ pub(crate) fn leaf_reader(
         RecordOptions::Text(text) => crate::text::arrow::read_arrow_reader(handle, text)?,
     };
     match declared {
-        // A declared root is applied, not merely cast: a `partition:` or
-        // `digest:` column the declaration derives arrives written rather than
+        // A declared root is applied, not merely cast: a `PARTITION:` or
+        // `DIGEST:` column the declaration derives arrives written rather than
         // arriving as the default the cast materialized and nothing filled. A
         // root that derives nothing applies as the cast alone, keeping the
         // exact-schema short-circuit a plain read has always had.

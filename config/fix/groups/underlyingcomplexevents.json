@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingcomplexevent"
+        "FIX:component": "underlyingcomplexevent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingcomplexevent",
+    "FIX:counter": "2045",
+    "FIX:tag": "667496",
     "description": "Required if NoUnderlyingComplexEvents(2045) > 0.",
-    "display": "UnderlyingComplexEvents",
-    "fix:component": "underlyingcomplexevent",
-    "fix:counter": "2045",
-    "fix:tag": "667496"
+    "display": "UnderlyingComplexEvents"
   }
 }

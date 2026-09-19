@@ -24,7 +24,7 @@ def test_reference_properties_share_metadata_and_remove_with_none(
 ) -> None:
     field = Field("probe", "utf8")
     view = field.fix
-    key = f"fix:{'field' if property_name == 'field_ref' else property_name}"
+    key = f"FIX:{'field' if property_name == 'field_ref' else property_name}"
     assert getattr(view, property_name) is None
 
     setattr(view, property_name, value)
@@ -117,13 +117,13 @@ def test_identifiers_resolve_python_iterables_into_canonical_member_order() -> N
     assert view.identifiers == []
     view.identifiers = (name for name in ["37", "ClientOrder"])
     assert view.identifiers == ["clordid", "orderid"]
-    assert component.metadata["fix:identifiers"] == "clordid,orderid"
+    assert component.metadata["FIX:identifiers"] == "clordid,orderid"
     assert Field.from_arrow(component.into_arrow()).fix.identifiers == view.identifiers
     view.identifiers = ("ORDERID",)
     assert view.identifiers == ["orderid"]
     view.identifiers = []
     assert view.identifiers == []
-    assert "fix:identifiers" not in component.metadata
+    assert "FIX:identifiers" not in component.metadata
 
 
 @pytest.mark.parametrize(
@@ -131,7 +131,7 @@ def test_identifiers_resolve_python_iterables_into_canonical_member_order() -> N
     [[""], ["absent"], ["nested"], ["nested.child"], ["clordid,orderid"], ["clordid", "11"]],
 )
 def test_identifier_refusals_leave_the_complete_field_unchanged(invalid: list[str]) -> None:
-    client = Field("clordid", "utf8", metadata={"fix:tag": "11"})
+    client = Field("clordid", "utf8", metadata={"FIX:tag": "11"})
     nested = Field("nested", DataType.from_fields([Field("child", "utf8")]))
     component = Field("order", DataType.from_fields([client, nested]), nullable=False)
     component.fix.identifiers = ["clordid"]

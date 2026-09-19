@@ -99,14 +99,14 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     group.bench_function("as_decimal", |bencher| {
         bencher.iter(|| black_box(&decimal_scalar).as_decimal());
     });
-    group.bench_function("temporal_family", |bencher| {
-        bencher.iter(|| black_box(&instant).temporal_family());
+    group.bench_function("as_temporal", |bencher| {
+        bencher.iter(|| black_box(&instant).as_temporal());
     });
     group.bench_function("temporal_readers", |bencher| {
         bencher.iter(|| {
             let value = black_box(&instant);
             black_box((
-                value.temporal_family(),
+                value.as_temporal().map(|held| held.family()),
                 value.temporal_count(),
                 value.temporal_unit(),
                 value.temporal_timezone(),

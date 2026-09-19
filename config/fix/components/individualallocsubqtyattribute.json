@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "individualallocsubqtytype",
-          "fix:tag": "3100"
+          "FIX:field": "individualallocsubqtytype",
+          "FIX:tag": "3100"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "individualallocsubqtyvalue",
-          "fix:tag": "3101"
+          "FIX:field": "individualallocsubqtyvalue",
+          "FIX:tag": "3101"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "IndividualAllocSubQtyAttribute",
-    "fix:tag": "743167"
+    "FIX:tag": "743167",
+    "display": "IndividualAllocSubQtyAttribute"
   }
 }

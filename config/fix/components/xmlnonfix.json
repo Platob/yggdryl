@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "noattachments",
-          "fix:tag": "2104"
+          "FIX:field": "noattachments",
+          "FIX:tag": "2104"
         }
       },
       {
@@ -31,7 +31,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "attachmentgrp"
+          "FIX:group": "attachmentgrp"
         }
       },
       {
@@ -41,16 +41,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "n",
+    "FIX:tag": "360641",
     "description": "MsgType = n (lowercase N)",
-    "display": "XMLnonFIX",
-    "fix:msgtype": "n",
-    "fix:tag": "360641"
+    "display": "XMLnonFIX"
   }
 }

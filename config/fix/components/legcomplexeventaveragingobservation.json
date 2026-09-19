@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventaveragingobservationnumber",
-          "fix:tag": "41364"
+          "FIX:field": "legcomplexeventaveragingobservationnumber",
+          "FIX:tag": "41364"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legcomplexeventaveragingweight",
-          "fix:tag": "41365"
+          "FIX:field": "legcomplexeventaveragingweight",
+          "FIX:tag": "41365"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegComplexEventAveragingObservation",
-    "fix:tag": "1074605"
+    "FIX:tag": "1074605",
+    "display": "LegComplexEventAveragingObservation"
   }
 }

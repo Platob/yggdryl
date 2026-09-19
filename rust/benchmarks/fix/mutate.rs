@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
-use yggdryl::{DataType, Field, FixCode, FixRegistry};
+use yggdryl::{DataType, Field, FixCode, FixRegistry, StructureType};
 
 use super::{LARGE_FIELDS, generated, seed, venue};
 
@@ -99,7 +99,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    let nested = DataType::from_fields([DataType::utf8().nullable_field("VenueSymbol")])
+    let nested = StructureType::from_fields([DataType::utf8().nullable_field("VenueSymbol")])
+        .map(DataType::from)
         .unwrap()
         .required_field("VenueInstrument");
     group.bench_function("add_field_nested_redirect", |bencher| {
@@ -120,9 +121,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
     member.as_fix_mut().set_field_ref("VenueSymbol").unwrap();
     let mut instrument = seeded.field_by_name("Instrument").unwrap().clone();
     instrument
-        .set_dtype(
-            DataType::from_fields(instrument.fields().iter().cloned().chain([member])).unwrap(),
-        )
+        .set_dtype(DataType::from(
+            StructureType::from_fields(instrument.fields().iter().cloned().chain([member]))
+                .unwrap(),
+        ))
         .unwrap();
     group.bench_function("add_field_extends_component", |bencher| {
         bencher.iter_batched(
@@ -274,7 +276,8 @@ fn coded_catalog() -> FixRegistry {
     counter.as_fix_mut().set_tag(453).unwrap();
     let mut registry = FixRegistry::from_fields([party.clone(), counter.clone()]).unwrap();
     party.as_fix_mut().set_field_ref("PartyID").unwrap();
-    let component = DataType::from_fields([party])
+    let component = StructureType::from_fields([party])
+        .map(DataType::from)
         .unwrap()
         .required_field("Party");
     registry.insert(component.clone()).unwrap();
@@ -285,7 +288,8 @@ fn coded_catalog() -> FixRegistry {
     let mut group = registry.field_by_name("Parties").unwrap().clone();
     group.as_fix_mut().set_group("Parties").unwrap();
     counter.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
-    let mut message = DataType::from_fields([counter, group])
+    let mut message = StructureType::from_fields([counter, group])
+        .map(DataType::from)
         .unwrap()
         .required_field("Order");
     message.as_fix_mut().set_msgtype("D").unwrap();

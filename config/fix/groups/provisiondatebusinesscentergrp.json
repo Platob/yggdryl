@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "provisiondatebusinesscentercomponent"
+        "FIX:component": "provisiondatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "provisiondatebusinesscentercomponent",
+    "FIX:counter": "40957",
+    "FIX:tag": "506213",
     "description": "Required if NoProvisionDateBusinessCenters(40957) > 0.",
-    "display": "ProvisionDateBusinessCenterGrp",
-    "fix:component": "provisiondatebusinesscentercomponent",
-    "fix:counter": "40957",
-    "fix:tag": "506213"
+    "display": "ProvisionDateBusinessCenterGrp"
   }
 }

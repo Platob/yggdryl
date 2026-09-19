@@ -443,7 +443,9 @@ pub trait IOBase: Send + IOMedia {
                 .into_iter()
                 .filter(|conjunct| conjunct.columns().is_empty()),
         );
-        let bound = answerable.bind(&crate::DataType::from_fields([])?.required_field("holder"))?;
+        let bound = answerable.bind(
+            &crate::DataType::from(crate::StructureType::from_fields([])?).required_field("holder"),
+        )?;
         // The predicate is asked of each entry as it arrives, so a losing entry
         // is dropped before the next one is fetched and nothing accumulates.
         Ok(Listing::new(

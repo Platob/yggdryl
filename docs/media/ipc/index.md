@@ -37,9 +37,9 @@ A name that says Arrow IPC is the whole configuration: the stream carries its ow
     use yggdryl::holder::Holder;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, StructureType};
 
-    let field = DataType::from_fields([DataType::Int64.required_field("id")])?
+    let field = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let schema = field.clone().into_arrow_schema()?;
     let batch = RecordBatch::try_new(
@@ -102,12 +102,12 @@ use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch};
 use yggdryl::arrow;
-use yggdryl::{IOBase, IOMedia};
+use yggdryl::{IOBase, IOMedia, StructureType};
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::Ipc;
 use yggdryl::{DataType, Url};
 
-let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
 let arrow_schema = schema.clone().into_arrow_schema()?;
 let batch = RecordBatch::try_new(
     Arc::clone(&arrow_schema),
@@ -152,9 +152,9 @@ The encoding applies the content coding the name declares on write and strips it
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
     use yggdryl::ipc::Ipc;
-    use yggdryl::{DataType, Level, Url};
+    use yggdryl::{DataType, Level, StructureType, Url};
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
     let arrow_schema = schema.clone().into_arrow_schema()?;
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
@@ -271,12 +271,12 @@ A location that holds nothing yields nothing, the laziness rule [Bytes](../../ho
     ```rust
     use arrow_array::{RecordBatch, RecordBatchReader};
     use yggdryl::arrow;
-    use yggdryl::{IOBase, IOMedia};
+    use yggdryl::{IOBase, IOMedia, StructureType};
     use yggdryl::holder::Buffer;
     use yggdryl::ipc::{self, Ipc, IpcOptions};
     use yggdryl::DataType;
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
 
     // A resource that does not exist yet holds no batches; it is not a parse failure.
     let missing = Ipc::new(Buffer::new()).with_field(schema.clone());

@@ -225,7 +225,7 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Twenty definitions, and every one a fact no dictionary publishes: the
+    // Nineteen definitions, and every one a fact no dictionary publishes: the
     // instants, the identities and the codes, the chain, what a bridge's own
     // log said, and what the reader said about the line. Nothing about the
     // *market* is here - the price, the quantity, the instrument's codes,
@@ -236,17 +236,16 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         [
             "currunix",
             "msgctxid",
-            "pluginid",
+            "msgpluginid",
             "currhashcode",
             "crosshashcode",
             "identifiers",
             "prevunix",
             "prevuuid",
-            "creatunix",
+            "creaunix",
             "snapunix",
             "sourceurl",
             "nofixentries",
-            "recordedat",
             "msgsessionid",
             "curruuid",
             "crossuuid",
@@ -262,17 +261,16 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         [
             Some("CurrUnix"),
             Some("MsgCtxId"),
-            Some("PluginId"),
+            Some("MsgPluginId"),
             Some("CurrHashCode"),
             Some("CrossHashCode"),
             Some("Identifiers"),
             Some("PrevUnix"),
             Some("PrevUuid"),
-            Some("CreatUnix"),
+            Some("CreaUnix"),
             Some("SnapUnix"),
             Some("SourceUrl"),
             Some("NoFixEntries"),
-            Some("RecordedAt"),
             Some("MsgSessionId"),
             Some("CurrUuid"),
             Some("CrossUuid"),
@@ -302,13 +300,13 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         assert_eq!(typed(name), &DataType::uuid(), "{name}");
         assert_eq!(field(name).as_fix().names().count(), 0, "{name}");
     }
-    for name in ["currunix", "creatunix"] {
+    for name in ["currunix", "creaunix"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(!field(name).is_nullable(), "{name}");
     }
     // The clocks only a walk fills - the predecessor's instant and the grid
     // instant a snapshot was read as - are null on every row that is not one.
-    for name in ["prevunix", "snapunix", "recordedat"] {
+    for name in ["prevunix", "snapunix"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(field(name).is_nullable(), "{name}");
     }
@@ -319,7 +317,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert!(field("crosscode").is_nullable());
     // Where a line was read from is the URL it is, so a row joins on it and
     // a reader resolves it rather than parsing text back into one.
-    assert_eq!(typed(yggdryl::SOURCEURL_TAG_NAME.1), &DataType::Url);
+    assert_eq!(typed(yggdryl::SOURCEURL_TAG_NAME.1), &DataType::url());
     assert!(field(yggdryl::SOURCEURL_TAG_NAME.1).is_nullable());
     // The arrival record is a group, so it has a counter like any other.
     assert_eq!(typed(yggdryl::NOFIXENTRIES_TAG_NAME.1), &DataType::Int32);
@@ -340,7 +338,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert!(held.iter().all(|field| field.name() != "timepartition"));
 
     // Every definition has a tag from 65000 up: one block, in the one namespace
-    // every dictionary resolves through, so a bridge row spelling `PLUGINID`
+    // every dictionary resolves through, so a bridge row spelling `MSGPLUGINID`
     // reaches it by name; its identity is its tag and its name, and a
     // dictionary member it is not. Strictly increasing rather than
     // contiguous: a retired slot is never reused, so the block has holes
@@ -349,7 +347,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         .iter()
         .filter_map(|field| field.as_fix().tag().ok().flatten())
         .collect();
-    for retired in [65_000, 65_004, 65_016, 65_019, 65_024, 65_036] {
+    for retired in [65_000, 65_004, 65_016, 65_019, 65_024, 65_028, 65_036] {
         assert!(!tags.contains(&retired), "{retired} stays retired");
     }
     let mut last = yggdryl::CRATE_TAG_MIN;

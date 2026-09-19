@@ -27,12 +27,12 @@ One bind per stream, and the stream stays a stream.
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::expression::Plan;
-    use yggdryl::{DataType, Expression, Scalar};
+    use yggdryl::{DataType, Expression, Scalar, StructureType};
 
-    let root = DataType::from_fields([
+    let root = DataType::from(StructureType::from_fields([
         DataType::utf8().nullable_field("ccy"),
         DataType::Int64.nullable_field("size"),
-    ])?
+    ])?)
     .required_field("rows");
     let batch = RecordBatch::try_new(
         root.clone().into_arrow_schema()?,

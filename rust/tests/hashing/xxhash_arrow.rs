@@ -10,11 +10,13 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 
 use yggdryl::xxhash::arrow::{column_digests, row_digests};
 use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use yggdryl::{DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::{
+    DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, StructureType, TimeUnit, Timezone,
+};
 use yggdryl::{DateTimeType, DurationType};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    DataType::from_fields(fields).unwrap().required_field("row")
+    DataType::from(StructureType::from_fields(fields).unwrap()).required_field("row")
 }
 
 fn batch(fields: &[Field], columns: Vec<ArrayRef>) -> RecordBatch {
@@ -335,10 +337,18 @@ fn columns() -> Vec<(Field, Scalar)> {
             ]),
         ),
         (
-            Field::new("url", DataType::Url, true),
+            Field::new("url", DataType::url(), true),
             Scalar::from_sequence([
-                DataType::Url.scalar("https://example.com/a").unwrap(),
-                DataType::Url.scalar("file:///lake/part.txt").unwrap(),
+                DataType::url().scalar("https://example.com/a").unwrap(),
+                DataType::url().scalar("file:///lake/part.txt").unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new("urn", DataType::urn(), true),
+            Scalar::from_sequence([
+                DataType::urn().scalar("urn:isbn:0451450523").unwrap(),
+                DataType::urn().scalar("URN:example:a%20b").unwrap(),
                 Scalar::Null,
             ]),
         ),
@@ -657,10 +667,11 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "struct",
-                DataType::from_fields([
+                StructureType::from_fields([
                     Field::new("symbol", DataType::utf8(), false),
                     Field::new("quantity", DataType::Int64, true),
                 ])
+                .map(DataType::from)
                 .unwrap(),
                 true,
             ),
@@ -870,7 +881,7 @@ fn a_row_digest_equals_the_row_value_feed_on_every_datatype_family() {
         fields.push(field);
         arrays.push(array);
     }
-    let root = DataType::from_fields(fields).unwrap().required_field("row");
+    let root = DataType::from(StructureType::from_fields(fields).unwrap()).required_field("row");
     let arrow_fields: Vec<ArrowField> = root
         .dtype()
         .as_fields()
@@ -1008,10 +1019,11 @@ fn a_column_digest_reconciles_the_array_to_the_field_it_is_given() {
         ],
         None,
     ));
-    let declared = DataType::from_fields([
+    let declared = StructureType::from_fields([
         DataType::Int64.required_field("a"),
         DataType::Int64.required_field("b"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("pair");
     assert_eq!(
@@ -1319,7 +1331,8 @@ fn holder_sources_are_ordered_and_preserve_explicit_empty() {
 fn nested_holders_fill_bottom_up_and_hidden_rows_stay_untouched() {
     let inner_value = DataType::Int64.required_field("value");
     let inner_digest = holder("digest", DataType::Int64);
-    let nested = DataType::from_fields([inner_value, inner_digest])
+    let nested = StructureType::from_fields([inner_value, inner_digest])
+        .map(DataType::from)
         .unwrap()
         .nullable_field("nested");
     let outer_digest = holder("digest", DataType::UInt64);
@@ -1553,10 +1566,11 @@ fn a_holder_under_a_collection_is_refused_rather_than_left_unfilled() {
     // planned by nobody and left at its default, and a containing holder would
     // then hash that default as though it were an answer - so the schema is
     // refused where the declaration is.
-    let element = DataType::from_fields([
+    let element = StructureType::from_fields([
         DataType::Int64.nullable_field("value"),
         holder("inner_digest", DataType::UInt64),
     ])
+    .map(DataType::from)
     .unwrap();
     let item = element.clone().required_field("item");
 
@@ -1590,17 +1604,19 @@ fn a_holder_under_a_collection_is_refused_rather_than_left_unfilled() {
 
 #[test]
 fn digest_metadata_under_a_collection_is_refused_with_the_same_reach() {
-    // The same reach decides the metadata-ownership rules: `digest:sources` on
+    // The same reach decides the metadata-ownership rules: `DIGEST:sources` on
     // a field that is not a holder is refused at the top level, so it cannot
     // be accepted one layout down.
     let source = Field::from_parts(
         "value",
         DataType::Int64,
         true,
-        [("digest:sources", "[\"other\"]")],
+        [("DIGEST:sources", "[\"other\"]")],
     )
     .unwrap();
-    let element = DataType::from_fields([source, DataType::Int64.nullable_field("other")]).unwrap();
+    let element = DataType::from(
+        StructureType::from_fields([source, DataType::Int64.nullable_field("other")]).unwrap(),
+    );
     let root = root([
         DataType::list(element.required_field("item")).nullable_field("events"),
         holder("row_digest", DataType::UInt64),
@@ -1637,32 +1653,32 @@ fn invalid_holder_algorithms_and_metadata_ownership_are_rejected() {
         "digest",
         DataType::UInt32,
         false,
-        [("digest:role", "holder"), ("digest:algorithm", "xxh3-64")],
+        [("DIGEST:role", "holder"), ("DIGEST:algorithm", "xxh3-64")],
     )
     .unwrap();
     let error = Xxh3::new()
         .apply_arrow_batch(&root([wrong_width]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:algorithm", "$.digest");
+    assert_metadata_error(error, "DIGEST:algorithm", "$.digest");
 
     let non_holder_algorithm = Field::from_parts(
         "value",
         DataType::UInt64,
         false,
-        [("digest:algorithm", "xxh3-64")],
+        [("DIGEST:algorithm", "xxh3-64")],
     )
     .unwrap();
     let error = Xxh3::new()
         .apply_arrow_batch(&root([non_holder_algorithm]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:algorithm", "$.value");
+    assert_metadata_error(error, "DIGEST:algorithm", "$.value");
 
     let non_holder_paths =
-        Field::from_parts("value", DataType::UInt64, false, [("digest:sources", "[]")]).unwrap();
+        Field::from_parts("value", DataType::UInt64, false, [("DIGEST:sources", "[]")]).unwrap();
     let error = Xxh3::new()
         .apply_arrow_batch(&root([non_holder_paths]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:sources", "$.value");
+    assert_metadata_error(error, "DIGEST:sources", "$.value");
 
     let non_struct_root = DataType::Int64.required_field("value");
     let error = Xxh3::new()
@@ -1685,11 +1701,12 @@ fn digest_sources_reject_peer_outputs_ambiguity_duplicates_and_collection_descen
     let error = Xxh3::new()
         .apply_arrow_batch(&root([peer, selecting_peer]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:sources", "$.digest");
+    assert_metadata_error(error, "DIGEST:sources", "$.digest");
 
     let nested_value = DataType::Int64.required_field("value");
     let nested_holder = holder("digest", DataType::UInt64);
-    let nested = DataType::from_fields([nested_value, nested_holder])
+    let nested = StructureType::from_fields([nested_value, nested_holder])
+        .map(DataType::from)
         .unwrap()
         .required_field("nested");
     let mut duplicate = holder("digest", DataType::UInt64);
@@ -1700,12 +1717,13 @@ fn digest_sources_reject_peer_outputs_ambiguity_duplicates_and_collection_descen
     let error = Xxh3::new()
         .apply_arrow_batch(&root([nested.clone(), duplicate]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:sources", "$.digest");
+    assert_metadata_error(error, "DIGEST:sources", "$.digest");
 
-    let nested = DataType::from_fields([
+    let nested = StructureType::from_fields([
         holder("left", DataType::UInt64),
         holder("right", DataType::UInt64),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("nested");
     let mut ambiguous = holder("digest", DataType::UInt64);
@@ -1713,7 +1731,7 @@ fn digest_sources_reject_peer_outputs_ambiguity_duplicates_and_collection_descen
     let error = Xxh3::new()
         .apply_arrow_batch(&root([nested, ambiguous]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:sources", "$.digest");
+    assert_metadata_error(error, "DIGEST:sources", "$.digest");
 
     let items = DataType::from_str("array<struct<value:int64>>")
         .unwrap()
@@ -1726,13 +1744,14 @@ fn digest_sources_reject_peer_outputs_ambiguity_duplicates_and_collection_descen
     let error = Xxh3::new()
         .apply_arrow_batch(&root([items, collection]), empty_batch(), false)
         .unwrap_err();
-    assert_metadata_error(error, "digest:sources", "$.digest");
+    assert_metadata_error(error, "DIGEST:sources", "$.digest");
 }
 
 #[test]
 fn digest_sources_try_later_literal_prefixes_and_allow_terminal_collections() {
     let scalar_prefix = DataType::Int64.required_field("a");
-    let dotted_prefix = DataType::from_fields([DataType::Int64.required_field("c")])
+    let dotted_prefix = StructureType::from_fields([DataType::Int64.required_field("c")])
+        .map(DataType::from)
         .unwrap()
         .required_field("a.b");
     let items = DataType::from_str("array<int64>")
@@ -1767,7 +1786,8 @@ fn digest_sources_try_later_literal_prefixes_and_allow_terminal_collections() {
 fn the_digest_view_answers_the_seedless_state_and_walks_nested_holders() {
     let inner_value = DataType::Int64.required_field("value");
     let inner_digest = holder("inner_digest", DataType::UInt64);
-    let nested = DataType::from_fields([inner_value.clone(), inner_digest])
+    let nested = StructureType::from_fields([inner_value.clone(), inner_digest])
+        .map(DataType::from)
         .unwrap()
         .required_field("nested");
     let root = root([nested, holder("row_digest", DataType::UInt64)]);
@@ -1852,7 +1872,8 @@ fn a_nested_struct_holder_is_read_rather_than_recomputed() {
     // value instead of hashing the whole Struct a second time.
     let inner_value = DataType::Int64.required_field("value");
     let inner_digest = holder("inner_digest", DataType::UInt64);
-    let nested = DataType::from_fields([inner_value.clone(), inner_digest])
+    let nested = StructureType::from_fields([inner_value.clone(), inner_digest])
+        .map(DataType::from)
         .unwrap()
         .required_field("nested");
     let root = root([nested, holder("row_digest", DataType::UInt64)]);

@@ -3,7 +3,7 @@
 use arrow_array::RecordBatchReader;
 use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
-use yggdryl::{DataType, Field};
+use yggdryl::{DataType, Field, StructureType};
 
 use super::handle;
 
@@ -15,22 +15,24 @@ use yggdryl::IOMedia;
 
 /// Four columns, so a two-column read is a genuine subset.
 fn wide() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
         DataType::Float64.required_field("price"),
         DataType::utf8().nullable_field("venue"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
 }
 
 /// The two columns a caller actually wants.
 fn narrow() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float64.required_field("price"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
 }
@@ -104,10 +106,11 @@ fn the_projection_only_drops_columns_and_the_cast_does_the_rest() {
 
     // A column the resource does not hold cannot be projected out of
     // it, so the encoding reads everything and the cast supplies it.
-    let invented = DataType::from_fields([
+    let invented = StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("nowhere"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     let batches = handle
@@ -123,10 +126,11 @@ fn the_projection_only_drops_columns_and_the_cast_does_the_rest() {
 #[test]
 fn a_declared_schema_reorders_what_the_resource_stores() {
     let handle = stored("reordered.arrows");
-    let reversed = DataType::from_fields([
+    let reversed = StructureType::from_fields([
         DataType::Float64.required_field("price"),
         DataType::Int64.required_field("id"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row");
     let options = handle.record_options().unwrap().with_field(reversed);

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricelimittype",
-          "fix:tag": "1306"
+          "FIX:field": "pricelimittype",
+          "FIX:tag": "1306"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "lowlimitprice",
-          "fix:tag": "1148"
+          "FIX:field": "lowlimitprice",
+          "FIX:tag": "1148"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "highlimitprice",
-          "fix:tag": "1149"
+          "FIX:field": "highlimitprice",
+          "FIX:tag": "1149"
         }
       },
       {
@@ -43,16 +43,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradingreferenceprice",
-          "fix:tag": "1150"
+          "FIX:field": "tradingreferenceprice",
+          "FIX:tag": "1150"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "1017504",
     "description": "Describes the how the price limits are expressed",
-    "display": "PriceLimits",
-    "fix:tag": "1017504"
+    "display": "PriceLimits"
   }
 }

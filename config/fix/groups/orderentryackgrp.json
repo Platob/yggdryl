@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "orderentryack"
+        "FIX:component": "orderentryack"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "orderentryack",
+    "FIX:counter": "2428",
+    "FIX:tag": "463341",
     "description": "Required if NoOrderEntries(2428) > 0.",
-    "display": "OrderEntryAckGrp",
-    "fix:component": "orderentryack",
-    "fix:counter": "2428",
-    "fix:tag": "463341"
+    "display": "OrderEntryAckGrp"
   }
 }

@@ -4,15 +4,15 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
 
-pub use fixed::Decimal;
+pub use fixed::Decimal18;
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::arithmetic::{Arithmetic, invalid_binary};
-use crate::family::DataTypeValue;
 use crate::invalid;
 use crate::parser::Parser;
-use crate::value::{ValidationFailure, expected};
+use crate::value::DataTypeValue;
+use crate::value::{DecimalValue, ValidationFailure, expected, family_value};
 use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, Value, i256};
 
 /// Arrow casts owned by this datatype family.
@@ -405,28 +405,28 @@ mod fixed {
     /// keep eighteen digits and truncate the rest toward zero.
     ///
     /// ```
-    /// use yggdryl::Decimal;
+    /// use yggdryl::Decimal18;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let px: Decimal = "82.5".parse()?;
-    /// let qty = Decimal::from_int(1_000);
+    /// let px: Decimal18 = "82.5".parse()?;
+    /// let qty = Decimal18::from_int(1_000);
     /// assert_eq!((px * qty).to_string(), "82500");
-    /// assert_eq!((px / Decimal::from_int(4)).to_string(), "20.625");
-    /// assert_eq!(px + Decimal::from_int(1), "83.5".parse()?);
-    /// assert!(px > Decimal::ZERO && -px < Decimal::ZERO);
+    /// assert_eq!((px / Decimal18::from_int(4)).to_string(), "20.625");
+    /// assert_eq!(px + Decimal18::from_int(1), "83.5".parse()?);
+    /// assert!(px > Decimal18::ZERO && -px < Decimal18::ZERO);
     /// // Exactly the column's value, and back.
     /// assert_eq!(px.units(), 82_500_000_000_000_000_000);
-    /// assert_eq!(Decimal::from_units(px.units()), Some(px));
+    /// assert_eq!(Decimal18::from_units(px.units()), Some(px));
     /// assert_eq!(px.to_f64(), 82.5);
     /// // Past thirty-eight digits there is no value, only an overflow.
-    /// assert_eq!(Decimal::MAX.checked_add(Decimal::ONE), None);
+    /// assert_eq!(Decimal18::MAX.checked_add(Decimal18::ONE), None);
     /// # Ok(())
     /// # }
     /// ```
     #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-    pub struct Decimal(i128);
+    pub struct Decimal18(i128);
 
-    impl Decimal {
+    impl Decimal18 {
         /// The fractional digits every value holds.
         pub const SCALE: i8 = 18;
 
@@ -506,16 +506,16 @@ mod fixed {
         /// hold.
         ///
         /// ```
-        /// use yggdryl::Decimal;
+        /// use yggdryl::Decimal18;
         ///
         /// # fn main() -> yggdryl::Result<()> {
-        /// assert_eq!(Decimal::parse(" 1,250.50 ")?.to_string(), "1250.5");
-        /// assert_eq!(Decimal::parse("")?, Decimal::ZERO);
-        /// assert_eq!(Decimal::parse(".5")?.to_string(), "0.5");
-        /// assert_eq!(Decimal::parse("2.5e3")?.to_string(), "2500");
-        /// assert_eq!(Decimal::parse("1E-2")?.to_string(), "0.01");
-        /// assert_eq!(Decimal::parse("0.1234567890123456789")?.to_string(), "0.123456789012345678");
-        /// assert!(Decimal::parse("1.2.3").is_err() && Decimal::parse("NaN").is_err());
+        /// assert_eq!(Decimal18::parse(" 1,250.50 ")?.to_string(), "1250.5");
+        /// assert_eq!(Decimal18::parse("")?, Decimal18::ZERO);
+        /// assert_eq!(Decimal18::parse(".5")?.to_string(), "0.5");
+        /// assert_eq!(Decimal18::parse("2.5e3")?.to_string(), "2500");
+        /// assert_eq!(Decimal18::parse("1E-2")?.to_string(), "0.01");
+        /// assert_eq!(Decimal18::parse("0.1234567890123456789")?.to_string(), "0.123456789012345678");
+        /// assert!(Decimal18::parse("1.2.3").is_err() && Decimal18::parse("NaN").is_err());
         /// # Ok(())
         /// # }
         /// ```
@@ -707,14 +707,14 @@ mod fixed {
 
     impl DataType {
         /// The decimal a market's numbers are held as: `decimal128(38, 18)`,
-        /// what every [`Decimal`] is.
+        /// what every [`Decimal18`] is.
         pub const DECIMAL: Self = Self::Decimal(super::DecimalType::Decimal128 {
             precision: 38,
             scale: 18,
         });
     }
 
-    impl fmt::Display for Decimal {
+    impl fmt::Display for Decimal18 {
         /// The decimal text, with no trailing zero behind the point.
         fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
             let text = super::decimal_text(i256::from(self.0), Self::SCALE);
@@ -726,13 +726,13 @@ mod fixed {
         }
     }
 
-    impl fmt::Debug for Decimal {
+    impl fmt::Debug for Decimal18 {
         fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(formatter, "Decimal({self})")
+            write!(formatter, "Decimal18({self})")
         }
     }
 
-    impl FromStr for Decimal {
+    impl FromStr for Decimal18 {
         type Err = Error;
 
         fn from_str(text: &str) -> Result<Self> {
@@ -740,19 +740,19 @@ mod fixed {
         }
     }
 
-    impl From<Decimal> for Decimal128 {
-        fn from(value: Decimal) -> Self {
+    impl From<Decimal18> for Decimal128 {
+        fn from(value: Decimal18) -> Self {
             value.into_decimal128()
         }
     }
 
-    impl From<Decimal> for Scalar {
-        fn from(value: Decimal) -> Self {
+    impl From<Decimal18> for Scalar {
+        fn from(value: Decimal18) -> Self {
             Self::Decimal128(value.into_decimal128())
         }
     }
 
-    impl From<i64> for Decimal {
+    impl From<i64> for Decimal18 {
         fn from(value: i64) -> Self {
             Self::from_int(value)
         }
@@ -760,7 +760,7 @@ mod fixed {
 
     macro_rules! operator {
         ($trait:ident, $method:ident, $assign:ident, $assign_method:ident, $checked:ident, $what:literal) => {
-            impl $trait for Decimal {
+            impl $trait for Decimal18 {
                 type Output = Self;
 
                 fn $method(self, other: Self) -> Self {
@@ -770,7 +770,7 @@ mod fixed {
                 }
             }
 
-            impl $assign for Decimal {
+            impl $assign for Decimal18 {
                 fn $assign_method(&mut self, other: Self) {
                     *self = $trait::$method(*self, other);
                 }
@@ -790,7 +790,7 @@ mod fixed {
     );
     operator!(Div, div, DivAssign, div_assign, checked_div, "division");
 
-    impl Neg for Decimal {
+    impl Neg for Decimal18 {
         type Output = Self;
 
         fn neg(self) -> Self {
@@ -798,7 +798,7 @@ mod fixed {
         }
     }
 
-    impl std::iter::Sum for Decimal {
+    impl std::iter::Sum for Decimal18 {
         fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
             iter.fold(Self::ZERO, Add::add)
         }
@@ -849,15 +849,24 @@ impl Parser<'_> {
 // ```
 // ------------------------------------------------------------------------
 
-/// Operations shared by every exact-decimal representation.
-pub trait DecimalValue: crate::Value {
-    /// Return the coefficient widened to 256 bits.
-    fn coefficient(&self) -> i256;
-    /// Return the decimal scale.
-    fn scale(&self) -> i8;
-    /// Return this value represented at `scale` without losing precision.
-    fn rescale(self, scale: i8) -> Result<Self>;
-}
+family_value!(
+    /// The decimal family as one value: any of the four widths, each at its
+    /// own precision and scale.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Decimal, Decimal18, FamilyValue, Scalar};
+    ///
+    /// let value = Scalar::from(Decimal18::from_int(3));
+    /// let held = Decimal::from_scalar(&value).expect("a decimal");
+    /// assert!(matches!(held, Decimal::Decimal128(_)));
+    /// // The datatype the value itself is: eighteen fractional digits, and the
+    /// // digits its coefficient has.
+    /// assert_eq!(held.dtype().unwrap(), DataType::decimal128(19, 18).unwrap());
+    /// assert_eq!(held.into_scalar(), value);
+    /// assert_eq!(Decimal::from_scalar(&Scalar::from(3_i64)), None);
+    /// ```
+    Decimal, Decimal, [Decimal32, Decimal64, Decimal128, Decimal256]
+);
 
 trait IntoI256 {
     fn into_i256(self) -> i256;

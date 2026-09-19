@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "userrequestid",
-          "fix:tag": "923"
+          "FIX:field": "userrequestid",
+          "FIX:tag": "923"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "username",
-          "fix:tag": "553"
+          "FIX:field": "username",
+          "FIX:tag": "553"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "userstatus",
-          "fix:tag": "926"
+          "FIX:field": "userstatus",
+          "FIX:tag": "926"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nothrottles",
-          "fix:tag": "1610"
+          "FIX:field": "nothrottles",
+          "FIX:tag": "1610"
         }
       },
       {
@@ -64,7 +64,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "throttleparamsgrp"
+          "FIX:group": "throttleparamsgrp"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "userstatustext",
-          "fix:tag": "927"
+          "FIX:field": "userstatustext",
+          "FIX:tag": "927"
         }
       },
       {
@@ -85,16 +85,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "BF",
+    "FIX:tag": "987389",
     "description": "MsgType = BF",
-    "display": "UserResponse",
-    "fix:msgtype": "BF",
-    "fix:tag": "987389"
+    "display": "UserResponse"
   }
 }

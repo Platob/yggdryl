@@ -678,7 +678,7 @@ impl DataType {
 /// The enum a string field's values name: one value per member name.
 ///
 /// This is the vocabulary a declaration named itself, and it is what a
-/// [`crate::Field`] stores under `field:enum` so the enum crosses Arrow, a
+/// [`crate::Field`] stores under `FIELD:enum` so the enum crosses Arrow, a
 /// file, and another runtime intact.
 ///
 /// The width lives in the field's datatype and is never copied here: a
@@ -753,7 +753,7 @@ impl StringEnum {
         Ok(enumeration)
     }
 
-    /// Parses the `field:enum` document.
+    /// Parses the `FIELD:enum` document.
     ///
     /// # Errors
     ///
@@ -800,7 +800,7 @@ impl StringEnum {
         Self::from_members(name.as_str(), members)
     }
 
-    /// Renders the `field:enum` document: every name in order, so one enum
+    /// Renders the `FIELD:enum` document: every name in order, so one enum
     /// is one text however it was built.
     pub fn into_json(&self) -> String {
         let members = self
@@ -1993,7 +1993,7 @@ impl Parser<'_> {
 // a declaration does not already give.
 //
 // [`StringEnum::from_logical_name`] builds one as the enum a field declares,
-// so the members a schema carries under `field:enum` come from one listing
+// so the members a schema carries under `FIELD:enum` come from one listing
 // rather than from a copy per language. Every value fits the width its
 // registered name resolves to, so a prebuilt vocabulary never refuses its own
 // listing.
@@ -2087,7 +2087,7 @@ impl StringEnum {
     /// agree about what a side is. A FIX code or the specification's name
     /// reaches the value through [`Side::from_spelling`](crate::Side::from_spelling),
     /// which is how a registry maps tag 54 onto it; per-member pedigree stays
-    /// in the field's own `fix:codes` document, because that is where a
+    /// in the field's own `FIX:codes` document, because that is where a
     /// version can be asked about. A spelling that names no side is refused
     /// rather than stored, exactly as a state is.
     pub const SIDES: &'static [&'static str] = &[
@@ -2956,6 +2956,7 @@ mod scalars {
             Scalar::Uuid(uuid) => Ok(Str::from(crate::uuid_text(&uuid.into_bytes()))),
             Scalar::Version(version) => Ok(Str::from(format_smolstr!("{version}"))),
             Scalar::Url(url) => Ok(Str::from(format_smolstr!("{url}"))),
+            Scalar::Urn(urn) => Ok(Str::from(format_smolstr!("{urn}"))),
             // An interval has no classic spelling, so a temporal answers for the
             // seven that do and leaves the rest to the ordinary refusal.
             temporal if temporal.is_temporal() => {

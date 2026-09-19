@@ -6,9 +6,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1500",
       "description": "The identifier or name of the price stream.",
-      "display": "MDStreamID",
-      "fix:tag": "1500"
+      "display": "MDStreamID"
     }
   },
   {
@@ -18,9 +18,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1501",
       "description": "Unique identifier of the stream assignment report provided by the respondent.",
-      "display": "StreamAsgnRptID",
-      "fix:tag": "1501"
+      "display": "StreamAsgnRptID"
     }
   },
   {
@@ -30,9 +30,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason code for stream assignment request reject.",
-      "display": "StreamAsgnRejReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "UnknownClient",
@@ -59,7 +57,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "1502"
+      "FIX:tag": "1502",
+      "description": "Reason code for stream assignment request reject.",
+      "display": "StreamAsgnRejReason"
     }
   },
   {
@@ -69,9 +69,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of acknowledgement.",
-      "display": "StreamAsgnAckType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "AssignmentAccepted",
@@ -83,7 +81,9 @@
           "doc": "Assignment Rejected"
         }
       ],
-      "fix:tag": "1503"
+      "FIX:tag": "1503",
+      "description": "Type of acknowledgement.",
+      "display": "StreamAsgnAckType"
     }
   },
   {
@@ -95,9 +95,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1504",
       "description": "See TransactTime(60)",
-      "display": "RelSymTransactTime",
-      "fix:tag": "1504"
+      "display": "RelSymTransactTime"
     }
   },
   {
@@ -107,9 +107,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1505",
       "description": "Unique identifier for PartyDetailsListRequest.",
-      "display": "PartyDetailsListRequestID",
-      "fix:tag": "1505"
+      "display": "PartyDetailsListRequestID"
     }
   },
   {
@@ -119,9 +119,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1506",
       "description": "Used to represent the trade ID for each side of the trade assigned by an intermediary.",
-      "display": "SideTradeID",
-      "fix:tag": "1506"
+      "display": "SideTradeID"
     }
   },
   {
@@ -131,9 +131,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1507",
       "description": "Used to capture the original trade id for each side of a trade undergoing novation to a standardized model.",
-      "display": "SideOrigTradeID",
-      "fix:tag": "1507"
+      "display": "SideOrigTradeID"
     }
   },
   {
@@ -143,9 +143,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1508",
       "description": "Number of requested party roles.",
-      "display": "NoRequestedPartyRoles",
-      "fix:tag": "1508"
+      "display": "NoRequestedPartyRoles"
     }
   },
   {
@@ -155,9 +155,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type or role of party that has been requested.",
-      "display": "RequestedPartyRole",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ExecutingFirm",
@@ -804,7 +802,9 @@
           "doc": "Algorithm"
         }
       ],
-      "fix:tag": "1509"
+      "FIX:tag": "1509",
+      "description": "Identifies the type or role of party that has been requested.",
+      "display": "RequestedPartyRole"
     }
   },
   {
@@ -814,9 +814,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1510",
       "description": "Identifier for the PartyDetailsListReport and the PartyDetailsListUpdateReport.",
-      "display": "PartyDetailsListReportID",
-      "fix:tag": "1510"
+      "display": "PartyDetailsListReportID"
     }
   },
   {
@@ -826,9 +826,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Result of a request as identified by the appropriate request ID field",
-      "display": "RequestResult",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "ValidRequest",
@@ -865,7 +863,9 @@
           "doc": "Other (further information in RejectText (1328) field)"
         }
       ],
-      "fix:tag": "1511"
+      "FIX:tag": "1511",
+      "description": "Result of a request as identified by the appropriate request ID field",
+      "display": "RequestResult"
     }
   },
   {
@@ -875,9 +875,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1512",
       "description": "Total number of PartyListGrp returned.",
-      "display": "TotNoParties",
-      "fix:tag": "1512"
+      "display": "TotNoParties"
     }
   },
   {
@@ -887,9 +887,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1513",
       "description": "A sentence or phrase pertenant to the trade, not a reference to an external document. E.g. \"To be registered with the U.S. Environmental Protection Agency, Acid Rain Division, SO2 Allowance Tracking System\"",
-      "display": "DocumentationText",
-      "fix:tag": "1513"
+      "display": "DocumentationText"
     }
   },
   {
@@ -899,9 +899,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1514",
       "description": "Number of party relationships.",
-      "display": "NoPartyRelationships",
-      "fix:tag": "1514"
+      "display": "NoPartyRelationships"
     }
   },
   {
@@ -911,9 +911,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to specify the type of the party relationship.",
-      "display": "PartyRelationship",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "IsAlso",
@@ -1110,7 +1108,9 @@
           "doc": "Settles through"
         }
       ],
-      "fix:tag": "1515"
+      "FIX:tag": "1515",
+      "description": "Used to specify the type of the party relationship.",
+      "display": "PartyRelationship"
     }
   },
   {
@@ -1120,9 +1120,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1516",
       "description": "Number of party alternative identifiers.",
-      "display": "NoPartyDetailAltID",
-      "fix:tag": "1516"
+      "display": "NoPartyDetailAltID"
     }
   },
   {
@@ -1132,9 +1132,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1517",
       "description": "An alternate party identifier for the party specified in PartyDetailID(1691)",
-      "display": "PartyDetailAltID",
-      "fix:tag": "1517"
+      "display": "PartyDetailAltID"
     }
   },
   {
@@ -1144,9 +1144,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source of the PartyDetailAltID(1517) value.",
-      "display": "PartyDetailAltIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "KoreanInvestorID",
@@ -1334,7 +1332,9 @@
           "doc": "Korea Short Selling Registration Number"
         }
       ],
-      "fix:tag": "1518"
+      "FIX:tag": "1518",
+      "description": "Identifies the source of the PartyDetailAltID(1517) value.",
+      "display": "PartyDetailAltIDSource"
     }
   },
   {
@@ -1344,9 +1344,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1519",
       "description": "Number of party detail alternate sub-identifiers.",
-      "display": "NoPartyDetailAltSubIDs",
-      "fix:tag": "1519"
+      "display": "NoPartyDetailAltSubIDs"
     }
   },
   {
@@ -1356,9 +1356,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1520",
       "description": "Sub-identifier for the party specified in PartyDetailAltID(1517).",
-      "display": "PartyDetailAltSubID",
-      "fix:tag": "1520"
+      "display": "PartyDetailAltSubID"
     }
   },
   {
@@ -1368,9 +1368,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of PartyDetailAltSubID(1520) value.",
-      "display": "PartyDetailAltSubIDType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Firm",
@@ -1817,7 +1815,9 @@
           "doc": "Certificate registration status"
         }
       ],
-      "fix:tag": "1521"
+      "FIX:tag": "1521",
+      "description": "Type of PartyDetailAltSubID(1520) value.",
+      "display": "PartyDetailAltSubIDType"
     }
   },
   {
@@ -1829,9 +1829,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1522",
       "description": "Used to specify the differential price when reporting the individual leg of a spread trade. Both leg price and differential price may be provided on such a report. Note that MultiLegReportingType(442) will be set to 2 (Individual leg of a multi-leg security) in this case.",
-      "display": "DifferentialPrice",
-      "fix:tag": "1522"
+      "display": "DifferentialPrice"
     }
   },
   {
@@ -1841,9 +1841,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to indicate the status of the trade submission (not the trade report)",
-      "display": "TrdAckStatus",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Accepted",
@@ -1860,7 +1858,9 @@
           "doc": "Received"
         }
       ],
-      "fix:tag": "1523"
+      "FIX:tag": "1523",
+      "description": "Used to indicate the status of the trade submission (not the trade report)",
+      "display": "TrdAckStatus"
     }
   },
   {
@@ -1870,9 +1870,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1524",
       "description": "Default currency in which the price is quoted. Defined at the instrument level. Used in place of Currency (tag 15) to express the currency of a product when the former is implemented as the FX dealt currency.",
-      "display": "PriceQuoteCurrency",
-      "fix:tag": "1524"
+      "display": "PriceQuoteCurrency"
     }
   },
   {
@@ -1882,9 +1882,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1525",
       "description": "Byte length of encoded (non-ASCII characters) EncodedDocumentationText(1527) field.",
-      "display": "EncodedDocumentationTextLen",
-      "fix:tag": "1525"
+      "display": "EncodedDocumentationTextLen"
     }
   },
   {
@@ -1894,9 +1894,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1526",
       "description": "Default currency in which the price is quoted. Defined at the instrument level. Used in place of Currency (tag 15) to express the currency of a product when the former is implemented as the FX dealt currency.",
-      "display": "UnderlyingPriceQuoteCurrency",
-      "fix:tag": "1526"
+      "display": "UnderlyingPriceQuoteCurrency"
     }
   },
   {
@@ -1906,9 +1906,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1527",
       "description": "Encoded (non-ASCII characters) representation of the DocumentationText(1513) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the DocumentationText(1513) field.",
-      "display": "EncodedDocumentationText",
-      "fix:tag": "1527"
+      "display": "EncodedDocumentationText"
     }
   },
   {
@@ -1918,9 +1918,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1528",
       "description": "Default currency in which the price is quoted. Defined at the instrument level. Used in place of Currency (tag 15) to express the currency of a product when the former is implemented as the FX dealt currency.",
-      "display": "LegPriceQuoteCurrency",
-      "fix:tag": "1528"
+      "display": "LegPriceQuoteCurrency"
     }
   },
   {
@@ -1930,9 +1930,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1529",
       "description": "Number of risk limits with associated warning levels.",
-      "display": "NoRiskLimitTypes",
-      "fix:tag": "1529"
+      "display": "NoRiskLimitTypes"
     }
   },
   {
@@ -1942,9 +1942,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to specify the type of risk limit amount or position limit quantity or margin requirement amounts.",
-      "display": "RiskLimitType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "CreditLimit",
@@ -2036,7 +2034,9 @@
           "doc": "Transaction/execution limit per time period"
         }
       ],
-      "fix:tag": "1530"
+      "FIX:tag": "1530",
+      "description": "Used to specify the type of risk limit amount or position limit quantity or margin requirement amounts.",
+      "display": "RiskLimitType"
     }
   },
   {
@@ -2048,9 +2048,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1531",
       "description": "Specifies the risk limit amount.",
-      "display": "RiskLimitAmount",
-      "fix:tag": "1531"
+      "display": "RiskLimitAmount"
     }
   },
   {
@@ -2060,9 +2060,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1532",
       "description": "Used to specify the currency of the risk limit amount.",
-      "display": "RiskLimitCurrency",
-      "fix:tag": "1532"
+      "display": "RiskLimitCurrency"
     }
   },
   {
@@ -2072,9 +2072,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1533",
       "description": "The area to which risk limit is applicable. This can be a trading platform or an offering.",
-      "display": "RiskLimitPlatform",
-      "fix:tag": "1533"
+      "display": "RiskLimitPlatform"
     }
   },
   {
@@ -2084,9 +2084,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1534",
       "description": "Number of risk instrument scopes.",
-      "display": "NoRiskInstrumentScopes",
-      "fix:tag": "1534"
+      "display": "NoRiskInstrumentScopes"
     }
   },
   {
@@ -2096,9 +2096,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Operator to perform on the instrument(s) specified",
-      "display": "InstrumentScopeOperator",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Include",
@@ -2110,7 +2108,9 @@
           "doc": "Exclude"
         }
       ],
-      "fix:tag": "1535"
+      "FIX:tag": "1535",
+      "description": "Operator to perform on the instrument(s) specified",
+      "display": "InstrumentScopeOperator"
     }
   },
   {
@@ -2120,9 +2120,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1536",
       "description": "Used to limit instrument scope to specified symbol.",
-      "display": "InstrumentScopeSymbol",
-      "fix:tag": "1536"
+      "display": "InstrumentScopeSymbol"
     }
   },
   {
@@ -2132,9 +2132,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to limit instrument scope to specified symbol suffix.",
-      "display": "InstrumentScopeSymbolSfx",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "CD",
           "name": "EUCPWithLumpSumInterest",
@@ -2148,7 +2146,9 @@
           "doc": "\"When Issued\" for a security to be reissued under an old CUSIP or ISIN"
         }
       ],
-      "fix:tag": "1537"
+      "FIX:tag": "1537",
+      "description": "Used to limit instrument scope to specified symbol suffix.",
+      "display": "InstrumentScopeSymbolSfx"
     }
   },
   {
@@ -2158,9 +2158,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1538",
       "description": "Used to limit instrument scope to specified security identifier.",
-      "display": "InstrumentScopeSecurityID",
-      "fix:tag": "1538"
+      "display": "InstrumentScopeSecurityID"
     }
   },
   {
@@ -2170,9 +2170,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to limit instrument scope to specified security identifier source.",
-      "display": "InstrumentScopeSecurityIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -2339,7 +2337,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "1539"
+      "FIX:tag": "1539",
+      "description": "Used to limit instrument scope to specified security identifier source.",
+      "display": "InstrumentScopeSecurityIDSource"
     }
   },
   {
@@ -2349,9 +2349,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1540",
       "description": "Number of alternate security identifier for the specified InstrumentScopeSecurityID(1538).",
-      "display": "NoInstrumentScopeSecurityAltID",
-      "fix:tag": "1540"
+      "display": "NoInstrumentScopeSecurityAltID"
     }
   },
   {
@@ -2361,9 +2361,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1541",
       "description": "Used to limit instrument scope to specified security alternate identifier.",
-      "display": "InstrumentScopeSecurityAltID",
-      "fix:tag": "1541"
+      "display": "InstrumentScopeSecurityAltID"
     }
   },
   {
@@ -2373,9 +2373,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to limit instrument scope to specified security alternate identifier source.",
-      "display": "InstrumentScopeSecurityAltIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "CUSIP",
@@ -2542,7 +2540,9 @@
           "doc": "Digital Token Identifier (ISO 24165)"
         }
       ],
-      "fix:tag": "1542"
+      "FIX:tag": "1542",
+      "description": "Used to limit instrument scope to specified security alternate identifier source.",
+      "display": "InstrumentScopeSecurityAltIDSource"
     }
   },
   {
@@ -2552,9 +2552,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to limit instrument scope to specified instrument product category.",
-      "display": "InstrumentScopeProduct",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "AGENCY",
@@ -2621,7 +2619,9 @@
           "doc": "FINANCING"
         }
       ],
-      "fix:tag": "1543"
+      "FIX:tag": "1543",
+      "description": "Used to limit instrument scope to specified instrument product category.",
+      "display": "InstrumentScopeProduct"
     }
   },
   {
@@ -2631,9 +2631,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1544",
       "description": "Used to limit instrument scope to specified product complex.",
-      "display": "InstrumentScopeProductComplex",
-      "fix:tag": "1544"
+      "display": "InstrumentScopeProductComplex"
     }
   },
   {
@@ -2643,9 +2643,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1545",
       "description": "Used to limit instrument scope to specified security group.",
-      "display": "InstrumentScopeSecurityGroup",
-      "fix:tag": "1545"
+      "display": "InstrumentScopeSecurityGroup"
     }
   },
   {
@@ -2655,9 +2655,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1546",
       "description": "Used to limit instrument scope to specified CFICode.",
-      "display": "InstrumentScopeCFICode",
-      "fix:tag": "1546"
+      "display": "InstrumentScopeCFICode"
     }
   },
   {
@@ -2667,9 +2667,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to limit instrument scope to specified security type.",
-      "display": "InstrumentScopeSecurityType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "ABS",
           "name": "AssetBackedSecurities",
@@ -3761,7 +3759,9 @@
           "doc": "Term Deposit Receipt"
         }
       ],
-      "fix:tag": "1547"
+      "FIX:tag": "1547",
+      "description": "Used to limit instrument scope to specified security type.",
+      "display": "InstrumentScopeSecurityType"
     }
   },
   {
@@ -3771,24 +3771,23 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1548",
       "description": "Used to limit instrument scope to specified security sub-type.",
-      "display": "InstrumentScopeSecuritySubType",
-      "fix:tag": "1548"
+      "display": "InstrumentScopeSecuritySubType"
     }
   },
   {
     "name": "instrumentscopematuritymonthyear",
     "dtype": {
       "type": "string",
-      "layout": "fixed_string",
-      "charset": "us-ascii",
+      "layout": "fixed_ascii",
       "fixed": 8
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1549",
       "description": "Used to limit instrument scope to specified maturity month and year.",
-      "display": "InstrumentScopeMaturityMonthYear",
-      "fix:tag": "1549"
+      "display": "InstrumentScopeMaturityMonthYear"
     }
   },
   {
@@ -3800,9 +3799,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1550",
       "description": "Used to limit instrument scope to specified maturity time.",
-      "display": "InstrumentScopeMaturityTime",
-      "fix:tag": "1550"
+      "display": "InstrumentScopeMaturityTime"
     }
   },
   {
@@ -3812,9 +3811,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1551",
       "description": "Used to limit instrument scope to specified restructuring type.",
-      "display": "InstrumentScopeRestructuringType",
-      "fix:tag": "1551"
+      "display": "InstrumentScopeRestructuringType"
     }
   },
   {
@@ -3824,9 +3823,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1552",
       "description": "Used to limit instrument scope to specified seniority type.",
-      "display": "InstrumentScopeSeniority",
-      "fix:tag": "1552"
+      "display": "InstrumentScopeSeniority"
     }
   },
   {
@@ -3836,9 +3835,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to limit instrument scope to puts or calls.",
-      "display": "InstrumentScopePutOrCall",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Put",
@@ -3860,7 +3857,9 @@
           "doc": "Chooser"
         }
       ],
-      "fix:tag": "1553"
+      "FIX:tag": "1553",
+      "description": "Used to limit instrument scope to puts or calls.",
+      "display": "InstrumentScopePutOrCall"
     }
   },
   {
@@ -3870,9 +3869,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1554",
       "description": "Used to limit instrument scope to securities that can be defined using flexible terms or not.",
-      "display": "InstrumentScopeFlexibleIndicator",
-      "fix:tag": "1554"
+      "display": "InstrumentScopeFlexibleIndicator"
     }
   },
   {
@@ -3882,9 +3881,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1555",
       "description": "Used to limit instrument scope to specified coupon rate.",
-      "display": "InstrumentScopeCouponRate",
-      "fix:tag": "1555"
+      "display": "InstrumentScopeCouponRate"
     }
   },
   {
@@ -3894,9 +3893,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1556",
       "description": "Used to limit instrument scope to specified security description.",
-      "display": "InstrumentScopeSecurityDesc",
-      "fix:tag": "1556"
+      "display": "InstrumentScopeSecurityDesc"
     }
   },
   {
@@ -3906,9 +3905,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Used to limit instrument scope to specified settlement type.",
-      "display": "InstrumentScopeSettlType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Regular",
@@ -3970,7 +3967,9 @@
           "doc": "FX Spot Next settlement (Spot+1, aka next day)"
         }
       ],
-      "fix:tag": "1557"
+      "FIX:tag": "1557",
+      "description": "Used to limit instrument scope to specified settlement type.",
+      "display": "InstrumentScopeSettlType"
     }
   },
   {
@@ -3980,9 +3979,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1558",
       "description": "Multiplier applied to the transaction amount for comparison with risk limits. Default if not specified is 1.0.",
-      "display": "RiskInstrumentMultiplier",
-      "fix:tag": "1558"
+      "display": "RiskInstrumentMultiplier"
     }
   },
   {
@@ -3992,9 +3991,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1559",
       "description": "Number of risk warning levels.",
-      "display": "NoRiskWarningLevels",
-      "fix:tag": "1559"
+      "display": "NoRiskWarningLevels"
     }
   },
   {
@@ -4004,9 +4003,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1560",
       "description": "Percent of risk limit at which a warning is issued.",
-      "display": "RiskWarningLevelPercent",
-      "fix:tag": "1560"
+      "display": "RiskWarningLevelPercent"
     }
   },
   {
@@ -4016,9 +4015,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1561",
       "description": "Name or error message associated with the risk warning level.",
-      "display": "RiskWarningLevelName",
-      "fix:tag": "1561"
+      "display": "RiskWarningLevelName"
     }
   },
   {
@@ -4028,9 +4027,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1562",
       "description": "Number of related party detail identifiers.",
-      "display": "NoRelatedPartyDetailID",
-      "fix:tag": "1562"
+      "display": "NoRelatedPartyDetailID"
     }
   },
   {
@@ -4040,9 +4039,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1563",
       "description": "Party identifier for the party related to the party specified in PartyDetailID(1691).",
-      "display": "RelatedPartyDetailID",
-      "fix:tag": "1563"
+      "display": "RelatedPartyDetailID"
     }
   },
   {
@@ -4052,9 +4051,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source of the RelatedPartyDetailID(1563).",
-      "display": "RelatedPartyDetailIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "KoreanInvestorID",
@@ -4242,7 +4239,9 @@
           "doc": "Korea Short Selling Registration Number"
         }
       ],
-      "fix:tag": "1564"
+      "FIX:tag": "1564",
+      "description": "Identifies the source of the RelatedPartyDetailID(1563).",
+      "display": "RelatedPartyDetailIDSource"
     }
   },
   {
@@ -4252,9 +4251,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type or role of the RelatedPartyDetailID(1563) specified.",
-      "display": "RelatedPartyDetailRole",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "ExecutingFirm",
@@ -4901,7 +4898,9 @@
           "doc": "Algorithm"
         }
       ],
-      "fix:tag": "1565"
+      "FIX:tag": "1565",
+      "description": "Identifies the type or role of the RelatedPartyDetailID(1563) specified.",
+      "display": "RelatedPartyDetailRole"
     }
   },
   {
@@ -4911,9 +4910,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1566",
       "description": "Number of related party detail sub-identifiers.",
-      "display": "NoRelatedPartyDetailSubIDs",
-      "fix:tag": "1566"
+      "display": "NoRelatedPartyDetailSubIDs"
     }
   },
   {
@@ -4923,9 +4922,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1567",
       "description": "Sub-identifier for the party specified in RelatedPartyID(1563).",
-      "display": "RelatedPartyDetailSubID",
-      "fix:tag": "1567"
+      "display": "RelatedPartyDetailSubID"
     }
   },
   {
@@ -4935,9 +4934,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of RelatedPartyDetailSubID(1567) value.",
-      "display": "RelatedPartyDetailSubIDType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Firm",
@@ -5384,7 +5381,9 @@
           "doc": "Certificate registration status"
         }
       ],
-      "fix:tag": "1568"
+      "FIX:tag": "1568",
+      "description": "Type of RelatedPartyDetailSubID(1567) value.",
+      "display": "RelatedPartyDetailSubIDType"
     }
   },
   {
@@ -5394,9 +5393,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1569",
       "description": "Number of related party detail alternate identifiers.",
-      "display": "NoRelatedPartyDetailAltID",
-      "fix:tag": "1569"
+      "display": "NoRelatedPartyDetailAltID"
     }
   },
   {
@@ -5406,9 +5405,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1570",
       "description": "An alternate party identifier for the party specified in RelatedPartyID(1563).",
-      "display": "RelatedPartyDetailAltID",
-      "fix:tag": "1570"
+      "display": "RelatedPartyDetailAltID"
     }
   },
   {
@@ -5418,9 +5417,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the source of the RelatedPartyDetailAltID(1570) value.",
-      "display": "RelatedPartyDetailAltIDSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "KoreanInvestorID",
@@ -5608,7 +5605,9 @@
           "doc": "Korea Short Selling Registration Number"
         }
       ],
-      "fix:tag": "1571"
+      "FIX:tag": "1571",
+      "description": "Identifies the source of the RelatedPartyDetailAltID(1570) value.",
+      "display": "RelatedPartyDetailAltIDSource"
     }
   },
   {
@@ -5618,9 +5617,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1572",
       "description": "Number of related party detail alternate sub-identifiers.",
-      "display": "NoRelatedPartyDetailAltSubIDs",
-      "fix:tag": "1572"
+      "display": "NoRelatedPartyDetailAltSubIDs"
     }
   },
   {
@@ -5630,9 +5629,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1573",
       "description": "Sub-identifier for the party specified in RelatedPartyDetailAltID(1570).",
-      "display": "RelatedPartyDetailAltSubID",
-      "fix:tag": "1573"
+      "display": "RelatedPartyDetailAltSubID"
     }
   },
   {
@@ -5642,9 +5641,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of RelatedPartyDetailAltSubID(1573) value.",
-      "display": "RelatedPartyDetailAltSubIDType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Firm",
@@ -6091,7 +6088,9 @@
           "doc": "Certificate registration status"
         }
       ],
-      "fix:tag": "1574"
+      "FIX:tag": "1574",
+      "description": "Type of RelatedPartyDetailAltSubID(1573) value.",
+      "display": "RelatedPartyDetailAltSubIDType"
     }
   },
   {
@@ -6101,9 +6100,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The sub-classification or notional schedule type of the swap.",
-      "display": "SwapSubClass",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "AMTZ",
           "name": "Amortizing",
@@ -6130,7 +6127,9 @@
           "doc": "Custom notional schedule"
         }
       ],
-      "fix:tag": "1575"
+      "FIX:tag": "1575",
+      "description": "The sub-classification or notional schedule type of the swap.",
+      "display": "SwapSubClass"
     }
   },
   {
@@ -6140,9 +6139,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1576",
       "description": "Default currency in which the price is quoted. Defined at the instrument level. Used in place of Currency(tag 15) to express the currency of a product when the former is implemented as the FX dealt currency.",
-      "display": "DerivativePriceQuoteCurrency",
-      "fix:tag": "1576"
+      "display": "DerivativePriceQuoteCurrency"
     }
   },
   {
@@ -6152,9 +6151,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1577",
       "description": "In an outright or forward commodity trade that is cash settled this is the index used to determine the cash payment.",
-      "display": "SettlRateIndex",
-      "fix:tag": "1577"
+      "display": "SettlRateIndex"
     }
   },
   {
@@ -6164,9 +6163,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1578",
       "description": "Byte length of encoded (non-ASCII characters) EncodedEventText(868) fied.",
-      "display": "EncodedEventTextLen",
-      "fix:tag": "1578"
+      "display": "EncodedEventTextLen"
     }
   },
   {
@@ -6176,9 +6175,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1579",
       "description": "Encoded (non-ASCII characters) representation of the EventText(868) field in the encoded format specified via the MessageEncoding (347) field. If used, the ASCII (English) representation should also be specified in the EventText(868) field.",
-      "display": "EncodedEventText",
-      "fix:tag": "1579"
+      "display": "EncodedEventText"
     }
   },
   {
@@ -6188,9 +6187,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1580",
       "description": "This is an optional qualifying attribute of SettlRateIndex(1577) such as the delivery zone for an electricity contract.",
-      "display": "SettlRateIndexLocation",
-      "fix:tag": "1580"
+      "display": "SettlRateIndexLocation"
     }
   },
   {
@@ -6200,9 +6199,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1581",
       "description": "Description of the option expiration.",
-      "display": "OptionExpirationDesc",
-      "fix:tag": "1581"
+      "display": "OptionExpirationDesc"
     }
   },
   {
@@ -6212,9 +6211,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1582",
       "description": "Number of Security Classifications.",
-      "display": "NoSecurityClassifications",
-      "fix:tag": "1582"
+      "display": "NoSecurityClassifications"
     }
   },
   {
@@ -6224,9 +6223,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Allows classification of instruments according to a set of high level reasons. Classification reasons describe the classes in which the instrument participates.",
-      "display": "SecurityClassificationReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Fee",
@@ -6268,7 +6265,9 @@
           "doc": "Sector"
         }
       ],
-      "fix:tag": "1583"
+      "FIX:tag": "1583",
+      "description": "Allows classification of instruments according to a set of high level reasons. Classification reasons describe the classes in which the instrument participates.",
+      "display": "SecurityClassificationReason"
     }
   },
   {
@@ -6278,9 +6277,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1584",
       "description": "Specifies the product classification value which further details the manner in which the instrument participates in the class.",
-      "display": "SecurityClassificationValue",
-      "fix:tag": "1584"
+      "display": "SecurityClassificationValue"
     }
   },
   {
@@ -6290,9 +6289,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the reason for an amount type when reported on a position. Useful when multiple instances of the same amount type are reported.",
-      "display": "PosAmtReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OptionsSettlement",
@@ -6329,7 +6326,9 @@
           "doc": "Delivery storage charges"
         }
       ],
-      "fix:tag": "1585"
+      "FIX:tag": "1585",
+      "description": "Specifies the reason for an amount type when reported on a position. Useful when multiple instances of the same amount type are reported.",
+      "display": "PosAmtReason"
     }
   },
   {
@@ -6339,9 +6338,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1586",
       "description": "Number of TrdInstrmtLegPosAmt values.",
-      "display": "NoLegPosAmt",
-      "fix:tag": "1586"
+      "display": "NoLegPosAmt"
     }
   },
   {
@@ -6353,9 +6352,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1587",
       "description": "Leg position amount.",
-      "display": "LegPosAmt",
-      "fix:tag": "1587"
+      "display": "LegPosAmt"
     }
   },
   {
@@ -6365,9 +6364,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of leg position amount.",
-      "display": "LegPosAmtType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "CASH",
           "name": "CashAmount",
@@ -6544,7 +6541,9 @@
           "doc": "Loan value"
         }
       ],
-      "fix:tag": "1588"
+      "FIX:tag": "1588",
+      "description": "Type of leg position amount.",
+      "display": "LegPosAmtType"
     }
   },
   {
@@ -6554,9 +6553,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1589",
       "description": "Leg position currency.",
-      "display": "LegPosCurrency",
-      "fix:tag": "1589"
+      "display": "LegPosCurrency"
     }
   },
   {
@@ -6566,9 +6565,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies the reason for an amount type when reported on a position. Useful when multiple instances of the same amount type are reported.",
-      "display": "LegPosAmtReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "OptionsSettlement",
@@ -6605,7 +6602,9 @@
           "doc": "Delivery storage charges"
         }
       ],
-      "fix:tag": "1590"
+      "FIX:tag": "1590",
+      "description": "Specifies the reason for an amount type when reported on a position. Useful when multiple instances of the same amount type are reported.",
+      "display": "LegPosAmtReason"
     }
   },
   {
@@ -6615,9 +6614,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Type of quantity specified in LegQty field. LegContractMultiplier (614) is required when LegQtyType = 1 (Contracts). LegUnitOfMeasure (tag 999) and LegTimeUnit (tag 1001) are required when LegQtyType = 2 (Units of Measure per Time Unit). LegQtyType can be different for each leg.",
-      "display": "LegQtyType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Units",
@@ -6634,7 +6631,9 @@
           "doc": "Unit of Measure per Time Unit"
         }
       ],
-      "fix:tag": "1591"
+      "FIX:tag": "1591",
+      "description": "Type of quantity specified in LegQty field. LegContractMultiplier (614) is required when LegQtyType = 1 (Contracts). LegUnitOfMeasure (tag 999) and LegTimeUnit (tag 1001) are required when LegQtyType = 2 (Units of Measure per Time Unit). LegQtyType can be different for each leg.",
+      "display": "LegQtyType"
     }
   },
   {
@@ -6644,9 +6643,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1592",
       "description": "Used to calculate the present value of an amount to be paid in the future.",
-      "display": "DiscountFactor",
-      "fix:tag": "1592"
+      "display": "DiscountFactor"
     }
   },
   {
@@ -6656,9 +6655,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1593",
       "description": "Contains the IndividualAllocId (tag 467) value of the allocation that is being offset as a result of a new allocation. This would be an optional field that would only be populated in the case of an allocation of an allocation (as well as any subsequent allocations). This wouldn’t be populated for an initial allocation since an allocation id is not supplied on default (initial) allocations.",
-      "display": "ParentAllocID",
-      "fix:tag": "1593"
+      "display": "ParentAllocID"
     }
   },
   {
@@ -6668,9 +6667,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1594",
       "description": "Represents the product group of a leg.This is useful in conveying multi-leg instruments where the legs may participate in separate security groups.",
-      "display": "LegSecurityGroup",
-      "fix:tag": "1594"
+      "display": "LegSecurityGroup"
     }
   },
   {
@@ -6682,9 +6681,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1595",
       "description": "Risk adjusted price used to calculate variation margin on a position.",
-      "display": "PositionContingentPrice",
-      "fix:tag": "1595"
+      "display": "PositionContingentPrice"
     }
   },
   {
@@ -6696,9 +6695,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1596",
       "description": "Alternate clearing price",
-      "display": "ClearingTradePrice",
-      "fix:tag": "1596"
+      "display": "ClearingTradePrice"
     }
   },
   {
@@ -6710,9 +6709,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1597",
       "description": "Alternate clearing price for the side being reported.",
-      "display": "SideClearingTradePrice",
-      "fix:tag": "1597"
+      "display": "SideClearingTradePrice"
     }
   },
   {
@@ -6722,9 +6721,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates to recipient whether trade is clearing at execution prices LastPx(tag 31) or alternate clearing prices SideClearingTradePrice(tag 1597).",
-      "display": "SideClearingTradePriceType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "TradeClearingAtExecutionPrice",
@@ -6736,7 +6733,9 @@
           "doc": "Trade Clearing at Alternate Clearing Price"
         }
       ],
-      "fix:tag": "1598"
+      "FIX:tag": "1598",
+      "description": "Indicates to recipient whether trade is clearing at execution prices LastPx(tag 31) or alternate clearing prices SideClearingTradePrice(tag 1597).",
+      "display": "SideClearingTradePriceType"
     }
   },
   {
@@ -6748,9 +6747,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "1599",
       "description": "Price Differential between the front and back leg of a spread or complex instrument.",
-      "display": "SidePriceDifferential",
-      "fix:tag": "1599"
+      "display": "SidePriceDifferential"
     }
   }
 ]

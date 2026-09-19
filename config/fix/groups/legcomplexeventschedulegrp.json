@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legcomplexeventschedule"
+        "FIX:component": "legcomplexeventschedule"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legcomplexeventschedule",
+    "FIX:counter": "41400",
+    "FIX:tag": "266807",
     "description": "Required if NoLegComplexEventScedules(41400) > 0.",
-    "display": "LegComplexEventScheduleGrp",
-    "fix:component": "legcomplexeventschedule",
-    "fix:counter": "41400",
-    "fix:tag": "266807"
+    "display": "LegComplexEventScheduleGrp"
   }
 }

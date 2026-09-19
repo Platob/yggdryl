@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdsecsizetype",
-          "fix:tag": "1178"
+          "FIX:field": "mdsecsizetype",
+          "FIX:tag": "1178"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdsecsize",
-          "fix:tag": "1179"
+          "FIX:field": "mdsecsize",
+          "FIX:tag": "1179"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SecSize",
-    "fix:tag": "189928"
+    "FIX:tag": "189928",
+    "display": "SecSize"
   }
 }

@@ -2,7 +2,7 @@
 
 use yggdryl::FieldValue as _;
 use yggdryl::Uuid;
-use yggdryl::{DataType, Error, Scalar};
+use yggdryl::{DataType, Error, Scalar, StructureType};
 
 fn assert_round_trips(value: Uuid, version: u8, text: &str) {
     assert_eq!(value.to_string(), text);
@@ -160,7 +160,13 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
     ];
 
     let strict = || ArrowCastOptions::new().with_safe(false);
-    let row = |field: Field| Field::new("row", DataType::from_fields([field]).unwrap(), false);
+    let row = |field: Field| {
+        Field::new(
+            "row",
+            DataType::from(StructureType::from_fields([field]).unwrap()),
+            false,
+        )
+    };
     let id = Field::new("id", DataType::Uuid, false);
     let stored = id
         .cast_arrow_array(
@@ -270,8 +276,10 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
 /// What the identifier is, how it is stored, and what is refused - the value's
 /// own contract, beside the layouts above that generate one.
 mod value {
+
     use arrow_array::{Array, FixedSizeBinaryArray};
     use arrow_schema::DataType as ArrowDataType;
+    use yggdryl::StructureType;
 
     use yggdryl::{DataType, DataTypeId, DataTypeKind};
     use yggdryl::{Field, Scalar};
@@ -310,7 +318,8 @@ mod value {
 
         // Every accepted rendering canonicalizes to the exact packed UUID leaf.
         let field = uuid.clone().required_field("id");
-        let row = DataType::from_fields([field.clone()])
+        let row = StructureType::from_fields([field.clone()])
+            .map(DataType::from)
             .unwrap()
             .required_field("row");
         let canonical = |value: Scalar| {
@@ -444,7 +453,7 @@ mod parameters {
             assert!(DataType::from_value(mapping).is_err(), "{spelling}");
         }
         // The identifier numbers the retired leaves held stay unused.
-        assert_eq!(DataTypeId::ALL.len(), 83);
+        assert_eq!(DataTypeId::ALL.len(), 84);
         assert!(
             DataTypeId::ALL
                 .iter()

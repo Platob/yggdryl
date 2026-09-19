@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdatebusinesscenter",
-          "fix:tag": "42771"
+          "FIX:field": "returnratevaluationdatebusinesscenter",
+          "FIX:tag": "42771"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ReturnRateValuationDateBusinessCenter",
-    "fix:tag": "477959"
+    "FIX:tag": "477959",
+    "display": "ReturnRateValuationDateBusinessCenter"
   }
 }

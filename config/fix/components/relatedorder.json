@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedorderid",
-          "fix:tag": "2887"
+          "FIX:field": "relatedorderid",
+          "FIX:tag": "2887"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedorderidsource",
-          "fix:tag": "2888"
+          "FIX:field": "relatedorderidsource",
+          "FIX:tag": "2888"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedordertime",
-          "fix:tag": "2836"
+          "FIX:field": "relatedordertime",
+          "FIX:tag": "2836"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedorderqty",
-          "fix:tag": "2889"
+          "FIX:field": "relatedorderqty",
+          "FIX:tag": "2889"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderrelationship",
-          "fix:tag": "2890"
+          "FIX:field": "orderrelationship",
+          "FIX:tag": "2890"
         }
       },
       {
@@ -65,16 +65,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderoriginationfirmid",
-          "fix:tag": "2835"
+          "FIX:field": "orderoriginationfirmid",
+          "FIX:tag": "2835"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "RelatedOrder",
-    "fix:identifiers": "relatedorderid",
-    "fix:tag": "832135"
+    "FIX:identifiers": "relatedorderid",
+    "FIX:tag": "832135",
+    "display": "RelatedOrder"
   }
 }

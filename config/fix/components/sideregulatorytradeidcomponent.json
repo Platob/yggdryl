@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sideregulatorytradeid",
-          "fix:tag": "1972"
+          "FIX:field": "sideregulatorytradeid",
+          "FIX:tag": "1972"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sideregulatorytradeidsource",
-          "fix:tag": "1973"
+          "FIX:field": "sideregulatorytradeidsource",
+          "FIX:tag": "1973"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sideregulatorytradeidevent",
-          "fix:tag": "1974"
+          "FIX:field": "sideregulatorytradeidevent",
+          "FIX:tag": "1974"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sideregulatorytradeidtype",
-          "fix:tag": "1975"
+          "FIX:field": "sideregulatorytradeidtype",
+          "FIX:tag": "1975"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sideregulatorylegrefid",
-          "fix:tag": "2416"
+          "FIX:field": "sideregulatorylegrefid",
+          "FIX:tag": "2416"
         }
       },
       {
@@ -65,16 +65,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "sideregulatorytradeidscope",
-          "fix:tag": "2398"
+          "FIX:field": "sideregulatorytradeidscope",
+          "FIX:tag": "2398"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SideRegulatoryTradeID",
-    "fix:identifiers": "sideregulatorytradeid",
-    "fix:tag": "203596"
+    "FIX:identifiers": "sideregulatorytradeid",
+    "FIX:tag": "203596",
+    "display": "SideRegulatoryTradeID"
   }
 }

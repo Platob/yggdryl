@@ -7,7 +7,7 @@
 //! *reading*: which code the prose a transport wrote in front of a payload
 //! names - `sending >>`, `recv`, `[OUT]`, a Jolokia `Response:`. The rules
 //! are the dictionary's, carried on tag 385's field as
-//! [`fix:directions`](super::directions), and the defaults
+//! [`FIX:directions`](super::directions), and the defaults
 //! below answer where the field carries none. The registry answers the
 //! reading through [`FixRegistry::msgdirection`], and a codec compiles it
 //! once when it takes its registry, so no row builds a regex and no row asks
@@ -33,7 +33,7 @@ const SEND_CODE: &str = "S";
 const RECEIVE_CODE: &str = "R";
 
 /// The default patterns naming the `Send` code, where tag 385 carries no
-/// `fix:directions`.
+/// `FIX:directions`.
 ///
 /// Domain knowledge, written out where a reviewer can check it rather than
 /// inferred from spelling: the spelled verbs, opened by the start of the
@@ -103,7 +103,7 @@ impl MsgDirection {
     /// A dictionary without the field, or with a set naming neither `Send`
     /// nor `Receive`, answers the specification's own codes for the two
     /// halves it does not name, so a direction is never silently absent. A
-    /// field carrying no `fix:directions` reads by the defaults, keyed by
+    /// field carrying no `FIX:directions` reads by the defaults, keyed by
     /// those two codes; one carrying the property reads by what it states.
     /// A rule naming no code of the set, a second rule naming a code
     /// already named under another spelling, a pattern the regex crate
@@ -243,7 +243,7 @@ impl MsgDirection {
         }
     }
 
-    /// The rules in force, as data: the field's `fix:directions` with each
+    /// The rules in force, as data: the field's `FIX:directions` with each
     /// code resolved to the set's value and only the patterns that
     /// compiled, or the defaults where the field carries none.
     #[must_use]
@@ -338,7 +338,7 @@ pub(super) fn resolve<'field>(field: &FixField<'field>, spelling: &str) -> Optio
 
 /// Warns about one rule the reading dropped, in the setter's words.
 fn warned(error: &crate::Error) {
-    log::warn!("tag {} fix:directions: {error}", MSGDIRECTION_TAG_NAME.0);
+    log::warn!("tag {} FIX:directions: {error}", MSGDIRECTION_TAG_NAME.0);
 }
 
 /// One of two iterators, so `codes` answers without allocating.

@@ -21,12 +21,12 @@
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::{DataType, Filter};
+    use yggdryl::{DataType, Filter, StructureType};
 
-    let root = DataType::from_fields([
+    let root = DataType::from(StructureType::from_fields([
         DataType::utf8().nullable_field("ccy"),
         DataType::Int64.nullable_field("size"),
-    ])?
+    ])?)
     .required_field("rows");
 
     let filter: Filter = "where ccy = 'EUR' and size > 1".parse()?;

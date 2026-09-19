@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "relatedorder"
+        "FIX:component": "relatedorder"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "relatedorder",
+    "FIX:counter": "73",
+    "FIX:tag": "966583",
     "description": "Required if NoOrders(73) > 0.",
-    "display": "RelatedOrderGrp",
-    "fix:component": "relatedorder",
-    "fix:counter": "73",
-    "fix:tag": "966583"
+    "display": "RelatedOrderGrp"
   }
 }

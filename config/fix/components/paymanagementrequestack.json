@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "payrequestid",
-          "fix:tag": "2812"
+          "FIX:field": "payrequestid",
+          "FIX:tag": "2812"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "payrequeststatus",
-          "fix:tag": "2813"
+          "FIX:field": "payrequeststatus",
+          "FIX:tag": "2813"
         }
       },
       {
@@ -42,16 +42,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "DZ",
+    "FIX:tag": "763407",
     "description": "MsgType = DZ",
-    "display": "PayManagementRequestAck",
-    "fix:msgtype": "DZ",
-    "fix:tag": "763407"
+    "display": "PayManagementRequestAck"
   }
 }

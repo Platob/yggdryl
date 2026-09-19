@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "settlobligsource",
-          "fix:tag": "1164"
+          "FIX:field": "settlobligsource",
+          "FIX:tag": "1164"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "standinstdbtype",
-          "fix:tag": "169"
+          "FIX:field": "standinstdbtype",
+          "FIX:tag": "169"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "standinstdbname",
-          "fix:tag": "170"
+          "FIX:field": "standinstdbname",
+          "FIX:tag": "170"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "standinstdbid",
-          "fix:tag": "171"
+          "FIX:field": "standinstdbid",
+          "FIX:tag": "171"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nosettlpartyids",
-          "fix:tag": "781"
+          "FIX:field": "nosettlpartyids",
+          "FIX:tag": "781"
         }
       },
       {
@@ -65,14 +65,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "settlparties"
+          "FIX:group": "settlparties"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "SettlDetail",
-    "fix:tag": "573341"
+    "FIX:tag": "573341",
+    "display": "SettlDetail"
   }
 }

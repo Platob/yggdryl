@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "quoteattribute"
+        "FIX:component": "quoteattribute"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "quoteattribute",
+    "FIX:counter": "2706",
+    "FIX:tag": "976470",
     "description": "Required if NoQuoteAttributes(2706) > 0.",
-    "display": "QuoteAttributeGrp",
-    "fix:component": "quoteattribute",
-    "fix:counter": "2706",
-    "fix:tag": "976470"
+    "display": "QuoteAttributeGrp"
   }
 }

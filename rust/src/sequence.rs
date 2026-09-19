@@ -24,9 +24,9 @@ use std::sync::Arc;
 
 use crate::Scalar;
 use crate::datatype::validate_non_negative;
-use crate::family::DataTypeValue;
-use crate::family::{Children, NestedValue};
-use crate::scalar::Value;
+use crate::value::DataTypeValue;
+use crate::value::Value;
+use crate::value::{Children, NestedValue};
 use crate::{DataType, DataTypeId, DataTypeKind, Field, Result};
 use serde::{Deserialize, Serialize};
 
@@ -282,8 +282,8 @@ mod arrow {
     use smol_str::format_smolstr;
 
     use super::SequenceType;
-    use crate::family::ArrowFfiParts;
     use crate::field::arrow_field_ref_from_shared;
+    use crate::value::ArrowFfiParts;
     use crate::{DataType, Field, Result};
     use crate::{invalid, validate_non_negative};
 

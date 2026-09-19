@@ -5,9 +5,10 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
+use crate::code::code_value;
 use crate::code::identifier_value;
-use crate::code::{CodeValue, code_value};
 use crate::typed::define_field_types;
+use crate::value::CodeValue;
 use crate::{DataType, Result, Scalar, Value};
 
 /// One validated CUSIP securities identifier.

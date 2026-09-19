@@ -7,7 +7,10 @@ use arrow_schema::{
     ffi::{FFI_ArrowSchema, Flags},
 };
 use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
-use yggdryl::{ArrowCastOptions, DataType, EdgeAlgorithm, Field, Nullability, TimeUnit, Timezone};
+use yggdryl::{
+    ArrowCastOptions, DataType, EdgeAlgorithm, Field, Nullability, StructureType, TimeUnit,
+    Timezone,
+};
 use yggdryl::{BytesType, DateTimeType};
 
 fn assert_flag(schema: &arrow_schema::ffi::FFI_ArrowSchema, flag: Flags) {
@@ -19,14 +22,14 @@ fn assert_canonical_http_metadata(field: &ArrowField) {
     assert_eq!(
         field
             .metadata()
-            .get("http:content-type")
+            .get("HTTP:content-type")
             .map(String::as_str),
         Some("application/json")
     );
     assert_eq!(
         field
             .metadata()
-            .get("http:content-length")
+            .get("HTTP:content-length")
             .map(String::as_str),
         Some("42")
     );
@@ -71,7 +74,10 @@ fn core_ffi_projection_preserves_every_field_and_datatype_flag_recursively() {
 
     let entries = Field::new(
         "entries",
-        DataType::from_fields([Field::new("key", DataType::utf8(), false), encoded]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([Field::new("key", DataType::utf8(), false), encoded])
+                .unwrap(),
+        ),
         false,
     );
     let map = DataType::map(entries, true).unwrap();
@@ -109,7 +115,8 @@ fn core_ffi_projection_preserves_every_field_and_datatype_flag_recursively() {
 #[test]
 fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state() {
     let map = DataType::map_of(DataType::utf8(), DataType::Int64, true).unwrap();
-    let dtype = DataType::from_fields([Field::new("lookup", map, true)]).unwrap();
+    let dtype =
+        DataType::from(StructureType::from_fields([Field::new("lookup", map, true)]).unwrap());
 
     let schema = dtype.into_arrow_datatype_ffi().unwrap();
     let map = schema.child(0);
@@ -236,7 +243,11 @@ fn arrow_exchange_sidecar_restores_nested_dictionary_ids_after_a_c_round_trip() 
 
     let mut catalog = Field::new(
         "catalog",
-        DataType::dictionary(DataType::UInt8, DataType::from_fields([region]).unwrap()).unwrap(),
+        DataType::dictionary(
+            DataType::UInt8,
+            DataType::from(StructureType::from_fields([region]).unwrap()),
+        )
+        .unwrap(),
         false,
     );
     catalog.set_dictionary_options(42, false).unwrap();
@@ -250,7 +261,10 @@ fn arrow_exchange_sidecar_restores_nested_dictionary_ids_after_a_c_round_trip() 
 
     let root = Field::from_parts(
         "row",
-        DataType::from_fields([catalog, Field::new("labels", DataType::list(item), true)]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([catalog, Field::new("labels", DataType::list(item), true)])
+                .unwrap(),
+        ),
         false,
         [("owner", "core")],
     )
@@ -358,7 +372,7 @@ fn arrow_exchange_sidecar_rejects_malformed_missing_and_conflicting_entries() {
 fn arrow_exchange_projection_refuses_caller_owned_sidecar_metadata() {
     let root = Field::from_parts(
         "row",
-        DataType::from_fields([DataType::Int64.required_field("id")]).unwrap(),
+        DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")]).unwrap()),
         false,
         [(IPC_DICTIONARY_IDS_KEY, "v1;0=7")],
     )
@@ -386,11 +400,12 @@ fn applied_root() -> Field {
         .unwrap();
     let mut inner_digest = DataType::UInt64.nullable_field("trade_digest");
     inner_digest.as_digest_mut().set_holder().unwrap();
-    let trade = DataType::from_fields([
+    let trade = StructureType::from_fields([
         DataType::date32().required_field("event"),
         inner_year,
         inner_digest,
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("trade");
 
@@ -401,7 +416,8 @@ fn applied_root() -> Field {
         .unwrap();
     let mut row_digest = DataType::UInt64.nullable_field("row_digest");
     row_digest.as_digest_mut().set_holder().unwrap();
-    DataType::from_fields([trade, top_year, row_digest])
+    StructureType::from_fields([trade, top_year, row_digest])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
 }
@@ -653,7 +669,8 @@ fn required_applied_root() -> Field {
         .unwrap();
     let mut row_digest = DataType::UInt64.required_field("row_digest");
     row_digest.as_digest_mut().set_holder().unwrap();
-    DataType::from_fields([DataType::date32().required_field("event"), year, row_digest])
+    StructureType::from_fields([DataType::date32().required_field("event"), year, row_digest])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
 }
@@ -717,10 +734,11 @@ fn a_strict_apply_refuses_the_column_whose_protocol_is_switched_off() {
 fn a_strict_apply_refuses_an_ordinary_required_column_the_source_lacks() {
     let root = Field::new(
         "row",
-        DataType::from_fields([
+        StructureType::from_fields([
             DataType::date32().required_field("event"),
             DataType::utf8().required_field("venue"),
         ])
+        .map(DataType::from)
         .unwrap(),
         false,
     );

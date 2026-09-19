@@ -248,11 +248,15 @@ pub enum DataTypeId {
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
     SizedCp1252String = 86,
+    /// A validated, canonical resource name.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Urn = 87,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 83] = [
+    pub const ALL: [Self; 84] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -336,6 +340,7 @@ impl DataTypeId {
         Self::LargeCp1252StringView,
         Self::FixedCp1252String,
         Self::SizedCp1252String,
+        Self::Urn,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -417,6 +422,7 @@ impl DataTypeId {
             Self::Geography => "geography",
             Self::Version => "version",
             Self::Url => "url",
+            Self::Urn => "urn",
             Self::Timezone => "timezone",
             Self::MimeType => "mimetype",
             Self::MediaType => "mediatype",
@@ -515,6 +521,7 @@ impl DataTypeId {
             | Self::SizedCp1252String
             | Self::Version
             | Self::Url
+            | Self::Urn
             | Self::Timezone
             | Self::MimeType
             | Self::MediaType => DataTypeKind::Text,

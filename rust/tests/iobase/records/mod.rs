@@ -10,14 +10,15 @@ use arrow_schema::{ArrowError, SchemaRef};
 use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{ArrowWriteSession, IOBase, IOMedia};
+use yggdryl::{ArrowWriteSession, IOBase, IOMedia, StructureType};
 use yggdryl::{DataType, Error, Field, IOMode, MimeType, Scalar, Url};
 
 fn schema() -> Field {
-    DataType::from_fields([
+    StructureType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])
+    .map(DataType::from)
     .unwrap()
     .required_field("row")
 }

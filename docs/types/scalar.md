@@ -15,9 +15,10 @@
 | `Vocabulary` | The closed name set: kind, spelling, ordinal. A member's datatype is `string`, so its value is the spelling and no `Scalar` variant holds it |
 | Widths | one flat enum: every width is its own variant (`Scalar::Int32`, `Scalar::Date32`, ...), matched directly and named by `kind()` |
 | `Scalar::Arrow` | an [`ArrowScalar`](../arrow/values.md) behind one shared pointer: a columnar value crossing a boundary as the scalar it is, buffers shared; `into_native` reads it as rows, `as_arrow` borrows it, and the narrowing readers answer `None` |
-| Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
+| Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
+| Families | one value enum per family with several leaves - `Integer`, `Floating`, `Decimal`, `Temporal`, `Code`, `Geospatial`, `Nested` - each a `FamilyValue`; `as_integer`, `as_floating`, `as_temporal`, `as_code`, `as_geospatial`, `as_nested` narrow a `Scalar` to one by value, `None` for another kind |
 | Identity | total equality, ordering, hash, cross-width: `I32(7)` is `U8(7)`, `F32(1.5)` is `F64(1.5)`, `D32(1250, 2)` is `D256(125, 1)`; kinds stay apart, `I32(1)` is not `F64(1.0)` |
-| Bindings | `yggdryl.enums`, `enums`; `FieldScalar` and the `wkb` reader Rust only |
+| Bindings | `yggdryl.enums`, `enums`; `FieldScalar`, the family value enums and the `wkb` reader Rust only |
 
 ## Use
 
@@ -105,7 +106,7 @@ The readers answer across widths and `None` for another kind; an interval's `tem
 Rust only.
 
 ```rust
-use yggdryl::{i256, Scalar, TemporalFamily, TimeUnit, Timezone};
+use yggdryl::{i256, Scalar, Temporal, TimeUnit, Timezone};
 
 let date = Scalar::from_date(20_000, TimeUnit::Day, Timezone::NAIVE)?;
 let time = Scalar::from_time(1, TimeUnit::Nanosecond, Timezone::NAIVE)?;
@@ -117,17 +118,50 @@ assert!(matches!(date, Scalar::Date32(_)));
 assert_eq!(time.kind(), "time64");
 assert!(matches!(duration, Scalar::Duration64(_)));
 
-assert_eq!(time.temporal_family(), Some(TemporalFamily::Time));
+assert!(matches!(time.as_temporal(), Some(Temporal::Time64(_))));
+assert_eq!(time.as_temporal().map(|held| held.family()), Some("time"));
 assert_eq!(time.temporal_unit(), Some(TimeUnit::Nanosecond));
 assert_eq!(date.temporal_timezone(), Some(Timezone::NAIVE));
 assert_eq!(duration.temporal_count(), Some(i64::from(i32::MAX) + 1));
-assert_eq!(decimal.temporal_family(), None);
+assert_eq!(decimal.as_temporal(), None);
 
 // Numbers read across widths, and one number at two widths is one value.
 assert_eq!(decimal.as_decimal(), Some((i256::from_i128(1_250), 2)));
 assert_eq!(decimal, Scalar::d256(i256::from_i128(125), 1));
 assert_eq!(Scalar::from(7_u8).as_i128(), Some(7));
 assert_eq!(Scalar::from(7_u8), Scalar::from(7_i32));
+```
+
+## Families
+
+A family with several leaves is one value enum over them - `Integer`, `Floating`, `Decimal`, `Temporal`, `Code`, `Geospatial` and `Nested` - each a `FamilyValue`: it stands for any one leaf, answers that leaf's datatype (`dtype`) and the kind every leaf shares (`KIND`), widens to the scalar the leaf widens to (`into_scalar`), and narrows a scalar whose variant is one of its leaves (`from_scalar`, by value: the scalar holds the leaf and not the family, and every leaf is `Copy` or one shared pointer). A variant is named as the leaf and the `Scalar` variant are, so `Integer::Int32(Int32)` is `Scalar::Int32(Int32)`. A kind with one leaf value - a boolean, a string, a byte value, a UUID, a version, a time zone, a MIME type, a media type - has no enum: the leaf is the family. The uri family has no enum either: its two leaves hold `Url` and `Urn`, the narrowings of one `Uri`, and `as_uri` borrows that identifier from either scalar. `Scalar` narrows to a family through `as_integer`, `as_floating`, `as_temporal`, `as_code`, `as_geospatial` and `as_nested`, `None` for another kind; the decimal family narrows through `Decimal::from_scalar`, because `as_decimal` is the coefficient-and-scale reader. A `Temporal` also answers `family()`: `date`, `time`, `datetime`, `duration` or `interval`.
+Rust only.
+
+```rust
+use yggdryl::{Decimal, Decimal18, FamilyValue, Floating, Int32, Integer, Nested, Temporal};
+use yggdryl::{DataType, DataTypeKind, Scalar, TimeUnit, Timezone};
+
+// The variant is the leaf, spelled as the scalar spells it, and the enum
+// answers the leaf's datatype.
+let held = Integer::from(Int32::new(7));
+assert_eq!(Integer::KIND, DataTypeKind::Integer);
+assert_eq!(held.dtype()?, DataType::Int32);
+assert_eq!(held.clone().into_scalar(), Scalar::Int32(Int32::new(7)));
+assert_eq!(Scalar::from(7_i32).as_integer(), Some(held));
+
+// A scalar narrows to its own family by value, and to no other.
+let at = Scalar::from_datetime(1, TimeUnit::Microsecond, Timezone::UTC)?;
+assert!(matches!(at.as_temporal(), Some(Temporal::DateTime64(_))));
+assert_eq!(at.as_temporal().map(|held| held.family()), Some("datetime"));
+assert_eq!(at.as_integer(), None);
+assert!(matches!(Scalar::from(1.5_f64).as_floating(), Some(Floating::Float64(_))));
+assert!(matches!(Scalar::from_sequence([Scalar::from(1_i64)]).as_nested(), Some(Nested::Sequence(_))));
+
+// The decimal family narrows through its own enum, because `as_decimal`
+// is the coefficient-and-scale reader.
+let price = Scalar::from(Decimal18::from_int(3));
+assert!(matches!(Decimal::from_scalar(&price), Some(Decimal::Decimal128(_))));
+assert_eq!(price.as_decimal().map(|(_, scale)| scale), Some(18));
 ```
 
 ## Truthiness and length
@@ -186,7 +220,7 @@ else, so it is not a text or byte length and never a truthiness test.
 
 ## Variants and arithmetic
 
-Every width is a direct `Scalar` variant, with no family enum between (`Scalar::Int32(Int32(2))`). Every `Scalar` is hashable and totally ordered; equal numeric or temporal values compare and hash equal across storage widths (`Int32(7)` equals `UInt8(7)`). Width stays available for datatype and Arrow projection.
+Every width is a direct `Scalar` variant, with no family enum between (`Scalar::Int32(Int32(2))`); a [family enum](#families) is what a reader narrows to, never what a variant holds. Every `Scalar` is hashable and totally ordered; equal numeric or temporal values compare and hash equal across storage widths (`Int32(7)` equals `UInt8(7)`). Width stays available for datatype and Arrow projection.
 
 | group | variants |
 | --- | --- |
@@ -196,7 +230,7 @@ Every width is a direct `Scalar` variant, with no family enum between (`Scalar::
 | decimals | `D32`, `D64`, `D128`, `D256`, each a coefficient and a scale |
 | text and binary | `String`, `Bytes`, `Geometry`, `Geography` |
 | registered codes | `Country`, `Currency`, `Mic`, `Cfi`, `Side`, `State`, `TimeInForce`, `Isin`, `Cusip`, `Sedol`, `Bloomberg` |
-| identifiers | `Uuid`, `Version`, `Url` |
+| identifiers | `Uuid`, `Version`, `Url`, `Urn` |
 | date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
 | elapsed time | `Duration32`, `Duration64`, `Interval` |
 | containers | `Sequence`, `Mapping`, `Record` |
@@ -258,7 +292,7 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
 | item | rule |
 | --- | --- |
 | rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `Sequence` in child-field order; `Mapping` is insertion-ordered with any unique `Scalar` key |
-| accessors | `as_bytes`, `as_str`, `into_json_bytes` / `into_json`, `as_decimal`, and the temporal readers `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
+| accessors | `as_bytes`, `as_str`, `into_json_bytes` / `into_json`, `as_decimal`, the temporal readers `temporal_unit`, `temporal_timezone`, `temporal_count`, and the [family accessors](#families) `as_integer` .. `as_nested`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
 
 ## FieldScalar
 
@@ -361,7 +395,7 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured doc
   a code. Geospatial values read as bytes but do not join - two WKB payloads
   end to end are not a geometry. This is not the expression language's
   `concat`, which is a variadic text function that also renders a version.
-- `count`, `unit`, `zone`, `unscaled`, `scale`, or a Rust `temporal_*` reader on an unrelated kind -> `None` / `null`; an `Interval` answers `temporal_count` with its nanosecond component.
+- `count`, `unit`, `zone`, `unscaled`, `scale`, or a Rust `temporal_*` reader or `as_<family>` accessor on an unrelated kind -> `None` / `null`; an `Interval` answers `temporal_count` with its nanosecond component.
 - Empty or positional rows -> ambiguous; declare the `Field`.
 - Physical Arrow identity -> exact constructors, [Rust only](numeric.md).
 - `MimeType::PUFFIN` -> `application/vnd.apache.puffin`, `.puffin`, `PFA1`; the specification names no MIME type.

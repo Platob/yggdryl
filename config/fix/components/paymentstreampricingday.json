@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreampricingdayofweek",
-          "fix:tag": "41228"
+          "FIX:field": "paymentstreampricingdayofweek",
+          "FIX:tag": "41228"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreampricingdaynumber",
-          "fix:tag": "41229"
+          "FIX:field": "paymentstreampricingdaynumber",
+          "FIX:tag": "41229"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentStreamPricingDay",
-    "fix:tag": "1041836"
+    "FIX:tag": "1041836",
+    "display": "PaymentStreamPricingDay"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "fundingsourcecomponent"
+        "FIX:component": "fundingsourcecomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "fundingsourcecomponent",
+    "FIX:counter": "2849",
+    "FIX:tag": "658951",
     "description": "Required if NoFundingSources(2849) > 0.",
-    "display": "FundingSourceGrp",
-    "fix:component": "fundingsourcecomponent",
-    "fix:counter": "2849",
-    "fix:tag": "658951"
+    "display": "FundingSourceGrp"
   }
 }

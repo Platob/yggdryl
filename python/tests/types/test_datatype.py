@@ -460,6 +460,51 @@ def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
     ).to_pylist() == ["https://example.com/a%2Fb", None]
 
 
+def test_urn_is_a_validated_canonical_name_over_utf8_text() -> None:
+    dtype = DataType("urn")
+    field = Field("urn", dtype, nullable=False)
+
+    assert dtype.id == "urn"
+    assert dtype.kind == "text"
+    assert str(dtype) == "urn"
+    assert dtype.fixed_byte_width is None
+    assert dtype.string_parameters is None
+    assert DataType("urn") == dtype
+    assert eval(repr(dtype), {"DataType": DataType}) == dtype
+
+    # A name, not a location: the scheme and the namespace fold to lower case,
+    # and what a `url` column holds is exactly what a `urn` column refuses.
+    assert field.cast_arrow_array(
+        pa.array(["URN:ISBN:0451450523", "urn:example:a%20b"])
+    ).to_pylist() == [
+        "urn:isbn:0451450523",
+        "urn:example:a%20b",
+    ]
+    assert field.arrow_scalar("URN:ISBN:0451450523") == pa.scalar("urn:isbn:0451450523")
+    for location in ("https://example.com/a", "/lake/part.txt"):
+        with pytest.raises(ValueError, match="does not read as urn"):
+            field.cast_arrow_array(pa.array([location]))
+        with pytest.raises(ValueError, match="expected urn"):
+            field.arrow_scalar(location)
+    with pytest.raises(ValueError, match="does not read as url"):
+        Field("url", DataType("url"), nullable=False).cast_arrow_array(
+            pa.array(["urn:isbn:0451450523"])
+        )
+
+    # The empty text is an absence, as it is for every non-text column, and
+    # a name has no zero: the default is the nil name.
+    assert field.cast_arrow_array(pa.array([""])).to_pylist() == ["urn:nil:nil"]
+    assert dtype.scalar("").is_null()
+    assert field.default_scalar().as_py() == "urn:nil:nil"
+
+    # Storage is Utf8 under the `yggdryl.urn` extension name, so a projection
+    # comes back a urn column rather than text or a url column.
+    assert field.into_arrow().type == pa.utf8()
+    assert field.into_arrow().metadata[b"ARROW:extension:name"] == b"yggdryl.urn"
+    assert Field.from_arrow(field.into_arrow()) == field
+    assert Field.from_arrow(field.into_arrow()).dtype == dtype
+
+
 def test_every_string_is_one_datatype_and_one_of_eighteen_leaves() -> None:
     ascii_text = DataType("ascii")
     fixed = DataType.fixed_ascii(3)

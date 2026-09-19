@@ -34,9 +34,9 @@ use std::fmt;
 pub(crate) use arrow::{arrow_storage, from_arrow_storage};
 use smol_str::format_smolstr;
 
-use crate::family::DataTypeValue;
 use crate::temporal::scalars::{narrow_i32, require};
-use crate::temporal::{TemporalFamily, invalid_record, temporal_leaf};
+use crate::temporal::{TemporalKind, invalid_record, temporal_leaf};
+use crate::value::DataTypeValue;
 use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, TimeUnit, Timezone};
 
 // ------------------------------------------------------------------------
@@ -117,10 +117,10 @@ impl DateType {
         }
     }
 
-    /// The temporal family every leaf belongs to.
+    /// The family's name, `date`, as a datatype spells it.
     #[must_use]
-    pub const fn family(self) -> TemporalFamily {
-        TemporalFamily::Date
+    pub const fn family(self) -> &'static str {
+        TemporalKind::Date.as_str()
     }
 
     /// A date has no parameter to refuse.

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisebusinessdayconvention",
-          "fix:tag": "41118"
+          "FIX:field": "optionexercisebusinessdayconvention",
+          "FIX:tag": "41118"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nooptionexercisebusinesscenters",
-          "fix:tag": "41116"
+          "FIX:field": "nooptionexercisebusinesscenters",
+          "FIX:tag": "41116"
         }
       },
       {
@@ -32,7 +32,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "optionexercisebusinesscentergrp"
+          "FIX:group": "optionexercisebusinesscentergrp"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nooptionexercisedates",
-          "fix:tag": "41137"
+          "FIX:field": "nooptionexercisedates",
+          "FIX:tag": "41137"
         }
       },
       {
@@ -53,7 +53,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "optionexercisedategrp"
+          "FIX:group": "optionexercisedategrp"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseearliestdateoffsetdaytype",
-          "fix:tag": "41119"
+          "FIX:field": "optionexerciseearliestdateoffsetdaytype",
+          "FIX:tag": "41119"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseearliestdateoffsetperiod",
-          "fix:tag": "41120"
+          "FIX:field": "optionexerciseearliestdateoffsetperiod",
+          "FIX:tag": "41120"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseearliestdateoffsetunit",
-          "fix:tag": "41121"
+          "FIX:field": "optionexerciseearliestdateoffsetunit",
+          "FIX:tag": "41121"
         }
       },
       {
@@ -96,8 +96,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisefrequencyperiod",
-          "fix:tag": "41122"
+          "FIX:field": "optionexercisefrequencyperiod",
+          "FIX:tag": "41122"
         }
       },
       {
@@ -107,8 +107,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisefrequencyunit",
-          "fix:tag": "41123"
+          "FIX:field": "optionexercisefrequencyunit",
+          "FIX:tag": "41123"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisestartdateunadjusted",
-          "fix:tag": "41124"
+          "FIX:field": "optionexercisestartdateunadjusted",
+          "FIX:tag": "41124"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisestartdaterelativeto",
-          "fix:tag": "41125"
+          "FIX:field": "optionexercisestartdaterelativeto",
+          "FIX:tag": "41125"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisestartdateoffsetperiod",
-          "fix:tag": "41126"
+          "FIX:field": "optionexercisestartdateoffsetperiod",
+          "FIX:tag": "41126"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisestartdateoffsetunit",
-          "fix:tag": "41127"
+          "FIX:field": "optionexercisestartdateoffsetunit",
+          "FIX:tag": "41127"
         }
       },
       {
@@ -162,8 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisestartdateoffsetdaytype",
-          "fix:tag": "41128"
+          "FIX:field": "optionexercisestartdateoffsetdaytype",
+          "FIX:tag": "41128"
         }
       },
       {
@@ -173,8 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisestartdateadjusted",
-          "fix:tag": "41129"
+          "FIX:field": "optionexercisestartdateadjusted",
+          "FIX:tag": "41129"
         }
       },
       {
@@ -184,8 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseskip",
-          "fix:tag": "41130"
+          "FIX:field": "optionexerciseskip",
+          "FIX:tag": "41130"
         }
       },
       {
@@ -195,8 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisenominationdeadline",
-          "fix:tag": "41131"
+          "FIX:field": "optionexercisenominationdeadline",
+          "FIX:tag": "41131"
         }
       },
       {
@@ -206,8 +206,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisefirstdateunadjusted",
-          "fix:tag": "41132"
+          "FIX:field": "optionexercisefirstdateunadjusted",
+          "FIX:tag": "41132"
         }
       },
       {
@@ -217,8 +217,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciselastdateunadjusted",
-          "fix:tag": "41133"
+          "FIX:field": "optionexerciselastdateunadjusted",
+          "FIX:tag": "41133"
         }
       },
       {
@@ -228,8 +228,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciseearliesttime",
-          "fix:tag": "41134"
+          "FIX:field": "optionexerciseearliesttime",
+          "FIX:tag": "41134"
         }
       },
       {
@@ -239,8 +239,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexerciselatesttime",
-          "fix:tag": "41135"
+          "FIX:field": "optionexerciselatesttime",
+          "FIX:tag": "41135"
         }
       },
       {
@@ -250,16 +250,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "optionexercisetimebusinesscenter",
-          "fix:tag": "41136"
+          "FIX:field": "optionexercisetimebusinesscenter",
+          "FIX:tag": "41136"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "191734",
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of option exercise dates.",
-    "display": "OptionExerciseDates",
-    "fix:tag": "191734"
+    "display": "OptionExerciseDates"
   }
 }

@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "derivativesecurityaltidcomponent"
+        "FIX:component": "derivativesecurityaltidcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "DerivativeSecurityAltIDGrp",
-    "fix:component": "derivativesecurityaltidcomponent",
-    "fix:counter": "1218",
-    "fix:tag": "273110"
+    "FIX:component": "derivativesecurityaltidcomponent",
+    "FIX:counter": "1218",
+    "FIX:tag": "273110",
+    "display": "DerivativeSecurityAltIDGrp"
   }
 }

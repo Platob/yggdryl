@@ -5,7 +5,7 @@ use std::sync::Arc;
 use super::SoleMessage;
 use yggdryl::graph::Element;
 use yggdryl::xxhash::xxh128;
-use yggdryl::{DataType, Error, Field, FixEntry, FixRegistry, Scalar};
+use yggdryl::{DataType, Error, Field, FixEntry, FixRegistry, Scalar, StructureType};
 
 fn tagged(name: &str, tag: i32) -> Field {
     let mut field = DataType::utf8().nullable_field(name);
@@ -21,9 +21,9 @@ fn registry_tag_writers_refuse_nonpositive_values_atomically() {
     let before = field.clone();
     for tag in [0, -1, i32::MIN] {
         for (key, result) in [
-            ("fix:tag", field.as_fix_mut().set_tag(tag)),
-            ("fix:counter", field.as_fix_mut().set_counter(tag)),
-            ("fix:tags", field.as_fix_mut().set_tags(&[4, tag])),
+            ("FIX:tag", field.as_fix_mut().set_tag(tag)),
+            ("FIX:counter", field.as_fix_mut().set_counter(tag)),
+            ("FIX:tags", field.as_fix_mut().set_tags(&[4, tag])),
         ] {
             let error = result.unwrap_err();
             assert!(
@@ -42,16 +42,16 @@ fn registry_tag_writers_refuse_nonpositive_values_atomically() {
     assert_eq!(field.as_fix().tag().unwrap(), Some(i32::MAX));
     assert_eq!(field.as_fix().counter().unwrap(), Some(i32::MAX));
     field.as_fix_mut().set_tags(&[]).unwrap();
-    assert!(field.get_metadata("fix:tags").is_none());
+    assert!(field.get_metadata("FIX:tags").is_none());
 }
 
 #[test]
 fn externally_stated_zero_identity_is_refused_without_mutating_the_registry() {
     // The alternates are one JSON array, and their elements are held to the
     // same shape as the two scalar tags.
-    for key in ["fix:tag", "fix:counter", "fix:tags"] {
+    for key in ["FIX:tag", "FIX:counter", "FIX:tags"] {
         for digits in ["0", "000", "-1", "+1", "2147483648"] {
-            let text = if key == "fix:tags" {
+            let text = if key == "FIX:tags" {
                 format!("[{digits}]")
             } else {
                 digits.to_owned()
@@ -59,8 +59,8 @@ fn externally_stated_zero_identity_is_refused_without_mutating_the_registry() {
             let mut field = tagged("incoming", 90_001);
             field.insert_metadata(key, text.as_str()).unwrap();
             let error = match key {
-                "fix:tag" => field.as_fix().tag().unwrap_err(),
-                "fix:counter" => field.as_fix().counter().unwrap_err(),
+                "FIX:tag" => field.as_fix().tag().unwrap_err(),
+                "FIX:counter" => field.as_fix().counter().unwrap_err(),
                 _ => field.as_fix().tags().unwrap_err(),
             };
             assert!(
@@ -76,17 +76,17 @@ fn externally_stated_zero_identity_is_refused_without_mutating_the_registry() {
     // Leading zeros are still the tag on the two bare decimals, and never in
     // the array: a JSON number spells none, and the array is JSON.
     let mut field = tagged("positive", 1);
-    for key in ["fix:tag", "fix:counter"] {
+    for key in ["FIX:tag", "FIX:counter"] {
         field.insert_metadata(key, "0001").unwrap();
     }
-    field.insert_metadata("fix:tags", "[1]").unwrap();
+    field.insert_metadata("FIX:tags", "[1]").unwrap();
     assert_eq!(field.as_fix().tag().unwrap(), Some(1));
     assert_eq!(field.as_fix().counter().unwrap(), Some(1));
     assert_eq!(field.as_fix().tags().unwrap(), [1]);
-    field.insert_metadata("fix:tags", "[0001]").unwrap();
+    field.insert_metadata("FIX:tags", "[0001]").unwrap();
     let error = field.as_fix().tags().unwrap_err();
     assert!(
-        matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "fix:tags"),
+        matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "FIX:tags"),
         "{error}"
     );
 }
@@ -173,7 +173,8 @@ fn a_group_keeps_resolved_members_and_unknown_children_under_the_stated_counter(
     counter.as_fix_mut().set_tag(90_001).unwrap();
     registry.insert(counter).unwrap();
     let mut group = DataType::list(
-        DataType::from_fields([tagged("scopedvalue", 90_002)])
+        StructureType::from_fields([tagged("scopedvalue", 90_002)])
+            .map(DataType::from)
             .unwrap()
             .required_field("row"),
     )

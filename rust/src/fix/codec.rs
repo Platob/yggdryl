@@ -422,10 +422,10 @@ enum CaptureRole {
 impl CaptureRole {
     /// What one capture name means to this codec, decided once.
     ///
-    /// A capture named for one of the capture's own columns - `sourceurl`,
-    /// `recordedat` - is silent: what a reader says about a line is not
-    /// something the message it holds says, so it fills no field here and
-    /// is stated on the row by whoever read it.
+    /// A capture named for the capture's own column - `sourceurl` - is
+    /// silent: what a reader says about a line is not something the message
+    /// it holds says, so it fills no field here and is stated on the row by
+    /// whoever read it.
     fn of(name: &str, codec: &FixCodec) -> Self {
         let is = |known: &str| crate::folds_equal(known, name);
         if is(BEGINSTRING_COLUMN) {
@@ -677,14 +677,14 @@ impl FixCodec {
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
     /// # use yggdryl::text::{TextBytes, TextLine};
-    /// # use yggdryl::{FixCodec, FixRegistry, PLUGINID_TAG_NAME};
-    /// let codec = FixCodec::new(Arc::new(FixRegistry::new())).with_capture_names(["pluginid"]);
+    /// # use yggdryl::{FixCodec, FixRegistry, MSGPLUGINID_TAG_NAME};
+    /// let codec = FixCodec::new(Arc::new(FixRegistry::new())).with_capture_names(["msgpluginid"]);
     ///
     /// let line = TextLine::from_bytes(0, TextBytes::from_bytes(b"8=FIX.4.4|35=D|11=A|10=0|")?)?
     ///     .with_captures(vec![Some(TextBytes::from_bytes(b"VNU")?)])?;
     /// let message = codec.parse_text_line(&line)?.next().expect("one message")?;
     /// // The capture filled the crate's own field.
-    /// assert_eq!(message.by_tag(PLUGINID_TAG_NAME.0)?.as_str(), Some("VNU"));
+    /// assert_eq!(message.by_tag(MSGPLUGINID_TAG_NAME.0)?.as_str(), Some("VNU"));
     /// # Ok(())
     /// # }
     /// ```

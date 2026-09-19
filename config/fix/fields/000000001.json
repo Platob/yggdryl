@@ -6,9 +6,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Execution destination as defined by institution when order is entered.",
-      "display": "ExDestination",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "None"
@@ -18,7 +16,9 @@
           "name": "Posit"
         }
       ],
-      "fix:tag": "100"
+      "FIX:tag": "100",
+      "description": "Execution destination as defined by institution when order is entered.",
+      "display": "ExDestination"
     }
   },
   {
@@ -28,9 +28,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to identify reason for rejection of cancellation or modification.",
-      "display": "CxlRejReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "TooLateToCancel",
@@ -87,7 +85,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "102"
+      "FIX:tag": "102",
+      "description": "Code to identify reason for rejection of cancellation or modification.",
+      "display": "CxlRejReason"
     }
   },
   {
@@ -97,9 +97,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to identify reason for order rejection. Note: Values 3, 4, and 5 will be used when rejecting an order due to pre-allocation information errors.",
-      "display": "OrdRejReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "BrokerCredit",
@@ -274,7 +272,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "103"
+      "FIX:tag": "103",
+      "description": "Code to identify reason for order rejection. Note: Values 3, 4, and 5 will be used when rejecting an order due to pre-allocation information errors.",
+      "display": "OrdRejReason"
     }
   },
   {
@@ -284,9 +284,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Code to qualify IOI use. (see Volume : \"Glossary\" for value definitions)",
-      "display": "IOIQualifier",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "A",
           "name": "AllOrNone",
@@ -463,7 +461,9 @@
           "doc": "Negotiated spot"
         }
       ],
-      "fix:tag": "104"
+      "FIX:tag": "104",
+      "description": "Code to qualify IOI use. (see Volume : \"Glossary\" for value definitions)",
+      "display": "IOIQualifier"
     }
   },
   {
@@ -473,8 +473,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "WaveNo",
-      "fix:tag": "105"
+      "FIX:tag": "105",
+      "display": "WaveNo"
     }
   },
   {
@@ -484,9 +484,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "106",
       "description": "Name of security issuer (e.g. International Business Machines, GNMA).",
-      "display": "Issuer",
-      "fix:tag": "106"
+      "display": "Issuer"
     }
   },
   {
@@ -496,9 +496,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "107",
       "description": "Can be used by the venue or one of the trading parties to provide a non-normative textual description for the financial instrument.",
-      "display": "SecurityDesc",
-      "fix:tag": "107"
+      "display": "SecurityDesc"
     }
   },
   {
@@ -508,9 +508,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "108",
       "description": "Heartbeat interval (seconds)",
-      "display": "HeartBtInt",
-      "fix:tag": "108"
+      "display": "HeartBtInt"
     }
   },
   {
@@ -520,14 +520,14 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "ClientID",
-      "fix:replacements": [
+      "FIX:replacements": [
         {
           "plan": "select [{partyid: clientid, partyrole: '3'}] as parties",
           "doc": "ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)"
         }
       ],
-      "fix:tag": "109"
+      "FIX:tag": "109",
+      "display": "ClientID"
     }
   },
   {
@@ -539,9 +539,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "110",
       "description": "Minimum quantity of an order to be executed.",
-      "display": "MinQty",
-      "fix:tag": "110"
+      "display": "MinQty"
     }
   },
   {
@@ -553,15 +553,15 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "The quantity to be displayed . Required for reserve orders. On orders specifies the qty to be displayed, on execution reports the currently displayed quantity.",
-      "display": "MaxFloor",
-      "fix:deprecated": "5.0",
-      "fix:replacements": [
+      "FIX:deprecated": "5.0",
+      "FIX:replacements": [
         {
           "plan": "select maxfloor as displayqty"
         }
       ],
-      "fix:tag": "111"
+      "FIX:tag": "111",
+      "description": "The quantity to be displayed . Required for reserve orders. On orders specifies the qty to be displayed, on execution reports the currently displayed quantity.",
+      "display": "MaxFloor"
     }
   },
   {
@@ -571,9 +571,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "112",
       "description": "Identifier included in Test Request message to be returned in resulting Heartbeat",
-      "display": "TestReqID",
-      "fix:tag": "112"
+      "display": "TestReqID"
     }
   },
   {
@@ -583,9 +583,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies party of trade responsible for exchange reporting.",
-      "display": "ReportToExch",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "SenderReports",
@@ -603,7 +601,9 @@
           "doc": "Indicates the party receiving message must report trade"
         }
       ],
-      "fix:tag": "113"
+      "FIX:tag": "113",
+      "description": "Identifies party of trade responsible for exchange reporting.",
+      "display": "ReportToExch"
     }
   },
   {
@@ -613,9 +613,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates whether the broker is to locate the stock in conjunction with a short sell order.",
-      "display": "LocateReqd",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "No",
@@ -627,7 +625,9 @@
           "doc": "Indicates the broker is responsible for locating the stock"
         }
       ],
-      "fix:tag": "114"
+      "FIX:tag": "114",
+      "description": "Indicates whether the broker is to locate the stock in conjunction with a short sell order.",
+      "display": "LocateReqd"
     }
   },
   {
@@ -637,9 +637,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "115",
       "description": "Assigned value used to identify firm originating message if the message was delivered by a third party i.e. the third party firm identifier would be delivered in the SenderCompID field and the firm originating the message in this field.",
-      "display": "OnBehalfOfCompID",
-      "fix:tag": "115"
+      "display": "OnBehalfOfCompID"
     }
   },
   {
@@ -649,9 +649,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "116",
       "description": "Assigned value used to identify specific message originator (i.e. trader) if the message was delivered by a third party",
-      "display": "OnBehalfOfSubID",
-      "fix:tag": "116"
+      "display": "OnBehalfOfSubID"
     }
   },
   {
@@ -661,9 +661,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "117",
       "description": "Unique identifier for quote",
-      "display": "QuoteID",
-      "fix:tag": "117"
+      "display": "QuoteID"
     }
   },
   {
@@ -675,9 +675,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "118",
       "description": "Total amount due as the result of the transaction (e.g. for Buy order - principal + commission + fees) reported in currency of execution.",
-      "display": "NetMoney",
-      "fix:tag": "118"
+      "display": "NetMoney"
     }
   },
   {
@@ -689,15 +689,15 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Total amount due expressed in settlement currency (includes the effect of the forex transaction)",
-      "display": "SettlCurrAmt",
-      "fix:derivation": "try_cast(grosstradeamt as decimal128(38,9)) * try_cast(settlcurrfxrate as decimal128(38,9))",
-      "fix:replacements": [
+      "FIX:derivation": "try_cast(grosstradeamt as decimal128(38,9)) * try_cast(settlcurrfxrate as decimal128(38,9))",
+      "FIX:replacements": [
         {
           "plan": "select settlcurramt as allocsettlcurramt where :group = 'allocgrp'"
         }
       ],
-      "fix:tag": "119"
+      "FIX:tag": "119",
+      "description": "Total amount due expressed in settlement currency (includes the effect of the forex transaction)",
+      "display": "SettlCurrAmt"
     }
   },
   {
@@ -707,15 +707,15 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Currency code of settlement denomination.",
-      "display": "SettlCurrency",
-      "fix:derivation": "currency",
-      "fix:replacements": [
+      "FIX:derivation": "currency",
+      "FIX:replacements": [
         {
           "plan": "select settlcurrency as allocsettlcurrency where :group = 'allocgrp'"
         }
       ],
-      "fix:tag": "120"
+      "FIX:tag": "120",
+      "description": "Currency code of settlement denomination.",
+      "display": "SettlCurrency"
     }
   },
   {
@@ -725,9 +725,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates request for forex accommodation trade to be executed along with security transaction.",
-      "display": "ForexReq",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "DoNotExecuteForexAfterSecurityTrade",
@@ -745,7 +743,9 @@
           "doc": "Execute Forex After Security Trade"
         }
       ],
-      "fix:tag": "121"
+      "FIX:tag": "121",
+      "description": "Indicates request for forex accommodation trade to be executed along with security transaction.",
+      "display": "ForexReq"
     }
   },
   {
@@ -757,10 +757,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:derivation": "case when possdupflag then sendingtime end",
+      "FIX:tag": "122",
       "description": "Original time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\") when transmitting orders as the result of a resend request.",
-      "display": "OrigSendingTime",
-      "fix:derivation": "case when possdupflag then sendingtime end",
-      "fix:tag": "122"
+      "display": "OrigSendingTime"
     }
   },
   {
@@ -770,9 +770,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates that the Sequence Reset message is replacing administrative or application messages which will not be resent.",
-      "display": "GapFillFlag",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "SequenceReset",
@@ -790,7 +788,9 @@
           "doc": "Gap Fill Message, Msg Seq Num Field Valid"
         }
       ],
-      "fix:tag": "123"
+      "FIX:tag": "123",
+      "description": "Indicates that the Sequence Reset message is replacing administrative or application messages which will not be resent.",
+      "display": "GapFillFlag"
     }
   },
   {
@@ -800,9 +800,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "124",
       "description": "Number of executions or trades.",
-      "display": "NoExecs",
-      "fix:tag": "124"
+      "display": "NoExecs"
     }
   },
   {
@@ -812,8 +812,7 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "CxlType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "F",
           "name": "FullRemainingQuantity"
@@ -823,7 +822,8 @@
           "name": "PartialCancel"
         }
       ],
-      "fix:tag": "125"
+      "FIX:tag": "125",
+      "display": "CxlType"
     }
   },
   {
@@ -835,9 +835,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "126",
       "description": "Time/Date of order expiration (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
-      "display": "ExpireTime",
-      "fix:tag": "126"
+      "display": "ExpireTime"
     }
   },
   {
@@ -847,9 +847,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Reason for execution rejection.",
-      "display": "DKReason",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "A",
           "name": "UnknownSymbol",
@@ -891,7 +889,9 @@
           "doc": "Other"
         }
       ],
-      "fix:tag": "127"
+      "FIX:tag": "127",
+      "description": "Reason for execution rejection.",
+      "display": "DKReason"
     }
   },
   {
@@ -901,9 +901,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "128",
       "description": "Assigned value used to identify the firm targeted to receive the message if the message is delivered by a third party i.e. the third party firm identifier would be delivered in the TargetCompID (56) field and the ultimate receiver firm ID in this field.",
-      "display": "DeliverToCompID",
-      "fix:tag": "128"
+      "display": "DeliverToCompID"
     }
   },
   {
@@ -913,9 +913,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "129",
       "description": "Assigned value used to identify specific message recipient (i.e. trader) if the message is delivered by a third party",
-      "display": "DeliverToSubID",
-      "fix:tag": "129"
+      "display": "DeliverToSubID"
     }
   },
   {
@@ -925,9 +925,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates that IOI is the result of an existing agency order or a facilitation position resulting from an agency order, not from principal trading or order solicitation activity.",
-      "display": "IOINaturalFlag",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "NotNatural",
@@ -945,7 +943,9 @@
           "doc": "Natural"
         }
       ],
-      "fix:tag": "130"
+      "FIX:tag": "130",
+      "description": "Indicates that IOI is the result of an existing agency order or a facilitation position resulting from an agency order, not from principal trading or order solicitation activity.",
+      "display": "IOINaturalFlag"
     }
   },
   {
@@ -955,9 +955,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "131",
       "description": "Unique identifier for a QuoteRequest(35=R).",
-      "display": "QuoteReqID",
-      "fix:tag": "131"
+      "display": "QuoteReqID"
     }
   },
   {
@@ -969,10 +969,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:derivation": "bidspotrate + bidforwardpoints",
+      "FIX:tag": "132",
       "description": "Bid price/rate",
-      "display": "BidPx",
-      "fix:derivation": "bidspotrate + bidforwardpoints",
-      "fix:tag": "132"
+      "display": "BidPx"
     }
   },
   {
@@ -984,10 +984,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:derivation": "offerspotrate + offerforwardpoints",
+      "FIX:tag": "133",
       "description": "Offer price/rate",
-      "display": "OfferPx",
-      "fix:derivation": "offerspotrate + offerforwardpoints",
-      "fix:tag": "133"
+      "display": "OfferPx"
     }
   },
   {
@@ -999,9 +999,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "134",
       "description": "Quantity of bid",
-      "display": "BidSize",
-      "fix:tag": "134"
+      "display": "BidSize"
     }
   },
   {
@@ -1013,9 +1013,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "135",
       "description": "Quantity of offer",
-      "display": "OfferSize",
-      "fix:tag": "135"
+      "display": "OfferSize"
     }
   },
   {
@@ -1025,9 +1025,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "136",
       "description": "Number of repeating groups of miscellaneous fees",
-      "display": "NoMiscFees",
-      "fix:tag": "136"
+      "display": "NoMiscFees"
     }
   },
   {
@@ -1039,9 +1039,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "137",
       "description": "Miscellaneous fee value",
-      "display": "MiscFeeAmt",
-      "fix:tag": "137"
+      "display": "MiscFeeAmt"
     }
   },
   {
@@ -1051,9 +1051,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "138",
       "description": "Currency of miscellaneous fee",
-      "display": "MiscFeeCurr",
-      "fix:tag": "138"
+      "display": "MiscFeeCurr"
     }
   },
   {
@@ -1063,9 +1063,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates type of miscellaneous fee.",
-      "display": "MiscFeeType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "Regulatory",
@@ -1247,7 +1245,9 @@
           "doc": "Non-monetary payments"
         }
       ],
-      "fix:tag": "139"
+      "FIX:tag": "139",
+      "description": "Indicates type of miscellaneous fee.",
+      "display": "MiscFeeType"
     }
   },
   {
@@ -1259,9 +1259,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "140",
       "description": "Previous closing price of security.",
-      "display": "PrevClosePx",
-      "fix:tag": "140"
+      "display": "PrevClosePx"
     }
   },
   {
@@ -1271,9 +1271,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates that both sides of the FIX session should reset sequence numbers.",
-      "display": "ResetSeqNumFlag",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "No",
@@ -1285,7 +1283,9 @@
           "doc": "Yes, reset sequence numbers"
         }
       ],
-      "fix:tag": "141"
+      "FIX:tag": "141",
+      "description": "Indicates that both sides of the FIX session should reset sequence numbers.",
+      "display": "ResetSeqNumFlag"
     }
   },
   {
@@ -1295,9 +1295,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "142",
       "description": "Assigned value used to identify specific message originator's location (i.e. geographic location and/or desk, trader)",
-      "display": "SenderLocationID",
-      "fix:tag": "142"
+      "display": "SenderLocationID"
     }
   },
   {
@@ -1307,9 +1307,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "143",
       "description": "Assigned value used to identify specific message destination's location (i.e. geographic location and/or desk, trader)",
-      "display": "TargetLocationID",
-      "fix:tag": "143"
+      "display": "TargetLocationID"
     }
   },
   {
@@ -1319,9 +1319,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "144",
       "description": "Assigned value used to identify specific message originator's location (i.e. geographic location and/or desk, trader) if the message was delivered by a third party",
-      "display": "OnBehalfOfLocationID",
-      "fix:tag": "144"
+      "display": "OnBehalfOfLocationID"
     }
   },
   {
@@ -1331,9 +1331,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "145",
       "description": "Assigned value used to identify specific message recipient's location (i.e. geographic location and/or desk, trader) if the message was delivered by a third party",
-      "display": "DeliverToLocationID",
-      "fix:tag": "145"
+      "display": "DeliverToLocationID"
     }
   },
   {
@@ -1343,9 +1343,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "146",
       "description": "Specifies the number of repeating symbols specified.",
-      "display": "NoRelatedSym",
-      "fix:tag": "146"
+      "display": "NoRelatedSym"
     }
   },
   {
@@ -1355,9 +1355,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "147",
       "description": "The subject of an Email message",
-      "display": "Subject",
-      "fix:tag": "147"
+      "display": "Subject"
     }
   },
   {
@@ -1367,9 +1367,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "148",
       "description": "The headline of a News message",
-      "display": "Headline",
-      "fix:tag": "148"
+      "display": "Headline"
     }
   },
   {
@@ -1379,9 +1379,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "149",
       "description": "A URI (Uniform Resource Identifier) or URL (Uniform Resource Locator) link to additional information (i.e. http://www.XYZ.com/research.html)",
-      "display": "URLLink",
-      "fix:tag": "149"
+      "display": "URLLink"
     }
   },
   {
@@ -1391,9 +1391,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Describes the specific ExecutionRpt (e.g. Pending Cancel) while OrdStatus(39) will always identify the current order status (e.g. Partially Filled).",
-      "display": "ExecType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "New",
@@ -1513,7 +1511,7 @@
           "name": "Filled"
         }
       ],
-      "fix:replacements": [
+      "FIX:replacements": [
         {
           "plan": "select 'F' as exectype where exectype = '1'",
           "doc": "ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)"
@@ -1523,7 +1521,9 @@
           "doc": "ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)"
         }
       ],
-      "fix:tag": "150"
+      "FIX:tag": "150",
+      "description": "Describes the specific ExecutionRpt (e.g. Pending Cancel) while OrdStatus(39) will always identify the current order status (e.g. Partially Filled).",
+      "display": "ExecType"
     }
   },
   {
@@ -1535,10 +1535,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:derivation": "case when msgtype in ('8', '9') and ordstatus in ('2', '3', '4', '8', 'C') then 0 when msgtype in ('8', '9') and ordstatus in ('0', '1', '6', 'E', '5', '7', '9') and orderqty - cumqty >= 0 then orderqty - cumqty end",
+      "FIX:tag": "151",
       "description": "Quantity open for further execution. If the OrdStatus (39) is Canceled, DoneForTheDay, Expired, Calculated, or Rejected (in which case the order is no longer active) then LeavesQty could be 0, otherwise LeavesQty = OrderQty (38) - CumQty (14).",
-      "display": "LeavesQty",
-      "fix:derivation": "case when msgtype in ('8', '9') and ordstatus in ('2', '3', '4', '8', 'C') then 0 when msgtype in ('8', '9') and ordstatus in ('0', '1', '6', 'E', '5', '7', '9') and orderqty - cumqty >= 0 then orderqty - cumqty end",
-      "fix:tag": "151"
+      "display": "LeavesQty"
     }
   },
   {
@@ -1550,9 +1550,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "152",
       "description": "Specifies the approximate order quantity desired in total monetary units vs. as tradeable units (e.g. number of shares). The broker or fund manager (for CIV orders) would be responsible for converting and calculating a tradeable unit (e.g. share) quantity (OrderQty (38)) based upon this amount to be used for the actual order and subsequent messages.",
-      "display": "CashOrderQty",
-      "fix:tag": "152"
+      "display": "CashOrderQty"
     }
   },
   {
@@ -1564,9 +1564,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "153",
       "description": "AvgPx (6) for a specific AllocAccount (79)",
-      "display": "AllocAvgPx",
-      "fix:tag": "153"
+      "display": "AllocAvgPx"
     }
   },
   {
@@ -1578,9 +1578,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "154",
       "description": "NetMoney(118) for a specific AllocAccount(79).",
-      "display": "AllocNetMoney",
-      "fix:tag": "154"
+      "display": "AllocNetMoney"
     }
   },
   {
@@ -1590,9 +1590,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "155",
       "description": "Foreign exchange rate used to compute SettlCurrAmt(119) from Currency(15) to SettlCurrency(120).",
-      "display": "SettlCurrFxRate",
-      "fix:tag": "155"
+      "display": "SettlCurrFxRate"
     }
   },
   {
@@ -1602,9 +1602,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Specifies whether or not SettlCurrFxRate (155) should be multiplied or divided.",
-      "display": "SettlCurrFxRateCalc",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "M",
           "name": "Multiply",
@@ -1616,7 +1614,9 @@
           "doc": "Divide"
         }
       ],
-      "fix:tag": "156"
+      "FIX:tag": "156",
+      "description": "Specifies whether or not SettlCurrFxRate (155) should be multiplied or divided.",
+      "display": "SettlCurrFxRateCalc"
     }
   },
   {
@@ -1626,9 +1626,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "157",
       "description": "Number of Days of Interest for convertible bonds and fixed income. Note value may be negative.",
-      "display": "NumDaysInterest",
-      "fix:tag": "157"
+      "display": "NumDaysInterest"
     }
   },
   {
@@ -1638,9 +1638,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "158",
       "description": "The amount the buyer compensates the seller for the portion of the next coupon interest payment the seller has earned but will not receive from the issuer because the issuer will send the next coupon payment to the buyer. Accrued Interest Rate is the annualized Accrued Interest amount divided by the purchase price of the bond.",
-      "display": "AccruedInterestRate",
-      "fix:tag": "158"
+      "display": "AccruedInterestRate"
     }
   },
   {
@@ -1652,9 +1652,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "159",
       "description": "Amount of Accrued Interest for convertible bonds and fixed income",
-      "display": "AccruedInterestAmt",
-      "fix:tag": "159"
+      "display": "AccruedInterestAmt"
     }
   },
   {
@@ -1664,9 +1664,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates mode used for Settlement Instructions message. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" ***",
-      "display": "SettlInstMode",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Default",
@@ -1698,7 +1696,9 @@
           "doc": "Request reject"
         }
       ],
-      "fix:tag": "160"
+      "FIX:tag": "160",
+      "description": "Indicates mode used for Settlement Instructions message. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" ***",
+      "display": "SettlInstMode"
     }
   },
   {
@@ -1708,9 +1708,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "161",
       "description": "Free format text related to a specific AllocAccount (79).",
-      "display": "AllocText",
-      "fix:tag": "161"
+      "display": "AllocText"
     }
   },
   {
@@ -1720,9 +1720,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "162",
       "description": "Unique identifier for Settlement Instruction.",
-      "display": "SettlInstID",
-      "fix:tag": "162"
+      "display": "SettlInstID"
     }
   },
   {
@@ -1732,9 +1732,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Settlement Instructions message transaction type",
-      "display": "SettlInstTransType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "N",
           "name": "New",
@@ -1756,7 +1754,9 @@
           "doc": "Restate"
         }
       ],
-      "fix:tag": "163"
+      "FIX:tag": "163",
+      "description": "Settlement Instructions message transaction type",
+      "display": "SettlInstTransType"
     }
   },
   {
@@ -1766,9 +1766,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "164",
       "description": "Unique identifier for an email thread (new and chain of replies)",
-      "display": "EmailThreadID",
-      "fix:tag": "164"
+      "display": "EmailThreadID"
     }
   },
   {
@@ -1778,9 +1778,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates source of Settlement Instructions",
-      "display": "SettlInstSource",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "1",
           "name": "BrokerCredit",
@@ -1797,7 +1795,9 @@
           "doc": "Investor (e.g. CIV use)"
         }
       ],
-      "fix:tag": "165"
+      "FIX:tag": "165",
+      "description": "Indicates source of Settlement Instructions",
+      "display": "SettlInstSource"
     }
   },
   {
@@ -1807,8 +1807,7 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "SettlLocation",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "CED",
           "name": "Cedel"
@@ -1838,7 +1837,7 @@
           "name": "ParticipantTrustCompany"
         }
       ],
-      "fix:replacements": [
+      "FIX:replacements": [
         {
           "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'CED'",
           "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
@@ -1868,7 +1867,8 @@
           "doc": "SettlLocation is a SettlementLocation party identified by ISO country code (FIX 4.3 Appendix 6-F)"
         }
       ],
-      "fix:tag": "166"
+      "FIX:tag": "166",
+      "display": "SettlLocation"
     }
   },
   {
@@ -1878,9 +1878,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Indicates type of security. Security type enumerations are grouped by Product(460) field value. NOTE: Additional values may be used by mutual agreement of the counterparties.",
-      "display": "SecurityType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "ABS",
           "name": "AssetBackedSecurities",
@@ -3023,8 +3021,8 @@
           "name": "CatsTigersAndLions"
         }
       ],
-      "fix:derivation": "case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end",
-      "fix:replacements": [
+      "FIX:derivation": "case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end",
+      "FIX:replacements": [
         {
           "plan": "select 'TNOTE' as securitytype where securitytype = 'UST'",
           "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
@@ -3034,7 +3032,9 @@
           "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
         }
       ],
-      "fix:tag": "167"
+      "FIX:tag": "167",
+      "description": "Indicates type of security. Security type enumerations are grouped by Product(460) field value. NOTE: Additional values may be used by mutual agreement of the counterparties.",
+      "display": "SecurityType"
     }
   },
   {
@@ -3046,9 +3046,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "168",
       "description": "Time the details within the message should take effect (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
-      "display": "EffectiveTime",
-      "fix:tag": "168"
+      "display": "EffectiveTime"
     }
   },
   {
@@ -3058,9 +3058,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the Standing Instruction database used",
-      "display": "StandInstDbType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Other",
@@ -3087,7 +3085,9 @@
           "doc": "AccountNet"
         }
       ],
-      "fix:tag": "169"
+      "FIX:tag": "169",
+      "description": "Identifies the Standing Instruction database used",
+      "display": "StandInstDbType"
     }
   },
   {
@@ -3097,9 +3097,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "170",
       "description": "Name of the Standing Instruction database represented with StandInstDbType (169) (i.e. the Global Custodian's name).",
-      "display": "StandInstDbName",
-      "fix:tag": "170"
+      "display": "StandInstDbName"
     }
   },
   {
@@ -3109,9 +3109,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "171",
       "description": "Unique identifier used on the Standing Instructions database for the Standing Instructions to be referenced.",
-      "display": "StandInstDbID",
-      "fix:tag": "171"
+      "display": "StandInstDbID"
     }
   },
   {
@@ -3121,9 +3121,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies type of settlement",
-      "display": "SettlDeliveryType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "Versus",
@@ -3145,7 +3143,9 @@
           "doc": "Hold In Custody"
         }
       ],
-      "fix:tag": "172"
+      "FIX:tag": "172",
+      "description": "Identifies type of settlement",
+      "display": "SettlDeliveryType"
     }
   },
   {
@@ -3155,8 +3155,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "SettlDepositoryCode",
-      "fix:tag": "173"
+      "FIX:tag": "173",
+      "display": "SettlDepositoryCode"
     }
   },
   {
@@ -3166,8 +3166,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "SettlBrkrCode",
-      "fix:tag": "174"
+      "FIX:tag": "174",
+      "display": "SettlBrkrCode"
     }
   },
   {
@@ -3177,8 +3177,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "SettlInstCode",
-      "fix:tag": "175"
+      "FIX:tag": "175",
+      "display": "SettlInstCode"
     }
   },
   {
@@ -3188,8 +3188,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "SecuritySettlAgentName",
-      "fix:tag": "176"
+      "FIX:tag": "176",
+      "display": "SecuritySettlAgentName"
     }
   },
   {
@@ -3199,8 +3199,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "SecuritySettlAgentCode",
-      "fix:tag": "177"
+      "FIX:tag": "177",
+      "display": "SecuritySettlAgentCode"
     }
   },
   {
@@ -3210,8 +3210,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "SecuritySettlAgentAcctNum",
-      "fix:tag": "178"
+      "FIX:tag": "178",
+      "display": "SecuritySettlAgentAcctNum"
     }
   },
   {
@@ -3221,8 +3221,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "SecuritySettlAgentAcctName",
-      "fix:tag": "179"
+      "FIX:tag": "179",
+      "display": "SecuritySettlAgentAcctName"
     }
   },
   {
@@ -3232,8 +3232,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "SecuritySettlAgentContactName",
-      "fix:tag": "180"
+      "FIX:tag": "180",
+      "display": "SecuritySettlAgentContactName"
     }
   },
   {
@@ -3243,8 +3243,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "SecuritySettlAgentContactPhone",
-      "fix:tag": "181"
+      "FIX:tag": "181",
+      "display": "SecuritySettlAgentContactPhone"
     }
   },
   {
@@ -3254,8 +3254,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "CashSettlAgentName",
-      "fix:tag": "182"
+      "FIX:tag": "182",
+      "display": "CashSettlAgentName"
     }
   },
   {
@@ -3265,8 +3265,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "CashSettlAgentCode",
-      "fix:tag": "183"
+      "FIX:tag": "183",
+      "display": "CashSettlAgentCode"
     }
   },
   {
@@ -3276,8 +3276,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "CashSettlAgentAcctNum",
-      "fix:tag": "184"
+      "FIX:tag": "184",
+      "display": "CashSettlAgentAcctNum"
     }
   },
   {
@@ -3287,8 +3287,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "CashSettlAgentAcctName",
-      "fix:tag": "185"
+      "FIX:tag": "185",
+      "display": "CashSettlAgentAcctName"
     }
   },
   {
@@ -3298,8 +3298,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "CashSettlAgentContactName",
-      "fix:tag": "186"
+      "FIX:tag": "186",
+      "display": "CashSettlAgentContactName"
     }
   },
   {
@@ -3309,8 +3309,8 @@
     },
     "nullable": true,
     "metadata": {
-      "display": "CashSettlAgentContactPhone",
-      "fix:tag": "187"
+      "FIX:tag": "187",
+      "display": "CashSettlAgentContactPhone"
     }
   },
   {
@@ -3322,9 +3322,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "188",
       "description": "Bid F/X spot rate.",
-      "display": "BidSpotRate",
-      "fix:tag": "188"
+      "display": "BidSpotRate"
     }
   },
   {
@@ -3336,9 +3336,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "189",
       "description": "Bid F/X forward points added to spot rate. May be a negative value.",
-      "display": "BidForwardPoints",
-      "fix:tag": "189"
+      "display": "BidForwardPoints"
     }
   },
   {
@@ -3350,9 +3350,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "190",
       "description": "Offer F/X spot rate.",
-      "display": "OfferSpotRate",
-      "fix:tag": "190"
+      "display": "OfferSpotRate"
     }
   },
   {
@@ -3364,9 +3364,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "191",
       "description": "Offer F/X forward points added to spot rate. May be a negative value.",
-      "display": "OfferForwardPoints",
-      "fix:tag": "191"
+      "display": "OfferForwardPoints"
     }
   },
   {
@@ -3378,10 +3378,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:deprecated": "5.0",
+      "FIX:tag": "192",
       "description": "OrderQty (38) of the future part of a F/X swap order.",
-      "display": "OrderQty2",
-      "fix:deprecated": "5.0",
-      "fix:tag": "192"
+      "display": "OrderQty2"
     }
   },
   {
@@ -3392,13 +3392,13 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "SettDate (64) of the future part of a F/X swap order.",
-      "display": "SettlDate2",
-      "fix:deprecated": "5.0",
-      "fix:names": [
+      "FIX:deprecated": "5.0",
+      "FIX:names": [
         "futsettdate2"
       ],
-      "fix:tag": "193"
+      "FIX:tag": "193",
+      "description": "SettDate (64) of the future part of a F/X swap order.",
+      "display": "SettlDate2"
     }
   },
   {
@@ -3410,9 +3410,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "194",
       "description": "F/X spot rate.",
-      "display": "LastSpotRate",
-      "fix:tag": "194"
+      "display": "LastSpotRate"
     }
   },
   {
@@ -3424,9 +3424,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "195",
       "description": "F/X forward points added to LastSpotRate(194). May be a negative value. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199.",
-      "display": "LastForwardPoints",
-      "fix:tag": "195"
+      "display": "LastForwardPoints"
     }
   },
   {
@@ -3436,9 +3436,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "196",
       "description": "Can be used to link two different Allocation messages (each with unique AllocID (70)) together, i.e. for F/X \"Netting\" or \"Swaps\". Should be unique.",
-      "display": "AllocLinkID",
-      "fix:tag": "196"
+      "display": "AllocLinkID"
     }
   },
   {
@@ -3448,9 +3448,7 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Identifies the type of Allocation linkage when AllocLinkID(196) is used.",
-      "display": "AllocLinkType",
-      "fix:codes": [
+      "FIX:codes": [
         {
           "value": "0",
           "name": "FXNetting",
@@ -3462,7 +3460,9 @@
           "doc": "FX Swap"
         }
       ],
-      "fix:tag": "197"
+      "FIX:tag": "197",
+      "description": "Identifies the type of Allocation linkage when AllocLinkID(196) is used.",
+      "display": "AllocLinkType"
     }
   },
   {
@@ -3472,14 +3472,14 @@
     },
     "nullable": true,
     "metadata": {
-      "description": "Assigned by the party which accepts the order. Can be used to provide the OrderID (37) used by an exchange or executing system.",
-      "display": "SecondaryOrderID",
-      "fix:replacements": [
+      "FIX:replacements": [
         {
           "plan": "select secondaryorderid as massactionreportid where :msgtype = 'r'"
         }
       ],
-      "fix:tag": "198"
+      "FIX:tag": "198",
+      "description": "Assigned by the party which accepts the order. Can be used to provide the OrderID (37) used by an exchange or executing system.",
+      "display": "SecondaryOrderID"
     }
   },
   {
@@ -3489,9 +3489,9 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:tag": "199",
       "description": "Number of repeating groups of IOIQualifiers (04).",
-      "display": "NoIOIQualifiers",
-      "fix:tag": "199"
+      "display": "NoIOIQualifiers"
     }
   }
 ]

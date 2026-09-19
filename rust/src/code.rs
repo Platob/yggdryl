@@ -4,6 +4,7 @@
 use smol_str::SmolStr;
 
 use crate::ascii::ascii_text_sized;
+use crate::value::family_value;
 use crate::{
     BLOOMBERG_EXTENSION_NAME, CFI_EXTENSION_NAME, COUNTRY_EXTENSION_NAME, CURRENCY_EXTENSION_NAME,
     CUSIP_EXTENSION_NAME, ISIN_EXTENSION_NAME, MIC_EXTENSION_NAME, SEDOL_EXTENSION_NAME,
@@ -13,6 +14,7 @@ use crate::{
     BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
     SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
 };
+use crate::{Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce};
 use crate::{DataType, Error, Result};
 
 // ------------------------------------------------------------------------
@@ -25,37 +27,23 @@ use crate::{DataType, Error, Result};
 // it, so a currency is never a country however alike their bytes look.
 // ------------------------------------------------------------------------
 
-/// Borrowing access shared by every code representation.
-pub trait CodeValue: crate::Value {
-    /// The fixed storage width, in bytes.
-    const WIDTH: usize;
-
-    /// Borrow the validated code.
-    fn as_str(&self) -> &str;
-    /// Borrow the shared storage behind the validated code.
+family_value!(
+    /// The code family as one value: any of the eleven registered codes.
     ///
-    /// The stored text is already trimmed and checked, so a rewrite that
-    /// keeps it clones this handle rather than re-validating and copying.
-    fn storage(&self) -> &SmolStr;
-
-    /// The better statement of this code and another of the same kind: this
-    /// one, unless it states less than `other` does.
+    /// ```
+    /// use yggdryl::{Code, Currency, DataType, FamilyValue, Scalar};
     ///
-    /// What "less" means is each code's own, and the codes that can state
-    /// nothing say so: a [`Cfi`](crate::Cfi) fills every `X` position from the other
-    /// where the two describe one instrument; a
-    /// [`State`](crate::State) that reached none, `00UNKNOWN`, takes the other, and
-    /// otherwise the further along stands; a [`Side`](crate::Side) `UNKNOWN`, a
-    /// [`Currency`](crate::Currency) `XXX` and a [`Mic`](crate::Mic) `XXXX` take the other. Every other
-    /// code is an identifier with nothing partial about it, so this one
-    /// stands as it is. This is what a graph element folds two statements
-    /// of one fact with.
-    #[must_use]
-    fn merge_with(self, other: &Self) -> Self {
-        let _ = other;
-        self
-    }
-}
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let held = Code::from(Currency::new("EUR")?);
+    /// assert_eq!(held.dtype()?, DataType::Currency);
+    /// assert_eq!(held.clone().into_scalar(), Scalar::Currency(Currency::new("EUR")?));
+    /// assert_eq!(Code::from_scalar(&Scalar::Currency(Currency::new("EUR")?)), Some(held));
+    /// assert_eq!(Code::from_scalar(&Scalar::from("EUR")), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    Code, Code, [Country, Currency, Mic, Cfi, Side, State, TimeInForce, Isin, Cusip, Sedol, Bloomberg]
+);
 
 macro_rules! code_leaf {
     ($name:ident, $width:expr) => {

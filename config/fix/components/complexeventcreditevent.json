@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventtype",
-          "fix:tag": "40998"
+          "FIX:field": "complexeventcrediteventtype",
+          "FIX:tag": "40998"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventvalue",
-          "fix:tag": "40999"
+          "FIX:field": "complexeventcrediteventvalue",
+          "FIX:tag": "40999"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventcurrency",
-          "fix:tag": "41000"
+          "FIX:field": "complexeventcrediteventcurrency",
+          "FIX:tag": "41000"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventperiod",
-          "fix:tag": "41001"
+          "FIX:field": "complexeventcrediteventperiod",
+          "FIX:tag": "41001"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventunit",
-          "fix:tag": "41002"
+          "FIX:field": "complexeventcrediteventunit",
+          "FIX:tag": "41002"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventdaytype",
-          "fix:tag": "41003"
+          "FIX:field": "complexeventcrediteventdaytype",
+          "FIX:tag": "41003"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complexeventcrediteventratesource",
-          "fix:tag": "41004"
+          "FIX:field": "complexeventcrediteventratesource",
+          "FIX:tag": "41004"
         }
       },
       {
@@ -87,8 +87,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nocomplexeventcrediteventqualifiers",
-          "fix:tag": "41005"
+          "FIX:field": "nocomplexeventcrediteventqualifiers",
+          "FIX:tag": "41005"
         }
       },
       {
@@ -98,14 +98,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "complexeventcrediteventqualifiergrp"
+          "FIX:group": "complexeventcrediteventqualifiergrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ComplexEventCreditEvent",
-    "fix:tag": "871599"
+    "FIX:tag": "871599",
+    "display": "ComplexEventCreditEvent"
   }
 }

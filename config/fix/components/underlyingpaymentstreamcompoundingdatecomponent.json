@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingdate",
-          "fix:tag": "42902"
+          "FIX:field": "underlyingpaymentstreamcompoundingdate",
+          "FIX:tag": "42902"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingdatetype",
-          "fix:tag": "42903"
+          "FIX:field": "underlyingpaymentstreamcompoundingdatetype",
+          "FIX:tag": "42903"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingPaymentStreamCompoundingDate",
-    "fix:tag": "484591"
+    "FIX:tag": "484591",
+    "display": "UnderlyingPaymentStreamCompoundingDate"
   }
 }

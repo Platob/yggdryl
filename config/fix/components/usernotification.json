@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nousernames",
-          "fix:tag": "809"
+          "FIX:field": "nousernames",
+          "FIX:tag": "809"
         }
       },
       {
@@ -31,7 +31,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "usernamegrp"
+          "FIX:group": "usernamegrp"
         }
       },
       {
@@ -41,8 +41,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "userstatus",
-          "fix:tag": "926"
+          "FIX:field": "userstatus",
+          "FIX:tag": "926"
         }
       },
       {
@@ -52,8 +52,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nothrottles",
-          "fix:tag": "1610"
+          "FIX:field": "nothrottles",
+          "FIX:tag": "1610"
         }
       },
       {
@@ -63,7 +63,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "throttleparamsgrp"
+          "FIX:group": "throttleparamsgrp"
         }
       },
       {
@@ -73,8 +73,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -84,8 +84,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -95,8 +95,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -106,16 +106,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "CB",
+    "FIX:tag": "339296",
     "description": "MsgType = CB",
-    "display": "UserNotification",
-    "fix:msgtype": "CB",
-    "fix:tag": "339296"
+    "display": "UserNotification"
   }
 }

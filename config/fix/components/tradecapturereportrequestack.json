@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "traderequestid",
-          "fix:tag": "568"
+          "FIX:field": "traderequestid",
+          "FIX:tag": "568"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "tradeid",
-          "fix:tag": "1003"
+          "FIX:field": "tradeid",
+          "FIX:tag": "1003"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondarytradeid",
-          "fix:tag": "1040"
+          "FIX:field": "secondarytradeid",
+          "FIX:tag": "1040"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "firmtradeid",
-          "fix:tag": "1041"
+          "FIX:field": "firmtradeid",
+          "FIX:tag": "1041"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "secondaryfirmtradeid",
-          "fix:tag": "1042"
+          "FIX:field": "secondaryfirmtradeid",
+          "FIX:tag": "1042"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "traderequesttype",
-          "fix:tag": "569"
+          "FIX:field": "traderequesttype",
+          "FIX:tag": "569"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "subscriptionrequesttype",
-          "fix:tag": "263"
+          "FIX:field": "subscriptionrequesttype",
+          "FIX:tag": "263"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "totnumtradereports",
-          "fix:tag": "748"
+          "FIX:field": "totnumtradereports",
+          "FIX:tag": "748"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "traderequestresult",
-          "fix:tag": "749"
+          "FIX:field": "traderequestresult",
+          "FIX:tag": "749"
         }
       },
       {
@@ -119,8 +119,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "traderequeststatus",
-          "fix:tag": "750"
+          "FIX:field": "traderequeststatus",
+          "FIX:tag": "750"
         }
       },
       {
@@ -130,7 +130,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -140,7 +140,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "instrumentextension"
+          "FIX:component": "instrumentextension"
         }
       },
       {
@@ -150,8 +150,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings",
-          "fix:tag": "711"
+          "FIX:field": "nounderlyings",
+          "FIX:tag": "711"
         }
       },
       {
@@ -161,7 +161,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "undinstrmtgrp"
+          "FIX:group": "undinstrmtgrp"
         }
       },
       {
@@ -171,8 +171,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs",
-          "fix:tag": "555"
+          "FIX:field": "nolegs",
+          "FIX:tag": "555"
         }
       },
       {
@@ -182,7 +182,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrmtleggrp"
+          "FIX:group": "instrmtleggrp"
         }
       },
       {
@@ -192,8 +192,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "multilegreportingtype",
-          "fix:tag": "442"
+          "FIX:field": "multilegreportingtype",
+          "FIX:tag": "442"
         }
       },
       {
@@ -203,8 +203,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "responsetransporttype",
-          "fix:tag": "725"
+          "FIX:field": "responsetransporttype",
+          "FIX:tag": "725"
         }
       },
       {
@@ -214,8 +214,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "responsedestination",
-          "fix:tag": "726"
+          "FIX:field": "responsedestination",
+          "FIX:tag": "726"
         }
       },
       {
@@ -225,8 +225,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "text",
-          "fix:tag": "58"
+          "FIX:field": "text",
+          "FIX:tag": "58"
         }
       },
       {
@@ -236,8 +236,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtextlen",
-          "fix:tag": "354"
+          "FIX:field": "encodedtextlen",
+          "FIX:tag": "354"
         }
       },
       {
@@ -247,8 +247,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "encodedtext",
-          "fix:tag": "355"
+          "FIX:field": "encodedtext",
+          "FIX:tag": "355"
         }
       },
       {
@@ -258,8 +258,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "messageeventsource",
-          "fix:tag": "1011"
+          "FIX:field": "messageeventsource",
+          "FIX:tag": "1011"
         }
       },
       {
@@ -269,17 +269,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid",
+    "FIX:msgtype": "AQ",
+    "FIX:tag": "977882",
     "description": "MsgType = AQ",
-    "display": "TradeCaptureReportRequestAck",
-    "fix:identifiers": "tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid",
-    "fix:msgtype": "AQ",
-    "fix:tag": "977882"
+    "display": "TradeCaptureReportRequestAck"
   }
 }

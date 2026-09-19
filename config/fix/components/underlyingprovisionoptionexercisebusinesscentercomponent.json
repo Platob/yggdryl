@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingprovisionoptionexercisebusinesscenter",
-          "fix:tag": "42185"
+          "FIX:field": "underlyingprovisionoptionexercisebusinesscenter",
+          "FIX:tag": "42185"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingProvisionOptionExerciseBusinessCenter",
-    "fix:tag": "380642"
+    "FIX:tag": "380642",
+    "display": "UnderlyingProvisionOptionExerciseBusinessCenter"
   }
 }

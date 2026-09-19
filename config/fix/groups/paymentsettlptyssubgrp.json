@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "paymentsettlptyssub"
+        "FIX:component": "paymentsettlptyssub"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "paymentsettlptyssub",
+    "FIX:counter": "40238",
+    "FIX:tag": "940630",
     "description": "Required if NoPaymentSettlPartySubIDs(40238) > 0.",
-    "display": "PaymentSettlPtysSubGrp",
-    "fix:component": "paymentsettlptyssub",
-    "fix:counter": "40238",
-    "fix:tag": "940630"
+    "display": "PaymentSettlPtysSubGrp"
   }
 }

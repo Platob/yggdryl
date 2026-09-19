@@ -385,7 +385,7 @@ impl PyTxHasher {
     /// Fill default digest holders in one `PyArrow` `RecordBatch`.
     ///
     /// The configured state is the prototype every holder reads its seed and
-    /// secret from; a holder coupling an instant keeps its own `digest:unit`.
+    /// secret from; a holder coupling an instant keeps its own `DIGEST:unit`.
     #[pyo3(signature = (root, batch, *, force = false))]
     fn apply_arrow_batch<'py>(
         &self,

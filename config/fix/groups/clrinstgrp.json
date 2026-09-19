@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "clrinst"
+        "FIX:component": "clrinst"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "clrinst",
+    "FIX:counter": "576",
+    "FIX:tag": "727694",
     "description": "Required if NoClearingInstructions > 0",
-    "display": "ClrInstGrp",
-    "fix:component": "clrinst",
-    "fix:counter": "576",
-    "fix:tag": "727694"
+    "display": "ClrInstGrp"
   }
 }

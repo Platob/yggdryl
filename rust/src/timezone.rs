@@ -739,7 +739,8 @@ mod value {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use smol_str::SmolStr;
 
-    use crate::scalar::{Value, text_scalar_value};
+    use crate::scalar::text_scalar_value;
+    use crate::value::Value;
     use crate::{DataType, Error, Result, Scalar, hashing::stable_hash_display};
 
     use super::{Basis, Edge, Zone};

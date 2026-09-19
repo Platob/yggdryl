@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenarioparametername",
-          "fix:tag": "3131"
+          "FIX:field": "testscenarioparametername",
+          "FIX:tag": "3131"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenarioparametertype",
-          "fix:tag": "3132"
+          "FIX:field": "testscenarioparametertype",
+          "FIX:tag": "3132"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testscenarioparametervalue",
-          "fix:tag": "3133"
+          "FIX:field": "testscenarioparametervalue",
+          "FIX:tag": "3133"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TestScenarioParameter",
-    "fix:tag": "247022"
+    "FIX:tag": "247022",
+    "display": "TestScenarioParameter"
   }
 }

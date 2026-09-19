@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "undlyinstrumentptyssub"
+        "FIX:component": "undlyinstrumentptyssub"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "UndlyInstrumentPtysSubGrp",
-    "fix:component": "undlyinstrumentptyssub",
-    "fix:counter": "1062",
-    "fix:tag": "1053474"
+    "FIX:component": "undlyinstrumentptyssub",
+    "FIX:counter": "1062",
+    "FIX:tag": "1053474",
+    "display": "UndlyInstrumentPtysSubGrp"
   }
 }

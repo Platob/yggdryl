@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::parser::Parser;
+use crate::value::{GeospatialValue, family_value};
 use crate::{DataType, DataTypeId, EdgeAlgorithm, Error, Result, Scalar, Value};
 
 /// Arrow casts owned by this datatype family.
@@ -439,16 +440,26 @@ impl Parser<'_> {
 // Geospatial values and typed scalar aliases.
 // ------------------------------------------------------------------------
 
-/// Borrowing access shared by geometry and geography values.
-pub trait GeospatialValue: Value {
-    /// Borrow the validated Well-Known Binary payload.
-    fn as_bytes(&self) -> &[u8];
-    /// Borrow the shared storage behind the payload.
+family_value!(
+    /// The geospatial family as one value: a geometry or a geography, each
+    /// validated Well-Known Binary.
     ///
-    /// The payload is already validated WKB, so reinterpreting a geometry as
-    /// a geography clones this handle rather than copying and re-reading it.
-    fn storage(&self) -> &Arc<[u8]>;
-}
+    /// ```
+    /// use yggdryl::{DataTypeKind, FamilyValue, Geometry, Geospatial, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// // A little-endian WKB point at the origin.
+    /// let point = Geometry::new([1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])?;
+    /// let held = Geospatial::from(point.clone());
+    /// assert_eq!(held.dtype()?.kind(), DataTypeKind::Geospatial);
+    /// assert_eq!(held.clone().into_scalar(), Scalar::Geometry(point));
+    /// assert_eq!(Geospatial::from_scalar(&held.clone().into_scalar()), Some(held));
+    /// assert_eq!(Geospatial::from_scalar(&Scalar::from(1_i64)), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    Geospatial, Geospatial, [Geometry, Geography]
+);
 
 macro_rules! geospatial_leaf {
     ($name:ident) => {

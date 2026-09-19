@@ -30,7 +30,10 @@ use yggdryl::FieldValue as _;
 use yggdryl::graph::{Element, Event};
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
-use yggdryl::{Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, UncheckedFieldScalar, Uuid};
+use yggdryl::{
+    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, StructureType, UncheckedFieldScalar,
+    Uuid,
+};
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
     FixId, FixMsg, FixRegistry, MediaType, MimeType, PythonKind, PythonMetadata, Scalar, TimeUnit,
@@ -271,7 +274,7 @@ fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
 
 /// A field carrying HTTP headers plus `extra` unrelated metadata keys.
 ///
-/// The extra keys sort after every `http:` one, so they are what a read walks
+/// The extra keys sort after every `HTTP:` one, so they are what a read walks
 /// past rather than something it stops at.
 fn http_field(extra: usize) -> Field {
     let mut field = Field::from_parts(
@@ -279,10 +282,10 @@ fn http_field(extra: usize) -> Field {
         DataType::binary(),
         false,
         [
-            ("http:content-type", "application/json"),
-            ("http:content-encoding", "gzip, br, zstd"),
-            ("http:content-length", "4096"),
-            ("http:etag", "\"revision-1\""),
+            ("HTTP:content-type", "application/json"),
+            ("HTTP:content-encoding", "gzip, br, zstd"),
+            ("HTTP:content-length", "4096"),
+            ("HTTP:etag", "\"revision-1\""),
         ],
     )
     .expect("the static HTTP metadata is valid");
@@ -351,7 +354,8 @@ const VENUE: &str = "venue";
 /// instead of leaving it among the entries, which is a different cost from
 /// what a pair adds, and the probes below measure the latter.
 fn fix_registry(extra: usize) -> FixRegistry {
-    let item = DataType::from_fields([DataType::utf8().nullable_field("PartyID")])
+    let item = StructureType::from_fields([DataType::utf8().nullable_field("PartyID")])
+        .map(DataType::from)
         .expect("a struct item")
         .required_field("item");
     let mut parties = DataType::list(item).nullable_field("Parties");
@@ -524,7 +528,8 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
         .as_fix_mut()
         .set_branches([VENUE])
         .expect("a static membership");
-    let root = DataType::from_fields([symbol, trade, DataType::utf8().nullable_field("9999")])
+    let root = StructureType::from_fields([symbol, trade, DataType::utf8().nullable_field("9999")])
+        .map(DataType::from)
         .expect("three children")
         .required_field("row");
     let value = Scalar::from_sequence([
@@ -578,9 +583,10 @@ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
     // The header, the capture and the event are held beside the row rather
     // than in it, so reading one is a borrow whatever the row carries.
     for width in [0, 64, 1_024] {
-        let field = DataType::from_fields(
+        let field = StructureType::from_fields(
             (0..width).map(|index| DataType::Int64.required_field(format!("datum{index}"))),
         )
+        .map(DataType::from)
         .unwrap()
         .required_field("row");
         let value = Scalar::from_sequence((0..width).map(Scalar::from));
@@ -591,7 +597,7 @@ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
                 held.header().msgtype(),
                 held.header().beginstring(),
                 held.header().sendingtime(),
-                held.capture().pluginid(),
+                held.capture().msgpluginid(),
                 held.text(),
                 held.metadata().len(),
             ));
@@ -733,7 +739,7 @@ fn a_read_allocates_only_what_it_hands_back() {
         "payload",
         DataType::binary(),
         false,
-        [("http:content-type", "application/json")],
+        [("HTTP:content-type", "application/json")],
     )
     .expect("the static content type is valid");
     free("media_type without codings", || {
@@ -747,7 +753,7 @@ fn an_iceberg_read_costs_only_a_key_the_inline_buffer_cannot_hold() {
     let field = iceberg_field(256);
 
     // A lookup key is assembled into a `SmolStr`, which holds 23 bytes inline.
-    // `iceberg:schema-id` and `iceberg:spec-id` fit, so those reads are free.
+    // `ICEBERG:schema-id` and `ICEBERG:spec-id` fit, so those reads are free.
     free("doc", || {
         let _ = black_box(field.as_iceberg().doc());
     });
@@ -761,7 +767,7 @@ fn an_iceberg_read_costs_only_a_key_the_inline_buffer_cannot_hold() {
         let _ = black_box(field.as_iceberg().transform());
     });
 
-    // `iceberg:partition-source-id` is 27 bytes and does not, so the assembled
+    // `ICEBERG:partition-source-id` is 27 bytes and does not, so the assembled
     // key goes to the heap. This is the boundary, pinned: it is a property of
     // how long the name is, not of the value being parsed.
     costs("partition_source_id", 2, || {
@@ -787,8 +793,8 @@ fn an_iceberg_read_costs_only_a_key_the_inline_buffer_cannot_hold() {
 fn a_python_read_costs_only_the_declaration_it_hands_back() {
     let field = python_field("trading.book", 256);
 
-    // Every `python:` key is shorter than `SmolStr`'s 23-byte inline buffer -
-    // `python:qualname` is the longest at 15 - so no assembled lookup key ever
+    // Every `PYTHON:` key is shorter than `SmolStr`'s 23-byte inline buffer -
+    // `PYTHON:qualname` is the longest at 15 - so no assembled lookup key ever
     // reaches the heap, whatever the declaration says.
     free("module", || {
         black_box(field.as_python().module());
@@ -1012,12 +1018,13 @@ fn borrowed_value_bytes_allocate_nothing() {
 /// it exactly. These are the columns whose canonical form used to be built and
 /// thrown away once per row: the payload is unbounded, so the copy was too.
 fn payload_row() -> (Field, Scalar) {
-    let root = DataType::from_fields([
+    let root = StructureType::from_fields([
         Field::new("symbol", DataType::utf8(), false),
         Field::new("payload", DataType::binary(), false),
         Field::new("ccy", DataType::Currency, false),
         Field::new("venue", DataType::ascii(), false),
     ])
+    .map(DataType::from)
     .expect("the row schema is valid")
     .required_field("row");
     let long = "a symbol far longer than any inline string buffer can hold";
@@ -1178,11 +1185,12 @@ fn cast_corpus() -> (
     };
     let root = Field::new(
         "row",
-        DataType::from_fields([
+        StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
             DataType::utf8().required_field("venue"),
         ])
+        .map(DataType::from)
         .expect("the root fields are valid"),
         false,
     );
@@ -1400,12 +1408,17 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
             (id, value)
         })
         .collect();
-    let url = DataType::Url
+    let url = DataType::url()
         .scalar("https://example.com/a")
         .expect("the text is a URL");
     values.push((DataTypeId::Url, url));
+    let urn = DataType::urn()
+        .scalar("URN:ISBN:0451450523")
+        .expect("the text is a URN");
+    values.push((DataTypeId::Urn, urn));
     // A MIME type and a media type are pinned outside the seed loop for the
-    // same reason a URL is: their canonical text is not what was written.
+    // same reason a URL and a URN are: their canonical text is not what was
+    // written.
     let mime = DataType::MimeType
         .scalar("application/json")
         .expect("the text is a MIME type");
@@ -1493,9 +1506,10 @@ fn typing_a_value_a_field_already_holds_allocates_nothing() {
 
 /// A canonical row of `width` integer columns under its Struct root.
 fn wide_row(width: usize) -> (Field, Scalar) {
-    let root = DataType::from_fields(
+    let root = StructureType::from_fields(
         (0..width).map(|index| DataType::Int64.required_field(format!("column_{index}"))),
     )
+    .map(DataType::from)
     .expect("the row schema is valid")
     .required_field("row");
     let row = root
@@ -1673,7 +1687,8 @@ fn fix_group_registry(members: usize) -> FixRegistry {
         field.as_fix_mut().set_tag(tag).expect("a generated tag");
         field
     });
-    let item = DataType::from_fields(declared)
+    let item = StructureType::from_fields(declared)
+        .map(DataType::from)
         .expect("a struct item")
         .required_field("item");
     let mut parties = DataType::list(item).nullable_field("Parties");

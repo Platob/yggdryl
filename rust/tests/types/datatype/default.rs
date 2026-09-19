@@ -1,7 +1,7 @@
 use yggdryl::BytesType;
 use yggdryl::DecimalType;
 use yggdryl::SequenceType;
-use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DataType, Field, Scalar, StructureType, TimeUnit, Timezone, UnionMode};
 use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 fn all_variants() -> Vec<DataType> {
@@ -55,10 +55,11 @@ fn all_variants() -> Vec<DataType> {
         DataType::fixed_size_list(item(), 2).unwrap(),
         DataType::large_list(item()),
         DataType::large_list_view(item()),
-        DataType::from_fields([
+        StructureType::from_fields([
             Field::new("required", DataType::Int32, false),
             Field::new("optional", DataType::utf8(), true),
         ])
+        .map(DataType::from)
         .unwrap(),
         DataType::union(
             [
@@ -103,7 +104,11 @@ fn every_datatype_variant_has_a_bounded_valid_default() {
             }),
             value
         );
-        let root = Field::new("Root", DataType::from_fields([field]).unwrap(), false);
+        let root = Field::new(
+            "Root",
+            DataType::from(StructureType::from_fields([field]).unwrap()),
+            false,
+        );
         let row = Scalar::from_sequence([value]);
         root.validate_value(&row)
             .unwrap_or_else(|error| panic!("{} default did not validate: {error}", dtype.kind()));
@@ -144,10 +149,11 @@ fn default_matching_is_allocation_free_for_wide_values_and_exact_for_unions() {
 
 #[test]
 fn nested_defaults_respect_child_field_nullability() {
-    let structure = DataType::from_fields([
+    let structure = StructureType::from_fields([
         Field::new("required", DataType::Int32, false),
         Field::new("optional", DataType::utf8(), true),
     ])
+    .map(DataType::from)
     .unwrap();
     assert_eq!(
         structure.default_value().unwrap().as_sequence().unwrap(),
@@ -308,11 +314,13 @@ fn null_only_nested_layouts_obey_physical_field_constraints() {
     let positive = DataType::fixed_size_list(Field::new("item", DataType::Null, false), 1).unwrap();
     assert!(positive.default_value().is_err());
 
-    let required_null =
-        DataType::from_fields([Field::new("nothing", DataType::Null, false)]).unwrap();
+    let required_null = DataType::from(
+        StructureType::from_fields([Field::new("nothing", DataType::Null, false)]).unwrap(),
+    );
     assert!(required_null.default_value().is_err());
-    let optional_null =
-        DataType::from_fields([Field::new("nothing", DataType::Null, true)]).unwrap();
+    let optional_null = DataType::from(
+        StructureType::from_fields([Field::new("nothing", DataType::Null, true)]).unwrap(),
+    );
     assert_eq!(
         optional_null
             .default_value()

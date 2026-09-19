@@ -705,6 +705,8 @@ fn a_scan_that_reads_a_header_out_of_each_object_keeps_one_connection() {
 /// the one listing a commit makes to claim its version, and nothing else.
 #[cfg(feature = "iceberg")]
 mod iceberg {
+
+    use crate::StructureType;
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
@@ -763,11 +765,12 @@ mod iceberg {
     }
 
     fn schema() -> Field {
-        let mut schema = DataType::from_fields([
+        let mut schema = StructureType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
             DataType::utf8().nullable_field("venue"),
         ])
+        .map(DataType::from)
         .expect("distinct columns")
         .required_field("row");
         assign_field_ids(&mut schema, 1).expect("the schema numbers");
@@ -938,7 +941,8 @@ mod iceberg {
 
         // A projection opens each file once too: the table never renamed a
         // column, so no footer is read for the names first.
-        let target: Field = DataType::from_fields([DataType::Int64.required_field("id")])
+        let target: Field = StructureType::from_fields([DataType::Int64.required_field("id")])
+            .map(DataType::from)
             .expect("one column")
             .required_field("row");
         let (read, projected) = cost(&store, || {

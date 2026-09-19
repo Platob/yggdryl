@@ -1,7 +1,7 @@
 //! The two properties that make a digest holder couple an instant.
 //!
-//! `digest:time` names the field whose instant leads the stored bytes, and
-//! `digest:unit` states the clock resolution that instant is counted in,
+//! `DIGEST:time` names the field whose instant leads the stored bytes, and
+//! `DIGEST:unit` states the clock resolution that instant is counted in,
 //! microseconds when absent. Both live on the holder, beside its algorithm
 //! and sources, so the field they read carries no metadata at all.
 
@@ -17,8 +17,8 @@ use super::value::{algorithm_of_width, dtype, fixed_width};
 /// The two property names, spelled once for every reader of the vocabulary.
 pub(crate) const TIME: &str = "time";
 pub(crate) const UNIT: &str = "unit";
-pub(crate) const DIGEST_TIME_KEY: &str = "digest:time";
-pub(crate) const DIGEST_UNIT_KEY: &str = "digest:unit";
+pub(crate) const DIGEST_TIME_KEY: &str = "DIGEST:time";
+pub(crate) const DIGEST_UNIT_KEY: &str = "DIGEST:unit";
 
 /// Parse a stored unit and return its canonical token.
 pub(crate) fn canonicalize_digest_unit(value: &str) -> Result<String> {
@@ -75,7 +75,7 @@ impl DigestField<'_> {
     ///
     /// A holder naming one stores an instant in front of its digest, and its
     /// storage is a `fixed_size_binary` of the coupled width. The path is
-    /// relative to the holder's Struct, spelled the way `digest:sources` are.
+    /// relative to the holder's Struct, spelled the way `DIGEST:sources` are.
     pub fn time(&self) -> Option<&str> {
         self.get(TIME)
     }
@@ -87,7 +87,7 @@ impl DigestField<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error naming `digest:unit` when externally supplied
+    /// Returns an error naming `DIGEST:unit` when externally supplied
     /// metadata is not a clock resolution.
     pub fn unit(&self) -> Result<Option<TimeUnit>> {
         self.get(UNIT).map(parse_digest_unit).transpose()
@@ -138,7 +138,7 @@ impl DigestFieldMut<'_> {
     /// algorithm needs, leaving the field unchanged.
     pub fn set_time(&mut self, path: &str) -> Result<()> {
         if !self.as_protocol().is_holder() {
-            return Err(self.rejected(TIME, "requires digest:role=holder".into()));
+            return Err(self.rejected(TIME, "requires DIGEST:role=holder".into()));
         }
         validate_digest_time(path)?;
         let declared = self.as_protocol().algorithm()?;
@@ -167,7 +167,7 @@ impl DigestFieldMut<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error when `digest:unit` or `digest:algorithm` is still
+    /// Returns an error when `DIGEST:unit` or `DIGEST:algorithm` is still
     /// present, leaving the field unchanged: a unit without an instant
     /// states nothing, and an algorithm declared against the coupled width
     /// may not fit the plain one.
@@ -175,7 +175,7 @@ impl DigestFieldMut<'_> {
         if self.contains_key(UNIT) || self.contains_key("algorithm") {
             return Err(self.rejected(
                 TIME,
-                "cannot remove the coupled instant while digest:unit or digest:algorithm is present"
+                "cannot remove the coupled instant while DIGEST:unit or DIGEST:algorithm is present"
                     .into(),
             ));
         }
@@ -190,7 +190,7 @@ impl DigestFieldMut<'_> {
     /// a clock resolution, leaving the field unchanged.
     pub fn set_unit(&mut self, unit: TimeUnit) -> Result<()> {
         if !self.as_protocol().is_coupled() {
-            return Err(self.rejected(UNIT, "requires digest:time".into()));
+            return Err(self.rejected(UNIT, "requires DIGEST:time".into()));
         }
         validate_unit(unit)
             .map_err(|error| self.rejected(UNIT, SmolStr::new(error.to_string())))?;

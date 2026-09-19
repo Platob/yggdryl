@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "collateralreinvestment"
+        "FIX:component": "collateralreinvestment"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "collateralreinvestment",
+    "FIX:counter": "2845",
+    "FIX:tag": "131586",
     "description": "Required if NoCollateralReinvestments(2845) > 0.",
-    "display": "CollateralReinvestmentGrp",
-    "fix:component": "collateralreinvestment",
-    "fix:counter": "2845",
-    "fix:tag": "131586"
+    "display": "CollateralReinvestmentGrp"
   }
 }

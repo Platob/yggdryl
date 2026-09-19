@@ -24,8 +24,8 @@
 
 use std::sync::Arc;
 
-use crate::scalar::Value;
 use crate::typed::define_field_types;
+use crate::value::Value;
 use crate::{DataType, MediaType, Result, Scalar};
 
 /// Arrow casts owned by the media type datatype.

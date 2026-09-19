@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "rfqreq"
+        "FIX:component": "rfqreq"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "rfqreq",
+    "FIX:counter": "146",
+    "FIX:tag": "189360",
     "description": "Number of related symbols (instruments) in Request",
-    "display": "RFQReqGrp",
-    "fix:component": "rfqreq",
-    "fix:counter": "146",
-    "fix:tag": "189360"
+    "display": "RFQReqGrp"
   }
 }

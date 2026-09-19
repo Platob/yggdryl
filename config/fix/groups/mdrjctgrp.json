@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "mdrjct"
+        "FIX:component": "mdrjct"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "mdrjct",
+    "FIX:counter": "816",
+    "FIX:tag": "553809",
     "description": "Alternative Market Data Source",
-    "display": "MDRjctGrp",
-    "fix:component": "mdrjct",
-    "fix:counter": "816",
-    "fix:tag": "553809"
+    "display": "MDRjctGrp"
   }
 }

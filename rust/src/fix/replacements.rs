@@ -8,7 +8,7 @@
 //! they travel on it: a registry adds or edits one by editing metadata, and
 //! nothing in Rust holds a table of them.
 //!
-//! `fix:replacements` is that document: one [canonical
+//! `FIX:replacements` is that document: one [canonical
 //! document](super::document) of entries in **document order**, read
 //! borrowed. Order is semantic - the first entry whose condition a message
 //! meets answers, so a catch-all entry stating no condition comes last.
@@ -18,7 +18,7 @@
 //! Each entry states a [`Plan`](crate::Plan) of the crate's own
 //! [expression](crate::expression) grammar and nothing else: its `select`
 //! names the columns the rule fills and the terms they take, and its `where`
-//! is the condition the message must meet. `fix:derivation` already spells a
+//! is the condition the message must meet. `FIX:derivation` already spells a
 //! derived column as one [`Term`](crate::expression::Term); this is the same
 //! vocabulary with a target list and a condition, so the crate holds one
 //! expression grammar and no second one for replacement rules.
@@ -212,7 +212,7 @@ pub struct FixReplacements<'field> {
 }
 
 impl<'field> FixReplacements<'field> {
-    /// Walks one stored `fix:replacements` value, or nothing for an absent
+    /// Walks one stored `FIX:replacements` value, or nothing for an absent
     /// one.
     pub(super) fn over(stored: Option<&'field str>) -> Self {
         Self {

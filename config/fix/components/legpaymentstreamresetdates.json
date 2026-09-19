@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamresetdaterelativeto",
-          "fix:tag": "40303"
+          "FIX:field": "legpaymentstreamresetdaterelativeto",
+          "FIX:tag": "40303"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamresetdatebusinessdayconvention",
-          "fix:tag": "40304"
+          "FIX:field": "legpaymentstreamresetdatebusinessdayconvention",
+          "FIX:tag": "40304"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentstreamresetdatebusinesscenters",
-          "fix:tag": "40931"
+          "FIX:field": "nolegpaymentstreamresetdatebusinesscenters",
+          "FIX:tag": "40931"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legpaymentstreamresetdatebusinesscentergrp"
+          "FIX:group": "legpaymentstreamresetdatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamresetfrequencyperiod",
-          "fix:tag": "40306"
+          "FIX:field": "legpaymentstreamresetfrequencyperiod",
+          "FIX:tag": "40306"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamresetfrequencyunit",
-          "fix:tag": "40307"
+          "FIX:field": "legpaymentstreamresetfrequencyunit",
+          "FIX:tag": "40307"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamresetweeklyrollconvention",
-          "fix:tag": "40308"
+          "FIX:field": "legpaymentstreamresetweeklyrollconvention",
+          "FIX:tag": "40308"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreaminitialfixingdaterelativeto",
-          "fix:tag": "40309"
+          "FIX:field": "legpaymentstreaminitialfixingdaterelativeto",
+          "FIX:tag": "40309"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreaminitialfixingdatebusinessdayconvention",
-          "fix:tag": "40310"
+          "FIX:field": "legpaymentstreaminitialfixingdatebusinessdayconvention",
+          "FIX:tag": "40310"
         }
       },
       {
@@ -108,8 +108,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentstreaminitialfixingdatebusinesscenters",
-          "fix:tag": "40932"
+          "FIX:field": "nolegpaymentstreaminitialfixingdatebusinesscenters",
+          "FIX:tag": "40932"
         }
       },
       {
@@ -119,7 +119,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legpaymentstreaminitialfixingdatebusinesscentergrp"
+          "FIX:group": "legpaymentstreaminitialfixingdatebusinesscentergrp"
         }
       },
       {
@@ -129,8 +129,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreaminitialfixingdateoffsetperiod",
-          "fix:tag": "40312"
+          "FIX:field": "legpaymentstreaminitialfixingdateoffsetperiod",
+          "FIX:tag": "40312"
         }
       },
       {
@@ -140,8 +140,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreaminitialfixingdateoffsetunit",
-          "fix:tag": "40313"
+          "FIX:field": "legpaymentstreaminitialfixingdateoffsetunit",
+          "FIX:tag": "40313"
         }
       },
       {
@@ -151,8 +151,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreaminitialfixingdateoffsetdaytype",
-          "fix:tag": "40314"
+          "FIX:field": "legpaymentstreaminitialfixingdateoffsetdaytype",
+          "FIX:tag": "40314"
         }
       },
       {
@@ -162,8 +162,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreaminitialfixingdateadjusted",
-          "fix:tag": "40315"
+          "FIX:field": "legpaymentstreaminitialfixingdateadjusted",
+          "FIX:tag": "40315"
         }
       },
       {
@@ -173,8 +173,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfixingdaterelativeto",
-          "fix:tag": "40316"
+          "FIX:field": "legpaymentstreamfixingdaterelativeto",
+          "FIX:tag": "40316"
         }
       },
       {
@@ -184,8 +184,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfixingdatebusinessdayconvention",
-          "fix:tag": "40317"
+          "FIX:field": "legpaymentstreamfixingdatebusinessdayconvention",
+          "FIX:tag": "40317"
         }
       },
       {
@@ -195,8 +195,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentstreamfixingdatebusinesscenters",
-          "fix:tag": "40933"
+          "FIX:field": "nolegpaymentstreamfixingdatebusinesscenters",
+          "FIX:tag": "40933"
         }
       },
       {
@@ -206,7 +206,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legpaymentstreamfixingdatebusinesscentergrp"
+          "FIX:group": "legpaymentstreamfixingdatebusinesscentergrp"
         }
       },
       {
@@ -216,8 +216,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfixingdateoffsetperiod",
-          "fix:tag": "40319"
+          "FIX:field": "legpaymentstreamfixingdateoffsetperiod",
+          "FIX:tag": "40319"
         }
       },
       {
@@ -227,8 +227,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfixingdateoffsetunit",
-          "fix:tag": "40320"
+          "FIX:field": "legpaymentstreamfixingdateoffsetunit",
+          "FIX:tag": "40320"
         }
       },
       {
@@ -238,8 +238,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfixingdateoffsetdaytype",
-          "fix:tag": "40321"
+          "FIX:field": "legpaymentstreamfixingdateoffsetdaytype",
+          "FIX:tag": "40321"
         }
       },
       {
@@ -249,8 +249,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfixingdateadjusted",
-          "fix:tag": "40322"
+          "FIX:field": "legpaymentstreamfixingdateadjusted",
+          "FIX:tag": "40322"
         }
       },
       {
@@ -260,8 +260,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamratecutoffdateoffsetperiod",
-          "fix:tag": "40323"
+          "FIX:field": "legpaymentstreamratecutoffdateoffsetperiod",
+          "FIX:tag": "40323"
         }
       },
       {
@@ -271,8 +271,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamratecutoffdateoffsetunit",
-          "fix:tag": "40324"
+          "FIX:field": "legpaymentstreamratecutoffdateoffsetunit",
+          "FIX:tag": "40324"
         }
       },
       {
@@ -282,8 +282,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamratecutoffdateoffsetdaytype",
-          "fix:tag": "40325"
+          "FIX:field": "legpaymentstreamratecutoffdateoffsetdaytype",
+          "FIX:tag": "40325"
         }
       },
       {
@@ -293,8 +293,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegpaymentstreamfixingdates",
-          "fix:tag": "42459"
+          "FIX:field": "nolegpaymentstreamfixingdates",
+          "FIX:tag": "42459"
         }
       },
       {
@@ -304,15 +304,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "legpaymentstreamfixingdategrp"
+          "FIX:group": "legpaymentstreamfixingdategrp"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "886798",
     "description": "When specified, this overrides the business day convention defined in the LegDateAdjustment component in InstrumentLeg. The specified value would be specific to this instance of the leg payment stream reset dates.",
-    "display": "LegPaymentStreamResetDates",
-    "fix:tag": "886798"
+    "display": "LegPaymentStreamResetDates"
   }
 }

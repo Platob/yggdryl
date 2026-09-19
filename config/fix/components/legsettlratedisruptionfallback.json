@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlratepostponementmaximumdays",
-          "fix:tag": "40903"
+          "FIX:field": "legsettlratepostponementmaximumdays",
+          "FIX:tag": "40903"
         }
       },
       {
@@ -21,7 +21,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "legsettlratefallbackratesourcecomponent"
+          "FIX:component": "legsettlratefallbackratesourcecomponent"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlratepostponementsurvey",
-          "fix:tag": "40905"
+          "FIX:field": "legsettlratepostponementsurvey",
+          "FIX:tag": "40905"
         }
       },
       {
@@ -42,15 +42,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legsettlratepostponementcalculationagent",
-          "fix:tag": "40906"
+          "FIX:field": "legsettlratepostponementcalculationagent",
+          "FIX:tag": "40906"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegSettlRateDisruptionFallback",
-    "fix:tag": "1027076"
+    "FIX:tag": "1027076",
+    "display": "LegSettlRateDisruptionFallback"
   }
 }

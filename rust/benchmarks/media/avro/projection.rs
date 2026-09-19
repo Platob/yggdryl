@@ -14,7 +14,7 @@ use std::hint::black_box;
 use yggdryl::avro;
 use yggdryl::avro::AvroOptions;
 use yggdryl::holder::Buffer;
-use yggdryl::{DataType, Field, Url};
+use yggdryl::{DataType, Field, StructureType, Url};
 
 /// Rows in the wide fixture.
 const ROWS: usize = crate::bench_profile::corpus(8_192, 256);
@@ -31,7 +31,8 @@ fn wide() -> Field {
             DataType::utf8().required_field(format!("c{index:02}"))
         }
     });
-    DataType::from_fields(fields)
+    StructureType::from_fields(fields)
+        .map(DataType::from)
         .expect("a struct")
         .required_field("row")
 }
@@ -40,7 +41,8 @@ fn wide() -> Field {
 fn narrow() -> Field {
     let root = wide();
     let fields = root.fields();
-    DataType::from_fields([fields[0].clone(), fields[19].clone(), fields[39].clone()])
+    StructureType::from_fields([fields[0].clone(), fields[19].clone(), fields[39].clone()])
+        .map(DataType::from)
         .expect("a struct")
         .required_field("row")
 }

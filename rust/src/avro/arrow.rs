@@ -10,7 +10,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::string::is_text_storage;
-use crate::{DataType, Field, Result, Scalar, TimeUnit};
+use crate::{DataType, Field, Result, Scalar, StructureType, TimeUnit};
 
 use super::datum::invalid;
 use super::schema::{Node, Schema};
@@ -42,7 +42,7 @@ pub(crate) fn field_from_schema(schema: &Schema, root_name: &str) -> Result<Fiel
     let value = Field::new("value", dtype, nullable);
     Ok(Field::new(
         root_name,
-        DataType::from_fields([value])?,
+        DataType::from(StructureType::from_fields([value])?),
         false,
     ))
 }
@@ -73,7 +73,7 @@ fn struct_of(
         fields.push(built);
     }
     visiting.pop();
-    Ok((DataType::from_fields(fields)?, false))
+    Ok((DataType::from(StructureType::from_fields(fields)?), false))
 }
 
 /// Map one Avro node onto a datatype and its nullability.
@@ -98,7 +98,11 @@ fn dtype_from(
             let (value_type, nullable) = dtype_from(values, schema, visiting)?;
             let value = Field::new("value", value_type, nullable);
             let key = Field::new("key", DataType::utf8(), false);
-            let entries = Field::new("entries", DataType::from_fields([key, value])?, false);
+            let entries = Field::new(
+                "entries",
+                DataType::from(StructureType::from_fields([key, value])?),
+                false,
+            );
             (DataType::map(entries, false)?, false)
         }
         Node::Union(branches) => union_from(branches, schema, visiting)?,

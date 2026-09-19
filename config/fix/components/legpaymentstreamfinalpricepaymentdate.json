@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfinalpricepaymentdateunadjusted",
-          "fix:tag": "42453"
+          "FIX:field": "legpaymentstreamfinalpricepaymentdateunadjusted",
+          "FIX:tag": "42453"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfinalpricepaymentdaterelativeto",
-          "fix:tag": "42454"
+          "FIX:field": "legpaymentstreamfinalpricepaymentdaterelativeto",
+          "FIX:tag": "42454"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfinalpricepaymentdateoffsetperiod",
-          "fix:tag": "42455"
+          "FIX:field": "legpaymentstreamfinalpricepaymentdateoffsetperiod",
+          "FIX:tag": "42455"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfinalpricepaymentdateoffsetunit",
-          "fix:tag": "42456"
+          "FIX:field": "legpaymentstreamfinalpricepaymentdateoffsetunit",
+          "FIX:tag": "42456"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfinalpricepaymentdateoffsetdaytype",
-          "fix:tag": "42457"
+          "FIX:field": "legpaymentstreamfinalpricepaymentdateoffsetdaytype",
+          "FIX:tag": "42457"
         }
       },
       {
@@ -65,16 +65,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamfinalpricepaymentdateadjusted",
-          "fix:tag": "42458"
+          "FIX:field": "legpaymentstreamfinalpricepaymentdateadjusted",
+          "FIX:tag": "42458"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "398126",
     "description": "Conditionally required when LegPaymentStreamFinalPricePaymentDateOffsetUnit(42456) is specified.",
-    "display": "LegPaymentStreamFinalPricePaymentDate",
-    "fix:tag": "398126"
+    "display": "LegPaymentStreamFinalPricePaymentDate"
   }
 }

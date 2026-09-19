@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legreturnratevaluationdatebusinesscentercomponent"
+        "FIX:component": "legreturnratevaluationdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legreturnratevaluationdatebusinesscentercomponent",
+    "FIX:counter": "42569",
+    "FIX:tag": "306168",
     "description": "Required if NoLegReturnRateValuationDateBusinessCenters(42569) > 0.",
-    "display": "LegReturnRateValuationDateBusinessCenterGrp",
-    "fix:component": "legreturnratevaluationdatebusinesscentercomponent",
-    "fix:counter": "42569",
-    "fix:tag": "306168"
+    "display": "LegReturnRateValuationDateBusinessCenterGrp"
   }
 }

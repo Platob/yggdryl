@@ -195,7 +195,7 @@ pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_) => {
-            crate::Decimal::from_scalar(value).map(|held| smol_str::format_smolstr!("{held}"))
+            crate::Decimal18::from_scalar(value).map(|held| smol_str::format_smolstr!("{held}"))
         }
         // Every other number and duration writes its leaf's own canonical text.
         other => other

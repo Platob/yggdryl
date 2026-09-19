@@ -6,7 +6,7 @@
 //! 1. an **explicit option** set on the value itself - or stored on a table
 //!    with [`Table::set_options`](super::Table::set_options);
 //! 2. the **table property** of the same name, falling back to the schema
-//!    root's `iceberg:`-prefixed protocol property, exactly as
+//!    root's `ICEBERG:`-prefixed protocol property, exactly as
 //!    [`Table::target_file_size_bytes`](super::Table::target_file_size_bytes) has always
 //!    resolved its one key;
 //! 3. the documented **default**.
@@ -622,7 +622,7 @@ impl IcebergOptions {
 
     /// Read the property layer of one table's metadata.
     ///
-    /// Every field a table property - or the schema root's `iceberg:` fallback
+    /// Every field a table property - or the schema root's `ICEBERG:` fallback
     /// for it - spells is set on the returned value; every other field is left
     /// unset, so its getter answers the default.
     ///
@@ -630,10 +630,10 @@ impl IcebergOptions {
     /// use yggdryl::iceberg::{
     ///     FormatVersion, IcebergOptions, PartitionSpec, TableMetadata, assign_field_ids,
     /// };
-    /// use yggdryl::{DataType, Field};
+    /// use yggdryl::{DataType, Field, StructureType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut schema: Field = DataType::from_fields([DataType::Int64.required_field("id")])?
+    /// let mut schema: Field = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
     ///     .required_field("row");
     /// assign_field_ids(&mut schema, 1)?;
     /// let mut metadata = TableMetadata::new(
@@ -989,7 +989,7 @@ fn invalid_data_mime_type(mime_type: &MimeType) -> Error {
 }
 
 /// Find one property's text: the table property, then the schema root's
-/// `iceberg:` protocol fallback, with the key the failure would be named by.
+/// `ICEBERG:` protocol fallback, with the key the failure would be named by.
 fn stored<'metadata>(
     metadata: &'metadata TableMetadata,
     key: &'static str,

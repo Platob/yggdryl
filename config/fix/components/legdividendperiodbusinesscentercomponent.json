@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legdividendperiodbusinesscenter",
-          "fix:tag": "42387"
+          "FIX:field": "legdividendperiodbusinesscenter",
+          "FIX:tag": "42387"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegDividendPeriodBusinessCenter",
-    "fix:tag": "339952"
+    "FIX:tag": "339952",
+    "display": "LegDividendPeriodBusinessCenter"
   }
 }

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingstartdateunadjusted",
-          "fix:tag": "42941"
+          "FIX:field": "underlyingpaymentstreamcompoundingstartdateunadjusted",
+          "FIX:tag": "42941"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingstartdaterelativeto",
-          "fix:tag": "42942"
+          "FIX:field": "underlyingpaymentstreamcompoundingstartdaterelativeto",
+          "FIX:tag": "42942"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingstartdateoffsetperiod",
-          "fix:tag": "42943"
+          "FIX:field": "underlyingpaymentstreamcompoundingstartdateoffsetperiod",
+          "FIX:tag": "42943"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingstartdateoffsetunit",
-          "fix:tag": "42944"
+          "FIX:field": "underlyingpaymentstreamcompoundingstartdateoffsetunit",
+          "FIX:tag": "42944"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingstartdateoffsetdaytype",
-          "fix:tag": "42945"
+          "FIX:field": "underlyingpaymentstreamcompoundingstartdateoffsetdaytype",
+          "FIX:tag": "42945"
         }
       },
       {
@@ -65,16 +65,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingpaymentstreamcompoundingstartdateadjusted",
-          "fix:tag": "42946"
+          "FIX:field": "underlyingpaymentstreamcompoundingstartdateadjusted",
+          "FIX:tag": "42946"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "691761",
     "description": "Conditionally required when UnderlyingPaymentStreamCompoundingStartDateOffsetUnit(42944) is specified.",
-    "display": "UnderlyingPaymentStreamCompoundingStartDate",
-    "fix:tag": "691761"
+    "display": "UnderlyingPaymentStreamCompoundingStartDate"
   }
 }

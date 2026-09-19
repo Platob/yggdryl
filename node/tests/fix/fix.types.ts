@@ -175,7 +175,7 @@ const side: string = message.side
 const currency: string = message.currency
 // And the same facts on the event, with the instants and the lanes.
 const eventCurrunix: bigint = event.currunix
-const eventCreated: bigint | null = event.creatunix
+const eventCreated: bigint | null = event.creaunix
 const eventPrevUnix: bigint | null = event.prevunix
 const eventSnap: bigint | null = event.snapunix
 const eventExpiry: bigint | null = event.expirunix
@@ -191,7 +191,7 @@ const msgseqnum: number | null = header.msgseqnum
 const sendingtime: bigint = header.sendingtime
 const possdupflag: boolean | null = header.possdupflag
 const msgdirection: string | null = header.msgdirection
-const pluginid: string | null = capture.pluginid
+const msgpluginid: string | null = capture.msgpluginid
 const msgctxid: string | null = capture.msgctxid
 const msgsessionid: string | null = capture.msgsessionid
 
@@ -235,7 +235,7 @@ void msgseqnum
 void sendingtime
 void possdupflag
 void msgdirection
-void pluginid
+void msgpluginid
 void msgctxid
 void msgsessionid
 

@@ -10,7 +10,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:component": "mdstatisticparameters"
+          "FIX:component": "mdstatisticparameters"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticid",
-          "fix:tag": "2475"
+          "FIX:field": "mdstatisticid",
+          "FIX:tag": "2475"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatistictime",
-          "fix:tag": "2476"
+          "FIX:field": "mdstatistictime",
+          "FIX:tag": "2476"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticstatus",
-          "fix:tag": "2477"
+          "FIX:field": "mdstatisticstatus",
+          "FIX:tag": "2477"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticvalue",
-          "fix:tag": "2478"
+          "FIX:field": "mdstatisticvalue",
+          "FIX:tag": "2478"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticvaluetype",
-          "fix:tag": "2479"
+          "FIX:field": "mdstatisticvaluetype",
+          "FIX:tag": "2479"
         }
       },
       {
@@ -75,15 +75,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "mdstatisticvalueunit",
-          "fix:tag": "2480"
+          "FIX:field": "mdstatisticvalueunit",
+          "FIX:tag": "2480"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MDStatisticRpt",
-    "fix:tag": "623249"
+    "FIX:tag": "623249",
+    "display": "MDStatisticRpt"
   }
 }

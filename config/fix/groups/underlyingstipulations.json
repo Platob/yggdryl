@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingstipulation"
+        "FIX:component": "underlyingstipulation"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingstipulation",
+    "FIX:counter": "887",
+    "FIX:tag": "849873",
     "description": "Required if NoUnderlyingStips(887) > 0.",
-    "display": "UnderlyingStipulations",
-    "fix:component": "underlyingstipulation",
-    "fix:counter": "887",
-    "fix:tag": "849873"
+    "display": "UnderlyingStipulations"
   }
 }

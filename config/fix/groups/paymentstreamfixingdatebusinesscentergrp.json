@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "paymentstreamfixingdatebusinesscentercomponent"
+        "FIX:component": "paymentstreamfixingdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "paymentstreamfixingdatebusinesscentercomponent",
+    "FIX:counter": "40950",
+    "FIX:tag": "393811",
     "description": "Required if NoPaymentStreamFixingDateBusinessCenters(40950) > 0.",
-    "display": "PaymentStreamFixingDateBusinessCenterGrp",
-    "fix:component": "paymentstreamfixingdatebusinesscentercomponent",
-    "fix:counter": "40950",
-    "fix:tag": "393811"
+    "display": "PaymentStreamFixingDateBusinessCenterGrp"
   }
 }

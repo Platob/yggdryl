@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "relatedmarketsegment"
+        "FIX:component": "relatedmarketsegment"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "relatedmarketsegment",
+    "FIX:counter": "2545",
+    "FIX:tag": "351350",
     "description": "Number of market segments.",
-    "display": "RelatedMarketSegmentGrp",
-    "fix:component": "relatedmarketsegment",
-    "fix:counter": "2545",
-    "fix:tag": "351350"
+    "display": "RelatedMarketSegmentGrp"
   }
 }

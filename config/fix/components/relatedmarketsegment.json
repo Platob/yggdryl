@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "relatedmarketsegmentid",
-          "fix:tag": "2546"
+          "FIX:field": "relatedmarketsegmentid",
+          "FIX:tag": "2546"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentrelationship",
-          "fix:tag": "2547"
+          "FIX:field": "marketsegmentrelationship",
+          "FIX:tag": "2547"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "RelatedMarketSegment",
-    "fix:tag": "1045380"
+    "FIX:tag": "1045380",
+    "display": "RelatedMarketSegment"
   }
 }

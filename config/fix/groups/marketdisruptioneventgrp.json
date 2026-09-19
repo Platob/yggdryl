@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "marketdisruptioneventcomponent"
+        "FIX:component": "marketdisruptioneventcomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "marketdisruptioneventcomponent",
+    "FIX:counter": "41092",
+    "FIX:tag": "241810",
     "description": "Required if NoMarketDisruptionEvents(41092) > 0.",
-    "display": "MarketDisruptionEventGrp",
-    "fix:component": "marketdisruptioneventcomponent",
-    "fix:counter": "41092",
-    "fix:tag": "241810"
+    "display": "MarketDisruptionEventGrp"
   }
 }

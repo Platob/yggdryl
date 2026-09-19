@@ -527,7 +527,7 @@ impl fmt::Display for Ordering {
 ///
 /// ```
 /// use yggdryl::expression::{Plan, Verb};
-/// use yggdryl::{DataType, Expression};
+/// use yggdryl::{DataType, Expression, StructureType};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let plan: Plan = "upsert into 'file:///lake/trades.parquet' by (id) \
@@ -541,7 +541,7 @@ impl fmt::Display for Ordering {
 /// assert_eq!(Expression::Plan(Box::new(plan.clone())).to_string().parse::<Plan>()?, plan);
 ///
 /// // A field is a plan with a `create` section: the schema it declares.
-/// let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
+/// let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
 ///     .required_field("trades");
 /// let declared = Plan::from_field(&schema);
 /// assert_eq!(declared.to_string(), "create trades (id int64 not null)");

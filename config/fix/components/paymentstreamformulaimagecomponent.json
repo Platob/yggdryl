@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamformulaimagelength",
-          "fix:tag": "42652"
+          "FIX:field": "paymentstreamformulaimagelength",
+          "FIX:tag": "42652"
         }
       },
       {
@@ -21,16 +21,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentstreamformulaimage",
-          "fix:tag": "42653"
+          "FIX:field": "paymentstreamformulaimage",
+          "FIX:tag": "42653"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "348911",
     "description": "Conditionally required when PaymentStreamFormulaImage(42653) is specified.",
-    "display": "PaymentStreamFormulaImage",
-    "fix:tag": "348911"
+    "display": "PaymentStreamFormulaImage"
   }
 }

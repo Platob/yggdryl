@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdate",
-          "fix:tag": "42773"
+          "FIX:field": "returnratevaluationdate",
+          "FIX:tag": "42773"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "returnratevaluationdatetype",
-          "fix:tag": "42774"
+          "FIX:field": "returnratevaluationdatetype",
+          "FIX:tag": "42774"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ReturnRateValuationDate",
-    "fix:tag": "279968"
+    "FIX:tag": "279968",
+    "display": "ReturnRateValuationDate"
   }
 }

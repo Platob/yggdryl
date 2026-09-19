@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingstreamfirstperiodstartdatebusinesscenter",
-          "fix:tag": "40560"
+          "FIX:field": "underlyingstreamfirstperiodstartdatebusinesscenter",
+          "FIX:tag": "40560"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingStreamFirstPeriodStartDateBusinessCenter",
-    "fix:tag": "443577"
+    "FIX:tag": "443577",
+    "display": "UnderlyingStreamFirstPeriodStartDateBusinessCenter"
   }
 }

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "legprovisiondatebusinesscentercomponent"
+        "FIX:component": "legprovisiondatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "legprovisiondatebusinesscentercomponent",
+    "FIX:counter": "40939",
+    "FIX:tag": "725207",
     "description": "Required if NoLegProvisionDateBusinessCenters(40939) > 0.",
-    "display": "LegProvisionDateBusinessCenterGrp",
-    "fix:component": "legprovisiondatebusinesscentercomponent",
-    "fix:counter": "40939",
-    "fix:tag": "725207"
+    "display": "LegProvisionDateBusinessCenterGrp"
   }
 }

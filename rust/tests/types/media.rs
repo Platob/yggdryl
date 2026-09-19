@@ -13,7 +13,7 @@ use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
     ArrowCastOptions, Charset, DataTypeId, DataTypeKind, Field, FieldScalar, MediaType,
-    MediaTypeField, MimeType, MimeTypeField, Scalar,
+    MediaTypeField, MimeType, MimeTypeField, Scalar, StructureType,
 };
 
 fn mime(text: &str) -> Scalar {
@@ -25,7 +25,8 @@ fn media(text: &str) -> Scalar {
 }
 
 fn root(field: Field) -> Field {
-    DataType::from_fields([field])
+    StructureType::from_fields([field])
+        .map(DataType::from)
         .unwrap()
         .required_field("row")
 }

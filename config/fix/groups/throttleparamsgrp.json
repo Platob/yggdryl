@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "throttleparam"
+        "FIX:component": "throttleparam"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "throttleparam",
+    "FIX:counter": "1610",
+    "FIX:tag": "991980",
     "description": "Indicates number of throttles to follow.",
-    "display": "ThrottleParamsGrp",
-    "fix:component": "throttleparam",
-    "fix:counter": "1610",
-    "fix:tag": "991980"
+    "display": "ThrottleParamsGrp"
   }
 }

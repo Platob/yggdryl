@@ -33,7 +33,7 @@ use super::{Function, Literal, Operator, Safety, Term, named};
 use crate::DecimalType;
 use crate::enums::EnumType;
 use crate::sequence::SequenceType;
-use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, TimeUnit};
+use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, StructureType, TimeUnit};
 
 /// The widest exact decimal this crate builds by promotion.
 const DECIMAL_LIMIT: u8 = 38;
@@ -265,7 +265,11 @@ fn resolve(expression: &Term, schema: &Field) -> Result<Field> {
             for (name, value) in children.iter() {
                 fields.push(resolve(value, schema)?.with_name(name.clone()));
             }
-            Ok(named(expression, DataType::from_fields(fields)?, false))
+            Ok(named(
+                expression,
+                DataType::from(StructureType::from_fields(fields)?),
+                false,
+            ))
         }
         Term::List(items) => {
             let mut unified: Option<DataType> = None;
@@ -291,7 +295,11 @@ fn resolve(expression: &Term, schema: &Field) -> Result<Field> {
             }
             let key = Field::new("key", keys.unwrap_or(DataType::utf8()), false);
             let value = Field::new("value", values.unwrap_or(DataType::Null), nullable);
-            let entries_field = Field::new("entries", DataType::from_fields([key, value])?, false);
+            let entries_field = Field::new(
+                "entries",
+                DataType::from(StructureType::from_fields([key, value])?),
+                false,
+            );
             Ok(named(
                 expression,
                 DataType::map(entries_field, false)?,

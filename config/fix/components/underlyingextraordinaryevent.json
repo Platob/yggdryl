@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingextraordinaryeventtype",
-          "fix:tag": "42885"
+          "FIX:field": "underlyingextraordinaryeventtype",
+          "FIX:tag": "42885"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingextraordinaryeventvalue",
-          "fix:tag": "42886"
+          "FIX:field": "underlyingextraordinaryeventvalue",
+          "FIX:tag": "42886"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "UnderlyingExtraordinaryEvent",
-    "fix:tag": "859898"
+    "FIX:tag": "859898",
+    "display": "UnderlyingExtraordinaryEvent"
   }
 }

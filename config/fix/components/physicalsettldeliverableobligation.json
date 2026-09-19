@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "physicalsettldeliverableobligationtype",
-          "fix:tag": "40210"
+          "FIX:field": "physicalsettldeliverableobligationtype",
+          "FIX:tag": "40210"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "physicalsettldeliverableobligationvalue",
-          "fix:tag": "40211"
+          "FIX:field": "physicalsettldeliverableobligationvalue",
+          "FIX:tag": "40211"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PhysicalSettlDeliverableObligation",
-    "fix:tag": "557023"
+    "FIX:tag": "557023",
+    "display": "PhysicalSettlDeliverableObligation"
   }
 }

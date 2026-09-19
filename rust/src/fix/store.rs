@@ -12,7 +12,7 @@ use super::FixRegistry;
 use crate::holder::Holder;
 use crate::sequence::SequenceType;
 use crate::text::Formatting;
-use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, Url};
+use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, StructureType, Url};
 
 const SHARD_WIDTH: i32 = 100;
 const LOAD_ORDER: [FixCategory; 3] = [
@@ -239,7 +239,7 @@ impl Resolver<'_> {
                     height = height.max(child_height + 1);
                     resolved.push(child);
                 }
-                Some(DataType::from_fields(resolved)?)
+                Some(DataType::from(StructureType::from_fields(resolved)?))
             }
             DataType::Sequence(SequenceType::List(item))
             | DataType::Sequence(SequenceType::LargeList(item)) => {
@@ -306,13 +306,13 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
         }
     }
     let dtype = match field.dtype() {
-        DataType::Structure(children) => Some(DataType::from_fields(
+        DataType::Structure(children) => Some(DataType::from(StructureType::from_fields(
             children
                 .iter()
                 .cloned()
                 .map(|child| compact(child, false))
                 .collect::<Result<Vec<_>>>()?,
-        )?),
+        )?)),
         DataType::Sequence(SequenceType::List(item)) => {
             Some(DataType::list(compact(item.as_ref().clone(), false)?))
         }
@@ -362,7 +362,7 @@ impl FixRegistry {
     /// Reads a complete registry snapshot from JSON.
     ///
     /// `fields`, `components`, and `groups` are arrays of native Field
-    /// documents; a message is a component carrying `fix:msgtype`, and any
+    /// documents; a message is a component carrying `FIX:msgtype`, and any
     /// other key - `messages` among them - is refused by name. References
     /// resolve through the same bounded graph loader as the store.
     pub fn from_json(input: &str) -> Result<Self> {
@@ -375,9 +375,9 @@ impl FixRegistry {
     /// reconstructs the same resolved catalog. No filesystem I/O is performed.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry};
+    /// use yggdryl::{DataType, FixRegistry, StructureType};
     /// let mut registry = FixRegistry::new();
-    /// let mut message = DataType::from_fields([])?.required_field("Order");
+    /// let mut message = DataType::from(StructureType::from_fields([])?).required_field("Order");
     /// message.as_fix_mut().set_msgtype("D")?;
     /// registry.insert(message)?;
     /// let restored = FixRegistry::from_json(&registry.into_json()?)?;
@@ -403,7 +403,7 @@ impl FixRegistry {
     /// states no membership, so [`Self::add_cfb_file`] has to be told one or
     /// guess it from the file's stem, while a snapshot is this crate's own
     /// format and every field and definition in it already carries the
-    /// `fix:branches` its writer meant. Naming one here would overwrite that.
+    /// `FIX:branches` its writer meant. Naming one here would overwrite that.
     ///
     /// A snapshot restating one of this crate's own fields is read past
     /// rather than refused: every registry holds those from construction, so

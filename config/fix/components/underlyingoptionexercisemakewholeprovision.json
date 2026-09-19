@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholedate",
-          "fix:tag": "42888"
+          "FIX:field": "underlyingmakewholedate",
+          "FIX:tag": "42888"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholeamount",
-          "fix:tag": "42889"
+          "FIX:field": "underlyingmakewholeamount",
+          "FIX:tag": "42889"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholebenchmarkcurvename",
-          "fix:tag": "42890"
+          "FIX:field": "underlyingmakewholebenchmarkcurvename",
+          "FIX:tag": "42890"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholebenchmarkcurvepoint",
-          "fix:tag": "42891"
+          "FIX:field": "underlyingmakewholebenchmarkcurvepoint",
+          "FIX:tag": "42891"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholerecallspread",
-          "fix:tag": "42892"
+          "FIX:field": "underlyingmakewholerecallspread",
+          "FIX:tag": "42892"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholebenchmarkquote",
-          "fix:tag": "42893"
+          "FIX:field": "underlyingmakewholebenchmarkquote",
+          "FIX:tag": "42893"
         }
       },
       {
@@ -76,16 +76,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "underlyingmakewholeinterpolationmethod",
-          "fix:tag": "42894"
+          "FIX:field": "underlyingmakewholeinterpolationmethod",
+          "FIX:tag": "42894"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "1023833",
     "description": "UnderlyingOptionExerciseMakeWholeProvision is a subcomponent of the UnderlyingOptionExercise component used to specify the set of rules of maintaining balance when an option is exercised.",
-    "display": "UnderlyingOptionExerciseMakeWholeProvision",
-    "fix:tag": "1023833"
+    "display": "UnderlyingOptionExerciseMakeWholeProvision"
   }
 }

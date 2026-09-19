@@ -253,6 +253,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['uuid', fields.uuid('value')],
     ['version', fields.version('value')],
     ['url', fields.url('value')],
+    ['urn', fields.urn('value')],
     ['timezone', fields.timezone('value')],
     ['mimetype', fields.mimetype('value')],
     ['mediatype', fields.mediatype('value')],
@@ -425,6 +426,18 @@ test('the string and bytes factories declare the datatype beside the field', () 
     /expected a maximum on a variable layout/,
   )
   assert.throws(() => fields.bytes('payload', { bound: 4, max: 4 }), /got more than one/)
+})
+
+test('the urn factory builds a validated, canonical name column', () => {
+  const name = fields.urn('name')
+
+  assert.equal(name.dtype.id, 'urn')
+  assert.equal(name.dtype.kind, 'text')
+  assert.equal(name.nullable, true)
+  assert.equal(fields.urn('name', { nullable: false }).nullable, false)
+  assert.equal(fields.urn('name', { metadata: { role: 'name' } }).get('role'), 'name')
+  assert.equal(name.scalar('URN:isbn:0451450523').asJs(), 'urn:isbn:0451450523')
+  assert.equal(fields.urn('name', { nullable: false }).defaultJSValue(), 'urn:nil:nil')
 })
 
 test('the url factory builds a validated, canonical location column', () => {

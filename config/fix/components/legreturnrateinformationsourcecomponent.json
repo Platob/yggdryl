@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnrateinformationsource",
-          "fix:tag": "42561"
+          "FIX:field": "legreturnrateinformationsource",
+          "FIX:tag": "42561"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratereferencepage",
-          "fix:tag": "42562"
+          "FIX:field": "legreturnratereferencepage",
+          "FIX:tag": "42562"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legreturnratereferencepageheading",
-          "fix:tag": "42563"
+          "FIX:field": "legreturnratereferencepageheading",
+          "FIX:tag": "42563"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "LegReturnRateInformationSource",
-    "fix:tag": "579959"
+    "FIX:tag": "579959",
+    "display": "LegReturnRateInformationSource"
   }
 }

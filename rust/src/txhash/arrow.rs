@@ -237,7 +237,7 @@ pub(crate) fn unix_selection(
             let (counts, from) = raw_counts(array.as_ref())?;
             if mask.len() != counts.len() {
                 return Err(Error::IncompatibleSchema(format!(
-                    "holder {holder}: digest:time source has {} rows, the batch {}",
+                    "holder {holder}: DIGEST:time source has {} rows, the batch {}",
                     counts.len(),
                     mask.len()
                 )));
@@ -330,7 +330,7 @@ fn fixed(width: usize) -> i32 {
 /// Couple every row's digest with the instant beside it.
 ///
 /// The digest half is [`row_digests`](crate::xxhash::arrow::row_digests) of
-/// the batch under the same algorithm: every column but a `digest:role`
+/// the batch under the same algorithm: every column but a `DIGEST:role`
 /// holder, the instant column included when it is one, framed as the row's
 /// ordered sequence. The instant column is read as [`unix_array`] reads it
 /// and need not be a column of the batch at all. The answer is one

@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricingdateunadjusted",
-          "fix:tag": "41232"
+          "FIX:field": "pricingdateunadjusted",
+          "FIX:tag": "41232"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricingdatebusinessdayconvention",
-          "fix:tag": "41233"
+          "FIX:field": "pricingdatebusinessdayconvention",
+          "FIX:tag": "41233"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nopricingdatebusinesscenters",
-          "fix:tag": "41230"
+          "FIX:field": "nopricingdatebusinesscenters",
+          "FIX:tag": "41230"
         }
       },
       {
@@ -43,7 +43,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "pricingdatebusinesscentergrp"
+          "FIX:group": "pricingdatebusinesscentergrp"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricingdateadjusted",
-          "fix:tag": "41234"
+          "FIX:field": "pricingdateadjusted",
+          "FIX:tag": "41234"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricingtime",
-          "fix:tag": "41235"
+          "FIX:field": "pricingtime",
+          "FIX:tag": "41235"
         }
       },
       {
@@ -75,16 +75,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "pricingtimebusinesscenter",
-          "fix:tag": "41236"
+          "FIX:field": "pricingtimebusinesscenter",
+          "FIX:tag": "41236"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "568180",
     "description": "When specified, this overrides the business day convention defined in the DateAdjustment component in Instrument. The specified value would be specific to this instance of pricing dates.",
-    "display": "PricingDateTime",
-    "fix:tag": "568180"
+    "display": "PricingDateTime"
   }
 }

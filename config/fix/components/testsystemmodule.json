@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsystemmodulename",
-          "fix:tag": "3050"
+          "FIX:field": "testsystemmodulename",
+          "FIX:tag": "3050"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsystemmoduleversion",
-          "fix:tag": "3051"
+          "FIX:field": "testsystemmoduleversion",
+          "FIX:tag": "3051"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "testsystemmodulelastupdatetime",
-          "fix:tag": "3081"
+          "FIX:field": "testsystemmodulelastupdatetime",
+          "FIX:tag": "3081"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TestSystemModule",
-    "fix:tag": "360017"
+    "FIX:tag": "360017",
+    "display": "TestSystemModule"
   }
 }

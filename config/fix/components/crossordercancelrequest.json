@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderid",
-          "fix:tag": "37"
+          "FIX:field": "orderid",
+          "FIX:tag": "37"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderrequestid",
-          "fix:tag": "2422"
+          "FIX:field": "orderrequestid",
+          "FIX:tag": "2422"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "crossid",
-          "fix:tag": "548"
+          "FIX:field": "crossid",
+          "FIX:tag": "548"
         }
       },
       {
@@ -53,8 +53,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "origcrossid",
-          "fix:tag": "551"
+          "FIX:field": "origcrossid",
+          "FIX:tag": "551"
         }
       },
       {
@@ -64,8 +64,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "hostcrossid",
-          "fix:tag": "961"
+          "FIX:field": "hostcrossid",
+          "FIX:tag": "961"
         }
       },
       {
@@ -75,8 +75,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "crosstype",
-          "fix:tag": "549"
+          "FIX:field": "crosstype",
+          "FIX:tag": "549"
         }
       },
       {
@@ -86,8 +86,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "crossprioritization",
-          "fix:tag": "550"
+          "FIX:field": "crossprioritization",
+          "FIX:tag": "550"
         }
       },
       {
@@ -97,8 +97,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "norootpartyids",
-          "fix:tag": "1116"
+          "FIX:field": "norootpartyids",
+          "FIX:tag": "1116"
         }
       },
       {
@@ -108,7 +108,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "rootparties"
+          "FIX:group": "rootparties"
         }
       },
       {
@@ -118,8 +118,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "nosides",
-          "fix:tag": "552"
+          "FIX:field": "nosides",
+          "FIX:tag": "552"
         }
       },
       {
@@ -129,7 +129,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:group": "sidecrossordcxlgrp"
+          "FIX:group": "sidecrossordcxlgrp"
         }
       },
       {
@@ -139,7 +139,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -149,8 +149,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nounderlyings",
-          "fix:tag": "711"
+          "FIX:field": "nounderlyings",
+          "FIX:tag": "711"
         }
       },
       {
@@ -160,7 +160,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "undinstrmtgrp"
+          "FIX:group": "undinstrmtgrp"
         }
       },
       {
@@ -170,8 +170,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nolegs",
-          "fix:tag": "555"
+          "FIX:field": "nolegs",
+          "FIX:tag": "555"
         }
       },
       {
@@ -181,7 +181,7 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "instrmtleggrp"
+          "FIX:group": "instrmtleggrp"
         }
       },
       {
@@ -191,8 +191,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid",
-          "fix:tag": "1300"
+          "FIX:field": "marketsegmentid",
+          "FIX:tag": "1300"
         }
       },
       {
@@ -202,8 +202,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "transacttime",
-          "fix:tag": "60"
+          "FIX:field": "transacttime",
+          "FIX:tag": "60"
         }
       },
       {
@@ -213,17 +213,17 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:identifiers": "orderid",
+    "FIX:msgtype": "u",
+    "FIX:tag": "109341",
     "description": "MsgType = u (lowercase U)",
-    "display": "CrossOrderCancelRequest",
-    "fix:identifiers": "orderid",
-    "fix:msgtype": "u",
-    "fix:tag": "109341"
+    "display": "CrossOrderCancelRequest"
   }
 }

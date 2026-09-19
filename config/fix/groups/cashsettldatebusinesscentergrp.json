@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "cashsettldatebusinesscentercomponent"
+        "FIX:component": "cashsettldatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "cashsettldatebusinesscentercomponent",
+    "FIX:counter": "42214",
+    "FIX:tag": "873981",
     "description": "Required if NoCashSettlDateBusinessCenters(42214) > 0.",
-    "display": "CashSettlDateBusinessCenterGrp",
-    "fix:component": "cashsettldatebusinesscentercomponent",
-    "fix:counter": "42214",
-    "fix:tag": "873981"
+    "display": "CashSettlDateBusinessCenterGrp"
   }
 }

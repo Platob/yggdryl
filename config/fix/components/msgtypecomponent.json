@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refmsgtype",
-          "fix:tag": "372"
+          "FIX:field": "refmsgtype",
+          "FIX:tag": "372"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "msgdirection",
-          "fix:tag": "385"
+          "FIX:field": "msgdirection",
+          "FIX:tag": "385"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refapplverid",
-          "fix:tag": "1130"
+          "FIX:field": "refapplverid",
+          "FIX:tag": "1130"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refapplextid",
-          "fix:tag": "1406"
+          "FIX:field": "refapplextid",
+          "FIX:tag": "1406"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refcstmapplverid",
-          "fix:tag": "1131"
+          "FIX:field": "refcstmapplverid",
+          "FIX:tag": "1131"
         }
       },
       {
@@ -65,15 +65,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "defaultverindicator",
-          "fix:tag": "1410"
+          "FIX:field": "defaultverindicator",
+          "FIX:tag": "1410"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "MsgType",
-    "fix:tag": "470822"
+    "FIX:tag": "470822",
+    "display": "MsgType"
   }
 }

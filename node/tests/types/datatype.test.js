@@ -500,6 +500,31 @@ test('url is a validated canonical location', () => {
   assert.equal(field.defaultJSValue(), 'file:///')
 })
 
+test('urn is a validated canonical name', () => {
+  const urn = new DataType('urn')
+
+  assert.equal(urn.id, 'urn')
+  assert.equal(urn.kind, 'text')
+  assert.equal(urn.toString(), 'urn')
+  assert.equal(urn.fixedByteWidth, null)
+  assert.ok(DataType.from('urn').equals(urn))
+  assert.ok(DataType.fromString(urn.toString()).equals(urn))
+  assert.ok(!urn.equals(new DataType('url')))
+
+  const field = new Field('urn', urn, false)
+  assert.ok(Field.fromJSON(field.toJSON()).equals(field))
+  assert.ok(Field.fromString(field.toString()).equals(field))
+  assert.equal(new Field('urn', 'urn', false).dtype.id, 'urn')
+
+  // A name, not a location: the scheme and the namespace fold to lower case,
+  // and what a `url` column holds is what a `urn` column refuses.
+  assert.equal(field.scalar('URN:ISBN:0451450523').asJs(), 'urn:isbn:0451450523')
+  assert.throws(() => field.scalar('https://example.com/a'), /urn/)
+  assert.throws(() => new Field('url', 'url', false).scalar('urn:isbn:0451450523'), /url/)
+  // A name has no zero either, so the default is the nil name.
+  assert.equal(field.defaultJSValue(), 'urn:nil:nil')
+})
+
 test('recursive datatypes expose fields as a collection', () => {
   const nested = DataType.fromString(
     'struct<id: bigint not null, payload: array<struct<name: string, score: decimal(18, 4)>>>',
@@ -688,7 +713,7 @@ test('an enum declares itself onto the field its values name', () => {
   // every serialization carries it and it reads back as the enum that wrote it.
   const field = new Field('side', DataType.fixedAscii(4), false)
   field.setStringEnum(side)
-  assert.equal(field.get('field:enum'), side.intoJson())
+  assert.equal(field.get('FIELD:enum'), side.intoJson())
   assert.ok(Field.fromJSONBytes(field.toJSONBytes()).stringEnum.equals(side))
   assert.ok(Field.fromString(field.toString()).stringEnum.equals(side))
   assert.ok(field.removeStringEnum().equals(side))

@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "prealloc"
+        "FIX:component": "prealloc"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "prealloc",
+    "FIX:counter": "78",
+    "FIX:tag": "662961",
     "description": "Number of repeating groups for pre-trade allocation",
-    "display": "PreAllocGrp",
-    "fix:component": "prealloc",
-    "fix:counter": "78",
-    "fix:tag": "662961"
+    "display": "PreAllocGrp"
   }
 }

@@ -5,8 +5,8 @@ use saphyr_parser::{Event, EventReceiver, Parser};
 use yggdryl::DateTimeType;
 use yggdryl::yaml;
 use yggdryl::{
-    DataType, DataTypeId, Field, Limits, Scalar, TimeUnit, Timezone, from_yaml_scalar,
-    from_yaml_scalar_with_field, i256, into_yaml_scalar,
+    DataType, DataTypeId, Field, Limits, Scalar, StructureType, TimeUnit, Timezone,
+    from_yaml_scalar, from_yaml_scalar_with_field, i256, into_yaml_scalar,
 };
 
 #[test]
@@ -82,7 +82,7 @@ fn untyped_yaml_preserves_only_syntax_proven_types() {
 fn typed_row_field() -> Field {
     Field::new(
         "row",
-        DataType::from_fields([
+        StructureType::from_fields([
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
@@ -99,6 +99,7 @@ fn typed_row_field() -> Field {
             ),
             Field::new("payload", DataType::binary(), false),
         ])
+        .map(DataType::from)
         .unwrap(),
         false,
     )

@@ -79,7 +79,7 @@ fn alive(
 #[test]
 fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     let mut first = incarnation("O-100", 10);
-    first.set_creatunix(Some(at(5)));
+    first.set_creaunix(Some(at(5)));
     first.set_identifiers(identifiers([("ClOrdID", "C-1")]));
     first.finalize();
     let arrived = vec![
@@ -103,7 +103,7 @@ fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     assert_eq!(second.get_crossuuid(), first.get_crossuuid());
     // Enriched by the element's own reading: the lifecycle carried forward,
     // and the identity re-derived around it.
-    assert_eq!(second.get_creatunix(), Some(at(5)));
+    assert_eq!(second.get_creaunix(), Some(at(5)));
     assert_eq!(second.get_identifiers()["ClOrdID"], "C-1");
     assert_eq!(
         second.get_curruuid(),
@@ -112,7 +112,7 @@ fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     let third = walk.next().expect("the third incarnation");
     assert_eq!(third.get_prevuuid(), Some(second.get_curruuid()));
     assert_eq!(third.get_seqnum(), 2);
-    assert_eq!(third.get_creatunix(), Some(at(5)));
+    assert_eq!(third.get_creaunix(), Some(at(5)));
     assert!(walk.next().is_none());
     // Both orders are still alive, the latest incarnation of each.
     assert_eq!(

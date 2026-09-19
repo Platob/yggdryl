@@ -107,11 +107,11 @@ use arrow_array::{Int64Array, RecordBatch};
 use yggdryl::arrow;
 use yggdryl::holder::Holder;
 use yggdryl::media::Media;
-use yggdryl::{IOBase, IOMedia};
+use yggdryl::{IOBase, IOMedia, StructureType};
 use yggdryl::holder::Buffer;
 use yggdryl::{DataType, Url};
 
-let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
 let arrow_schema = schema.clone().into_arrow_schema()?;
 
 // A Media is also the bytes it encodes: an Arrow IPC stream opens with its

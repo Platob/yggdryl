@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refapplid",
-          "fix:tag": "1355"
+          "FIX:field": "refapplid",
+          "FIX:tag": "1355"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refapplreqid",
-          "fix:tag": "1433"
+          "FIX:field": "refapplreqid",
+          "FIX:tag": "1433"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applbegseqnum",
-          "fix:tag": "1182"
+          "FIX:field": "applbegseqnum",
+          "FIX:tag": "1182"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applendseqnum",
-          "fix:tag": "1183"
+          "FIX:field": "applendseqnum",
+          "FIX:tag": "1183"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "refappllastseqnum",
-          "fix:tag": "1357"
+          "FIX:field": "refappllastseqnum",
+          "FIX:tag": "1357"
         }
       },
       {
@@ -65,8 +65,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "applresponseerror",
-          "fix:tag": "1354"
+          "FIX:field": "applresponseerror",
+          "FIX:tag": "1354"
         }
       },
       {
@@ -76,8 +76,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "nonestedpartyids",
-          "fix:tag": "539"
+          "FIX:field": "nonestedpartyids",
+          "FIX:tag": "539"
         }
       },
       {
@@ -87,14 +87,14 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:group": "nestedparties"
+          "FIX:group": "nestedparties"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "ApplIDRequestAck",
-    "fix:tag": "770958"
+    "FIX:tag": "770958",
+    "display": "ApplIDRequestAck"
   }
 }

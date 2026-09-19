@@ -18,7 +18,7 @@
 //! [`FixRegistry::add_fields`] wants, and it loses the roots to say so. Both
 //! drive the same read, drop the same elements and refuse the same two
 //! documents, and both stamp every field they produce as a member of the
-//! dialect in its `fix:branches`.
+//! dialect in its `FIX:branches`.
 //!
 //! # Two passes, and the second never invents a type
 //!
@@ -227,7 +227,7 @@ use quick_xml::events::{BytesStart, Event};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
-use crate::{DataType, Error, Field, FixField, IOBase, Result, Url};
+use crate::{DataType, Error, Field, FixField, IOBase, Result, StructureType, Url};
 
 use super::{FixCode, FixRegistry, MSGTYPE_TAG_NAME};
 use crate::sequence::SequenceType;
@@ -269,16 +269,16 @@ impl FixRegistry {
     /// `dialect` names the dictionary, because a `.cfb` never names itself:
     /// the file states a version and a session but no name for the pair, so
     /// the caller supplies one, and every field the file produces is stamped
-    /// as a member of it in its `fix:branches`. `None` stamps nothing, which
+    /// as a member of it in its `FIX:branches`. `None` stamps nothing, which
     /// is right for a file read only for its vocabulary. The root element's
     /// `fix-version`, `sendercompid` and `targetcompid` are read past: which
     /// version a run reads at is the codec's pin.
     ///
     /// The registry holds scalar wire fields under their tags and message
-    /// roots as components carrying `fix:msgtype`. Nested grammars contribute
-    /// Groups and Components definitions, with `fix:counter` linking each
-    /// list to its ordinary int32 field. Enumerations stay in each field's `fix:codes`
-    /// metadata. Named definitions carry no `fix:tag`.
+    /// roots as components carrying `FIX:msgtype`. Nested grammars contribute
+    /// Groups and Components definitions, with `FIX:counter` linking each
+    /// list to its ordinary int32 field. Enumerations stay in each field's `FIX:codes`
+    /// metadata. Named definitions carry no `FIX:tag`.
     ///
     /// No seed is taken: this answers what one file says. Folding it into a
     /// dictionary that already exists is [`FixRegistry::add_fields`]'s job,
@@ -308,8 +308,8 @@ impl FixField<'_> {
     /// Reads an Ullink CBlock configuration for the vocabulary it declares.
     ///
     /// The dictionary half of [`FixRegistry::from_cfb_file`], answered on
-    /// its own and in declaration order. Every field carries the `fix:tag`
-    /// that keys it, the dialect it is a member of in `fix:branches`, and
+    /// its own and in declaration order. Every field carries the `FIX:tag`
+    /// that keys it, the dialect it is a member of in `FIX:branches`, and
     /// whatever code set the file's maps decode for it, which is what
     /// [`FixRegistry::add_fields`] needs to fold one counterparty's file into
     /// a dictionary that already exists.
@@ -878,7 +878,7 @@ impl<'doc> Parse<'doc> {
         let spelling = alt.clone().unwrap_or_else(|| name.clone());
         let mut field = dtype.nullable_field(spelling.to_ascii_lowercase());
         // The file's own spelling first: `set_metadata` replaces the whole
-        // snapshot, so anything written into the `fix:` namespace before it
+        // snapshot, so anything written into the `FIX:` namespace before it
         // would be replaced away.
         if let Some(alt) = alt.filter(|held| held != &held.to_ascii_lowercase()) {
             if let Err(error) = field.set_metadata([("display", alt.as_str())]) {
@@ -1615,7 +1615,7 @@ impl<'doc> Parse<'doc> {
                 Event::Eof => return Err(self.unclosed("grammar-binding")),
                 Event::Start(element) if is_named(&element, b"grammar") => {
                     let children = self.read_grammar(1, &msgtype)?;
-                    match DataType::from_fields(children) {
+                    match StructureType::from_fields(children).map(DataType::from) {
                         Ok(dtype) => self.roots.push(dtype.required_field(msgtype.clone())),
                         // A root its own children will not make a struct of
                         // is one message dropped, not one file: the binding
@@ -1631,7 +1631,8 @@ impl<'doc> Parse<'doc> {
                 // than a failure: the file bound the message and said it holds
                 // nothing, which is a statement and not a defect.
                 Event::Empty(element) if is_named(&element, b"grammar") => {
-                    let root = DataType::from_fields([])?.required_field(msgtype.clone());
+                    let root = DataType::from(StructureType::from_fields([])?)
+                        .required_field(msgtype.clone());
                     self.roots.push(root);
                 }
                 Event::End(element) if is_named(&element, b"grammar-binding") => break,
@@ -1786,7 +1787,8 @@ impl<'doc> Parse<'doc> {
             entry.push_str("component");
         }
         let built = || -> Result<(Field, Field)> {
-            let mut item = DataType::from_fields(children)?.required_field(entry.clone());
+            let mut item =
+                DataType::from(StructureType::from_fields(children)?).required_field(entry.clone());
             self.stamp(&mut item)?;
             let mut group = DataType::list(item).nullable_field(name);
             group.set_nullable(counter.is_nullable());
@@ -2184,7 +2186,7 @@ fn catalog_members(registry: &mut FixRegistry, mut field: Field, scope: &str) ->
                 .cloned()
                 .map(|child| catalog_members(registry, child, scope))
                 .collect::<Result<Vec<_>>>()?;
-            field.set_dtype(DataType::from_fields(children)?)?;
+            field.set_dtype(DataType::from(StructureType::from_fields(children)?))?;
         }
         DataType::Sequence(SequenceType::List(item)) => {
             let item = catalog_members(registry, item.as_ref().clone(), scope)?;
@@ -2226,7 +2228,7 @@ fn catalog_members(registry: &mut FixRegistry, mut field: Field, scope: &str) ->
 }
 
 /// Preserves duplicate constraints in wire order under distinct child names.
-/// Their original `fix:tag` still identifies the wire field.
+/// Their original `FIX:tag` still identifies the wire field.
 fn push_child(children: &mut Vec<Field>, mut field: Field) {
     if !children.iter().any(|held| held.name() == field.name()) {
         children.push(field);

@@ -81,7 +81,7 @@ def test_temporal_and_decimal_names_are_the_cross_language_ones() -> None:
     assert '"at":"2026-08-15T00:00:00.000000Z"' in encoded
     assert '"on":"2026-08-15"' in encoded
     assert '"price":"-10.50"' in encoded
-    assert "python:" not in encoded
+    assert "PYTHON:" not in encoded
 
 
 def test_values_without_a_native_shape_lower_and_lose_their_class() -> None:
@@ -231,7 +231,7 @@ def test_dataclasses_named_tuples_and_enums_lower_to_their_shape() -> None:
     # A member is its value, a named tuple is its members, a dataclass is its
     # fields. None of the three names its class in the document.
     assert json.loads(encoded) == {"side": "buy", "point": {"x": 2, "y": 3}}
-    assert b"python:" not in encoded
+    assert b"PYTHON:" not in encoded
 
 
 def test_an_arbitrary_object_lowers_to_its_attributes() -> None:
@@ -291,7 +291,7 @@ def test_nested_field_class_round_trips_as_plain_nested_mappings() -> None:
     # The document is the data and nothing else; the target supplies the type.
     # Read without a target, the instant is the classic string it was written
     # as - the dataclass above is what turned it back into a datetime.
-    assert b"python:" not in encoded
+    assert b"PYTHON:" not in encoded
     assert json.loads(encoded) == {
         "order_id": 7,
         "fill": {"price": "12.5", "when": "2026-08-15T08:00:00.000000"},

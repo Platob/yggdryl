@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "executionaggregation"
+        "FIX:component": "executionaggregation"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "executionaggregation",
+    "FIX:counter": "124",
+    "FIX:tag": "326766",
     "description": "Required if NoExecs(124) > 0",
-    "display": "ExecutionAggregationGrp",
-    "fix:component": "executionaggregation",
-    "fix:counter": "124",
-    "fix:tag": "326766"
+    "display": "ExecutionAggregationGrp"
   }
 }

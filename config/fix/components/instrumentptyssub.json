@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentpartysubid",
-          "fix:tag": "1053"
+          "FIX:field": "instrumentpartysubid",
+          "FIX:tag": "1053"
         }
       },
       {
@@ -21,15 +21,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "instrumentpartysubidtype",
-          "fix:tag": "1054"
+          "FIX:field": "instrumentpartysubidtype",
+          "FIX:tag": "1054"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "InstrumentPtysSub",
-    "fix:tag": "451959"
+    "FIX:tag": "451959",
+    "display": "InstrumentPtysSub"
   }
 }

@@ -347,6 +347,11 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "url",
             Some(PyString::new(py, &value.to_string()).into_any().unbind()),
         ),
+        Scalar::Urn(value) => tagged_pickle_state(
+            py,
+            "urn",
+            Some(PyString::new(py, &value.to_string()).into_any().unbind()),
+        ),
         Scalar::Timezone(value) => tagged_pickle_state(
             py,
             "timezone",
@@ -646,6 +651,11 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .extract::<String>()?
             .parse::<yggdryl::Url>()
             .map(|value| Scalar::Url(Arc::new(value)))
+            .map_err(value_error),
+        "urn" => payload()?
+            .extract::<String>()?
+            .parse::<yggdryl::Urn>()
+            .map(|value| Scalar::Urn(Arc::new(value)))
             .map_err(value_error),
         "timezone" => payload()?
             .extract::<String>()?
@@ -1542,6 +1552,7 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         // the other parsed text families do; a zone, a MIME type and a media
         // type each render their own canonical spelling the same way.
         Scalar::Url(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
+        Scalar::Urn(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         Scalar::Timezone(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::MimeType(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::MediaType(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),

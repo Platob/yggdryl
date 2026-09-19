@@ -39,7 +39,7 @@ Metadata belongs to the field and behaves like each language's mapping type; a n
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field};
+    use yggdryl::{DataType, Field, StructureType};
 
     let mut symbol = DataType::utf8().nullable_field("symbol");
     symbol.insert_metadata("source", "book")?;
@@ -49,11 +49,11 @@ Metadata belongs to the field and behaves like each language's mapping type; a n
 
     let schema = Field::new(
         "trade",
-        DataType::from_fields([
+        DataType::from(StructureType::from_fields([
             DataType::Int64.required_field("id"),
             symbol,
             DataType::decimal(18, 4)?.required_field("price"),
-        ])?,
+        ])?),
         false,
     );
 

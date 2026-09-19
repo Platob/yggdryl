@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "allocgroupsubqtycomponent"
+        "FIX:component": "allocgroupsubqtycomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "allocgroupsubqtycomponent",
+    "FIX:counter": "2975",
+    "FIX:tag": "396286",
     "description": "Required if NoAllocGroupSubQtys(2975) > 0.",
-    "display": "AllocGroupSubQtyGrp",
-    "fix:component": "allocgroupsubqtycomponent",
-    "fix:counter": "2975",
-    "fix:tag": "396286"
+    "display": "AllocGroupSubQtyGrp"
   }
 }

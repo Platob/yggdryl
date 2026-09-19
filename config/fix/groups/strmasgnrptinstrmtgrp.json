@@ -9,15 +9,15 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "strmasgnrptinstrmt"
+        "FIX:component": "strmasgnrptinstrmt"
       }
     }
   },
   "nullable": false,
   "metadata": {
-    "display": "StrmAsgnRptInstrmtGrp",
-    "fix:component": "strmasgnrptinstrmt",
-    "fix:counter": "146",
-    "fix:tag": "1098566"
+    "FIX:component": "strmasgnrptinstrmt",
+    "FIX:counter": "146",
+    "FIX:tag": "1098566",
+    "display": "StrmAsgnRptInstrmtGrp"
   }
 }

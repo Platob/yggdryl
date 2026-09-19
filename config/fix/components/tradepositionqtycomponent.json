@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "postype",
-          "fix:tag": "703"
+          "FIX:field": "postype",
+          "FIX:tag": "703"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "longqty",
-          "fix:tag": "704"
+          "FIX:field": "longqty",
+          "FIX:tag": "704"
         }
       },
       {
@@ -32,8 +32,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "shortqty",
-          "fix:tag": "705"
+          "FIX:field": "shortqty",
+          "FIX:tag": "705"
         }
       },
       {
@@ -43,8 +43,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "coveredqty",
-          "fix:tag": "1654"
+          "FIX:field": "coveredqty",
+          "FIX:tag": "1654"
         }
       },
       {
@@ -54,8 +54,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "posqtystatus",
-          "fix:tag": "706"
+          "FIX:field": "posqtystatus",
+          "FIX:tag": "706"
         }
       },
       {
@@ -65,15 +65,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "quantitydate",
-          "fix:tag": "976"
+          "FIX:field": "quantitydate",
+          "FIX:tag": "976"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "TradePositionQty",
-    "fix:tag": "202639"
+    "FIX:tag": "202639",
+    "display": "TradePositionQty"
   }
 }

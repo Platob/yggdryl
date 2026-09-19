@@ -13,7 +13,7 @@ use crate::floating::{float_arithmetic, float_value_width, float_width};
 use crate::integer::{common_integer, integer_arithmetic, integer_kind, integer_value_kind};
 use crate::scalar::Scalar;
 use crate::temporal::scalars::{
-    TemporalFamily, duration_integer_arithmetic, temporal_arithmetic, temporal_result_type,
+    TemporalKind, duration_integer_arithmetic, temporal_arithmetic, temporal_result_type,
     temporal_target, temporal_value_parts,
 };
 use crate::{DataType, Error, Result};
@@ -303,13 +303,13 @@ fn checked_arithmetic_target(
             decimal_arithmetic(left, operation, right, *wide, *scale)
         }
         ArithmeticTarget::Temporal(dtype) => {
-            if matches!(temporal_target(dtype), Some((TemporalFamily::Duration, _)))
+            if matches!(temporal_target(dtype), Some((TemporalKind::Duration, _)))
                 && ((temporal_value_parts(left)
-                    .is_some_and(|parts| parts.family == TemporalFamily::Duration)
+                    .is_some_and(|parts| parts.family == TemporalKind::Duration)
                     && right.is_integer())
                     || (left.is_integer()
                         && temporal_value_parts(right)
-                            .is_some_and(|parts| parts.family == TemporalFamily::Duration)))
+                            .is_some_and(|parts| parts.family == TemporalKind::Duration)))
             {
                 duration_integer_arithmetic(left, operation, right, dtype)
             } else {
@@ -404,7 +404,7 @@ fn inferred_target(
         operation,
     ) {
         (Some(parts), Some(_), Arithmetic::Mul | Arithmetic::Div)
-            if parts.family == TemporalFamily::Duration =>
+            if parts.family == TemporalKind::Duration =>
         {
             return Ok(ArithmeticTarget::Temporal(parts.dtype));
         }
@@ -415,7 +415,7 @@ fn inferred_target(
         temporal_value_parts(right),
         operation,
     ) {
-        (Some(_), Some(parts), Arithmetic::Mul) if parts.family == TemporalFamily::Duration => {
+        (Some(_), Some(parts), Arithmetic::Mul) if parts.family == TemporalKind::Duration => {
             return Ok(ArithmeticTarget::Temporal(parts.dtype));
         }
         _ => {}

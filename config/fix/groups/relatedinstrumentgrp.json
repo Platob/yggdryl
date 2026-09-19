@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "relatedinstrument"
+        "FIX:component": "relatedinstrument"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "relatedinstrument",
+    "FIX:counter": "1647",
+    "FIX:tag": "259311",
     "description": "Conditionally required when NoRelatedInstruments > 0",
-    "display": "RelatedInstrumentGrp",
-    "fix:component": "relatedinstrument",
-    "fix:counter": "1647",
-    "fix:tag": "259311"
+    "display": "RelatedInstrumentGrp"
   }
 }

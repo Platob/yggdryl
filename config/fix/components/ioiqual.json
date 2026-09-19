@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "ioiqualifier",
-          "fix:tag": "104"
+          "FIX:field": "ioiqualifier",
+          "FIX:tag": "104"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "IOIQual",
-    "fix:tag": "774748"
+    "FIX:tag": "774748",
+    "display": "IOIQual"
   }
 }

@@ -56,13 +56,13 @@ mod record {
     /// name, nullability, or metadata - the rule [`FieldScalar`] states.
     ///
     /// ```
-    /// use yggdryl::{DataType, Scalar, FieldRecord};
+    /// use yggdryl::{DataType, FieldRecord, Scalar, StructureType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let row = DataType::from_fields([
+    /// let row = DataType::from(StructureType::from_fields([
     ///     DataType::Int64.required_field("id"),
     ///     DataType::utf8().nullable_field("symbol"),
-    /// ])?
+    /// ])?)
     /// .required_field("row");
     ///
     /// let record = FieldRecord::new(&row, Scalar::from_record([
@@ -198,13 +198,13 @@ mod record {
         ///
         /// ```
         /// use yggdryl::arrow::batch_from_value;
-        /// use yggdryl::{DataType, Scalar, FieldRecord};
+        /// use yggdryl::{DataType, FieldRecord, Scalar, StructureType};
         ///
         /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-        /// let row = DataType::from_fields([
+        /// let row = DataType::from(StructureType::from_fields([
         ///     DataType::Int64.required_field("id"),
         ///     DataType::utf8().nullable_field("symbol"),
-        /// ])?
+        /// ])?)
         /// .required_field("row");
         /// let rows = Scalar::from_sequence([
         ///     Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]),

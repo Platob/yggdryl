@@ -1,23 +1,23 @@
 # Protocol
 
-Field metadata the library reads: reserved keys, `scheme:name` properties behind live views, and the `field:partition` marker.
+Field metadata the library reads: reserved keys, `SCHEME:name` properties behind live views, and the `FIELD:partition` marker.
 
 ## Contract
 
 | Key | Datatype and rule |
 | --- | --- |
 | `PARQUET:field_id` | i32, canonicalized on write |
-| `field:enum` | the `StringEnum` document ([Codes](codes.md)); accepted on a fixed US-ASCII string of at most sixteen bytes or a registered code, refused by name elsewhere |
-| `field:init` | boolean, absent by default; `false` = declared but refused by constructors |
-| `field:partition` | boolean; `true` on partition columns, absent elsewhere |
+| `FIELD:enum` | the `StringEnum` document ([Codes](codes.md)); accepted on a fixed US-ASCII string of at most sixteen bytes or a registered code, refused by name elsewhere |
+| `FIELD:init` | boolean, absent by default; `false` = declared but refused by constructors |
+| `FIELD:partition` | boolean; `true` on partition columns, absent elsewhere |
 | `location` | [`Url`](../uri/url-urn.md), a straight key |
 | `alias`, `comment`, `display` | validated text; views fall back to straight `comment` and `display` |
-| `scheme:name` | protocol property, prefix canonicalized to a known [`Scheme`](scalar.md) |
-| `iceberg:table_name` | catalog coordinates are protocol properties, never straight keys |
-| `digest:role` | `holder`; anything else refused |
-| `digest:time`, `digest:unit` | a holder's coupled instant: one field path, and `s` / `ms` / `us` / `ns` canonicalized; the storage must be a coupled `fixed_size_binary` ([Hashing](../hashing.md)) |
-| `python:module`, `python:qualname` | the declaring Python class, as dotted names Python itself could have written; `<locals>` is the one non-identifier segment a qualified name may carry |
-| `python:kind` | `field`, `dataclass`, `typed_dict`, `named_tuple`, `enum`, `newtype`, `type_alias`, or `class`; anything else refused |
+| `SCHEME:name` | protocol property; the prefix is a known [`Scheme`](scalar.md) spelled upper case, as `ARROW:extension:name` and `PARQUET:field_id` spell theirs, and a key written in any case folds to it |
+| `ICEBERG:table_name` | catalog coordinates are protocol properties, never straight keys |
+| `DIGEST:role` | `holder`; anything else refused |
+| `DIGEST:time`, `DIGEST:unit` | a holder's coupled instant: one field path, and `s` / `ms` / `us` / `ns` canonicalized; the storage must be a coupled `fixed_size_binary` ([Hashing](../hashing.md)) |
+| `PYTHON:module`, `PYTHON:qualname` | the declaring Python class, as dotted names Python itself could have written; `<locals>` is the one non-identifier segment a qualified name may carry |
+| `PYTHON:kind` | `field`, `dataclass`, `typed_dict`, `named_tuple`, `enum`, `newtype`, `type_alias`, or `class`; anything else refused |
 | view | borrow of the one metadata map, cache-aware writes |
 | Rust `set` | replaces only this protocol's keys; bindings expose `update`, not `set` |
 
@@ -42,7 +42,7 @@ The view remembers the scheme; the caller writes the bare name.
     field.as_partition_mut().set_sources(["event"])?;
 
     assert_eq!(field.as_iceberg().get("doc"), Some("closing price"));
-    assert_eq!(field.as_iceberg().key("doc"), "iceberg:doc");
+    assert_eq!(field.as_iceberg().key("doc"), "ICEBERG:doc");
     assert_eq!(field.as_iceberg().len(), 3);
     assert!(field.as_mysql().is_empty());
     assert!(field.as_digest().is_holder());
@@ -50,8 +50,8 @@ The view remembers the scheme; the caller writes the bare name.
     assert_eq!(field.as_partition().transform()?, Some(Function::Year));
 
     // It is a view of the one metadata map, not a copy of part of it.
-    assert_eq!(field.get_metadata("iceberg:doc"), Some("closing price"));
-    assert_eq!(field.get_metadata("digest:role"), Some("holder"));
+    assert_eq!(field.get_metadata("ICEBERG:doc"), Some("closing price"));
+    assert_eq!(field.get_metadata("DIGEST:role"), Some("holder"));
     assert_eq!(field.metadata_len(), 9);
 
     // A protocol-scoped replacement leaves every other protocol alone.
@@ -85,7 +85,7 @@ The view remembers the scheme; the caller writes the bare name.
     field.partition.sources = ["event"]
 
     assert field.iceberg["doc"] == "closing price"
-    assert field.iceberg.key("doc") == "iceberg:doc"
+    assert field.iceberg.key("doc") == "ICEBERG:doc"
     assert len(field.iceberg) == 3
     assert not field.mysql
     assert field.digest["role"] == "holder"
@@ -93,8 +93,8 @@ The view remembers the scheme; the caller writes the bare name.
     assert field.partition.transform == "year"
 
     # It is a view of the one metadata mapping, not a copy of part of it.
-    assert field.metadata["iceberg:doc"] == "closing price"
-    assert field.metadata["digest:role"] == "holder"
+    assert field.metadata["ICEBERG:doc"] == "closing price"
+    assert field.metadata["DIGEST:role"] == "holder"
     assert len(field.metadata) == 9
     assert dict(field.iceberg.items())["field-id"] == "7"
 
@@ -132,7 +132,7 @@ The view remembers the scheme; the caller writes the bare name.
     field.partition.update({ transform: 'year', sources: '["event"]' })
 
     assert.equal(field.iceberg.get('doc'), 'closing price')
-    assert.equal(field.iceberg.key('doc'), 'iceberg:doc')
+    assert.equal(field.iceberg.key('doc'), 'ICEBERG:doc')
     assert.equal(field.iceberg.size, 3)
     assert.equal(field.mysql.size, 0)
     assert.equal(field.digest.get('role'), 'holder')
@@ -140,8 +140,8 @@ The view remembers the scheme; the caller writes the bare name.
     assert.equal(field.partition.get('transform'), 'year')
 
     // It is a view of the one metadata map, not a copy of part of it.
-    assert.equal(field.get('iceberg:doc'), 'closing price')
-    assert.equal(field.get('digest:role'), 'holder')
+    assert.equal(field.get('ICEBERG:doc'), 'closing price')
+    assert.equal(field.get('DIGEST:role'), 'holder')
     assert.equal(field.size, 9)
     assert.deepEqual([...field.iceberg].sort(), [['doc', 'closing price'], ['field-id', '7'], ['schema-id', '3']])
 
@@ -182,7 +182,7 @@ Typed accessors parse and canonicalize both ways.
     assert_eq!(field.parquet_field_id()?, Some(17));
     assert_eq!(field.get_metadata("PARQUET:field_id"), Some("17"));
     assert!(!field.is_init()?);
-    assert_eq!(field.get_metadata("field:init"), Some("false"));
+    assert_eq!(field.get_metadata("FIELD:init"), Some("false"));
 
     // A straight key belongs to no protocol, so every protocol falls back to it.
     assert_eq!(field.display(), Some("Raw payload"));
@@ -196,7 +196,7 @@ Typed accessors parse and canonicalize both ways.
         field.as_http().content_type()
     );
     assert_eq!(
-        field.get_metadata("http:content-type"),
+        field.get_metadata("HTTP:content-type"),
         field.as_http().content_type()
     );
     assert_eq!(
@@ -207,7 +207,7 @@ Typed accessors parse and canonicalize both ways.
     // The declaring class is one value, and the bare name is derived from the
     // qualified one rather than stored beside it.
     assert_eq!(field.as_python().class_name(), Some("Payload"));
-    assert_eq!(field.get_metadata("python:kind"), Some("dataclass"));
+    assert_eq!(field.get_metadata("PYTHON:kind"), Some("dataclass"));
     assert_eq!(field.as_python().import_path().as_deref(), Some("app.wire.Payload"));
     ```
 
@@ -219,7 +219,7 @@ Typed accessors parse and canonicalize both ways.
     field = Field("payload", "binary", nullable=False)
 
     field.set_parquet_field_id(17)
-    field.metadata["field:init"] = "false"
+    field.metadata["FIELD:init"] = "false"
     field.set_display("Raw payload")
     field.set_content_type("application/json; charset=utf-8")
     field.set_property("postgres", "type", "jsonb")
@@ -227,7 +227,7 @@ Typed accessors parse and canonicalize both ways.
 
     assert field.parquet_field_id == 17
     assert field.metadata["PARQUET:field_id"] == "17"
-    assert field.metadata["field:init"] == "false"
+    assert field.metadata["FIELD:init"] == "false"
 
     # A straight key belongs to no protocol, so every protocol falls back to it.
     assert field.display == "Raw payload"
@@ -235,13 +235,13 @@ Typed accessors parse and canonicalize both ways.
 
     assert field.mime_type == MimeType.JSON
     assert field.get_property("https", "Content-Type") == field.content_type
-    assert field.metadata["http:content-type"] == field.content_type
+    assert field.metadata["HTTP:content-type"] == field.content_type
     assert list(field.property_iter("postgres")) == [("type", "jsonb")]
 
     # The declaring class is one value, and the bare name is derived from the
     # qualified one rather than stored beside it.
     assert field.python.class_name == "Payload"
-    assert field.metadata["python:kind"] == "dataclass"
+    assert field.metadata["PYTHON:kind"] == "dataclass"
     assert field.python.import_path == "app.wire.Payload"
     ```
 
@@ -254,7 +254,7 @@ Typed accessors parse and canonicalize both ways.
     const field = new Field('payload', 'binary', false)
 
     field.setParquetFieldId(17)
-    field.set('field:init', 'false')
+    field.set('FIELD:init', 'false')
     field.setDisplay('Raw payload')
     field.setContentType('application/json; charset=utf-8')
     field.setProperty('postgres', 'type', 'jsonb')
@@ -262,7 +262,7 @@ Typed accessors parse and canonicalize both ways.
 
     assert.equal(field.parquetFieldId, 17)
     assert.equal(field.get('PARQUET:field_id'), '17')
-    assert.equal(field.get('field:init'), 'false')
+    assert.equal(field.get('FIELD:init'), 'false')
 
     // A straight key belongs to no protocol, so every protocol falls back to it.
     assert.equal(field.display, 'Raw payload')
@@ -270,13 +270,13 @@ Typed accessors parse and canonicalize both ways.
 
     assert.ok(field.mimeType.equals(MimeType.JSON))
     assert.equal(field.getProperty('https', 'Content-Type'), field.contentType)
-    assert.equal(field.get('http:content-type'), field.contentType)
+    assert.equal(field.get('HTTP:content-type'), field.contentType)
     assert.deepEqual(field.propertyIter('postgres'), [{ key: 'type', value: 'jsonb' }])
 
     // The declaring class a Python schema carries reads back by name here; the
     // typed vocabulary over it is Rust and Python only.
     assert.equal(field.python.get('qualname'), 'Payload')
-    assert.equal(field.get('python:kind'), 'dataclass')
+    assert.equal(field.get('PYTHON:kind'), 'dataclass')
     ```
 
 ## Views
@@ -292,28 +292,28 @@ depend on.
 | [`IcebergField`, `IcebergFieldMut`](../media/iceberg/schema.md) | `doc`, `schema_id`, `spec_id`, `transform` |
 | [`FixField`, `FixFieldMut`](../fix/index.md) | `id` (derived from the tag and the name, never stored), `tag` and `tags` (positive only), `aliases`, `branches`, `identifiers` (a component's direct scalar members), `description` |
 | [`DigestField`, `DigestFieldMut`](../hashing.md) | `is_holder`, `algorithm`, `sources`, `apply_arrow_batch`, and their setters; `time`, `unit`, `is_coupled` and their setters |
-| `IdentityField` | no typed vocabulary: arbitrary inert text under `identity:` |
+| `IdentityField` | no typed vocabulary: arbitrary inert text under `IDENTITY:` |
 | [`PartitionField`, `PartitionFieldMut`](../holder/iobase/partitions.md#derived-partition-columns) | `sources`, `transform`, `term`, `is_derived`, and the two setters; the declaration is applied through the [transform](../expression/selectors.md#a-selector-declares-a-schema) view, `as_transform().apply_arrow_batch` |
 | `PythonField`, `PythonFieldMut` | `class`, `module`, `qualname`, `class_name`, `kind`, `import_path`, and their setters |
 
 ## Digest holders and their sources
 
-`digest:role` has one value, `holder`: it says a field *stores* a row digest. What that digest
-reads is named on the holder as `digest:sources`, so the fields it reads carry no metadata at all.
+`DIGEST:role` has one value, `holder`: it says a field *stores* a row digest. What that digest
+reads is named on the holder as `DIGEST:sources`, so the fields it reads carry no metadata at all.
 `["*"]` - which is also what naming nothing means - selects every field of the Struct except a
 holder, in declaration order.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field};
+    use yggdryl::{DataType, Field, StructureType};
 
     let id = Field::new("id", DataType::Int64, false);
     let price = Field::new("price", DataType::Float64, false);
     let mut stored = Field::new("row_digest", DataType::UInt64, false);
     stored.as_digest_mut().set_holder()?;
 
-    let fallback = DataType::from_fields([id.clone(), price.clone(), stored.clone()])?
+    let fallback = DataType::from(StructureType::from_fields([id.clone(), price.clone(), stored.clone()])?)
         .required_field("row");
     assert_eq!(fallback.digest_field_names().collect::<Vec<_>>(), ["id", "price"]);
 
@@ -323,7 +323,7 @@ holder, in declaration order.
     assert_eq!(narrowed.as_digest().sources()?, Some(vec!["id".to_owned()]));
     assert!(id.as_digest().is_empty());
 
-    let explicit = DataType::from_fields([id, price, narrowed])?.required_field("row");
+    let explicit = DataType::from(StructureType::from_fields([id, price, narrowed])?).required_field("row");
     assert_eq!(explicit.digest_field_names().collect::<Vec<_>>(), ["id", "price"]);
     assert_eq!(explicit.only_digest_fields()?.field_len(), 2);
     ```
@@ -386,8 +386,8 @@ holder, in declaration order.
 | Selection | direct Struct children, in declaration order |
 | `DigestField` | `is_holder`, `algorithm`, `sources`, `apply_arrow_batch` |
 | `DigestFieldMut` | `set_holder`, `set_algorithm`, `remove_algorithm`, `set_sources`, `remove_sources`, `remove_role` |
-| `digest:sources` | holder-local ordered JSON array; `["*"]` and absence both select every non-holder, `[]` selects nothing, `"*"` may not travel beside a path |
-| `digest:algorithm` | optional canonical [`DigestAlgorithm`](../hashing.md); its width must match the storage |
+| `DIGEST:sources` | holder-local ordered JSON array; `["*"]` and absence both select every non-holder, `[]` selects nothing, `"*"` may not travel beside a path |
+| `DIGEST:algorithm` | optional canonical [`DigestAlgorithm`](../hashing.md); its width must match the storage |
 | Widths | XXH32: `int32`, `uint32`; XXH64 and XXH3-64: `int64`, `uint64`; XXH3-128: `fixed_size_binary(16)` |
 | Signed storage | the same digest bits, never a checked numeric conversion |
 
@@ -398,18 +398,18 @@ live with [Hashing](../hashing.md).
 
 ## Partition columns
 
-The reserved `field:partition` key marks partition columns on the fields themselves.
+The reserved `FIELD:partition` key marks partition columns on the fields themselves.
 
 === "Rust"
 
     ```rust
-    use yggdryl::DataType;
+    use yggdryl::{DataType, StructureType};
 
-    let schema = DataType::from_fields([
+    let schema = DataType::from(StructureType::from_fields([
         DataType::Int32.required_field("year"),
         DataType::utf8().required_field("venue"),
         DataType::Int64.required_field("price"),
-    ])?
+    ])?)
     .required_field("row")
     .with_partition_fields(&["year", "venue"])?;
 
@@ -423,7 +423,7 @@ The reserved `field:partition` key marks partition columns on the fields themsel
 
     // The mark is reserved metadata, so it round-trips like any other.
     assert_eq!(
-        schema.get_field_by_path("year").expect("the column").get_metadata("field:partition"),
+        schema.get_field_by_path("year").expect("the column").get_metadata("FIELD:partition"),
         Some("true")
     );
     ```
@@ -482,24 +482,24 @@ Folder writes and reads and Iceberg identity specs read the mark: [Partitions](.
 ## Edges
 
 - `"+00017"` to `PARQUET:field_id` -> stored as `"17"`; `"2147483648"` -> refused.
-- `HTTPS:Content-Type`, `HTTP:content-type`, `http:content-type` -> one entry, matched case-insensitively.
+- `HTTPS:Content-Type`, `HTTP:content-type`, `HTTP:content-type` -> one entry, matched case-insensitively.
 - `https` -> no accessor; either scheme's view reports `http`.
-- Rust `field.location()` -> straight `location`; `as_http().location()` -> `http:location` (`http_location` / `httpLocation` in the bindings).
+- Rust `field.location()` -> straight `location`; `as_http().location()` -> `HTTP:location` (`http_location` / `httpLocation` in the bindings).
 - `with_init` -> Rust only; `set_init` and `is_init` are in Python, and the bindings' mapping write validates identically.
 - `display` -> named in all three (`set_display`, `display`, `remove_display`) on the field and every view; `try_with_display` is Rust only.
 - Deleting a protocol's namespace -> leaves `Field`'s own reserved state untouched.
 - Protocol write -> invalidates a populated Arrow projection, like a direct metadata write.
-- Non-partition column -> no `field:partition` key; schemas partitioned alike compare equal.
-- `field:partition` -> travels into Arrow, Parquet footers, and JSON round trips.
-- `digest:role` other than `holder` -> refused, and the failed write leaves the field unchanged.
-- `digest:sources` on a field that is not a holder -> refused when the plan is built; a source names a field, it never marks one.
+- Non-partition column -> no `FIELD:partition` key; schemas partitioned alike compare equal.
+- `FIELD:partition` -> travels into Arrow, Parquet footers, and JSON round trips.
+- `DIGEST:role` other than `holder` -> refused, and the failed write leaves the field unchanged.
+- `DIGEST:sources` on a field that is not a holder -> refused when the plan is built; a source names a field, it never marks one.
 - A root whose children are all holders -> no digest values, the empty ordered sequence.
-- Changing or removing a holder role -> refused until `digest:algorithm` and `digest:sources` are gone.
-- `identity:` properties -> inert text; `field:partition` stays the marker `partition_fields` reads.
-- `partition:transform` -> parsed on read, never on write: a generic `update` stores any text, and the typed reader is what names the vocabulary it is not in.
-- `partition:transform` without a `partition:sources` -> refused by `term`, naming the key it wants beside it.
-- `transform:function` -> a grammar function by name or alias, or a [user function](../expression/functions.md) `namespace.name`, canonicalized on write; `transform:sources` the columns it reads, a JSON array of paths; `term` reads `function(sources...)`, and refuses a function with no sources beside it.
-- `transform:expression` -> any other term; `set_term` writes the function and sources for a call over plain columns and the expression otherwise, and removes the spelling it did not write.
+- Changing or removing a holder role -> refused until `DIGEST:algorithm` and `DIGEST:sources` are gone.
+- `IDENTITY:` properties -> inert text; `FIELD:partition` stays the marker `partition_fields` reads.
+- `PARTITION:transform` -> parsed on read, never on write: a generic `update` stores any text, and the typed reader is what names the vocabulary it is not in.
+- `PARTITION:transform` without a `PARTITION:sources` -> refused by `term`, naming the key it wants beside it.
+- `TRANSFORM:function` -> a grammar function by name or alias, or a [user function](../expression/functions.md) `namespace.name`, canonicalized on write; `TRANSFORM:sources` the columns it reads, a JSON array of paths; `term` reads `function(sources...)`, and refuses a function with no sources beside it.
+- `TRANSFORM:expression` -> any other term; `set_term` writes the function and sources for a call over plain columns and the expression otherwise, and removes the spelling it did not write.
 - `apply_arrow_batch` -> the one verb both declaring protocols answer; each walks the Structs it declares and leaves a written value alone.
 
 ## Commands

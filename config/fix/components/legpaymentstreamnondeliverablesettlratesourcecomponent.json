@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablesettlratesource",
-          "fix:tag": "40087"
+          "FIX:field": "legpaymentstreamnondeliverablesettlratesource",
+          "FIX:tag": "40087"
         }
       },
       {
@@ -21,16 +21,16 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "legpaymentstreamnondeliverablesettlreferencepage",
-          "fix:tag": "40228"
+          "FIX:field": "legpaymentstreamnondeliverablesettlreferencepage",
+          "FIX:tag": "40228"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:tag": "893529",
     "description": "Conditionally required when LegPaymentStreamNonDeliverableSettlRateSource(40087) = 3 (ISDA Settlement Rate Option) or 99 (Other).",
-    "display": "LegPaymentStreamNonDeliverableSettlRateSource",
-    "fix:tag": "893529"
+    "display": "LegPaymentStreamNonDeliverableSettlRateSource"
   }
 }

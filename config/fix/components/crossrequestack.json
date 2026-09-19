@@ -10,7 +10,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardheader"
+          "FIX:component": "standardheader"
         }
       },
       {
@@ -20,8 +20,8 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:field": "crossrequestid",
-          "fix:tag": "2672"
+          "FIX:field": "crossrequestid",
+          "FIX:tag": "2672"
         }
       },
       {
@@ -31,8 +31,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketid",
-          "fix:tag": "1301"
+          "FIX:field": "marketid",
+          "FIX:tag": "1301"
         }
       },
       {
@@ -42,8 +42,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "marketsegmentid",
-          "fix:tag": "1300"
+          "FIX:field": "marketsegmentid",
+          "FIX:tag": "1300"
         }
       },
       {
@@ -53,7 +53,7 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "instrument"
+          "FIX:component": "instrument"
         }
       },
       {
@@ -63,8 +63,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "orderqty",
-          "fix:tag": "38"
+          "FIX:field": "orderqty",
+          "FIX:tag": "38"
         }
       },
       {
@@ -74,8 +74,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "complianceid",
-          "fix:tag": "376"
+          "FIX:field": "complianceid",
+          "FIX:tag": "376"
         }
       },
       {
@@ -85,8 +85,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "compliancetext",
-          "fix:tag": "2404"
+          "FIX:field": "compliancetext",
+          "FIX:tag": "2404"
         }
       },
       {
@@ -96,16 +96,16 @@
         },
         "nullable": false,
         "metadata": {
-          "fix:component": "standardtrailer"
+          "FIX:component": "standardtrailer"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgtype": "DT",
+    "FIX:tag": "906013",
     "description": "MsgType = DT",
-    "display": "CrossRequestAck",
-    "fix:msgtype": "DT",
-    "fix:tag": "906013"
+    "display": "CrossRequestAck"
   }
 }

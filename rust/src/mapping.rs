@@ -22,13 +22,13 @@ use std::sync::Arc;
 use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
-use crate::family::Children;
-use crate::family::DataTypeValue;
-use crate::family::NestedValue;
 use crate::invalid;
-use crate::scalar::Value;
 use crate::structure::StructureType;
 use crate::structure::cmp_fields;
+use crate::value::Children;
+use crate::value::DataTypeValue;
+use crate::value::NestedValue;
+use crate::value::Value;
 use crate::{DataType, DataTypeId, DataTypeKind, Error, Field, Result, Scalar};
 
 // ------------------------------------------------------------------------
@@ -452,7 +452,7 @@ mod arrow {
     use arrow_schema::ffi::Flags;
 
     use super::{MappingType, validate_map_entries};
-    use crate::family::ArrowFfiParts;
+    use crate::value::ArrowFfiParts;
     use crate::{DataType, Field, Result};
 
     impl MappingType {

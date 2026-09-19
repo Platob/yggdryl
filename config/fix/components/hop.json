@@ -10,8 +10,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "hopcompid",
-          "fix:tag": "628"
+          "FIX:field": "hopcompid",
+          "FIX:tag": "628"
         }
       },
       {
@@ -21,8 +21,8 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "hopsendingtime",
-          "fix:tag": "629"
+          "FIX:field": "hopsendingtime",
+          "FIX:tag": "629"
         }
       },
       {
@@ -32,15 +32,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "hoprefid",
-          "fix:tag": "630"
+          "FIX:field": "hoprefid",
+          "FIX:tag": "630"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "Hop",
-    "fix:tag": "595740"
+    "FIX:tag": "595740",
+    "display": "Hop"
   }
 }

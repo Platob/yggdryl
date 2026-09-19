@@ -17,7 +17,7 @@ use crate::sequence::SequenceType;
 use crate::structure::StructureType;
 use crate::time::TimeType;
 use crate::union::UnionFields;
-use crate::{DataTypeId, DataTypeKind, Error, Field, Result, Scalar, UnionMode};
+use crate::{DataTypeId, DataTypeKind, Error, Field, Result, Scalar, UnionMode, UriType};
 
 use crate::decimal::validate_decimal;
 use crate::enums::validate_dictionary_key;
@@ -144,8 +144,10 @@ pub enum DataType {
     Uuid,
     /// A canonical, numerically ordered software or protocol version.
     Version,
-    /// A validated, canonical location, stored as its canonical text.
-    Url,
+    /// A validated, canonical resource identifier, stored as its canonical
+    /// text: one variant for the whole uri family, the leaf - a location or
+    /// a name - being [`UriType`]'s business.
+    Uri(UriType),
     /// Many of one thing: one variant for the whole sequence family.
     ///
     /// The leaf - which offset width, whether it is a view, whether the
@@ -304,7 +306,7 @@ impl DataType {
             Self::TimeInForce => DataTypeId::TimeInForce,
             Self::Uuid => DataTypeId::Uuid,
             Self::Version => DataTypeId::Version,
-            Self::Url => DataTypeId::Url,
+            Self::Uri(leaf) => leaf.id(),
             Self::Timezone => DataTypeId::Timezone,
             Self::MimeType => DataTypeId::MimeType,
             Self::MediaType => DataTypeId::MediaType,
@@ -645,7 +647,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         // unused so no other pair moves.
         DataType::State => 55,
         DataType::TimeInForce => 56,
-        DataType::Url => 57,
+        DataType::Uri(UriType::Url) => 57,
         DataType::Isin => 58,
         DataType::Timezone => 59,
         DataType::MimeType => 60,
@@ -653,6 +655,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Cusip => 62,
         DataType::Sedol => 63,
         DataType::Bloomberg => 64,
+        DataType::Uri(UriType::Urn) => 65,
     }
 }
 
@@ -703,9 +706,10 @@ impl DataType {
 ///
 /// ```
 /// use yggdryl::DataType;
+/// use yggdryl::StructureType;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let row = DataType::from_fields([DataType::Int64.required_field("id")])?;
+/// let row = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?);
 /// assert_eq!(row["id"].dtype(), &DataType::Int64);
 /// # Ok(())
 /// # }
@@ -777,7 +781,7 @@ mod arrow {
     use crate::structure::StructureType;
     use crate::timezone::TimezoneType;
     use crate::union::UnionFields;
-    use crate::url::UrlType;
+    use crate::uri::UriType;
     use crate::uuid::UuidType;
     use crate::version::VersionType;
     use crate::{Error, Field, Result};
@@ -835,7 +839,7 @@ mod arrow {
                 | R::State
                 | R::TimeInForce => code::code_arrow_storage(self)?,
                 R::Version => VersionType::arrow_storage(),
-                R::Url => UrlType::arrow_storage(),
+                R::Uri(_) => UriType::arrow_storage(),
                 R::Timezone => TimezoneType::arrow_storage(),
                 R::MimeType => MimeTypeType::arrow_storage(),
                 R::MediaType => MediaTypeType::arrow_storage(),
@@ -1086,7 +1090,7 @@ mod arrow {
                 // Every identifier is Arrow's own sixteen bytes.
                 Self::Uuid => Some((crate::UUID_EXTENSION_NAME, String::new())),
                 Self::Version => Some((crate::VERSION_EXTENSION_NAME, String::new())),
-                Self::Url => Some((crate::URL_EXTENSION_NAME, String::new())),
+                Self::Uri(leaf) => Some((leaf.extension_name(), String::new())),
                 Self::Timezone => Some((crate::TIMEZONE_EXTENSION_NAME, String::new())),
                 Self::MimeType => Some((crate::MIMETYPE_EXTENSION_NAME, String::new())),
                 Self::MediaType => Some((crate::MEDIATYPE_EXTENSION_NAME, String::new())),

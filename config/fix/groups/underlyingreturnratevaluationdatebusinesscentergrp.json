@@ -9,16 +9,16 @@
       },
       "nullable": false,
       "metadata": {
-        "fix:component": "underlyingreturnratevaluationdatebusinesscentercomponent"
+        "FIX:component": "underlyingreturnratevaluationdatebusinesscentercomponent"
       }
     }
   },
   "nullable": false,
   "metadata": {
+    "FIX:component": "underlyingreturnratevaluationdatebusinesscentercomponent",
+    "FIX:counter": "43069",
+    "FIX:tag": "693233",
     "description": "Required if NoUnderlyingReturnRateValuationDateBusinessCenters(43069) > 0.",
-    "display": "UnderlyingReturnRateValuationDateBusinessCenterGrp",
-    "fix:component": "underlyingreturnratevaluationdatebusinesscentercomponent",
-    "fix:counter": "43069",
-    "fix:tag": "693233"
+    "display": "UnderlyingReturnRateValuationDateBusinessCenterGrp"
   }
 }

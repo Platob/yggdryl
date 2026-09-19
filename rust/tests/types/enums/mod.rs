@@ -102,7 +102,7 @@ fn every_python_kind_has_one_canonical_spelling() {
 
     let error = PythonKind::from_str("record").unwrap_err();
     assert!(
-        matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "python:kind"),
+        matches!(&error, Error::InvalidMetadataValue { key, .. } if key == "PYTHON:kind"),
         "{error}"
     );
     let rendered = error.to_string();

@@ -13,11 +13,16 @@ use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
     ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StringEnum,
+    StructureType,
 };
 use yggdryl::{CfiField, CountryField, CurrencyField, MicField};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    Field::new("row", DataType::from_fields(fields).unwrap(), false)
+    Field::new(
+        "row",
+        DataType::from(StructureType::from_fields(fields).unwrap()),
+        false,
+    )
 }
 
 fn text(values: &[&str]) -> ArrayRef {
@@ -316,7 +321,7 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     let field = Field::new("side", DataType::Side, true);
     let row = Field::new(
         "row",
-        DataType::from_fields([field.clone()]).unwrap(),
+        DataType::from(StructureType::from_fields([field.clone()]).unwrap()),
         false,
     );
     let value = row
@@ -328,7 +333,9 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     // and not the datatype's.
     let required = Field::new(
         "row",
-        DataType::from_fields([Field::new("side", DataType::Side, false)]).unwrap(),
+        DataType::from(
+            StructureType::from_fields([Field::new("side", DataType::Side, false)]).unwrap(),
+        ),
         false,
     );
     assert!(
@@ -942,4 +949,29 @@ fn a_code_merges_to_the_better_statement() {
     // A code the other states nothing better than keeps what it had.
     let stated = Currency::new("EUR").unwrap();
     assert_eq!(stated.clone().merge_with(&unstated), stated);
+}
+
+#[test]
+fn the_code_family_stands_for_every_registered_code() {
+    use yggdryl::{Bloomberg, Cfi, Code, Country, Currency, Cusip, Isin, Mic, Sedol};
+    use yggdryl::{Side, State, TimeInForce};
+
+    crate::scalar::assert_family_round_trip(
+        vec![
+            crate::family_leaf!(Code::Country, Country::new("US").unwrap()),
+            crate::family_leaf!(Code::Currency, Currency::new("USD").unwrap()),
+            crate::family_leaf!(Code::Mic, Mic::new("XPAR").unwrap()),
+            crate::family_leaf!(Code::Cfi, Cfi::new("ESVUFR").unwrap()),
+            crate::family_leaf!(Code::Side, Side::new("BUY").unwrap()),
+            crate::family_leaf!(Code::State, State::new("20NEW").unwrap()),
+            crate::family_leaf!(Code::TimeInForce, TimeInForce::new("0").unwrap()),
+            crate::family_leaf!(Code::Isin, Isin::new("US0378331005").unwrap()),
+            crate::family_leaf!(Code::Cusip, Cusip::new("037833100").unwrap()),
+            crate::family_leaf!(Code::Sedol, Sedol::new("B0YBKJ7").unwrap()),
+            crate::family_leaf!(Code::Bloomberg, Bloomberg::new("BBG000B9XRY4").unwrap()),
+        ],
+        DataTypeKind::Code,
+        // The text a code is made of is not the code.
+        &Scalar::from("USD"),
+    );
 }

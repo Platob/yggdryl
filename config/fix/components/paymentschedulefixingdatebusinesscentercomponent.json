@@ -10,15 +10,15 @@
         },
         "nullable": true,
         "metadata": {
-          "fix:field": "paymentschedulefixingdatebusinesscenter",
-          "fix:tag": "40854"
+          "FIX:field": "paymentschedulefixingdatebusinesscenter",
+          "FIX:tag": "40854"
         }
       }
     ]
   },
   "nullable": false,
   "metadata": {
-    "display": "PaymentScheduleFixingDateBusinessCenter",
-    "fix:tag": "730236"
+    "FIX:tag": "730236",
+    "display": "PaymentScheduleFixingDateBusinessCenter"
   }
 }

@@ -276,7 +276,7 @@ impl<H: IOBase> Catalog<H> {
     /// Apply property updates and removals in one transactional write.
     ///
     /// A failure leaves the stored value unchanged, and keys under the
-    /// reserved `iceberg:` prefix are refused by name. Writing the document
+    /// reserved `ICEBERG:` prefix are refused by name. Writing the document
     /// is also what makes an empty warehouse durable.
     ///
     /// # Errors
