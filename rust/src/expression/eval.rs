@@ -32,6 +32,7 @@ use super::bind::{Kind, Node, StepKind};
 use super::path::{FieldSegment, resolve_range, struct_values};
 use super::typing::{decimal_parts, is_binary, is_text, temporal_parts, unwrap_dictionary};
 use super::{Comparison, Function, Literal, Operator, Safety};
+use crate::types::cast::text::is_blank_text;
 use crate::types::{DateTimeType, DateType, DecimalType, DurationType, TimeType};
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone, i256};
 
@@ -867,7 +868,12 @@ fn floating(value: &Scalar) -> Option<f64> {
 /// for [`Safety::Strict`].
 #[allow(clippy::too_many_lines)]
 pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Result<Scalar> {
-    if value.is_null() || matches!(target, DataType::Null) {
+    // The empty-cell rule: `""` entering a target that does not keep it is
+    // absence, decided before `safety` is asked. The one scalar door runs the
+    // rule too, but the decimal, temporal, integer and UUID readings below
+    // read a text spelling themselves before ever reaching it, so it is
+    // asked here first.
+    if value.is_null() || matches!(target, DataType::Null) || is_blank_text(target, value) {
         return Ok(Scalar::Null);
     }
     let target = unwrap_dictionary(target);

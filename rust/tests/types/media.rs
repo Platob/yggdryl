@@ -101,12 +101,15 @@ fn a_value_is_canonicalized_and_refuses_what_is_not_a_type() {
     let once = media("application/json;charset=utf-8");
     assert_eq!(media(&media_text(&once)), once);
 
-    assert!(DataType::MimeType.scalar("").is_err());
+    // An empty text cell entering a non-text column is no value.
+    assert_eq!(DataType::MimeType.scalar("").unwrap(), Scalar::Null);
     assert!(DataType::MimeType.scalar("not a type").is_err());
     // A media type's intake is total by construction - it is also the
     // filename and content-negotiation reader - so text naming no base is the
-    // default base rather than a refusal. The column holds what that answers.
-    assert_eq!(media_text(&media("")), "application/octet-stream",);
+    // default base rather than a refusal. The column holds what that answers;
+    // only the empty text is no value, as it is for every non-text column.
+    assert_eq!(media_text(&media("README")), "application/octet-stream",);
+    assert_eq!(DataType::MediaType.scalar("").unwrap(), Scalar::Null);
     assert_eq!(
         media_text(&media("part.tgz")),
         "application/x-tar;encodings=application/gzip"

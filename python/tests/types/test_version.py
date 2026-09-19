@@ -38,13 +38,25 @@ def test_native_parts_and_canonical_numeric_text(text, parts, canonical):
 
 @pytest.mark.parametrize(
     "text",
-    ["", ".1", " 1", "-1", "+1", "v1", "256", "999", "1.256", "1.999", "FIX.5.0"],
+    [".1", " 1", "-1", "+1", "v1", "256", "999", "1.256", "1.999", "FIX.5.0"],
 )
 def test_only_the_numeric_components_fail_at_the_native_parser(text):
     with pytest.raises(ValueError, match="version"):
         Version.from_str(text)
     with pytest.raises(ValueError, match="version"):
         DataType("version").scalar(text)
+
+
+def test_the_empty_text_is_no_version_but_reads_as_null_at_the_datatype():
+    # A `Version` is a value, so its own parser refuses the empty text; the
+    # datatype door reads an empty text cell entering a non-text column as
+    # absence, and a required field is what refuses that.
+    with pytest.raises(ValueError, match="version"):
+        Version.from_str("")
+    assert DataType("version").scalar("").is_null()
+    assert Field("release", "version").scalar("").is_null()
+    with pytest.raises(ValueError, match="non-nullable field received null"):
+        Field("release", "version", nullable=False).scalar("")
 
 
 @pytest.mark.parametrize(

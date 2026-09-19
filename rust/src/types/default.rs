@@ -78,7 +78,7 @@ impl DataType {
         preflight_schema(self, "DefaultValue")?;
         let mut path = Vec::new();
         let planned = plan_dtype(self, &mut path).map_err(public_planning_error)?;
-        super::value::dtype_scalar(self, materialize(planned.plan)?)
+        super::value::dtype_canonical(self, materialize(planned.plan)?)
     }
 
     /// Tests whether a value is this datatype's canonical default.
@@ -129,7 +129,7 @@ pub(crate) fn default_value_for_field(field: &Field) -> Result<Scalar> {
     let mut path = Vec::new();
     path.push(PathSegment::Field(field.name()));
     let planned = plan_field(field, &mut path).map_err(public_planning_error)?;
-    super::value::dtype_scalar(field.dtype(), materialize(planned.plan)?)
+    super::value::dtype_canonical(field.dtype(), materialize(planned.plan)?)
 }
 
 pub(crate) fn preflight_schema(dtype: &DataType, kind: &'static str) -> Result<()> {

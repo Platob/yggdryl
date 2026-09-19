@@ -1113,3 +1113,478 @@ mod bytes {
         assert!(refused.contains("value change"), "{refused}");
     }
 }
+
+/// An empty text cell entering a column that holds neither text nor bytes is
+/// no value: null through every door, before any spelling is parsed and before
+/// `safe` is asked, so `nullability` alone decides what a required column does
+/// with it. A column that holds text or bytes keeps the cell as the value it is.
+mod empty_text {
+    use std::sync::Arc;
+
+    use arrow_array::types::{Int8Type, Int16Type};
+    use arrow_array::{
+        Array, ArrayRef, BinaryArray, DictionaryArray, Int16Array, Int32Array, LargeStringArray,
+        ListArray, RunArray, StringArray, StringViewArray,
+    };
+
+    use yggdryl::arrow::scalar_value;
+    use yggdryl::types::FieldValue as _;
+    use yggdryl::types::cast::ArrowCastOptions;
+    use yggdryl::{DataType, Field, Nullability, Scalar, TimeUnit, Timezone};
+
+    /// A failed conversion is an error rather than a null.
+    fn conversion_error() -> ArrowCastOptions {
+        ArrowCastOptions::new().with_safe(false)
+    }
+
+    /// A required column refuses a null rather than repairing it.
+    fn strict() -> ArrowCastOptions {
+        ArrowCastOptions::new().with_nullability(Nullability::Strict)
+    }
+
+    const UNITS: [TimeUnit; 4] = [
+        TimeUnit::Second,
+        TimeUnit::Millisecond,
+        TimeUnit::Microsecond,
+        TimeUnit::Nanosecond,
+    ];
+
+    /// Every leaf that holds neither text nor bytes and reads a text column.
+    fn non_text_targets() -> Vec<DataType> {
+        let mut targets = vec![
+            DataType::Int8,
+            DataType::Int16,
+            DataType::Int32,
+            DataType::Int64,
+            DataType::UInt8,
+            DataType::UInt16,
+            DataType::UInt32,
+            DataType::UInt64,
+            DataType::Float16,
+            DataType::Float32,
+            DataType::Float64,
+            DataType::decimal32(9, 2).unwrap(),
+            DataType::decimal64(18, 6).unwrap(),
+            DataType::decimal128(38, 10).unwrap(),
+            DataType::decimal256(76, 20).unwrap(),
+            DataType::Boolean,
+            DataType::date32(),
+            DataType::date64(),
+            DataType::time32(TimeUnit::Second).unwrap(),
+            DataType::time32(TimeUnit::Millisecond).unwrap(),
+            DataType::time64(TimeUnit::Microsecond).unwrap(),
+            DataType::time64(TimeUnit::Nanosecond).unwrap(),
+            DataType::uuid(),
+            DataType::uuidv4(),
+            DataType::uuidv7(),
+            DataType::uuidv8(),
+            DataType::Version,
+            DataType::Url,
+            DataType::Timezone,
+            DataType::MimeType,
+            DataType::MediaType,
+            DataType::geometry(None).unwrap(),
+            DataType::geography(None, None).unwrap(),
+            // An encoding is a layout: the values node answers.
+            DataType::dictionary(DataType::Int8, DataType::Int32).unwrap(),
+        ];
+        targets.extend(codes_by_neutral_member().1);
+        let zones: [Timezone; 4] = [
+            Timezone::NAIVE,
+            Timezone::UTC,
+            "Europe/Paris".parse().unwrap(),
+            "+05:30".parse().unwrap(),
+        ];
+        for unit in UNITS {
+            for zone in zones {
+                targets.push(DataType::datetime64(unit, zone).unwrap());
+            }
+            targets.push(DataType::duration32(unit).unwrap());
+            targets.push(DataType::duration64(unit).unwrap());
+        }
+        targets
+    }
+
+    /// The eleven registered codes.
+    fn codes() -> Vec<DataType> {
+        vec![
+            DataType::Country,
+            DataType::Currency,
+            DataType::Mic,
+            DataType::Cfi,
+            DataType::Isin,
+            DataType::Cusip,
+            DataType::Sedol,
+            DataType::Bloomberg,
+            DataType::Side,
+            DataType::State,
+            DataType::TimeInForce,
+        ]
+    }
+
+    /// The codes holding the empty text as their neutral member - which is
+    /// their canonical default - and the identifiers holding none, whose
+    /// default is refused rather than invented.
+    fn codes_by_neutral_member() -> (Vec<DataType>, Vec<DataType>) {
+        codes()
+            .into_iter()
+            .partition(|code| code.default_value().is_ok())
+    }
+
+    /// The eighteen string leaves.
+    fn string_leaves() -> Vec<DataType> {
+        vec![
+            DataType::utf8(),
+            DataType::large_utf8(),
+            DataType::utf8_view(),
+            DataType::large_utf8_view(),
+            DataType::fixed_utf8(3).unwrap(),
+            DataType::sized_utf8(4).unwrap(),
+            DataType::ascii(),
+            DataType::large_ascii(),
+            DataType::ascii_view(),
+            DataType::large_ascii_view(),
+            DataType::fixed_ascii(3).unwrap(),
+            DataType::sized_ascii(4).unwrap(),
+            DataType::cp1252(),
+            DataType::large_cp1252(),
+            DataType::cp1252_view(),
+            DataType::large_cp1252_view(),
+            DataType::fixed_cp1252(3).unwrap(),
+            DataType::sized_cp1252(4).unwrap(),
+        ]
+    }
+
+    /// The byte leaves that hold a payload of any length.
+    fn byte_leaves() -> Vec<DataType> {
+        vec![
+            DataType::binary(),
+            DataType::large_binary(),
+            DataType::binary_view(),
+            DataType::large_binary_view(),
+            DataType::sized_binary(4).unwrap(),
+        ]
+    }
+
+    /// One `""` cell under each plain text layout, and a dictionary and a
+    /// run-end pair over one.
+    fn empty_sources() -> Vec<ArrayRef> {
+        vec![
+            Arc::new(StringArray::from(vec![""])),
+            Arc::new(LargeStringArray::from(vec![""])),
+            Arc::new(StringViewArray::from(vec![""])),
+            Arc::new(DictionaryArray::<Int8Type>::from_iter([Some("")])),
+            Arc::new(
+                RunArray::<Int16Type>::try_new(
+                    &Int16Array::from(vec![1]),
+                    &StringArray::from(vec![""]),
+                )
+                .unwrap(),
+            ),
+        ]
+    }
+
+    fn cell(field: &Field, array: &ArrayRef) -> Scalar {
+        scalar_value(field, array.as_ref()).unwrap()
+    }
+
+    /// Whether the one row is null as a reader sees it: a dictionary pair
+    /// whose key points at a null value is null through its key.
+    fn is_null(array: &ArrayRef) -> bool {
+        array.logical_nulls().is_some_and(|nulls| nulls.is_null(0))
+    }
+
+    #[test]
+    fn an_empty_cell_is_null_in_a_nullable_column_whatever_safe_says() {
+        for target in non_text_targets() {
+            let field = Field::new("x", target, true);
+            for source in empty_sources() {
+                for options in [ArrowCastOptions::new(), conversion_error()] {
+                    let cast = field
+                        .cast_arrow_array(Arc::clone(&source), options)
+                        .unwrap_or_else(|error| {
+                            panic!("{:?} -> {}: {error}", source.data_type(), field.dtype())
+                        });
+                    assert_eq!(cast.len(), 1, "{}", field.dtype());
+                    assert!(
+                        is_null(&cast),
+                        "{:?} -> {} kept the empty cell",
+                        source.data_type(),
+                        field.dtype()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_required_column_repairs_or_refuses_an_empty_cell_by_its_nullability() {
+        for target in non_text_targets() {
+            let field = Field::new("x", target, false);
+            for source in empty_sources() {
+                let repaired = field.cast_arrow_array(Arc::clone(&source), ArrowCastOptions::new());
+                match field.default_value() {
+                    Ok(default) => {
+                        let repaired = repaired.unwrap_or_else(|error| {
+                            panic!("{:?} -> {}: {error}", source.data_type(), field.dtype())
+                        });
+                        assert_eq!(cell(&field, &repaired), default, "{}", field.dtype());
+                    }
+                    // A code with no neutral member has nothing to repair
+                    // with, so the null the empty cell became is refused.
+                    Err(_) => assert!(repaired.is_err(), "{}", field.dtype()),
+                }
+
+                let refused = field
+                    .cast_arrow_array(Arc::clone(&source), strict())
+                    .err()
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "{:?} -> {} took the empty cell",
+                            source.data_type(),
+                            field.dtype()
+                        )
+                    })
+                    .to_string();
+                assert_eq!(
+                    refused,
+                    "required Arrow field $.x holds 1 null values",
+                    "{:?} -> {}",
+                    source.data_type(),
+                    field.dtype()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_spelling_no_reader_takes_keeps_its_own_answer_beside_an_empty_cell() {
+        let field = Field::new("x", DataType::Int32, true);
+        let mixed: ArrayRef = Arc::new(StringArray::from(vec!["7", "", "not a number"]));
+
+        let lenient = field
+            .cast_arrow_array(Arc::clone(&mixed), ArrowCastOptions::new())
+            .unwrap();
+        let lenient = lenient.as_any().downcast_ref::<Int32Array>().unwrap();
+        assert_eq!(lenient.value(0), 7);
+        assert!(lenient.is_null(1));
+        assert!(lenient.is_null(2));
+
+        // The refusal is the misspelt cell's, and the empty one is never named.
+        let refused = field
+            .cast_arrow_array(mixed, conversion_error())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("not a number"), "{refused}");
+        assert!(!refused.contains("''"), "{refused}");
+
+        // Through one of the crate's own readers, whose wording names the
+        // row: the misspelt cell is row 2, and row 1 - the empty one - is
+        // never named.
+        let dates = Field::new("x", DataType::date32(), true);
+        let mixed: ArrayRef = Arc::new(StringArray::from(vec!["2024-01-01", "", "not a date"]));
+        let refused = dates
+            .cast_arrow_array(mixed, conversion_error())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("row 2"), "{refused}");
+        assert!(!refused.contains("row 1"), "{refused}");
+
+        // Whitespace is not empty: it is a spelling no reader takes.
+        let blank: ArrayRef = Arc::new(StringArray::from(vec![" "]));
+        let lenient = field
+            .cast_arrow_array(Arc::clone(&blank), ArrowCastOptions::new())
+            .unwrap();
+        assert!(lenient.is_null(0));
+        assert!(field.cast_arrow_array(blank, conversion_error()).is_err());
+    }
+
+    #[test]
+    fn a_text_or_byte_column_keeps_an_empty_cell_as_the_value_it_is() {
+        let empty: ArrayRef = Arc::new(StringArray::from(vec![""]));
+        for leaf in string_leaves().into_iter().chain(byte_leaves()) {
+            let field = Field::new("x", leaf, true);
+            let cast = field
+                .cast_arrow_array(Arc::clone(&empty), conversion_error())
+                .unwrap_or_else(|error| panic!("{}: {error}", field.dtype()));
+            assert!(!cast.is_null(0), "{}", field.dtype());
+            assert_eq!(
+                cell(&field, &cast),
+                field.scalar("").unwrap(),
+                "{}",
+                field.dtype()
+            );
+        }
+
+        // A fixed width is a rule about the payload, and an empty one is the
+        // wrong width.
+        assert!(
+            Field::new("x", DataType::fixed_binary(4).unwrap(), true)
+                .cast_arrow_array(empty, conversion_error())
+                .is_err()
+        );
+
+        // The rule reads one direction: an empty payload renders as `""`.
+        let payload: ArrayRef = Arc::new(BinaryArray::from_vec(vec![b""]));
+        let field = Field::new("x", DataType::utf8(), true);
+        let text = field.cast_arrow_array(payload, conversion_error()).unwrap();
+        assert!(!text.is_null(0));
+        assert_eq!(cell(&field, &text), Scalar::from(""));
+    }
+
+    #[test]
+    fn the_scalar_door_reads_an_empty_text_as_null_before_any_parser() {
+        let empty = Scalar::from("");
+        for target in [
+            DataType::Int32,
+            DataType::Float16,
+            DataType::Float64,
+            DataType::decimal128(10, 2).unwrap(),
+            DataType::Boolean,
+            DataType::date32(),
+            DataType::date64(),
+            DataType::time64(TimeUnit::Microsecond).unwrap(),
+            DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap(),
+            DataType::duration64(TimeUnit::Millisecond).unwrap(),
+            DataType::uuid(),
+            DataType::Cusip,
+            DataType::Version,
+            DataType::Url,
+            DataType::Timezone,
+            DataType::MimeType,
+            DataType::MediaType,
+            DataType::geometry(None).unwrap(),
+        ] {
+            assert_eq!(target.scalar("").unwrap(), Scalar::Null, "{target}");
+            assert_eq!(
+                target.cast_scalar(&empty).unwrap(),
+                Scalar::Null,
+                "{target}"
+            );
+            assert_eq!(target.try_cast_scalar(&empty), Scalar::Null, "{target}");
+
+            let refused = Field::new("x", target.clone(), false)
+                .scalar("")
+                .unwrap_err()
+                .to_string();
+            assert!(refused.contains("$.x"), "{target}: {refused}");
+            assert!(refused.contains("null"), "{target}: {refused}");
+        }
+
+        assert_eq!(DataType::utf8().scalar("").unwrap(), Scalar::from(""));
+        assert_eq!(
+            DataType::binary().scalar("").unwrap().as_bytes(),
+            Some(&[][..])
+        );
+    }
+
+    /// A code with a neutral member holds the empty text as that member - it
+    /// is the code's own canonical default - so a cast keeps it through every
+    /// door and reads its own repair back; an identifier holds none, so the
+    /// empty text is absence, as it is for a UUID.
+    #[test]
+    fn a_code_with_a_neutral_member_keeps_an_empty_cell_as_that_member() {
+        let (neutral, identifiers) = codes_by_neutral_member();
+        assert!(!neutral.is_empty());
+        assert!(!identifiers.is_empty());
+        for code in neutral {
+            let member = code.default_value().unwrap();
+            assert_eq!(code.scalar("").unwrap(), member, "{code}");
+            assert_eq!(
+                code.cast_scalar(&Scalar::from("")).unwrap(),
+                member,
+                "{code}"
+            );
+            for nullable in [true, false] {
+                let field = Field::new("x", code.clone(), nullable);
+                for source in empty_sources() {
+                    for options in [ArrowCastOptions::new(), conversion_error(), strict()] {
+                        let cast = field
+                            .cast_arrow_array(Arc::clone(&source), options)
+                            .unwrap_or_else(|error| {
+                                panic!("{:?} -> {}: {error}", source.data_type(), field.dtype())
+                            });
+                        assert!(!cast.is_null(0), "{:?} -> {code}", source.data_type());
+                        assert_eq!(cell(&field, &cast), member, "{code}");
+                    }
+                }
+            }
+
+            // Idempotence: what a required column holds after its own
+            // repair, and its own default array, read back under Strict.
+            let required = Field::new("x", code.clone(), false);
+            for column in [
+                required
+                    .cast_arrow_array(
+                        Arc::new(StringArray::from(vec![""])),
+                        ArrowCastOptions::new(),
+                    )
+                    .unwrap(),
+                required.default_arrow_array().unwrap(),
+            ] {
+                let again = required
+                    .cast_arrow_array(column, strict())
+                    .unwrap_or_else(|error| panic!("{code}: {error}"));
+                assert_eq!(cell(&required, &again), member, "{code}");
+            }
+        }
+        for code in identifiers {
+            assert_eq!(code.scalar("").unwrap(), Scalar::Null, "{code}");
+        }
+    }
+
+    /// An interval has no text spelling, so an empty one is a spelling it
+    /// refuses rather than absence: today's answer, through both doors.
+    #[test]
+    fn an_interval_refuses_an_empty_cell_as_the_spelling_it_is_not() {
+        let interval = DataType::interval(TimeUnit::DayTime).unwrap();
+        assert!(interval.scalar("").is_err());
+        assert!(interval.cast_scalar(&Scalar::from("")).is_err());
+        assert_eq!(interval.try_cast_scalar(&Scalar::from("")), Scalar::Null);
+
+        let field = Field::new("x", interval, true);
+        let empty: ArrayRef = Arc::new(StringArray::from(vec![""]));
+        let lenient = field
+            .cast_arrow_array(Arc::clone(&empty), ArrowCastOptions::new())
+            .unwrap();
+        assert!(lenient.is_null(0));
+        assert!(field.cast_arrow_array(empty, conversion_error()).is_err());
+    }
+
+    /// A list target reads a scalar source into its item, so the item is
+    /// what answers: a text item keeps the empty cell, a numeric one does not.
+    #[test]
+    fn a_list_target_answers_for_its_item() {
+        let empty: ArrayRef = Arc::new(StringArray::from(vec![""]));
+
+        let texts = Field::new(
+            "x",
+            DataType::list(DataType::utf8().nullable_field("item")),
+            true,
+        );
+        let cast = texts
+            .cast_arrow_array(Arc::clone(&empty), conversion_error())
+            .unwrap();
+        let list = cast.as_any().downcast_ref::<ListArray>().unwrap();
+        assert_eq!(list.value_length(0), 1);
+        assert!(!list.values().is_null(0));
+        assert_eq!(
+            list.values()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            ""
+        );
+
+        let counts = Field::new(
+            "x",
+            DataType::list(DataType::Int32.nullable_field("item")),
+            true,
+        );
+        let cast = counts.cast_arrow_array(empty, conversion_error()).unwrap();
+        let list = cast.as_any().downcast_ref::<ListArray>().unwrap();
+        assert_eq!(list.value_length(0), 1);
+        assert!(list.values().is_null(0));
+    }
+}

@@ -52,11 +52,13 @@ use crate::path::{Path, Segment};
 use crate::types::budget::MaterializationBudget;
 use crate::types::bytes::casts::{bridges_through_binary, ingest_bytes_array};
 use crate::types::cast::columns::{
-    cast_dictionary_planned, cast_run_planned, cast_union_planned, contains_struct, default_array,
+    cast_dictionary_planned, cast_run_planned, cast_union_planned, contains_struct,
     exposed_logical_null_count, fill_nulls, folded_field_mapping, is_logically_null,
     is_reconcilable_nested, list_child, union_mode_matches,
 };
-use crate::types::cast::text::{holds_text, ingest_text_values};
+use crate::types::cast::text::{
+    blank_text_as_null, holds_text, ingest_text_values, keeps_empty_text,
+};
 use crate::types::decimal::casts::holds_decimal;
 use crate::types::enums::EnumType;
 use crate::types::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
@@ -792,16 +794,26 @@ pub(crate) mod text {
     use crate::types::enums::EnumType;
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, BooleanArray, StringArray};
-    use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder};
+    use arrow_array::types::{
+        ArrowDictionaryKeyType, Int8Type, Int16Type, Int32Type, Int64Type, RunEndIndexType,
+        UInt8Type, UInt16Type, UInt32Type, UInt64Type,
+    };
+    use arrow_array::{
+        Array, ArrayRef, BooleanArray, DictionaryArray, LargeStringArray, PrimitiveArray, RunArray,
+        StringArray, StringViewArray,
+    };
+    use arrow_buffer::{ArrowNativeType, BooleanBuffer, BooleanBufferBuilder};
     use arrow_cast::can_cast_types;
     use arrow_schema::DataType as ArrowDataType;
+    use arrow_select::nullif::nullif;
     use arrow_select::zip::zip;
 
     use crate::arrow::{Error, Result};
     use crate::types::budget::{MaterializationBudget, reserve_vec_bytes};
-    use crate::types::cast::columns::is_exposed;
+    use crate::types::cast::columns::{is_exposed, run_value_exposure};
     use crate::types::cast::{arrow_cast_exposed, downcast};
+    use crate::types::sequence::SequenceType;
+    use crate::types::value::dtype_canonical;
     use crate::{DataType, Field, Scalar};
 
     /// One text cell read into the value a datatype declares.
@@ -832,6 +844,213 @@ pub(crate) mod text {
             ArrowDataType::Dictionary(_, values) => holds_text(values),
             ArrowDataType::RunEndEncoded(_, values) => holds_text(values.data_type()),
             _ => false,
+        }
+    }
+
+    /// Whether a target keeps a zero-length text as what it is, rather than
+    /// reading it as absence.
+    ///
+    /// The one owner of the list the empty-cell rule turns on: `""` entering a
+    /// datatype this answers `false` for is absence, never a spelling to parse.
+    /// A string leaf and a byte leaf hold it as the value it is, past the
+    /// layout that encodes them; a list target reads a scalar source into its
+    /// item, so the item answers; an interval has no text spelling, so an
+    /// empty one is a spelling it refuses, never absence; and a code with a
+    /// neutral member - the empty text its own reader accepts, which is also
+    /// its canonical default - holds it as that member.
+    pub(crate) fn keeps_empty_text(target: &DataType) -> bool {
+        match encoded_value_of(target) {
+            DataType::String(_) | DataType::Bytes(_) | DataType::Interval(_) => true,
+            DataType::Sequence(
+                SequenceType::List(item)
+                | SequenceType::LargeList(item)
+                | SequenceType::ListView(item)
+                | SequenceType::LargeListView(item)
+                | SequenceType::FixedSizeList(item, _),
+            ) => keeps_empty_text(item.dtype()),
+            code if code.is_code() => dtype_canonical(code, Scalar::from("")).is_ok(),
+            _ => false,
+        }
+    }
+
+    /// Whether a row value is an empty text cell entering a datatype that reads
+    /// it as absence: the empty-cell rule at the scalar door.
+    pub(crate) fn is_blank_text(target: &DataType, value: &Scalar) -> bool {
+        matches!(value, Scalar::String(text) if text.as_str().is_empty())
+            && !keeps_empty_text(target)
+    }
+
+    /// The value a scalar door reads before it parses any spelling: an empty
+    /// text cell entering a datatype that holds neither text nor bytes *is*
+    /// [`Scalar::Null`], and the rest of the door - the bare-null rule, a
+    /// field's nullability - answers as it does for one.
+    pub(crate) fn blank_text_read(target: &DataType, value: Scalar) -> Scalar {
+        if is_blank_text(target, &value) {
+            Scalar::Null
+        } else {
+            value
+        }
+    }
+
+    /// The same text column with every exposed empty cell turned null: the
+    /// empty-cell rule at the Arrow door.
+    ///
+    /// The array holds text under one of the three plain layouts, a dictionary
+    /// or a run-end pair over one. A plain column and a run-end pair's values
+    /// get a validity buffer, a dictionary gets it on its keys - the row is
+    /// what the rule nulls, and a vocabulary is shared by rows that are not
+    /// all empty. The offsets and the payload are shared and never re-read:
+    /// the validity is the one buffer built, and only when a cell needs it. A
+    /// cell that is not exposed is not read. A run is one value for every row
+    /// it covers, so a run holding the empty text is nulled as a whole once
+    /// any of its rows is exposed, as the crate already exposes run values.
+    pub(crate) fn blank_text_as_null(
+        array: &ArrayRef,
+        exposure: Option<&BooleanBuffer>,
+        budget: &mut MaterializationBudget,
+    ) -> Result<ArrayRef> {
+        match array.data_type() {
+            ArrowDataType::Dictionary(key, _) => match key.as_ref() {
+                ArrowDataType::Int8 => blank_dictionary::<Int8Type>(array, exposure, budget),
+                ArrowDataType::Int16 => blank_dictionary::<Int16Type>(array, exposure, budget),
+                ArrowDataType::Int32 => blank_dictionary::<Int32Type>(array, exposure, budget),
+                ArrowDataType::Int64 => blank_dictionary::<Int64Type>(array, exposure, budget),
+                ArrowDataType::UInt8 => blank_dictionary::<UInt8Type>(array, exposure, budget),
+                ArrowDataType::UInt16 => blank_dictionary::<UInt16Type>(array, exposure, budget),
+                ArrowDataType::UInt32 => blank_dictionary::<UInt32Type>(array, exposure, budget),
+                ArrowDataType::UInt64 => blank_dictionary::<UInt64Type>(array, exposure, budget),
+                other => Err(Error::IncompatibleSchema(format!(
+                    "dictionary key type is not a supported integer: {other:?}"
+                ))),
+            },
+            ArrowDataType::RunEndEncoded(run_ends, _) => match run_ends.data_type() {
+                ArrowDataType::Int16 => blank_runs::<Int16Type>(array, exposure, budget),
+                ArrowDataType::Int32 => blank_runs::<Int32Type>(array, exposure, budget),
+                ArrowDataType::Int64 => blank_runs::<Int64Type>(array, exposure, budget),
+                _ => Err(Error::IncompatibleSchema(
+                    "run-end type is not a supported signed integer".to_owned(),
+                )),
+            },
+            _ => {
+                let cells = TextCells::of(array.as_ref())?;
+                blank_rows(
+                    array,
+                    cells.len(),
+                    |row| is_exposed(exposure, row) && cells.is_blank(row),
+                    budget,
+                )
+            }
+        }
+    }
+
+    /// Nulls the keys of a dictionary whose exposed rows point at an empty
+    /// value: the pair's validity is its keys', so the vocabulary is untouched.
+    fn blank_dictionary<K: ArrowDictionaryKeyType>(
+        array: &ArrayRef,
+        exposure: Option<&BooleanBuffer>,
+        budget: &mut MaterializationBudget,
+    ) -> Result<ArrayRef> {
+        let source = downcast::<DictionaryArray<K>>(array.as_ref())?;
+        let cells = TextCells::of(source.values().as_ref())?;
+        let keys = source.keys();
+        let blank = |row: usize| {
+            is_exposed(exposure, row)
+                && keys.is_valid(row)
+                && cells.is_blank(keys.value(row).as_usize())
+        };
+        blank_rows(array, keys.len(), blank, budget)
+    }
+
+    /// Nulls the values of a run-end pair whose runs reach an exposed row and
+    /// hold the empty text; the run ends stay as they are, and so does the
+    /// window a slice of the pair looks through.
+    fn blank_runs<R: RunEndIndexType>(
+        array: &ArrayRef,
+        exposure: Option<&BooleanBuffer>,
+        budget: &mut MaterializationBudget,
+    ) -> Result<ArrayRef> {
+        let source = downcast::<RunArray<R>>(array.as_ref())?;
+        let run_exposure = run_value_exposure(source, exposure, budget)?;
+        let values = blank_text_as_null(source.values(), run_exposure.as_ref(), budget)?;
+        if Arc::ptr_eq(&values, source.values()) {
+            return Ok(Arc::clone(array));
+        }
+        let run_ends = source.run_ends();
+        let whole = RunArray::<R>::try_new(
+            &PrimitiveArray::<R>::new(run_ends.inner().clone(), None),
+            values.as_ref(),
+        )?;
+        Ok(Arc::new(whole.slice(run_ends.offset(), run_ends.len())))
+    }
+
+    /// The array with the rows a predicate names turned null, or the same
+    /// array when it names none.
+    ///
+    /// The common column has no blank cell and costs nothing: the scan stops
+    /// at the first blank, and only then is the mask built and folded into
+    /// the validity by [`nullif`], which rewrites the one buffer and never
+    /// re-reads the payload under it. Both bitmaps are charged.
+    fn blank_rows(
+        array: &ArrayRef,
+        rows: usize,
+        blank: impl Fn(usize) -> bool,
+        budget: &mut MaterializationBudget,
+    ) -> Result<ArrayRef> {
+        if !(0..rows).any(&blank) {
+            return Ok(Arc::clone(array));
+        }
+        budget.add_bitmap(rows)?;
+        budget.add_bitmap(rows)?;
+        let mask = BooleanArray::new(BooleanBuffer::collect_bool(rows, blank), None);
+        Ok(nullif(array.as_ref(), &mask)?)
+    }
+
+    /// One text column under whichever of the three plain layouts it uses.
+    enum TextCells<'a> {
+        Utf8(&'a StringArray),
+        LargeUtf8(&'a LargeStringArray),
+        Utf8View(&'a StringViewArray),
+    }
+
+    impl<'a> TextCells<'a> {
+        fn of(array: &'a dyn Array) -> Result<Self> {
+            Ok(match array.data_type() {
+                ArrowDataType::Utf8 => Self::Utf8(downcast(array)?),
+                ArrowDataType::LargeUtf8 => Self::LargeUtf8(downcast(array)?),
+                ArrowDataType::Utf8View => Self::Utf8View(downcast(array)?),
+                other => {
+                    return Err(Error::IncompatibleSchema(format!(
+                        "expected a text column to blank, got {other:?}"
+                    )));
+                }
+            })
+        }
+
+        fn len(&self) -> usize {
+            match self {
+                Self::Utf8(cells) => cells.len(),
+                Self::LargeUtf8(cells) => cells.len(),
+                Self::Utf8View(cells) => cells.len(),
+            }
+        }
+
+        fn is_valid(&self, index: usize) -> bool {
+            match self {
+                Self::Utf8(cells) => cells.is_valid(index),
+                Self::LargeUtf8(cells) => cells.is_valid(index),
+                Self::Utf8View(cells) => cells.is_valid(index),
+            }
+        }
+
+        /// Whether the cell is a present, zero-length text.
+        fn is_blank(&self, index: usize) -> bool {
+            index < self.len()
+                && self.is_valid(index)
+                && match self {
+                    Self::Utf8(cells) => cells.value(index).is_empty(),
+                    Self::LargeUtf8(cells) => cells.value(index).is_empty(),
+                    Self::Utf8View(cells) => cells.value(index).is_empty(),
+                }
         }
     }
 
@@ -1288,6 +1507,16 @@ pub(crate) struct ArrayCastPlan {
     path: SmolStr,
     null_policy: NullPolicy,
     kind: ArrayCastKind,
+    /// Whether this node turns an exposed empty text cell null before reading
+    /// it, decided once at compile time.
+    ///
+    /// The empty-cell rule: `""` entering a column that does not keep it is
+    /// absence, decided before any spelling is parsed and before `safe` is
+    /// asked, so `nullability` alone says what a required column does with
+    /// it. The node that reads the values runs it once: a layout node - an
+    /// encoding target, a decoded source, a dictionary pair, a run-end pair -
+    /// hands the values to a node of its own.
+    blanks_text: bool,
 }
 
 impl ArrayCastPlan {
@@ -1576,6 +1805,19 @@ impl ArrayCastPlan {
                 path,
             )?
         };
+        // An exact source is a column already written as this datatype, so
+        // it holds no cell the datatype refuses and is shared unread, as a
+        // same-type cast costs nothing.
+        let blanks_text = holds_text(source_type)
+            && !matches!(
+                kind,
+                ArrayCastKind::Exact
+                    | ArrayCastKind::Encoded { .. }
+                    | ArrayCastKind::Decoded { .. }
+                    | ArrayCastKind::Dictionary { .. }
+                    | ArrayCastKind::RunEndEncoded { .. }
+            )
+            && !keeps_empty_text(field.dtype());
         Ok(Self {
             field: field.clone(),
             source_type: source_type.clone(),
@@ -1584,6 +1826,7 @@ impl ArrayCastPlan {
             path: SmolStr::from(path.render()),
             null_policy,
             kind,
+            blanks_text,
         })
     }
 
@@ -1622,16 +1865,18 @@ impl ArrayCastPlan {
                 | ArrowDataType::LargeBinary
                 | ArrowDataType::BinaryView
                 | ArrowDataType::FixedSizeBinary(_) => ArrayCastKind::GeospatialIngest,
-                ArrowDataType::Utf8 | ArrowDataType::LargeUtf8 | ArrowDataType::Utf8View => {
-                    return Err(Error::Unsupported {
-                        kind: dtype.name(),
-                        reason: format!(
-                            "casting text to {} would need the WKT parser this workspace \
+                // Deferred rather than refused at compile time: a text
+                // column, however it is laid out, holding no visible value -
+                // every cell empty, and so absent under the empty-cell rule -
+                // is the null policy's to answer, and the refusal waits for
+                // the first exposed value.
+                source if holds_text(source) => ArrayCastKind::DeferredUnsupported {
+                    reason: format!(
+                        "casting text to {} would need the WKT parser this workspace \
                              deliberately does not have yet",
-                            dtype.name()
-                        ),
-                    });
-                }
+                        dtype.name()
+                    ),
+                },
                 other => {
                     return Err(Error::Unsupported {
                         kind: dtype.name(),
@@ -2147,6 +2392,11 @@ impl ArrayCastPlan {
                 "nested Arrow exposure mask length differs from its child array".to_owned(),
             ));
         }
+        let array = if self.blanks_text {
+            blank_text_as_null(&array, exposure, budget)?
+        } else {
+            array
+        };
         let mut cast = match &self.kind {
             ArrayCastKind::Exact => array,
             ArrayCastKind::BitCast => reinterpret(&array, &self.expected)?,
@@ -2351,7 +2601,10 @@ impl ArrayCastPlan {
                         reason: reason.clone(),
                     });
                 }
-                default_array(&self.field, array.len(), exposure, budget)?
+                // Absence only: a null column, so the one null policy below
+                // repairs or refuses it as it does under every other node.
+                budget.add_null_array(self.field.dtype(), array.len())?;
+                arrow_array::new_null_array(&self.expected, array.len())
             }
             ArrayCastKind::Struct { fields, columns } => {
                 self.cast_struct_array(array, fields, columns, exposure, budget)?

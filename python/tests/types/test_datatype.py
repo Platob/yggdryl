@@ -418,13 +418,24 @@ def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
     )
     assert field.arrow_scalar("/lake/part.txt") == pa.scalar("file:///lake/part.txt")
 
-    # Nothing relative is a location, and the empty string names nothing at
-    # all, so none of them read as one.
-    for relative in ("./rel", "example.com/x", ""):
+    # Nothing relative is a location, so none of them read as one.
+    for relative in ("./rel", "example.com/x"):
         with pytest.raises(ValueError, match="does not read as url"):
             field.cast_arrow_array(pa.array([relative]))
         with pytest.raises(ValueError, match="expected url"):
             field.arrow_scalar(relative)
+
+    # The empty text names nothing at all, so it is not a spelling to refuse
+    # but an absence: null before the reader runs, which this required column
+    # repairs with its default, or refuses by path when strict.
+    assert field.cast_arrow_array(pa.array([""])).to_pylist() == ["file:///"]
+    with pytest.raises(
+        ValueError, match=r"required Arrow field \$\.url holds 1 null values"
+    ):
+        field.cast_arrow_array(pa.array([""]), nullability="strict")
+    with pytest.raises(ValueError, match="null"):
+        field.arrow_scalar("")
+    assert dtype.scalar("").is_null()
 
     # Storage is Utf8 under the `yggdryl.url` extension name, so a projection
     # round-trips through Arrow without losing which datatype it is.

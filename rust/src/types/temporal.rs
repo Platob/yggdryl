@@ -1063,6 +1063,22 @@ fn elapsed(seconds: i64, fraction: i64, unit: TimeUnit) -> Result<i64> {
 mod iso_tests {
     use super::*;
 
+    /// The empty text is no spelling: the empty-cell rule sits above this
+    /// reader, on the doors, and the reader itself keeps refusing it.
+    #[test]
+    fn the_empty_text_is_no_temporal_spelling() {
+        use crate::{DataType, Scalar, TimeUnit, Timezone};
+
+        for dtype in [
+            DataType::date32(),
+            DataType::time64(TimeUnit::Microsecond).unwrap(),
+            DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap(),
+            DataType::duration64(TimeUnit::Millisecond).unwrap(),
+        ] {
+            assert!(Scalar::from_temporal_text(&dtype, "").is_err(), "{dtype}");
+        }
+    }
+
     #[test]
     fn dates_round_trip_and_reject_days_that_do_not_exist() {
         assert_eq!(format_date(0).as_deref(), Some("1970-01-01"));

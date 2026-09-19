@@ -457,14 +457,26 @@ test('the url factory builds a validated, canonical location column', () => {
   )
 
   // Relative text names no location, so it is refused rather than stored as
-  // itself - and the empty string is refused with the rest of it.
-  for (const relative of ['./rel', 'example.com/x', '']) {
+  // itself.
+  for (const relative of ['./rel', 'example.com/x']) {
     assert.throws(
       () => declared.castArrowArray(arrow.vectorFromArray([relative], new arrow.Utf8())),
       /does not read as url/,
       relative,
     )
   }
+  // The empty text names nothing at all, so it is not a spelling to refuse
+  // but an absence: null before the reader runs, which the required column
+  // repairs with its default, or refuses by path when strict; the nullable
+  // column keeps the null.
+  const empty = () => arrow.vectorFromArray([''], new arrow.Utf8())
+  assert.deepEqual(Array.from(declared.castArrowArray(empty())), ['file:///'])
+  assert.throws(
+    () => declared.castArrowArray(empty(), { nullability: 'strict' }),
+    /required Arrow field \$\.location holds 1 null values/,
+  )
+  assert.deepEqual(Array.from(location.castArrowArray(empty())), [null])
+  assert.equal(location.scalar('').kind, 'null')
 
   // Absence is still absence: a nullable location column holds nulls, which
   // is what an unlocated handle writes instead of an empty string.
@@ -691,4 +703,41 @@ test('difference output retains physical layout checks without metadata', () => 
   assert.ok(lines.some((line) => line.includes('$.nullable')))
   assert.ok(lines.some((line) => line.includes('$.dtype')))
   assert.equal(left.showDiff(right, false), lines.join('\n'))
+})
+
+test('an empty text cell is null before safe is asked', () => {
+  const empty = () => arrow.vectorFromArray([''], new arrow.Utf8())
+
+  // A zero-length text cell entering a column that does not hold text is no
+  // value: it is null before any spelling is read, so `safe` never sees it
+  // and both policies answer the same null.
+  const nullable = fields.int32('quantity')
+  assert.deepEqual([...nullable.castArrowArray(empty(), { safe: false })], [null])
+  assert.deepEqual([...nullable.castArrowArray(empty(), { safe: true })], [null])
+
+  // A required column then answers its nullability, exactly as it does for a
+  // null the source carried: the default repairs it, strictness refuses it
+  // naming the path and the count.
+  const required = fields.int32('quantity', { nullable: false })
+  assert.deepEqual([...required.castArrowArray(empty())], [0])
+  assert.throws(
+    () => required.castArrowArray(empty(), { nullability: 'strict' }),
+    /required Arrow field \$\.quantity holds 1 null values/,
+  )
+
+  // Text is text: into a string column the empty cell is the value it is.
+  assert.deepEqual([...fields.utf8('symbol').castArrowArray(empty())], [''])
+  assert.deepEqual(
+    [
+      ...fields
+        .utf8('symbol', { nullable: false })
+        .castArrowArray(empty(), { nullability: 'strict' }),
+    ],
+    [''],
+  )
+
+  // The scalar door reads the same rule.
+  assert.equal(new DataType('int32').scalar('').kind, 'null')
+  assert.equal(new DataType('utf8').scalar('').asJs(), '')
+  assert.throws(() => required.scalar(''), /non-nullable field received null/)
 })

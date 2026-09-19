@@ -13,6 +13,7 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
 | `nullability` | Whether a *declared* value may be absent. `default`: canonical default (`Field::default_value`); `strict`: error naming the path |
 | `representation` | What a *same-width* pair carries. `value`: the number it spells, range-checked; `bits`: the bytes under it, buffer shared |
 | Independent | The three answer different questions and compose: a `safe` conversion failure becomes a null, and `nullability` then decides whether that null may stand |
+| Empty text | A zero-length text cell entering a non-text column is null before `safe` is asked; `nullability` decides the rest. A string, byte or interval column, and a code whose neutral member is the empty text, keep it as the value it is |
 | Validates | `validate_value`: right arity, no null in a required column, every scalar in its declared range |
 | One reading | A row and a column read the same spellings: text into a number, a boolean, a decimal or a temporal; any value with a spelling into text; any byte-carrying value into a byte layout |
 | Layouts | Every list layout reads every other one, every byte framing reads every other one, and an encoding is a layout: a dictionary or run-end target runs its values' rule, and an encoded source is read as the column it holds |
@@ -446,6 +447,103 @@ strictness is about declared values that are absent, not about columns nobody de
     )
     ```
 
+## Empty text
+
+An empty text cell entering a column that does not hold text is no value. It reads as null
+through every door - the Arrow walk and the scalar door alike - before any spelling is parsed
+and before `safe` is consulted: an empty cell is not a failed conversion, because there was
+nothing to convert. `nullability` then decides what a required column does with that null,
+exactly as it does for a null the source carried. Only zero-length text is empty; whitespace is
+a spelling no reader takes and keeps the reader's own answer. A string leaf, a byte leaf and an
+interval keep the empty cell as what it is, and so does a code whose neutral member is the
+empty text, which is also that code's canonical default. A reader that takes only a plain text
+layout - version, url, timezone, mimetype, mediatype under a dictionary source - answers a
+column with no visible value as a null column, so a required target under `strict` is refused
+by path there too.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Array, ArrayRef, Int64Array, StringArray};
+    use yggdryl::types::FieldValue as _;
+    use yggdryl::{ArrowCastOptions, DataType, Nullability, Scalar};
+
+    let empty: ArrayRef = Arc::new(StringArray::from(vec![""]));
+    let unsafe_cast = ArrowCastOptions::new().with_safe(false);
+
+    // Nullable: null, and `safe = false` never sees the cell.
+    let nullable = DataType::Int64.nullable_field("count");
+    assert!(nullable.cast_arrow_array(Arc::clone(&empty), unsafe_cast)?.is_null(0));
+
+    // Required: the default under `default`, refused by path under `strict`.
+    let required = DataType::Int64.required_field("count");
+    let repaired = required.cast_arrow_array(Arc::clone(&empty), ArrowCastOptions::new())?;
+    assert_eq!(repaired.as_any().downcast_ref::<Int64Array>().unwrap().value(0), 0);
+    let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
+    let message = required.cast_arrow_array(empty, strict).unwrap_err().to_string();
+    assert_eq!(message, "required Arrow field $.count holds 1 null values");
+
+    // The scalar door answers the same, and a text column keeps the cell.
+    assert_eq!(DataType::Int64.scalar("")?, Scalar::Null);
+    assert_eq!(DataType::utf8().scalar("")?, Scalar::from(""));
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import DataType, Field
+
+    empty = pa.array([""])
+
+    # Nullable: null, and safe=False never sees the cell.
+    nullable = Field("count", "int64")
+    assert nullable.cast_arrow_array(empty, safe=False).null_count == 1
+
+    # Required: the default under default, refused by path under strict.
+    required = Field("count", "int64", nullable=False)
+    assert required.cast_arrow_array(empty).equals(pa.array([0], type=pa.int64()))
+    try:
+        required.cast_arrow_array(empty, nullability="strict")
+    except ValueError as error:
+        assert str(error) == "required Arrow field $.count holds 1 null values"
+    else:
+        raise AssertionError("a strict cast must refuse the empty cell")
+
+    # The scalar door answers the same, and a text column keeps the cell.
+    assert DataType("int64").scalar("").as_py() is None
+    assert DataType("utf8").scalar("").as_py() == ""
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { DataType, fields } = require('yggdryl')
+
+    const empty = () => arrow.vectorFromArray([''], new arrow.Utf8())
+
+    // Nullable: null, and safe: false never sees the cell.
+    const nullable = fields.int64('count')
+    assert.equal(nullable.castArrowArray(empty(), { safe: false }).get(0), null)
+
+    // Required: the default under default, refused by path under strict.
+    const required = fields.int64('count', { nullable: false })
+    assert.deepEqual(Array.from(required.castArrowArray(empty())), [0n])
+    assert.throws(
+      () => required.castArrowArray(empty(), { nullability: 'strict' }),
+      /required Arrow field \$\.count holds 1 null values/,
+    )
+
+    // The scalar door answers the same, and a text column keeps the cell.
+    assert.equal(DataType.from('int64').scalar('').kind, 'null')
+    assert.equal(DataType.utf8().scalar('').asJs(), '')
+    ```
+
 ## Compiled plans
 
 Everything a cast decides from two schemas - which source column answers which target field, the
@@ -620,6 +718,7 @@ no behavior of its own.
 - Null in a required column -> canonical default under `default`; refused at that batch under `strict`, with the null count.
 - Null hidden inside a null parent row -> stays hidden; strictness reads only the exposed rows.
 - `safe=True` plus `strict` -> the failed conversion becomes a null and the null is then refused; `safe=False` refuses the conversion first.
+- An empty text cell into a column that holds neither text nor bytes -> null before `safe` is asked, under every text layout and through the scalar door; a required column then defaults it under `default` and refuses it by path under `strict`. Whitespace is a spelling, not an empty cell. Into a string, byte or interval column, or a code whose neutral member is the empty text, it is the value it is.
 - A `Null` datatype under `strict` -> null is its only value, so it is not absence.
 - Python `cast_arrow_scalar` -> a scalar has no row to repair, so a null entering a non-nullable Field is refused under either policy.
 - Nullable field, `safe` -> the null stays.

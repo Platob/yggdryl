@@ -6,13 +6,50 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use crate::types;
-use crate::types::code::{CodeValue, code_leaf, code_value};
+use crate::types::code::{CodeValue, code_value};
 use crate::types::typed::define_field_types;
 use crate::{DataType, Result, Scalar, Value};
 
-code_leaf!(Bloomberg, BLOOMBERG_WIDTH);
+/// One validated Bloomberg identifier.
+#[repr(transparent)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct Bloomberg(SmolStr);
 
 impl Bloomberg {
+    /// Validate and construct an identifier.
+    ///
+    /// An identifier has no neutral member: the empty text names no
+    /// security, so it is refused here as it is by the other identifiers,
+    /// and a column of identifiers refuses it the same way.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the width when the text is not ASCII text
+    /// that fits it, or when it is empty.
+    pub fn new(value: impl AsRef<str>) -> Result<Self> {
+        let value = types::ascii_text(BLOOMBERG_WIDTH, value.as_ref().as_bytes())?;
+        if value.is_empty() {
+            return Err(crate::Error::InvalidDataType {
+                kind: "bloomberg",
+                reason: SmolStr::new_static("expected a securities identifier, got \"\""),
+            });
+        }
+        Ok(Self(SmolStr::new(value)))
+    }
+
+    /// Borrow the validated identifier.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    /// Borrow the shared storage without copying the identifier.
+    #[must_use]
+    pub const fn storage(&self) -> &SmolStr {
+        &self.0
+    }
+
     /// Whether `text` is already the canonical spelling of an identifier.
     ///
     /// The one code here with no shape to check: a Bloomberg identifier is a
@@ -27,6 +64,12 @@ impl Bloomberg {
             && text.len() <= BLOOMBERG_WIDTH
             && text.is_ascii()
             && !text.bytes().any(|byte| byte.is_ascii_lowercase())
+    }
+}
+
+impl fmt::Display for Bloomberg {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
     }
 }
 

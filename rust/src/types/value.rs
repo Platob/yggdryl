@@ -12,6 +12,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::boolean::boolean_from_text;
 use crate::types::bytes::bytes_from_value;
+use crate::types::cast::text::blank_text_read;
 use crate::types::decimal::{validate_decimal_value, validate_decimal256_value};
 use crate::types::enums::EnumType;
 use crate::types::floating::{FloatWidth, canonical_float, float_from_text};
@@ -98,14 +99,17 @@ impl Field {
     /// Returns an error naming this field when the value is not one its
     /// datatype accepts, or is null under a field that is not nullable.
     pub fn scalar(&self, value: impl Into<Scalar>) -> Result<Scalar> {
-        let value = value.into();
+        // The datatype's door first, so what it reads as absence - an empty
+        // text cell included - meets this field's nullability as a null.
+        let value = dtype_scalar(self.dtype(), value.into())
+            .map_err(|error| rooted_at_field(error, self.name()))?;
         if !self.is_nullable() && value_is_logically_null(self.dtype(), &value) {
             return Err(Error::InvalidRecord {
                 path: SmolStr::from(root_path(self.name())),
                 reason: SmolStr::new_static("non-nullable field received null"),
             });
         }
-        dtype_scalar(self.dtype(), value).map_err(|error| rooted_at_field(error, self.name()))
+        Ok(value)
     }
 
     /// Validates one row value against this struct root.
@@ -330,13 +334,28 @@ fn validate_dtype_value_for(dtype: &DataType, value: &Scalar) -> Result<()> {
     })
 }
 
-/// The canonical value one datatype holds, from any value it accepts.
+/// The canonical value one datatype holds, from any value it accepts: the one
+/// scalar door, which [`DataType::scalar`], [`Field::scalar`] and the
+/// expression evaluator all run.
+///
+/// The empty-cell rule runs first: an empty text entering a datatype that does
+/// not keep it *is* [`Scalar::Null`], and the rest of the door - the bare-null
+/// rule, a field's nullability - answers as it does for one. The readers below
+/// never see it, so `""` stays no spelling for them.
+pub(crate) fn dtype_scalar(dtype: &DataType, value: Scalar) -> Result<Scalar> {
+    dtype_canonical(dtype, blank_text_read(dtype, value))
+}
+
+/// The canonical value one datatype holds, from a value it accepts, with no
+/// rule ahead of the reading.
 ///
 /// Both halves of the value contract in one walk over one value: the check
 /// that the datatype accepts it, then the rewrite into the exact
 /// representation the datatype declares. Nothing wraps the value in a
-/// synthetic row to get there, which is what a scalar used to cost.
-pub(crate) fn dtype_scalar(dtype: &DataType, value: Scalar) -> Result<Scalar> {
+/// synthetic row to get there, which is what a scalar used to cost. The
+/// default planner materializes a member through this half alone: a code's
+/// neutral member is the empty text, and a member is not caller text.
+pub(crate) fn dtype_canonical(dtype: &DataType, value: Scalar) -> Result<Scalar> {
     validate_dtype_value_for(dtype, &value)?;
     if spells_bare_null(dtype, &value) {
         return Ok(value);

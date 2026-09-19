@@ -51,11 +51,24 @@ test('Version rejects numeric coercion and width overflow at the native boundary
 test('Version native parser rejects only the numeric components', () => {
   const field = fields.version('release', { nullable: false })
   for (const text of [
-    '', '.1', ' 1', '-1', '+1', 'v1', '256', '999', '1.256', '1.999', 'FIX.5.0',
+    '.1', ' 1', '-1', '+1', 'v1', '256', '999', '1.256', '1.999', 'FIX.5.0',
   ]) {
     assert.throws(() => Version.fromStr(text), /version/i)
     assert.throws(() => Scalar.from(text, { field }), /version/i)
   }
+})
+
+test('the empty text is no Version, but reads as null at the datatype', () => {
+  // A `Version` is a value, so its own parser refuses the empty text; the
+  // datatype door reads an empty text cell entering a non-text column as
+  // absence, and a required field is what refuses that.
+  assert.throws(() => Version.fromStr(''), /version/i)
+  assert.equal(new DataType('version').scalar('').kind, 'null')
+  assert.equal(Scalar.from('', { field: fields.version('release') }).kind, 'null')
+  assert.throws(
+    () => Scalar.from('', { field: fields.version('release', { nullable: false }) }),
+    /non-nullable field received null/,
+  )
 })
 
 test('Version reads a compact FIX service pack as its numeric patch', () => {

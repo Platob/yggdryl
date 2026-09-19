@@ -74,7 +74,8 @@ fn a_value_is_canonicalized_and_refuses_what_names_no_zone() {
     let once = zone("Asia/Calcutta");
     assert_eq!(zone(&text_of(&once)), once);
 
-    assert!(DataType::Timezone.scalar("").is_err());
+    // An empty text cell entering a non-text column is no value.
+    assert_eq!(DataType::Timezone.scalar("").unwrap(), Scalar::Null);
     assert!(DataType::Timezone.scalar("+99:00").is_err());
     assert_eq!(
         DataType::Timezone.scalar(Scalar::Null).unwrap(),

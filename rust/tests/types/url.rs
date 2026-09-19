@@ -69,7 +69,8 @@ fn a_value_is_canonicalized_and_refuses_what_is_not_a_location() {
     // Relative text names no location, so it is not one.
     assert!(DataType::Url.scalar("./relative").is_err());
     assert!(DataType::Url.scalar("example.com/x").is_err());
-    assert!(DataType::Url.scalar("").is_err());
+    // An empty text cell entering a non-text column is no value.
+    assert_eq!(DataType::Url.scalar("").unwrap(), Scalar::Null);
     assert_eq!(DataType::Url.scalar(Scalar::Null).unwrap(), Scalar::Null);
 }
 

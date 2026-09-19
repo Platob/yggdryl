@@ -154,14 +154,16 @@ it skipped a check.
 does what the text asks whenever one reading does it, and refuses only what no
 reading can, naming the column, the value, or the section it could not honour.
 A constant coerces into the operand it meets, operands with no common type
-compare as text, a declared column casts safely unless it is `not null`, a
-missing store reads as the empty stream, a `select *` or a same-type cast costs
-nothing. Never a technical error a caller has to work around by hand when the
-intent is unambiguous; never a silent widening when it is not. DuckDB's SQL and
-Python expression API are the reference for what a spelling should mean when
-engines differ - its column, star-exclude, alias, cast, `isin`, `between`,
-`isnull`, `when`/`otherwise` and ordering vocabulary keep their names here - and
-the crate's own abstractions (`DataType`, `Field`, `Scalar`, `Selector`,
+compare as text, a declared column casts safely unless it is `not null`, an
+empty text cell entering a non-text column is null and the column's
+nullability is what may refuse it, a missing store reads as the empty stream,
+a `select *` or a same-type cast costs nothing. Never a technical error a
+caller has to work around by hand when the intent is unambiguous; never a
+silent widening when it is not. DuckDB's SQL and Python expression API are
+the reference for what a spelling should mean when engines differ - its
+column, star-exclude, alias, cast, `isin`, `between`, `isnull`,
+`when`/`otherwise` and ordering vocabulary keep their names here - and the
+crate's own abstractions (`DataType`, `Field`, `Scalar`, `Selector`,
 `Filter`, `Plan`, `Holder`) carry the behaviour; nothing is a second engine.
 
 **Defaults in the signature, absence skipped.** Every optional argument

@@ -1695,6 +1695,13 @@ mod tests {
             "decimal128(10, 2)".parse().unwrap()
         }
 
+        /// The empty text is no spelling: the empty-cell rule sits above this
+        /// reader, on the doors, and the reader itself keeps refusing it.
+        #[test]
+        fn the_empty_text_is_no_decimal_spelling() {
+            assert!(Scalar::from_decimal_text(&money(), "").is_err());
+        }
+
         #[test]
         fn text_is_restated_exactly_at_the_declared_scale() {
             assert_eq!(
