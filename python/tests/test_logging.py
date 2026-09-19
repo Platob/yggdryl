@@ -104,4 +104,4 @@ def test_the_records_hang_off_the_packages_own_logger(
     # Silencing the package silences all of it, because the Rust module path is
     # the logger name and `yggdryl` is its root.
     assert all(name == "yggdryl" or name.startswith("yggdryl.") for name in names)
-    assert "yggdryl.media.iceberg.table" in names
+    assert "yggdryl.iceberg.table" in names
