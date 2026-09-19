@@ -354,13 +354,13 @@ def _base_for(dtype: DataType) -> type[AsciiCode] | None:
     code = _CODES.get(dtype.id)
     if code is not None:
         return code
-    # A fixed US-ASCII width names a vocabulary; a variable shape has no
-    # packed integer and another charset holds bytes the packing does not
-    # read, so neither names one.
-    parameters = dtype.string_parameters
-    if parameters is None or parameters.charset != "us-ascii" or parameters.fixed is None:
+    # Only the fixed US-ASCII leaf names a vocabulary: a variable shape has
+    # no packed integer and another charset holds bytes the packing does not
+    # read, so no other leaf names one.
+    width = dtype.fixed_byte_width if dtype.id == "fixed_ascii" else None
+    if width is None:
         return None
-    return fixed_ascii(parameters.fixed)
+    return fixed_ascii(width)
 
 
 __all__ = [

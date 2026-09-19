@@ -160,8 +160,9 @@ def _build_fixed_ascii_field() -> Field:
 
 
 def _build_string_datatype() -> DataType:
-    # The general constructor: a layout, a charset, and a bound read once.
-    return DataType.string("large_string", "windows-1252", 32)
+    # The general constructor: a spelling, a charset, and a bound read once
+    # into one leaf - sized_cp1252(32).
+    return DataType.string("string", "windows-1252", 32)
 
 
 def _build_string_field() -> Field:
@@ -365,7 +366,7 @@ def _write_python_class_metadata() -> None:
 
 CURRENCY = DataType("currency")
 CURRENCIES = StringEnum.from_logical_name("currency")
-LATIN = DataType.string("large_string", "windows-1252", 32)
+LATIN = DataType.string("string", "windows-1252", 32)
 BOUNDED_BYTES = DataType.bytes("binary", 16)
 
 

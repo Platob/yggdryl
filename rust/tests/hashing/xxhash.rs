@@ -966,7 +966,7 @@ mod values {
     use yggdryl::hashing::xxhash::{Xxh3, xxh3};
     use yggdryl::types::{
         Bytes, BytesType, Currency, Decimal32, Decimal64, Geography, Interval, Side, Str,
-        StringLayout, StringType, TimeInForce,
+        StringType, TimeInForce,
     };
     use yggdryl::{
         Codec, DataTypeId, DigestAlgorithm, Float16, Float32, Float64, Scalar, TimeUnit, Timezone,
@@ -1002,13 +1002,6 @@ mod values {
     /// The text, restated under the parameters a column stores it in.
     fn stored(text: &str, parameters: StringType) -> Str {
         Str::new(text).try_with_parameters(parameters).unwrap()
-    }
-
-    /// A fixed US-ASCII slot of `width` bytes.
-    fn fixed_ascii(width: u32) -> StringType {
-        StringType::ascii(StringLayout::FixedString)
-            .try_with_bound(width)
-            .unwrap()
     }
 
     /// `AAPL` as a byte value stored under one leaf.
@@ -1055,10 +1048,10 @@ mod values {
             Scalar::from(""),
             Scalar::from("1"),
             Scalar::from("AAPL"),
-            Scalar::String(stored("AAPL", StringType::utf8(StringLayout::LargeString))),
-            Scalar::String(stored("AAPL", StringType::utf8(StringLayout::StringView))),
-            Scalar::String(stored("USD", StringType::ascii(StringLayout::String))),
-            Scalar::String(stored("USD", fixed_ascii(4))),
+            Scalar::String(stored("AAPL", StringType::LargeUtf8String)),
+            Scalar::String(stored("AAPL", StringType::Utf8StringView)),
+            Scalar::String(stored("USD", StringType::AsciiString)),
+            Scalar::String(stored("USD", StringType::FixedAsciiString(4))),
             Scalar::Currency(Currency::new("USD").unwrap()),
             Scalar::Side(Side::new("BUY").unwrap()),
             Scalar::TimeInForce(TimeInForce::new("1").unwrap()),
@@ -1119,11 +1112,11 @@ mod values {
                 Scalar::d256(i256::from_i128(1), 0),
             ),
             (
-                Scalar::String(stored("AAPL", StringType::utf8(StringLayout::LargeString))),
+                Scalar::String(stored("AAPL", StringType::LargeUtf8String)),
                 Scalar::from("AAPL"),
             ),
             (
-                Scalar::String(stored("AAPL", StringType::utf8(StringLayout::StringView))),
+                Scalar::String(stored("AAPL", StringType::Utf8StringView)),
                 Scalar::from("AAPL"),
             ),
             (
@@ -1139,8 +1132,8 @@ mod values {
                 Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
             ),
             (
-                Scalar::String(stored("USD", fixed_ascii(4))),
-                Scalar::String(stored("USD", StringType::ascii(StringLayout::String))),
+                Scalar::String(stored("USD", StringType::FixedAsciiString(4))),
+                Scalar::String(stored("USD", StringType::AsciiString)),
             ),
             (geometry(), geography()),
             (
@@ -1223,7 +1216,7 @@ mod values {
             (Scalar::from(-1), DataTypeId::Int128),
             (Scalar::from(Float32::from_f32(1.5)), DataTypeId::Float64),
             (Scalar::d128(1, 0), DataTypeId::Decimal256),
-            (Scalar::from("AAPL"), DataTypeId::String),
+            (Scalar::from("AAPL"), DataTypeId::Utf8String),
             (
                 Scalar::from(Arc::from(b"AAPL".as_slice())),
                 DataTypeId::Binary,
@@ -1266,15 +1259,18 @@ mod values {
             feed(&Scalar::from(true)),
             vec![DataTypeId::Boolean.as_u8(), 1]
         );
-        let mut expected = vec![DataTypeId::String.as_u8()];
+        let mut expected = vec![DataTypeId::Utf8String.as_u8()];
         expected.extend_from_slice(&4_u64.to_le_bytes());
         expected.extend_from_slice(b"AAPL");
         assert_eq!(feed(&Scalar::from("AAPL")), expected);
 
-        // A string feeds one tag whatever layout or charset stores it, and a
-        // code feeds its own: the identity is part of the value.
+        // A string feeds one tag whatever leaf stores it, and a code feeds
+        // its own: the identity is part of the value.
         assert_eq!(
-            feed(&Scalar::String(stored("AAPL", fixed_ascii(8)))),
+            feed(&Scalar::String(stored(
+                "AAPL",
+                StringType::FixedAsciiString(8)
+            ))),
             expected
         );
         let mut expected = vec![DataTypeId::Currency.as_u8()];

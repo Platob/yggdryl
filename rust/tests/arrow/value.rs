@@ -96,6 +96,13 @@ mod widths {
     }
 
     #[test]
+    fn a_text_maximum_is_the_columns_rule_and_never_the_cells() {
+        let column = DataType::sized_cp1252(8).unwrap();
+        let decoded = round_trip(column, Scalar::from("café"));
+        assert_eq!(decoded.dtype().unwrap(), DataType::cp1252());
+    }
+
+    #[test]
     fn a_fixed_width_takes_exactly_its_width() {
         let field = Field::new("key", DataType::fixed_binary(6).unwrap(), true);
         assert!(scalar_array(&field, &Scalar::from(b"AAPL".as_slice())).is_err());
@@ -119,16 +126,25 @@ mod widths {
                 Scalar::from(125),
                 DataTypeId::Decimal128,
             ),
-            (DataType::utf8(), Scalar::from("value"), DataTypeId::String),
+            (
+                DataType::utf8(),
+                Scalar::from("value"),
+                DataTypeId::Utf8String,
+            ),
             (
                 DataType::large_utf8(),
                 Scalar::from("value"),
-                DataTypeId::LargeString,
+                DataTypeId::LargeUtf8String,
             ),
             (
                 DataType::utf8_view(),
                 Scalar::from("value"),
-                DataTypeId::StringView,
+                DataTypeId::Utf8StringView,
+            ),
+            (
+                DataType::large_utf8_view(),
+                Scalar::from("value"),
+                DataTypeId::LargeUtf8StringView,
             ),
             (
                 DataType::binary(),
@@ -150,11 +166,25 @@ mod widths {
                 Scalar::from(b"value".as_slice()),
                 DataTypeId::BinaryView,
             ),
-            (DataType::ascii(), Scalar::from("FIX"), DataTypeId::String),
+            (
+                DataType::ascii(),
+                Scalar::from("FIX"),
+                DataTypeId::AsciiString,
+            ),
             (
                 DataType::fixed_ascii(4).unwrap(),
                 Scalar::from("FIX"),
-                DataTypeId::FixedString,
+                DataTypeId::FixedAsciiString,
+            ),
+            (
+                DataType::cp1252(),
+                Scalar::from("café"),
+                DataTypeId::Cp1252String,
+            ),
+            (
+                DataType::fixed_cp1252(4).unwrap(),
+                Scalar::from("café"),
+                DataTypeId::FixedCp1252String,
             ),
             (DataType::Country, Scalar::from("US"), DataTypeId::Country),
             (

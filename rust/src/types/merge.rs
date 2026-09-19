@@ -23,14 +23,14 @@
 //!    registered code, a UUID - keeps the storage both already have: widening
 //!    answers the plain bytes, narrowing the side that constrains them. Any
 //!    other pairing is variable bytes in the byte side's layout.
-//! 5. Text wins next, over numbers and temporals. Two strings meet parameter
-//!    by parameter: widening takes the wider offsets, the variable layout
-//!    over a fixed one, UTF-8 over two different charsets, and no bound over
-//!    a bound; narrowing takes the mirror. A registered code is the fixed
-//!    US-ASCII width it stores when widening and the code itself when
-//!    narrowing, so the tighter type survives the direction that asks for
-//!    it; text absorbing a non-text side is at least `utf8`, because a
-//!    number's rendering does not fit four bytes.
+//! 5. Text wins next, over numbers and temporals. Two strings meet charset
+//!    first - UTF-8 over two that differ - and then as two byte leaves do:
+//!    widening takes the wider offsets, the variable shape over a fixed one,
+//!    and no bound over a bound; narrowing takes the mirror. A registered
+//!    code is the US-ASCII text bounded at the width it stores when widening
+//!    and the code itself when narrowing, so the tighter type survives the
+//!    direction that asks for it; text absorbing a non-text side is at least
+//!    `utf8`, because a number's rendering does not fit four bytes.
 //! 6. Numbers meet by width, and temporals by unit. An exact decimal keeps
 //!    the widest storage either side declared when widening, so a merge never
 //!    re-encodes a `decimal128` column into a `decimal64` one.
@@ -43,15 +43,13 @@
 //! deliberate opposite, for a caller who wants the tightest type that names
 //! both and accepts that stored values may not fit it.
 
-use std::num::NonZeroU32;
-
 use smol_str::format_smolstr;
 
 use crate::{Charset, DataType, Error, Field, Result};
 use crate::{TimeUnit, UnionMode};
 
 use super::bytes::BytesType;
-use super::string::{StringLayout, StringType};
+use super::string::StringType;
 use crate::types::DecimalType;
 use crate::types::enums::EnumType;
 use crate::types::sequence::SequenceType;
@@ -612,7 +610,7 @@ fn text_parameters(dtype: &DataType) -> Option<StringType> {
         DataType::String(parameters) => Some(*parameters),
         _ => {
             let width = u32::try_from(dtype.code_width()?).ok()?;
-            Some(StringType::ascii(StringLayout::String).with_bound(NonZeroU32::new(width)?))
+            Some(StringType::SizedAsciiString(width))
         }
     }
 }
@@ -655,30 +653,13 @@ fn holds_width(parameters: StringType, fixed: StringType) -> bool {
         .is_none_or(|bound| Some(bound) >= fixed.bound())
 }
 
-/// Meet two strings parameter by parameter.
+/// Meet two strings: the charset first, then the shape within that charset.
 ///
-/// Widening takes, for the layout, the wider offsets and the variable layout
-/// over a fixed one, a view staying a view only beside another view; for the
-/// charset, UTF-8 unless both agree; for the bound, none unless both have
-/// one, and then the larger. Narrowing is the mirror: the narrower layout,
-/// the narrower repertoire, the smaller bound.
+/// The charset is the one axis a byte leaf does not have: UTF-8 unless both
+/// agree when widening, the narrower repertoire when narrowing. Both sides
+/// are restated in it before the shape is decided, so the shape meets within
+/// one family exactly as two byte leaves do.
 fn merge_parameters(left: StringType, right: StringType, how: Widening) -> Result<StringType> {
-    let layout = match how {
-        Widening::Up => match (left.is_fixed(), right.is_fixed()) {
-            (true, true) => StringLayout::FixedString,
-            (true, false) => right.layout(),
-            (false, true) => left.layout(),
-            (false, false) => variable_layout(
-                left.layout().is_view() && right.layout().is_view(),
-                left.layout().is_large() || right.layout().is_large(),
-            ),
-        },
-        Widening::Down if left.is_fixed() || right.is_fixed() => StringLayout::FixedString,
-        Widening::Down => variable_layout(
-            left.layout().is_view() && right.layout().is_view(),
-            left.layout().is_large() && right.layout().is_large(),
-        ),
-    };
     let charset = match how {
         _ if left.charset() == right.charset() => left.charset(),
         Widening::Up => Charset::Utf8,
@@ -689,27 +670,80 @@ fn merge_parameters(left: StringType, right: StringType, how: Widening) -> Resul
         }
         Widening::Down => left.charset(),
     };
-    let bound = match (how, left.bound(), right.bound()) {
-        (Widening::Up, Some(left), Some(right)) => Some(left.max(right)),
-        (Widening::Up, _, _) => None,
-        (Widening::Down, Some(left), Some(right)) => Some(left.min(right)),
-        (Widening::Down, left, right) => left.or(right),
-    };
-    let parameters = StringType::new(layout, charset);
-    match bound {
-        Some(bound) => parameters.try_with_bound(bound),
-        None => Ok(parameters),
+    let left = left.with_charset(charset)?;
+    let right = right.with_charset(charset)?;
+    if left == right {
+        return Ok(left);
+    }
+    match how {
+        Widening::Up => widened_string(left, right),
+        Widening::Down => narrowed_string(left, right),
     }
 }
 
-/// The variable layout with the given view and offsets declarations.
-const fn variable_layout(view: bool, large: bool) -> StringLayout {
-    match (view, large) {
-        (true, true) => StringLayout::LargeStringView,
-        (true, false) => StringLayout::StringView,
-        (false, true) => StringLayout::LargeString,
-        (false, false) => StringLayout::String,
+/// The string leaf that holds whatever either of two leaves of one charset
+/// holds.
+///
+/// A width only survives when both sides fill it, because a value is never
+/// padded to a wider slot; a maximum only survives when both declare one,
+/// and then it is the larger. What is left is the variable shape: a view
+/// only beside another view, and 64-bit offsets as soon as one side has them.
+/// A bound only reaches the leaf when both sides name a number, and neither
+/// a view nor a large leaf does, so the shape it lands on is always plain.
+fn widened_string(left: StringType, right: StringType) -> Result<StringType> {
+    let bound = match (left.bound(), right.bound()) {
+        (Some(left), Some(right)) => Some(left.max(right)),
+        _ => None,
+    };
+    let (view, large) = match (left.is_fixed(), right.is_fixed()) {
+        // Two widths that disagree are plain text - the wider one still
+        // bounds them both, so the column keeps it as a maximum.
+        (true, true) => (false, false),
+        (true, false) => (right.is_view(), right.is_large()),
+        (false, true) => (left.is_view(), left.is_large()),
+        (false, false) => (
+            left.is_view() && right.is_view(),
+            left.is_large() || right.is_large(),
+        ),
+    };
+    variable_string(view, large, left.charset())?.with_declared_bound(bound)
+}
+
+/// The string leaf that holds only what both of two leaves of one charset
+/// hold.
+///
+/// The mirror of [`widened_string`]: a width stands as soon as one side
+/// declares it, at the smaller number the two sides name; a maximum is the
+/// smaller of the two, or the one side's; and the variable shape keeps a
+/// view or 64-bit offsets only while both sides do. A bound beside no width
+/// comes from a sized side, which is neither a view nor large, so the shape
+/// it lands on is always plain.
+fn narrowed_string(left: StringType, right: StringType) -> Result<StringType> {
+    let bound = match (left.bound(), right.bound()) {
+        (Some(left), Some(right)) => Some(left.min(right)),
+        (left, right) => left.or(right),
+    };
+    match (left.is_fixed() || right.is_fixed(), bound) {
+        (true, Some(width)) => StringType::FixedUtf8String(width).with_charset(left.charset()),
+        _ => variable_string(
+            left.is_view() && right.is_view(),
+            left.is_large() && right.is_large(),
+            left.charset(),
+        )?
+        .with_declared_bound(bound),
     }
+}
+
+/// The variable string leaf of one charset with the given view and offset
+/// declarations.
+fn variable_string(view: bool, large: bool, charset: Charset) -> Result<StringType> {
+    match (view, large) {
+        (true, true) => StringType::LargeUtf8StringView,
+        (true, false) => StringType::Utf8StringView,
+        (false, true) => StringType::LargeUtf8String,
+        (false, false) => StringType::Utf8String,
+    }
+    .with_charset(charset)
 }
 
 /// How much a charset names: US-ASCII, then one byte per scalar, then all
@@ -1015,12 +1049,14 @@ mod tests {
             down(&DataType::fixed_ascii(4).unwrap(), &DataType::utf8()),
             DataType::fixed_ascii(4).unwrap()
         );
+        // A value is never padded to a wider slot, so two widths that
+        // disagree meet at the wider one as a maximum.
         assert_eq!(
             up(
                 &DataType::fixed_ascii(4).unwrap(),
                 &DataType::fixed_ascii(8).unwrap()
             ),
-            DataType::fixed_ascii(8).unwrap()
+            DataType::sized_ascii(8).unwrap()
         );
         assert_eq!(
             down(

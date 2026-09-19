@@ -95,15 +95,15 @@ pub enum DataType {
     /// [`Self::binary_view`], [`Self::fixed_size_binary`] - names the common
     /// ones.
     Bytes(super::bytes::BytesType),
-    /// A string: one layout, one charset, one optional byte bound.
+    /// A string: one of eighteen leaves, each a shape in a charset with the
+    /// number the shape carries.
     ///
-    /// Every string the crate has, `utf8` and `ascii(n)` and
-    /// `fixed_string(windows-1252,8)` alike; [`Self::string`] builds one and
-    /// the sugar beside it - [`Self::utf8`], [`Self::large_utf8`],
-    /// [`Self::utf8_view`], [`Self::ascii`], [`Self::fixed_utf8`],
-    /// [`Self::fixed_ascii`] - names the common ones. The parameters ride
-    /// inline: a layout, a charset and one bound are two bytes and a number,
-    /// which is cheaper to carry than to point at.
+    /// Every string the crate has, `utf8` and `sized_ascii(4)` and
+    /// `fixed_cp1252(8)` alike; [`Self::string`] builds one and the sugar
+    /// beside it - one constructor per leaf, [`Self::utf8`] to
+    /// [`Self::sized_cp1252`] - names each once. The leaf rides inline: a
+    /// discriminant and one number, which is cheaper to carry than to point
+    /// at.
     String(super::string::StringType),
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country,
@@ -286,7 +286,7 @@ impl DataType {
             Self::Duration64(_) => DataTypeId::Duration64,
             Self::Interval(_) => DataTypeId::Interval,
             Self::Bytes(parameters) => parameters.id(),
-            Self::String(parameters) => parameters.layout().id(),
+            Self::String(parameters) => parameters.id(),
             Self::Country => DataTypeId::Country,
             Self::Currency => DataTypeId::Currency,
             Self::Mic => DataTypeId::Mic,

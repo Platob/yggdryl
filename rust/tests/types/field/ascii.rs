@@ -57,7 +57,7 @@ fn the_string_marker_covers_us_ascii_and_the_code_markers_their_codes() {
     let width_field = width.to_field();
     let code = FieldScalar::new(&width_field, "ABC").unwrap();
     assert_eq!(code.as_str(), Some("ABC"));
-    assert_eq!(code.value().id(), DataTypeId::FixedString);
+    assert_eq!(code.value().id(), DataTypeId::FixedAsciiString);
     assert!(FieldScalar::new(&width.to_field(), "ABCDEFGHI").is_err());
 
     // A typed code value is checked at the width its own standard fixes.
@@ -79,7 +79,7 @@ fn the_value_door_judges_the_repertoire_and_the_bound() {
     let note_field = note.to_field();
     let held = FieldScalar::new(&note_field, "USD").unwrap();
     assert_eq!(held.value(), &Scalar::from("USD"));
-    assert_eq!(held.value().id(), DataTypeId::String);
+    assert_eq!(held.value().id(), DataTypeId::AsciiString);
     for (text, fact) in [("U\0S", "NUL byte"), ("\u{20ac}", "non-ASCII byte")] {
         let refused = FieldScalar::new(&note.to_field(), text)
             .unwrap_err()
@@ -88,7 +88,7 @@ fn the_value_door_judges_the_repertoire_and_the_bound() {
     }
     assert!(FieldScalar::new(&note.to_field(), "USD\0").is_err());
 
-    // `ascii(4)` is a maximum the value never carries.
+    // `sized_ascii(4)` is a maximum the value never carries.
     let bounded =
         StringField::try_new("ccy", DataType::from_str("ascii(4)").unwrap(), true).unwrap();
     let bounded_field = bounded.to_field();

@@ -345,7 +345,7 @@ test('Scalar identity accessors name the exact leaf and family', () => {
     [Scalar.float(1.5, 32), 'float32', 'floating'],
     [Scalar.decimal(150n, 2), 'decimal128', 'decimal'],
     [new DataType('date32').scalar(1), 'date32', 'temporal'],
-    [Scalar.from('AAPL'), 'string', 'text'],
+    [Scalar.from('AAPL'), 'utf8', 'text'],
     [
       json.loads('"USD"', {
         field: new Field('value', 'currency', false),

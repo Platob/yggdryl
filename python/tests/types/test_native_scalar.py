@@ -136,7 +136,7 @@ def test_scalar_identity_accessors_name_the_exact_leaf_and_family() -> None:
         (DataType("float32").scalar(1.5), "float32", "floating"),
         (Scalar.decimal(150, 2), "decimal128", "decimal"),
         (DataType("date32").scalar(1), "date32", "temporal"),
-        (Scalar.from_("AAPL"), "string", "text"),
+        (Scalar.from_("AAPL"), "utf8", "text"),
         (
             json.loads(
                 '"USD"', field=Field("value", "currency", False), cls=Scalar
@@ -402,10 +402,11 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
             ),
         ),
         ("string", "naïve"),
-        # A layout, a charset, or a fixed width pickles the whole declaration;
-        # a maximum is the column's rule and never the value's.
-        ("string", ("fixed_string", "us-ascii", 4, "USD")),
-        ("string", ("large_string_view", "windows-1252", None, "café")),
+        # Any leaf but plain `utf8` pickles its name beside the text, and a
+        # fixed leaf its width; the name says the charset, and a maximum is
+        # the column's rule and never the value's.
+        ("string", ("fixed_ascii", 4, "USD")),
+        ("string", ("large_cp1252_view", None, "café")),
         ("currency", "USD"),
         ("side", "BUY"),
         ("version", "5.0.1"),

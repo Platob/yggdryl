@@ -8,14 +8,14 @@ The owned logical type of one value: immutable, and cloning never allocates.
 | --- | --- |
 | Owns | 56 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, URL, the [string and byte families](text.md), the ten [codes](codes.md) |
 | Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly |
-| Identity | `id()`, `kind()`: 60 ids, 12 kinds, parameter-free; a string's id is its layout, a byte column's its layout |
+| Identity | `id()`, `kind()`: 86 ids, 12 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
 | Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`; layout rewrites only |
 | Rust only | the enum itself |
 | JavaScript | the model as JSON only: no YAML, TOML or `pretty` |
-| Serializes strings, bytes | one `string` tag and one `binary` tag with `layout`, `charset`, `fixed` or `max` ([Strings & bytes](text.md#serialized-shape)) |
+| Serializes strings, bytes | one `string` tag and one `binary` tag with `layout` naming the leaf and `fixed` or `max` beside it ([Strings & bytes](text.md#serialized-shape)) |
 
 ## Use
 

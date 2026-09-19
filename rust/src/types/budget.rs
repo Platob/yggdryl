@@ -584,25 +584,24 @@ mod limits {
             }
         }
 
-        /// Charge one string column against the layout it declares.
+        /// Charge one string column against the leaf it declares.
+        ///
+        /// A sized column is charged as the plain leaf it fills: the maximum
+        /// is a rule, not a layout.
         fn add_string_rows(
             &mut self,
             rows: usize,
             parameters: crate::types::StringType,
         ) -> Result<()> {
-            use crate::types::StringLayout;
-
             if let Some(width) = parameters.fixed() {
                 return self.add_fixed_rows(rows, width as usize);
             }
-            match parameters.layout() {
-                StringLayout::String => self.add_offsets(rows, 4),
-                StringLayout::LargeString => self.add_offsets(rows, 8),
-                StringLayout::StringView | StringLayout::LargeStringView => {
-                    self.add_fixed_rows(rows, 16)
-                }
-                // The fixed layout answered above; it is the only one with a width.
-                StringLayout::FixedString => self.add_offsets(rows, 4),
+            if parameters.is_view() {
+                self.add_fixed_rows(rows, 16)
+            } else if parameters.is_large() {
+                self.add_offsets(rows, 8)
+            } else {
+                self.add_offsets(rows, 4)
             }
         }
 
@@ -1271,7 +1270,7 @@ pub(crate) fn reserve_cast_output_payload(
         // every charset here is at most one byte per scalar above US-ASCII,
         // so the UTF-8 rendering is the reservation's upper bound.
         DataType::String(parameters) => {
-            reserve_formatted_payload(array, selection, parameters.layout().is_view(), budget)
+            reserve_formatted_payload(array, selection, parameters.is_view(), budget)
         }
         // Offset storage copies every projected payload; a view shares its
         // buffers and a fixed width was charged by the layout.

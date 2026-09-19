@@ -571,13 +571,12 @@ enum DataTypeRef<'a> {
         #[serde(skip_serializing_if = "Option::is_none")]
         fixed: Option<u32>,
     },
-    // The `string` layout and the UTF-8 charset are the defaults, so a plain
-    // `utf8` is the bare tag and only what a string declares is written.
+    // The `utf8` leaf is the default, so a plain `utf8` is the bare tag and
+    // only what a string declares is written; the leaf names its charset, so
+    // no `charset` key is written beside it.
     String {
         #[serde(skip_serializing_if = "Option::is_none")]
-        layout: Option<crate::types::StringLayout>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        charset: Option<crate::Charset>,
+        layout: Option<crate::types::StringType>,
         #[serde(skip_serializing_if = "Option::is_none")]
         max: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -733,9 +732,8 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::String(parameters) => {
                 let parameters = *parameters;
                 Self::String {
-                    layout: Some(parameters.layout())
-                        .filter(|layout| *layout != crate::types::StringLayout::String),
-                    charset: Some(parameters.charset()).filter(|charset| !charset.is_utf8()),
+                    layout: Some(parameters)
+                        .filter(|layout| *layout != crate::types::StringType::Utf8String),
                     max: parameters.max(),
                     fixed: parameters.fixed(),
                 }
@@ -875,9 +873,9 @@ enum DataTypeWire {
     },
     String {
         #[serde(default)]
-        layout: crate::types::StringLayout,
+        layout: crate::types::StringType,
         #[serde(default)]
-        charset: crate::Charset,
+        charset: Option<crate::Charset>,
         #[serde(default)]
         max: Option<u32>,
         #[serde(default)]
@@ -1215,16 +1213,10 @@ impl DataType {
             D::String(parameters) => {
                 let parameters = *parameters;
                 tag("string");
-                if parameters.layout() != crate::types::StringLayout::String {
+                if parameters != crate::types::StringType::Utf8String {
                     entries.push((
                         key("layout"),
-                        Scalar::from(SmolStr::new_static(parameters.layout().as_str())),
-                    ));
-                }
-                if !parameters.charset().is_utf8() {
-                    entries.push((
-                        key("charset"),
-                        Scalar::from(SmolStr::new_static(parameters.charset().as_str())),
+                        Scalar::from(SmolStr::new_static(parameters.as_str())),
                     ));
                 }
                 if let Some(max) = parameters.max() {
@@ -1492,12 +1484,12 @@ impl DataType {
                     }
                 };
                 let layout = match name("layout")? {
-                    Some(layout) => crate::types::StringLayout::from_str(&layout)?,
-                    None => crate::types::StringLayout::String,
+                    Some(layout) => crate::types::StringType::from_str(&layout)?,
+                    None => crate::types::StringType::Utf8String,
                 };
                 let charset = match name("charset")? {
-                    Some(charset) => crate::Charset::from_str(&charset)?,
-                    None => crate::Charset::Utf8,
+                    Some(charset) => Some(crate::Charset::from_str(&charset)?),
+                    None => None,
                 };
                 let max = at("max").map(|_| bound("max")).transpose()?;
                 let fixed = at("fixed").map(|_| bound("fixed")).transpose()?;
@@ -1650,21 +1642,45 @@ fn decimal(entries: &mut Vec<(Scalar, Scalar)>, name: &str, precision: u8, scale
 ///
 /// The bound is written under the key its layout gives it - `fixed` on the
 /// fixed layout, `max` on every other - and a bound under the other key is
-/// refused rather than read as the one the layout has.
+/// refused rather than read as the one the layout has. A `charset` key
+/// restates the leaf in that charset's family, so an older document that
+/// spelled `{"layout":"large_string","charset":"windows-1252"}` still names
+/// `large_cp1252`.
 fn string_parameters(
-    layout: crate::types::StringLayout,
-    charset: crate::Charset,
+    layout: crate::types::StringType,
+    charset: Option<crate::Charset>,
     max: Option<u32>,
     fixed: Option<u32>,
 ) -> Result<crate::types::StringType> {
-    let parameters = crate::types::StringType::new(layout, charset);
-    match (layout.is_fixed(), fixed, max) {
-        (true, Some(width), None) => parameters.try_with_bound(width),
-        (false, None, Some(max)) => parameters.try_with_bound(max),
-        (_, None, None) => Ok(parameters),
-        (true, _, Some(max)) => Err(invalid("$.max", "a fixed width on a fixed layout", max)),
-        (false, Some(fixed), _) => Err(invalid("$.fixed", "a maximum on a variable layout", fixed)),
-    }
+    use crate::types::StringType;
+
+    let named = match charset {
+        Some(charset) => layout.with_charset(charset)?,
+        None => layout,
+    };
+    let leaf = match (named.is_fixed(), fixed, max) {
+        (true, Some(width), None) => named.with_bound(width)?,
+        (true, None, None) => {
+            return Err(invalid("$.fixed", "a width on the fixed layout", 0));
+        }
+        (true, _, Some(max)) => {
+            return Err(invalid("$.max", "a fixed width on the fixed layout", max));
+        }
+        (false, Some(fixed), _) => {
+            return Err(invalid("$.fixed", "a maximum on a variable layout", fixed));
+        }
+        // A maximum makes the column sized whichever unbounded shape named
+        // it, in the charset that shape carries.
+        (false, None, Some(max)) => {
+            StringType::SizedUtf8String(max).with_charset(named.charset())?
+        }
+        (false, None, None) if named.max().is_some() => {
+            return Err(invalid("$.max", "a maximum on the sized layout", 0));
+        }
+        (false, None, None) => named,
+    };
+    leaf.validate()?;
+    Ok(leaf)
 }
 
 /// The parameters a `binary` document declares, under the same rule.

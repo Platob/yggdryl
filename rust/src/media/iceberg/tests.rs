@@ -1448,13 +1448,13 @@ mod types {
     fn a_string_in_another_charset_is_refused_by_name() {
         // Iceberg's string is UTF-8; bytes in another charset are not, and
         // writing them as a string would hand every reader mojibake.
-        let latin = DataType::string(crate::Charset::Cp1252).unwrap();
+        let latin = DataType::cp1252();
         let message = PrimitiveType::from_dtype(&latin).unwrap_err().to_string();
         assert!(
             message.contains("expected a datatype Iceberg can express"),
             "{message}"
         );
-        assert!(message.contains("string(windows-1252)"), "{message}");
+        assert!(message.contains("cp1252"), "{message}");
         assert!(!crate::media::iceberg::value::is_portable(&latin));
     }
 

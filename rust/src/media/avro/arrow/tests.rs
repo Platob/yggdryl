@@ -41,7 +41,7 @@ fn an_ascii_column_is_an_avro_string() {
 fn a_string_in_another_charset_is_not_an_avro_string() {
     // Avro's string is UTF-8; bytes in another charset are not, so the
     // column is refused by name rather than written as mojibake.
-    let latin = DataType::string(crate::Charset::Cp1252).unwrap();
+    let latin = DataType::cp1252();
     let root = DataType::from_fields([latin.required_field("label")])
         .unwrap()
         .required_field("row");
@@ -52,7 +52,7 @@ fn a_string_in_another_charset_is_not_an_avro_string() {
         message.contains("expected a datatype Avro can spell"),
         "{message}"
     );
-    assert!(message.contains("string(windows-1252)"), "{message}");
+    assert!(message.contains("cp1252"), "{message}");
 }
 
 #[test]

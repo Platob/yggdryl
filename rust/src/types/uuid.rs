@@ -178,8 +178,9 @@ impl DataType {
     /// this one admits every version.
     ///
     /// ```
+    /// use yggdryl::types::UuidType;
     /// use yggdryl::DataType;
-    ///     ///
+    ///
     /// assert_eq!(DataType::uuid(), DataType::Uuid(UuidType::Uuid));
     /// assert_eq!(DataType::uuid().to_string(), "uuid");
     /// assert_eq!(DataType::uuidv7().to_string(), "uuidv7");

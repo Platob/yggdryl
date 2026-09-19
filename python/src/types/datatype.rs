@@ -456,7 +456,15 @@ impl PyDataType {
             "utf8" => CoreDataType::utf8(),
             "large_utf8" => CoreDataType::large_utf8(),
             "utf8_view" => CoreDataType::utf8_view(),
+            "large_utf8_view" => CoreDataType::large_utf8_view(),
             "ascii" => CoreDataType::ascii(),
+            "large_ascii" => CoreDataType::large_ascii(),
+            "ascii_view" => CoreDataType::ascii_view(),
+            "large_ascii_view" => CoreDataType::large_ascii_view(),
+            "cp1252" => CoreDataType::cp1252(),
+            "large_cp1252" => CoreDataType::large_cp1252(),
+            "cp1252_view" => CoreDataType::cp1252_view(),
+            "large_cp1252_view" => CoreDataType::large_cp1252_view(),
             "country" => CoreDataType::Country,
             "currency" => CoreDataType::Currency,
             "mic" => CoreDataType::Mic,
@@ -657,22 +665,24 @@ impl PyDataType {
         Self::from_validated(inner)
     }
 
-    /// Creates a string datatype: one layout, one charset, one bound.
+    /// Creates a string datatype: one of the eighteen leaves.
     ///
-    /// ``layout`` takes any of a layout's three spellings (``string``,
-    /// ``utf8``, ``ascii``; ``fixed_string``; ``string_view``;
-    /// ``large_string``; ``large_string_view``) and ``charset`` any
-    /// documented charset alias. ``bound`` is the exact width on the fixed
-    /// layout and the maximum stored bytes everywhere else.
+    /// ``layout`` takes any spelling of a leaf - its canonical name
+    /// (``utf8``, ``fixed_ascii``, ``sized_cp1252``, ...) or a charset-free
+    /// one (``string``, ``fixed_string``, ``string_view``, ``large_string``,
+    /// ``large_string_view``, ``varchar``, ...). Only a charset-free spelling
+    /// takes a ``charset``, which restates the leaf in that charset's family.
+    /// ``bound`` is the exact width on a fixed leaf and the maximum on a
+    /// sized one; a plain leaf with a bound is the sized leaf written short.
     #[classmethod]
     #[pyo3(
-        signature = (layout="string", charset="utf-8", bound=None),
-        text_signature = "(layout='string', charset='utf-8', bound=None)"
+        signature = (layout="string", charset=None, bound=None),
+        text_signature = "(layout='string', charset=None, bound=None)"
     )]
     fn string(
         _cls: &Bound<'_, PyType>,
         layout: &str,
-        charset: &str,
+        charset: Option<&str>,
         bound: Option<u32>,
     ) -> PyResult<Self> {
         let inner = CoreDataType::string(core_string_parameters(layout, charset, bound)?)

@@ -7,8 +7,8 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
 use yggdryl::types::{
     BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialType,
-    IntegerType, MapType, RunEndEncodedType, StringLayout, StringType, TemporalType, TimeUnit,
-    UnionFields, UnionMode,
+    IntegerType, MapType, RunEndEncodedType, StringType, TemporalType, TimeUnit, UnionFields,
+    UnionMode,
 };
 use yggdryl::{Charset, Error, Field, Timezone};
 
@@ -30,23 +30,27 @@ fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
     assert_eq!(temporal_family.into_dtype().unwrap(), temporal);
 
     let text = DataType::large_utf8().string_parameters().unwrap();
-    assert_eq!(text.layout(), StringLayout::LargeString);
+    assert_eq!(text, StringType::LargeUtf8String);
     assert_eq!(DataType::string(text).unwrap(), DataType::large_utf8());
 
-    let encoded = StringType::new(StringLayout::StringView, Charset::Cp1252);
+    let encoded = StringType::Utf8StringView
+        .with_charset(Charset::Cp1252)
+        .unwrap();
+    assert_eq!(encoded, StringType::Cp1252StringView);
     assert_eq!(
         DataType::string(encoded).unwrap().string_parameters(),
         Some(encoded)
     );
 
     // The string family has no family enum of its own: `DataTypeId` names
-    // the exact layout and `string_parameters` answers the layout, charset
-    // and bound, so a third listing would only be one more thing to disagree.
+    // the exact leaf and `string_parameters` answers it, charset and number
+    // included, so a third listing would only be one more thing to disagree.
     let ascii = DataType::fixed_ascii(7).unwrap();
-    assert_eq!(ascii.id(), yggdryl::DataTypeId::FixedString);
+    assert_eq!(ascii.id(), yggdryl::DataTypeId::FixedAsciiString);
     assert_eq!(ascii.fixed_byte_width(), Some(7));
     assert!(ascii.is_string());
     let parameters = ascii.string_parameters().unwrap();
+    assert_eq!(parameters, StringType::FixedAsciiString(7));
     assert_eq!(parameters.charset(), Charset::Ascii);
     assert_eq!(parameters.fixed(), Some(7));
     assert_eq!(DataType::string(parameters).unwrap(), ascii);
@@ -293,6 +297,7 @@ fn structural_serialization_rejects_public_enum_invalid_states() {
     let invalid = [
         DataType::Time32(TimeUnit::Nanosecond),
         DataType::Bytes(BytesType::FixedBinary(0)),
+        DataType::String(StringType::FixedUtf8String(0)),
         DataType::Decimal(DecimalType::Decimal128 {
             precision: 0,
             scale: 0,

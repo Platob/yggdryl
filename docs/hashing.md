@@ -490,7 +490,7 @@ assert_eq!(
 
 The tag byte is a wire contract: inserting a `DataTypeId` variant anywhere but the end changes stored digests. A digest identifies the value, not its storage width.
 
-The tag is the value's own [`DataTypeId`](types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](types/text.md) feeds `string` (27) whatever its layout, charset or bound, and a geography feeds `geometry`. A [code](types/codes.md) feeds its own id - `country`, `currency`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `side`, `state`, `timeinforce` - so a `currency` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
+The tag is the value's own [`DataTypeId`](types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](types/text.md) feeds `utf8` (27) whatever its leaf, and a geography feeds `geometry`. A [code](types/codes.md) feeds its own id - `country`, `currency`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `side`, `state`, `timeinforce` - so a `currency` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
 
 This is where the one string family changed stored digests: a value read from an `ascii` or `ascii(n)` column used to feed the retired `ascii` tag (30) and now feeds `string` (27), the tag UTF-8 text always fed, and every code value used to feed that same `ascii` tag and now feeds its own id. Digests of UTF-8 text and of bytes did not change.
 
@@ -501,7 +501,7 @@ This is where the one string family changed stored digests: a value read from an
 | `I8`..`U128` | `uint128`, or `int128` when negative | magnitude as `u128` little-endian |
 | `F16`/`F32`/`F64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
 | `D32`..`D256` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte |
-| `String` | `string` | length `u64` little-endian, then the characters as UTF-8; the layout, charset and fixed width never feed |
+| `String` | `utf8` | length `u64` little-endian, then the characters as UTF-8; the leaf - charset, shape and fixed width - never feeds |
 | a registered code | the code's own id | length `u64` little-endian, then the trimmed text |
 | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
 | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
@@ -1270,7 +1270,7 @@ A holder naming `digest:time` stores the instant it names in front of its digest
 - A `variant` column -> refused by name; its binary encoding lands with the Iceberg v3 layer, so there is no value to feed.
 - A `field` whose storage does not match the array given to `column_digests` -> reconciled to the field first, strictly, so a layout difference answers the same digest and a value the declaration cannot hold is named.
 - The same value on a big-endian machine -> the same digest; every integer in the feed is little-endian.
-- An `ascii`, `ascii(n)`, `fixed_ascii(n)`, `utf8(n)` or `string(windows-1252)` cell holding the same characters -> one digest; every string is one value and feeds the `string` tag.
+- An `ascii`, `sized_ascii(n)`, `fixed_ascii(n)`, `sized_utf8(n)` or `cp1252` cell holding the same characters -> one digest; every string is one value and feeds the `utf8` tag.
 - A `currency` and a `country` cell holding the same text -> two digests; a code feeds its own id, and a code never digests like the string that spells it.
 - A `geometry` and a `geography` cell over the same WKB -> one digest; both feed the `geometry` tag.
 - Holder-local `digest:sources` or `digest:algorithm` -> ignored by `row_digests`; they configure [`apply_arrow_batch`](#digest-holders-and-row-digests) only.

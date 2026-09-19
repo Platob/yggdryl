@@ -158,11 +158,11 @@ class FixCatalogGeneration(unittest.TestCase):
 
     def test_datatypes_are_stored_as_the_crate_writes_them(self) -> None:
         # One `string` tag for every string, stating only what it declares;
-        # the fixed US-ASCII slots carry layout, charset and width.
+        # the fixed US-ASCII slots carry the fixed_ascii leaf and its width.
         self.assertEqual({"type": "string"}, GENERATOR.dtype_document("char"))
         self.assertEqual(GENERATOR.dtype_document("char"), GENERATOR.dtype_document("String"))
         self.assertEqual(
-            {"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 8},
+            {"type": "string", "layout": "fixed_ascii", "fixed": 8},
             GENERATOR.dtype_document("MonthYear"),
         )
         self.assertEqual({"type": "binary"}, GENERATOR.dtype_document("data"))

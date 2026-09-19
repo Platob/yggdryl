@@ -116,11 +116,12 @@
     const fs = require('node:fs')
     const os = require('node:os')
     const path = require('node:path')
+    const { pathToFileURL } = require('node:url')
     const arrow = require('apache-arrow')
     const { Expression, Plan } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-plans-'))
-    const url = `file://${path.join(root, 'trades.arrow')}`
+    const url = pathToFileURL(path.join(root, 'trades.arrow')).href
 
     // `create` alone writes the declared schema and no rows.
     const created = new Plan(`create '${url}' (id int64 not null, name utf8)`)

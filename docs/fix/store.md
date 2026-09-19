@@ -354,8 +354,8 @@ A field document stores the crate's own [datatype document](../types/datatype.md
 | FIX datatype | Stored `dtype` | Reads as |
 | --- | --- | --- |
 | `String`, `char`, `MultipleCharValue`, `MultipleStringValue`, `XID`, `XIDREF`, `Pattern` | `{"type": "string"}` | `utf8` |
-| `MonthYear`, `Tenor` | `{"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 8}` | `fixed_ascii(8)` |
-| `Language` | `{"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 2}` | `fixed_ascii(2)` |
+| `MonthYear`, `Tenor` | `{"type": "string", "layout": "fixed_ascii", "fixed": 8}` | `fixed_ascii(8)` |
+| `Language` | `{"type": "string", "layout": "fixed_ascii", "fixed": 2}` | `fixed_ascii(2)` |
 | `data`, `XMLData` | `{"type": "binary"}` | `binary` |
 | `Country`, `Currency`, `Exchange` | `{"type": "country"}`, `{"type": "currency"}`, `{"type": "mic"}` | the [code](../types/codes.md) |
 

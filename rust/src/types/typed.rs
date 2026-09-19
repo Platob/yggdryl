@@ -401,7 +401,7 @@ mod shared {
     use std::sync::{LazyLock, PoisonError, RwLock};
 
     use crate::types::DecimalType;
-    use crate::types::{BytesType, StringLayout, StringType};
+    use crate::types::{BytesType, StringType};
     use crate::{DataType, DataTypeId, Field, Scalar};
 
     /// The name every shared field carries - the name an inferred scalar field
@@ -445,20 +445,19 @@ mod shared {
         table
     });
 
-    /// One nullable field per plain unbounded UTF-8 layout.
+    /// One nullable field per plain unbounded UTF-8 leaf.
     ///
     /// Every string identifier is parameterized, so none has a slot in
     /// [`PREBUILT`]; these four are what a bare string value names, and a value
     /// typed by inference borrows one of them rather than interning anything.
     static PLAIN_UTF8: LazyLock<[(StringType, Field); 4]> = LazyLock::new(|| {
         [
-            StringLayout::String,
-            StringLayout::LargeString,
-            StringLayout::StringView,
-            StringLayout::LargeStringView,
+            StringType::Utf8String,
+            StringType::LargeUtf8String,
+            StringType::Utf8StringView,
+            StringType::LargeUtf8StringView,
         ]
-        .map(|layout| {
-            let parameters = StringType::utf8(layout);
+        .map(|parameters| {
             (
                 parameters,
                 Field::new(SHARED_NAME, DataType::String(parameters), true),

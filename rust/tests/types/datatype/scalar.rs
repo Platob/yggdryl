@@ -23,7 +23,7 @@ fn scalar_aliases_and_balanced_outer_wrappers_normalize() {
     // nowhere to say and this crate carries in its own metadata.
     assert_eq!(
         DataType::from_str("varchar(255)").unwrap().to_string(),
-        "utf8(255)"
+        "sized_utf8(255)"
     );
     assert_eq!(
         DataType::from_str("double precision").unwrap(),

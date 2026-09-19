@@ -45,10 +45,11 @@ const binaryType: DataType = DataType.binary()
 const largeBinaryType: DataType = DataType.largeBinary()
 const binaryViewType: DataType = DataType.binaryView()
 const fixedBinaryType: DataType = DataType.fixedSizeBinary(16)
-// The one string datatype and the one byte datatype, declared whole.
+// The string family and the byte family, declared whole: a charset-free
+// spelling with a charset lands on that charset's leaf, `sized_cp1252` here.
 const plainString: DataType = DataType.string()
 const latinString: DataType = DataType.string({
-  layout: 'large_string',
+  layout: 'string',
   charset: 'windows-1252',
   max: 32,
 })

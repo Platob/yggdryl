@@ -21,12 +21,12 @@
 //! assert_eq!(DataType::from_str("bytes")?, DataType::binary());
 //! assert_eq!(DataType::from_str("fixed_binary(16)")?.to_string(), "fixed_binary(16)");
 //!
-//! // The layout and the bound are what a byte column declares.
+//! // A maximum is its own leaf, and the leaf is what a byte column declares.
 //! let bounded = DataType::from_str("varbinary(32)")?;
 //! let parameters = bounded.bytes_parameters().expect("a byte datatype");
-//! assert_eq!(parameters, BytesType::Binary);
+//! assert_eq!(parameters, BytesType::SizedBinary(32));
 //! assert_eq!(parameters.max(), Some(32));
-//! assert_eq!(bounded.to_string(), "binary(32)");
+//! assert_eq!(bounded.to_string(), "sized_binary(32)");
 //! # Ok(())
 //! # }
 //! ```
@@ -624,8 +624,8 @@ impl DataType {
     /// The byte datatype these parameters name.
     ///
     /// This is the family's one constructor. Every byte column is
-    /// [`DataType::Bytes`]; what differs is what it declares, and the
-    /// parameters say all of it - a layout and a bound.
+    /// [`DataType::Bytes`]; what differs is what it declares, and the leaf
+    /// says all of it - the layout, and the number where the leaf carries one.
     ///
     /// ```
     /// use yggdryl::types::BytesType;
@@ -633,8 +633,7 @@ impl DataType {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// assert_eq!(DataType::bytes(BytesType::LargeBinary)?, DataType::large_binary());
-    /// let bounded = Ok::<_, yggdryl::Error>(BytesType::SizedBinary(32))?;
-    /// assert_eq!(DataType::bytes(bounded)?.to_string(), "binary(32)");
+    /// assert_eq!(DataType::bytes(BytesType::SizedBinary(32))?.to_string(), "sized_binary(32)");
     /// assert_eq!(DataType::fixed_binary(16)?.to_string(), "fixed_binary(16)");
     /// # Ok(())
     /// # }

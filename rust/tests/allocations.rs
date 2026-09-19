@@ -31,7 +31,7 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::types::FieldValue as _;
 use yggdryl::types::{
-    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringType, UncheckedFieldScalar, Uuid,
+    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, UncheckedFieldScalar, Uuid,
 };
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
@@ -1103,18 +1103,15 @@ fn a_string_value_is_inline_to_its_capacity_and_one_handle_past_it() {
         black_box(value);
     });
     let source = Str::new(&shared);
-    let large = StringType::utf8(StringLayout::LargeString);
-    free(
-        "restating a shared string value under another layout",
-        || {
-            let restated = black_box(&source)
-                .clone()
-                .try_with_parameters(large)
-                .expect("the layout holds it");
-            assert!(std::ptr::eq(source.as_str(), restated.as_str()));
-            black_box(restated);
-        },
-    );
+    let large = StringType::LargeUtf8String;
+    free("restating a shared string value under another leaf", || {
+        let restated = black_box(&source)
+            .clone()
+            .try_with_parameters(large)
+            .expect("the leaf holds it");
+        assert!(std::ptr::eq(source.as_str(), restated.as_str()));
+        black_box(restated);
+    });
 }
 
 #[test]
@@ -1373,9 +1370,9 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Binary, Scalar::from(&b"ABC"[..])),
         (DataTypeId::LargeBinary, Scalar::from(&b"ABC"[..])),
         (DataTypeId::BinaryView, Scalar::from(&b"ABC"[..])),
-        (DataTypeId::String, Scalar::from("AAPL")),
-        (DataTypeId::LargeString, Scalar::from("AAPL")),
-        (DataTypeId::StringView, Scalar::from("AAPL")),
+        (DataTypeId::Utf8String, Scalar::from("AAPL")),
+        (DataTypeId::LargeUtf8String, Scalar::from("AAPL")),
+        (DataTypeId::Utf8StringView, Scalar::from("AAPL")),
         (DataTypeId::Country, Scalar::from("US")),
         (DataTypeId::Currency, Scalar::from("USD")),
         (DataTypeId::Mic, Scalar::from("XNAS")),
@@ -2123,8 +2120,8 @@ fn a_string_column_is_built_into_one_buffer_whatever_its_charset() {
     // own `Vec<u8>` - even for an all-ASCII cell, where the encode borrows -
     // and the count grew with the row count.
     for dtype in [
-        DataType::from_str("string(windows-1252)").expect("a charset string"),
-        DataType::from_str("large_string(windows-1252)").expect("a charset string"),
+        DataType::cp1252(),
+        DataType::large_cp1252(),
         DataType::utf8(),
     ] {
         let field = dtype.clone().nullable_field("value");

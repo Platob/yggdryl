@@ -286,10 +286,6 @@ fn strings_meet_parameter_by_parameter() {
         down(&dtype("string(windows-1252)"), &DataType::ascii()),
         DataType::ascii()
     );
-    assert_eq!(
-        down(&dtype("string(latin1)"), &dtype("string(windows-1252)")),
-        dtype("string(latin1)")
-    );
 
     // No bound beats a maximum widening; the smaller bound wins narrowing.
     assert_eq!(up(&dtype("utf8(32)"), &DataType::utf8()), DataType::utf8());

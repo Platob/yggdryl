@@ -39,7 +39,7 @@ use crate::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use crate::metadata::is_all_sources;
 use crate::types::cast::{ArrowCastOptions, Nullability, Representation};
 use crate::types::string::is_text_storage;
-use crate::types::{BytesType, Str, StringLayout, StringType};
+use crate::types::{BytesType, Str, StringType};
 use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, Scalar, TimeUnit, Timezone, i256};
 
 use super::field::{
@@ -1292,12 +1292,11 @@ fn feed_string(
     index: usize,
 ) -> Result<()> {
     if !parameters.is_fixed() && is_text_storage(parameters) {
-        let cell = match parameters.layout() {
-            StringLayout::LargeString => downcast::<LargeStringArray>(array)?.value(index),
-            StringLayout::StringView | StringLayout::LargeStringView => {
-                downcast::<StringViewArray>(array)?.value(index)
-            }
-            _ => downcast::<StringArray>(array)?.value(index),
+        let cell = match (parameters.is_view(), parameters.is_large()) {
+            (true, _) => downcast::<StringViewArray>(array)?.value(index),
+            (false, true) => downcast::<LargeStringArray>(array)?.value(index),
+            // A maximum is the column's rule; the storage it fills is plain.
+            (false, false) => downcast::<StringArray>(array)?.value(index),
         };
         write_string(digester, cell);
         return Ok(());
@@ -1305,12 +1304,10 @@ fn feed_string(
     let cell = if parameters.is_fixed() {
         downcast::<FixedSizeBinaryArray>(array)?.value(index)
     } else {
-        match parameters.layout() {
-            StringLayout::LargeString => downcast::<LargeBinaryArray>(array)?.value(index),
-            StringLayout::StringView | StringLayout::LargeStringView => {
-                downcast::<BinaryViewArray>(array)?.value(index)
-            }
-            _ => downcast::<BinaryArray>(array)?.value(index),
+        match (parameters.is_view(), parameters.is_large()) {
+            (true, _) => downcast::<BinaryViewArray>(array)?.value(index),
+            (false, true) => downcast::<LargeBinaryArray>(array)?.value(index),
+            (false, false) => downcast::<BinaryArray>(array)?.value(index),
         }
     };
     write_string(digester, &Str::from_bytes(cell, parameters)?);

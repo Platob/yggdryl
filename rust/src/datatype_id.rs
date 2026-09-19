@@ -81,20 +81,21 @@ pub enum DataTypeId {
     LargeBinary = 25,
     /// Bytes in the view layout.
     BinaryView = 26,
-    /// A string with 32-bit offsets, in any charset, with any bound.
+    /// Any length of UTF-8 with 32-bit offsets.
     ///
-    /// The five string layouts sit where the five text identifiers they
-    /// replaced sat, so every later number - and every digest tag - stays
-    /// what it was; this one is the number UTF-8 text always fed.
-    String = 27,
-    /// A string of one fixed, padded byte width.
-    FixedString = 28,
-    /// A string in the view layout.
-    StringView = 29,
-    /// A string with 64-bit offsets.
-    LargeString = 30,
-    /// A string in the view layout, declared large.
-    LargeStringView = 31,
+    /// The five UTF-8 leaves sit where the five string layouts they replaced
+    /// sat - and those sat where the five text identifiers before them did -
+    /// so every later number, and every digest tag, stays what it was; this
+    /// one is the number UTF-8 text always fed.
+    Utf8String = 27,
+    /// UTF-8 of one fixed, padded byte width.
+    FixedUtf8String = 28,
+    /// UTF-8 in the view layout.
+    Utf8StringView = 29,
+    /// UTF-8 with 64-bit offsets.
+    LargeUtf8String = 30,
+    /// UTF-8 in the view layout, declared large.
+    LargeUtf8StringView = 31,
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country = 32,
     /// ISO 4217: a currency code, three ASCII bytes.
@@ -207,11 +208,63 @@ pub enum DataTypeId {
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
     SizedBinary = 73,
+    /// UTF-8 under a declared maximum.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    SizedUtf8String = 74,
+    /// Any length of US-ASCII with 32-bit offsets.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    AsciiString = 75,
+    /// US-ASCII with 64-bit offsets.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    LargeAsciiString = 76,
+    /// US-ASCII in the view layout.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    AsciiStringView = 77,
+    /// US-ASCII in the view layout, declared large.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    LargeAsciiStringView = 78,
+    /// US-ASCII of one fixed, padded byte width.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    FixedAsciiString = 79,
+    /// US-ASCII under a declared maximum.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    SizedAsciiString = 80,
+    /// Any length of windows-1252 with 32-bit offsets.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Cp1252String = 81,
+    /// Windows-1252 with 64-bit offsets.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    LargeCp1252String = 82,
+    /// Windows-1252 in the view layout.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Cp1252StringView = 83,
+    /// Windows-1252 in the view layout, declared large.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    LargeCp1252StringView = 84,
+    /// Windows-1252 of one fixed, padded byte width.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    FixedCp1252String = 85,
+    /// Windows-1252 under a declared maximum.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    SizedCp1252String = 86,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 73] = [
+    pub const ALL: [Self; 86] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -239,11 +292,11 @@ impl DataTypeId {
         Self::FixedBinary,
         Self::LargeBinary,
         Self::BinaryView,
-        Self::String,
-        Self::FixedString,
-        Self::StringView,
-        Self::LargeString,
-        Self::LargeStringView,
+        Self::Utf8String,
+        Self::FixedUtf8String,
+        Self::Utf8StringView,
+        Self::LargeUtf8String,
+        Self::LargeUtf8StringView,
         Self::Country,
         Self::Currency,
         Self::Mic,
@@ -285,6 +338,19 @@ impl DataTypeId {
         Self::Uuidv8,
         Self::LargeBinaryView,
         Self::SizedBinary,
+        Self::SizedUtf8String,
+        Self::AsciiString,
+        Self::LargeAsciiString,
+        Self::AsciiStringView,
+        Self::LargeAsciiStringView,
+        Self::FixedAsciiString,
+        Self::SizedAsciiString,
+        Self::Cp1252String,
+        Self::LargeCp1252String,
+        Self::Cp1252StringView,
+        Self::LargeCp1252StringView,
+        Self::FixedCp1252String,
+        Self::SizedCp1252String,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -372,11 +438,24 @@ impl DataTypeId {
             Self::Timezone => "timezone",
             Self::MimeType => "mimetype",
             Self::MediaType => "mediatype",
-            Self::String => "string",
-            Self::FixedString => "fixed_string",
-            Self::StringView => "string_view",
-            Self::LargeString => "large_string",
-            Self::LargeStringView => "large_string_view",
+            Self::Utf8String => "utf8",
+            Self::FixedUtf8String => "fixed_utf8",
+            Self::Utf8StringView => "utf8_view",
+            Self::LargeUtf8String => "large_utf8",
+            Self::LargeUtf8StringView => "large_utf8_view",
+            Self::SizedUtf8String => "sized_utf8",
+            Self::AsciiString => "ascii",
+            Self::LargeAsciiString => "large_ascii",
+            Self::AsciiStringView => "ascii_view",
+            Self::LargeAsciiStringView => "large_ascii_view",
+            Self::FixedAsciiString => "fixed_ascii",
+            Self::SizedAsciiString => "sized_ascii",
+            Self::Cp1252String => "cp1252",
+            Self::LargeCp1252String => "large_cp1252",
+            Self::Cp1252StringView => "cp1252_view",
+            Self::LargeCp1252StringView => "large_cp1252_view",
+            Self::FixedCp1252String => "fixed_cp1252",
+            Self::SizedCp1252String => "sized_cp1252",
         }
     }
 
@@ -433,11 +512,24 @@ impl DataTypeId {
             | Self::BinaryView
             | Self::LargeBinaryView
             | Self::SizedBinary => DataTypeKind::Bytes,
-            Self::String
-            | Self::FixedString
-            | Self::StringView
-            | Self::LargeString
-            | Self::LargeStringView
+            Self::Utf8String
+            | Self::FixedUtf8String
+            | Self::Utf8StringView
+            | Self::LargeUtf8String
+            | Self::LargeUtf8StringView
+            | Self::SizedUtf8String
+            | Self::AsciiString
+            | Self::LargeAsciiString
+            | Self::AsciiStringView
+            | Self::LargeAsciiStringView
+            | Self::FixedAsciiString
+            | Self::SizedAsciiString
+            | Self::Cp1252String
+            | Self::LargeCp1252String
+            | Self::Cp1252StringView
+            | Self::LargeCp1252StringView
+            | Self::FixedCp1252String
+            | Self::SizedCp1252String
             | Self::Version
             | Self::Url
             | Self::Timezone
@@ -494,11 +586,24 @@ impl DataTypeId {
                 | Self::SizedBinary
                 | Self::LargeBinary
                 | Self::BinaryView
-                | Self::String
-                | Self::FixedString
-                | Self::StringView
-                | Self::LargeString
-                | Self::LargeStringView
+                | Self::Utf8String
+                | Self::FixedUtf8String
+                | Self::Utf8StringView
+                | Self::LargeUtf8String
+                | Self::LargeUtf8StringView
+                | Self::SizedUtf8String
+                | Self::AsciiString
+                | Self::LargeAsciiString
+                | Self::AsciiStringView
+                | Self::LargeAsciiStringView
+                | Self::FixedAsciiString
+                | Self::SizedAsciiString
+                | Self::Cp1252String
+                | Self::LargeCp1252String
+                | Self::Cp1252StringView
+                | Self::LargeCp1252StringView
+                | Self::FixedCp1252String
+                | Self::SizedCp1252String
                 | Self::List
                 | Self::ListView
                 | Self::FixedSizeList

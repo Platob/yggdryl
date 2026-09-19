@@ -1,50 +1,66 @@
 # Strings & bytes
 
-One string family in five layouts, one byte family in six real leaves, the canonical text values - version, URL, time zone, MIME type, media type - and the regex that turns named captures into a schema.
+One string family in eighteen real leaves, one byte family in six, the canonical text values - version, URL, time zone, MIME type, media type - and the regex that turns named captures into a schema.
 
 ## Contract
 
 | | |
 | --- | --- |
 | Owns | `DataType::String(StringType)`, `DataType::Bytes(BytesType)`, the values `Str` and `Bytes`, `Version`, `Url`, `Timezone`, `MimeType`, `MediaType` |
-| Constructors | `DataType::string` / `DataType::bytes` take the whole declaration; `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_utf8(n)`, `fixed_ascii(n)`, `binary`, `large_binary`, `binary_view`, `large_binary_view`, `fixed_binary(n)`, `sized_binary(n)` pick a leaf once |
+| Constructors | `DataType::string` / `DataType::bytes` take the whole declaration; one constructor per leaf picks it once - `utf8`, `large_utf8`, `utf8_view`, `large_utf8_view`, `fixed_utf8(n)`, `sized_utf8(n)`, the same six as `ascii` and as `cp1252`, and `binary`, `large_binary`, `binary_view`, `large_binary_view`, `fixed_binary(n)`, `sized_binary(n)` |
 | Reads back | `string_parameters`, `bytes_parameters`, `charset`, `fixed_byte_width`, `is_string`; a [code](codes.md), a [UUID](uuid.md) and a geospatial value answer no parameters, and a code answers `code_width` instead |
-| Bound | one number per declaration: the exact width on a fixed layout, the maximum stored bytes elsewhere; zero refused. On the byte side the number *is* the leaf - `fixed_binary(n)` and `sized_binary(n)` - so neither stands without one and the other four refuse one |
-| Value | holds UTF-8 (or the payload) beside its layout, charset and fixed width; never a maximum |
-| Arrow | text storage for UTF-8 and US-ASCII, binary storage for every other charset; `yggdryl.string` / `yggdryl.bytes` only where Arrow cannot say what is declared |
-| Rust only | the value types `Str` and `Bytes`; `StringLayout`; the bindings read the parameters as frozen `StringParameters` / `BytesParameters` values |
+| Bound | the number *is* the leaf: the exact width on `fixed_*(n)`, the maximum stored bytes on `sized_*(n)`; neither stands without one, every other leaf refuses one, and zero is refused |
+| Value | holds UTF-8 (or the payload) beside its leaf - the charset, the shape, and the width on a fixed leaf; never a maximum |
+| Arrow | text storage for the UTF-8 and US-ASCII leaves, binary storage for the windows-1252 ones; `yggdryl.string` / `yggdryl.bytes` only where Arrow cannot say what is declared |
+| Rust only | the value types `Str` and `Bytes`; the bindings read the parameters as frozen `StringParameters` / `BytesParameters` values |
 
 ### Strings
 
-A string is a layout, the [charset](../charset/index.md) its bytes are written
-in, and a bound. Each layout has three spellings that parse to one datatype:
-the `string` name is the general one, the `utf8` name is the same layout when
-its charset is UTF-8 (the default), and the `ascii` name when it is US-ASCII.
-A value renders under the name its charset earns; every other charset renders
-under the general name and states itself. Case, `_`, `-` and spaces are
-ignored, so `large_utf8`, `largeutf8` and `LargeString` are one datatype.
+A string column is one of eighteen leaves: six shapes in each of the three
+charsets that have a datatype - UTF-8, US-ASCII and windows-1252. The leaf is
+the whole declaration. It says the [charset](../charset/index.md) its bytes
+are written in, the shape Arrow lays them out in, and - on the two numbered
+shapes - what its number means: `fixed_*(n)` is an exact width, NUL-padded,
+and `sized_*(n)` a maximum, so neither stands without a number and the other
+four refuse one. A leaf's canonical name is its `DataTypeId`, and its number
+sits beside it in the table.
 
-| layout | general | UTF-8 | US-ASCII | Arrow storage (text / binary) |
-| --- | --- | --- | --- | --- |
-| 32-bit offsets | `string` | `utf8` | `ascii` | `Utf8` / `Binary` |
-| fixed width | `fixed_string(n)` | `fixed_utf8(n)` | `fixed_ascii(n)` | `FixedSizeBinary(n)` |
-| view | `string_view` | `utf8_view` | `ascii_view` | `Utf8View` / `BinaryView` |
-| 64-bit offsets | `large_string` | `large_utf8` | `large_ascii` | `LargeUtf8` / `LargeBinary` |
-| view, large | `large_string_view` | `large_utf8_view` | `large_ascii_view` | `Utf8View` / `BinaryView` |
+| shape | number | UTF-8 | US-ASCII | windows-1252 | Arrow storage (text / binary) |
+| --- | --- | --- | --- | --- | --- |
+| 32-bit offsets | none | `utf8` (27) | `ascii` (75) | `cp1252` (81) | `Utf8` / `Binary` |
+| 64-bit offsets | none | `large_utf8` (30) | `large_ascii` (76) | `large_cp1252` (82) | `LargeUtf8` / `LargeBinary` |
+| view | none | `utf8_view` (29) | `ascii_view` (77) | `cp1252_view` (83) | `Utf8View` / `BinaryView` |
+| view, 64-bit offsets | none | `large_utf8_view` (31) | `large_ascii_view` (78) | `large_cp1252_view` (84) | `Utf8View` / `BinaryView` |
+| fixed width | the exact width, required | `fixed_utf8(n)` (28) | `fixed_ascii(n)` (79) | `fixed_cp1252(n)` (85) | `FixedSizeBinary(n)` |
+| bounded | the maximum, required | `sized_utf8(n)` (74) | `sized_ascii(n)` (80) | `sized_cp1252(n)` (86) | `Utf8` / `Binary` |
 
-The general spelling takes `(charset)`, `(bound)` or `(charset, bound)`; a
-charset-named spelling takes only `(bound)`, and a charset beside it is
-refused. One number, one reading per layout: `ascii(4)` and `utf8(32)` are
-maxima, `fixed_ascii(4)` and `fixed_utf8(32)` are widths.
+`utf8(32)` is `sized_utf8(32)` written short and `ascii(4)` is
+`sized_ascii(4)`, because plain storage is exactly what a bounded column
+fills; `large_utf8(64)` or `utf8_view(8)` would lose itself under a maximum,
+so it says so rather than silently becoming something narrower. The
+charset-free spellings - `string`, `fixed_string`, `string_view`,
+`large_string`, `large_string_view`, `sized_string`, and the SQL `varchar`,
+`char` and `text` - name the UTF-8 leaf of their shape, and they alone take a
+charset in parentheses: `string(windows-1252,32)` is `sized_cp1252(32)`, and
+`utf8(windows-1252)` is refused because the name already said. A charset with
+no leaf - `string(iso-8859-1)` - is refused by name. Case, `_`, `-` and spaces
+are ignored, so `large_utf8`, `largeutf8` and `LargeUtf8String` are one
+datatype.
 
 | spelling | datatype | also parsed as |
 | --- | --- | --- |
-| `utf8` | unbounded UTF-8 | `string`, `str`, `text`, `varchar`, `nvarchar`, `char`, `character varying` |
-| `utf8(n)` | at most `n` bytes | `varchar(n)`, `string(n)` |
-| `fixed_utf8(n)` | exactly `n` bytes | `char(n)`, `character(n)`, `nchar(n)`, `fixed_string(n)` |
-| `ascii` | unbounded US-ASCII | `string(us-ascii)` |
+| `utf8` | unbounded UTF-8 | `string`, `str`, `text`, `varchar`, `nvarchar`, `char`, `character varying`, `utf8_string` |
+| `sized_utf8(n)` | at most `n` bytes of UTF-8 | `utf8(n)`, `string(n)`, `varchar(n)`, `sized_string(n)` |
+| `fixed_utf8(n)` | exactly `n` bytes of UTF-8 | `char(n)`, `character(n)`, `nchar(n)`, `fixed_string(n)` |
+| `large_utf8`, `utf8_view`, `large_utf8_view` | unbounded UTF-8 in that shape | `large_string`, `string_view`, `large_string_view` |
+| `ascii` | unbounded US-ASCII | `us_ascii`, `ascii_string`, `string(us-ascii)` |
+| `sized_ascii(n)` | at most `n` US-ASCII bytes | `ascii(n)`, `string(us-ascii,n)` |
 | `fixed_ascii(n)` | exactly `n` US-ASCII bytes | `fixed_string(us-ascii,n)` |
-| `string(windows-1252,32)` | at most 32 windows-1252 bytes | any charset alias, case-insensitive |
+| `large_ascii`, `ascii_view`, `large_ascii_view` | unbounded US-ASCII in that shape | `large_string(us-ascii)`, `string_view(us-ascii)`, `large_string_view(us-ascii)` |
+| `cp1252` | unbounded windows-1252 | `windows_1252`, `string(windows-1252)`, `string(cp1252)` |
+| `sized_cp1252(n)` | at most `n` windows-1252 bytes | `cp1252(n)`, `string(windows-1252,n)` |
+| `fixed_cp1252(n)` | exactly `n` windows-1252 bytes | `fixed_windows_1252(n)`, `fixed_string(windows-1252,n)` |
+| `large_cp1252`, `cp1252_view`, `large_cp1252_view` | unbounded windows-1252 in that shape | `large_windows_1252`, `large_string(windows-1252)`, `string_view(cp1252)` |
 | `version` | `Version` | - |
 | `url` | `Url` | - |
 | `timezone` | `Timezone` | `tz`, `timezone_name` |
@@ -84,28 +100,37 @@ Declare a string and a byte column, and read the declaration back.
 === "Rust"
 
     ```rust
-    use yggdryl::types::{BytesType, StringLayout};
+    use yggdryl::types::{BytesType, StringType};
     use yggdryl::{Charset, DataType};
 
-    // Every spelling of a layout is one datatype, rendered under the name
-    // its charset earns.
+    // Every spelling of a leaf is one datatype, rendered under the leaf's
+    // canonical name.
     assert_eq!(DataType::from_str("string")?, DataType::utf8());
-    assert_eq!(DataType::from_str("varchar(32)")?.to_string(), "utf8(32)");
+    assert_eq!(DataType::from_str("varchar(32)")?.to_string(), "sized_utf8(32)");
     assert_eq!(DataType::from_str("char(8)")?, DataType::fixed_utf8(8)?);
     assert_eq!(DataType::from_str("fixed_string(us-ascii,4)")?, DataType::fixed_ascii(4)?);
 
-    // A charset or a bound is what a string declares, and it reads back.
+    // A charset beside the general spelling picks that charset's leaf, and
+    // the leaf reads back whole: charset, shape and number.
     let latin = DataType::from_str("string(windows-1252,32)")?;
+    assert_eq!(latin, DataType::sized_cp1252(32)?);
+    assert_eq!(latin.to_string(), "sized_cp1252(32)");
     let parameters = latin.string_parameters().expect("a string datatype");
-    assert_eq!(parameters.layout(), StringLayout::String);
+    assert_eq!(parameters, StringType::SizedCp1252String(32));
     assert_eq!(parameters.charset(), Charset::Cp1252);
     assert_eq!(parameters.max(), Some(32));
+    assert_eq!(parameters.storage(), StringType::Cp1252String);
     assert_eq!(latin.charset(), Some(Charset::Cp1252));
 
-    // One number, one reading per layout.
-    assert_eq!(DataType::from_str("ascii(4)")?.string_parameters().unwrap().max(), Some(4));
+    // The number is the leaf: a maximum on a sized leaf, a width on a fixed one.
+    assert_eq!(DataType::from_str("ascii(4)")?, DataType::sized_ascii(4)?);
     assert_eq!(DataType::fixed_ascii(4)?.fixed_byte_width(), Some(4));
     assert_eq!(DataType::ascii().fixed_byte_width(), None);
+    // A large or view leaf holds no maximum, a charset-named spelling takes
+    // no charset, and a charset with no leaf names nothing.
+    assert!(DataType::from_str("large_utf8(64)").is_err());
+    assert!(DataType::from_str("utf8(windows-1252)").is_err());
+    assert!(DataType::from_str("string(iso-8859-1)").is_err());
 
     // Bytes: the leaf is the whole declaration, and a maximum is its own leaf.
     let bounded = DataType::from_str("varbinary(16)")?;
@@ -121,28 +146,41 @@ Declare a string and a byte column, and read the declaration back.
 === "Python"
 
     ```python
+    import pytest
+
     from yggdryl import BytesParameters, DataType, StringParameters, types
 
-    # Every spelling of a layout is one datatype, rendered under the name
-    # its charset earns.
+    # Every spelling of a leaf is one datatype, rendered under the leaf's
+    # canonical name.
     assert DataType("string") == DataType.utf8() == DataType("varchar")
-    assert str(DataType("varchar(32)")) == "utf8(32)"
+    assert str(DataType("varchar(32)")) == "sized_utf8(32)"
     assert DataType("char(8)") == DataType.fixed_utf8(8)
     assert DataType("fixed_string(us-ascii,4)") == DataType.fixed_ascii(4)
 
-    # A charset or a bound is what a string declares, and it reads back as
-    # a frozen value.
+    # A charset beside the general spelling picks that charset's leaf, and
+    # it reads back as a frozen value naming the leaf.
     latin = DataType.string(charset="windows-1252", bound=32)
-    assert str(latin) == "string(windows-1252,32)"
+    assert str(latin) == "sized_cp1252(32)"
+    assert latin == DataType("sized_cp1252(32)")
     assert latin.string_parameters == StringParameters("string", "windows-1252", 32)
+    assert latin.string_parameters.layout == "sized_cp1252"
+    assert latin.string_parameters.charset == "windows-1252"
     assert latin.string_parameters.max == 32
     assert latin.charset == "windows-1252"
     assert types.string("name", charset="windows-1252", max=32).dtype == latin
+    assert types.sized_cp1252("name", 32).dtype == latin
+    assert types.sized_cp1252("name", 32).dtype.id == "sized_cp1252"
 
-    # One number, one reading per layout.
+    # The number is the leaf: a maximum on a sized leaf, a width on a fixed one.
+    assert DataType("ascii(4)") == DataType("sized_ascii(4)")
     assert DataType("ascii(4)").string_parameters.max == 4
     assert DataType.fixed_ascii(4).fixed_byte_width == 4
     assert DataType.ascii().fixed_byte_width is None
+    # A large or view leaf holds no maximum, a charset-named spelling takes
+    # no charset, and a charset with no leaf names nothing.
+    for refused in ("large_utf8(64)", "utf8(windows-1252)", "string(iso-8859-1)"):
+        with pytest.raises(ValueError):
+            DataType(refused)
 
     # Bytes: the leaf is the whole declaration, and a maximum is its own leaf.
     bounded = DataType("varbinary(16)")
@@ -160,30 +198,39 @@ Declare a string and a byte column, and read the declaration back.
     const assert = require('node:assert/strict')
     const { DataType, fields } = require('yggdryl')
 
-    // Every spelling of a layout is one datatype, rendered under the name
-    // its charset earns.
+    // Every spelling of a leaf is one datatype, rendered under the leaf's
+    // canonical name.
     assert.ok(DataType.from('string').equals(DataType.utf8()))
-    assert.equal(DataType.from('varchar(32)').toString(), 'utf8(32)')
+    assert.equal(DataType.from('varchar(32)').toString(), 'sized_utf8(32)')
     assert.ok(DataType.from('char(8)').equals(DataType.fixedUtf8(8)))
     assert.ok(DataType.from('fixed_string(us-ascii,4)').equals(DataType.fixedAscii(4)))
 
-    // A charset or a bound is what a string declares, and it reads back as
-    // a plain object.
+    // A charset beside the general spelling picks that charset's leaf, and
+    // it reads back as a plain object naming the leaf.
     const latin = DataType.string({ charset: 'windows-1252', max: 32 })
-    assert.equal(latin.toString(), 'string(windows-1252,32)')
+    assert.equal(latin.toString(), 'sized_cp1252(32)')
+    assert.ok(latin.equals(DataType.from('sized_cp1252(32)')))
     assert.deepEqual(latin.stringParameters, {
-      layout: 'string',
+      layout: 'sized_cp1252',
       charset: 'windows-1252',
       bound: 32,
       max: 32,
     })
     assert.equal(latin.charset, 'windows-1252')
     assert.ok(fields.string('name', { charset: 'windows-1252', max: 32 }).dtype.equals(latin))
+    assert.ok(fields.sizedCp1252('name', 32).dtype.equals(latin))
+    assert.equal(fields.sizedCp1252('name', 32).dtype.id, 'sized_cp1252')
 
-    // One number, one reading per layout.
+    // The number is the leaf: a maximum on a sized leaf, a width on a fixed one.
+    assert.ok(DataType.from('ascii(4)').equals(DataType.from('sized_ascii(4)')))
     assert.equal(DataType.from('ascii(4)').stringParameters.max, 4)
     assert.equal(DataType.fixedAscii(4).fixedByteWidth, 4)
     assert.equal(DataType.ascii().fixedByteWidth, null)
+    // A large or view leaf holds no maximum, a charset-named spelling takes
+    // no charset, and a charset with no leaf names nothing.
+    for (const refused of ['large_utf8(64)', 'utf8(windows-1252)', 'string(iso-8859-1)']) {
+      assert.throws(() => DataType.from(refused))
+    }
 
     // Bytes: the leaf is the whole declaration, and a maximum is its own leaf.
     const bounded = DataType.from('varbinary(16)')
@@ -198,12 +245,12 @@ Declare a string and a byte column, and read the declaration back.
 ## Charsets and bounds
 
 A bound counts **stored bytes**, not scalars: that is what the buffer holds and
-what Arrow's offsets measure. UTF-8 and US-ASCII are validated repertoires, so
-bytes that are not what they claim are refused naming the charset, and a
-US-ASCII value holds no NUL and no byte above `0x7F`. Every other charset is a
-declaration that the column holds legacy bytes, and those are *transcribed*: an
-unassigned byte reads as its ISO 8859-1 scalar, which is what the WHATWG
-Encoding Standard's own index maps it to.
+what Arrow's offsets measure. Three charsets have leaves. UTF-8 and US-ASCII
+are validated repertoires, so bytes that are not what they claim are refused
+naming the charset, and a US-ASCII value holds no NUL and no byte above `0x7F`.
+A windows-1252 leaf is a declaration that the column holds legacy bytes, and
+those are *transcribed*: an unassigned byte reads as its ISO 8859-1 scalar,
+which is what the WHATWG Encoding Standard's own index maps it to.
 
 === "Rust"
 
@@ -211,11 +258,11 @@ Encoding Standard's own index maps it to.
     use yggdryl::{DataType, Scalar};
 
     // Five scalars are five windows-1252 bytes and seven UTF-8 ones.
-    assert_eq!(DataType::from_str("string(windows-1252,5)")?.scalar("Grüße")?.as_str(), Some("Grüße"));
-    assert!(DataType::from_str("utf8(5)")?.scalar("Grüße").is_err());
+    assert_eq!(DataType::sized_cp1252(5)?.scalar("Grüße")?.as_str(), Some("Grüße"));
+    assert!(DataType::sized_utf8(5)?.scalar("Grüße").is_err());
 
-    // Bytes take one door, and the charset decides how strict it is.
-    let latin = DataType::from_str("string(windows-1252)")?;
+    // Bytes take one door, and the leaf's charset decides how strict it is.
+    let latin = DataType::cp1252();
     let value = latin.scalar(Scalar::from(vec![0x47_u8, 0x72, 0xFC, 0xDF, 0x65]))?;
     assert_eq!(value.as_str(), Some("Grüße"));
     // `0x81` is unassigned in windows-1252, and still reads ...
@@ -236,12 +283,12 @@ Encoding Standard's own index maps it to.
     from yggdryl import DataType
 
     # Five scalars are five windows-1252 bytes and seven UTF-8 ones.
-    assert DataType("string(windows-1252,5)").scalar("Grüße").as_py() == "Grüße"
+    assert DataType("sized_cp1252(5)").scalar("Grüße").as_py() == "Grüße"
     with pytest.raises(ValueError, match="at most 5 bytes"):
-        DataType("utf8(5)").scalar("Grüße")
+        DataType("sized_utf8(5)").scalar("Grüße")
 
-    # Bytes take one door, and the charset decides how strict it is.
-    latin = DataType.string(charset="windows-1252")
+    # Bytes take one door, and the leaf's charset decides how strict it is.
+    latin = DataType("cp1252")
     assert latin.scalar(b"Gr\xfc\xdfe").as_py() == "Grüße"
     # `0x81` is unassigned in windows-1252, and still reads ...
     assert latin.scalar(b"ok\x81").as_py() == "ok\x81"
@@ -265,13 +312,13 @@ Encoding Standard's own index maps it to.
     const strict = { safe: false }
 
     // Five scalars are five windows-1252 bytes and seven UTF-8 ones.
-    const latin = fields.string('name', { charset: 'windows-1252', max: 5 })
+    const latin = fields.sizedCp1252('name', 5)
     assert.deepEqual(
       Array.from(latin.castArrowArray(text(['Grüße']), strict).get(0)),
       [0x47, 0x72, 0xfc, 0xdf, 0x65],
     )
     assert.throws(
-      () => fields.string('name', { max: 5 }).castArrowArray(text(['Grüße']), strict),
+      () => fields.sizedUtf8('name', 5).castArrowArray(text(['Grüße']), strict),
       /at most 5 bytes/,
     )
 
@@ -282,9 +329,9 @@ Encoding Standard's own index maps it to.
     assert.throws(() => ascii.castArrowArray(text(['a\0b']), strict), /NUL/)
     ```
 
-A value in a legacy charset may hold scalars the charset cannot write - that is
-what recovering damage means - and the write seam (the Arrow array build, the
-cast) refuses them naming the scalar.
+A windows-1252 value may hold scalars the charset cannot write - that is what
+recovering damage means - and the write seam (the Arrow array build, the cast)
+refuses them naming the scalar.
 
 ## The values
 
@@ -293,15 +340,15 @@ cast) refuses them naming the scalar.
 inside the value with no heap behind it, a `'static` one costs nothing, and a
 longer one is one shared `Arc` that clones by reference count. Equality, order
 and hash read the characters or the payload alone, so a value is one value
-whichever column holds it. A value remembers the layout and charset it is
-written under - and the width, on a fixed layout - and never a maximum: a cell
-read out of `utf8(32)` is a `utf8`.
+whichever column holds it. A value remembers the leaf it is written under -
+the charset, the shape, and the width on a fixed leaf - and never a maximum: a
+cell read out of `sized_utf8(32)` is a `utf8`.
 
 Rust only; the bindings read a value as a `Scalar` and its `dtype`.
 
 ```rust
-use yggdryl::types::{Bytes, BytesType, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringType};
-use yggdryl::{Charset, DataType, Scalar};
+use yggdryl::types::{Bytes, BytesType, INLINE_BYTES, INLINE_CAPACITY, Str, StringType};
+use yggdryl::{DataType, Scalar};
 
 // Short text lives inside the value; longer text is one shared handle.
 let short = Str::new("AAPL");
@@ -310,17 +357,17 @@ assert!(!Str::new("a".repeat(INLINE_CAPACITY + 1)).is_inline());
 assert_eq!(std::mem::size_of::<Str>(), 32);
 assert_eq!(Scalar::from("AAPL"), Scalar::String(short.clone()));
 
-// Restating a value under other parameters keeps the characters and changes
-// what `encode` writes and `dtype` declares; a maximum is checked, not kept.
-let latin = short.clone().try_with_parameters(StringType::new(StringLayout::LargeString, Charset::Cp1252))?;
+// Restating a value under another leaf keeps the characters and changes what
+// `encode` writes and `dtype` declares; a maximum is checked, not kept.
+let latin = short.clone().try_with_parameters(StringType::LargeCp1252String)?;
 assert_eq!(latin, short);
-assert_eq!(latin.dtype()?, DataType::from_str("large_string(windows-1252)")?);
-let bounded = short.clone().try_with_parameters(StringType::utf8(StringLayout::String).try_with_bound(8)?)?;
-assert_eq!(bounded.parameters(), StringType::default());
-assert!(short.clone().try_with_parameters(StringType::utf8(StringLayout::String).try_with_bound(2)?).is_err());
+assert_eq!(latin.dtype()?, DataType::large_cp1252());
+let bounded = short.clone().try_with_parameters(StringType::SizedUtf8String(8))?;
+assert_eq!(bounded.parameters(), StringType::Utf8String);
+assert!(short.clone().try_with_parameters(StringType::SizedUtf8String(2)).is_err());
 
-// The fixed layout pads on the way out and trims on the way in.
-let ccy = Str::from_bytes(b"USD\0", StringType::ascii(StringLayout::FixedString).try_with_bound(4)?)?;
+// A fixed leaf pads on the way out and trims on the way in.
+let ccy = Str::from_bytes(b"USD\0", StringType::FixedAsciiString(4))?;
 assert_eq!(ccy, "USD");
 assert_eq!(ccy.encode()?.as_ref(), b"USD\0");
 assert_eq!(ccy.fixed(), Some(4));
@@ -337,14 +384,14 @@ assert!(Bytes::new([1_u8, 2]).try_with_parameters(fixed).is_err());
 ```
 
 The value door is the same rule in every language: a value read out of a
-bounded column answers its layout and charset alone.
+bounded column answers the plain leaf it fills.
 
 === "Rust"
 
     ```rust
     use yggdryl::DataType;
 
-    let bounded = DataType::from_str("ascii(4)")?;
+    let bounded = DataType::sized_ascii(4)?;
     assert_eq!(bounded.scalar("USD")?.dtype()?, DataType::ascii());
     assert!(bounded.scalar("EURO!").is_err());
     assert_eq!(DataType::from_str("binary(4)")?.scalar(vec![1_u8, 2, 3])?.dtype()?, DataType::binary());
@@ -357,7 +404,7 @@ bounded column answers its layout and charset alone.
 
     from yggdryl import DataType
 
-    bounded = DataType("ascii(4)")
+    bounded = DataType("sized_ascii(4)")
     assert bounded.scalar("USD").dtype == DataType("ascii")
     with pytest.raises(ValueError, match="at most 4 bytes"):
         bounded.scalar("EURO!")
@@ -370,26 +417,30 @@ bounded column answers its layout and charset alone.
     const assert = require('node:assert/strict')
     const { fields, json } = require('yggdryl')
 
-    const bounded = fields.string('code', { charset: 'us-ascii', max: 4 })
+    const bounded = fields.sizedAscii('code', 4)
     assert.equal(json.loads('"USD"', { field: bounded, scalar: true }).dtype.toString(), 'ascii')
     assert.throws(() => json.loads('"EURO!"', { field: bounded, scalar: true }), /at most 4 bytes/)
     ```
 
 ## Arrow storage
 
-Arrow is told the truth about the bytes. UTF-8 and US-ASCII ride Arrow's text
-layouts - ASCII bytes are UTF-8 - and every other charset rides the matching
-*binary* layout; the fixed layout rides `FixedSizeBinary` in every charset.
-What Arrow cannot say rides an extension document on the field, and only then:
+Arrow is told the truth about the bytes. The UTF-8 and US-ASCII leaves ride
+Arrow's text layouts - ASCII bytes are UTF-8 - and the windows-1252 leaves the
+matching *binary* layout; a fixed leaf rides `FixedSizeBinary` in every
+charset. `utf8`, `large_utf8` and `utf8_view` are Arrow's own and cross bare;
+every other leaf rides the `yggdryl.string` document, which states the leaf,
+its charset - the one fact Arrow cannot - and its number:
 
 | datatype | Arrow storage | extension name | document |
 | --- | --- | --- | --- |
 | `utf8`, `large_utf8`, `utf8_view` | `Utf8`, `LargeUtf8`, `Utf8View` | none | - |
-| `utf8(32)` | `Utf8` | `yggdryl.string` | `{"layout":"string","charset":"utf-8","max":32}` |
-| `ascii` | `Utf8` | `yggdryl.string` | `{"layout":"string","charset":"us-ascii"}` |
-| `fixed_ascii(4)` | `FixedSizeBinary(4)` | `yggdryl.string` | `{"layout":"fixed_string","charset":"us-ascii","fixed":4}` |
-| `large_utf8_view` | `Utf8View` | `yggdryl.string` | `{"layout":"large_string_view","charset":"utf-8"}` |
-| `string(windows-1252)` | `Binary` | `yggdryl.string` | `{"layout":"string","charset":"windows-1252"}` |
+| `sized_utf8(32)` | `Utf8` | `yggdryl.string` | `{"layout":"sized_utf8","charset":"utf-8","max":32}` |
+| `ascii` | `Utf8` | `yggdryl.string` | `{"layout":"ascii","charset":"us-ascii"}` |
+| `fixed_ascii(4)` | `FixedSizeBinary(4)` | `yggdryl.string` | `{"layout":"fixed_ascii","charset":"us-ascii","fixed":4}` |
+| `large_utf8_view` | `Utf8View` | `yggdryl.string` | `{"layout":"large_utf8_view","charset":"utf-8"}` |
+| `cp1252` | `Binary` | `yggdryl.string` | `{"layout":"cp1252","charset":"windows-1252"}` |
+| `sized_cp1252(32)` | `Binary` | `yggdryl.string` | `{"layout":"sized_cp1252","charset":"windows-1252","max":32}` |
+| `large_cp1252_view` | `BinaryView` | `yggdryl.string` | `{"layout":"large_cp1252_view","charset":"windows-1252"}` |
 | `binary`, `large_binary`, `binary_view`, `fixed_binary(16)` | the same four | none | - |
 | `sized_binary(16)` | `Binary` | `yggdryl.bytes` | `{"layout":"sized_binary","max":16}` |
 | `large_binary_view` | `BinaryView` | `yggdryl.bytes` | `{"layout":"large_binary_view"}` |
@@ -409,25 +460,27 @@ name, and it imports as its storage. A code rides its own extension name
     assert_eq!(plain.data_type(), &ArrowDataType::Utf8);
     assert!(!plain.metadata().contains_key("ARROW:extension:name"));
 
-    // US-ASCII is UTF-8, so it rides the text layout; the charset rides the document.
+    // US-ASCII is UTF-8, so it rides the text layout; the leaf rides the document.
     let note = Field::new("note", DataType::ascii(), false);
     let arrow = note.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.string");
-    assert_eq!(arrow.metadata()["ARROW:extension:metadata"], r#"{"layout":"string","charset":"us-ascii"}"#);
+    assert_eq!(arrow.metadata()["ARROW:extension:metadata"], r#"{"layout":"ascii","charset":"us-ascii"}"#);
     assert_eq!(Field::from_arrow_field(&arrow)?, note);
 
     // A fixed width is Arrow's fixed binary, whatever the charset.
     let ccy = Field::new("ccy", DataType::fixed_ascii(4)?, false);
     let arrow = ccy.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(4));
-    assert_eq!(arrow.metadata()["ARROW:extension:metadata"], r#"{"layout":"fixed_string","charset":"us-ascii","fixed":4}"#);
+    assert_eq!(arrow.metadata()["ARROW:extension:metadata"], r#"{"layout":"fixed_ascii","charset":"us-ascii","fixed":4}"#);
     assert_eq!(Field::from_arrow_field(&arrow)?, ccy);
 
-    // A legacy charset rides binary storage, because its bytes are not UTF-8.
-    let latin = Field::new("name", DataType::from_str("string(windows-1252)")?, true);
-    assert_eq!(latin.clone().into_arrow_field()?.data_type(), &ArrowDataType::Binary);
-    assert_eq!(Field::from_arrow_field(&latin.clone().into_arrow_field()?)?, latin);
+    // A windows-1252 leaf rides binary storage, because its bytes are not UTF-8.
+    let latin = Field::new("name", DataType::sized_cp1252(32)?, true);
+    let arrow = latin.clone().into_arrow_field()?;
+    assert_eq!(arrow.data_type(), &ArrowDataType::Binary);
+    assert_eq!(arrow.metadata()["ARROW:extension:metadata"], r#"{"layout":"sized_cp1252","charset":"windows-1252","max":32}"#);
+    assert_eq!(Field::from_arrow_field(&arrow)?, latin);
 
     // Bytes are the layout; only a maximum needs a document.
     assert!(!Field::new("blob", DataType::binary(), true).into_arrow_field()?.metadata().contains_key("ARROW:extension:name"));
@@ -446,13 +499,13 @@ name, and it imports as its storage. A code rides its own extension name
     # Plain UTF-8 is Arrow's own datatype and crosses bare.
     assert types.utf8("text").into_arrow().metadata is None
 
-    # US-ASCII is UTF-8, so it rides the text layout; the charset rides the document.
+    # US-ASCII is UTF-8, so it rides the text layout; the leaf rides the document.
     note = types.ascii("note", nullable=False)
     arrow = note.into_arrow()
     assert arrow.type == pa.string()
     assert arrow.metadata == {
         b"ARROW:extension:name": b"yggdryl.string",
-        b"ARROW:extension:metadata": b'{"layout":"string","charset":"us-ascii"}',
+        b"ARROW:extension:metadata": b'{"layout":"ascii","charset":"us-ascii"}',
     }
     assert Field.from_arrow(arrow) == note
 
@@ -461,15 +514,19 @@ name, and it imports as its storage. A code rides its own extension name
     arrow = ccy.into_arrow()
     assert arrow.type == pa.binary(4)
     assert arrow.metadata[b"ARROW:extension:metadata"] == (
-        b'{"layout":"fixed_string","charset":"us-ascii","fixed":4}'
+        b'{"layout":"fixed_ascii","charset":"us-ascii","fixed":4}'
     )
     assert Field.from_arrow(arrow) == ccy
     assert Field.from_arrow(pa.field("ccy", pa.binary(4))) == Field("ccy", "fixed_binary(4)")
 
-    # A legacy charset rides binary storage, because its bytes are not UTF-8.
-    latin = Field("name", DataType.string(charset="windows-1252"))
-    assert latin.into_arrow().type == pa.binary()
-    assert Field.from_arrow(latin.into_arrow()) == latin
+    # A windows-1252 leaf rides binary storage, because its bytes are not UTF-8.
+    latin = types.sized_cp1252("name", 32)
+    arrow = latin.into_arrow()
+    assert arrow.type == pa.binary()
+    assert arrow.metadata[b"ARROW:extension:metadata"] == (
+        b'{"layout":"sized_cp1252","charset":"windows-1252","max":32}'
+    )
+    assert Field.from_arrow(arrow) == latin
 
     # Bytes are the layout; only a maximum needs a document.
     assert types.binary("blob").into_arrow().metadata is None
@@ -497,13 +554,13 @@ name, and it imports as its storage. A code rides its own extension name
     // Plain UTF-8 is Arrow's own datatype and crosses bare.
     assert.equal(projected(fields.utf8('text')).metadata.get('ARROW:extension:name'), undefined)
 
-    // US-ASCII is UTF-8, so it rides the text layout; the charset rides the document.
+    // US-ASCII is UTF-8, so it rides the text layout; the leaf rides the document.
     const note = projected(fields.ascii('note', { nullable: false }))
     assert.equal(String(note.type), 'Utf8')
     assert.equal(note.metadata.get('ARROW:extension:name'), 'yggdryl.string')
     assert.equal(
       note.metadata.get('ARROW:extension:metadata'),
-      '{"layout":"string","charset":"us-ascii"}',
+      '{"layout":"ascii","charset":"us-ascii"}',
     )
 
     // A fixed width is Arrow's fixed binary, whatever the charset.
@@ -511,11 +568,16 @@ name, and it imports as its storage. A code rides its own extension name
     assert.equal(String(ccy.type), 'FixedSizeBinary[4]')
     assert.equal(
       ccy.metadata.get('ARROW:extension:metadata'),
-      '{"layout":"fixed_string","charset":"us-ascii","fixed":4}',
+      '{"layout":"fixed_ascii","charset":"us-ascii","fixed":4}',
     )
 
-    // A legacy charset rides binary storage, because its bytes are not UTF-8.
-    assert.equal(String(projected(fields.string('name', { charset: 'windows-1252' })).type), 'Binary')
+    // A windows-1252 leaf rides binary storage, because its bytes are not UTF-8.
+    const latin = projected(fields.sizedCp1252('name', 32))
+    assert.equal(String(latin.type), 'Binary')
+    assert.equal(
+      latin.metadata.get('ARROW:extension:metadata'),
+      '{"layout":"sized_cp1252","charset":"windows-1252","max":32}',
+    )
 
     // Bytes are the layout; only a maximum needs a document.
     assert.equal(projected(fields.binary('blob')).metadata.get('ARROW:extension:name'), undefined)
@@ -526,17 +588,17 @@ name, and it imports as its storage. A code rides its own extension name
 
 ## Casts
 
-A string target that declares anything Arrow cannot - a bound, a fixed width,
-a charset other than UTF-8 - validates every cell on the way in
+A string target on any leaf but the three Arrow's own - a maximum, a fixed
+width, a charset other than UTF-8 - validates every cell on the way in
 (`StringIngest`); a bounded variable byte target checks every cell's length
-(`BytesIngest`). Plain unbounded `utf8` and the four plain byte layouts stay
-Arrow's own kernel. A source with a `yggdryl.string` document is read under
-its own parameters and restated under the target's; a code source is read as
-its trimmed text; bare text storage is read as text; bare binary storage is
+(`BytesIngest`). `utf8`, `large_utf8`, `utf8_view` and the four plain byte
+leaves stay Arrow's own kernel. A source with a `yggdryl.string` document is
+read under its own leaf and restated under the target's; a code source is read
+as its trimmed text; bare text storage is read as text; bare binary storage is
 read as bytes already in the target charset (a fixed source trimmed of NUL
 first). Under `safe` a failing cell becomes null, under strict an error names
-the row and the column. The fixed layout pads on the way in, and the stored
-column read back under `utf8` trims.
+the row and the column. A fixed leaf pads on the way in, and the stored column
+read back under `utf8` trims.
 
 === "Rust"
 
@@ -650,10 +712,13 @@ use yggdryl::{ArrowCastOptions, DataType, Field};
 ## Serialized shape
 
 One `string` tag for every string and one `binary` tag for every byte column,
-with `layout` (omitted when `string` / `binary`), `charset` (omitted when
-`utf-8`), and `fixed` or `max` (omitted when unbounded). A scalar crosses as
-`{"type":"string","value":...}` or `{"type":"bytes","value":...}`; the value is
-bare text or bytes under the default parameters and an object otherwise.
+with `layout` naming the leaf (omitted when `utf8` / `binary`) and `fixed` or
+`max` beside it (omitted when the leaf carries no number). The leaf names its
+charset, so no `charset` key is written; a document carrying one restates the
+leaf in that charset's family, so `{"type":"string","layout":"large_string","charset":"windows-1252"}`
+reads as `large_cp1252`. A scalar crosses as `{"type":"string","value":...}`
+or `{"type":"bytes","value":...}`; the value is bare text or bytes under the
+default leaf and an object naming the leaf otherwise.
 
 === "Rust"
 
@@ -661,10 +726,14 @@ bare text or bytes under the default parameters and an object otherwise.
     use yggdryl::{DataType, Field};
 
     assert_eq!(DataType::utf8().into_json()?, r#"{"type":"string"}"#);
-    assert_eq!(DataType::from_str("utf8(32)")?.into_json()?, r#"{"type":"string","max":32}"#);
+    assert_eq!(DataType::from_str("utf8(32)")?.into_json()?, r#"{"type":"string","layout":"sized_utf8","max":32}"#);
     assert_eq!(
         DataType::fixed_ascii(4)?.into_json()?,
-        r#"{"type":"string","layout":"fixed_string","charset":"us-ascii","fixed":4}"#
+        r#"{"type":"string","layout":"fixed_ascii","fixed":4}"#
+    );
+    assert_eq!(
+        DataType::from_json(r#"{"type":"string","layout":"large_string","charset":"windows-1252"}"#)?,
+        DataType::large_cp1252()
     );
     assert_eq!(
         DataType::from_str("binary(16)")?.into_json()?,
@@ -674,7 +743,7 @@ bare text or bytes under the default parameters and an object otherwise.
         DataType::fixed_binary(16)?.into_json()?,
         r#"{"type":"binary","layout":"fixed_binary","fixed":16}"#
     );
-    let field = Field::new("name", DataType::from_str("fixed_string(windows-1252,8)")?, true);
+    let field = Field::new("name", DataType::fixed_cp1252(8)?, true);
     assert_eq!(Field::from_json(&field.clone().into_json()?)?, field);
     // The retired tags are not read back.
     assert!(DataType::from_json(r#"{"type":"utf8"}"#).is_err());
@@ -686,13 +755,15 @@ bare text or bytes under the default parameters and an object otherwise.
     from yggdryl import DataType, Field
 
     assert DataType("utf8").into_dict() == {"type": "string"}
-    assert DataType("utf8(32)").into_dict() == {"type": "string", "max": 32}
+    assert DataType("utf8(32)").into_dict() == {"type": "string", "layout": "sized_utf8", "max": 32}
     assert DataType.fixed_ascii(4).into_dict() == {
         "type": "string",
-        "layout": "fixed_string",
-        "charset": "us-ascii",
+        "layout": "fixed_ascii",
         "fixed": 4,
     }
+    assert DataType.from_json(
+        '{"type":"string","layout":"large_string","charset":"windows-1252"}'
+    ) == DataType("large_cp1252")
     assert DataType("binary(16)").into_dict() == {
         "type": "binary",
         "layout": "sized_binary",
@@ -703,7 +774,7 @@ bare text or bytes under the default parameters and an object otherwise.
         "layout": "fixed_binary",
         "fixed": 16,
     }
-    field = Field("name", "fixed_string(windows-1252,8)")
+    field = Field("name", "fixed_cp1252(8)")
     assert Field.from_json(field.into_json()) == field
     ```
 
@@ -714,13 +785,17 @@ bare text or bytes under the default parameters and an object otherwise.
     const { DataType, Field } = require('yggdryl')
 
     assert.deepEqual(DataType.utf8().toJSON(), { type: 'string' })
-    assert.deepEqual(DataType.from('utf8(32)').toJSON(), { type: 'string', max: 32 })
+    assert.deepEqual(DataType.from('utf8(32)').toJSON(), { type: 'string', layout: 'sized_utf8', max: 32 })
     assert.deepEqual(DataType.fixedAscii(4).toJSON(), {
       type: 'string',
-      layout: 'fixed_string',
-      charset: 'us-ascii',
+      layout: 'fixed_ascii',
       fixed: 4,
     })
+    assert.ok(
+      DataType.fromJSON({ type: 'string', layout: 'large_string', charset: 'windows-1252' }).equals(
+        DataType.from('large_cp1252'),
+      ),
+    )
     assert.deepEqual(DataType.from('binary(16)').toJSON(), {
       type: 'binary',
       layout: 'sized_binary',
@@ -731,7 +806,7 @@ bare text or bytes under the default parameters and an object otherwise.
       layout: 'fixed_binary',
       fixed: 16,
     })
-    const field = new Field('name', 'fixed_string(windows-1252,8)', true)
+    const field = new Field('name', 'fixed_cp1252(8)', true)
     assert.ok(Field.fromJSONBytes(field.toJSONBytes()).equals(field))
     assert.throws(() => DataType.fromJSON({ type: 'utf8' }), /unknown variant `utf8`/)
     ```
@@ -1079,22 +1154,22 @@ intake is total by construction and unrecognized text answers the default base.
 
 ## Edges
 
-- `fixed_string`, `fixed_size_binary` with no width -> refused; the width is what makes a layout fixed. A bound of `0` -> refused, `at least one byte, got 0`.
-- `utf8(windows-1252)`, `ascii(windows-1252)` -> refused; a charset-named spelling declares its charset in the name.
-- `ascii(4)`, `binary(16)` -> maxima; `fixed_ascii(4)`, `fixed_size_binary(16)` -> widths. `varchar(255)` -> `utf8(255)`; `char(8)` -> `fixed_utf8(8)`; bare `char` -> `utf8`.
-- A bound counts stored bytes, so `utf8(4)` refuses `Grüß` and `string(windows-1252,4)` holds it.
-- `utf8`, `utf8(n)`, `fixed_utf8(n)`, `large_utf8_view` read bytes strictly, naming the charset; `string(<legacy charset>)` transcribes, an unassigned byte as its ISO 8859-1 scalar.
-- A US-ASCII value -> no NUL, no byte above `0x7F`, refused naming the byte and its position; a variable US-ASCII value keeps its length, only the fixed layout trims trailing NUL.
+- `fixed_utf8`, `sized_ascii`, `fixed_binary` with no number -> refused; the number is what makes the leaf. A bound of `0` -> refused, `at least one byte, got 0`.
+- `utf8(windows-1252)`, `ascii(windows-1252)` -> refused; a charset-named spelling declares its charset in the name. `string(iso-8859-1)` -> refused; only UTF-8, US-ASCII and windows-1252 have a leaf.
+- `utf8(32)`, `ascii(4)`, `cp1252(32)`, `binary(16)` -> the sized leaf written short; `large_utf8(64)`, `utf8_view(8)`, `large_binary(16)` -> refused, a large or view leaf holds no maximum. `varchar(255)` -> `sized_utf8(255)`; `char(8)` -> `fixed_utf8(8)`; bare `char` -> `utf8`.
+- A bound counts stored bytes, so `sized_utf8(4)` refuses `Grüß` and `sized_cp1252(4)` holds it.
+- Every UTF-8 and US-ASCII leaf reads bytes strictly, naming the charset; every windows-1252 leaf transcribes, an unassigned byte as its ISO 8859-1 scalar.
+- A US-ASCII value -> no NUL, no byte above `0x7F`, refused naming the byte and its position; a variable US-ASCII value keeps its length, only a fixed leaf trims trailing NUL.
 - A fixed string stores its value padded with trailing NUL and reads back trimmed; a fixed byte value is exactly its width, never padded.
-- Text a legacy charset has no bytes for -> held as a value, refused when the column is written, naming the scalar; the value door counts rather than judges.
-- A value never carries a maximum: `Scalar::dtype()` of a cell read out of `utf8(32)` is `utf8`, of `binary(16)` is `binary`.
+- Text windows-1252 has no bytes for -> held as a value, refused when the column is written, naming the scalar; the value door counts rather than judges.
+- A value never carries a maximum: `Scalar::dtype()` of a cell read out of `sized_utf8(32)` is `utf8`, of `sized_binary(16)` is `binary`.
 - `Scalar::from("USD")` and a value read out of an `ascii` column are one value; `Str` equality, order and hash read the characters alone.
 - `string_parameters` on a code, `bytes_parameters` on a UUID -> `None`; `fixed_byte_width` answers for a fixed string, fixed bytes, a UUID and the numbers, and a code answers `code_width`, the maximum its standard fixes over the text it stores.
 - A `yggdryl.string` or `yggdryl.bytes` document over a storage it does not describe -> imports as the storage.
 - A stored column carrying `yggdryl.msgdirection` or `yggdryl.direction` -> imports as the `fixed_size_binary(4)` it is: the datatype was retired, and which way a message moved is FIX's tag 385, text over its code set.
 - Arrow JS rows carry no extension identity, so a `fixed_ascii(n)` column arrives as its padded bytes through `readRecords`; declare `utf8` to read text.
 - A `StringIngest` or `BytesIngest` refusal under `safe` -> null, which a required column then fills with the default; under strict -> `field "<name>" row <n>: expected ..., got ...`.
-- Avro and Iceberg -> a string with text storage (UTF-8 or US-ASCII) crosses as `string`, a fixed one trimmed of padding; any other charset is refused by name; a bounded byte column crosses unbounded, the bound enforced where values enter.
+- Avro and Iceberg -> a UTF-8 or US-ASCII leaf crosses as `string`, a fixed one trimmed of padding; a windows-1252 leaf is refused by name; a bounded byte column crosses unbounded, the bound enforced where values enter.
 - Merging follows [Field](field.md): two strings and two byte types meet parameter by parameter.
 - `from_regex(pattern, false)` -> every capture stays `utf8`; invalid regex syntax or an expression past the recursion limit -> datatype error.
 - `\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}` -> a millisecond datetime and `\d{2}:\d{2}:\d{2},\d{3}` -> a millisecond time: the comma is a decimal sign inside a clock. Outside one it is not, so `\d+,\d+` and `\d{1,3}(?:,\d{3})*` stay `utf8` and a bare fraction such as `,\d{3}` carries no clock to be part of.
@@ -1148,9 +1223,9 @@ the `read` rows are the value's cost.
 | --- | ---: | ---: |
 | `utf8` / `ascii` build | one buffer per column | one buffer per column |
 | `utf8` / `ascii` read | 0 | 1 |
-| `string(windows-1252)` build | one buffer per column | one buffer per column |
-| `string(windows-1252)` read, all-ASCII cell | 0 | 1 |
-| `string(windows-1252)` read, transcoded cell | 0 | 2 |
+| `cp1252` build | one buffer per column | one buffer per column |
+| `cp1252` read, all-ASCII cell | 0 | 1 |
+| `cp1252` read, transcoded cell | 0 | 2 |
 | `binary` read | 0 | 1 |
 
 A column's build cost is its buffers and not its rows: the payload is measured
@@ -1197,7 +1272,7 @@ Rust rows await a regenerate of `cargo bench --bench types -- '^(string|bytes)/'
 | operation | Python native boundary | JavaScript native boundary |
 | --- | ---: | ---: |
 | `fixed_ascii(3)` datatype | 195.9 ns/op | 509,466 ops/s |
-| `string(windows-1252,32)` datatype | 543.1 ns/op | 223,772 ops/s |
+| `sized_cp1252(32)` datatype | 543.1 ns/op | 223,772 ops/s |
 | `string_parameters` read | 214.9 ns/op | 439,389 ops/s |
 | `binary(16)` datatype | 387.9 ns/op | 335,892 ops/s |
 | `bytes_parameters` read | 121.5 ns/op | — |

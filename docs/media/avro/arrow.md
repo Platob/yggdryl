@@ -101,12 +101,12 @@ The handle's media type selects Avro, so no call names a format. The three inten
 
 ## Strings and bytes on the wire
 
-Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage - UTF-8 or US-ASCII, any layout, bounded or not - writes as `string`, a fixed width trimmed of its padding; a string in any other charset holds bytes that are not UTF-8 and is refused by name. A fixed byte layout is Avro's `fixed`, every other one is `bytes`, and a maximum is dropped on write because Avro has none: the values were held to it when they entered.
+Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage - every UTF-8 and US-ASCII leaf, any shape, bounded or not - writes as `string`, a fixed width trimmed of its padding; a windows-1252 leaf holds bytes that are not UTF-8 and is refused by name. A fixed byte layout is Avro's `fixed`, every other one is `bytes`, and a maximum is dropped on write because Avro has none: the values were held to it when they entered.
 
 | `DataType` | Avro | Reads back as |
 | --- | --- | --- |
-| `utf8`, `utf8(n)`, `large_utf8`, `utf8_view`, `ascii`, `fixed_ascii(n)`, `fixed_utf8(n)` | `string` | `utf8` |
-| `string(windows-1252)`, any charset but UTF-8 and US-ASCII | refused: `expected a datatype Avro can spell` | |
+| `utf8`, `sized_utf8(n)`, `large_utf8`, `utf8_view`, `ascii`, `fixed_ascii(n)`, `fixed_utf8(n)` | `string` | `utf8` |
+| `cp1252`, every windows-1252 leaf | refused: `expected a datatype Avro can spell` | |
 | `country`, `currency`, `mic`, `cfi`, `isin` | `string` | `utf8` |
 | `binary`, `sized_binary(n)`, `large_binary`, `binary_view`, `large_binary_view` | `bytes` | `binary` |
 | `fixed_binary(n)` | `fixed` of size `n` | `fixed_binary(n)` |
@@ -146,7 +146,7 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
     assert_eq!(spelled, ["utf8", "fixed_binary(2)", "binary"]);
 
     let legacy = DataType::from_fields([
-        DataType::from_str("string(windows-1252)")?.nullable_field("note"),
+        DataType::cp1252().nullable_field("note"),
     ])?
     .required_field("row");
     let note = RecordBatch::try_from_iter([("note", Arc::new(StringArray::from(vec!["hi"])) as _)])?;
@@ -155,7 +155,7 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
         .overwrite_arrow_batch(note, &options.with_field(legacy))
         .unwrap_err()
         .to_string();
-    assert!(refused.contains("expected a datatype Avro can spell, got string(windows-1252)"), "{refused}");
+    assert!(refused.contains("expected a datatype Avro can spell, got cp1252"), "{refused}");
     ```
 
 === "Python"
@@ -188,13 +188,13 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
     assert list(handle.read_records()) == [{"code": "AB", "key": b"\x00\x01", "blob": b"xyz"}]
 
     legacy = handle.record_options()
-    legacy.field = types.struct("row", [types.string("note", charset="windows-1252")], nullable=False)
+    legacy.field = types.struct("row", [types.cp1252("note")], nullable=False)
     try:
         IOBase(pathlib.Path(tempfile.mkdtemp()) / "notes.avro").overwrite_arrow_batch(
             pa.record_batch({"note": ["hi"]}), options=legacy
         )
     except ValueError as error:
-        assert "expected a datatype Avro can spell, got string(windows-1252)" in str(error), error
+        assert "expected a datatype Avro can spell, got cp1252" in str(error), error
     else:
         raise AssertionError("a windows-1252 string is not Avro's string")
     ```
@@ -238,7 +238,7 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
 
     const legacy = fields.struct(
       'row',
-      [fields.string('note', { charset: 'windows-1252' })],
+      [fields.cp1252('note')],
       { nullable: false },
     )
     assert.throws(
@@ -247,7 +247,7 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
           BatchReader.from(new arrow.Table({ note: arrow.vectorFromArray(['hi'], new arrow.Utf8()) })),
           handle.recordOptions().withField(legacy),
         ),
-      /expected a datatype Avro can spell, got string\(windows-1252\)/,
+      /expected a datatype Avro can spell, got cp1252/,
     )
     fs.rmSync(root, { recursive: true, force: true })
     ```

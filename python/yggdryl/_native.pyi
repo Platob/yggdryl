@@ -506,8 +506,11 @@ class Scalar:
     def kind(self) -> Literal[
         "null", "boolean", "i8", "i16", "i32", "i64", "u8", "u16", "u32",
         "u64", "i128", "u128", "f16", "f32", "f64", "d32", "d64", "d128",
-        "d256", "string", "fixed_string", "string_view", "large_string",
-        "large_string_view", "country", "currency", "mic", "cfi", "isin",
+        "d256", "string", "large_utf8", "utf8_view", "large_utf8_view",
+        "fixed_utf8", "ascii", "large_ascii", "ascii_view", "large_ascii_view",
+        "fixed_ascii", "cp1252", "large_cp1252", "cp1252_view",
+        "large_cp1252_view", "fixed_cp1252",
+        "country", "currency", "mic", "cfi", "isin",
         "cusip", "sedol", "bloomberg", "side", "state", "timeinforce",
         "uuid", "version", "timezone", "mimetype", "mediatype", "url",
         "bytes", "large_binary", "binary_view", "large_binary_view",
@@ -676,16 +679,20 @@ class AvroBlockIterator(Iterator[AvroBlock]):
     def __next__(self) -> AvroBlock: ...
 
 class StringParameters:
-    """What a string column declares: its layout, its charset, and its bound.
+    """What a string column declares: one of the eighteen leaves and, where
+    the leaf carries one, its number.
 
-    The bound is one number with one reading per layout: the exact width on
-    the fixed layout, the maximum everywhere else.
+    Six leaves per charset - plain, large, view, large view, fixed and sized
+    - in UTF-8, US-ASCII and windows-1252. ``layout`` is any spelling of a
+    leaf; only a charset-free spelling (``string``, ``fixed_string``, ...)
+    takes a ``charset``; ``bound`` is the exact width on a fixed leaf and the
+    maximum on a sized one.
     """
 
     def __init__(
         self,
         layout: str = "string",
-        charset: str = "utf-8",
+        charset: str | None = None,
         bound: int | None = None,
     ) -> None: ...
     @property
@@ -815,7 +822,7 @@ class DataType:
     def string(
         cls,
         layout: str = "string",
-        charset: str = "utf-8",
+        charset: str | None = None,
         bound: int | None = None,
     ) -> DataType: ...
     @classmethod

@@ -238,29 +238,27 @@ fn every_shape_round_trips_through_every_format() {
 
 #[test]
 fn every_string_and_byte_column_is_one_tag_with_its_parameters() {
-    // One `"string"` tag carries the layout, the charset and the bound, each
-    // omitted when it is the default; `"binary"` the same without a charset.
+    // One `"string"` tag carries the leaf and its number, each omitted when it
+    // is the default - the leaf's name already says the charset; `"binary"`
+    // the same over its six leaves.
     for (dtype, json) in [
         (DataType::utf8(), r#"{"type":"string"}"#),
         (
             DataType::from_str("utf8(32)").unwrap(),
-            r#"{"type":"string","max":32}"#,
+            r#"{"type":"string","layout":"sized_utf8","max":32}"#,
         ),
         (
             DataType::fixed_ascii(4).unwrap(),
-            r#"{"type":"string","layout":"fixed_string","charset":"us-ascii","fixed":4}"#,
+            r#"{"type":"string","layout":"fixed_ascii","fixed":4}"#,
         ),
-        (
-            DataType::ascii(),
-            r#"{"type":"string","charset":"us-ascii"}"#,
-        ),
+        (DataType::ascii(), r#"{"type":"string","layout":"ascii"}"#),
         (
             DataType::large_utf8(),
-            r#"{"type":"string","layout":"large_string"}"#,
+            r#"{"type":"string","layout":"large_utf8"}"#,
         ),
         (
             DataType::from_str("string(windows-1252)").unwrap(),
-            r#"{"type":"string","charset":"windows-1252"}"#,
+            r#"{"type":"string","layout":"cp1252"}"#,
         ),
         (DataType::binary(), r#"{"type":"binary"}"#),
         (

@@ -166,8 +166,8 @@ impl Scalar {
     /// The tag is the value's own [`DataTypeId`], except where a family
     /// compares equal across its members and one member's tag then stands for
     /// all of them: integers feed `int128` or `uint128` by sign, floats and
-    /// decimals feed their widest member, every string feeds `string`
-    /// whatever its layout or charset, and a geography feeds `geometry`. A
+    /// decimals feed their widest member, every string feeds `utf8`
+    /// whatever leaf its column declares, and a geography feeds `geometry`. A
     /// code feeds its own identifier, because a currency and a country whose
     /// bytes agree are two values.
     ///
@@ -178,7 +178,7 @@ impl Scalar {
     /// | `I8`..`U128` | `uint128`, or `int128` when negative | magnitude as `u128` little-endian |
     /// | `F16`/`F32`/`F64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
     /// | `D32`..`D256` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte |
-    /// | `String` | `string` | length `u64` little-endian, then UTF-8 |
+    /// | `String` | `utf8` | length `u64` little-endian, then UTF-8 |
     /// | a registered code | the code's own id | length `u64` little-endian, then the trimmed text |
     /// | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
     /// | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
@@ -544,7 +544,7 @@ pub(super) fn write_temporal(
 
 /// Write UTF-8 text as a string value.
 pub(super) fn write_string(sink: &mut impl Hasher, text: &str) {
-    write_tag(sink, DataTypeId::String);
+    write_tag(sink, DataTypeId::Utf8String);
     write_text(sink, text);
 }
 

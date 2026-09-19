@@ -553,11 +553,14 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// and an optional bound beside it. It last moved when the two sets of moves
 /// above met: the families hash the dictionary main settled on, so neither
 /// side's pinned number survives the merge and this one is what the merged
-/// tree answers.
+/// tree answers. It last moved when the string family became eighteen
+/// leaves: a string column hashes one leaf that already carries its charset
+/// and its count, where it used to hash a layout, a charset and an optional
+/// bound beside them.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 2_924_523_166_229_142_018);
+    assert_eq!(registry.stable_hash(), 1_751_502_319_482_455_976);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

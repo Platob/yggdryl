@@ -233,7 +233,7 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
 
 ### yggdryl::root::datatype_id  [rust/src/datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 66] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8, Self::UInt16, Self::UInt32, Self::UInt64, Self::Int128, Self::UInt128, Self::Float16, Self::Float32, Self::Float64, Self::DateTime64, Self::Date32, Self::Date64, Self::Time32, Self::Time64, Self::Duration32, Self::Duration64, Self::Interval, Self::Binary, Self::FixedSizeBinary, Self::LargeBinary, Self::BinaryView, Self::String, Self::FixedString, Self::StringView, Self::LargeString, Self::LargeStringView, Self::Country, Self::Currency, Self::Mic, Self::Cfi, Self::Uuid, Self::List, Self::ListView, Self::FixedSizeList, Self::LargeList, Self::LargeListView, Self::Struct, Self::Union, Self::Dictionary, Self::Decimal32, Self::Decimal64, Self::Decimal128, Self::Decimal256, Self::Map, Self::RunEndEncoded, Self::Variant, Self::Geometry, Self::Geography, Self::Version, Self::Side, Self::State, Self::TimeInForce, Self::Url, Self::Isin, Self::Timezone, Self::MimeType, Self::MediaType, Self::Cusip, Self::Sedol, Self::Bloomberg, ];  (every discriminant explicit; 58 was msgdirection, retired; Cusip = 64, Sedol = 65 and Bloomberg = 66 appended)
+  pub const ALL: [Self; 86] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8, Self::UInt16, Self::UInt32, Self::UInt64, Self::Int128, Self::UInt128, Self::Float16, Self::Float32, Self::Float64, Self::DateTime64, Self::Date32, Self::Date64, Self::Time32, Self::Time64, Self::Duration32, Self::Duration64, Self::Interval, Self::Binary, Self::FixedBinary, Self::LargeBinary, Self::BinaryView, Self::Utf8String, Self::FixedUtf8String, Self::Utf8StringView, Self::LargeUtf8String, Self::LargeUtf8StringView, Self::Country, Self::Currency, Self::Mic, Self::Cfi, Self::Uuid, Self::List, Self::ListView, Self::FixedSizeList, Self::LargeList, Self::LargeListView, Self::Struct, Self::Union, Self::Dictionary, Self::Decimal32, Self::Decimal64, Self::Decimal128, Self::Decimal256, Self::Map, Self::RunEndEncoded, Self::Variant, Self::Geometry, Self::Geography, Self::Version, Self::Side, Self::State, Self::TimeInForce, Self::Url, Self::Isin, Self::Timezone, Self::MimeType, Self::MediaType, Self::Cusip, Self::Sedol, Self::Bloomberg, Self::SortedMap, Self::Struct2, Self::Uuidv4, Self::Uuidv7, Self::Uuidv8, Self::LargeBinaryView, Self::SizedBinary, Self::SizedUtf8String, Self::AsciiString, Self::LargeAsciiString, Self::AsciiStringView, Self::LargeAsciiStringView, Self::FixedAsciiString, Self::SizedAsciiString, Self::Cp1252String, Self::LargeCp1252String, Self::Cp1252StringView, Self::LargeCp1252StringView, Self::FixedCp1252String, Self::SizedCp1252String, ];  (every discriminant explicit; 58 was msgdirection, retired; Cusip = 64, Sedol = 65 and Bloomberg = 66 appended, then SortedMap = 67, Struct2 = 68, Uuidv4..Uuidv8 = 69..71, LargeBinaryView = 72, SizedBinary = 73; the five UTF-8 string leaves keep 27..31 under their leaf names - utf8, fixed_utf8, utf8_view, large_utf8, large_utf8_view - and the thirteen other string leaves are appended 74..86 in ALL order, sized_utf8 first and sized_cp1252 last)
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn as_u8(self) -> u8
@@ -246,7 +246,7 @@ pub enum DataTypeId
   pub const fn is_decimal(self) -> bool
   pub const fn is_temporal(self) -> bool
   pub const fn is_binary(self) -> bool
-  pub const fn is_string(self) -> bool
+  pub const fn is_string(self) -> bool  (the eighteen string leaves)
   pub const fn fixed_byte_width(self) -> Option<usize>  (the numbers, a UUID; a code answers code_width instead)
   pub const fn code_width(self) -> Option<usize>  (the ten registered codes; the most bytes one value may be: cusip 9, sedol 7)
 
@@ -2871,57 +2871,54 @@ pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Se
   pub fn apply_arrow_reader( &self, inner: crate::arrow::BatchReader, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<crate::arrow::BatchReader>
   pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef>
 
-### yggdryl::types::bytes  [rust/src/types/bytes.rs]
-pub enum BytesLayout  (#[non_exhaustive]; Binary, FixedSizeBinary, LargeBinary, BinaryView; Display and serde as the name)
-  pub const ALL: [Self; 4] = [ Self::Binary, Self::FixedSizeBinary, Self::LargeBinary, Self::BinaryView, ];
-  pub const fn as_str(self) -> &'static str  // binary, fixed_size_binary, large_binary, binary_view
-  pub fn from_str(value: &str) -> Result<Self>  // folded; fixed_binary is a second spelling of the fixed layout
-  pub const fn id(self) -> DataTypeId
-  pub const fn from_id(id: DataTypeId) -> Option<Self>
-  pub const fn is_fixed(self) -> bool
-  pub const fn is_view(self) -> bool
-  pub const fn is_large(self) -> bool
-pub use fields::*;  pub use parameters::{BYTES_EXTENSION_NAME, BytesParameters};  pub use scalars::{Bytes, INLINE_BYTES};  (re-exported at yggdryl::types; Bytes also at the crate root)
+### yggdryl::types::bytes  [rust/src/types/bytes.rs]  (the byte family: six real leaves, the number on fixed_binary and sized_binary being the leaf)
+pub use scalars::{Bytes, INLINE_BYTES};  (re-exported at yggdryl::types through `pub use bytes::*`; Bytes and BytesType also at the crate root)
 pub const BYTES_EXTENSION_NAME: &str = "yggdryl.bytes";
-pub struct BytesParameters  (Copy; Default = plain binary; From<BytesLayout>; Display = binary, binary(16), fixed_size_binary(16), large_binary, binary_view(64); serde {layout, fixed|max})
-  pub const fn new(layout: BytesLayout) -> Self
-  pub const fn layout(self) -> BytesLayout
+pub enum BytesType  (#[non_exhaustive]; Copy; Default = Binary; Binary, LargeBinary, BinaryView, LargeBinaryView, FixedBinary(u32), SizedBinary(u32); Display = the canonical name plus "(n)" on a numbered leaf - binary, large_binary_view, fixed_binary(16), sized_binary(16); serde as the name alone)
+  pub const ALL: [Self; 6] = [ Self::Binary, Self::LargeBinary, Self::BinaryView, Self::LargeBinaryView, Self::FixedBinary(1), Self::SizedBinary(1), ];
+  pub const fn id(self) -> DataTypeId
+  pub const fn from_id(id: DataTypeId, width: u32) -> Option<Self>  (the width lands on FixedBinary and SizedBinary)
+  pub const fn as_str(self) -> &'static str  // binary, large_binary, binary_view, large_binary_view, fixed_binary, sized_binary
   pub const fn bound(self) -> Option<u32>
   pub const fn fixed(self) -> Option<u32>
   pub const fn max(self) -> Option<u32>
   pub const fn is_fixed(self) -> bool
   pub const fn is_bounded(self) -> bool
-  pub const fn with_layout(mut self, layout: BytesLayout) -> Self
-  pub const fn with_bound(mut self, bound: NonZeroU32) -> Self
-  pub fn try_with_bound(mut self, bound: u32) -> Result<Self>  (refuses 0)
-  pub const fn without_bound(mut self) -> Self
-  pub const fn without_max(self) -> Self
-  pub fn validate(self) -> Result<()>  (a fixed layout needs a width)
-  pub fn extension_json(self) -> String
-  pub fn from_extension_json(value: &str) -> Result<Self>
+  pub const fn is_view(self) -> bool
+  pub const fn is_large(self) -> bool
+  pub const fn storage(self) -> Self  (SizedBinary answers Binary; every other leaf itself)
+  pub const fn same_shape_as(self, other: Self) -> bool  (the same storage shape, the number ignored)
+  pub fn with_bound(self, bound: u32) -> Result<Self>  (FixedBinary keeps its shape; Binary and SizedBinary become SizedBinary(n); the large and view leaves refuse)
+  pub fn with_declared_bound(self, bound: Option<u32>) -> Result<Self>  (None on a numbered leaf refused)
+  pub const fn validate(self) -> Result<()>  (a number of 0 refused)
+  pub fn extension_json(self) -> String  // {"layout":"sized_binary","max":16}
+  pub fn from_extension_json(value: &str) -> Result<Self>  (fixed only on the fixed leaf; a max makes the leaf sized whichever unbounded shape was named)
+  pub fn from_str(value: &str) -> Result<Self>  (from_spelling over the folded text)
+  pub fn from_spelling(word: &str) -> Option<Self>  (every alias, folded: binary, bytes, blob, bytea, varbinary, fixedbinary, fixedsizebinary, sizedbinary, ...)
 impl DataType
-  pub fn bytes(parameters: impl Into<BytesParameters>) -> Result<Self>
+  pub fn bytes(parameters: impl Into<BytesType>) -> Result<Self>
   pub const fn binary() -> Self
   pub const fn large_binary() -> Self
   pub const fn binary_view() -> Self
-  pub fn fixed_size_binary(width: u32) -> Result<Self>
-  pub const fn bytes_parameters(&self) -> Option<BytesParameters>
+  pub const fn large_binary_view() -> Self
+  pub fn sized_binary(max: u32) -> Result<Self>
+  pub fn fixed_binary(width: u32) -> Result<Self>
+  pub const fn bytes_parameters(&self) -> Option<BytesType>
 pub const INLINE_BYTES: usize = 30;
 pub struct Bytes  (40 bytes; Deref<Target=[u8]>, AsRef<[u8]>, Borrow<[u8]>; Eq/Ord/Hash over the payload, PartialEq<[u8]>/<&[u8]>/<[u8; N]>/<Vec<u8>> both ways; Display = lowercase hex; From<&[u8]|&[u8; N]|[u8; N]|Vec<u8>|Box<[u8]>|Arc<[u8]>|Cow<[u8]>>, From<Bytes> for Vec<u8>|Arc<[u8]>, FromIterator<u8>, Default; serde = the byte sequence, or {layout, fixed?, bytes} when not default; Value; Scalar::from(Bytes|Vec<u8>|&[u8]|&[u8; N]|Arc<[u8]>) -> Scalar::Bytes)
   pub const fn new_static(payload: &'static [u8]) -> Self
   pub fn new(payload: impl AsRef<[u8]>) -> Self
   pub fn from_shared(payload: Arc<[u8]>) -> Self
-  pub fn try_with_parameters(mut self, parameters: BytesParameters) -> Result<Self>  (a fixed layout needs len == width exactly; a max is checked and not carried)
+  pub fn try_with_parameters(mut self, parameters: BytesType) -> Result<Self>  (a fixed leaf needs len == width exactly; a max is checked and the plain leaf stored)
   pub fn as_bytes(&self) -> &[u8]
-  pub const fn parameters(&self) -> BytesParameters
-  pub const fn layout(&self) -> BytesLayout
+  pub const fn parameters(&self) -> BytesType
+  pub const fn layout(&self) -> BytesType
   pub const fn fixed(&self) -> Option<u32>
   pub const fn is_inline(&self) -> bool
   pub fn into_vec(self) -> Vec<u8>
   pub fn into_shared(self) -> Arc<[u8]>
   pub fn dtype(&self) -> Result<DataType>
-pub struct BytesType  (field marker "bytes" over DataType::Bytes(_); re-exported at the crate root)
-  pub type BytesField = TypedField<BytesType>;
+  pub type BytesField = FieldOf<BytesType>;  (the Field leaf over DataType::Bytes(_); see yggdryl::types::field)
 
 ### yggdryl::types::cast  [rust/src/types/cast.rs]
 pub trait ArrowFieldType: FieldType
@@ -3908,69 +3905,73 @@ pub enum TemporalFamily
   pub fn geometry_type_ids(bytes: &[u8]) -> Result<Vec<u32>>
   pub fn into_wkt(bytes: &[u8]) -> Result<String>
 
-### yggdryl::types::string  [rust/src/types/string.rs]
-pub enum StringLayout  (#[non_exhaustive]; String, FixedString, StringView, LargeString, LargeStringView; Display and serde as the general name)
-  pub const ALL: [Self; 5] = [ Self::String, Self::FixedString, Self::StringView, Self::LargeString, Self::LargeStringView, ];
-  pub const fn as_str(self) -> &'static str  // string, fixed_string, string_view, large_string, large_string_view
-  pub const fn as_utf8_str(self) -> &'static str  // utf8, fixed_utf8, utf8_view, large_utf8, large_utf8_view
-  pub const fn as_ascii_str(self) -> &'static str  // ascii, fixed_ascii, ascii_view, large_ascii, large_ascii_view
-  pub fn from_str(value: &str) -> Result<Self>  // any of the three spellings, folded
-  pub const fn id(self) -> DataTypeId
-  pub const fn from_id(id: DataTypeId) -> Option<Self>
-  pub const fn is_fixed(self) -> bool
-  pub const fn is_view(self) -> bool
-  pub const fn is_large(self) -> bool
-pub use cfi::{CFI_CATEGORIES, CfiCategory, CfiGroup};  pub use code::{Bloomberg, Cfi, CodeValue, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce};  pub use dictionary::StringEnum;  pub use fields::*;  pub use parameters::{STRING_EXTENSION_NAME, StringParameters};  pub use scalars::{INLINE_CAPACITY, Str};  (re-exported at yggdryl::types; CodeValue, Str, StringEnum and StringType also at the crate root)
+### yggdryl::types::string  [rust/src/types/string.rs]  (the string family: eighteen real leaves, six shapes in each of the three charsets with a datatype - UTF-8, US-ASCII, windows-1252)
+pub use scalars::{INLINE_CAPACITY, Str};  (re-exported at yggdryl::types through `pub use string::*`; Str, StringEnum and StringType also at the crate root)
 pub const STRING_EXTENSION_NAME: &str = "yggdryl.string";
-pub struct StringParameters  (Copy; Default = utf8; From<Charset>, From<StringLayout>; Display = utf8, utf8(32), fixed_utf8(8), ascii, fixed_ascii(4), string(windows-1252), fixed_string(windows-1252,8); serde {layout, charset, fixed|max})
-  pub const fn new(layout: StringLayout, charset: Charset) -> Self
-  pub const fn utf8(layout: StringLayout) -> Self
-  pub const fn ascii(layout: StringLayout) -> Self
-  pub const fn layout(self) -> StringLayout
-  pub const fn charset(self) -> Charset
+pub enum StringType  (#[non_exhaustive]; Copy; Default = Utf8String; Utf8String, LargeUtf8String, Utf8StringView, LargeUtf8StringView, FixedUtf8String(u32), SizedUtf8String(u32), then the same six as AsciiString.. and Cp1252String..; Display = the canonical name plus "(n)" on a numbered leaf - utf8, sized_utf8(32), fixed_ascii(4), cp1252, large_cp1252_view; serde as the name alone)
+  pub const ALL: [Self; 18] = [ Self::Utf8String, Self::LargeUtf8String, Self::Utf8StringView, Self::LargeUtf8StringView, Self::FixedUtf8String(1), Self::SizedUtf8String(1), Self::AsciiString, Self::LargeAsciiString, Self::AsciiStringView, Self::LargeAsciiStringView, Self::FixedAsciiString(1), Self::SizedAsciiString(1), Self::Cp1252String, Self::LargeCp1252String, Self::Cp1252StringView, Self::LargeCp1252StringView, Self::FixedCp1252String(1), Self::SizedCp1252String(1), ];
+  pub const fn id(self) -> DataTypeId
+  pub const fn from_id(id: DataTypeId, width: u32) -> Option<Self>  (the width lands on the Fixed* and Sized* leaves)
+  pub const fn as_str(self) -> &'static str  // utf8, large_utf8, utf8_view, large_utf8_view, fixed_utf8, sized_utf8, ascii, large_ascii, ascii_view, large_ascii_view, fixed_ascii, sized_ascii, cp1252, large_cp1252, cp1252_view, large_cp1252_view, fixed_cp1252, sized_cp1252
+  pub const fn charset(self) -> Charset  // Utf8, Ascii or Cp1252
   pub const fn bound(self) -> Option<u32>
   pub const fn fixed(self) -> Option<u32>
   pub const fn max(self) -> Option<u32>
   pub const fn is_fixed(self) -> bool
   pub const fn is_bounded(self) -> bool
-  pub const fn with_layout(mut self, layout: StringLayout) -> Self
-  pub const fn with_charset(mut self, charset: Charset) -> Self
-  pub const fn with_bound(mut self, bound: NonZeroU32) -> Self
-  pub fn try_with_bound(mut self, bound: u32) -> Result<Self>  (refuses 0)
-  pub const fn without_bound(mut self) -> Self
-  pub const fn without_max(self) -> Self
-  pub fn validate(self) -> Result<()>  (a fixed layout needs a width)
-  pub const fn layout_name(self) -> &'static str  (the spelling the charset earns)
-  pub fn extension_json(self) -> String
-  pub fn from_extension_json(value: &str) -> Result<Self>
+  pub const fn is_view(self) -> bool
+  pub const fn is_large(self) -> bool
+  pub const fn storage(self) -> Self  (a Sized* leaf answers the plain leaf of its charset; every other leaf itself)
+  pub const fn same_shape_as(self, other: Self) -> bool  (the same charset and storage shape, the number ignored)
+  pub fn with_bound(self, bound: u32) -> Result<Self>  (Fixed* keeps its shape; a plain or Sized* leaf becomes Sized*(n) of its charset; the large and view leaves refuse)
+  pub fn with_declared_bound(self, bound: Option<u32>) -> Result<Self>  (None on a numbered leaf refused)
+  pub fn with_charset(self, charset: Charset) -> Result<Self>  (the same shape in another charset's family, the number kept; a charset with no leaf refused)
+  pub const fn validate(self) -> Result<()>  (a number of 0 refused)
+  pub fn extension_json(self) -> String  // {"layout":"sized_cp1252","charset":"windows-1252","max":32}
+  pub fn from_extension_json(value: &str) -> Result<Self>  (any from_str spelling; an optional charset restates the leaf; fixed only on a fixed leaf; a max makes the leaf sized whichever unbounded shape was named)
+  pub fn from_str(value: &str) -> Result<Self>  (from_spelling over the folded text)
+  pub fn from_spelling(word: &str) -> Option<Self>  (every alias, folded: general_spelling plus the charset-named ones - utf8, largeutf8, utf8view, fixedutf8, sizedutf8, ascii, usascii, cp1252, windows1252, ...)
+  pub fn general_spelling(word: &str) -> Option<Self>  (the charset-free spellings alone - string, str, text, varchar, char, fixedstring, stringview, largestring, largestringview, sizedstring - naming the UTF-8 leaf of their shape; the only spellings a charset may stand beside)
+  pub fn from_declaration(layout: &str, charset: Option<&str>, bound: Option<u32>) -> Result<Self>  (what both bindings call: the spelling, a charset only beside a general spelling, then with_declared_bound)
 impl DataType
-  pub fn string(parameters: impl Into<StringParameters>) -> Result<Self>
+  pub fn string(parameters: impl Into<StringType>) -> Result<Self>
   pub const fn utf8() -> Self
   pub const fn large_utf8() -> Self
   pub const fn utf8_view() -> Self
-  pub const fn ascii() -> Self
+  pub const fn large_utf8_view() -> Self
   pub fn fixed_utf8(width: u32) -> Result<Self>
+  pub fn sized_utf8(max: u32) -> Result<Self>
+  pub const fn ascii() -> Self
+  pub const fn large_ascii() -> Self
+  pub const fn ascii_view() -> Self
+  pub const fn large_ascii_view() -> Self
   pub fn fixed_ascii(width: u32) -> Result<Self>
-  pub const fn string_parameters(&self) -> Option<StringParameters>  (String only; codes answer None)
+  pub fn sized_ascii(max: u32) -> Result<Self>
+  pub const fn cp1252() -> Self
+  pub const fn large_cp1252() -> Self
+  pub const fn cp1252_view() -> Self
+  pub const fn large_cp1252_view() -> Self
+  pub fn fixed_cp1252(width: u32) -> Result<Self>
+  pub fn sized_cp1252(max: u32) -> Result<Self>
+  pub const fn string_parameters(&self) -> Option<StringType>  (String only; codes answer None)
   pub const fn is_string(&self) -> bool
   pub const fn charset(&self) -> Option<Charset>
   pub const fn fixed_byte_width(&self) -> Option<usize>  (a fixed string or fixed bytes width, else DataTypeId::fixed_byte_width; None for a code)
 
 ### yggdryl::types::string::scalars  [rust/src/types/string.rs]
 pub const INLINE_CAPACITY: usize = 23;
-pub struct Str  (32 bytes, SmolStr-backed; Deref<Target=str>, AsRef<str>, AsRef<[u8]>, Borrow<str>; Eq/Ord/Hash over the characters, PartialEq<str>/<&str>/<String>/<SmolStr> both ways; Display = the characters; From<&str|&mut str|&String|String|Box<str>|Arc<str>|Cow<str>|char|SmolStr|&SmolStr>, From<Str> for String|SmolStr|Arc<str>, FromStr (infallible), FromIterator<char>, FromIterator<&str>, Default; serde = the bare text, or {layout, charset, fixed?, text} when not default; Value; Scalar::from(Str|&str|String|SmolStr) -> Scalar::String)
+pub struct Str  (32 bytes, SmolStr-backed; Deref<Target=str>, AsRef<str>, AsRef<[u8]>, Borrow<str>; Eq/Ord/Hash over the characters, PartialEq<str>/<&str>/<String>/<SmolStr> both ways; Display = the characters; From<&str|&mut str|&String|String|Box<str>|Arc<str>|Cow<str>|char|SmolStr|&SmolStr>, From<Str> for String|SmolStr|Arc<str>, FromStr (infallible), FromIterator<char>, FromIterator<&str>, Default; serde = the bare text, or {layout, fixed?, text} when not the utf8 leaf - the leaf names its charset, and a charset key read back restates it; Value; Scalar::from(Str|&str|String|SmolStr) -> Scalar::String)
   pub const fn new_static(text: &'static str) -> Self
   pub fn new(text: impl AsRef<str>) -> Self
-  pub fn from_bytes(bytes: &[u8], parameters: StringParameters) -> Result<Self>  (UTF-8 and US-ASCII decode strictly, every other charset transcribes; a fixed layout trims trailing NUL)
-  pub fn try_with_parameters(mut self, parameters: StringParameters) -> Result<Self>  (checks the bound; stores the parameters without their max)
+  pub fn from_bytes(bytes: &[u8], parameters: StringType) -> Result<Self>  (the UTF-8 and US-ASCII leaves decode strictly, the windows-1252 leaves transcribe; a fixed leaf trims trailing NUL)
+  pub fn try_with_parameters(mut self, parameters: StringType) -> Result<Self>  (checks the bound; stores the leaf's storage(), never a maximum)
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
-  pub const fn parameters(&self) -> StringParameters
-  pub const fn layout(&self) -> StringLayout
+  pub const fn parameters(&self) -> StringType  (never a Sized* leaf)
   pub const fn charset(&self) -> Charset
   pub const fn fixed(&self) -> Option<u32>
   pub fn is_inline(&self) -> bool
-  pub fn encode(&self) -> Result<Cow<'_, [u8]>>  (padded on the fixed layout)
+  pub fn encode(&self) -> Result<Cow<'_, [u8]>>  (padded on a fixed leaf)
   pub fn encoded_len(&self) -> usize
   pub fn into_string(self) -> String
   pub fn into_inner(self) -> SmolStr
@@ -4063,8 +4064,7 @@ impl StringEnum
   pub const PREBUILT: &'static [(&'static str, &'static [&'static str])]  // currency, country, mic, exchange, side, state, timeinforce
   pub fn from_logical_name(name: &str) -> Result<Self>
   pub fn prebuilt_values(name: &str) -> &'static [&'static str]
-pub struct StringType  (field marker "string" over DataType::String(_); re-exported at the crate root)
-  pub type StringField = TypedField<StringType>;
+  pub type StringField = FieldOf<StringType>;  (the Field leaf over DataType::String(_); see yggdryl::types::field)
 pub struct CountryType  // and CurrencyType, MicType, CfiType, IsinType, CusipType, SedolType, SideType, StateType, TimeInForceType: the ten code markers (country, currency, mic, cfi, isin, cusip, sedol, side, state, timeinforce)
   pub type CountryField = TypedField<CountryType>;
   pub type CurrencyField = TypedField<CurrencyType>;

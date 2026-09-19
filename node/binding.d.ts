@@ -222,14 +222,14 @@ export type DataTypeId =
   | 'duration64'
   | 'interval'
   | 'binary'
-  | 'fixed_size_binary'
+  | 'fixed_binary'
   | 'large_binary'
   | 'binary_view'
-  | 'string'
-  | 'fixed_string'
-  | 'string_view'
-  | 'large_string'
-  | 'large_string_view'
+  | 'utf8'
+  | 'fixed_utf8'
+  | 'utf8_view'
+  | 'large_utf8'
+  | 'large_utf8_view'
   | 'country'
   | 'currency'
   | 'mic'
@@ -264,6 +264,26 @@ export type DataTypeId =
   | 'variant'
   | 'geometry'
   | 'geography'
+  | 'sorted_map'
+  | 'struct2'
+  | 'uuidv4'
+  | 'uuidv7'
+  | 'uuidv8'
+  | 'large_binary_view'
+  | 'sized_binary'
+  | 'sized_utf8'
+  | 'ascii'
+  | 'large_ascii'
+  | 'ascii_view'
+  | 'large_ascii_view'
+  | 'fixed_ascii'
+  | 'sized_ascii'
+  | 'cp1252'
+  | 'large_cp1252'
+  | 'cp1252_view'
+  | 'large_cp1252_view'
+  | 'fixed_cp1252'
+  | 'sized_cp1252'
 
 /**
  * The coarse family one datatype variant belongs to.
@@ -310,14 +330,14 @@ interface DataTypeKindById {
   duration64: 'temporal'
   interval: 'temporal'
   binary: 'bytes'
-  fixed_size_binary: 'bytes'
+  fixed_binary: 'bytes'
   large_binary: 'bytes'
   binary_view: 'bytes'
-  string: 'text'
-  fixed_string: 'text'
-  string_view: 'text'
-  large_string: 'text'
-  large_string_view: 'text'
+  utf8: 'text'
+  fixed_utf8: 'text'
+  utf8_view: 'text'
+  large_utf8: 'text'
+  large_utf8_view: 'text'
   country: 'code'
   currency: 'code'
   mic: 'code'
@@ -352,24 +372,63 @@ interface DataTypeKindById {
   variant: 'nested'
   geometry: 'geospatial'
   geography: 'geospatial'
+  sorted_map: 'nested'
+  struct2: 'nested'
+  uuidv4: 'uuid'
+  uuidv7: 'uuid'
+  uuidv8: 'uuid'
+  large_binary_view: 'bytes'
+  sized_binary: 'bytes'
+  sized_utf8: 'text'
+  ascii: 'text'
+  large_ascii: 'text'
+  ascii_view: 'text'
+  large_ascii_view: 'text'
+  fixed_ascii: 'text'
+  sized_ascii: 'text'
+  cp1252: 'text'
+  large_cp1252: 'text'
+  cp1252_view: 'text'
+  large_cp1252_view: 'text'
+  fixed_cp1252: 'text'
+  sized_cp1252: 'text'
 }
 
 /** The family a variant identity belongs to, as the native core reports it. */
 export type DataTypeKindOf<K extends DataTypeId> = DataTypeKindById[K]
 
-/** The five layouts of the one string datatype, by identity. */
+/**
+ * The eighteen leaves of the string family, by identity: six shapes (plain,
+ * large, view, large view, fixed, sized) in each of UTF-8, US-ASCII and
+ * windows-1252.
+ */
 export type StringDataTypeId =
-  | 'string'
-  | 'fixed_string'
-  | 'string_view'
-  | 'large_string'
-  | 'large_string_view'
-/** The four layouts of the one byte datatype, by identity. */
+  | 'utf8'
+  | 'large_utf8'
+  | 'utf8_view'
+  | 'large_utf8_view'
+  | 'fixed_utf8'
+  | 'sized_utf8'
+  | 'ascii'
+  | 'large_ascii'
+  | 'ascii_view'
+  | 'large_ascii_view'
+  | 'fixed_ascii'
+  | 'sized_ascii'
+  | 'cp1252'
+  | 'large_cp1252'
+  | 'cp1252_view'
+  | 'large_cp1252_view'
+  | 'fixed_cp1252'
+  | 'sized_cp1252'
+/** The six leaves of the byte family, by identity. */
 export type BytesDataTypeId =
   | 'binary'
-  | 'fixed_size_binary'
   | 'large_binary'
   | 'binary_view'
+  | 'large_binary_view'
+  | 'fixed_binary'
+  | 'sized_binary'
 
 /** Core compatibility targets supported by DataType and Field projection. */
 export type CompatibilityScheme =
@@ -745,23 +804,42 @@ export type IntervalValue =
   | readonly [days: number, milliseconds: number]
   | readonly [months: number, days: number, nanoseconds: bigint]
 export type IntervalField = FieldOf<'interval', IntervalValue>
-/** The one byte datatype in whichever layout its parameters declare. */
+/** The byte family in whichever leaf its parameters declare. */
 export type BytesField = FieldOf<BytesDataTypeId, Uint8Array>
 export type BinaryField = FieldOf<'binary', Uint8Array>
-export type FixedSizeBinaryField = FieldOf<'fixed_size_binary', Uint8Array>
+export type FixedSizeBinaryField = FieldOf<'fixed_binary', Uint8Array>
 export type LargeBinaryField = FieldOf<'large_binary', Uint8Array>
 export type BinaryViewField = FieldOf<'binary_view', Uint8Array>
-/** The one string datatype in whichever layout and charset it declares. */
+export type LargeBinaryViewField = FieldOf<'large_binary_view', Uint8Array>
+export type SizedBinaryField = FieldOf<'sized_binary', Uint8Array>
+/** The string family in whichever leaf its parameters declare. */
 export type StringField = FieldOf<StringDataTypeId, string>
-export type Utf8Field = FieldOf<'string', string>
-export type LargeUtf8Field = FieldOf<'large_string', string>
-export type Utf8ViewField = FieldOf<'string_view', string>
+export type Utf8Field = FieldOf<'utf8', string>
+export type LargeUtf8Field = FieldOf<'large_utf8', string>
+export type Utf8ViewField = FieldOf<'utf8_view', string>
+export type LargeUtf8ViewField = FieldOf<'large_utf8_view', string>
 /** UTF-8 padded with trailing NUL to a fixed width; read back trimmed. */
-export type FixedUtf8Field = FieldOf<'fixed_string', string>
+export type FixedUtf8Field = FieldOf<'fixed_utf8', string>
+/** UTF-8 held to a maximum byte count, stored as the bytes it is. */
+export type SizedUtf8Field = FieldOf<'sized_utf8', string>
 /** Variable-width US-ASCII text: any length, stored as the bytes it is. */
-export type AsciiField = FieldOf<'string', string>
+export type AsciiField = FieldOf<'ascii', string>
+export type LargeAsciiField = FieldOf<'large_ascii', string>
+export type AsciiViewField = FieldOf<'ascii_view', string>
+export type LargeAsciiViewField = FieldOf<'large_ascii_view', string>
 /** US-ASCII padded with trailing NUL to a fixed width; read back trimmed. */
-export type FixedAsciiField = FieldOf<'fixed_string', string>
+export type FixedAsciiField = FieldOf<'fixed_ascii', string>
+/** US-ASCII held to a maximum byte count. */
+export type SizedAsciiField = FieldOf<'sized_ascii', string>
+/** Variable-width windows-1252 text, one byte per character. */
+export type Cp1252Field = FieldOf<'cp1252', string>
+export type LargeCp1252Field = FieldOf<'large_cp1252', string>
+export type Cp1252ViewField = FieldOf<'cp1252_view', string>
+export type LargeCp1252ViewField = FieldOf<'large_cp1252_view', string>
+/** windows-1252 padded with trailing NUL to a fixed width; read back trimmed. */
+export type FixedCp1252Field = FieldOf<'fixed_cp1252', string>
+/** windows-1252 held to a maximum byte count. */
+export type SizedCp1252Field = FieldOf<'sized_cp1252', string>
 /** ISO 3166-1 alpha-2, the two-letter country code, stored as its text. */
 export type CountryField = FieldOf<'country', string>
 /** ISO 4217, the three-letter currency code, stored as its text. */
@@ -914,8 +992,7 @@ type DefaultFieldInput<K extends DataTypeId, V> = K extends
       ? number | bigint
       : K extends 'decimal32' | 'decimal64' | 'decimal128'
         ? number | bigint
-        : K extends
-              'binary' | 'fixed_size_binary' | 'large_binary' | 'binary_view'
+        : K extends BytesDataTypeId
           ? Uint8Array | ArrayBuffer
           : K extends 'version'
             ? Version | string
@@ -986,13 +1063,29 @@ export interface FieldsNamespace {
   utf8(name: string, options?: FieldOptions): Utf8Field
   largeUtf8(name: string, options?: FieldOptions): LargeUtf8Field
   utf8View(name: string, options?: FieldOptions): Utf8ViewField
+  largeUtf8View(name: string, options?: FieldOptions): LargeUtf8ViewField
   fixedUtf8(name: string, width: number, options?: FieldOptions): FixedUtf8Field
+  sizedUtf8(name: string, max: number, options?: FieldOptions): SizedUtf8Field
   ascii(name: string, options?: FieldOptions): AsciiField
+  largeAscii(name: string, options?: FieldOptions): LargeAsciiField
+  asciiView(name: string, options?: FieldOptions): AsciiViewField
+  largeAsciiView(name: string, options?: FieldOptions): LargeAsciiViewField
   fixedAscii(
     name: string,
     width: number,
     options?: FieldOptions,
   ): FixedAsciiField
+  sizedAscii(name: string, max: number, options?: FieldOptions): SizedAsciiField
+  cp1252(name: string, options?: FieldOptions): Cp1252Field
+  largeCp1252(name: string, options?: FieldOptions): LargeCp1252Field
+  cp1252View(name: string, options?: FieldOptions): Cp1252ViewField
+  largeCp1252View(name: string, options?: FieldOptions): LargeCp1252ViewField
+  fixedCp1252(
+    name: string,
+    width: number,
+    options?: FieldOptions,
+  ): FixedCp1252Field
+  sizedCp1252(name: string, max: number, options?: FieldOptions): SizedCp1252Field
   list<F extends Field>(
     name: string,
     item: F,
@@ -1382,7 +1475,7 @@ export interface FieldsNamespace {
     name: N,
     byteWidth: number,
     options?: O,
-  ): NamedField<'fixed_size_binary', Uint8Array, N, O>
+  ): NamedField<'fixed_binary', Uint8Array, N, O>
   largeBinary<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -1407,21 +1500,28 @@ export interface FieldsNamespace {
   utf8<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
-  ): NamedField<'string', string, N, O>
+  ): NamedField<'utf8', string, N, O>
   largeUtf8<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
   >(
     name: N,
     options?: O,
-  ): NamedField<'large_string', string, N, O>
+  ): NamedField<'large_utf8', string, N, O>
   utf8View<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
   >(
     name: N,
     options?: O,
-  ): NamedField<'string_view', string, N, O>
+  ): NamedField<'utf8_view', string, N, O>
+  largeUtf8View<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'large_utf8_view', string, N, O>
   fixedUtf8<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -1429,11 +1529,40 @@ export interface FieldsNamespace {
     name: N,
     width: number,
     options?: O,
-  ): NamedField<'fixed_string', string, N, O>
+  ): NamedField<'fixed_utf8', string, N, O>
+  sizedUtf8<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    max: number,
+    options?: O,
+  ): NamedField<'sized_utf8', string, N, O>
   ascii<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
-  ): NamedField<'string', string, N, O>
+  ): NamedField<'ascii', string, N, O>
+  largeAscii<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'large_ascii', string, N, O>
+  asciiView<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'ascii_view', string, N, O>
+  largeAsciiView<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'large_ascii_view', string, N, O>
   fixedAscii<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -1441,7 +1570,56 @@ export interface FieldsNamespace {
     name: N,
     width: number,
     options?: O,
-  ): NamedField<'fixed_string', string, N, O>
+  ): NamedField<'fixed_ascii', string, N, O>
+  sizedAscii<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    max: number,
+    options?: O,
+  ): NamedField<'sized_ascii', string, N, O>
+  cp1252<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'cp1252', string, N, O>
+  largeCp1252<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'large_cp1252', string, N, O>
+  cp1252View<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'cp1252_view', string, N, O>
+  largeCp1252View<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'large_cp1252_view', string, N, O>
+  fixedCp1252<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    width: number,
+    options?: O,
+  ): NamedField<'fixed_cp1252', string, N, O>
+  sizedCp1252<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    max: number,
+    options?: O,
+  ): NamedField<'sized_cp1252', string, N, O>
   list<
     const N extends string,
     F extends Field,

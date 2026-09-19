@@ -203,7 +203,7 @@ fn fixed_ascii_ffi_schemas_carry_the_string_document() {
     );
     assert_eq!(
         metadata.get("ARROW:extension:metadata"),
-        Some(&r#"{"layout":"fixed_string","charset":"us-ascii","fixed":4}"#.to_owned())
+        Some(&r#"{"layout":"fixed_ascii","charset":"us-ascii","fixed":4}"#.to_owned())
     );
     assert_eq!(metadata.get("owner"), Some(&"core".to_owned()));
 
@@ -978,22 +978,22 @@ fn an_ascii_field_projects_the_string_extension_and_reimports_itself() {
         (
             DataType::ascii(),
             ArrowDataType::Utf8,
-            r#"{"layout":"string","charset":"us-ascii"}"#,
+            r#"{"layout":"ascii","charset":"us-ascii"}"#,
         ),
         (
             DataType::fixed_ascii(1).unwrap(),
             ArrowDataType::FixedSizeBinary(1),
-            r#"{"layout":"fixed_string","charset":"us-ascii","fixed":1}"#,
+            r#"{"layout":"fixed_ascii","charset":"us-ascii","fixed":1}"#,
         ),
         (
             DataType::fixed_ascii(3).unwrap(),
             ArrowDataType::FixedSizeBinary(3),
-            r#"{"layout":"fixed_string","charset":"us-ascii","fixed":3}"#,
+            r#"{"layout":"fixed_ascii","charset":"us-ascii","fixed":3}"#,
         ),
         (
             DataType::fixed_ascii(64).unwrap(),
             ArrowDataType::FixedSizeBinary(64),
-            r#"{"layout":"fixed_string","charset":"us-ascii","fixed":64}"#,
+            r#"{"layout":"fixed_ascii","charset":"us-ascii","fixed":64}"#,
         ),
     ] {
         let field = Field::new("ccy", dtype, false);

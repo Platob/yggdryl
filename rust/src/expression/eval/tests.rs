@@ -29,12 +29,12 @@ fn scalar_casts_return_the_exact_target_leaf() {
         (
             DataType::large_utf8(),
             Scalar::from("value"),
-            DataTypeId::LargeString,
+            DataTypeId::LargeUtf8String,
         ),
         (
             DataType::utf8_view(),
             Scalar::from("value"),
-            DataTypeId::StringView,
+            DataTypeId::Utf8StringView,
         ),
         (
             DataType::large_binary(),
@@ -49,7 +49,7 @@ fn scalar_casts_return_the_exact_target_leaf() {
         (
             DataType::fixed_ascii(4).unwrap(),
             Scalar::from("FIX"),
-            DataTypeId::FixedString,
+            DataTypeId::FixedAsciiString,
         ),
         (
             DataType::Currency,

@@ -96,14 +96,11 @@ use crate::{DataType, Error, Result, TimeUnit, Timezone};
 use super::parser::normalized;
 
 /// A fixed US-ASCII width, spelled once for the listing below.
+///
+/// Every width in the listing is a literal above zero, so the leaf is built
+/// without the validation `DataType::fixed_ascii` runs.
 const fn fixed_ascii(width: u32) -> DataType {
-    match std::num::NonZeroU32::new(width) {
-        Some(width) => DataType::String(
-            super::StringType::ascii(super::StringLayout::FixedString).with_bound(width),
-        ),
-        // Every width in the listing is a literal above zero.
-        None => DataType::ascii(),
-    }
+    DataType::String(super::StringType::FixedAsciiString(width))
 }
 
 impl DataType {

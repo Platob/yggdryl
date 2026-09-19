@@ -10,7 +10,7 @@ use crate::types::budget::{
 use crate::types::string::is_text_storage;
 use crate::types::{
     BLOOMBERG_WIDTH, Bytes, BytesType, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH,
-    ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringLayout, StringType,
+    ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringType,
     TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
@@ -1518,7 +1518,7 @@ fn string_array(parameters: StringType, values: &[&Scalar]) -> Result<ArrayRef> 
         )?));
     }
     if is_text_storage(parameters) {
-        return utf8_array(parameters.layout(), values);
+        return utf8_array(parameters, values);
     }
     // The stored length is a property of the text and the charset, so the whole
     // payload is measured before a byte of it is built: one buffer sized once,
@@ -1547,14 +1547,13 @@ fn string_array(parameters: StringType, values: &[&Scalar]) -> Result<ArrayRef> 
         ends.push(bytes.len());
     }
     let nulls = nulls(validity);
-    Ok(match parameters.layout() {
-        StringLayout::LargeString => Arc::new(binary_from_parts::<i64>(&ends, bytes, nulls)?),
+    Ok(match (parameters.is_view(), parameters.is_large()) {
         // Arrow's view layout holds its own prefix per cell, so it is built
         // from the finished payload rather than from offsets.
-        StringLayout::StringView | StringLayout::LargeStringView => {
-            Arc::new(binary_view_from_parts(&ends, &bytes, nulls.as_ref()))
-        }
-        _ => Arc::new(binary_from_parts::<i32>(&ends, bytes, nulls)?) as ArrayRef,
+        (true, _) => Arc::new(binary_view_from_parts(&ends, &bytes, nulls.as_ref())),
+        (false, true) => Arc::new(binary_from_parts::<i64>(&ends, bytes, nulls)?),
+        // A maximum is the column's rule; the storage it fills is plain.
+        (false, false) => Arc::new(binary_from_parts::<i32>(&ends, bytes, nulls)?) as ArrayRef,
     })
 }
 
@@ -1564,7 +1563,7 @@ fn string_array(parameters: StringType, values: &[&Scalar]) -> Result<ArrayRef> 
 /// payload can be measured before any of it is built and the array needs one
 /// buffer rather than one that starts at a kilobyte and doubles - and no
 /// intermediate `Vec` of borrowed cells to hand it.
-fn utf8_array(layout: StringLayout, values: &[&Scalar]) -> Result<ArrayRef> {
+fn utf8_array(parameters: StringType, values: &[&Scalar]) -> Result<ArrayRef> {
     let mut payload = 0_usize;
     for value in values {
         if let Some(text) = optional_str(value)? {
@@ -1585,16 +1584,13 @@ fn utf8_array(layout: StringLayout, values: &[&Scalar]) -> Result<ArrayRef> {
             Arc::new(builder.finish()) as ArrayRef
         }};
     }
-    Ok(match layout {
-        StringLayout::LargeString => {
-            filled!(LargeStringBuilder::with_capacity(values.len(), payload))
-        }
+    Ok(match (parameters.is_view(), parameters.is_large()) {
         // Arrow's view layout carries a prefix per cell rather than offsets,
         // so it takes the row count and grows its own payload blocks.
-        StringLayout::StringView | StringLayout::LargeStringView => {
-            filled!(StringViewBuilder::with_capacity(values.len()))
-        }
-        _ => filled!(StringBuilder::with_capacity(values.len(), payload)),
+        (true, _) => filled!(StringViewBuilder::with_capacity(values.len())),
+        (false, true) => filled!(LargeStringBuilder::with_capacity(values.len(), payload)),
+        // A maximum is the column's rule; the storage it fills is plain.
+        (false, false) => filled!(StringBuilder::with_capacity(values.len(), payload)),
     })
 }
 
@@ -1652,21 +1648,18 @@ fn string_value(parameters: StringType, array: &dyn Array, index: usize) -> Resu
             parameters,
         )?
     } else if is_text_storage(parameters) {
-        let cell = match parameters.layout() {
-            StringLayout::LargeString => downcast::<LargeStringArray>(array)?.value(index),
-            StringLayout::StringView | StringLayout::LargeStringView => {
-                downcast::<StringViewArray>(array)?.value(index)
-            }
-            _ => downcast::<StringArray>(array)?.value(index),
+        let cell = match (parameters.is_view(), parameters.is_large()) {
+            (true, _) => downcast::<StringViewArray>(array)?.value(index),
+            (false, true) => downcast::<LargeStringArray>(array)?.value(index),
+            // A maximum is the column's rule; the storage it fills is plain.
+            (false, false) => downcast::<StringArray>(array)?.value(index),
         };
         Str::from_storage(cell, parameters)
     } else {
-        let cell = match parameters.layout() {
-            StringLayout::LargeString => downcast::<LargeBinaryArray>(array)?.value(index),
-            StringLayout::StringView | StringLayout::LargeStringView => {
-                downcast::<BinaryViewArray>(array)?.value(index)
-            }
-            _ => downcast::<BinaryArray>(array)?.value(index),
+        let cell = match (parameters.is_view(), parameters.is_large()) {
+            (true, _) => downcast::<BinaryViewArray>(array)?.value(index),
+            (false, true) => downcast::<LargeBinaryArray>(array)?.value(index),
+            (false, false) => downcast::<BinaryArray>(array)?.value(index),
         };
         Str::from_bytes(cell, parameters)?
     };

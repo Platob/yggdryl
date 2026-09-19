@@ -516,16 +516,16 @@ assert_eq!(PrimitiveType::from_dtype(&DataType::Variant)?.to_string(), "variant"
 assert_eq!(PrimitiveType::from_str("fixed[16]")?.to_string(), "fixed[16]");
 
 // The layouts that differ only in physical storage collapse onto one name.
-// Iceberg's string is UTF-8, so every string on text storage - UTF-8 or
-// US-ASCII, any layout, a bound or not - is `string`; a string in another
-// charset holds bytes that are not UTF-8 and is refused by name.
+// Iceberg's string is UTF-8, so every string on text storage - every UTF-8
+// and US-ASCII leaf, any shape, a bound or not - is `string`; a windows-1252
+// leaf holds bytes that are not UTF-8 and is refused by name.
 assert_eq!(PrimitiveType::from_dtype(&DataType::utf8())?, PrimitiveType::String);
 assert_eq!(PrimitiveType::from_dtype(&DataType::large_utf8())?, PrimitiveType::String);
 assert_eq!(PrimitiveType::from_dtype(&DataType::fixed_ascii(4)?)?, PrimitiveType::String);
-let legacy = PrimitiveType::from_dtype(&DataType::from_str("string(windows-1252)")?)
+let legacy = PrimitiveType::from_dtype(&DataType::cp1252())
     .unwrap_err()
     .to_string();
-assert!(legacy.contains("string(windows-1252)"), "{legacy}");
+assert!(legacy.contains("cp1252"), "{legacy}");
 // A fixed byte layout is `fixed[n]`; the variable layouts are `binary`, and
 // Iceberg has no maximum, so `binary(16)` crosses unbounded.
 assert_eq!(PrimitiveType::from_dtype(&DataType::binary_view())?, PrimitiveType::Binary);
@@ -678,8 +678,8 @@ assert!(!written.fields()[0].is_nullable());
 - equivalent schema, spec, or sort order -> the builder's canonical id is reused; a conflicting requested id is reassigned.
 - `from_dtype` of `int8`, `uint32`, `interval`, `union`, `decimal256`, or a non micro/nano unit -> refused naming the datatype.
 - `Scheme::ICEBERG` -> `Int8` widens to `Int32`; `Interval` stays refused.
-- `large_utf8`, `utf8_view`, `fixed_ascii(n)`, `utf8(n)` -> `string`; `binary_view`, `large_binary`, `binary(n)` -> `binary`, the maximum dropped; `decimal64` -> `decimal(p, s)`.
-- `string(windows-1252)` or any other charset off text storage -> refused naming the datatype; only UTF-8 and US-ASCII strings are Iceberg's `string`.
+- `large_utf8`, `utf8_view`, `fixed_ascii(n)`, `sized_utf8(n)` -> `string`; `binary_view`, `large_binary`, `binary(n)` -> `binary`, the maximum dropped; `decimal64` -> `decimal(p, s)`.
+- `cp1252` or any other windows-1252 leaf -> refused naming the datatype; only the UTF-8 and US-ASCII leaves are Iceberg's `string`.
 - `fixed_size_binary(n)` -> `fixed[n]`, and back; a UUID is `uuid`, never `fixed[16]`.
 - `unknown` (v3) -> `DataType::Null`, every value reads as null; the column must be optional, is omitted from every data file, and promotes to any type.
 - `variant` (v3) -> `DataType::Variant`, the `metadata`/`value` binary pair; a data file stores it under Parquet's `VARIANT` logical type; it is not `unknown`, which has no values at all.

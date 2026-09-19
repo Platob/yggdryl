@@ -383,7 +383,7 @@ fn a_declared_sql_length_is_a_length() {
     // stores. A declaration no storage could have meant is malformed input.
     assert_eq!(
         "varchar(10)".parse::<DataType>().unwrap().to_string(),
-        "utf8(10)"
+        "sized_utf8(10)"
     );
     assert_eq!(
         "char(1)".parse::<DataType>().unwrap().to_string(),

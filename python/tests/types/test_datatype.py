@@ -449,39 +449,42 @@ def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
     ).to_pylist() == ["https://example.com/a%2Fb", None]
 
 
-def test_every_string_is_one_datatype_with_a_layout_a_charset_and_a_bound() -> None:
+def test_every_string_is_one_datatype_and_one_of_eighteen_leaves() -> None:
     ascii_text = DataType("ascii")
     fixed = DataType.fixed_ascii(3)
 
-    # Variable US-ASCII is the default layout in the US-ASCII charset: any
-    # length, so no width.
+    # `ascii` is the plain shape in the US-ASCII charset: any length, so no
+    # width. The leaf is its own datatype id, and `string(us-ascii)` is the
+    # charset-free spelling restated in that charset's family.
     assert ascii_text == DataType.ascii()
     assert ascii_text == DataType.string(charset="us-ascii")
-    assert ascii_text.id == "string"
+    assert ascii_text.id == "ascii"
     assert ascii_text.kind == "text"
     assert str(ascii_text) == "ascii"
     assert ascii_text.charset == "us-ascii"
     assert ascii_text.fixed_byte_width is None
+    assert ascii_text.string_parameters == StringParameters("ascii")
     assert ascii_text.string_parameters == StringParameters("string", "us-ascii")
     assert ascii_text.string_parameters.bound is None
     assert eval(repr(ascii_text), {"DataType": DataType}) == ascii_text
 
-    # A fixed width is the fixed layout, so two widths are two datatypes and
+    # A fixed width is the fixed leaf, so two widths are two datatypes and
     # neither is the variable form.
     assert fixed == DataType.string("fixed_string", "us-ascii", 3)
-    # A layout's three spellings are one layout; the charset is the
-    # charset argument's to say.
-    # A US-ASCII spelling names a charset a bare layout would drop, so the
-    # layout key refuses it: the charset is its own key.
-    with pytest.raises(ValueError, match="us-ascii"):
-        DataType.string("fixed_ascii", bound=3)
-    assert fixed.id == "fixed_string"
+    assert fixed == DataType.string("fixed_ascii", bound=3)
+    # Only a charset-free spelling takes a charset: a charset-named one
+    # already says it, so a second charset beside it is refused.
+    with pytest.raises(ValueError, match="expected no charset on fixed_ascii"):
+        DataType.string("fixed_ascii", "us-ascii", 3)
+    with pytest.raises(ValueError, match="expected no charset on utf8"):
+        StringParameters("utf8", "windows-1252")
+    assert fixed.id == "fixed_ascii"
     assert fixed.kind == "text"
     assert str(fixed) == "fixed_ascii(3)"
     assert fixed.fixed_byte_width == 3
     assert fixed.string_parameters.fixed == 3
     assert fixed.string_parameters.max is None
-    assert fixed.string_parameters.layout == "fixed_string"
+    assert fixed.string_parameters.layout == "fixed_ascii"
     assert DataType("fixed_ascii(3)") == fixed
     assert DataType("fixed_string(us-ascii,3)") == fixed
     assert eval(repr(fixed), {"DataType": DataType}) == fixed
@@ -492,49 +495,74 @@ def test_every_string_is_one_datatype_with_a_layout_a_charset_and_a_bound() -> N
     assert DataType.fixed_ascii(64).fixed_byte_width == 64
     assert DataType("utf8").fixed_byte_width is None
 
-    # One number, one reading per layout: `ascii(4)` is a maximum and
-    # `fixed_ascii(4)` the width.
+    # A maximum is the sized leaf: `ascii(4)` is `sized_ascii(4)` written
+    # short, because plain storage is exactly what a bounded column fills,
+    # and `fixed_ascii(4)` is the width.
     bounded = DataType("ascii(4)")
     assert bounded == DataType.string(charset="us-ascii", bound=4)
-    assert bounded.id == "string"
+    assert bounded == DataType.string("sized_ascii", bound=4)
+    assert bounded.id == "sized_ascii"
     assert bounded.string_parameters.max == 4
     assert bounded.string_parameters.fixed is None
+    assert bounded.string_parameters.layout == "sized_ascii"
     assert bounded.fixed_byte_width is None
-    assert str(bounded) == "ascii(4)"
+    assert str(bounded) == "sized_ascii(4)"
     assert bounded != DataType.fixed_ascii(4)
 
-    # The five layouts, each under the charset-named spelling UTF-8 earns.
+    # The six UTF-8 leaves, each under its canonical name; the charset-free
+    # spellings name the UTF-8 leaf of their shape.
     assert DataType.utf8() == DataType("utf8") == DataType("string")
+    assert DataType.utf8().id == "utf8"
     assert DataType.utf8().string_parameters == StringParameters()
     assert DataType.large_utf8() == DataType("large_string")
-    assert DataType.large_utf8().id == "large_string"
-    assert DataType.utf8_view() == DataType("utf8_view")
-    assert DataType.utf8_view().id == "string_view"
-    assert DataType.string("large_string_view").id == "large_string_view"
+    assert DataType.large_utf8().id == "large_utf8"
+    assert DataType.utf8_view() == DataType("utf8_view") == DataType("string_view")
+    assert DataType.utf8_view().id == "utf8_view"
+    assert DataType.string("large_string_view").id == "large_utf8_view"
     assert str(DataType.string("large_string_view")) == "large_utf8_view"
     assert DataType.fixed_utf8(8) == DataType("char(8)")
+    assert DataType.fixed_utf8(8).id == "fixed_utf8"
     assert str(DataType.fixed_utf8(8)) == "fixed_utf8(8)"
     assert DataType.fixed_utf8(8).charset == "utf-8"
     assert DataType("varchar(32)") == DataType.string(bound=32)
-    assert str(DataType.string(bound=32)) == "utf8(32)"
+    assert DataType.string(bound=32).id == "sized_utf8"
+    assert str(DataType.string(bound=32)) == "sized_utf8(32)"
+    # A large leaf is just a large leaf: only the fixed and sized leaves take
+    # a number, so a maximum beside any other is refused by the name of the
+    # leaf that carries one.
+    with pytest.raises(ValueError, match="sized_utf8"):
+        DataType.string("large_utf8", bound=64)
+    with pytest.raises(ValueError, match="sized_utf8"):
+        DataType("large_utf8(64)")
+    with pytest.raises(ValueError, match="sized_cp1252"):
+        DataType.string("large_string", "windows-1252", 32)
 
-    # Every other charset renders under the general name and states itself.
+    # The windows-1252 leaves are the third family; the charset-free
+    # spelling with that charset lands on them and renders the leaf.
     latin = DataType.string(charset="windows-1252", bound=32)
-    assert str(latin) == "string(windows-1252,32)"
+    assert latin.id == "sized_cp1252"
+    assert str(latin) == "sized_cp1252(32)"
     assert DataType("string(windows-1252,32)") == latin
+    assert DataType("sized_cp1252(32)") == latin
     assert latin.charset == "windows-1252"
     assert latin.string_parameters == StringParameters("string", "windows-1252", 32)
+    assert latin.string_parameters.layout == "sized_cp1252"
+    assert DataType.string(charset="cp1252") == DataType("cp1252")
+    assert DataType("cp1252").id == "cp1252"
+    assert DataType("large_cp1252_view").id == "large_cp1252_view"
     assert latin.is_string
     assert not latin.is_code
 
     # The parameters are a frozen value: equal, hashable, ordered, picklable.
     parameters = latin.string_parameters
-    assert hash(parameters) == hash(StringParameters("utf8", "cp1252", 32))
+    assert hash(parameters) == hash(StringParameters("sized_cp1252", bound=32))
     assert parameters.stable_hash() == latin.stable_hash()
     assert pickle.loads(pickle.dumps(parameters)) == parameters
     assert copy.deepcopy(parameters) == parameters
-    assert str(parameters) == "string(windows-1252,32)"
-    assert repr(parameters) == 'StringParameters("string", "windows-1252", 32)'
+    assert str(parameters) == "sized_cp1252(32)"
+    assert repr(parameters) == 'StringParameters("sized_cp1252", bound=32)'
+    assert repr(StringParameters("string", "us-ascii")) == 'StringParameters("ascii")'
+    assert eval(repr(parameters), {"StringParameters": StringParameters}) == parameters
     assert StringParameters() < parameters
     assert {parameters: 1}[StringParameters("string", "windows-1252", 32)] == 1
     with pytest.raises(AttributeError):
@@ -553,14 +581,22 @@ def test_every_string_is_one_datatype_with_a_layout_a_charset_and_a_bound() -> N
     assert DataType.from_logical_name("sedol") == DataType("sedol")
     with pytest.raises(ValueError, match="at least one byte, got 0"):
         DataType.fixed_ascii(0)
-    with pytest.raises(ValueError, match="fixed_string"):
+    # A leaf that is its number, stated with none, is refused by name.
+    with pytest.raises(ValueError, match="fixed_utf8"):
         DataType.string("fixed_string")
-    with pytest.raises(ValueError, match="fixed_string"):
+    with pytest.raises(ValueError, match="fixed_utf8"):
         StringParameters("fixed_utf8")
+    with pytest.raises(ValueError, match="sized_ascii"):
+        DataType("sized_ascii")
     with pytest.raises(ValueError):
         DataType.string("utf9")
-    with pytest.raises(ValueError):
+    # Only the three charsets with a string datatype are accepted.
+    with pytest.raises(ValueError, match="utf-8, us-ascii or windows-1252"):
+        DataType.string(charset="utf-16le")
+    with pytest.raises(ValueError, match="charset"):
         DataType.string(charset="utf-16")
+    with pytest.raises(ValueError, match="utf-8, us-ascii or windows-1252"):
+        DataType("string(iso-8859-1)")
 
 
 def test_every_byte_column_is_one_datatype_with_a_layout_and_a_bound() -> None:
@@ -786,7 +822,7 @@ def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> No
     assert arrow_field.metadata == {
         b"ARROW:extension:name": b"yggdryl.string",
         b"ARROW:extension:metadata": (
-            b'{"layout":"fixed_string","charset":"us-ascii","fixed":4}'
+            b'{"layout":"fixed_ascii","charset":"us-ascii","fixed":4}'
         ),
     }
     assert Field.from_arrow(arrow_field) == ccy
@@ -844,7 +880,7 @@ def test_variable_ascii_rides_arrow_text_storage_under_its_declaration() -> None
     assert arrow_field.type == pa.string()
     assert arrow_field.metadata == {
         b"ARROW:extension:name": b"yggdryl.string",
-        b"ARROW:extension:metadata": b'{"layout":"string","charset":"us-ascii"}',
+        b"ARROW:extension:metadata": b'{"layout":"ascii","charset":"us-ascii"}',
     }
     assert Field.from_arrow(arrow_field) == field
     assert Field.from_arrow(pa.field("note", pa.string())) == Field("note", "utf8")
@@ -879,7 +915,7 @@ def test_variable_ascii_rides_arrow_text_storage_under_its_declaration() -> None
     bounded = Field("code", DataType("ascii(4)"))
     assert bounded.into_arrow().metadata == {
         b"ARROW:extension:name": b"yggdryl.string",
-        b"ARROW:extension:metadata": b'{"layout":"string","charset":"us-ascii","max":4}',
+        b"ARROW:extension:metadata": b'{"layout":"sized_ascii","charset":"us-ascii","max":4}',
     }
     assert Field.from_arrow(bounded.into_arrow()) == bounded
     assert bounded.scalar("USD").dtype == DataType("ascii")
@@ -889,9 +925,14 @@ def test_variable_ascii_rides_arrow_text_storage_under_its_declaration() -> None
     with pytest.raises(ValueError, match="at most 4 bytes"):
         bounded.cast_arrow_array(pa.array(["EURO!"]), safe=False)
 
-    # A legacy charset rides binary storage, because its bytes are not UTF-8.
+    # The windows-1252 leaves ride binary storage, because their bytes are
+    # not UTF-8; the document says which leaf and which charset.
     latin = Field("name", DataType.string(charset="windows-1252"))
     assert latin.into_arrow().type == pa.binary()
+    assert latin.into_arrow().metadata == {
+        b"ARROW:extension:name": b"yggdryl.string",
+        b"ARROW:extension:metadata": b'{"layout":"cp1252","charset":"windows-1252"}',
+    }
     assert Field.from_arrow(latin.into_arrow()) == latin
     assert latin.cast_arrow_array(pa.array(["caf\u00e9"])).to_pylist() == [b"caf\xe9"]
     assert latin.scalar(b"caf\xe9").as_py() == "caf\u00e9"
@@ -900,22 +941,33 @@ def test_variable_ascii_rides_arrow_text_storage_under_its_declaration() -> None
 def test_a_string_and_a_byte_field_cross_json_under_one_tag_each() -> None:
     string = Field("name", DataType.string("fixed_string", "windows-1252", 8))
     document = json.loads(string.into_json())
+    # The leaf's name says the charset, so no `charset` key is written.
     assert document["dtype"] == {
         "type": "string",
-        "layout": "fixed_string",
-        "charset": "windows-1252",
+        "layout": "fixed_cp1252",
         "fixed": 8,
     }
     assert Field.from_json(string.into_json()) == string
-    # Plain UTF-8 states nothing beyond its tag; a maximum says `max`.
+    # A document that spells a charset-free layout beside a `charset` key
+    # names the same leaf.
+    assert (
+        Field.from_json(
+            '{"name":"name","nullable":true,"dtype":{"type":"string",'
+            '"layout":"fixed_string","charset":"windows-1252","fixed":8}}'
+        )
+        == string
+    )
+    # Plain UTF-8 states nothing beyond its tag; a maximum is the sized leaf
+    # and says `max` beside it.
     assert json.loads(Field("t", "utf8").into_json())["dtype"] == {"type": "string"}
     assert json.loads(Field("t", "utf8(32)").into_json())["dtype"] == {
         "type": "string",
+        "layout": "sized_utf8",
         "max": 32,
     }
     assert json.loads(Field("t", "ascii").into_json())["dtype"] == {
         "type": "string",
-        "charset": "us-ascii",
+        "layout": "ascii",
     }
 
     bytes_field = Field("blob", DataType.bytes("sized_binary", 16))

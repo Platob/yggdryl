@@ -393,13 +393,13 @@ ascii_dtype: DataType = DataType.fixed_ascii(3)
 ascii_width: int | None = ascii_dtype.fixed_byte_width
 ascii_parameters: StringParameters | None = ascii_dtype.string_parameters
 ascii_charset: str | None = ascii_dtype.charset
-string_parameters: StringParameters = StringParameters("large_string", "windows-1252", 32)
+string_parameters: StringParameters = StringParameters("large_string", "windows-1252")
 string_parameters_layout: str = string_parameters.layout
 string_parameters_charset: str = string_parameters.charset
 string_parameters_bound: int | None = string_parameters.bound
 string_parameters_fixed: int | None = string_parameters.fixed
 string_parameters_max: int | None = string_parameters.max
-string_dtype: DataType = DataType.string("string_view", "utf-8", 16)
+string_dtype: DataType = DataType.string("string", "utf-8", 16)
 utf8_dtype: DataType = DataType.utf8()
 large_utf8_dtype: DataType = DataType.large_utf8()
 utf8_view_dtype: DataType = DataType.utf8_view()
@@ -422,16 +422,34 @@ prebuilt_lists: dict[str, list[str]] = StringEnum.prebuilt()
 prebuilt_mics: StringEnum = StringEnum.from_logical_name("mic")
 typed_ascii: StringField = types.ascii("note", nullable=False)
 typed_ascii_kind: Literal[
-    "string", "fixed_string", "string_view", "large_string", "large_string_view"
+    "utf8", "large_utf8", "utf8_view", "large_utf8_view", "fixed_utf8", "sized_utf8",
+    "ascii", "large_ascii", "ascii_view", "large_ascii_view", "fixed_ascii", "sized_ascii",
+    "cp1252", "large_cp1252", "cp1252_view", "large_cp1252_view", "fixed_cp1252",
+    "sized_cp1252",
 ] = typed_ascii.dtype.id
 typed_ascii_fixed: StringField = types.fixed_ascii("ccy", 3, nullable=False)
 typed_ascii_fixed_kind: Literal[
-    "string", "fixed_string", "string_view", "large_string", "large_string_view"
+    "utf8", "large_utf8", "utf8_view", "large_utf8_view", "fixed_utf8", "sized_utf8",
+    "ascii", "large_ascii", "ascii_view", "large_ascii_view", "fixed_ascii", "sized_ascii",
+    "cp1252", "large_cp1252", "cp1252_view", "large_cp1252_view", "fixed_cp1252",
+    "sized_cp1252",
 ] = typed_ascii_fixed.dtype.id
 typed_string: StringField = types.string(
-    "name", layout="large_string", charset="windows-1252", max=32, nullable=False
+    "name", layout="string", charset="windows-1252", max=32, nullable=False
 )
 typed_fixed_utf8: StringField = types.fixed_utf8("name", 8)
+typed_large_utf8_view: StringField = types.large_utf8_view("name")
+typed_sized_utf8: StringField = types.sized_utf8("name", 32)
+typed_large_ascii: StringField = types.large_ascii("name")
+typed_ascii_view: StringField = types.ascii_view("name")
+typed_large_ascii_view: StringField = types.large_ascii_view("name")
+typed_sized_ascii: StringField = types.sized_ascii("name", 4)
+typed_cp1252: StringField = types.cp1252("name")
+typed_large_cp1252: StringField = types.large_cp1252("name")
+typed_cp1252_view: StringField = types.cp1252_view("name")
+typed_large_cp1252_view: StringField = types.large_cp1252_view("name")
+typed_fixed_cp1252: StringField = types.fixed_cp1252("name", 8)
+typed_sized_cp1252: StringField = types.sized_cp1252("name", 32)
 typed_bytes: BytesField = types.bytes("blob", layout="binary_view", max=64)
 typed_fixed_bytes: BytesField = types.bytes("digest", layout="fixed_binary", fixed=16)
 typed_binary: BytesField = types.binary("payload", nullable=False)

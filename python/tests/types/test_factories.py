@@ -51,11 +51,24 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "large_binary": types.large_binary("value"),
         "binary_view": types.binary_view("value"),
         "large_binary_view": types.large_binary_view("value"),
-        "string": types.utf8("value"),
-        "large_string": types.large_utf8("value"),
-        "string_view": types.utf8_view("value"),
-        "fixed_string": types.fixed_ascii("value", 4),
-        "large_string_view": types.string("value", layout="large_string_view"),
+        "utf8": types.utf8("value"),
+        "large_utf8": types.large_utf8("value"),
+        "utf8_view": types.utf8_view("value"),
+        "large_utf8_view": types.large_utf8_view("value"),
+        "fixed_utf8": types.fixed_utf8("value", 8),
+        "sized_utf8": types.sized_utf8("value", 32),
+        "ascii": types.ascii("value"),
+        "large_ascii": types.large_ascii("value"),
+        "ascii_view": types.ascii_view("value"),
+        "large_ascii_view": types.large_ascii_view("value"),
+        "fixed_ascii": types.fixed_ascii("value", 4),
+        "sized_ascii": types.sized_ascii("value", 4),
+        "cp1252": types.cp1252("value"),
+        "large_cp1252": types.large_cp1252("value"),
+        "cp1252_view": types.cp1252_view("value"),
+        "large_cp1252_view": types.large_cp1252_view("value"),
+        "fixed_cp1252": types.fixed_cp1252("value", 8),
+        "sized_cp1252": types.sized_cp1252("value", 32),
         "list": types.list("value", item),
         "list_view": types.list_view("value", item),
         "fixed_size_list": types.fixed_size_list("value", item, 3),
@@ -120,14 +133,23 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
 
 def test_the_string_and_bytes_factories_take_the_whole_declaration() -> None:
     # One factory per family takes the layout, the charset, and the bound;
-    # the charset-named factories are that one with a layout picked once.
-    latin = types.string("name", layout="large_string", charset="cp1252", max=32)
-    assert latin.dtype == DataType.string("large_string", "windows-1252", 32)
-    assert str(latin.dtype) == "large_string(windows-1252,32)"
+    # the leaf factories are that one with a leaf picked once. A maximum is
+    # the sized leaf of the charset, so `max` beside a large layout is
+    # refused by the name of the leaf that carries one.
+    latin = types.string("name", layout="string", charset="cp1252", max=32)
+    assert latin.dtype == DataType.string("sized_cp1252", bound=32)
+    assert str(latin.dtype) == "sized_cp1252(32)"
     assert latin.dtype.string_parameters.max == 32
+    assert latin.dtype == types.sized_cp1252("name", 32).dtype
+    with pytest.raises(ValueError, match="sized_cp1252"):
+        types.string("name", layout="large_string", charset="cp1252", max=32)
     fixed = types.string("code", layout="fixed_string", charset="us-ascii", fixed=4)
     assert fixed.dtype == DataType.fixed_ascii(4)
+    assert types.string("code", layout="fixed_ascii", fixed=4).dtype == fixed.dtype
     assert types.string("text").dtype == DataType.utf8() == types.utf8("text").dtype
+    assert types.sized_utf8("text", 32).dtype == DataType("utf8(32)")
+    assert types.large_utf8_view("text").dtype == DataType("large_string_view")
+    assert types.fixed_cp1252("text", 8).dtype == DataType("fixed_string(windows-1252,8)")
     assert types.string("text", nullable=False, metadata={"k": "v"}).metadata["k"] == "v"
     assert types.StringField is Field
 
@@ -218,8 +240,10 @@ def test_typed_factory_parameters_use_native_validation() -> None:
         types.fixed_ascii("narrow", 0)
     with pytest.raises(ValueError, match="at least one byte"):
         types.fixed_size_binary("narrow", 0)
-    with pytest.raises(ValueError, match="fixed_string"):
+    with pytest.raises(ValueError, match="fixed_utf8"):
         types.string("narrow", layout="fixed_string")
+    with pytest.raises(ValueError, match="expected no charset on ascii"):
+        types.string("narrow", layout="ascii", charset="utf-8")
     with pytest.raises(TypeError, match="not both"):
         types.string("narrow", fixed=4, max=8)
     with pytest.raises(TypeError, match="not both"):
@@ -332,4 +356,4 @@ def test_dictionary_and_map_of_infer_python_and_pyarrow_type_inputs() -> None:
     assert str(dictionary.dtype) == "dictionary(int64,utf8)"
     assert mapping.dtype.id == "map"
     entries = mapping.dtype[0].dtype
-    assert [field.dtype.id for field in entries] == ["string", "int16"]
+    assert [field.dtype.id for field in entries] == ["utf8", "int16"]

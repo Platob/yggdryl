@@ -930,8 +930,10 @@ mod strings {
 
     #[test]
     fn a_scalar_the_target_charset_cannot_spell_fails_at_the_write() {
-        let text: ArrayRef = Arc::new(StringArray::from(vec!["\u{20ac}"]));
-        let refused = dtype("string(iso-8859-1)")
+        // U+0101 has no windows-1252 byte, and the write seam is where that
+        // is refused, naming the row.
+        let text: ArrayRef = Arc::new(StringArray::from(vec!["\u{0101}"]));
+        let refused = dtype("cp1252")
             .cast_arrow_array(text, strict())
             .unwrap_err()
             .to_string();

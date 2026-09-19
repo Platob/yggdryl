@@ -8,11 +8,11 @@ use std::str::FromStr;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::string::StringLayout;
 use super::{DataType, TimeUnit};
 use crate::UnionMode;
 use crate::types::BytesType;
 use crate::types::DecimalType;
+use crate::types::StringType;
 use crate::types::UuidType;
 use crate::{EdgeAlgorithm, Error, Field, Result};
 
@@ -1170,37 +1170,32 @@ impl<'a> Parser<'a> {
                     BytesType::from_spelling(&keyword).expect("the guard just answered this leaf");
                 self.parse_bytes(leaf)?
             }
-            // One family, three spellings each, and one grammar over all of
-            // them: an optional charset, then an optional bound that reads
-            // as the width on a fixed layout and as the maximum on every
-            // other.
-            "utf8" | "ascii" | "string" | "str" | "text" | "varchar" | "nvarchar"
-            | "charactervarying" => self.parse_string(StringLayout::String, &keyword)?,
-            "largeutf8" | "largeascii" | "largestring" => {
-                self.parse_string(StringLayout::LargeString, &keyword)?
-            }
-            "utf8view" | "asciiview" | "stringview" => {
-                self.parse_string(StringLayout::StringView, &keyword)?
-            }
-            "largeutf8view" | "largeasciiview" | "largestringview" => {
-                self.parse_string(StringLayout::LargeStringView, &keyword)?
-            }
-            "fixedutf8" | "fixedascii" | "fixedstring" => {
-                self.parse_string(StringLayout::FixedString, &keyword)?
-            }
             // SQL's `char(n)` is blank-padded to exactly n bytes, which is
-            // the fixed layout. A width is what makes a string fixed, so a
+            // the fixed leaf. A width is what makes a string fixed, so a
             // bare `char` - which is what FIX's own type is called and what
             // Arrow's debug spelling prints - is the variable one, and so is
-            // `character varying` however it is punctuated.
+            // `character varying` however it is punctuated. This arm sits
+            // above the family's guard because the guard would read `char`
+            // as the plain leaf before the parenthesis was looked at.
             "char" | "character" | "nchar" => {
                 let fixed = !(keyword == "character" && self.consume_word("varying"))
                     && self.peek_opening().is_some();
-                let layout = match fixed {
-                    true => StringLayout::FixedString,
-                    false => StringLayout::String,
+                let leaf = match fixed {
+                    true => StringType::FixedUtf8String(1),
+                    false => StringType::Utf8String,
                 };
-                self.parse_string(layout, &keyword)?
+                self.parse_string(leaf, true)?
+            }
+            // One string family, one grammar: an optional charset, accepted
+            // only beside a charset-free spelling, then an optional bound
+            // that reads as the width on a fixed leaf and as the maximum on
+            // a plain one. Which word names which leaf is the family's own
+            // table, so a spelling is never accepted here and refused under
+            // a `layout=` argument.
+            _ if StringType::from_spelling(&keyword).is_some() => {
+                let leaf =
+                    StringType::from_spelling(&keyword).expect("the guard just answered this leaf");
+                self.parse_string(leaf, StringType::general_spelling(&keyword).is_some())?
             }
 
             "uuid" => DataType::Uuid(UuidType::Uuid),

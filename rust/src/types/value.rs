@@ -1241,10 +1241,10 @@ fn canonicalize_slice(
 
 /// Whether a string value is already stored the way its column declares.
 ///
-/// A value never carries a maximum, so the layout, the charset and the fixed
-/// width are the whole comparison; the maximum is checked beside it.
+/// A value never carries a maximum, so the leaf a value in the column is
+/// stored as is the whole comparison; the maximum is checked beside it.
 fn string_matches(parameters: StringType, value: &Str) -> bool {
-    value.parameters() == parameters.without_max()
+    value.parameters() == parameters.storage()
 }
 
 /// Check one string against the maximum its column declares.

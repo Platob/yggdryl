@@ -1157,8 +1157,8 @@ impl Scalar {
             Self::Duration32(_) => DataTypeId::Duration32,
             Self::Duration64(_) => DataTypeId::Duration64,
             Self::Interval(_) => DataTypeId::Interval,
-            // A string names the layout it is stored in.
-            Self::String(text) => text.layout().id(),
+            // A string names the leaf it is stored in.
+            Self::String(text) => text.parameters().id(),
             Self::Country(_) => DataTypeId::Country,
             Self::Currency(_) => DataTypeId::Currency,
             Self::Mic(_) => DataTypeId::Mic,
@@ -1217,7 +1217,10 @@ impl Scalar {
             Self::Decimal64(_) => "d64",
             Self::Decimal128(_) => "d128",
             Self::Decimal256(_) => "d256",
-            Self::String(text) => text.layout().as_str(),
+            Self::String(text) => match text.parameters() {
+                super::string::StringType::Utf8String => "string",
+                other => other.as_str(),
+            },
             Self::Country(_) => DataTypeId::Country.as_str(),
             Self::Currency(_) => DataTypeId::Currency.as_str(),
             Self::Mic(_) => DataTypeId::Mic.as_str(),

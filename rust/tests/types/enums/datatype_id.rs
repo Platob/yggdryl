@@ -34,19 +34,35 @@ fn every_kind_is_reachable() {
 
 #[test]
 fn the_strings_and_the_codes_are_text() {
-    assert_eq!(DataTypeId::ALL.len(), 73);
+    assert_eq!(DataTypeId::ALL.len(), 86);
     for id in [
-        DataTypeId::String,
-        DataTypeId::FixedString,
-        DataTypeId::StringView,
-        DataTypeId::LargeString,
-        DataTypeId::LargeStringView,
+        DataTypeId::Utf8String,
+        DataTypeId::FixedUtf8String,
+        DataTypeId::Utf8StringView,
+        DataTypeId::LargeUtf8String,
+        DataTypeId::LargeUtf8StringView,
+        DataTypeId::SizedUtf8String,
+        DataTypeId::AsciiString,
+        DataTypeId::LargeAsciiString,
+        DataTypeId::AsciiStringView,
+        DataTypeId::LargeAsciiStringView,
+        DataTypeId::FixedAsciiString,
+        DataTypeId::SizedAsciiString,
+        DataTypeId::Cp1252String,
+        DataTypeId::LargeCp1252String,
+        DataTypeId::Cp1252StringView,
+        DataTypeId::LargeCp1252StringView,
+        DataTypeId::FixedCp1252String,
+        DataTypeId::SizedCp1252String,
     ] {
         assert_eq!(id.kind(), DataTypeKind::Text);
         assert!(id.is_string());
-        // Every string carries a charset and a bound, so none of the
-        // layouts is a complete datatype on its own.
+        // Every string leaf is a parameter of `DataType::String`, so no
+        // identifier of the family is a complete datatype on its own.
         assert!(id.is_parameterized());
+        // A numbered leaf's width is that parameter, so the identifier
+        // names no fixed width.
+        assert_eq!(id.fixed_byte_width(), None);
     }
     for (_, dtype, width) in DataType::CODES {
         let id = dtype.id();
@@ -58,11 +74,21 @@ fn the_strings_and_the_codes_are_text() {
         assert_eq!(id.code_width(), Some(*width));
         assert_eq!(id.fixed_byte_width(), None);
     }
-    assert_eq!(DataTypeId::from_str("STRING").unwrap(), DataTypeId::String);
     assert_eq!(
-        DataTypeId::from_str("Fixed_String").unwrap(),
-        DataTypeId::FixedString
+        DataTypeId::from_str("UTF8").unwrap(),
+        DataTypeId::Utf8String
     );
+    assert_eq!(
+        DataTypeId::from_str("Fixed_Utf8").unwrap(),
+        DataTypeId::FixedUtf8String
+    );
+    assert_eq!(
+        DataTypeId::from_str("Sized_CP1252").unwrap(),
+        DataTypeId::SizedCp1252String
+    );
+    // The identifier is the canonical name alone; the grammar's other
+    // spellings of a leaf belong to `DataType`.
+    assert!(DataTypeId::from_str("string").is_err());
     assert_eq!(
         DataTypeId::from_str("Currency").unwrap(),
         DataTypeId::Currency
@@ -127,11 +153,11 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::FixedBinary, 24),
         (DataTypeId::LargeBinary, 25),
         (DataTypeId::BinaryView, 26),
-        (DataTypeId::String, 27),
-        (DataTypeId::FixedString, 28),
-        (DataTypeId::StringView, 29),
-        (DataTypeId::LargeString, 30),
-        (DataTypeId::LargeStringView, 31),
+        (DataTypeId::Utf8String, 27),
+        (DataTypeId::FixedUtf8String, 28),
+        (DataTypeId::Utf8StringView, 29),
+        (DataTypeId::LargeUtf8String, 30),
+        (DataTypeId::LargeUtf8StringView, 31),
         (DataTypeId::Country, 32),
         (DataTypeId::Currency, 33),
         (DataTypeId::Mic, 34),
@@ -173,6 +199,19 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::Uuidv8, 71),
         (DataTypeId::LargeBinaryView, 72),
         (DataTypeId::SizedBinary, 73),
+        (DataTypeId::SizedUtf8String, 74),
+        (DataTypeId::AsciiString, 75),
+        (DataTypeId::LargeAsciiString, 76),
+        (DataTypeId::AsciiStringView, 77),
+        (DataTypeId::LargeAsciiStringView, 78),
+        (DataTypeId::FixedAsciiString, 79),
+        (DataTypeId::SizedAsciiString, 80),
+        (DataTypeId::Cp1252String, 81),
+        (DataTypeId::LargeCp1252String, 82),
+        (DataTypeId::Cp1252StringView, 83),
+        (DataTypeId::LargeCp1252StringView, 84),
+        (DataTypeId::FixedCp1252String, 85),
+        (DataTypeId::SizedCp1252String, 86),
     ];
     assert_eq!(pinned.len(), DataTypeId::ALL.len());
     for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::ALL) {
@@ -208,8 +247,8 @@ fn fixed_widths_match_their_layout() {
     assert_eq!(DataTypeId::Uuid.fixed_byte_width(), Some(16));
     // A fixed string's width is a parameter, so the identifier alone has
     // none: `DataType::fixed_byte_width` is what answers for one value.
-    assert_eq!(DataTypeId::FixedString.fixed_byte_width(), None);
-    assert_eq!(DataTypeId::String.fixed_byte_width(), None);
+    assert_eq!(DataTypeId::FixedUtf8String.fixed_byte_width(), None);
+    assert_eq!(DataTypeId::Utf8String.fixed_byte_width(), None);
     assert_eq!(DataTypeId::Struct.fixed_byte_width(), None);
 }
 
@@ -221,6 +260,6 @@ fn a_code_width_is_a_bound_and_never_a_layout() {
     assert_eq!(DataTypeId::Cfi.fixed_byte_width(), None);
     // Only a code has one: a width that is a layout is not this fact.
     assert_eq!(DataTypeId::Uuid.code_width(), None);
-    assert_eq!(DataTypeId::FixedString.code_width(), None);
+    assert_eq!(DataTypeId::FixedUtf8String.code_width(), None);
     assert_eq!(DataTypeId::Int32.code_width(), None);
 }

@@ -219,13 +219,26 @@ test('typed field factories cover every native datatype variant', () => {
     ['large_binary', fields.largeBinary('value')],
     ['binary_view', fields.binaryView('value')],
     ['large_binary_view', fields.largeBinaryView('value')],
-    // One string datatype, five layouts: the identity is the layout, and
-    // the charset-named factories pick a layout and a charset once.
-    ['string', fields.utf8('value')],
-    ['fixed_string', fields.fixedAscii('value', 4)],
-    ['string_view', fields.utf8View('value')],
-    ['large_string', fields.largeUtf8('value')],
-    ['large_string_view', fields.string('value', { layout: 'large_string_view' })],
+    // The string family: six shapes in each of three charsets, one factory
+    // per leaf, and the leaf is the identity.
+    ['utf8', fields.utf8('value')],
+    ['large_utf8', fields.largeUtf8('value')],
+    ['utf8_view', fields.utf8View('value')],
+    ['large_utf8_view', fields.largeUtf8View('value')],
+    ['fixed_utf8', fields.fixedUtf8('value', 8)],
+    ['sized_utf8', fields.sizedUtf8('value', 32)],
+    ['ascii', fields.ascii('value')],
+    ['large_ascii', fields.largeAscii('value')],
+    ['ascii_view', fields.asciiView('value')],
+    ['large_ascii_view', fields.largeAsciiView('value')],
+    ['fixed_ascii', fields.fixedAscii('value', 4)],
+    ['sized_ascii', fields.sizedAscii('value', 4)],
+    ['cp1252', fields.cp1252('value')],
+    ['large_cp1252', fields.largeCp1252('value')],
+    ['cp1252_view', fields.cp1252View('value')],
+    ['large_cp1252_view', fields.largeCp1252View('value')],
+    ['fixed_cp1252', fields.fixedCp1252('value', 8)],
+    ['sized_cp1252', fields.sizedCp1252('value', 32)],
     ['country', fields.country('value')],
     ['currency', fields.currency('value')],
     ['mic', fields.mic('value')],
@@ -284,19 +297,10 @@ test('typed field factories cover every native datatype variant', () => {
     assert.equal(value.nullable, true, id)
   }
   // Canonical display opens with the variant id and appends its parameters.
-  // A string is the exception: its identity is the layout, and it renders
-  // under the name its charset earns - `utf8` for UTF-8, `ascii` for
-  // US-ASCII - with the bound as the parameter.
-  // A mapping renders under `map` whichever leaf it is, with the promise
-  // about its keys as a parameter, so the sorted leaf's spelling is `map`.
-  const spellings = new Map([
-    ['sorted_map', 'map'],
-    ['string', 'utf8'],
-    ['fixed_string', 'fixed_ascii'],
-    ['string_view', 'utf8_view'],
-    ['large_string', 'large_utf8'],
-    ['large_string_view', 'large_utf8_view'],
-  ])
+  // A mapping is the one exception: it renders under `map` whichever leaf it
+  // is, with the promise about its keys as a parameter, so the sorted leaf's
+  // spelling is `map`.
+  const spellings = new Map([['sorted_map', 'map']])
   for (const [id, value] of byId) {
     assert.equal(value.dtype.toString().split(/[(<]/, 1)[0], spellings.get(id) ?? id, id)
   }
@@ -319,17 +323,17 @@ test('typed field factories cover every native datatype variant', () => {
   )
 })
 
-test('the ascii factories build the variable form and one fixed width', () => {
+test('the ascii factories build the plain leaf and the fixed one', () => {
   const free = fields.ascii('note')
   const currency = fields.fixedAscii('ccy', 3, { nullable: false })
 
-  // Both are the one string datatype in US-ASCII: the variable layout has
-  // no width to answer, the fixed layout answers its own.
-  assert.equal(free.dtype.id, 'string')
+  // Both are US-ASCII leaves: the plain one has no width to answer, the
+  // fixed one answers its own.
+  assert.equal(free.dtype.id, 'ascii')
   assert.equal(free.dtype.charset, 'us-ascii')
   assert.equal(free.dtype.fixedByteWidth, null)
   assert.equal(free.nullable, true)
-  assert.equal(currency.dtype.id, 'fixed_string')
+  assert.equal(currency.dtype.id, 'fixed_ascii')
   assert.equal(currency.dtype.charset, 'us-ascii')
   assert.equal(currency.dtype.fixedByteWidth, 3)
   assert.equal(currency.nullable, false)
@@ -355,38 +359,50 @@ test('the ascii factories build the variable form and one fixed width', () => {
 test('the string and bytes factories declare the datatype beside the field', () => {
   // The parameter keys build the datatype; every other key is a field
   // option, checked as one.
+  // A charset beside a charset-free spelling moves the shape into that
+  // charset's family, and a maximum makes it the sized leaf, so the
+  // declaration lands on `sized_cp1252` and that leaf is the identity.
   const latin = fields.string('note', {
     charset: 'windows-1252',
     max: 32,
     nullable: false,
   })
-  assert.equal(latin.dtype.toString(), 'string(windows-1252,32)')
+  assert.equal(latin.dtype.toString(), 'sized_cp1252(32)')
   assert.deepEqual(latin.dtype.stringParameters, {
-    layout: 'string',
+    layout: 'sized_cp1252',
     charset: 'windows-1252',
     bound: 32,
     max: 32,
   })
   assert.equal(latin.nullable, false)
+  assert.ok(latin.dtype.equals(fields.sizedCp1252('note', 32).dtype))
   assert.ok(fields.string('note').dtype.equals(DataType.utf8()))
   assert.ok(
     fields.string('code', { layout: 'fixed_utf8', fixed: 8 }).dtype.equals(DataType.fixedUtf8(8)),
   )
-  assert.equal(
-    fields
-      .string('code', {
-        layout: 'large_string',
-        charset: 'us-ascii',
-        metadata: { role: 'ticker' },
-      })
-      .get('role'),
-    'ticker',
-  )
+  const ticker = fields.string('code', {
+    layout: 'large_string',
+    charset: 'us-ascii',
+    metadata: { role: 'ticker' },
+  })
+  assert.equal(ticker.get('role'), 'ticker')
+  assert.ok(ticker.dtype.equals(fields.largeAscii('code').dtype))
+  // The per-leaf factories: the number is the leaf's own.
+  assert.equal(fields.sizedUtf8('note', 16).dtype.toString(), 'sized_utf8(16)')
+  assert.equal(fields.sizedAscii('code', 4).dtype.toString(), 'sized_ascii(4)')
+  assert.equal(fields.fixedCp1252('code', 8).dtype.toString(), 'fixed_cp1252(8)')
+  assert.equal(fields.fixedCp1252('code', 8).dtype.fixedByteWidth, 8)
+  assert.equal(fields.largeCp1252View('note').dtype.charset, 'windows-1252')
   assert.throws(
     () => fields.string('note', { fixed: 4 }),
     /expected a maximum on a variable layout/,
   )
-  assert.throws(() => fields.string('note', { layout: 'fixed_string' }), /width/)
+  assert.throws(() => fields.string('note', { layout: 'fixed_string' }), /got none/)
+  assert.throws(() => fields.sizedUtf8('note', 0), /at least one byte, got 0/)
+  assert.throws(
+    () => fields.string('note', { layout: 'cp1252', charset: 'utf-8' }),
+    /string is the spelling that takes one/,
+  )
   assert.throws(() => fields.string('note', 'utf8'), /field options must be a plain object/)
 
   // A maximum is its own leaf now: plain binary is the storage a bounded

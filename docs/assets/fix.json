@@ -161036,9 +161036,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -166675,9 +166674,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -178613,9 +178611,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -180088,9 +180085,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -195034,9 +195030,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -208501,9 +208496,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -209172,9 +209166,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -210454,9 +210447,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -211478,9 +211470,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -214845,9 +214836,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -221901,9 +221891,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 2,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -226353,9 +226342,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -232730,9 +232718,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -241119,9 +241106,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -245548,9 +245534,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -248564,9 +248549,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -252377,9 +252361,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -258150,9 +258133,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -258165,9 +258147,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -258180,9 +258161,8 @@
       },
       {
         "dtype": {
-          "charset": "us-ascii",
           "fixed": 8,
-          "layout": "fixed_string",
+          "layout": "fixed_ascii",
           "type": "string"
         },
         "metadata": {
@@ -399735,9 +399715,8 @@
             },
             {
               "dtype": {
-                "charset": "us-ascii",
                 "fixed": 8,
-                "layout": "fixed_string",
+                "layout": "fixed_ascii",
                 "type": "string"
               },
               "metadata": {

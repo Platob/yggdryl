@@ -1,5 +1,5 @@
 //! The string family: the grammar, the extension document, and the two
-//! directions across Arrow for every layout at each charset class.
+//! directions across Arrow for the leaves of each charset.
 //!
 //! Cell widths straddle `smol_str`'s twenty-three-byte inline buffer on
 //! purpose. That threshold is the whole allocation story of a string value -
@@ -12,7 +12,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
-use yggdryl::types::{StringLayout, StringType};
+use yggdryl::types::StringType;
 use yggdryl::{Charset, DataType, Scalar, Str};
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
@@ -95,7 +95,7 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
         DataType::utf8_view(),
         DataType::ascii(),
         DataType::fixed_ascii(3).expect("three bytes is a width"),
-        DataType::from_str("string(windows-1252,32)").expect("a charset string"),
+        DataType::sized_cp1252(32).expect("thirty-two bytes is a maximum"),
     ];
     group.bench_function("string_parameters", |bencher| {
         bencher.iter(|| {
@@ -104,10 +104,8 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
             }
         });
     });
-    // The document a charset string crosses Arrow inside.
-    let parameters = StringType::new(StringLayout::String, Charset::Cp1252)
-        .try_with_bound(32)
-        .expect("thirty-two bytes is a bound");
+    // The document a windows-1252 string crosses Arrow inside.
+    let parameters = StringType::SizedCp1252String(32);
     group.bench_function("extension_round_trip", |bencher| {
         bencher.iter(|| {
             let rendered = black_box(parameters).extension_json();
@@ -118,9 +116,7 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
     // Cold projection against warm: the pair a cached projection has to
     // separate before either number means anything.
     group.bench_function("field_arrow_projection", |bencher| {
-        let field = DataType::from_str("string(windows-1252)")
-            .expect("a charset string")
-            .required_field("value");
+        let field = DataType::cp1252().required_field("value");
         bencher.iter(|| {
             black_box(&field)
                 .clone()
@@ -134,18 +130,13 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
     // UTF-8 and US-ASCII are validated, the legacy charset is transcribed, and
     // the fixed slot is filled to its width, so nothing is trimmed.
     for width in CELL_WIDTHS {
-        let fixed = StringType::ascii(StringLayout::FixedString)
-            .try_with_bound(u32::try_from(width).expect("the widths fit"))
-            .expect("every cell width is a width");
-        for (parameters, name) in [
-            (StringType::utf8(StringLayout::String), "utf8"),
-            (StringType::ascii(StringLayout::String), "ascii"),
-            (fixed, "fixed_ascii"),
-            (
-                StringType::new(StringLayout::String, Charset::Cp1252),
-                "cp1252",
-            ),
+        for parameters in [
+            StringType::Utf8String,
+            StringType::AsciiString,
+            StringType::FixedAsciiString(u32::try_from(width).expect("the widths fit")),
+            StringType::Cp1252String,
         ] {
+            let name = parameters.as_str();
             let ascii = cell(parameters.charset(), width, false);
             group.bench_function(
                 BenchmarkId::new(format!("transcribe_cell_{name}"), width),
@@ -171,7 +162,7 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
     for width in WIDTHS {
         let ascii = ascii_column(ROWS, width);
         let high = high_column(ROWS, width);
-        // The three plain UTF-8 layouts Arrow names itself.
+        // The three UTF-8 leaves Arrow names itself.
         column_round_trip(
             &mut group,
             &format!("utf8_{width}"),
@@ -190,7 +181,7 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
             &DataType::utf8_view(),
             &ascii,
         );
-        // The US-ASCII layouts: the same text storage under a document that
+        // The US-ASCII leaves: the same text storage under a document that
         // names the repertoire, and the fixed slot the codes ride.
         column_round_trip(
             &mut group,
@@ -205,9 +196,10 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
                 .expect("every column width is a width"),
             &ascii,
         );
-        // The charset string, on the payload that borrows and the one that
-        // does not. Only the pair says whether a change helped or moved cost.
-        let latin = DataType::from_str("string(windows-1252)").expect("a charset string");
+        // The windows-1252 string, on the payload that borrows and the one
+        // that does not. Only the pair says whether a change helped or moved
+        // cost.
+        let latin = DataType::cp1252();
         column_round_trip(
             &mut group,
             &format!("charset_ascii_{width}"),
@@ -217,12 +209,12 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
         column_round_trip(&mut group, &format!("charset_high_{width}"), &latin, &high);
         // And the fixed slot, which pads rather than offsets, at the column's
         // own width so that nothing is trimmed and nothing refused.
-        let fixed = DataType::from_str(&format!("fixed_string(windows-1252,{width})"))
-            .expect("a fixed string");
+        let fixed = DataType::fixed_cp1252(u32::try_from(width).expect("the widths fit"))
+            .expect("every column width is a width");
         column_round_trip(&mut group, &format!("fixed_{width}"), &fixed, &ascii);
     }
 
-    // Restating a layout: a storage handle adopted, never characters copied.
+    // Restating a leaf: a storage handle adopted, never characters copied.
     let long = Scalar::from("a value well past the twenty-three byte inline buffer");
     let large = DataType::large_utf8();
     group.throughput(Throughput::Elements(1));
@@ -230,7 +222,7 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| {
             black_box(&large)
                 .scalar(black_box(long.clone()))
-                .expect("text restates into any layout")
+                .expect("text restates into any leaf")
         });
     });
 

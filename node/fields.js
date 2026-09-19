@@ -103,6 +103,12 @@ function createFields(DataType, Field, native) {
     return (name, value) => field(name, simpleType(kind), value)
   }
 
+  // A sized string leaf: the maximum is the leaf's own number.
+  function sizedString(layout) {
+    return (name, max, value) =>
+      field(name, DataType.string({ layout, max }), value)
+  }
+
   function list(kind) {
     return (name, item, value) =>
       field(name, native.list(kind, item), value)
@@ -195,16 +201,31 @@ function createFields(DataType, Field, native) {
       (parameters) => DataType.string(parameters),
       ['layout', 'charset', 'bound', 'fixed', 'max'],
     ),
+    // One factory per string leaf: six shapes in each of the three charsets.
     utf8: simple('utf8'),
     largeUtf8: simple('large_utf8'),
     utf8View: simple('utf8_view'),
+    largeUtf8View: simple('large_utf8_view'),
     fixedUtf8(name, width, value) {
       return field(name, DataType.fixedUtf8(width), value)
     },
+    sizedUtf8: sizedString('sized_utf8'),
     ascii: simple('ascii'),
+    largeAscii: simple('large_ascii'),
+    asciiView: simple('ascii_view'),
+    largeAsciiView: simple('large_ascii_view'),
     fixedAscii(name, width, value) {
       return field(name, DataType.fixedAscii(width), value)
     },
+    sizedAscii: sizedString('sized_ascii'),
+    cp1252: simple('cp1252'),
+    largeCp1252: simple('large_cp1252'),
+    cp1252View: simple('cp1252_view'),
+    largeCp1252View: simple('large_cp1252_view'),
+    fixedCp1252(name, width, value) {
+      return field(name, DataType.string({ layout: 'fixed_cp1252', fixed: width }), value)
+    },
+    sizedCp1252: sizedString('sized_cp1252'),
     uuid: simple('uuid'),
     uuidv4: simple('uuidv4'),
     uuidv7: simple('uuidv7'),

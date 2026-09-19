@@ -74,9 +74,29 @@ function requireNative() {
       } catch (e) {
         loadErrors.push(e)
       }
+      try {
+        const binding = require('yggdryl-android-arm64')
+        const bindingPackageVersion = require('yggdryl-android-arm64/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
+      } catch (e) {
+        loadErrors.push(e)
+      }
     } else if (process.arch === 'arm') {
       try {
         return require('./yggdryl.android-arm-eabi.node')
+      } catch (e) {
+        loadErrors.push(e)
+      }
+      try {
+        const binding = require('yggdryl-android-arm-eabi')
+        const bindingPackageVersion = require('yggdryl-android-arm-eabi/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
       } catch (e) {
         loadErrors.push(e)
       }
@@ -91,9 +111,29 @@ function requireNative() {
       } catch (e) {
         loadErrors.push(e)
       }
+      try {
+        const binding = require('yggdryl-win32-x64-gnu')
+        const bindingPackageVersion = require('yggdryl-win32-x64-gnu/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
+      } catch (e) {
+        loadErrors.push(e)
+      }
       } else {
         try {
         return require('./yggdryl.win32-x64-msvc.node')
+      } catch (e) {
+        loadErrors.push(e)
+      }
+      try {
+        const binding = require('yggdryl-win32-x64-msvc')
+        const bindingPackageVersion = require('yggdryl-win32-x64-msvc/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
       } catch (e) {
         loadErrors.push(e)
       }
@@ -104,9 +144,29 @@ function requireNative() {
       } catch (e) {
         loadErrors.push(e)
       }
+      try {
+        const binding = require('yggdryl-win32-ia32-msvc')
+        const bindingPackageVersion = require('yggdryl-win32-ia32-msvc/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
+      } catch (e) {
+        loadErrors.push(e)
+      }
     } else if (process.arch === 'arm64') {
       try {
         return require('./yggdryl.win32-arm64-msvc.node')
+      } catch (e) {
+        loadErrors.push(e)
+      }
+      try {
+        const binding = require('yggdryl-win32-arm64-msvc')
+        const bindingPackageVersion = require('yggdryl-win32-arm64-msvc/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
       } catch (e) {
         loadErrors.push(e)
       }
@@ -119,15 +179,45 @@ function requireNative() {
     } catch (e) {
       loadErrors.push(e)
     }
+    try {
+      const binding = require('yggdryl-darwin-universal')
+      const bindingPackageVersion = require('yggdryl-darwin-universal/package.json').version
+      if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+        throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+      }
+      return binding
+    } catch (e) {
+      loadErrors.push(e)
+    }
     if (process.arch === 'x64') {
       try {
         return require('./yggdryl.darwin-x64.node')
       } catch (e) {
         loadErrors.push(e)
       }
+      try {
+        const binding = require('yggdryl-darwin-x64')
+        const bindingPackageVersion = require('yggdryl-darwin-x64/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
+      } catch (e) {
+        loadErrors.push(e)
+      }
     } else if (process.arch === 'arm64') {
       try {
         return require('./yggdryl.darwin-arm64.node')
+      } catch (e) {
+        loadErrors.push(e)
+      }
+      try {
+        const binding = require('yggdryl-darwin-arm64')
+        const bindingPackageVersion = require('yggdryl-darwin-arm64/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
       } catch (e) {
         loadErrors.push(e)
       }
@@ -141,9 +231,29 @@ function requireNative() {
       } catch (e) {
         loadErrors.push(e)
       }
+      try {
+        const binding = require('yggdryl-freebsd-x64')
+        const bindingPackageVersion = require('yggdryl-freebsd-x64/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
+      } catch (e) {
+        loadErrors.push(e)
+      }
     } else if (process.arch === 'arm64') {
       try {
         return require('./yggdryl.freebsd-arm64.node')
+      } catch (e) {
+        loadErrors.push(e)
+      }
+      try {
+        const binding = require('yggdryl-freebsd-arm64')
+        const bindingPackageVersion = require('yggdryl-freebsd-arm64/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
       } catch (e) {
         loadErrors.push(e)
       }
@@ -158,9 +268,29 @@ function requireNative() {
         } catch (e) {
           loadErrors.push(e)
         }
+        try {
+          const binding = require('yggdryl-linux-x64-musl')
+          const bindingPackageVersion = require('yggdryl-linux-x64-musl/package.json').version
+          if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          }
+          return binding
+        } catch (e) {
+          loadErrors.push(e)
+        }
       } else {
         try {
           return require('./yggdryl.linux-x64-gnu.node')
+        } catch (e) {
+          loadErrors.push(e)
+        }
+        try {
+          const binding = require('yggdryl-linux-x64-gnu')
+          const bindingPackageVersion = require('yggdryl-linux-x64-gnu/package.json').version
+          if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          }
+          return binding
         } catch (e) {
           loadErrors.push(e)
         }
@@ -172,9 +302,29 @@ function requireNative() {
         } catch (e) {
           loadErrors.push(e)
         }
+        try {
+          const binding = require('yggdryl-linux-arm64-musl')
+          const bindingPackageVersion = require('yggdryl-linux-arm64-musl/package.json').version
+          if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          }
+          return binding
+        } catch (e) {
+          loadErrors.push(e)
+        }
       } else {
         try {
           return require('./yggdryl.linux-arm64-gnu.node')
+        } catch (e) {
+          loadErrors.push(e)
+        }
+        try {
+          const binding = require('yggdryl-linux-arm64-gnu')
+          const bindingPackageVersion = require('yggdryl-linux-arm64-gnu/package.json').version
+          if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          }
+          return binding
         } catch (e) {
           loadErrors.push(e)
         }
@@ -186,9 +336,29 @@ function requireNative() {
         } catch (e) {
           loadErrors.push(e)
         }
+        try {
+          const binding = require('yggdryl-linux-arm-musleabihf')
+          const bindingPackageVersion = require('yggdryl-linux-arm-musleabihf/package.json').version
+          if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          }
+          return binding
+        } catch (e) {
+          loadErrors.push(e)
+        }
       } else {
         try {
           return require('./yggdryl.linux-arm-gnueabihf.node')
+        } catch (e) {
+          loadErrors.push(e)
+        }
+        try {
+          const binding = require('yggdryl-linux-arm-gnueabihf')
+          const bindingPackageVersion = require('yggdryl-linux-arm-gnueabihf/package.json').version
+          if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          }
+          return binding
         } catch (e) {
           loadErrors.push(e)
         }
@@ -200,9 +370,29 @@ function requireNative() {
         } catch (e) {
           loadErrors.push(e)
         }
+        try {
+          const binding = require('yggdryl-linux-loong64-musl')
+          const bindingPackageVersion = require('yggdryl-linux-loong64-musl/package.json').version
+          if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          }
+          return binding
+        } catch (e) {
+          loadErrors.push(e)
+        }
       } else {
         try {
           return require('./yggdryl.linux-loong64-gnu.node')
+        } catch (e) {
+          loadErrors.push(e)
+        }
+        try {
+          const binding = require('yggdryl-linux-loong64-gnu')
+          const bindingPackageVersion = require('yggdryl-linux-loong64-gnu/package.json').version
+          if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          }
+          return binding
         } catch (e) {
           loadErrors.push(e)
         }
@@ -214,9 +404,29 @@ function requireNative() {
         } catch (e) {
           loadErrors.push(e)
         }
+        try {
+          const binding = require('yggdryl-linux-riscv64-musl')
+          const bindingPackageVersion = require('yggdryl-linux-riscv64-musl/package.json').version
+          if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          }
+          return binding
+        } catch (e) {
+          loadErrors.push(e)
+        }
       } else {
         try {
           return require('./yggdryl.linux-riscv64-gnu.node')
+        } catch (e) {
+          loadErrors.push(e)
+        }
+        try {
+          const binding = require('yggdryl-linux-riscv64-gnu')
+          const bindingPackageVersion = require('yggdryl-linux-riscv64-gnu/package.json').version
+          if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          }
+          return binding
         } catch (e) {
           loadErrors.push(e)
         }
@@ -227,9 +437,29 @@ function requireNative() {
       } catch (e) {
         loadErrors.push(e)
       }
+      try {
+        const binding = require('yggdryl-linux-ppc64-gnu')
+        const bindingPackageVersion = require('yggdryl-linux-ppc64-gnu/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
+      } catch (e) {
+        loadErrors.push(e)
+      }
     } else if (process.arch === 's390x') {
       try {
         return require('./yggdryl.linux-s390x-gnu.node')
+      } catch (e) {
+        loadErrors.push(e)
+      }
+      try {
+        const binding = require('yggdryl-linux-s390x-gnu')
+        const bindingPackageVersion = require('yggdryl-linux-s390x-gnu/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
       } catch (e) {
         loadErrors.push(e)
       }
@@ -243,15 +473,45 @@ function requireNative() {
       } catch (e) {
         loadErrors.push(e)
       }
+      try {
+        const binding = require('yggdryl-openharmony-arm64')
+        const bindingPackageVersion = require('yggdryl-openharmony-arm64/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
+      } catch (e) {
+        loadErrors.push(e)
+      }
     } else if (process.arch === 'x64') {
       try {
         return require('./yggdryl.openharmony-x64.node')
       } catch (e) {
         loadErrors.push(e)
       }
+      try {
+        const binding = require('yggdryl-openharmony-x64')
+        const bindingPackageVersion = require('yggdryl-openharmony-x64/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
+      } catch (e) {
+        loadErrors.push(e)
+      }
     } else if (process.arch === 'arm') {
       try {
         return require('./yggdryl.openharmony-arm.node')
+      } catch (e) {
+        loadErrors.push(e)
+      }
+      try {
+        const binding = require('yggdryl-openharmony-arm')
+        const bindingPackageVersion = require('yggdryl-openharmony-arm/package.json').version
+        if (bindingPackageVersion !== '0.1.7' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        }
+        return binding
       } catch (e) {
         loadErrors.push(e)
       }
@@ -379,6 +639,32 @@ if (!nativeBinding || forceWasi) {
       loadErrors.push(candidateError)
     }
   }
+  if (!wasiBindingLoaded && (!__napiWasiFlavorRequested || __napiWasiFlavor === "wasm32-wasi")) {
+    let candidateError = null
+    let candidateFailed = false
+    try {
+      candidateError = __napiWasiResolveCandidate('yggdryl-wasm32-wasi', true, undefined)
+      candidateFailed = candidateError !== null
+      if (!candidateFailed) {
+        if (process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          const bindingPackageVersion = require('yggdryl-wasm32-wasi/package.json').version
+          if (bindingPackageVersion !== '0.1.7') {
+            throw new Error(`WASI binding package version mismatch, expected 0.1.7 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          }
+        }
+        wasiBinding = require('yggdryl-wasm32-wasi')
+        nativeBinding = wasiBinding
+        wasiBindingLoaded = true
+      }
+    } catch (err) {
+      candidateError = err
+      candidateFailed = true
+    }
+    if (candidateFailed) {
+      wasiBindingErrors.push(candidateError)
+      loadErrors.push(candidateError)
+    }
+  }
   if (
     !wasiBindingLoaded &&
     forceWasi &&
@@ -414,6 +700,8 @@ if (!nativeBinding) {
 }
 
 module.exports = nativeBinding
+module.exports.ArrowWriteSession = nativeBinding.ArrowWriteSession
+module.exports.JsArrowWriteSession = nativeBinding.JsArrowWriteSession
 module.exports.AvroBlock = nativeBinding.AvroBlock
 module.exports.JsAvroBlock = nativeBinding.JsAvroBlock
 module.exports.AvroBlocks = nativeBinding.AvroBlocks

@@ -101,7 +101,7 @@ Other native values use interoperable spellings, without a private marker envelo
 | non-finite float | error |
 | Mapping with non-string keys | error |
 
-A schemaless reader sees strings; pass a native [`Field`](../../types/field.md) to recover exact types. A [string](../../types/text.md) Field puts its layout, charset and width on the value it reads and checks its bound, naming the bytes it counted; a byte Field reads base64 and holds the payload to its width or maximum the same way.
+A schemaless reader sees strings; pass a native [`Field`](../../types/field.md) to recover exact types. A [string](../../types/text.md) Field puts its leaf - charset, shape and width - on the value it reads and checks its bound, naming the bytes it counted; a byte Field reads base64 and holds the payload to its width or maximum the same way.
 
 === "Rust"
 

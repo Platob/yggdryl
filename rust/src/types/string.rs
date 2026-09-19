@@ -1,4 +1,4 @@
-//! The string datatype family: one layout, one charset, one length bound.
+//! The string datatype family: one leaf per charset and shape a column has.
 //!
 //! Arrow has three string layouts and no way to say what a string is *in*: a
 //! `Utf8` array declares UTF-8 and nothing else declares anything, and there
@@ -6,33 +6,32 @@
 //! one place this crate answers all three questions - which layout, which
 //! charset, how long - and every string the crate has is one member of it.
 //!
-//! [`StringLayout`] names the five layouts. [`StringType`] is a layout
-//! beside the charset its bytes are written in and the bound its values are
-//! held to. [`crate::DataType::string`] builds the one string datatype,
-//! [`crate::DataType::String`], from them; `utf8`, `ascii`, `varchar(32)`
-//! and `char(8)` are spellings of it, never datatypes of their own.
-//! [`Str`] is the one string value, and the ten registered codes beside it
-//! are identities over a published registry rather than strings with a
-//! charset: each stores as the ASCII text it is, under its own Arrow
-//! extension name and held to its own standard's width.
+//! [`StringType`] names the eighteen leaves: six shapes in each of the three
+//! charsets that have a datatype. [`crate::DataType::string`] builds the one
+//! string datatype, [`crate::DataType::String`], from a leaf; `utf8`,
+//! `string(us-ascii)`, `varchar(32)` and `char(8)` are spellings of leaves,
+//! never datatypes of their own. [`Str`] is the one string value, and the
+//! registered codes beside it are identities over a published registry rather
+//! than strings with a charset: each stores as the ASCII text it is, under its
+//! own Arrow extension name and held to its own standard's width.
 //!
 //! ```
-//! use yggdryl::types::{StringLayout, StringType};
+//! use yggdryl::types::StringType;
 //! use yggdryl::{Charset, DataType};
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! // Every spelling is one datatype, and it reads back as itself.
+//! // Every spelling is one leaf, and it reads back as itself.
 //! assert_eq!(DataType::from_str("string")?, DataType::utf8());
 //! assert_eq!(DataType::from_str("largestringview")?.to_string(), "large_utf8_view");
 //! assert_eq!(DataType::from_str("fixed_string(us-ascii,4)")?.to_string(), "fixed_ascii(4)");
 //!
-//! // The layout, the charset and the bound are what a string declares.
+//! // The charset and the number are what the leaf already says.
 //! let latin = DataType::from_str("string(windows-1252,32)")?;
-//! let parameters = latin.string_parameters().expect("a string datatype");
-//! assert_eq!(parameters.layout(), StringLayout::String);
-//! assert_eq!(parameters.charset(), Charset::Cp1252);
-//! assert_eq!(parameters.max(), Some(32));
-//! assert_eq!(latin.to_string(), "string(windows-1252,32)");
+//! let leaf = latin.string_parameters().expect("a string datatype");
+//! assert_eq!(leaf, StringType::SizedCp1252String(32));
+//! assert_eq!(leaf.charset(), Charset::Cp1252);
+//! assert_eq!(leaf.max(), Some(32));
+//! assert_eq!(latin.to_string(), "sized_cp1252(32)");
 //! # Ok(())
 //! # }
 //! ```
@@ -40,8 +39,6 @@
 use std::collections::BTreeMap;
 
 use std::fmt;
-
-use std::num::NonZeroU32;
 
 pub(crate) use arrow::{
     arrow_storage, describes_storage, from_arrow_storage, is_text_storage, needs_extension,
@@ -51,7 +48,7 @@ pub(crate) use scalars::str_from_value;
 
 pub use scalars::{INLINE_CAPACITY, Str};
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -73,14 +70,14 @@ use crate::{Charset, DataType, DataTypeId, Error, Field, Result, Scalar};
 /// declares no charset, no length bound, and it has one view layout where
 /// this crate has two. So the projection is: text this crate stores as UTF-8
 /// or US-ASCII rides Arrow's own string layouts - ASCII bytes are UTF-8, and
-/// Arrow is told the truth about the bytes - text in any other charset rides
-/// the matching *binary* layout, because the bytes are not UTF-8 and saying
+/// Arrow is told the truth about the bytes - text in windows-1252 rides the
+/// matching *binary* layout, because the bytes are not UTF-8 and saying
 /// they are would be a lie a reader acts on, and everything Arrow cannot say
 /// rides the `yggdryl.string` extension document beside it.
 mod arrow {
     use arrow_schema::DataType as ArrowDataType;
 
-    use super::{StringLayout, StringType};
+    use super::StringType;
     use crate::{Charset, Error, Result};
 
     /// Whether a string's bytes ride Arrow's text layouts rather than its binary
@@ -96,14 +93,15 @@ mod arrow {
     /// Whether a string field needs the `yggdryl.string` document beside its
     /// storage.
     ///
-    /// Only where Arrow cannot say what the string declares: a charset other
-    /// than UTF-8, a bound, or the large view layout, which Arrow projects onto
-    /// its one view. Plain `utf8`, `large_utf8` and `utf8_view` are Arrow's own
-    /// datatypes and cross bare.
+    /// Plain `utf8`, `large_utf8` and `utf8_view` are Arrow's own datatypes
+    /// and cross bare. Every other leaf states something Arrow cannot - a
+    /// charset, a number, or the second view width - so the leaf rides the
+    /// document, written whole.
     pub(crate) const fn needs_extension(parameters: StringType) -> bool {
-        !parameters.charset().is_utf8()
-            || parameters.is_bounded()
-            || matches!(parameters.layout(), StringLayout::LargeStringView)
+        !matches!(
+            parameters,
+            StringType::Utf8String | StringType::LargeUtf8String | StringType::Utf8StringView
+        )
     }
 
     /// The Arrow storage one string datatype lays out.
@@ -113,8 +111,8 @@ mod arrow {
     /// Returns [`Error::InvalidDataType`] when a fixed width is outside `i32`,
     /// which is as wide as Arrow's own fixed binary counts.
     pub(crate) fn arrow_storage(parameters: StringType) -> Result<ArrowDataType> {
-        // The variant is public, so a fixed string can arrive here without the
-        // width that makes it fixed. A boundary is where that stops.
+        // The variant is public, so a numbered leaf can arrive here stating
+        // zero. A boundary is where that stops.
         parameters.validate()?;
         // A fixed width is one layout in Arrow whatever the charset: Arrow has no
         // fixed-width string, so the bytes ride its fixed binary and the charset
@@ -129,22 +127,17 @@ mod arrow {
             return Ok(ArrowDataType::FixedSizeBinary(width));
         }
         let text = is_text_storage(parameters);
-        Ok(match (parameters.layout(), text) {
-            (StringLayout::String, true) => ArrowDataType::Utf8,
-            (StringLayout::String, false) => ArrowDataType::Binary,
-            (StringLayout::LargeString, true) => ArrowDataType::LargeUtf8,
-            (StringLayout::LargeString, false) => ArrowDataType::LargeBinary,
+        Ok(match (parameters.is_large(), parameters.is_view(), text) {
+            // A maximum is the column's rule, so a sized leaf lays out the
+            // plain storage its values fill.
+            (false, false, true) => ArrowDataType::Utf8,
+            (false, false, false) => ArrowDataType::Binary,
+            (true, false, true) => ArrowDataType::LargeUtf8,
+            (true, false, false) => ArrowDataType::LargeBinary,
             // Arrow has one view layout, so both of this crate's project onto it
             // and the `large` half of the distinction rides the metadata.
-            (StringLayout::StringView | StringLayout::LargeStringView, true) => {
-                ArrowDataType::Utf8View
-            }
-            (StringLayout::StringView | StringLayout::LargeStringView, false) => {
-                ArrowDataType::BinaryView
-            }
-            // The fixed layout answered above: `validate` gave it a width and
-            // the width gave it its storage.
-            (StringLayout::FixedString, _) => ArrowDataType::Binary,
+            (_, true, true) => ArrowDataType::Utf8View,
+            (_, true, false) => ArrowDataType::BinaryView,
         })
     }
 
@@ -162,9 +155,9 @@ mod arrow {
 
     /// The string datatype one Arrow text storage imports as.
     ///
-    /// A charset and a bound are a `yggdryl.string` document on the field, so a
-    /// bare storage imports as the plain UTF-8 layout it is; the field level
-    /// puts the document's parameters back when it is there.
+    /// Every other leaf is a `yggdryl.string` document on the field, so a bare
+    /// storage imports as the plain UTF-8 leaf it is; the field level puts the
+    /// document's leaf back when it is there.
     ///
     /// # Errors
     ///
@@ -763,8 +756,7 @@ impl DataType {
         Str::new(text).try_with_parameters(match self {
             Self::String(parameters) => *parameters,
             // A code is US-ASCII bounded at the width its standard fixes.
-            _ => super::StringType::ascii(super::StringLayout::String)
-                .try_with_bound(width as u32)?,
+            _ => StringType::SizedAsciiString(width as u32),
         })
     }
 
@@ -776,9 +768,10 @@ impl DataType {
     fn packed_width(&self) -> Result<usize> {
         let width = match self.code_width() {
             Some(width) => Some(width),
-            None if self
-                .string_parameters()
-                .is_some_and(|parameters| parameters.charset() == crate::Charset::Ascii) =>
+            None if matches!(
+                self.string_parameters(),
+                Some(StringType::FixedAsciiString(_))
+            ) =>
             {
                 self.fixed_byte_width()
             }
@@ -1175,35 +1168,34 @@ fn validate_enum_text(part: &'static str, value: &str) -> Result<()> {
 // The one door into the string family, and the questions every string answers.
 // ------------------------------------------------------------------------
 impl DataType {
-    /// The string datatype these parameters name.
+    /// The string datatype one leaf names.
     ///
     /// This is the family's one constructor. Every string is
-    /// [`DataType::String`]; what differs is what it declares, and the
-    /// parameters say all of it - a layout, a charset, and a bound.
+    /// [`DataType::String`]; what differs is which leaf it is, and the leaf
+    /// says all of it - the shape, the charset, and the number.
     ///
     /// ```
-    /// use yggdryl::types::{StringLayout, StringType};
-    /// use yggdryl::{Charset, DataType};
+    /// use yggdryl::types::StringType;
+    /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// // Plain UTF-8 renders under Arrow's own name.
-    /// let plain = StringType::utf8(StringLayout::LargeString);
-    /// assert_eq!(DataType::string(plain)?, DataType::large_utf8());
+    /// assert_eq!(DataType::string(StringType::LargeUtf8String)?, DataType::large_utf8());
     /// assert_eq!(DataType::large_utf8().to_string(), "large_utf8");
     ///
-    /// // A charset or a bound is what a string declares.
-    /// let bounded = StringType::utf8(StringLayout::String).try_with_bound(32)?;
-    /// assert_eq!(DataType::string(bounded)?.to_string(), "utf8(32)");
-    /// assert_eq!(DataType::string(Charset::Cp1252)?.to_string(), "string(windows-1252)");
+    /// // A charset or a number is a leaf of its own.
+    /// assert_eq!(DataType::string(StringType::SizedUtf8String(32))?.to_string(), "sized_utf8(32)");
+    /// assert_eq!(DataType::string(StringType::Cp1252String)?.to_string(), "cp1252");
     /// assert_eq!(DataType::fixed_ascii(4)?.to_string(), "fixed_ascii(4)");
+    /// assert!(DataType::string(StringType::FixedUtf8String(0)).is_err());
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
     ///
-    /// Returns [`crate::Error::InvalidDataType`] for a fixed layout with no width:
-    /// the width is what makes it fixed.
+    /// Returns [`crate::Error::InvalidDataType`] for a numbered leaf stating
+    /// zero: a column that holds nothing is not a column.
     pub fn string(parameters: impl Into<StringType>) -> Result<Self> {
         let parameters = parameters.into();
         parameters.validate()?;
@@ -1213,25 +1205,25 @@ impl DataType {
     /// Unbounded UTF-8 with 32-bit offsets - Arrow's `Utf8`.
     #[must_use]
     pub const fn utf8() -> Self {
-        Self::String(StringType::utf8(StringLayout::String))
+        Self::String(StringType::Utf8String)
     }
 
     /// Unbounded UTF-8 with 64-bit offsets - Arrow's `LargeUtf8`.
     #[must_use]
     pub const fn large_utf8() -> Self {
-        Self::String(StringType::utf8(StringLayout::LargeString))
+        Self::String(StringType::LargeUtf8String)
     }
 
     /// Unbounded UTF-8 in the view layout - Arrow's `Utf8View`.
     #[must_use]
     pub const fn utf8_view() -> Self {
-        Self::String(StringType::utf8(StringLayout::StringView))
+        Self::String(StringType::Utf8StringView)
     }
 
-    /// Unbounded US-ASCII with 32-bit offsets.
+    /// Unbounded UTF-8 in the view layout over 64-bit offsets.
     #[must_use]
-    pub const fn ascii() -> Self {
-        Self::String(StringType::ascii(StringLayout::String))
+    pub const fn large_utf8_view() -> Self {
+        Self::String(StringType::LargeUtf8StringView)
     }
 
     /// UTF-8 of exactly `width` stored bytes, padded with trailing NUL.
@@ -1240,7 +1232,40 @@ impl DataType {
     ///
     /// Returns [`crate::Error::InvalidDataType`] for a width of zero.
     pub fn fixed_utf8(width: u32) -> Result<Self> {
-        Self::string(StringType::utf8(StringLayout::FixedString).try_with_bound(width)?)
+        Self::string(StringType::FixedUtf8String(width))
+    }
+
+    /// UTF-8 of at most `max` stored bytes, over 32-bit offsets.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::InvalidDataType`] for a maximum of zero.
+    pub fn sized_utf8(max: u32) -> Result<Self> {
+        Self::string(StringType::SizedUtf8String(max))
+    }
+
+    /// Unbounded US-ASCII with 32-bit offsets.
+    #[must_use]
+    pub const fn ascii() -> Self {
+        Self::String(StringType::AsciiString)
+    }
+
+    /// Unbounded US-ASCII with 64-bit offsets.
+    #[must_use]
+    pub const fn large_ascii() -> Self {
+        Self::String(StringType::LargeAsciiString)
+    }
+
+    /// Unbounded US-ASCII in the view layout.
+    #[must_use]
+    pub const fn ascii_view() -> Self {
+        Self::String(StringType::AsciiStringView)
+    }
+
+    /// Unbounded US-ASCII in the view layout over 64-bit offsets.
+    #[must_use]
+    pub const fn large_ascii_view() -> Self {
+        Self::String(StringType::LargeAsciiStringView)
     }
 
     /// US-ASCII of exactly `width` stored bytes, padded with trailing NUL.
@@ -1262,10 +1287,61 @@ impl DataType {
     ///
     /// Returns [`crate::Error::InvalidDataType`] for a width of zero.
     pub fn fixed_ascii(width: u32) -> Result<Self> {
-        Self::string(StringType::ascii(StringLayout::FixedString).try_with_bound(width)?)
+        Self::string(StringType::FixedAsciiString(width))
     }
 
-    /// The parameters a string datatype declares, `None` for every other.
+    /// US-ASCII of at most `max` stored bytes, over 32-bit offsets.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::InvalidDataType`] for a maximum of zero.
+    pub fn sized_ascii(max: u32) -> Result<Self> {
+        Self::string(StringType::SizedAsciiString(max))
+    }
+
+    /// Unbounded windows-1252 with 32-bit offsets.
+    #[must_use]
+    pub const fn cp1252() -> Self {
+        Self::String(StringType::Cp1252String)
+    }
+
+    /// Unbounded windows-1252 with 64-bit offsets.
+    #[must_use]
+    pub const fn large_cp1252() -> Self {
+        Self::String(StringType::LargeCp1252String)
+    }
+
+    /// Unbounded windows-1252 in the view layout.
+    #[must_use]
+    pub const fn cp1252_view() -> Self {
+        Self::String(StringType::Cp1252StringView)
+    }
+
+    /// Unbounded windows-1252 in the view layout over 64-bit offsets.
+    #[must_use]
+    pub const fn large_cp1252_view() -> Self {
+        Self::String(StringType::LargeCp1252StringView)
+    }
+
+    /// Windows-1252 of exactly `width` stored bytes, padded with trailing NUL.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::InvalidDataType`] for a width of zero.
+    pub fn fixed_cp1252(width: u32) -> Result<Self> {
+        Self::string(StringType::FixedCp1252String(width))
+    }
+
+    /// Windows-1252 of at most `max` stored bytes, over 32-bit offsets.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::Error::InvalidDataType`] for a maximum of zero.
+    pub fn sized_cp1252(max: u32) -> Result<Self> {
+        Self::string(StringType::SizedCp1252String(max))
+    }
+
+    /// The leaf a string datatype is, `None` for every other.
     ///
     /// The registered codes are deliberately not here. A currency is an
     /// identity over ISO 4217 the way a URL is one over RFC 3986 - both store
@@ -1275,15 +1351,16 @@ impl DataType {
     /// the plain text beside it.
     ///
     /// ```
-    /// use yggdryl::types::StringLayout;
+    /// use yggdryl::types::StringType;
     /// use yggdryl::{Charset, DataType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let utf8 = DataType::utf8().string_parameters().expect("a string datatype");
-    /// assert_eq!(utf8.layout(), StringLayout::String);
+    /// assert_eq!(utf8, StringType::Utf8String);
     /// assert_eq!(utf8.charset(), Charset::Utf8);
     ///
     /// let ascii = DataType::fixed_ascii(3)?.string_parameters().expect("a string datatype");
+    /// assert_eq!(ascii, StringType::FixedAsciiString(3));
     /// assert_eq!(ascii.charset(), Charset::Ascii);
     /// assert_eq!(ascii.fixed(), Some(3));
     ///
@@ -1308,7 +1385,7 @@ impl DataType {
     /// The charset a string column's bytes are written in.
     ///
     /// `None` is a datatype that is not a string; every string has one,
-    /// because UTF-8 is what a string with nothing declared is in.
+    /// because the leaf says it.
     #[must_use]
     pub const fn charset(&self) -> Option<Charset> {
         match self.string_parameters() {
@@ -1332,6 +1409,7 @@ impl DataType {
     /// assert_eq!(DataType::fixed_ascii(4)?.fixed_byte_width(), Some(4));
     /// assert_eq!(DataType::fixed_binary(16)?.fixed_byte_width(), Some(16));
     /// assert_eq!(DataType::utf8().fixed_byte_width(), None);
+    /// assert_eq!(DataType::sized_utf8(4)?.fixed_byte_width(), None);
     /// assert_eq!(DataType::Currency.fixed_byte_width(), None);
     /// assert_eq!(DataType::Currency.code_width(), Some(3));
     /// # Ok(())
@@ -1414,245 +1492,523 @@ impl Field {
 }
 
 // ------------------------------------------------------------------------
-// What a string datatype declares beyond its layout.
+// What a string datatype declares: the leaf, which is its charset, its shape
+// and its number in one.
 // ------------------------------------------------------------------------
 
 /// The name this crate's string datatypes ride Arrow under.
 pub const STRING_EXTENSION_NAME: &str = "yggdryl.string";
 
-/// A string layout, the charset its bytes are written in, and its bound.
+/// The string family's datatype payload: one leaf per charset and shape a
+/// column has.
 ///
-/// Arrow carries none of the three together: its string layouts imply UTF-8
-/// and declare no length at all, and its binary layouts declare neither. So
-/// all three ride here, and cross an Arrow boundary as this crate's own
-/// extension metadata under `yggdryl.string`.
+/// Arrow lays text out three ways, says UTF-8 and nothing else about it, and
+/// has one view width where this crate declares two. Beside those this crate
+/// declares a charset - three have a datatype: UTF-8, US-ASCII and
+/// windows-1252 - a *fixed* width every value fills, and a *sized* column
+/// whose maximum Arrow has nowhere to state. Each combination is a leaf here
+/// rather than a layout beside a charset and a flag, so a column is one thing
+/// and a reader never has to ask which charset the bytes are in, nor whether
+/// the number it carries is a width or a bound - the leaf already said.
 ///
-/// The bound counts **bytes of the stored encoding**, not scalars. That is
+/// The number counts **bytes of the stored encoding**, not scalars. That is
 /// the number the buffer holds, the number Arrow's offsets measure, and - for
 /// every single-byte charset - the scalar count as well. Counting scalars
 /// instead would make a bound a walk of the value rather than a subtraction
 /// of two offsets.
 ///
-/// One number carries both bounds because a string is one shape or the other:
-/// on [`StringLayout::FixedString`] it is the exact width every value fills,
-/// and on every other layout it is the most bytes a value may hold. So
-/// [`Self::fixed`] and [`Self::max`] are two readings of one fact, and
-/// exactly one of them ever answers.
-///
 /// ```
-/// use yggdryl::types::{StringLayout, StringType};
+/// use yggdryl::types::StringType;
 /// use yggdryl::{Charset, DataType};
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let parameters = StringType::new(StringLayout::String, Charset::Cp1252).try_with_bound(32)?;
-/// assert_eq!(parameters.charset(), Charset::Cp1252);
-/// assert_eq!(parameters.max(), Some(32));
-/// assert_eq!(parameters.fixed(), None);
+/// // A maximum is the column's rule, and its own leaf.
+/// let bounded = StringType::SizedCp1252String(32);
+/// assert_eq!(bounded.charset(), Charset::Cp1252);
+/// assert_eq!(bounded.max(), Some(32));
+/// assert_eq!(bounded.fixed(), None);
+/// assert_eq!(bounded.storage(), StringType::Cp1252String);
 ///
-/// let dtype = DataType::string(parameters)?;
-/// assert_eq!(dtype.to_string(), "string(windows-1252,32)");
+/// // A width is the storage, and its own leaf.
+/// assert_eq!(StringType::FixedAsciiString(4).fixed(), Some(4));
+/// assert_eq!(StringType::FixedAsciiString(4).max(), None);
+///
+/// // The same shape in another charset is one leaf over.
+/// assert_eq!(StringType::Utf8String.with_charset(Charset::Cp1252)?, StringType::Cp1252String);
+/// assert_eq!(StringType::FixedUtf8String(4).with_charset(Charset::Ascii)?, StringType::FixedAsciiString(4));
+/// assert!(StringType::Utf8String.with_charset(Charset::Latin1).is_err());
+///
+/// let dtype = DataType::string(bounded)?;
+/// assert_eq!(dtype.to_string(), "sized_cp1252(32)");
 /// assert_eq!(DataType::from_str(&dtype.to_string())?, dtype);
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct StringType {
-    layout: StringLayout,
-    charset: Charset,
-    bound: Option<NonZeroU32>,
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[non_exhaustive]
+pub enum StringType {
+    /// Any length of UTF-8, 32-bit offsets - Arrow's `Utf8`.
+    #[default]
+    Utf8String,
+    /// Any length of UTF-8, 64-bit offsets - Arrow's `LargeUtf8`.
+    LargeUtf8String,
+    /// Any length of UTF-8, viewed: a short prefix inline, the rest out of
+    /// line - Arrow's `Utf8View`.
+    Utf8StringView,
+    /// The viewed UTF-8 layout over 64-bit offsets.
+    ///
+    /// Arrow has one view width, so this crosses an Arrow boundary as
+    /// `Utf8View` with the leaf written in the `yggdryl.string` document.
+    LargeUtf8StringView,
+    /// Exactly this many bytes of UTF-8 in every value, padded with trailing
+    /// NUL.
+    ///
+    /// Arrow has no fixed-width string at all, so this rides its
+    /// `FixedSizeBinary` and the leaf travels in the `yggdryl.string` document.
+    FixedUtf8String(u32),
+    /// At most this many bytes of UTF-8 in a value, over 32-bit offsets.
+    ///
+    /// Arrow has no `varchar(n)`, so the maximum rides the `yggdryl.string`
+    /// document; the storage is the plain `Utf8` the values fill.
+    SizedUtf8String(u32),
+    /// Any length of US-ASCII, 32-bit offsets.
+    ///
+    /// ASCII bytes are UTF-8, so every US-ASCII leaf rides the Arrow storage
+    /// its UTF-8 twin does and the repertoire rides the `yggdryl.string`
+    /// document.
+    AsciiString,
+    /// Any length of US-ASCII, 64-bit offsets.
+    LargeAsciiString,
+    /// Any length of US-ASCII, viewed.
+    AsciiStringView,
+    /// The viewed US-ASCII layout over 64-bit offsets.
+    LargeAsciiStringView,
+    /// Exactly this many bytes of US-ASCII in every value, padded with
+    /// trailing NUL.
+    FixedAsciiString(u32),
+    /// At most this many bytes of US-ASCII in a value, over 32-bit offsets.
+    SizedAsciiString(u32),
+    /// Any length of windows-1252, 32-bit offsets.
+    ///
+    /// The bytes are not UTF-8, so every windows-1252 leaf rides Arrow's
+    /// matching *binary* storage and the charset rides the `yggdryl.string`
+    /// document.
+    Cp1252String,
+    /// Any length of windows-1252, 64-bit offsets.
+    LargeCp1252String,
+    /// Any length of windows-1252, viewed.
+    Cp1252StringView,
+    /// The viewed windows-1252 layout over 64-bit offsets.
+    LargeCp1252StringView,
+    /// Exactly this many bytes of windows-1252 in every value, padded with
+    /// trailing NUL.
+    FixedCp1252String(u32),
+    /// At most this many bytes of windows-1252 in a value, over 32-bit
+    /// offsets.
+    SizedCp1252String(u32),
 }
 
 impl StringType {
-    /// An unbounded string in one layout and charset.
+    /// Every leaf in canonical declaration order - six shapes per charset,
+    /// UTF-8 then US-ASCII then windows-1252 - with a stated number where the
+    /// leaf carries one.
+    pub const ALL: [Self; 18] = [
+        Self::Utf8String,
+        Self::LargeUtf8String,
+        Self::Utf8StringView,
+        Self::LargeUtf8StringView,
+        Self::FixedUtf8String(1),
+        Self::SizedUtf8String(1),
+        Self::AsciiString,
+        Self::LargeAsciiString,
+        Self::AsciiStringView,
+        Self::LargeAsciiStringView,
+        Self::FixedAsciiString(1),
+        Self::SizedAsciiString(1),
+        Self::Cp1252String,
+        Self::LargeCp1252String,
+        Self::Cp1252StringView,
+        Self::LargeCp1252StringView,
+        Self::FixedCp1252String(1),
+        Self::SizedCp1252String(1),
+    ];
+
+    /// Return the exact datatype identifier.
     #[must_use]
-    pub const fn new(layout: StringLayout, charset: Charset) -> Self {
-        Self {
-            layout,
-            charset,
-            bound: None,
+    pub const fn id(self) -> DataTypeId {
+        match self {
+            Self::Utf8String => DataTypeId::Utf8String,
+            Self::LargeUtf8String => DataTypeId::LargeUtf8String,
+            Self::Utf8StringView => DataTypeId::Utf8StringView,
+            Self::LargeUtf8StringView => DataTypeId::LargeUtf8StringView,
+            Self::FixedUtf8String(_) => DataTypeId::FixedUtf8String,
+            Self::SizedUtf8String(_) => DataTypeId::SizedUtf8String,
+            Self::AsciiString => DataTypeId::AsciiString,
+            Self::LargeAsciiString => DataTypeId::LargeAsciiString,
+            Self::AsciiStringView => DataTypeId::AsciiStringView,
+            Self::LargeAsciiStringView => DataTypeId::LargeAsciiStringView,
+            Self::FixedAsciiString(_) => DataTypeId::FixedAsciiString,
+            Self::SizedAsciiString(_) => DataTypeId::SizedAsciiString,
+            Self::Cp1252String => DataTypeId::Cp1252String,
+            Self::LargeCp1252String => DataTypeId::LargeCp1252String,
+            Self::Cp1252StringView => DataTypeId::Cp1252StringView,
+            Self::LargeCp1252StringView => DataTypeId::LargeCp1252StringView,
+            Self::FixedCp1252String(_) => DataTypeId::FixedCp1252String,
+            Self::SizedCp1252String(_) => DataTypeId::SizedCp1252String,
         }
     }
 
-    /// An unbounded UTF-8 string in one layout.
+    /// The leaf one identifier names, with `width` where the leaf takes one.
     #[must_use]
-    pub const fn utf8(layout: StringLayout) -> Self {
-        Self::new(layout, Charset::Utf8)
+    pub const fn from_id(id: DataTypeId, width: u32) -> Option<Self> {
+        match id {
+            DataTypeId::Utf8String => Some(Self::Utf8String),
+            DataTypeId::LargeUtf8String => Some(Self::LargeUtf8String),
+            DataTypeId::Utf8StringView => Some(Self::Utf8StringView),
+            DataTypeId::LargeUtf8StringView => Some(Self::LargeUtf8StringView),
+            DataTypeId::FixedUtf8String => Some(Self::FixedUtf8String(width)),
+            DataTypeId::SizedUtf8String => Some(Self::SizedUtf8String(width)),
+            DataTypeId::AsciiString => Some(Self::AsciiString),
+            DataTypeId::LargeAsciiString => Some(Self::LargeAsciiString),
+            DataTypeId::AsciiStringView => Some(Self::AsciiStringView),
+            DataTypeId::LargeAsciiStringView => Some(Self::LargeAsciiStringView),
+            DataTypeId::FixedAsciiString => Some(Self::FixedAsciiString(width)),
+            DataTypeId::SizedAsciiString => Some(Self::SizedAsciiString(width)),
+            DataTypeId::Cp1252String => Some(Self::Cp1252String),
+            DataTypeId::LargeCp1252String => Some(Self::LargeCp1252String),
+            DataTypeId::Cp1252StringView => Some(Self::Cp1252StringView),
+            DataTypeId::LargeCp1252StringView => Some(Self::LargeCp1252StringView),
+            DataTypeId::FixedCp1252String => Some(Self::FixedCp1252String(width)),
+            DataTypeId::SizedCp1252String => Some(Self::SizedCp1252String(width)),
+            _ => None,
+        }
     }
 
-    /// An unbounded US-ASCII string in one layout.
+    /// The canonical name of this leaf.
     #[must_use]
-    pub const fn ascii(layout: StringLayout) -> Self {
-        Self::new(layout, Charset::Ascii)
-    }
-
-    /// The layout the values are stored in.
-    #[must_use]
-    pub const fn layout(self) -> StringLayout {
-        self.layout
+    pub const fn as_str(self) -> &'static str {
+        self.id().as_str()
     }
 
     /// The charset the stored bytes are written in.
     #[must_use]
     pub const fn charset(self) -> Charset {
-        self.charset
+        match self {
+            Self::Utf8String
+            | Self::LargeUtf8String
+            | Self::Utf8StringView
+            | Self::LargeUtf8StringView
+            | Self::FixedUtf8String(_)
+            | Self::SizedUtf8String(_) => Charset::Utf8,
+            Self::AsciiString
+            | Self::LargeAsciiString
+            | Self::AsciiStringView
+            | Self::LargeAsciiStringView
+            | Self::FixedAsciiString(_)
+            | Self::SizedAsciiString(_) => Charset::Ascii,
+            Self::Cp1252String
+            | Self::LargeCp1252String
+            | Self::Cp1252StringView
+            | Self::LargeCp1252StringView
+            | Self::FixedCp1252String(_)
+            | Self::SizedCp1252String(_) => Charset::Cp1252,
+        }
     }
 
-    /// The declared byte bound, whichever shape the layout gives it.
+    /// The declared byte bound, whichever shape the leaf gives it.
     #[must_use]
     pub const fn bound(self) -> Option<u32> {
-        match self.bound {
-            Some(bound) => Some(bound.get()),
-            None => None,
+        match self {
+            Self::FixedUtf8String(bound)
+            | Self::SizedUtf8String(bound)
+            | Self::FixedAsciiString(bound)
+            | Self::SizedAsciiString(bound)
+            | Self::FixedCp1252String(bound)
+            | Self::SizedCp1252String(bound) => Some(bound),
+            _ => None,
         }
     }
 
-    /// The exact bytes every value fills, on a fixed layout.
+    /// The exact bytes every value fills, on a fixed leaf.
     #[must_use]
     pub const fn fixed(self) -> Option<u32> {
-        match self.layout.is_fixed() {
-            true => self.bound(),
-            false => None,
+        match self {
+            Self::FixedUtf8String(width)
+            | Self::FixedAsciiString(width)
+            | Self::FixedCp1252String(width) => Some(width),
+            _ => None,
         }
     }
 
-    /// The most bytes a value may hold, on a variable layout.
+    /// The most bytes a value may hold, on a sized leaf.
     #[must_use]
     pub const fn max(self) -> Option<u32> {
-        match self.layout.is_fixed() {
-            true => None,
-            false => self.bound(),
+        match self {
+            Self::SizedUtf8String(max)
+            | Self::SizedAsciiString(max)
+            | Self::SizedCp1252String(max) => Some(max),
+            _ => None,
         }
     }
 
-    /// Return whether every value is the same width.
+    /// Whether every value fills one width exactly.
     #[must_use]
     pub const fn is_fixed(self) -> bool {
-        self.layout.is_fixed()
+        self.fixed().is_some()
     }
 
-    /// Return whether the values are bounded at all.
+    /// Whether the leaf states a number at all.
     #[must_use]
     pub const fn is_bounded(self) -> bool {
-        self.bound.is_some()
+        self.bound().is_some()
     }
 
-    /// Return these parameters in another layout.
+    /// Whether values are addressed through the view layout.
     #[must_use]
-    pub const fn with_layout(mut self, layout: StringLayout) -> Self {
-        self.layout = layout;
-        self
+    pub const fn is_view(self) -> bool {
+        matches!(
+            self,
+            Self::Utf8StringView
+                | Self::LargeUtf8StringView
+                | Self::AsciiStringView
+                | Self::LargeAsciiStringView
+                | Self::Cp1252StringView
+                | Self::LargeCp1252StringView
+        )
     }
 
-    /// Return these parameters in another charset.
+    /// Whether offsets are 64-bit.
     #[must_use]
-    pub const fn with_charset(mut self, charset: Charset) -> Self {
-        self.charset = charset;
-        self
+    pub const fn is_large(self) -> bool {
+        matches!(
+            self,
+            Self::LargeUtf8String
+                | Self::LargeUtf8StringView
+                | Self::LargeAsciiString
+                | Self::LargeAsciiStringView
+                | Self::LargeCp1252String
+                | Self::LargeCp1252StringView
+        )
     }
 
-    /// Return these parameters bounded to `bound` bytes, the bound already
-    /// proven non-zero.
-    #[must_use]
-    pub const fn with_bound(mut self, bound: NonZeroU32) -> Self {
-        self.bound = Some(bound);
-        self
-    }
-
-    /// Return these parameters bounded to `bound` bytes.
+    /// The leaf a *value* of this column carries.
     ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidDataType`] for a bound of zero: a string of no
-    /// bytes is a column of one value, which is a declaration nobody means.
-    pub fn try_with_bound(mut self, bound: u32) -> Result<Self> {
-        self.bound = Some(NonZeroU32::new(bound).ok_or_else(|| {
-            invalid(format_smolstr!(
-                "expected a {} of at least one byte, got 0",
-                self.bound_word()
-            ))
-        })?);
-        Ok(self)
-    }
-
-    /// Return these parameters with no bound.
+    /// A maximum is the column's rule and not the value's, so a value in a
+    /// sized column is the plain leaf of its charset; every other leaf is
+    /// already what a value is.
     #[must_use]
-    pub const fn without_bound(mut self) -> Self {
-        self.bound = None;
-        self
-    }
-
-    /// Return these parameters with no maximum, keeping a fixed width.
-    ///
-    /// A maximum is a column's rule and a fixed width is a value's shape, so
-    /// this is what a value carries out of a bounded column.
-    #[must_use]
-    pub const fn without_max(self) -> Self {
-        match self.layout.is_fixed() {
-            true => self,
-            false => self.without_bound(),
+    pub const fn storage(self) -> Self {
+        match self {
+            Self::SizedUtf8String(_) => Self::Utf8String,
+            Self::SizedAsciiString(_) => Self::AsciiString,
+            Self::SizedCp1252String(_) => Self::Cp1252String,
+            other => other,
         }
     }
 
-    /// Check that the layout and the bound agree.
+    /// Whether two leaves differ only in the count they state.
+    ///
+    /// A maximum is a rule laid over the plain leaf its values fill, so a
+    /// sized column and an unbounded one of the same charset are one shape
+    /// with one number between them; two fixed widths are likewise one shape.
+    /// Two charsets are never one shape. This is what a diff asks before it
+    /// reports a changed bound rather than a changed datatype.
+    #[must_use]
+    pub const fn same_shape_as(self, other: Self) -> bool {
+        matches!(
+            (self.storage(), other.storage()),
+            (Self::Utf8String, Self::Utf8String)
+                | (Self::LargeUtf8String, Self::LargeUtf8String)
+                | (Self::Utf8StringView, Self::Utf8StringView)
+                | (Self::LargeUtf8StringView, Self::LargeUtf8StringView)
+                | (Self::FixedUtf8String(_), Self::FixedUtf8String(_))
+                | (Self::AsciiString, Self::AsciiString)
+                | (Self::LargeAsciiString, Self::LargeAsciiString)
+                | (Self::AsciiStringView, Self::AsciiStringView)
+                | (Self::LargeAsciiStringView, Self::LargeAsciiStringView)
+                | (Self::FixedAsciiString(_), Self::FixedAsciiString(_))
+                | (Self::Cp1252String, Self::Cp1252String)
+                | (Self::LargeCp1252String, Self::LargeCp1252String)
+                | (Self::Cp1252StringView, Self::Cp1252StringView)
+                | (Self::LargeCp1252StringView, Self::LargeCp1252StringView)
+                | (Self::FixedCp1252String(_), Self::FixedCp1252String(_))
+        )
+    }
+
+    /// Where this leaf's shape sits inside its charset's six in
+    /// [`Self::ALL`].
+    const fn shape(self) -> usize {
+        match self {
+            Self::Utf8String | Self::AsciiString | Self::Cp1252String => 0,
+            Self::LargeUtf8String | Self::LargeAsciiString | Self::LargeCp1252String => 1,
+            Self::Utf8StringView | Self::AsciiStringView | Self::Cp1252StringView => 2,
+            Self::LargeUtf8StringView
+            | Self::LargeAsciiStringView
+            | Self::LargeCp1252StringView => 3,
+            Self::FixedUtf8String(_) | Self::FixedAsciiString(_) | Self::FixedCp1252String(_) => 4,
+            Self::SizedUtf8String(_) | Self::SizedAsciiString(_) | Self::SizedCp1252String(_) => 5,
+        }
+    }
+
+    /// Where one charset's six leaves start in [`Self::ALL`], `None` for a
+    /// charset with no leaf.
+    const fn family(charset: Charset) -> Option<usize> {
+        match charset {
+            Charset::Utf8 => Some(0),
+            Charset::Ascii => Some(6),
+            Charset::Cp1252 => Some(12),
+            _ => None,
+        }
+    }
+
+    /// The fixed leaf of this leaf's charset, stating `width`.
+    const fn fixed_leaf(self, width: u32) -> Self {
+        match self.charset() {
+            Charset::Ascii => Self::FixedAsciiString(width),
+            Charset::Cp1252 => Self::FixedCp1252String(width),
+            // `charset` answers the three alone; what is not the other two is UTF-8.
+            _ => Self::FixedUtf8String(width),
+        }
+    }
+
+    /// The sized leaf of this leaf's charset, stating `max`.
+    const fn sized_leaf(self, max: u32) -> Self {
+        match self.charset() {
+            Charset::Ascii => Self::SizedAsciiString(max),
+            Charset::Cp1252 => Self::SizedCp1252String(max),
+            // `charset` answers the three alone; what is not the other two is UTF-8.
+            _ => Self::SizedUtf8String(max),
+        }
+    }
+
+    /// The leaf this one becomes under a stated number.
+    ///
+    /// The number is the width on a fixed leaf and the maximum on a sized
+    /// one. A plain leaf takes a maximum and answers the sized leaf of its
+    /// charset, because plain storage is exactly what a bounded column
+    /// fills; the large and the viewed leaves would lose themselves under a
+    /// maximum, so they refuse it rather than silently becoming something
+    /// narrower. This is the one place the rule is stated - the grammar and
+    /// both bindings read it here rather than each deciding it again.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidDataType`] for a fixed layout with no width:
-    /// the width is what makes it fixed, so there is no width-free spelling
-    /// of it.
-    pub fn validate(self) -> Result<()> {
-        if self.layout.is_fixed() && self.bound.is_none() {
+    /// Returns [`Error::InvalidDataType`] when this leaf carries no number,
+    /// naming the leaf a bounded column would be, or when the number cannot
+    /// describe a column at all.
+    pub fn with_bound(self, bound: u32) -> Result<Self> {
+        let bounded = match self {
+            Self::FixedUtf8String(_) | Self::FixedAsciiString(_) | Self::FixedCp1252String(_) => {
+                self.fixed_leaf(bound)
+            }
+            Self::Utf8String
+            | Self::AsciiString
+            | Self::Cp1252String
+            | Self::SizedUtf8String(_)
+            | Self::SizedAsciiString(_)
+            | Self::SizedCp1252String(_) => self.sized_leaf(bound),
+            _ => {
+                return Err(invalid(format_smolstr!(
+                    "expected no maximum on this layout; a bounded column is {}(maximum)",
+                    self.sized_leaf(1).as_str()
+                )));
+            }
+        };
+        bounded.validate()?;
+        Ok(bounded)
+    }
+
+    /// The leaf this one becomes under a number the caller may not have
+    /// stated.
+    ///
+    /// Six leaves *are* their number - a fixed leaf is a width and a sized
+    /// leaf a maximum - so none of them stands without one; the other twelve
+    /// stand alone and refuse one. This is what a grammar, a binding and a
+    /// document all need to agree on, so it is decided here once.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidDataType`] when a leaf that is its number was
+    /// given none, or for any reason [`Self::with_bound`] refuses.
+    pub fn with_declared_bound(self, bound: Option<u32>) -> Result<Self> {
+        match (bound, self.bound()) {
+            (Some(bound), _) => self.with_bound(bound),
+            (None, None) => Ok(self),
+            (None, Some(_)) => Err(invalid(format_smolstr!(
+                "expected {}(number), got none",
+                self.as_str()
+            ))),
+        }
+    }
+
+    /// The same shape in another charset's family, the number kept.
+    ///
+    /// This is what a `(charset)` argument in the grammar and a `charset=`
+    /// argument in a binding both mean, so it is decided here once. Only
+    /// UTF-8, US-ASCII and windows-1252 have leaves; every other charset
+    /// stays the text-decoding vocabulary it is and is refused here.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidDataType`] naming the three charsets that have
+    /// a leaf when `charset` is not one of them, or for any reason
+    /// [`Self::with_bound`] refuses the number this leaf carries.
+    pub fn with_charset(self, charset: Charset) -> Result<Self> {
+        let Some(family) = Self::family(charset) else {
             return Err(invalid(format_smolstr!(
-                "expected {}(width), got no width",
-                self.layout.as_str()
+                "expected a charset with a string datatype - utf-8, us-ascii or windows-1252 - got {}",
+                charset.as_str()
             )));
-        }
-        Ok(())
-    }
-
-    /// The word this layout calls its bound by.
-    const fn bound_word(self) -> &'static str {
-        match self.layout.is_fixed() {
-            true => "width",
-            false => "maximum",
+        };
+        let leaf = Self::ALL[family + self.shape()];
+        match self.bound() {
+            Some(bound) => leaf.with_bound(bound),
+            None => Ok(leaf),
         }
     }
 
-    /// The name this layout takes under this charset.
+    /// Reject a leaf whose stated number cannot describe a column.
     ///
-    /// UTF-8 and US-ASCII each earn the layout's short spelling; every other
-    /// charset renders under the general name and states itself beside it.
-    #[must_use]
-    pub const fn layout_name(self) -> &'static str {
-        match self.charset {
-            Charset::Utf8 => self.layout.as_utf8_str(),
-            Charset::Ascii => self.layout.as_ascii_str(),
-            _ => self.layout.as_str(),
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidDataType`] for a width or maximum of zero:
+    /// a column that holds nothing is not a column.
+    pub const fn validate(self) -> Result<()> {
+        match self.bound() {
+            Some(0) => Err(Error::InvalidDataType {
+                kind: "string",
+                reason: SmolStr::new_static("expected a width of at least one byte, got 0"),
+            }),
+            _ => Ok(()),
         }
     }
 
-    /// Return whether a charset-named spelling already says the charset.
-    const fn charset_is_named(self) -> bool {
-        matches!(self.charset, Charset::Utf8 | Charset::Ascii)
+    /// The metadata key the number is written under.
+    const fn bound_word_key(self) -> &'static str {
+        match self.is_fixed() {
+            true => "fixed",
+            false => "max",
+        }
     }
 
-    /// The extension metadata an Arrow field carries these in.
+    /// The extension metadata an Arrow field carries this leaf in.
     ///
-    /// Arrow has nowhere else to put them: neither a string nor a binary
-    /// array declares a charset, a length bound, or which of the two view
-    /// layouts it is, so all three ride the `ARROW:extension:metadata`
-    /// document beside the `yggdryl.string` name. The layout is written
-    /// whole rather than inferred, because a reader that only knows Arrow
-    /// sees one view layout where this crate declares two.
+    /// Arrow has nowhere to put a charset, a maximum, or the second view
+    /// width, so every leaf but the three that are Arrow's own rides the
+    /// `ARROW:extension:metadata` document beside the `yggdryl.string` name
+    /// with the leaf written whole. The charset is written beside the name
+    /// even though the name already says it: this is the Arrow-facing
+    /// document a foreign reader inspects, and the charset is the one fact
+    /// Arrow cannot state.
     #[must_use]
     pub fn extension_json(self) -> String {
         let mut rendered = String::with_capacity(64);
         rendered.push_str("{\"layout\":\"");
-        rendered.push_str(self.layout.as_str());
+        rendered.push_str(self.as_str());
         rendered.push_str("\",\"charset\":\"");
-        rendered.push_str(self.charset.as_str());
+        rendered.push_str(self.charset().as_str());
         rendered.push('"');
-        if let Some(bound) = self.bound {
+        if let Some(bound) = self.bound() {
             rendered.push(',');
             rendered.push('"');
             rendered.push_str(self.bound_word_key());
@@ -1663,26 +2019,24 @@ impl StringType {
         rendered
     }
 
-    /// The metadata key the bound is written under.
-    const fn bound_word_key(self) -> &'static str {
-        match self.layout.is_fixed() {
-            true => "fixed",
-            false => "max",
-        }
-    }
-
-    /// Read parameters back out of Arrow extension metadata.
+    /// Read a leaf back out of Arrow extension metadata.
+    ///
+    /// The layout is any spelling [`Self::from_str`] accepts, so a document
+    /// naming the shape alone - `"string"`, `"large_string"` - names the
+    /// UTF-8 leaf of it, and a `charset` beside it restates the leaf through
+    /// [`Self::with_charset`].
     ///
     /// # Errors
     ///
     /// Returns [`Error::InvalidDataType`] when the document is not an object
-    /// naming a layout and a charset this crate knows, or bounds a layout the
-    /// wrong way.
+    /// naming a leaf this crate knows, names a charset with no leaf, or
+    /// numbers a leaf the wrong way.
     pub fn from_extension_json(value: &str) -> Result<Self> {
         #[derive(Deserialize)]
         struct Document {
             layout: SmolStr,
-            charset: SmolStr,
+            #[serde(default)]
+            charset: Option<SmolStr>,
             #[serde(default)]
             max: Option<u32>,
             #[serde(default)]
@@ -1691,28 +2045,155 @@ impl StringType {
 
         let document: Document = serde_json::from_str(value)
             .map_err(|error| invalid(format_smolstr!("expected string parameters, got {error}")))?;
-        let layout = StringLayout::from_str(&document.layout)
-            .map_err(|error| invalid(format_smolstr!("{error}")))?;
-        let charset = Charset::from_str(&document.charset)
-            .map_err(|error| invalid(format_smolstr!("{error}")))?;
-        let mut parameters = Self::new(layout, charset);
-        match (layout.is_fixed(), document.fixed, document.max) {
-            (true, Some(fixed), None) => parameters = parameters.try_with_bound(fixed)?,
-            (false, None, Some(max)) => parameters = parameters.try_with_bound(max)?,
-            (_, None, None) => {}
-            (true, _, Some(max)) => {
+        let mut named = Self::from_str(&document.layout)?;
+        if let Some(charset) = document.charset {
+            let charset =
+                Charset::from_str(&charset).map_err(|error| invalid(format_smolstr!("{error}")))?;
+            named = named.with_charset(charset)?;
+        }
+        // A maximum makes a column sized whichever unbounded shape names it,
+        // so `{"layout":"utf8","max":16}` and `{"layout":"sized_utf8","max":16}`
+        // are one document written two ways; a width only belongs to a fixed
+        // leaf.
+        let leaf = match (named.is_fixed(), document.fixed, document.max) {
+            (true, Some(fixed), None) => named.fixed_leaf(fixed),
+            (true, fixed, max) => {
                 return Err(invalid(format_smolstr!(
-                    "expected a fixed width on {layout}, got max={max}"
+                    "expected one width on {}, got fixed={fixed:?} max={max:?}",
+                    named.as_str()
                 )));
             }
             (false, Some(fixed), _) => {
                 return Err(invalid(format_smolstr!(
-                    "expected a maximum on {layout}, got fixed={fixed}"
+                    "expected a maximum on {}, got fixed={fixed}",
+                    named.as_str()
                 )));
             }
+            (false, None, Some(max)) => named.sized_leaf(max),
+            (false, None, None) if named.max().is_some() => {
+                return Err(invalid(format_smolstr!(
+                    "expected a maximum on {}, got none",
+                    named.as_str()
+                )));
+            }
+            (false, None, None) => named,
+        };
+        leaf.validate()?;
+        Ok(leaf)
+    }
+
+    /// Resolve a leaf from its name, with `1` where the leaf takes a number.
+    ///
+    /// Case, underscores, hyphens and spaces are all ignored, so
+    /// `LARGE_UTF8`, `large-utf8` and `largeutf8` are one leaf.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidDataType`] naming the input when no leaf
+    /// spells it.
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(value: &str) -> Result<Self> {
+        Self::from_spelling(&parser::normalized(value))
+            .ok_or_else(|| invalid(format_smolstr!("expected a string layout, got {value:?}")))
+    }
+
+    /// The leaf one already-folded word names, in every spelling.
+    ///
+    /// Case, underscores, hyphens and spaces are gone by the time a word
+    /// reaches here. The six leaves that carry a number answer with a
+    /// placeholder of one, which [`Self::with_declared_bound`] then replaces
+    /// or refuses; nothing reads the placeholder as a stated width.
+    ///
+    /// The grammar and the bindings both read this, so a spelling a caller
+    /// may write is accepted in a datatype expression and under a `layout=`
+    /// argument alike, rather than in one of the two.
+    #[must_use]
+    pub fn from_spelling(word: &str) -> Option<Self> {
+        Self::general_spelling(word).or(match word {
+            "utf8" | "utf8string" => Some(Self::Utf8String),
+            "largeutf8" | "largeutf8string" => Some(Self::LargeUtf8String),
+            "utf8view" | "utf8stringview" => Some(Self::Utf8StringView),
+            "largeutf8view" | "largeutf8stringview" => Some(Self::LargeUtf8StringView),
+            "fixedutf8" | "fixedutf8string" => Some(Self::FixedUtf8String(1)),
+            "sizedutf8" | "sizedutf8string" => Some(Self::SizedUtf8String(1)),
+            "ascii" | "usascii" | "asciistring" => Some(Self::AsciiString),
+            "largeascii" | "largeasciistring" => Some(Self::LargeAsciiString),
+            "asciiview" | "asciistringview" => Some(Self::AsciiStringView),
+            "largeasciiview" | "largeasciistringview" => Some(Self::LargeAsciiStringView),
+            "fixedascii" | "fixedasciistring" => Some(Self::FixedAsciiString(1)),
+            "sizedascii" | "sizedasciistring" => Some(Self::SizedAsciiString(1)),
+            "cp1252" | "windows1252" | "cp1252string" | "windows1252string" => {
+                Some(Self::Cp1252String)
+            }
+            "largecp1252" | "largewindows1252" | "largecp1252string" => {
+                Some(Self::LargeCp1252String)
+            }
+            "cp1252view" | "windows1252view" | "cp1252stringview" => Some(Self::Cp1252StringView),
+            "largecp1252view" | "largewindows1252view" | "largecp1252stringview" => {
+                Some(Self::LargeCp1252StringView)
+            }
+            "fixedcp1252" | "fixedwindows1252" | "fixedcp1252string" => {
+                Some(Self::FixedCp1252String(1))
+            }
+            "sizedcp1252" | "sizedwindows1252" | "sizedcp1252string" => {
+                Some(Self::SizedCp1252String(1))
+            }
+            _ => None,
+        })
+    }
+
+    /// The leaf one already-folded charset-free word names.
+    ///
+    /// `string`, `varchar`, `fixed_string` and the rest name a shape and no
+    /// charset, so they name the UTF-8 leaf of that shape - and they are the
+    /// only spellings a `(charset)` in the grammar or a `charset=` in a
+    /// binding may sit beside, because a charset-named spelling already
+    /// answered that question.
+    #[must_use]
+    pub fn general_spelling(word: &str) -> Option<Self> {
+        match word {
+            "string" | "str" | "text" | "varchar" | "nvarchar" | "charactervarying" | "char"
+            | "character" | "nchar" => Some(Self::Utf8String),
+            "fixedstring" => Some(Self::FixedUtf8String(1)),
+            "stringview" => Some(Self::Utf8StringView),
+            "largestring" => Some(Self::LargeUtf8String),
+            "largestringview" => Some(Self::LargeUtf8StringView),
+            "sizedstring" => Some(Self::SizedUtf8String(1)),
+            _ => None,
         }
-        parameters.validate()?;
-        Ok(parameters)
+    }
+
+    /// The leaf a binding's `(layout, charset, bound)` arguments declare.
+    ///
+    /// The one sequence both bindings run, so neither decides anything: the
+    /// layout is any spelling [`Self::from_spelling`] accepts, a charset is
+    /// accepted only beside a charset-free spelling and applied through
+    /// [`Self::with_charset`], and the bound through
+    /// [`Self::with_declared_bound`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidDataType`] naming the input when no leaf spells
+    /// the layout, or when a charset sits beside a spelling that already names
+    /// one; [`Error::Parse`] for a charset no name answers to; and whatever
+    /// [`Self::with_charset`] and [`Self::with_declared_bound`] refuse.
+    pub fn from_declaration(
+        layout: &str,
+        charset: Option<&str>,
+        bound: Option<u32>,
+    ) -> Result<Self> {
+        let word = parser::normalized(layout);
+        let mut leaf = Self::from_spelling(&word)
+            .ok_or_else(|| invalid(format_smolstr!("expected a string layout, got {layout:?}")))?;
+        if let Some(name) = charset {
+            if Self::general_spelling(&word).is_none() {
+                return Err(invalid(format_smolstr!(
+                    "expected no charset on {layout}, got {name:?}; string is the spelling that takes one"
+                )));
+            }
+            leaf = leaf.with_charset(Charset::from_str(name)?)?;
+        }
+        leaf.with_declared_bound(bound)
     }
 }
 
@@ -1724,82 +2205,38 @@ fn invalid(reason: impl Into<SmolStr>) -> Error {
     }
 }
 
-impl Default for StringType {
-    fn default() -> Self {
-        Self::utf8(StringLayout::String)
-    }
-}
-
-impl From<Charset> for StringType {
-    fn from(value: Charset) -> Self {
-        Self::new(StringLayout::String, value)
-    }
-}
-
-impl From<StringLayout> for StringType {
-    fn from(value: StringLayout) -> Self {
-        Self::utf8(value)
-    }
-}
-
 impl fmt::Display for StringType {
     /// The canonical spelling, which [`crate::DataType`]'s grammar reads back.
-    ///
-    /// UTF-8 renders under the layout's `utf8` name and US-ASCII under its
-    /// `ascii` name, with no charset to state; every other charset renders
-    /// under the `string` name and states it.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.layout_name())?;
-        match (self.charset_is_named(), self.bound) {
-            (true, None) => Ok(()),
-            (true, Some(bound)) => write!(formatter, "({bound})"),
-            (false, None) => write!(formatter, "({})", self.charset),
-            (false, Some(bound)) => write!(formatter, "({},{bound})", self.charset),
+        formatter.write_str(self.as_str())?;
+        match self.bound() {
+            None => Ok(()),
+            Some(bound) => write!(formatter, "({bound})"),
         }
     }
 }
 
 impl Serialize for StringType {
+    /// The leaf's name alone.
+    ///
+    /// A stored document writes the number beside this rather than inside it:
+    /// a schema document carries `"layout"` with `"max"` or `"fixed"`, and the
+    /// `yggdryl.string` document does the same. One name, one place.
     fn serialize<S: serde::Serializer>(
         &self,
         serializer: S,
     ) -> std::result::Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-
-        let declared = usize::from(self.bound.is_some());
-        let mut state = serializer.serialize_struct("StringType", 2 + declared)?;
-        state.serialize_field("layout", &self.layout)?;
-        state.serialize_field("charset", &self.charset)?;
-        if let Some(bound) = self.bound {
-            state.serialize_field(self.bound_word_key(), &bound.get())?;
-        }
-        state.end()
+        serializer.serialize_str(self.as_str())
     }
 }
 
 impl<'de> Deserialize<'de> for StringType {
+    /// The leaf one name spells, with no number: the caller puts it back.
     fn deserialize<D: serde::Deserializer<'de>>(
         deserializer: D,
     ) -> std::result::Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        struct Representation {
-            layout: StringLayout,
-            charset: Charset,
-            #[serde(default)]
-            max: Option<u32>,
-            #[serde(default)]
-            fixed: Option<u32>,
-        }
-
-        let value = Representation::deserialize(deserializer)?;
-        let mut parameters = Self::new(value.layout, value.charset);
-        if let Some(bound) = value.fixed.or(value.max) {
-            parameters = parameters
-                .try_with_bound(bound)
-                .map_err(serde::de::Error::custom)?;
-        }
-        parameters.validate().map_err(serde::de::Error::custom)?;
-        Ok(parameters)
+        let value = <std::borrow::Cow<'_, str>>::deserialize(deserializer)?;
+        Self::from_str(&value).map_err(serde::de::Error::custom)
     }
 }
 
@@ -1807,75 +2244,69 @@ impl<'de> Deserialize<'de> for StringType {
 // The one grammar every string spelling reads through.
 // ------------------------------------------------------------------------
 impl Parser<'_> {
-    /// Parse one string's optional charset and optional byte bound.
+    /// Parse one string leaf's optional charset and optional byte bound.
     ///
     /// The parameter list is positional and at most two long: a word is the
     /// charset, a number is the bound. Which bound it is follows from the
-    /// layout - the exact width on a fixed string, the maximum on every
-    /// other - so there is one number to write and one meaning it can have.
+    /// leaf - the exact width on a fixed leaf, the maximum on every other -
+    /// so there is one number to write and one meaning it can have. A
+    /// charset is accepted only beside a `general` spelling - `string`,
+    /// `fixed_string` - because a charset-named spelling already answered
+    /// that question.
     ///
     /// # Errors
     ///
-    /// Returns [`crate::Error::Parse`] for a charset beside a `utf8` or
-    /// `ascii` spelling, since the name already declares one; for a charset
-    /// no name answers to; and for a bound outside a positive `u32`.
-    pub(crate) fn parse_string(&mut self, layout: StringLayout, keyword: &str) -> Result<DataType> {
-        // The `utf8` and `ascii` spellings put the charset in the name, so
-        // naming another one beside them would be two answers to one
-        // question. The keyword arrives folded and the layout's names are
-        // not, so they meet on the fold rather than on the underscores.
-        let named = if crate::types::parser::folds_equal(keyword, layout.as_utf8_str()) {
-            Some(Charset::Utf8)
-        } else if crate::types::parser::folds_equal(keyword, layout.as_ascii_str()) {
-            Some(Charset::Ascii)
-        } else {
-            None
-        };
-        let mut parameters = StringType::new(layout, named.unwrap_or(Charset::Utf8));
-        let mut bound = None;
-
+    /// Returns [`crate::Error::Parse`] for a charset beside a charset-named
+    /// spelling; for a charset no name or no leaf answers to; for a bound
+    /// outside a positive `u32`; and for whatever
+    /// [`StringType::with_declared_bound`] refuses.
+    pub(crate) fn parse_string(&mut self, mut leaf: StringType, general: bool) -> Result<DataType> {
+        // What the text stated, never what the leaf happened to carry: the
+        // leaf a spelling names carries a placeholder number, so comparing
+        // against it read `fixed_string(1)` as a width nobody wrote.
+        let mut declared = None;
         if let Some(close) = self.consume_opening() {
             // Empty parentheses are the bare spelling with punctuation.
             if !self.consume_symbol(close) {
                 if self.peek_integer().is_none() {
                     let position = self.current_position();
                     let name = self.parse_text("a charset")?;
-                    if named.is_some() {
+                    if !general {
                         return Err(self.error_at(
                             position,
                             format_smolstr!(
-                                "expected no charset on {keyword}, got {name:?}; {} is the spelling that takes one",
-                                layout.as_str()
+                                "expected no charset on {}, got {name:?}; string is the spelling that takes one",
+                                leaf.as_str()
                             ),
                         ));
                     }
                     let charset = Charset::from_str(&name)
                         .map_err(|error| self.error_at(position, format_smolstr!("{error}")))?;
-                    parameters = parameters.with_charset(charset);
+                    leaf = leaf
+                        .with_charset(charset)
+                        .map_err(|error| self.error_at(position, format_smolstr!("{error}")))?;
                     if self.consume_separator() {
-                        bound = Some(self.parse_bound(layout)?);
+                        declared = Some(self.parse_bound(leaf)?);
                     }
                 } else {
-                    bound = Some(self.parse_bound(layout)?);
+                    declared = Some(self.parse_bound(leaf)?);
                 }
                 self.expect_symbol(close)?;
             }
         }
 
         let position = self.current_position();
-        if let Some(bound) = bound {
-            parameters = parameters
-                .try_with_bound(bound)
-                .map_err(|error| self.error_at(position, format_smolstr!("{error}")))?;
-        }
+        let parameters = leaf
+            .with_declared_bound(declared)
+            .map_err(|error| self.error_at(position, format_smolstr!("{error}")))?;
         DataType::string(parameters)
             .map_err(|error| self.error_at(position, format_smolstr!("{error}")))
     }
 
     /// Read the one number a string's parameter list carries.
-    fn parse_bound(&mut self, layout: StringLayout) -> Result<u32> {
+    fn parse_bound(&mut self, leaf: StringType) -> Result<u32> {
         let position = self.current_position();
-        let label = match layout.is_fixed() {
+        let label = match leaf.is_fixed() {
             true => "a byte width",
             false => "a maximum byte length",
         };
@@ -2185,14 +2616,14 @@ impl StringEnum {
     }
 }
 
-/// The string value: the characters, held compactly, beside the layout and
-/// charset its column stores them under.
+/// The string value: the characters, held compactly, beside the leaf its
+/// column stores them under.
 ///
 /// A string value holds UTF-8 whatever charset it arrived in. That is the
 /// whole point of decoding at the seam: the bytes are read once, at the
 /// boundary that knows the charset, and everything above it reads characters.
-/// What the value keeps is the layout and charset it is *written* under - and
-/// the width, on the fixed layout - so the same value goes back out the way
+/// What the value keeps is the leaf it is *written* under - the charset, the
+/// shape and, on a fixed leaf, the width - so the same value goes back out the way
 /// it came without the column being consulted twice. A maximum is the
 /// column's rule and never the value's: a value read out of `utf8(32)` is a
 /// `utf8`, exactly as an integer read out of a bounded column is an integer.
@@ -2214,7 +2645,7 @@ mod scalars {
     use serde::{Deserialize, Serialize};
     use smol_str::{SmolStr, format_smolstr};
 
-    use super::{StringLayout, StringType, trim_padding};
+    use super::{StringType, trim_padding};
     use crate::types::Scalar;
     use crate::{Charset, DataType, Error, Result, Value};
 
@@ -2228,7 +2659,7 @@ mod scalars {
     /// One string value: its characters and the parameters it is stored under.
     ///
     /// ```
-    /// use yggdryl::types::{INLINE_CAPACITY, Str, StringLayout, StringType};
+    /// use yggdryl::types::{INLINE_CAPACITY, Str, StringType};
     /// use yggdryl::{Charset, DataType, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
@@ -2238,11 +2669,12 @@ mod scalars {
     /// let long = Str::new("a".repeat(INLINE_CAPACITY + 1));
     /// assert!(!long.is_inline());
     ///
-    /// // A value is one value whichever layout or charset it is stored under.
-    /// let latin = StringType::new(StringLayout::LargeString, Charset::Cp1252);
+    /// // A value is one value whichever leaf it is stored under.
+    /// let latin = StringType::LargeCp1252String;
     /// let restated = short.clone().try_with_parameters(latin)?;
     /// assert_eq!(restated, short);
     /// assert_eq!(restated.charset(), Charset::Cp1252);
+    /// assert_eq!(restated.dtype()?, DataType::large_cp1252());
     /// assert_eq!(restated.dtype()?, DataType::from_str("large_string(windows-1252)")?);
     ///
     /// // It is the crate's string, so it is the `Scalar` string too.
@@ -2267,11 +2699,11 @@ mod scalars {
         pub const fn new_static(text: &'static str) -> Self {
             Self {
                 text: SmolStr::new_static(text),
-                parameters: StringType::utf8(StringLayout::String),
+                parameters: StringType::Utf8String,
             }
         }
 
-        /// A string value under the default parameters: UTF-8, `string` layout.
+        /// A string value under the default parameters: the plain `utf8` leaf.
         ///
         /// Text up to [`INLINE_CAPACITY`] bytes is copied into the value and
         /// allocates nothing; longer text is one shared `Arc<str>`.
@@ -2295,14 +2727,14 @@ mod scalars {
         /// the scalar ISO 8859-1 gives it, because a legacy export with one bad
         /// byte in a million is a file that still has to be read.
         ///
-        /// On the fixed layout the trailing NUL padding the storage writes is
-        /// taken off first, and the value carries the width the parameters
-        /// declare. A maximum is checked and not carried.
+        /// On a fixed leaf the trailing NUL padding the storage writes is
+        /// taken off first, and the value carries the width the leaf
+        /// declares. A maximum is checked and not carried.
         ///
         /// # Errors
         ///
         /// Returns [`Error::Codec`] naming the charset and the first byte it
-        /// refuses, [`Error::InvalidDataType`] for a fixed layout with no width,
+        /// refuses, [`Error::InvalidDataType`] for a numbered leaf stating zero,
         /// and [`Error::InvalidRecord`] when the text does not fit the bound.
         pub fn from_bytes(bytes: &[u8], parameters: StringType) -> Result<Self> {
             let payload = match parameters.is_fixed() {
@@ -2326,7 +2758,7 @@ mod scalars {
         pub(crate) fn from_storage(text: &str, parameters: StringType) -> Self {
             Self {
                 text: SmolStr::new(text),
-                parameters: parameters.without_max(),
+                parameters: parameters.storage(),
             }
         }
 
@@ -2334,11 +2766,11 @@ mod scalars {
         ///
         /// The characters do not change and the storage is shared, not copied;
         /// what changes is the bytes [`Self::encode`] answers and the datatype
-        /// [`Self::dtype`] declares. On the fixed layout trailing NUL is padding,
+        /// [`Self::dtype`] declares. On a fixed leaf trailing NUL is padding,
         /// so it is taken off here rather than left for every reader to trim.
         ///
-        /// The bound is checked and, on a variable layout, not carried: it is the
-        /// column's rule, and the value answers the layout alone. The bound counts
+        /// A maximum is checked and not carried: it is the column's rule, and
+        /// the value answers the plain leaf its storage is. The bound counts
         /// stored bytes, which [`Charset::encoded_len`] answers without building
         /// them. US-ASCII is a repertoire and is judged here - a value holding a
         /// scalar above `0x7F` or a NUL is refused - but every other charset is
@@ -2349,7 +2781,7 @@ mod scalars {
         ///
         /// # Errors
         ///
-        /// Returns [`Error::InvalidDataType`] for a fixed layout with no width,
+        /// Returns [`Error::InvalidDataType`] for a numbered leaf stating zero,
         /// and [`Error::InvalidRecord`] naming the bound and the stored length
         /// when the text does not fit it, or the byte that is not US-ASCII.
         pub fn try_with_parameters(mut self, parameters: StringType) -> Result<Self> {
@@ -2376,7 +2808,7 @@ mod scalars {
                     });
                 }
             }
-            self.parameters = parameters.without_max();
+            self.parameters = parameters.storage();
             Ok(self)
         }
 
@@ -2397,17 +2829,11 @@ mod scalars {
 
         /// The parameters this value is stored under.
         ///
-        /// Never a maximum: that is the column's declaration, and a value read
-        /// out of a bounded column answers its layout and charset alone.
+        /// Never a sized leaf: a maximum is the column's declaration, and a
+        /// value read out of a bounded column answers the plain leaf it fills.
         #[must_use]
         pub const fn parameters(&self) -> StringType {
             self.parameters
-        }
-
-        /// The layout this value is stored in.
-        #[must_use]
-        pub const fn layout(&self) -> StringLayout {
-            self.parameters.layout()
         }
 
         /// The charset this value's bytes are written in.
@@ -2416,7 +2842,7 @@ mod scalars {
             self.parameters.charset()
         }
 
-        /// The padded storage width, on the fixed layout alone.
+        /// The padded storage width, on a fixed leaf alone.
         #[must_use]
         pub const fn fixed(&self) -> Option<u32> {
             self.parameters.fixed()
@@ -2432,7 +2858,7 @@ mod scalars {
         ///
         /// UTF-8 text borrows, and so does any all-ASCII value in any of the
         /// ASCII-compatible charsets, so the ordinary column costs nothing to
-        /// write back out. The fixed layout answers its whole padded slot.
+        /// write back out. A fixed leaf answers its whole padded slot.
         ///
         /// # Errors
         ///
@@ -2748,13 +3174,15 @@ mod scalars {
 
     /// The serde representation of a string that declares more than its text.
     ///
-    /// The ordinary value - UTF-8, the `string` layout - serializes its
-    /// characters and nothing else, exactly as it always has; a layout, a
-    /// charset or a fixed width is what makes a value carry more than that.
+    /// The ordinary value - plain UTF-8 - serializes its characters and
+    /// nothing else, exactly as it always has; any other leaf is what makes a
+    /// value carry more than that. The leaf's name says its charset, so none
+    /// is written; one read beside a charset-free name restates the leaf.
     #[derive(Deserialize, Serialize)]
     struct Declared<'a> {
-        layout: StringLayout,
-        charset: Charset,
+        layout: SmolStr,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        charset: Option<Charset>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         fixed: Option<u32>,
         text: Cow<'a, str>,
@@ -2769,8 +3197,8 @@ mod scalars {
                 return serializer.serialize_str(self.as_str());
             }
             Declared {
-                layout: self.layout(),
-                charset: self.charset(),
+                layout: SmolStr::new_static(self.parameters().as_str()),
+                charset: None,
                 fixed: self.fixed(),
                 text: Cow::Borrowed(self.as_str()),
             }
@@ -2792,12 +3220,19 @@ mod scalars {
             match Representation::deserialize(deserializer)? {
                 Representation::Plain(text) => Ok(Self::from(text)),
                 Representation::Declared(declared) => {
-                    let mut parameters = StringType::new(declared.layout, declared.charset);
-                    if let Some(width) = declared.fixed {
-                        parameters = parameters
-                            .try_with_bound(width)
+                    let mut leaf =
+                        StringType::from_str(&declared.layout).map_err(serde::de::Error::custom)?;
+                    if let Some(charset) = declared.charset {
+                        leaf = leaf
+                            .with_charset(charset)
                             .map_err(serde::de::Error::custom)?;
                     }
+                    // The number is what the document stated, never the
+                    // placeholder the name carries: a numbered layout with
+                    // no `fixed` is refused, not read as width one.
+                    let parameters = leaf
+                        .with_declared_bound(declared.fixed)
+                        .map_err(serde::de::Error::custom)?;
                     Self::from(declared.text)
                         .try_with_parameters(parameters)
                         .map_err(serde::de::Error::custom)
@@ -2908,7 +3343,7 @@ mod scalars {
     #[cfg(test)]
     mod tests {
         use super::{INLINE_CAPACITY, Str};
-        use crate::types::{StringLayout, StringType};
+        use crate::types::StringType;
         use crate::{Charset, DataType, Scalar};
 
         #[test]
@@ -2930,17 +3365,14 @@ mod scalars {
 
             let plain = Str::new("Grüße");
             let latin = Str::new("Grüße")
-                .try_with_parameters(StringType::new(StringLayout::LargeString, Charset::Cp1252))
+                .try_with_parameters(StringType::LargeCp1252String)
                 .unwrap();
             assert_eq!(plain, latin);
             assert_eq!(plain.cmp(&latin), std::cmp::Ordering::Equal);
             assert_eq!(HashSet::from([plain.clone(), latin.clone()]).len(), 1);
             assert_ne!(plain.parameters(), latin.parameters());
             assert!(Str::new("b") > Str::new("a"));
-            assert_eq!(
-                format!("{latin:?}"),
-                "\"Grüße\" as large_string(windows-1252)"
-            );
+            assert_eq!(format!("{latin:?}"), "\"Grüße\" as large_cp1252");
             assert_eq!(format!("{plain:?}"), "\"Grüße\"");
         }
 
@@ -2948,35 +3380,37 @@ mod scalars {
         fn restating_shares_the_storage_and_checks_but_never_carries_a_maximum() {
             let text = "x".repeat(INLINE_CAPACITY + 22);
             let shared = Str::new(&text);
-            let bounded = StringType::utf8(StringLayout::String)
-                .try_with_bound(64)
+            let restated = shared
+                .clone()
+                .try_with_parameters(StringType::SizedUtf8String(64))
                 .unwrap();
-            let restated = shared.clone().try_with_parameters(bounded).unwrap();
             assert!(std::ptr::eq(shared.as_str(), restated.as_str()));
             assert_eq!(restated.parameters(), StringType::default());
             assert_eq!(restated.dtype().unwrap(), DataType::utf8());
 
-            let tight = StringType::utf8(StringLayout::String)
-                .try_with_bound(8)
-                .unwrap();
-            let refused = shared.try_with_parameters(tight).unwrap_err().to_string();
+            let refused = shared
+                .try_with_parameters(StringType::SizedUtf8String(8))
+                .unwrap_err()
+                .to_string();
             assert!(refused.contains("at most 8 bytes"), "{refused}");
 
             // The bound counts stored bytes, so five scalars are five bytes in
             // windows-1252 and seven in UTF-8.
-            let five = StringType::new(StringLayout::String, Charset::Cp1252)
-                .try_with_bound(5)
-                .unwrap();
-            assert!(Str::new("Grüße").try_with_parameters(five).is_ok());
-            let five = StringType::utf8(StringLayout::String)
-                .try_with_bound(5)
-                .unwrap();
-            assert!(Str::new("Grüße").try_with_parameters(five).is_err());
+            assert!(
+                Str::new("Grüße")
+                    .try_with_parameters(StringType::SizedCp1252String(5))
+                    .is_ok()
+            );
+            assert!(
+                Str::new("Grüße")
+                    .try_with_parameters(StringType::SizedUtf8String(5))
+                    .is_err()
+            );
         }
 
         #[test]
         fn us_ascii_is_a_repertoire_and_every_other_charset_is_counted() {
-            let ascii = StringType::ascii(StringLayout::String);
+            let ascii = StringType::AsciiString;
             assert!(Str::new("plain").try_with_parameters(ascii).is_ok());
             let refused = Str::new("café")
                 .try_with_parameters(ascii)
@@ -2985,17 +3419,16 @@ mod scalars {
             assert!(refused.contains("non-ASCII byte"), "{refused}");
             assert!(Str::new("a\0b").try_with_parameters(ascii).is_err());
             // `U+0081` has no windows-1252 byte, and the value door only counts.
-            let latin = StringType::new(StringLayout::String, Charset::Cp1252);
-            let recovered = Str::new("ok\u{0081}").try_with_parameters(latin).unwrap();
+            let recovered = Str::new("ok\u{0081}")
+                .try_with_parameters(StringType::Cp1252String)
+                .unwrap();
             assert!(recovered.encode().is_err());
             assert_eq!(recovered.encoded_len(), 3);
         }
 
         #[test]
-        fn a_fixed_layout_trims_its_padding_and_pads_on_the_way_out() {
-            let fixed = StringType::ascii(StringLayout::FixedString)
-                .try_with_bound(4)
-                .unwrap();
+        fn a_fixed_leaf_trims_its_padding_and_pads_on_the_way_out() {
+            let fixed = StringType::FixedAsciiString(4);
             let value = Str::new("USD\0").try_with_parameters(fixed).unwrap();
             assert_eq!(value, "USD");
             assert_eq!(value.fixed(), Some(4));
@@ -3005,14 +3438,14 @@ mod scalars {
             assert!(Str::new("EURO!").try_with_parameters(fixed).is_err());
             assert!(
                 Str::new("x")
-                    .try_with_parameters(StringType::utf8(StringLayout::FixedString))
+                    .try_with_parameters(StringType::FixedUtf8String(0))
                     .is_err()
             );
         }
 
         #[test]
         fn bytes_are_read_strictly_or_transcribed_by_their_charset() {
-            let latin = StringType::new(StringLayout::String, Charset::Cp1252);
+            let latin = StringType::Cp1252String;
             let value = Str::from_bytes(b"Gr\xFC\xDFe", latin).unwrap();
             assert_eq!(value, "Grüße");
             assert_eq!(value.charset(), Charset::Cp1252);
@@ -3021,18 +3454,13 @@ mod scalars {
             assert_eq!(Str::from_bytes(b"ok\x81", latin).unwrap(), "ok\u{0081}");
             // UTF-8 and US-ASCII are validated, not transcribed.
             assert!(Str::from_bytes(b"caf\xe9", StringType::default()).is_err());
-            assert!(
-                Str::from_bytes(b"caf\xc3\xa9", StringType::ascii(StringLayout::String)).is_err()
-            );
+            assert!(Str::from_bytes(b"caf\xc3\xa9", StringType::AsciiString).is_err());
             assert_eq!(
                 Str::from_bytes(b"caf\xc3\xa9", StringType::default()).unwrap(),
                 "café"
             );
             // A padded slot comes back trimmed and carries its width.
-            let slot = StringType::utf8(StringLayout::FixedString)
-                .try_with_bound(6)
-                .unwrap();
-            let padded = Str::from_bytes(b"ab\0\0\0\0", slot).unwrap();
+            let padded = Str::from_bytes(b"ab\0\0\0\0", StringType::FixedUtf8String(6)).unwrap();
             assert_eq!(padded, "ab");
             assert_eq!(padded.fixed(), Some(6));
         }
@@ -3043,31 +3471,46 @@ mod scalars {
             assert_eq!(serde_json::to_string(&plain).unwrap(), "\"plain\"");
             assert_eq!(serde_json::from_str::<Str>("\"plain\"").unwrap(), plain);
             let latin = Str::new("Grüße")
-                .try_with_parameters(
-                    StringType::new(StringLayout::FixedString, Charset::Cp1252)
-                        .try_with_bound(8)
-                        .unwrap(),
-                )
+                .try_with_parameters(StringType::FixedCp1252String(8))
                 .unwrap();
             let document = serde_json::to_string(&latin).unwrap();
             assert_eq!(
                 document,
-                r#"{"layout":"fixed_string","charset":"windows-1252","fixed":8,"text":"Grüße"}"#
+                r#"{"layout":"fixed_cp1252","fixed":8,"text":"Grüße"}"#
             );
             let back = serde_json::from_str::<Str>(&document).unwrap();
             assert_eq!(back.parameters(), latin.parameters());
             assert_eq!(back, latin);
-            // A maximum is never part of a value, so it never reaches the wire.
+            // A charset beside a charset-free layout restates the leaf.
+            let restated = serde_json::from_str::<Str>(
+                r#"{"layout":"large_string","charset":"windows-1252","text":"x"}"#,
+            )
+            .unwrap();
+            assert_eq!(restated.parameters(), StringType::LargeCp1252String);
+            // A maximum is never part of a value, so it never reaches the
+            // wire: the value answers the plain leaf its storage is.
             let bounded = Str::new("x")
-                .try_with_parameters(
-                    StringType::utf8(StringLayout::LargeString)
-                        .try_with_bound(8)
-                        .unwrap(),
-                )
+                .try_with_parameters(StringType::SizedCp1252String(8))
                 .unwrap();
+            assert_eq!(bounded.parameters(), StringType::Cp1252String);
             assert_eq!(
                 serde_json::to_string(&bounded).unwrap(),
-                r#"{"layout":"large_string","charset":"utf-8","text":"x"}"#
+                r#"{"layout":"cp1252","text":"x"}"#
+            );
+            // A numbered layout with no number is refused, never read as the
+            // placeholder width its name carries.
+            let missing = serde_json::from_str::<Str>(r#"{"layout":"fixed_utf8","text":"a"}"#)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                missing.contains("expected fixed_utf8(number), got none"),
+                "{missing}"
+            );
+            assert!(serde_json::from_str::<Str>(r#"{"layout":"sized_utf8","text":"xx"}"#).is_err());
+            // A width on a leaf that takes none is refused as `with_bound` refuses it.
+            assert!(
+                serde_json::from_str::<Str>(r#"{"layout":"large_utf8","fixed":4,"text":"x"}"#)
+                    .is_err()
             );
         }
 
@@ -3076,209 +3519,29 @@ mod scalars {
             assert_eq!(Scalar::from("x").as_str(), Some("x"));
             assert_eq!(Scalar::from("x").dtype().unwrap(), DataType::utf8());
             let latin = Str::new("x")
-                .try_with_parameters(StringType::new(StringLayout::StringView, Charset::Latin1))
+                .try_with_parameters(StringType::Cp1252StringView)
                 .unwrap();
             assert_eq!(
                 Scalar::String(latin).dtype().unwrap(),
-                DataType::from_str("string_view(iso-8859-1)").unwrap()
+                DataType::from_str("string_view(windows-1252)").unwrap()
             );
         }
     }
 }
 
-/// One of the five ways this crate lays a string out.
-///
-/// The layout is the physical shape alone, how a value's bytes are addressed.
-/// It says nothing about what the bytes mean; that is the charset beside it in
-/// [`StringType`].
-///
-/// Each layout has three spellings, and they are one datatype: the `string`
-/// name is the general one, the `utf8` name is what the same layout is called
-/// when its charset is UTF-8, which is the default, and the `ascii` name is
-/// what it is called when its charset is US-ASCII. So `large_string`,
-/// `large_utf8` and `large_ascii` name one layout, and a value renders under
-/// whichever name its charset earns.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[non_exhaustive]
-pub enum StringLayout {
-    /// Variable width, 32-bit offsets - Arrow's `Utf8` and `Binary`.
-    #[default]
-    String,
-    /// One fixed byte width every value fills, padded with trailing NUL.
-    ///
-    /// Arrow has no fixed-width string at all, so this rides its
-    /// `FixedSizeBinary` and the width travels in this crate's own metadata.
-    FixedString,
-    /// The view layout: a short prefix inline, the rest out of line.
-    StringView,
-    /// Variable width, 64-bit offsets - Arrow's `LargeUtf8` and `LargeBinary`.
-    LargeString,
-    /// The view layout, declared large.
-    ///
-    /// Arrow has one view layout and no large form of it, so this projects as
-    /// that one view and the `large` declaration travels in this crate's own
-    /// metadata. Nothing about the buffers differs; what differs is what the
-    /// column promises about the offsets a writer may emit.
-    LargeStringView,
-}
-
 /// Strip the padding a fixed-width storage writes.
 ///
 /// Trailing NUL is that padding wherever this crate lays a value out in a
-/// slot wider than itself - a [`StringLayout::FixedString`] cell - so the
-/// rule lives here once rather than at each reader. A code stores as the
-/// text it is and pads nothing, but a code's *intake* is wide: a cell
-/// arriving from a fixed-width column is trimmed here on the way in.
+/// slot wider than itself - a fixed leaf's cell - so the rule lives here once
+/// rather than at each reader. A code stores as the text it is and pads
+/// nothing, but a code's *intake* is wide: a cell arriving from a fixed-width
+/// column is trimmed here on the way in.
 pub(crate) fn trim_padding(bytes: &[u8]) -> &[u8] {
     let end = bytes
         .iter()
         .rposition(|byte| *byte != 0)
         .map_or(0, |last| last + 1);
     &bytes[..end]
-}
-
-impl StringLayout {
-    /// Every layout in canonical declaration order.
-    pub const ALL: [Self; 5] = [
-        Self::String,
-        Self::FixedString,
-        Self::StringView,
-        Self::LargeString,
-        Self::LargeStringView,
-    ];
-
-    /// The canonical name of this layout in any charset.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::String => "string",
-            Self::FixedString => "fixed_string",
-            Self::StringView => "string_view",
-            Self::LargeString => "large_string",
-            Self::LargeStringView => "large_string_view",
-        }
-    }
-
-    /// The canonical name of this layout when its charset is UTF-8.
-    #[must_use]
-    pub const fn as_utf8_str(self) -> &'static str {
-        match self {
-            Self::String => "utf8",
-            Self::FixedString => "fixed_utf8",
-            Self::StringView => "utf8_view",
-            Self::LargeString => "large_utf8",
-            Self::LargeStringView => "large_utf8_view",
-        }
-    }
-
-    /// The canonical name of this layout when its charset is US-ASCII.
-    #[must_use]
-    pub const fn as_ascii_str(self) -> &'static str {
-        match self {
-            Self::String => "ascii",
-            Self::FixedString => "fixed_ascii",
-            Self::StringView => "ascii_view",
-            Self::LargeString => "large_ascii",
-            Self::LargeStringView => "large_ascii_view",
-        }
-    }
-
-    /// Resolve a layout from its general spelling or its UTF-8 one.
-    ///
-    /// Case, underscores, hyphens and spaces are all ignored, so
-    /// `LARGE_STRING`, `large-string` and `largestring` are one layout, and
-    /// so are `large_utf8` and `largeutf8` - UTF-8 is the charset a layout
-    /// has when nothing is declared, so that spelling names no more than the
-    /// layout. The US-ASCII spellings do name more, and a layout alone would
-    /// drop it, so they are refused here and read only where the charset
-    /// travels with them: [`crate::DataType::from_str`].
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::UnknownDataType`] for a name no layout answers to,
-    /// and for a US-ASCII spelling, naming the charset it would lose.
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(value: &str) -> Result<Self> {
-        if let Some(layout) = Self::ALL
-            .into_iter()
-            .find(|layout| super::folds_equal(value, layout.as_ascii_str()))
-        {
-            return Err(Error::UnknownDataType(format_smolstr!(
-                "{value} names the {} layout in the us-ascii charset, not a layout alone",
-                layout.as_str()
-            )));
-        }
-        Self::ALL
-            .into_iter()
-            .find(|layout| {
-                super::folds_equal(value, layout.as_str())
-                    || super::folds_equal(value, layout.as_utf8_str())
-            })
-            .ok_or_else(|| Error::UnknownDataType(format_smolstr!("{value}")))
-    }
-
-    /// The identifier naming this layout.
-    #[must_use]
-    pub const fn id(self) -> DataTypeId {
-        match self {
-            Self::String => DataTypeId::String,
-            Self::FixedString => DataTypeId::FixedString,
-            Self::StringView => DataTypeId::StringView,
-            Self::LargeString => DataTypeId::LargeString,
-            Self::LargeStringView => DataTypeId::LargeStringView,
-        }
-    }
-
-    /// The layout one identifier names, `None` for an identifier that is not
-    /// a string's.
-    #[must_use]
-    pub const fn from_id(id: DataTypeId) -> Option<Self> {
-        match id {
-            DataTypeId::String => Some(Self::String),
-            DataTypeId::FixedString => Some(Self::FixedString),
-            DataTypeId::StringView => Some(Self::StringView),
-            DataTypeId::LargeString => Some(Self::LargeString),
-            DataTypeId::LargeStringView => Some(Self::LargeStringView),
-            _ => None,
-        }
-    }
-
-    /// Return whether every value in this layout is the same width.
-    #[must_use]
-    pub const fn is_fixed(self) -> bool {
-        matches!(self, Self::FixedString)
-    }
-
-    /// Return whether this layout addresses its bytes through a view.
-    #[must_use]
-    pub const fn is_view(self) -> bool {
-        matches!(self, Self::StringView | Self::LargeStringView)
-    }
-
-    /// Return whether this layout declares 64-bit offsets.
-    #[must_use]
-    pub const fn is_large(self) -> bool {
-        matches!(self, Self::LargeString | Self::LargeStringView)
-    }
-}
-
-impl fmt::Display for StringLayout {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
-impl Serialize for StringLayout {
-    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
-        serializer.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for StringLayout {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
-        let value = <std::borrow::Cow<'_, str>>::deserialize(deserializer)?;
-        Self::from_str(&value).map_err(serde::de::Error::custom)
-    }
 }
 
 impl crate::types::DataTypeValue for StringType {

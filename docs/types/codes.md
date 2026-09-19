@@ -546,7 +546,7 @@ nobody published would be a guess.
 
 - A byte past `0x7F`, a NUL, or a value longer than the width -> refused naming the width (`at most 4 bytes`), and the row in a cast.
 - Stored under a code -> the text itself, so nothing is padded and nothing has to be trimmed back. A cast from a fixed-width column still trims the NUL that column's slot wrote; the padding was the slot's, never the value's. Text carrying trailing NULs canonicalizes to the trimmed value.
-- `Scalar::kind()` -> the code's id: `currency`, `side`, `state`; a plain string's kind is its layout, `string` or `fixed_string`.
+- `Scalar::kind()` -> the code's id: `currency`, `side`, `state`; a plain `utf8` string's kind is `string`, and any other leaf's is its name, `fixed_utf8` or `cp1252`.
 - A code's equality, order and hash carry the identity first, then the text: `Side("1") != TimeInForce("1")`. A code and a plain string of the same bytes are two values. The eleven share one value rank, so what separates them is the identity their datatypes sort by.
 - `utf8` under `yggdryl.currency` -> `currency`; under `yggdryl.string` with a document -> the string it describes; under no name -> `utf8`. The extension *name* is what separates them, so `yggdryl.currency` over any other storage imports as that storage.
 - `isin` -> two letters, nine alphanumerics and one digit that closes the eleven before it (ISO 6166's Luhn over the letters expanded to their alphabet positions); a check digit that does not close the number -> refused, `the check digit does not close the number`. Lower case -> the upper case it spells. `Isin::is_valid` and `Isin::closing_digit` answer the rule without building a value.
@@ -558,12 +558,12 @@ nobody published would be a guess.
 - A cast refusal under `safe` -> null, which a required column fills with the default; under strict -> the row and the column, for a code exactly as for a string ([Cast](cast.md)).
 - [Merged](field.md) widening: a code beside itself -> kept; beside `fixed_ascii(n)`, `ascii` or `utf8` -> that string.
 - [Merged](field.md) narrowing (`upscale=false`): a code beside any plainer shape storing it -> the code; beside narrower text -> that text.
-- `currency` beside `country` -> `ascii(3)` widening and `ascii(2)` narrowing, the bounded text both fit, never one code holding the other's values.
+- `currency` beside `country` -> `sized_ascii(3)` widening and `sized_ascii(2)` narrowing, the bounded text both fit, never one code holding the other's values.
 - A code shares no fixed width with anything, because its own width bounds variable text: beside `fixed_size_binary(n)` -> `binary` in either direction.
 - Iceberg, Spark, Polars, pandas, Avro, filter literals -> text, [rewritten](datatype.md) to `string`/`utf8`. Every registered code, not a subset: the listing each of these paths reads is `DataType::CODES`, through `DataType::is_code` and `DataType::code_width`, so a code cannot be spellable in one and unspellable in the next.
 - Parquet -> the `String` logical type and the byte-array bounds that come with it, so a planner reads statistics over the codes themselves and a reader outside this crate gets a column it can already use.
 - An Arrow cast into any code -> one text column, from a binary source of any framing or from anything Arrow renders as text; a text column already holding what the code promises is shared rather than copied; anything else -> refused naming the code and the source.
-- An Arrow cast out of a code -> every string datatype (any layout, charset or bound) and every byte framing, each reading the text the column holds; a byte width the text does not fill -> refused naming both sides and the row.
+- An Arrow cast out of a code -> every string leaf and every byte framing, each reading the text the column holds; a byte width the text does not fill -> refused naming both sides and the row.
 - `ascii_packed` on a variable string, on UTF-8, or on a width past 16 bytes -> refused, `at most 16 bytes`.
 - `ascii_packed` -> an `i32`, an `i64`, or a whole `i128` by width, and the integer a stable hash hashes.
 - A `StringEnum` on a string that is not fixed US-ASCII of at most sixteen bytes -> refused by name at `set_string_enum` and `into_members`; error kind `string-enum`.

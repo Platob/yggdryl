@@ -547,7 +547,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(milliseconds.unit(), TimeUnit::Millisecond);
 
     let text = string::Str::new("AAPL")
-        .try_with_parameters(string::StringType::utf8(string::StringLayout::LargeString))
+        .try_with_parameters(string::StringType::LargeUtf8String)
         .unwrap();
     assert_eq!(text.as_str(), "AAPL");
     assert_eq!(Value::dtype(&text).unwrap(), DataType::large_utf8());
@@ -579,7 +579,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(Value::dtype(&uuid).unwrap(), DataType::Uuid(UuidType::Uuid));
 
     let scalar = Value::into_scalar(text);
-    assert_eq!(scalar.id(), DataTypeId::LargeString);
+    assert_eq!(scalar.id(), DataTypeId::LargeUtf8String);
     assert_eq!(scalar.family(), DataTypeKind::Text);
 }
 
@@ -607,18 +607,18 @@ fn concrete_leaves_preserve_their_physical_identity() {
     let utf8 = string::Str::new("東京");
     let view = utf8
         .clone()
-        .try_with_parameters(string::StringType::utf8(string::StringLayout::StringView))
+        .try_with_parameters(string::StringType::Utf8StringView)
         .unwrap();
     assert_eq!(utf8.as_str(), view.as_str());
-    assert_eq!(utf8.layout(), string::StringLayout::String);
-    assert_eq!(view.layout(), string::StringLayout::StringView);
+    assert_eq!(utf8.parameters(), string::StringType::Utf8String);
+    assert_eq!(view.parameters(), string::StringType::Utf8StringView);
     assert_eq!(
         serde_json::from_str::<string::Str>(&serde_json::to_string(&utf8).unwrap()).unwrap(),
         utf8
     );
 
     let ascii = string::Str::new("FIX")
-        .try_with_parameters(string::StringType::ascii(string::StringLayout::String))
+        .try_with_parameters(string::StringType::AsciiString)
         .unwrap();
     let currency = yggdryl::types::Currency::new("USD").unwrap();
     assert_eq!(ascii.as_str(), "FIX");
@@ -626,12 +626,12 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert_eq!(currency.as_str(), "USD");
     assert!(
         string::Str::new("café")
-            .try_with_parameters(string::StringType::ascii(string::StringLayout::String))
+            .try_with_parameters(string::StringType::AsciiString)
             .is_err()
     );
     assert!(
         string::Str::new("")
-            .try_with_parameters(string::StringType::ascii(string::StringLayout::FixedString))
+            .try_with_parameters(string::StringType::FixedAsciiString(0))
             .is_err()
     );
     assert!(yggdryl::types::Cfi::new("TOO-LONG").is_err());
@@ -693,7 +693,7 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let utf8 = string::Str::new("same");
     let large = utf8
         .clone()
-        .try_with_parameters(string::StringType::utf8(string::StringLayout::LargeString))
+        .try_with_parameters(string::StringType::LargeUtf8String)
         .unwrap();
     assert_eq!(utf8, large);
 
@@ -971,7 +971,7 @@ fn addition_joins_a_repertoire_that_has_no_sum() {
         .unwrap();
     let joined = (country + Scalar::from("X")).unwrap();
     assert_eq!(joined, Scalar::from("FRX"));
-    assert_eq!(joined.id(), yggdryl::DataTypeId::String);
+    assert_eq!(joined.id(), yggdryl::DataTypeId::Utf8String);
 
     // Only `+`. Nothing else names anything a reader would agree on.
     for refused in [

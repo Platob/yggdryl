@@ -31,15 +31,15 @@ fn currency_columns() -> [(&'static str, DataType); 3] {
             DataType::fixed_ascii(4).expect("four bytes is a width"),
         ),
         (
-            "ascii",
-            DataType::from_str("ascii(4)").expect("four bytes is a bound"),
+            "sized_ascii",
+            DataType::sized_ascii(4).expect("four bytes is a maximum"),
         ),
     ]
 }
 
 pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("ascii");
-    for spelling in ["fixed_ascii(4)", "ascii(4)", "currency"] {
+    for spelling in ["fixed_ascii(4)", "sized_ascii(4)", "currency"] {
         group.bench_function(
             BenchmarkId::new("parse_display_round_trip", spelling),
             |bencher| {

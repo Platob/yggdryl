@@ -340,9 +340,9 @@ impl DiffEngine {
                     ));
                 }
             }
-            // The layout is the identifier, so two layouts are two kinds
-            // below; one layout leaves the bound, and for a string the
-            // charset, to compare.
+            // The shape is the identifier - and for a string the charset is
+            // part of it - so two shapes are two kinds below; one shape
+            // leaves the bound to compare.
             (D::Bytes(left), D::Bytes(right)) if left.same_shape_as(*right) => {
                 if left.bound() != right.bound() {
                     self.pending.push_back(changed_debug(
@@ -352,14 +352,7 @@ impl DiffEngine {
                     ));
                 }
             }
-            (D::String(left), D::String(right)) if left.layout() == right.layout() => {
-                if left.charset() != right.charset() {
-                    self.pending.push_back(changed_display(
-                        &property_path(&path, "charset"),
-                        left.charset(),
-                        right.charset(),
-                    ));
-                }
+            (D::String(left), D::String(right)) if left.same_shape_as(*right) => {
                 if left.bound() != right.bound() {
                     self.pending.push_back(changed_debug(
                         &property_path(&path, "bound"),

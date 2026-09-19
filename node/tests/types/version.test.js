@@ -158,24 +158,29 @@ test('Version field defaults and hints expose the native value with Arrow string
 test('generic MsgType datatype and field helpers are retired', () => {
   assert.equal('msgtype' in fields, false)
   assert.equal(enums.dataTypeIds.includes('msgtype'), false)
-  // Seventy-three: `msgdirection` was retired (discriminant 58, never
+  // Eighty-six: `msgdirection` was retired (discriminant 58, never
   // reused), so `url` keeps its byte 59 and sits one index earlier;
   // `timezone`, `mimetype` and `mediatype` were appended after it, then
   // `cusip` and `sedol` as code datatypes of their own, and `bloomberg`
   // after them - the one code whose width is only a bound, because a ticker,
   // a market and a yellow key have no fixed length between them. The families
   // appended the rest: `uuidv4`, `uuidv7` and `uuidv8` when uuid became a
-  // family with a leaf per RFC 9562 version, then `large_binary_view` and
-  // `sized_binary` when the byte family became six real leaves.
+  // family with a leaf per RFC 9562 version, `large_binary_view` and
+  // `sized_binary` when the byte family became six real leaves, and the
+  // thirteen string leaves beyond the five UTF-8 ones - `sized_utf8`, then
+  // the six US-ASCII and the six windows-1252 shapes - when the string family
+  // became eighteen.
   assert.equal(enums.dataTypeIds.includes('msgdirection'), false)
-  assert.equal(enums.dataTypeIds.length, 73)
+  assert.equal(enums.dataTypeIds.length, 86)
   assert.equal(enums.dataTypeIds.indexOf('url'), 58)
+  assert.equal(enums.dataTypeIds.indexOf('utf8'), 27)
+  assert.equal(enums.dataTypeIds.indexOf('sized_utf8'), 73)
   assert.deepEqual(enums.dataTypeIds.slice(-5), [
-    'uuidv4',
-    'uuidv7',
-    'uuidv8',
-    'large_binary_view',
-    'sized_binary',
+    'large_cp1252',
+    'cp1252_view',
+    'large_cp1252_view',
+    'fixed_cp1252',
+    'sized_cp1252',
   ])
   assert.throws(() => new DataType('msgtype'))
   assert.throws(() => new Field('code', 'msgtype'))

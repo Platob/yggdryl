@@ -22,7 +22,7 @@ use yggdryl::arrow::{array_from_value, batch_from_value, scalar_array};
 use yggdryl::types::bytes::{Bytes, BytesType};
 use yggdryl::types::decimal::{Decimal32, Decimal64};
 use yggdryl::types::geospatial::{Geography, Geometry};
-use yggdryl::types::string::{Str, StringLayout, StringType};
+use yggdryl::types::string::{Str, StringType};
 use yggdryl::types::temporal::Interval;
 use yggdryl::types::{
     Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce,
@@ -299,9 +299,9 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
         Scalar::Decimal256(value) => {
             decimal_pickle_state(py, "d256", &value.coefficient().to_string(), value.scale())
         }
-        // The ordinary string - UTF-8, the default layout, no width - pickles
-        // its characters alone. A layout, a charset, or a width is what makes
-        // a value carry more than that, and those pickle the whole declaration.
+        // The ordinary string - the plain `utf8` leaf - pickles its
+        // characters alone. Any other leaf pickles its name beside the text,
+        // and a fixed leaf its width: the name already says the charset.
         Scalar::String(value) if value.parameters() == StringType::default() => {
             tagged_pickle_state(
                 py,
@@ -310,10 +310,7 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             )
         }
         Scalar::String(value) => {
-            let layout = PyString::new(py, value.layout().as_str())
-                .into_any()
-                .unbind();
-            let charset = PyString::new(py, value.charset().as_str())
+            let layout = PyString::new(py, value.parameters().as_str())
                 .into_any()
                 .unbind();
             let fixed = value.fixed().into_pyobject(py)?.into_any().unbind();
@@ -321,7 +318,7 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             tagged_pickle_state(
                 py,
                 "string",
-                Some(pickle_tuple(py, vec![layout, charset, fixed, text])?),
+                Some(pickle_tuple(py, vec![layout, fixed, text])?),
             )
         }
         // A code pickles under its own identity, which is what tells a
@@ -590,14 +587,12 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             if let Ok(text) = payload.extract::<String>() {
                 return Ok(Scalar::from(text));
             }
-            let (layout, charset, fixed, text) =
-                payload.extract::<(String, String, Option<u32>, String)>()?;
-            let layout = StringLayout::from_str(&layout).map_err(value_error)?;
-            let charset = yggdryl::Charset::from_str(&charset).map_err(value_error)?;
-            let mut parameters = StringType::new(layout, charset);
-            if let Some(width) = fixed {
-                parameters = parameters.try_with_bound(width).map_err(value_error)?;
-            }
+            let (layout, fixed, text) = payload.extract::<(String, Option<u32>, String)>()?;
+            // The name alone lands a fixed leaf on its placeholder, so the
+            // width the state carries is put back before it is read.
+            let parameters = StringType::from_str(&layout)
+                .and_then(|leaf| leaf.with_declared_bound(fixed))
+                .map_err(value_error)?;
             Str::new(text)
                 .try_with_parameters(parameters)
                 .map(Scalar::String)
