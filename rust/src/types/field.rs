@@ -71,14 +71,18 @@ pub struct FieldOf<D: DataTypeValue> {
     pub(crate) sidecar: D::Sidecar,
     pub(crate) metadata: Metadata,
     pub(crate) arrow: OnceLock<FieldRef>,
-    /// The leaf's datatype widened to the root, derived on first ask.
+    /// The leaf's datatype widened to the root, derived when `dtype` is set.
     ///
     /// Not a second fact: `dtype` above is the only one, and this is that one
     /// read back in the root's spelling. It is here so a reader can borrow a
-    /// `DataType` - the whole crate asks for one - without every ask
-    /// rebuilding it. Replacing the datatype rebuilds the field, so this can
-    /// never answer for a datatype the field no longer has.
-    pub(crate) widened: OnceLock<Box<DataType>>,
+    /// `DataType` - the whole crate asks for one - without any ask rebuilding
+    /// it. Inline rather than boxed or lazy, because widening is one variant
+    /// wrap around a `Copy` payload or one shared pointer, so deriving it at
+    /// construction and again in [`Self::set_dtype`] allocates nothing, and a
+    /// clone of the field then costs no more than the leaf's own clone does.
+    /// Those two writes are the only ones, so this never answers for a
+    /// datatype the field no longer has.
+    pub(crate) widened: DataType,
 }
 
 impl<D: DataTypeValue + Default> FieldOf<D> {
@@ -94,15 +98,7 @@ impl<D: DataTypeValue + Default> FieldOf<D> {
 impl<D: DataTypeValue> FieldOf<D> {
     /// Constructs a field with empty metadata.
     pub fn new(name: impl Into<SmolStr>, dtype: D, nullable: bool) -> Self {
-        Self {
-            name: name.into(),
-            dtype,
-            nullable,
-            sidecar: D::Sidecar::default(),
-            metadata: Metadata::new(),
-            arrow: OnceLock::new(),
-            widened: OnceLock::new(),
-        }
+        Self::new_with_metadata(name, dtype, nullable, Metadata::new())
     }
 
     /// Constructs a field around a metadata snapshot that is already valid.
@@ -118,12 +114,12 @@ impl<D: DataTypeValue> FieldOf<D> {
     ) -> Self {
         Self {
             name: name.into(),
+            widened: dtype.clone().into_dtype(),
             dtype,
             nullable,
             sidecar: D::Sidecar::default(),
             metadata,
             arrow: OnceLock::new(),
-            widened: OnceLock::new(),
         }
     }
 
@@ -139,15 +135,8 @@ impl<D: DataTypeValue> FieldOf<D> {
         K: Into<String>,
         V: Into<String>,
     {
-        let field = Self {
-            name: name.into(),
-            dtype,
-            nullable,
-            sidecar: D::Sidecar::default(),
-            metadata: Metadata::from_entries(metadata)?,
-            arrow: OnceLock::new(),
-            widened: OnceLock::new(),
-        };
+        let field =
+            Self::new_with_metadata(name, dtype, nullable, Metadata::from_entries(metadata)?);
         field.validate()?;
         Ok(field)
     }
@@ -161,10 +150,9 @@ impl<D: DataTypeValue> FieldOf<D> {
     ///
     /// Always [`DataType`], whichever leaf the field is, so a caller reading a
     /// datatype off a field never has to know which one it holds. Derived from
-    /// the leaf's own datatype on the first ask and kept for the rest.
-    pub fn dtype(&self) -> &DataType {
-        self.widened
-            .get_or_init(|| Box::new(self.dtype.clone().into_dtype()))
+    /// the leaf's own datatype when that was set, and borrowed here.
+    pub const fn dtype(&self) -> &DataType {
+        &self.widened
     }
 
     /// Returns this field's datatype in its own type, without allocating.
@@ -396,6 +384,7 @@ impl<D: DataTypeValue> FieldOf<D> {
         if self.dtype != dtype {
             // The leaf cannot change family, so whether it carries dictionary
             // options cannot change either: the sidecar's type says so.
+            self.widened = dtype.clone().into_dtype();
             self.dtype = dtype;
             self.invalidate_arrow();
         }
@@ -802,12 +791,6 @@ impl<D: DataTypeValue> Clone for FieldOf<D> {
         if let Some(cached) = self.arrow.get() {
             let _ = arrow.set(Arc::clone(cached));
         }
-        // The derived datatype rides along: it is this field's own datatype
-        // read back, so a clone that already paid for it should not pay again.
-        let widened = OnceLock::new();
-        if let Some(derived) = self.widened.get() {
-            let _ = widened.set(derived.clone());
-        }
         Self {
             name: self.name.clone(),
             dtype: self.dtype.clone(),
@@ -815,7 +798,7 @@ impl<D: DataTypeValue> Clone for FieldOf<D> {
             sidecar: self.sidecar.clone(),
             metadata: self.metadata.clone(),
             arrow,
-            widened,
+            widened: self.widened.clone(),
         }
     }
 }

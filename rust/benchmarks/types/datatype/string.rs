@@ -1,5 +1,6 @@
-//! The string family: the grammar, the extension document, and the two
-//! directions across Arrow for the leaves of each charset.
+//! The string family: every one of its eighteen leaves through the doors a
+//! caller uses, and the two directions across Arrow with the leaf as the
+//! column.
 //!
 //! Cell widths straddle `smol_str`'s twenty-three-byte inline buffer on
 //! purpose. That threshold is the whole allocation story of a string value -
@@ -10,10 +11,14 @@
 //! these cases are the time those counts buy.
 
 use std::hint::black_box;
+use std::sync::Arc;
 
+use arrow_array::{ArrayRef, StringArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::types::StringType;
 use yggdryl::{Charset, DataType, Scalar, Str};
+
+use super::doors;
 
 const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
 
@@ -23,6 +28,23 @@ const WIDTHS: [usize; 3] = [8, 64, 4096];
 
 /// The widths a single-cell case runs at, straddling the inline buffer exactly.
 const CELL_WIDTHS: [usize; 4] = [8, 23, 24, 64];
+
+/// The number the six numbered leaves state through the doors: past the
+/// inline buffer, so the scalar door adopts a handle rather than copying.
+const BOUND: usize = 32;
+
+/// The eighteen leaves, each numbered one at `bound`.
+fn leaves(bound: usize) -> impl Iterator<Item = StringType> {
+    let bound = u32::try_from(bound).expect("every benchmark width fits");
+    StringType::ALL
+        .into_iter()
+        .map(move |leaf| match leaf.bound() {
+            Some(_) => leaf
+                .with_bound(bound)
+                .expect("every benchmark width is a width"),
+            None => leaf,
+        })
+}
 
 /// One column of all-ASCII cells, which every charset here borrows.
 fn ascii_column(rows: usize, width: usize) -> Scalar {
@@ -79,24 +101,16 @@ fn column_round_trip(
 pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("string");
 
-    // The grammar: what a schema pays once per declared column.
-    group.bench_function("parse_display_round_trip", |bencher| {
-        bencher.iter(|| {
-            let dtype = DataType::from_str(black_box("string(windows-1252,32)"))
-                .expect("the static spelling must parse");
-            DataType::from_str(black_box(&dtype.to_string()))
-                .expect("canonical display output must round-trip")
-        });
-    });
-    // The one reader, over every datatype that answers it.
-    let declared: Vec<DataType> = vec![
-        DataType::utf8(),
-        DataType::large_utf8(),
-        DataType::utf8_view(),
-        DataType::ascii(),
-        DataType::fixed_ascii(3).expect("three bytes is a width"),
-        DataType::sized_cp1252(32).expect("thirty-two bytes is a maximum"),
-    ];
+    // Every leaf through every door: what a schema pays once per declared
+    // column, and what one value pays entering it.
+    let sample = Scalar::from("a".repeat(BOUND));
+    let declared: Vec<DataType> = leaves(BOUND)
+        .map(|leaf| DataType::string(leaf).expect("every leaf is a datatype"))
+        .collect();
+    for dtype in &declared {
+        doors::leaf_doors(&mut group, dtype, &sample);
+    }
+    // The one reader, over every leaf that answers it.
     group.bench_function("string_parameters", |bencher| {
         bencher.iter(|| {
             for dtype in black_box(&declared) {
@@ -111,17 +125,6 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
             let rendered = black_box(parameters).extension_json();
             StringType::from_extension_json(black_box(&rendered))
                 .expect("the document this crate renders is one it reads")
-        });
-    });
-    // Cold projection against warm: the pair a cached projection has to
-    // separate before either number means anything.
-    group.bench_function("field_arrow_projection", |bencher| {
-        let field = DataType::cp1252().required_field("value");
-        bencher.iter(|| {
-            black_box(&field)
-                .clone()
-                .into_arrow_field()
-                .expect("the benchmark field is valid")
         });
     });
 
@@ -159,72 +162,42 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
     }
 
     group.throughput(Throughput::Elements(ROWS as u64));
+    // A text column read into every leaf: the reader's door, at the width
+    // past the inline buffer, with the numbered leaves stated at that width
+    // so that nothing is trimmed and nothing refused.
+    let ingested: ArrayRef = Arc::new(StringArray::from_iter_values(
+        (0..ROWS).map(|index| format!("{index:064}")),
+    ));
+    for leaf in leaves(64) {
+        doors::ingest(
+            &mut group,
+            &DataType::string(leaf).expect("every leaf is a datatype"),
+            &ingested,
+        );
+    }
+    // Every leaf as the column, both ways, at every width. The numbered
+    // leaves are stated at the column's own width so that nothing is
+    // trimmed and nothing refused; the windows-1252 string also runs on the
+    // payload that does not borrow, because only the pair says whether a
+    // change helped or moved cost.
     for width in WIDTHS {
         let ascii = ascii_column(ROWS, width);
+        for leaf in leaves(width) {
+            column_round_trip(
+                &mut group,
+                &format!("{}_{width}", leaf.as_str()),
+                &DataType::string(leaf).expect("every leaf is a datatype"),
+                &ascii,
+            );
+        }
         let high = high_column(ROWS, width);
-        // The three UTF-8 leaves Arrow names itself.
         column_round_trip(
             &mut group,
-            &format!("utf8_{width}"),
-            &DataType::utf8(),
-            &ascii,
+            &format!("cp1252_high_{width}"),
+            &DataType::cp1252(),
+            &high,
         );
-        column_round_trip(
-            &mut group,
-            &format!("large_utf8_{width}"),
-            &DataType::large_utf8(),
-            &ascii,
-        );
-        column_round_trip(
-            &mut group,
-            &format!("utf8_view_{width}"),
-            &DataType::utf8_view(),
-            &ascii,
-        );
-        // The US-ASCII leaves: the same text storage under a document that
-        // names the repertoire, and the fixed slot the codes ride.
-        column_round_trip(
-            &mut group,
-            &format!("ascii_{width}"),
-            &DataType::ascii(),
-            &ascii,
-        );
-        column_round_trip(
-            &mut group,
-            &format!("fixed_ascii_{width}"),
-            &DataType::fixed_ascii(u32::try_from(width).expect("the widths fit"))
-                .expect("every column width is a width"),
-            &ascii,
-        );
-        // The windows-1252 string, on the payload that borrows and the one
-        // that does not. Only the pair says whether a change helped or moved
-        // cost.
-        let latin = DataType::cp1252();
-        column_round_trip(
-            &mut group,
-            &format!("charset_ascii_{width}"),
-            &latin,
-            &ascii,
-        );
-        column_round_trip(&mut group, &format!("charset_high_{width}"), &latin, &high);
-        // And the fixed slot, which pads rather than offsets, at the column's
-        // own width so that nothing is trimmed and nothing refused.
-        let fixed = DataType::fixed_cp1252(u32::try_from(width).expect("the widths fit"))
-            .expect("every column width is a width");
-        column_round_trip(&mut group, &format!("fixed_{width}"), &fixed, &ascii);
     }
-
-    // Restating a leaf: a storage handle adopted, never characters copied.
-    let long = Scalar::from("a value well past the twenty-three byte inline buffer");
-    let large = DataType::large_utf8();
-    group.throughput(Throughput::Elements(1));
-    group.bench_function("restate_layout", |bencher| {
-        bencher.iter(|| {
-            black_box(&large)
-                .scalar(black_box(long.clone()))
-                .expect("text restates into any leaf")
-        });
-    });
 
     group.finish();
 }

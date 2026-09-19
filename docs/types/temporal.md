@@ -449,7 +449,7 @@ the value itself is documented with the [text values](text.md#time-zones).
     ```bash
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::temporal field::temporal temporal
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::temporal types::date types::time types::datetime types::duration types::interval
-    cargo bench --manifest-path rust/Cargo.toml --bench types -- '^time(_unit)?/'
+    cargo bench --manifest-path rust/Cargo.toml --bench types -- '^(date|time|datetime|duration|interval|time_unit|temporal_text)/'
     ```
 
 === "Python"
