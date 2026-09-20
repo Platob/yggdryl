@@ -2222,7 +2222,7 @@ pub enum FieldSegment
   pub fn stable_hash(&self) -> u64
 
 ### yggdryl::text::bytes  [rust/src/text/bytes.rs]
-pub struct TextRun
+pub struct TextBytes
   pub const fn new() -> Self
   pub fn from_page(page: &Arc<Vec<u8>>, start: usize, end: usize) -> Result<Self>
   pub fn from_whole_page(page: Arc<Vec<u8>>) -> Result<Self>
@@ -2239,14 +2239,14 @@ pub struct TextRun
 
 ### yggdryl::text::entry  [rust/src/text/entry.rs]
 pub struct TextEntry
-  pub const fn new(key: TextRun, value: TextRun) -> Self
+  pub const fn new(key: TextBytes, value: TextBytes) -> Self
   pub fn with_entries(self, entries: TextEntries) -> Self
   pub const fn with_marked(self, marked: bool) -> Self
   pub fn key(&self) -> Cow<'_, str>
   pub fn value(&self) -> Cow<'_, str>
-  pub const fn key_bytes(&self) -> &TextRun
-  pub const fn value_bytes(&self) -> &TextRun
-  pub fn set_value(&mut self, value: TextRun)
+  pub const fn key_bytes(&self) -> &TextBytes
+  pub const fn value_bytes(&self) -> &TextBytes
+  pub fn set_value(&mut self, value: TextBytes)
   pub const fn marked(&self) -> bool
   pub const fn entries(&self) -> Option<&TextEntries>
   pub const fn entries_mut(&mut self) -> Option<&mut TextEntries>
@@ -2254,8 +2254,8 @@ pub struct TextEntry
 pub struct TextEntries
   pub const fn new() -> Self
   pub fn with_capacity(capacity: usize) -> Self
-  pub fn from_bytes(body: &TextRun) -> Option<Self>
-  pub fn from_bytes_direct(body: &TextRun) -> Option<Self>
+  pub fn from_bytes(body: &TextBytes) -> Option<Self>
+  pub fn from_bytes_direct(body: &TextBytes) -> Option<Self>
   pub fn as_slice(&self) -> &[TextEntry]
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
@@ -2264,12 +2264,12 @@ pub struct TextEntries
   pub fn get_entry_by_path(&self, path: &FieldPath) -> Option<&TextEntry>
   pub fn entry_by_path(&self, path: &FieldPath) -> Result<&TextEntry>
   pub fn get_entry_by_path_mut(&mut self, path: &FieldPath) -> Option<&mut TextEntry>
-  pub fn set_entry_by_path(&mut self, path: &FieldPath, value: TextRun) -> Result<()>
+  pub fn set_entry_by_path(&mut self, path: &FieldPath, value: TextBytes) -> Result<()>
   pub fn remove_entry_by_path(&mut self, path: &FieldPath) -> Option<TextEntry>
 
 ### yggdryl::text::line  [rust/src/text/line.rs]
 pub struct TextLine  (one text row and the `Event` of the graph it is: what the reader cut - the index, the object, the handle's modification time, the whole body with the row header included, the edges stripped and the byte limit applied - and the shared `Arc<TextOptions>` it reads itself by; every other fact is a reading of the body under the options, resolved on its first ask, once, into a slot of its own, so a caller reading the body and the row number resolves nothing else; a `set_` states a fact over the line's own reading, and `set_body` drops every resolved slot; equality, order and hash read the stated facts alone)
-  pub fn from_bytes(index: u64, body: TextRun, options: Arc<TextOptions>) -> Result<Self>  (where the bytes become text: what is not UTF-8 is decoded once, each byte as its Windows-1252 character, and counted)
+  pub fn from_bytes(index: u64, body: TextBytes, options: Arc<TextOptions>) -> Result<Self>  (where the bytes become text: what is not UTF-8 is decoded once, each byte as its Windows-1252 character, and counted)
   pub const fn index(&self) -> u64
   pub fn set_index(&mut self, index: u64)
   pub fn options(&self) -> &TextOptions
@@ -2284,16 +2284,16 @@ pub struct TextLine  (one text row and the `Event` of the graph it is: what the 
   pub fn set_bodytype(&mut self, bodytype: Option<MimeType>)  (unsaid, it resolves afresh)
   pub fn with_bodytype(mut self, bodytype: MimeType) -> Self
   pub fn body(&self) -> &str  (the whole line, row header included)
-  pub const fn body_bytes(&self) -> &TextRun
-  pub fn set_body(&mut self, body: TextRun) -> Result<()>  (drops every resolved reading and the header the cut matched; captures a caller stated stand, the payload then the whole new body, and so does every other stated fact)
+  pub const fn body_bytes(&self) -> &TextBytes
+  pub fn set_body(&mut self, body: TextBytes) -> Result<()>  (drops every resolved reading and the header the cut matched; captures a caller stated stand, the payload then the whole new body, and so does every other stated fact)
   pub const fn decoded_byte_size(&self) -> u64
   pub const fn dropped_byte_size(&self) -> Option<u64>
   pub const fn set_dropped_byte_size(&mut self, size: Option<u64>)
-  pub fn captures(&self) -> &[Option<TextRun>]  (the row header matched over the body on the first ask, one slot per declared capture in the order the expression declares them, each a range of the body's page; every slot empty where the header did not match, none under no header)
+  pub fn captures(&self) -> &[Option<TextBytes>]  (the row header matched over the body on the first ask, one slot per declared capture in the order the expression declares them, each a range of the body's page; every slot empty where the header did not match, none under no header)
   pub fn capture(&self, index: usize) -> Option<&str>
-  pub fn set_captures(&mut self, captures: Vec<Option<TextRun>>) -> Result<()>  (the line's word over its header, decoded as a body is)
-  pub fn with_captures(mut self, captures: Vec<Option<TextRun>>) -> Result<Self>
-  pub fn payload_bytes(&self) -> TextRun  (the body past the header match, as a range of the same page; the body where the header declares nothing or did not match)
+  pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>) -> Result<()>  (the line's word over its header, decoded as a body is)
+  pub fn with_captures(mut self, captures: Vec<Option<TextBytes>>) -> Result<Self>
+  pub fn payload_bytes(&self) -> TextBytes  (the body past the header match, as a range of the same page; the body where the header declares nothing or did not match)
   pub fn entries(&self) -> Option<&TextEntries>  (the stated tree, else the payload's own by `TextEntries::from_bytes` on the first ask; `None` where it states no pair)
   pub fn entries_mut(&mut self) -> Option<&mut TextEntries>  (the tree moves from the resolved slot to the stated fact on the first mutation, so it stands over a body set later)
   pub fn set_entries(&mut self, entries: Option<TextEntries>)  (stated, a tree or its absence stands over the payload's own)
@@ -2301,7 +2301,7 @@ pub struct TextLine  (one text row and the `Event` of the graph it is: what the 
   pub fn get_entry_by_path(&self, path: &FieldPath) -> Option<&TextEntry>
   pub fn entry_by_path(&self, path: &FieldPath) -> Result<&TextEntry>
   pub fn get_entry_by_path_mut(&mut self, path: &FieldPath) -> Option<&mut TextEntry>
-  pub fn set_entry_by_path(&mut self, path: &FieldPath, value: TextRun) -> Result<()>
+  pub fn set_entry_by_path(&mut self, path: &FieldPath, value: TextBytes) -> Result<()>
   pub fn remove_entry_by_path(&mut self, path: &FieldPath) -> Option<TextEntry>
   pub fn mtime(&self) -> Result<Option<i64>>  (the header's `mtime` capture as an instant at the column's clock where it declares one and the line matched, else the handle's modification time, else none; a capture that is not an instant is a refusal naming the row, the object and the column)
   pub fn seqnum(&self) -> Result<u64>  (a `seqnum` capture, else the row number under `start_rownum`, else the index)
