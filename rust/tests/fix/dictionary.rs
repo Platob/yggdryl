@@ -598,10 +598,18 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// table: the thirty-seven fields that carried a `FIX:replacements` document
 /// hash without it, one metadata entry fewer each, and the dictionary states
 /// no rule of its own.
+/// It last moved when `sourceurl` left the fixed row: the object a line was
+/// read from is the reader's word about the line and not the message's about
+/// itself, so it travels as one of the capture's own columns beside the row,
+/// the definition still hashes as a crate field of its own, and the fixed
+/// row hashes one member fewer. It last moved when those two settled changes
+/// met in this merge: the thirty-seven retired `FIX:replacements` entries are
+/// absent and `sourceurl` remains a crate field while leaving the fixed row,
+/// so their combined dictionary is the value pinned here.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 14_053_550_445_986_752_505);
+    assert_eq!(registry.stable_hash(), 6_416_724_377_555_862_807);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

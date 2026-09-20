@@ -96,6 +96,21 @@ class TestTextLine:
         stated = TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D", ["WARN"], options)
         assert stated.captures == ("WARN",)
 
+    def test_a_line_with_no_body_is_no_line(self) -> None:
+        # A line is the line it holds, so the door that makes one refuses a
+        # body stating nothing - which is what lets a read's `body` column
+        # hold no null and no empty cell.
+        with pytest.raises(ValueError, match="body"):
+            TextLine(0, "")
+        with pytest.raises(ValueError, match="body"):
+            TextLine(0, b"")
+        # And a blank physical line is a separator rather than a record, so
+        # the reader never answers one.
+        blanks = source(b"alpha\n\nbeta\n")
+        lines = list(blanks.read_text_lines(options=TextOptions()))
+        assert [line.body for line in lines] == ["alpha", "beta"]
+        assert [line.index for line in lines] == [0, 2]
+
     def test_a_lifted_path_builds_the_tree_and_is_found(self) -> None:
         lines = list(source().read_text_lines(options=lifted()))
         assert lines[0].entries is not None

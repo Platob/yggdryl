@@ -601,6 +601,26 @@ impl TextOptions {
             .map(|expression| &expression.compiled)
     }
 
+    /// Refuse a retained limit that would leave every record with no body.
+    ///
+    /// The limit bounds what follows the row header, and the header is
+    /// always retained - so under a header a record keeps at least the
+    /// bytes it was known by, whatever the limit. With no header there is
+    /// nothing to keep, and a limit of zero would answer a line with no
+    /// body: [`TextLine`](super::TextLine) has none, so the configuration
+    /// is refused once here rather than per row.
+    pub(crate) fn require_retained_body(&self) -> Result<()> {
+        if self.max_record_byte_size == Some(0) && self.rowheader.is_none() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.max_record_byte_size"),
+                reason: SmolStr::new_static(
+                    "expected a retained record limit that keeps a body, got 0 with no rowheader to retain",
+                ),
+            });
+        }
+        Ok(())
+    }
+
     pub(crate) fn require_framing_rowheader(&self) -> Result<()> {
         if self.framing && self.rowheader.is_none() {
             return Err(Error::InvalidRecord {

@@ -3356,12 +3356,16 @@ mod clock_intake_tests {
             .unwrap();
         assert_eq!(message.by_tag(52).unwrap(), clock(17));
         assert!(message.entries().is_empty());
+        // There is no empty line to ask the codec about: a line is the line
+        // it holds, and the door that makes one refuses a body carrying
+        // nothing.
         assert!(
-            codec
-                .parse_text_line(&text_line(b""))
-                .unwrap()
-                .next()
-                .is_none()
+            TextLine::from_bytes(
+                0,
+                TextBytes::from_bytes(b"").unwrap(),
+                std::sync::Arc::new(crate::text::TextOptions::new()),
+            )
+            .is_err()
         );
         // The header owns the clock a message leaves unstated; one it states
         // is typed by the registry's field, so a registry without that field

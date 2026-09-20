@@ -600,15 +600,16 @@ pub const FIX_TYPED_TAGS: [i32; 29] = [
     TEXT_TAG,
 ];
 
-/// The crate's own column that states what the *reader* said about a line
-/// rather than what the line said: the object it was read from.
+/// The crate's own tag for the column that states what the *reader* said
+/// about a line rather than what the line said: the object it was read from.
 ///
-/// No message holds it. It is a column of the row all the same - a monitor
-/// orders, joins and prunes on where a row came out of - so whoever read the
-/// line states it and whoever writes the row back restates it, beside the
-/// columns a capture carries under no tag at all: the body the line was cut
-/// from, its place in the object, its media type, when the reader read it,
-/// what a bound dropped.
+/// No message holds it, and [the fixed row](super::fix_schema) has no column
+/// for it: a monitor orders, joins and prunes on where a row came out of,
+/// and that is the capture's fact beside the row rather than the message's
+/// within it. It travels exactly as the columns a capture carries under no
+/// tag at all do - the body the line was cut from, its place in the object,
+/// its media type, when the reader read it, what a bound dropped - and the
+/// tag is here so a carried column typed as a URL is known to be one.
 pub(super) const CAPTURE_TAG: i32 = SOURCEURL_TAG_NAME.0;
 
 /// Whether a tag names the capture's own column.

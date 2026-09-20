@@ -425,6 +425,9 @@ fn a_captures_own_columns_are_carried_by_the_message_and_never_its_content() {
         DataType::utf8().nullable_field("url"),
         DataType::Int64.nullable_field("rownum"),
         DataType::binary().nullable_field("body"),
+        // The object the line came out of is one of them: no column of the
+        // fixed row states it, so a capture that knows it declares it.
+        DataType::url().nullable_field("sourceurl"),
     ])
     .map(DataType::from)
     .unwrap()

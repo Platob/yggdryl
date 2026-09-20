@@ -85,6 +85,19 @@ test('a line is an event under the options it reads itself by', () => {
   assert.deepEqual(new TextLine(0, '[INFO] 8=FIX|55=AAPL|35=D', ['WARN'], options).captures, ['WARN'])
 })
 
+test('a line with no body is no line', () => {
+  // A line is the line it holds, so the door that makes one refuses a body
+  // stating nothing - which is what lets a read's `body` column hold no null
+  // and no empty cell.
+  assert.throws(() => new TextLine(0, ''), /body/)
+  assert.throws(() => new TextLine(0, Buffer.alloc(0)), /body/)
+  // And a blank physical line is a separator rather than a record, so the
+  // reader never answers one.
+  const lines = [...source('alpha\n\nbeta\n').readTextLines(new TextOptions())]
+  assert.deepEqual(lines.map((line) => line.body), ['alpha', 'beta'])
+  assert.deepEqual(lines.map((line) => Number(line.index)), [0, 2])
+})
+
 test('a lifted path builds the tree and is found by path', () => {
   const lines = [...source().readTextLines(lifted())]
   assert.notEqual(lines[0].entries, null)

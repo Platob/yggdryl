@@ -164,11 +164,17 @@ The source field is complete before any source bytes are read. It opens with the
 | `identifiers` | `map<utf8, utf8>` | nullable; every named capture the line matched, under its name, sorted; null where none |
 | `state` | `state` | nullable, and never null on a row the reader wrote: a `state` capture, else `00UNKNOWN` |
 | `sourceurl` | `url` | nullable; the source location, and null for an unlocated buffer |
-| `rownum` | `int64` | present only when `start_rownum` is set; first value is exactly that setting |
+| `rownum` | `int64` | required, and present only when `start_rownum` is set; first value is exactly that setting |
 | `mtime` | `datetime64(ns, UTC)` | nullable; present unless `parse_mtime` is off |
-| `mimetype` | `utf8` | present only with `parse_mimetype` |
-| `body` | `utf8` | required; the whole retained record as text, the row header included and the edges stripped: decoded at the transport under [a declared charset](#declaring-a-charset), else [where the line is made](#a-line-is-text) |
+| `mimetype` | `utf8` | required, and present only with `parse_mimetype` |
+| `body` | `utf8` | required, and never empty; the whole retained record as text, the row header included and the edges stripped: decoded at the transport under [a declared charset](#declaring-a-charset), else [where the line is made](#a-line-is-text) |
 | `dropped_byte_size` | `uint64` | nullable; present only with `max_record_byte_size`, and non-null only when bytes were dropped; counts bytes as read, in the units the limit counts |
+
+Every column says what it holds, and the sixteen a line opens with carry the
+same spelling the FIX row shows them under, so one fact is named one way
+wherever it is read. `required` is a promise the reader keeps in both
+directions: a required column is one a line can always state, and a batch read
+back into lines is refused where a required cell is null.
 
 Named `rowheader` captures follow these columns and stay nullable in both modes,
 and the columns `lift_names` [lifts](#lifting-an-entry-into-a-column) follow
@@ -202,6 +208,24 @@ message. The text reader is what answers one row per line: it emits every
 framed record, whatever the codec would go on to make of it.
 
 Measured in [Classifying a capture](../../fix/registry.md#classifying-a-capture).
+
+### A line with no body is no line
+
+`body` is the line, so a record that states no byte of its own is not a row:
+a blank line, and one the `lstrip`/`rstrip` patterns take whole, is a
+separator between records rather than a record, and the reader goes past it.
+The numbering does not close over the gap - `rownum` is the physical line's
+own - and a count answers exactly what a read answers, because what makes a
+line a record is what it cut and never what `max_record_byte_size` kept.
+
+The same rule holds at every other door. [`TextLine`](#lines) refuses an empty
+body wherever one is set, a batch read back into lines is refused at `body`
+where a row's cell is absent, null or empty, and a write refuses a row whose
+body states nothing - writing one would put a blank line in the object that
+reads back as no row at all. A `max_record_byte_size` of `0` with no
+`rowheader` is refused before a byte is read, because with nothing to retain
+a record by it would answer a line with no body on every row; under a
+`rowheader` the header is always retained and the limit reads.
 
 ## Shaping a read
 
@@ -803,7 +827,9 @@ without retaining it.
 - `framing` without `rowheader` -> refused.
 - physical-line mode, no match -> body kept, captures null.
 - `leading_fragment = error` -> the first physical line before any header fails the read.
-- `max_record_byte_size = 0` -> valid; empty prefix, whole body counted as dropped.
+- `max_record_byte_size = 0` with a `rowheader` -> valid; the header is retained whole, the body past it is empty and every byte of it is counted as dropped.
+- `max_record_byte_size = 0` with no `rowheader` -> refused before a byte is read: there is nothing to retain a record by, and [a line with no body is no line](#a-line-with-no-body-is-no-line).
+- a blank line, or one the strips take whole -> no row: it is a separator, the numbering keeps its gap, and a count answers what a read answers.
 - `max_record_byte_size` unset -> no `dropped_byte_size` column; set but never exceeded -> null.
 - strip match off the physical-line body edge -> nothing removed.
 - `autotype = false` or a broad capture (`\S+`) -> `utf8`.

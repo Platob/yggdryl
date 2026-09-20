@@ -798,7 +798,14 @@ test('a row reads back into the message that made it', () => {
 test("a capture's own columns are carried and never become facts", () => {
   const registry = seed()
   const codec = reading(registry)
-  const line = fields.struct('line', [fields.utf8('url'), fields.int64('rownum'), fields.binary('body')], { nullable: false })
+  // The object the line came out of is one of the capture's own columns:
+  // no column of the fixed row states it, so a capture that knows it
+  // declares it beside the body and the row number.
+  const line = fields.struct(
+    'line',
+    [fields.utf8('url'), fields.int64('rownum'), fields.binary('body'), fields.url('sourceurl')],
+    { nullable: false },
+  )
   const schema = fix.schemaCarrying(line, fix.schema(registry))
   // A carried column is nullable whatever the capture declared: only a pass
   // holding the source row can state one.

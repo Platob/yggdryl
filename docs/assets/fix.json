@@ -104,7 +104,7 @@
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 117,
+    "columns": 116,
     "memberships": 0,
     "dialects": 0,
     "datatypes": 23,
@@ -154103,44 +154103,6 @@
               "value": "z"
             }
           ],
-          "FIX:replacements": [
-            {
-              "doc": "ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)",
-              "plan": "select '1' as pegmovetype, '1' as pegscope, 'R' as execinst where contains(execinst, 'T')"
-            },
-            {
-              "doc": "ExecInst L is PegPriceType 1 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '1' as pegpricetype where contains(execinst, 'L')"
-            },
-            {
-              "doc": "ExecInst M is PegPriceType 2 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '2' as pegpricetype where contains(execinst, 'M')"
-            },
-            {
-              "doc": "ExecInst O is PegPriceType 3 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '3' as pegpricetype where contains(execinst, 'O')"
-            },
-            {
-              "doc": "ExecInst P is PegPriceType 4 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '4' as pegpricetype where contains(execinst, 'P')"
-            },
-            {
-              "doc": "ExecInst R is PegPriceType 5 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '5' as pegpricetype where contains(execinst, 'R')"
-            },
-            {
-              "doc": "ExecInst W is PegPriceType 7 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '7' as pegpricetype where contains(execinst, 'W')"
-            },
-            {
-              "doc": "ExecInst a is PegPriceType 8 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '8' as pegpricetype where contains(execinst, 'a')"
-            },
-            {
-              "doc": "ExecInst d is PegPriceType 9 (FIX 5.0 Appendix 6-E)",
-              "plan": "select '9' as pegpricetype where contains(execinst, 'd')"
-            }
-          ],
           "FIX:tag": "18",
           "description": "Instructions for order handling on exchange trading floor. If more than one instruction is applicable to an order, this field can contain multiple instructions separated by space. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
           "display": "ExecInst"
@@ -154181,20 +154143,6 @@
             {
               "name": "Status",
               "value": "3"
-            }
-          ],
-          "FIX:replacements": [
-            {
-              "doc": "ExecTransType Cancel is ExecType TradeCancel (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'H' as exectype where exectranstype = '1'"
-            },
-            {
-              "doc": "ExecTransType Correct is ExecType TradeCorrect (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'G' as exectype where exectranstype = '2'"
-            },
-            {
-              "doc": "ExecTransType Status is ExecType OrderStatus (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'I' as exectype where exectranstype = '3'"
             }
           ],
           "FIX:tag": "20",
@@ -155607,11 +155555,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "plan": "select orderid as massactionreportid where :msgtype = 'r'"
-            }
-          ],
           "FIX:tag": "37",
           "description": "Unique identifier for Order as assigned by sell-side (broker, exchange, ECN). Uniqueness must be guaranteed within a single trading day. Firms which accept multi-day orders should consider embedding a date within the OrderID field to assure uniqueness across days.",
           "display": "OrderID"
@@ -155866,32 +155809,6 @@
               "value": "T"
             }
           ],
-          "FIX:replacements": [
-            {
-              "doc": "OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)",
-              "plan": "select '1' as ordtype, '7' as timeinforce where ordtype = '5'"
-            },
-            {
-              "doc": "OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)",
-              "plan": "select '1' as ordtype, '7' as timeinforce where ordtype = 'A'"
-            },
-            {
-              "doc": "OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)",
-              "plan": "select '2' as ordtype, '7' as timeinforce where ordtype = 'B'"
-            },
-            {
-              "doc": "OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)",
-              "plan": "select '1' as ordtype, '4' as product where ordtype = 'C'"
-            },
-            {
-              "doc": "OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)",
-              "plan": "select '2' as ordtype, '4' as product where ordtype = 'F'"
-            },
-            {
-              "doc": "OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'D' as ordtype, '4' as product where ordtype = 'H'"
-            }
-          ],
           "FIX:tag": "40",
           "description": "Order type.",
           "display": "OrdType"
@@ -155986,11 +155903,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "plan": "select relatdsym as symbol"
-            }
-          ],
           "FIX:tag": "46",
           "display": "RelatdSym"
         },
@@ -156094,100 +156006,6 @@
             {
               "name": "ShortExemptTransactionNonMember",
               "value": "Z"
-            }
-          ],
-          "FIX:replacements": [
-            {
-              "doc": "Rule80A A is OrderCapacity A (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity where rule80a = 'A'"
-            },
-            {
-              "doc": "Rule80A B is OrderCapacity A (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity where rule80a = 'B'"
-            },
-            {
-              "doc": "Rule80A C is OrderCapacity P with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'C'"
-            },
-            {
-              "doc": "Rule80A D is OrderCapacity P with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'D'"
-            },
-            {
-              "doc": "Rule80A E is OrderCapacity P (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity where rule80a = 'E'"
-            },
-            {
-              "doc": "Rule80A F is OrderCapacity W (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'W' as ordercapacity where rule80a = 'F'"
-            },
-            {
-              "doc": "Rule80A H is OrderCapacity I (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'I' as ordercapacity where rule80a = 'H'"
-            },
-            {
-              "doc": "Rule80A I is OrderCapacity I (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'I' as ordercapacity where rule80a = 'I'"
-            },
-            {
-              "doc": "Rule80A J is OrderCapacity I with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'I' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'J'"
-            },
-            {
-              "doc": "Rule80A K is OrderCapacity I with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'I' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'K'"
-            },
-            {
-              "doc": "Rule80A L is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity, '4' as orderrestrictions where rule80a = 'L'"
-            },
-            {
-              "doc": "Rule80A M is OrderCapacity W with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'W' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'M'"
-            },
-            {
-              "doc": "Rule80A N is OrderCapacity W with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'W' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'N'"
-            },
-            {
-              "doc": "Rule80A O is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity, '4' as orderrestrictions where rule80a = 'O'"
-            },
-            {
-              "doc": "Rule80A P is OrderCapacity P (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity where rule80a = 'P'"
-            },
-            {
-              "doc": "Rule80A R is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity, '4' as orderrestrictions where rule80a = 'R'"
-            },
-            {
-              "doc": "Rule80A S is OrderCapacity P with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity, '5' as orderrestrictions where rule80a = 'S'"
-            },
-            {
-              "doc": "Rule80A T is OrderCapacity W with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'W' as ordercapacity, '5' as orderrestrictions where rule80a = 'T'"
-            },
-            {
-              "doc": "Rule80A U is OrderCapacity A with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'U'"
-            },
-            {
-              "doc": "Rule80A W is OrderCapacity W (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'W' as ordercapacity where rule80a = 'W'"
-            },
-            {
-              "doc": "Rule80A X is OrderCapacity W with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'W' as ordercapacity, '4' as orderrestrictions where rule80a = 'X'"
-            },
-            {
-              "doc": "Rule80A Y is OrderCapacity A with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'Y'"
-            },
-            {
-              "doc": "Rule80A Z is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity, '4' as orderrestrictions where rule80a = 'Z'"
             }
           ],
           "FIX:tag": "47",
@@ -156635,12 +156453,6 @@
           "FIX:names": [
             "settlmnttyp"
           ],
-          "FIX:replacements": [
-            {
-              "doc": "SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)",
-              "plan": "select '2' as settltype where settltype = 'A'"
-            }
-          ],
           "FIX:tag": "63",
           "description": "Indicates order settlement period. If present, SettlDate (64) overrides this field. If both SettlType (63) and SettDate (64) are omitted, the default for SettlType (63) is 0 (Regular)",
           "display": "SettlType"
@@ -156792,16 +156604,6 @@
               "value": "5"
             }
           ],
-          "FIX:replacements": [
-            {
-              "doc": "A New allocation is AllocType Calculated (FIX 4.3 Appendix 6-F)",
-              "plan": "select '1' as alloctype where :msgtype = 'J' and alloctranstype = '0'"
-            },
-            {
-              "doc": "A Preliminary allocation is a New one of AllocType Preliminary (FIX 4.3 Appendix 6-F)",
-              "plan": "select '0' as alloctranstype, '2' as alloctype where :msgtype = 'J' and alloctranstype = '3'"
-            }
-          ],
           "FIX:tag": "71",
           "description": "Identifies allocation transaction type *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" ***",
           "display": "AllocTransType"
@@ -156866,12 +156668,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "ExecBroker is a party with PartyRole ExecutingFirm (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: execbroker, partyrole: '1'}] as parties"
-            }
-          ],
           "FIX:tag": "76",
           "display": "ExecBroker"
         },
@@ -157376,12 +157172,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "BrokerOfCredit is a party with PartyRole BrokerOfCredit (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: brokerofcredit, partyrole: '2'}] as parties"
-            }
-          ],
           "FIX:tag": "92",
           "display": "BrokerOfCredit"
         },
@@ -158066,12 +157856,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: clientid, partyrole: '3'}] as parties"
-            }
-          ],
           "FIX:tag": "109",
           "display": "ClientID"
         },
@@ -158100,11 +157884,6 @@
         },
         "metadata": {
           "FIX:deprecated": "5.0",
-          "FIX:replacements": [
-            {
-              "plan": "select maxfloor as displayqty"
-            }
-          ],
           "FIX:tag": "111",
           "description": "The quantity to be displayed . Required for reserve orders. On orders specifies the qty to be displayed, on execution reports the currently displayed quantity.",
           "display": "MaxFloor"
@@ -158236,11 +158015,6 @@
         },
         "metadata": {
           "FIX:derivation": "try_cast(grosstradeamt as decimal128(38,9)) * try_cast(settlcurrfxrate as decimal128(38,9))",
-          "FIX:replacements": [
-            {
-              "plan": "select settlcurramt as allocsettlcurramt where :group = 'allocgrp'"
-            }
-          ],
           "FIX:tag": "119",
           "description": "Total amount due expressed in settlement currency (includes the effect of the forex transaction)",
           "display": "SettlCurrAmt"
@@ -158254,11 +158028,6 @@
         },
         "metadata": {
           "FIX:derivation": "currency",
-          "FIX:replacements": [
-            {
-              "plan": "select settlcurrency as allocsettlcurrency where :group = 'allocgrp'"
-            }
-          ],
           "FIX:tag": "120",
           "description": "Currency code of settlement denomination.",
           "display": "SettlCurrency"
@@ -159057,16 +158826,6 @@
               "value": "2"
             }
           ],
-          "FIX:replacements": [
-            {
-              "doc": "ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'F' as exectype where exectype = '1'"
-            },
-            {
-              "doc": "ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'F' as exectype where exectype = '2'"
-            }
-          ],
           "FIX:tag": "150",
           "description": "Describes the specific ExecutionRpt (e.g. Pending Cancel) while OrdStatus(39) will always identify the current order status (e.g. Partially Filled).",
           "display": "ExecType"
@@ -159381,36 +159140,6 @@
             {
               "name": "ParticipantTrustCompany",
               "value": "PTC"
-            }
-          ],
-          "FIX:replacements": [
-            {
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'CED'"
-            },
-            {
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'DTC'"
-            },
-            {
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'EUR'"
-            },
-            {
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'FED'"
-            },
-            {
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PNY'"
-            },
-            {
-              "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PTC'"
-            },
-            {
-              "doc": "SettlLocation is a SettlementLocation party identified by ISO country code (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: settllocation, partyidsource: 'E', partyrole: '10'}] as parties"
             }
           ],
           "FIX:tag": "166",
@@ -160568,16 +160297,6 @@
             }
           ],
           "FIX:derivation": "case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end",
-          "FIX:replacements": [
-            {
-              "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'TNOTE' as securitytype where securitytype = 'UST'"
-            },
-            {
-              "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'TBILL' as securitytype where securitytype = 'USTB'"
-            }
-          ],
           "FIX:tag": "167",
           "description": "Indicates type of security. Security type enumerations are grouped by Product(460) field value. NOTE: Additional values may be used by mutual agreement of the counterparties.",
           "display": "SecurityType"
@@ -161018,11 +160737,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "plan": "select secondaryorderid as massactionreportid where :msgtype = 'r'"
-            }
-          ],
           "FIX:tag": "198",
           "description": "Assigned by the party which accepts the order. Can be used to provide the OrderID (37) used by an exchange or executing system.",
           "display": "SecondaryOrderID"
@@ -161144,16 +160858,6 @@
               "value": "1"
             }
           ],
-          "FIX:replacements": [
-            {
-              "doc": "CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'A' as ordercapacity where customerorfirm = '0'"
-            },
-            {
-              "doc": "CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)",
-              "plan": "select 'P' as ordercapacity where customerorfirm = '1'"
-            }
-          ],
           "FIX:tag": "204",
           "display": "CustomerOrFirm"
         },
@@ -161165,12 +160869,6 @@
           "type": "int8"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)",
-              "plan": "select concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2)) as maturitydate"
-            }
-          ],
           "FIX:tag": "205",
           "display": "MaturityDay"
         },
@@ -161273,11 +160971,6 @@
         },
         "metadata": {
           "FIX:deprecated": "5.0",
-          "FIX:replacements": [
-            {
-              "plan": "select maxshow as secondarydisplayqty"
-            }
-          ],
           "FIX:tag": "210",
           "description": "Maximum quantity (e.g. number of shares) within an order to be shown to other customers (i.e. sent via an IOI).",
           "display": "MaxShow"
@@ -161462,44 +161155,6 @@
             {
               "name": "SixMolibor",
               "value": "9"
-            }
-          ],
-          "FIX:replacements": [
-            {
-              "doc": "Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, 'INTERPOLATED' as benchmarkcurvepoint where benchmark = '1'"
-            },
-            {
-              "doc": "Benchmark 5YR is the USD Treasury 5Y point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y' as benchmarkcurvepoint where benchmark = '2'"
-            },
-            {
-              "doc": "Benchmark OLD5 is the USD Treasury 5Y-OLD point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y-OLD' as benchmarkcurvepoint where benchmark = '3'"
-            },
-            {
-              "doc": "Benchmark 10YR is the USD Treasury 10Y point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y' as benchmarkcurvepoint where benchmark = '4'"
-            },
-            {
-              "doc": "Benchmark OLD10 is the USD Treasury 10Y-OLD point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y-OLD' as benchmarkcurvepoint where benchmark = '5'"
-            },
-            {
-              "doc": "Benchmark 30YR is the USD Treasury 30Y point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y' as benchmarkcurvepoint where benchmark = '6'"
-            },
-            {
-              "doc": "Benchmark OLD30 is the USD Treasury 30Y-OLD point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y-OLD' as benchmarkcurvepoint where benchmark = '7'"
-            },
-            {
-              "doc": "Benchmark 3MOLIBOR is the USD LIBOR 3M point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '3M' as benchmarkcurvepoint where benchmark = '8'"
-            },
-            {
-              "doc": "Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '6M' as benchmarkcurvepoint where benchmark = '9'"
             }
           ],
           "FIX:tag": "219",
@@ -161878,16 +161533,6 @@
         },
         "metadata": {
           "FIX:deprecated": "4.4",
-          "FIX:replacements": [
-            {
-              "doc": "A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)",
-              "plan": "select '1' as terminationtype where repurchaseterm = '1'"
-            },
-            {
-              "doc": "A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)",
-              "plan": "select '2' as terminationtype"
-            }
-          ],
           "FIX:tag": "226",
           "description": "Number of business days before repurchase of a repo. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
           "display": "RepurchaseTerm"
@@ -161901,11 +161546,6 @@
         },
         "metadata": {
           "FIX:deprecated": "4.4",
-          "FIX:replacements": [
-            {
-              "plan": "select repurchaserate as price"
-            }
-          ],
           "FIX:tag": "227",
           "description": "Percent of par at which a Repo will be repaid. Represented as a percent, e.g. .9525 represents 95-/4 percent of par. (Note tag # was reserved in FIX 4.1, added in FIX 4.3)",
           "display": "RepurchaseRate"
@@ -162782,11 +162422,6 @@
         },
         "metadata": {
           "FIX:deprecated": "4.4",
-          "FIX:replacements": [
-            {
-              "plan": "select repocollateralsecuritytype as underlyingsecuritytype"
-            }
-          ],
           "FIX:tag": "239",
           "description": "Identifies the collateral used in the transaction.",
           "display": "RepoCollateralSecurityType"
@@ -162801,11 +162436,6 @@
         },
         "metadata": {
           "FIX:deprecated": "4.4",
-          "FIX:replacements": [
-            {
-              "plan": "select redemptiondate as yieldredemptiondate"
-            }
-          ],
           "FIX:tag": "240",
           "description": "Return of investor's principal in a security. Bond redemption can occur before maturity date.(Note tag # was reserved in FIX 4.1, added in FIX 4.3) (prior to FIX 4.4 field was of type UTCDate)",
           "display": "RedemptionDate"
@@ -166625,16 +166255,6 @@
               "value": "TDR"
             }
           ],
-          "FIX:replacements": [
-            {
-              "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'TNOTE' as underlyingsecuritytype where underlyingsecuritytype = 'UST'"
-            },
-            {
-              "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'TBILL' as underlyingsecuritytype where underlyingsecuritytype = 'USTB'"
-            }
-          ],
           "FIX:tag": "310",
           "description": "Underlying security's SecurityType.",
           "display": "UnderlyingSecurityType"
@@ -166699,12 +166319,6 @@
           "type": "int8"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "UnderlyingMaturityDay completes UnderlyingMaturityMonthYear into UnderlyingMaturityDate (FIX 4.3 Appendix 6-F)",
-              "plan": "select concat(underlyingmaturitymonthyear, substring(concat('0', cast(underlyingmaturityday as utf8)), -2)) as underlyingmaturitydate"
-            }
-          ],
           "FIX:tag": "314",
           "display": "UnderlyingMaturityDay"
         },
@@ -168071,12 +167685,6 @@
           "unit": "nanosecond"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "OnBehalfOfSendingTime is a hop stamped by OnBehalfOfCompID (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{hopsendingtime: onbehalfofsendingtime, hopcompid: onbehalfofcompid}] as hopgrp"
-            }
-          ],
           "FIX:tag": "370",
           "display": "OnBehalfOfSendingTime"
         },
@@ -170700,12 +170308,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyid: clearingfirm, partyrole: '4'}] as parties"
-            }
-          ],
           "FIX:tag": "439",
           "display": "ClearingFirm"
         },
@@ -170717,12 +170319,6 @@
           "type": "string"
         },
         "metadata": {
-          "FIX:replacements": [
-            {
-              "doc": "ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)",
-              "plan": "select [{partyrole: '4', ptyssubgrp: [{partysubid: clearingaccount}]}] as parties"
-            }
-          ],
           "FIX:tag": "440",
           "display": "ClearingAccount"
         },
@@ -172399,24 +171995,6 @@
             {
               "name": "Par",
               "value": "8"
-            }
-          ],
-          "FIX:replacements": [
-            {
-              "doc": "QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)",
-              "plan": "select '1' as qtytype where quantitytype = '6'"
-            },
-            {
-              "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)",
-              "plan": "select '0' as qtytype where quantitytype = '1'"
-            },
-            {
-              "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)",
-              "plan": "select '0' as qtytype where quantitytype = '5'"
-            },
-            {
-              "doc": "QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)",
-              "plan": "select '0' as qtytype where quantitytype = '8'"
             }
           ],
           "FIX:tag": "465",
@@ -175363,11 +174941,6 @@
         },
         "metadata": {
           "FIX:deprecated": "4.4",
-          "FIX:replacements": [
-            {
-              "plan": "select totalaccruedinterestamt as accruedinterestamt"
-            }
-          ],
           "FIX:tag": "540",
           "description": "Total Amount of Accrued Interest for convertible bonds and fixed income",
           "display": "TotalAccruedInterestAmt"
@@ -176344,12 +175917,6 @@
             }
           ],
           "FIX:deprecated": "5.0",
-          "FIX:replacements": [
-            {
-              "doc": "An OddLot is LotType OddLot (FIX 5.0 Appendix 6-E)",
-              "plan": "select '1' as lottype where oddlot = 'Y'"
-            }
-          ],
           "FIX:tag": "575",
           "description": "This trade is to be treated as an odd lot",
           "display": "OddLot"
@@ -178598,16 +178165,6 @@
               "group": "Money Market",
               "name": "TermDepositReceipt",
               "value": "TDR"
-            }
-          ],
-          "FIX:replacements": [
-            {
-              "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'TNOTE' as legsecuritytype where legsecuritytype = 'UST'"
-            },
-            {
-              "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)",
-              "plan": "select 'TBILL' as legsecuritytype where legsecuritytype = 'USTB'"
             }
           ],
           "FIX:tag": "609",
@@ -180965,14 +180522,6 @@
         },
         "metadata": {
           "FIX:deprecated": "5.0.1",
-          "FIX:replacements": [
-            {
-              "plan": "select legqty as legorderqty where :msgtype in ('R', 'AJ', 'AG', 'S', 'AI', 'AB', '8')"
-            },
-            {
-              "plan": "select legqty as leglastqty where :msgtype in ('AE', 'AR')"
-            }
-          ],
           "FIX:tag": "687",
           "description": "This field is deprecated and has been replaced by LegOrderQty(685). This field will likely be removed from the FIX standard in a future version.",
           "display": "LegQty"
@@ -190319,16 +189868,6 @@
             }
           ],
           "FIX:deprecated": "5.0",
-          "FIX:replacements": [
-            {
-              "doc": "PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)",
-              "plan": "select '1' as tradepublishindicator where publishtrdindicator = 'Y'"
-            },
-            {
-              "doc": "PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)",
-              "plan": "select '0' as tradepublishindicator where publishtrdindicator = 'N'"
-            }
-          ],
           "FIX:tag": "852",
           "description": "Indicates if a trade should be reported via a market reporting service.",
           "display": "PublishTrdIndicator"
@@ -379125,7 +378664,7 @@
         "metadata": {
           "FIX:tag": "65026",
           "FIX:transient": "false",
-          "description": "The object this message's line was read from.",
+          "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
           "display": "SourceUrl"
         },
         "name": "sourceurl",
@@ -393474,13 +393013,6 @@
         "x": "Specifies the direction of the message."
       },
       {
-        "c": "sourceurl",
-        "t": 65026,
-        "n": "SourceUrl",
-        "y": "url",
-        "x": "The object this message's line was read from."
-      },
-      {
         "c": "msgpluginid",
         "t": 65009,
         "n": "MsgPluginId",
@@ -394150,7 +393682,6 @@
               },
               "metadata": {
                 "FIX:codes": "[{\"value\":\"1\",\"name\":\"Market\",\"doc\":\"Market\"},{\"value\":\"2\",\"name\":\"Limit\",\"doc\":\"Limit\"},{\"value\":\"3\",\"name\":\"Stop\",\"doc\":\"Stop/Stop Loss.\"},{\"value\":\"4\",\"name\":\"StopLimit\",\"doc\":\"Stop Limit.\"},{\"value\":\"5\",\"name\":\"MarketOnClose\",\"doc\":\"Market On Close (No longer used)\"},{\"value\":\"6\",\"name\":\"WithOrWithout\",\"doc\":\"With Or Without\"},{\"value\":\"7\",\"name\":\"LimitOrBetter\",\"doc\":\"Limit Or Better\"},{\"value\":\"8\",\"name\":\"LimitWithOrWithout\",\"doc\":\"Limit With Or Without\"},{\"value\":\"9\",\"name\":\"OnBasis\",\"doc\":\"On Basis\"},{\"value\":\"A\",\"name\":\"OnClose\",\"doc\":\"On Close (No longer used)\"},{\"value\":\"B\",\"name\":\"LimitOnClose\",\"doc\":\"Limit On Close (No longer used)\"},{\"value\":\"C\",\"name\":\"ForexMarket\",\"doc\":\"Forex Market (No longer used)\"},{\"value\":\"D\",\"name\":\"PreviouslyQuoted\",\"doc\":\"Previously Quoted\"},{\"value\":\"E\",\"name\":\"PreviouslyIndicated\",\"doc\":\"Previously Indicated\"},{\"value\":\"F\",\"name\":\"ForexLimit\",\"doc\":\"Forex Limit (No longer used)\"},{\"value\":\"G\",\"name\":\"ForexSwap\",\"doc\":\"Forex Swap\"},{\"value\":\"H\",\"name\":\"ForexPreviouslyQuoted\",\"doc\":\"Forex Previously Quoted (No longer used)\"},{\"value\":\"I\",\"name\":\"Funari\",\"doc\":\"Funari (Limit day order with unexecuted portion handles as Market On Close. E.g. Japan)\"},{\"value\":\"J\",\"name\":\"MarketIfTouched\",\"doc\":\"Market If Touched (MIT)\"},{\"value\":\"K\",\"name\":\"MarketWithLeftOverAsLimit\",\"doc\":\"Market With Left Over as Limit\"},{\"value\":\"L\",\"name\":\"PreviousFundValuationPoint\",\"doc\":\"Previous Fund Valuation Point (Historic pricing; for CIV)\"},{\"value\":\"M\",\"name\":\"NextFundValuationPoint\",\"doc\":\"Next Fund Valuation Point (Forward pricing; for CIV)\"},{\"value\":\"P\",\"name\":\"Pegged\",\"doc\":\"Pegged\"},{\"value\":\"Q\",\"name\":\"CounterOrderSelection\",\"doc\":\"Counter-order selection\"},{\"value\":\"R\",\"name\":\"StopOnBidOrOffer\",\"doc\":\"Stop on Bid or Offer\"},{\"value\":\"S\",\"name\":\"StopLimitOnBidOrOffer\",\"doc\":\"Stop Limit on Bid or Offer\"},{\"value\":\"T\",\"name\":\"MarketWithinPriceBand\",\"doc\":\"Market within price band\"}]",
-                "FIX:replacements": "[{\"plan\":\"select '1' as ordtype, '7' as timeinforce where ordtype = '5'\",\"doc\":\"OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as ordtype, '7' as timeinforce where ordtype = 'A'\",\"doc\":\"OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '2' as ordtype, '7' as timeinforce where ordtype = 'B'\",\"doc\":\"OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as ordtype, '4' as product where ordtype = 'C'\",\"doc\":\"OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '2' as ordtype, '4' as product where ordtype = 'F'\",\"doc\":\"OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select 'D' as ordtype, '4' as product where ordtype = 'H'\",\"doc\":\"OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)\"}]",
                 "FIX:tag": "40",
                 "description": "Order type.",
                 "display": "OrdType"
@@ -394401,7 +393932,6 @@
               },
               "metadata": {
                 "FIX:codes": "[{\"value\":\"0\",\"name\":\"New\",\"doc\":\"New\"},{\"value\":\"3\",\"name\":\"DoneForDay\",\"doc\":\"Done for day\"},{\"value\":\"4\",\"name\":\"Canceled\",\"doc\":\"Canceled\"},{\"value\":\"5\",\"name\":\"Replaced\",\"doc\":\"Replaced\"},{\"value\":\"6\",\"name\":\"PendingCancel\",\"doc\":\"Pending Cancel (e.g. result of Order Cancel Request)\"},{\"value\":\"7\",\"name\":\"Stopped\",\"doc\":\"Stopped\"},{\"value\":\"8\",\"name\":\"Rejected\",\"doc\":\"Rejected\"},{\"value\":\"9\",\"name\":\"Suspended\",\"doc\":\"Suspended\"},{\"value\":\"A\",\"name\":\"PendingNew\",\"doc\":\"Pending New\"},{\"value\":\"B\",\"name\":\"Calculated\",\"doc\":\"Calculated\"},{\"value\":\"C\",\"name\":\"Expired\",\"doc\":\"Expired\"},{\"value\":\"D\",\"name\":\"Restated\",\"doc\":\"Restated (Execution Report sent unsolicited by sellside, with ExecRestatementReason (378) set)\"},{\"value\":\"E\",\"name\":\"PendingReplace\",\"doc\":\"Pending Replace (e.g. result of Order Cancel/Replace Request)\"},{\"value\":\"F\",\"name\":\"Trade\",\"doc\":\"Trade (partial fill or fill)\"},{\"value\":\"G\",\"name\":\"TradeCorrect\",\"doc\":\"Trade Correct\"},{\"value\":\"H\",\"name\":\"TradeCancel\",\"doc\":\"Trade Cancel\"},{\"value\":\"I\",\"name\":\"OrderStatus\",\"doc\":\"Order Status\"},{\"value\":\"J\",\"name\":\"TradeInAClearingHold\",\"doc\":\"Trade in a Clearing Hold\"},{\"value\":\"K\",\"name\":\"TradeHasBeenReleasedToClearing\",\"doc\":\"Trade has been released to Clearing\"},{\"value\":\"L\",\"name\":\"TriggeredOrActivatedBySystem\",\"doc\":\"Triggered or Activated by System\"},{\"value\":\"M\",\"name\":\"Locked\",\"doc\":\"Locked\"},{\"value\":\"N\",\"name\":\"Released\",\"doc\":\"Released\"},{\"value\":\"1\",\"name\":\"PartiallyFilled\"},{\"value\":\"2\",\"name\":\"Filled\"}]",
-                "FIX:replacements": "[{\"plan\":\"select 'F' as exectype where exectype = '1'\",\"doc\":\"ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)\"},{\"plan\":\"select 'F' as exectype where exectype = '2'\",\"doc\":\"ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)\"}]",
                 "FIX:tag": "150",
                 "description": "Describes the specific ExecutionRpt (e.g. Pending Cancel) while OrdStatus(39) will always identify the current order status (e.g. Partially Filled).",
                 "display": "ExecType"
@@ -395578,7 +395108,6 @@
                         },
                         "metadata": {
                           "FIX:codes": "[{\"value\":\"1\",\"name\":\"Market\",\"doc\":\"Market\"},{\"value\":\"2\",\"name\":\"Limit\",\"doc\":\"Limit\"},{\"value\":\"3\",\"name\":\"Stop\",\"doc\":\"Stop/Stop Loss.\"},{\"value\":\"4\",\"name\":\"StopLimit\",\"doc\":\"Stop Limit.\"},{\"value\":\"5\",\"name\":\"MarketOnClose\",\"doc\":\"Market On Close (No longer used)\"},{\"value\":\"6\",\"name\":\"WithOrWithout\",\"doc\":\"With Or Without\"},{\"value\":\"7\",\"name\":\"LimitOrBetter\",\"doc\":\"Limit Or Better\"},{\"value\":\"8\",\"name\":\"LimitWithOrWithout\",\"doc\":\"Limit With Or Without\"},{\"value\":\"9\",\"name\":\"OnBasis\",\"doc\":\"On Basis\"},{\"value\":\"A\",\"name\":\"OnClose\",\"doc\":\"On Close (No longer used)\"},{\"value\":\"B\",\"name\":\"LimitOnClose\",\"doc\":\"Limit On Close (No longer used)\"},{\"value\":\"C\",\"name\":\"ForexMarket\",\"doc\":\"Forex Market (No longer used)\"},{\"value\":\"D\",\"name\":\"PreviouslyQuoted\",\"doc\":\"Previously Quoted\"},{\"value\":\"E\",\"name\":\"PreviouslyIndicated\",\"doc\":\"Previously Indicated\"},{\"value\":\"F\",\"name\":\"ForexLimit\",\"doc\":\"Forex Limit (No longer used)\"},{\"value\":\"G\",\"name\":\"ForexSwap\",\"doc\":\"Forex Swap\"},{\"value\":\"H\",\"name\":\"ForexPreviouslyQuoted\",\"doc\":\"Forex Previously Quoted (No longer used)\"},{\"value\":\"I\",\"name\":\"Funari\",\"doc\":\"Funari (Limit day order with unexecuted portion handles as Market On Close. E.g. Japan)\"},{\"value\":\"J\",\"name\":\"MarketIfTouched\",\"doc\":\"Market If Touched (MIT)\"},{\"value\":\"K\",\"name\":\"MarketWithLeftOverAsLimit\",\"doc\":\"Market With Left Over as Limit\"},{\"value\":\"L\",\"name\":\"PreviousFundValuationPoint\",\"doc\":\"Previous Fund Valuation Point (Historic pricing; for CIV)\"},{\"value\":\"M\",\"name\":\"NextFundValuationPoint\",\"doc\":\"Next Fund Valuation Point (Forward pricing; for CIV)\"},{\"value\":\"P\",\"name\":\"Pegged\",\"doc\":\"Pegged\"},{\"value\":\"Q\",\"name\":\"CounterOrderSelection\",\"doc\":\"Counter-order selection\"},{\"value\":\"R\",\"name\":\"StopOnBidOrOffer\",\"doc\":\"Stop on Bid or Offer\"},{\"value\":\"S\",\"name\":\"StopLimitOnBidOrOffer\",\"doc\":\"Stop Limit on Bid or Offer\"},{\"value\":\"T\",\"name\":\"MarketWithinPriceBand\",\"doc\":\"Market within price band\"}]",
-                          "FIX:replacements": "[{\"plan\":\"select '1' as ordtype, '7' as timeinforce where ordtype = '5'\",\"doc\":\"OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as ordtype, '7' as timeinforce where ordtype = 'A'\",\"doc\":\"OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '2' as ordtype, '7' as timeinforce where ordtype = 'B'\",\"doc\":\"OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as ordtype, '4' as product where ordtype = 'C'\",\"doc\":\"OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '2' as ordtype, '4' as product where ordtype = 'F'\",\"doc\":\"OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select 'D' as ordtype, '4' as product where ordtype = 'H'\",\"doc\":\"OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)\"}]",
                           "FIX:tag": "40",
                           "description": "Order type.",
                           "display": "OrdType"
@@ -395619,7 +395148,6 @@
                         },
                         "metadata": {
                           "FIX:derivation": "currency",
-                          "FIX:replacements": "[{\"plan\":\"select settlcurrency as allocsettlcurrency where :group = 'allocgrp'\"}]",
                           "FIX:tag": "120",
                           "description": "Currency code of settlement denomination.",
                           "display": "SettlCurrency"
@@ -396283,7 +395811,6 @@
                         },
                         "metadata": {
                           "FIX:codes": "[{\"value\":\"0\",\"name\":\"StayOnOfferSide\",\"doc\":\"Stay on offer side\"},{\"value\":\"1\",\"name\":\"NotHeld\",\"doc\":\"Not held\"},{\"value\":\"2\",\"name\":\"Work\",\"doc\":\"Work\"},{\"value\":\"3\",\"name\":\"GoAlong\",\"doc\":\"Go along\"},{\"value\":\"4\",\"name\":\"OverTheDay\",\"doc\":\"Over the day\"},{\"value\":\"5\",\"name\":\"Held\",\"doc\":\"Held\"},{\"value\":\"6\",\"name\":\"ParticipateDoNotInitiate\",\"doc\":\"Participate don't initiate\"},{\"value\":\"7\",\"name\":\"StrictScale\",\"doc\":\"Strict scale\"},{\"value\":\"8\",\"name\":\"TryToScale\",\"doc\":\"Try to scale\"},{\"value\":\"9\",\"name\":\"StayOnBidSide\",\"doc\":\"Stay on bid side\"},{\"value\":\"A\",\"name\":\"NoCross\",\"doc\":\"No cross\"},{\"value\":\"B\",\"name\":\"OKToCross\",\"doc\":\"OK to cross\"},{\"value\":\"C\",\"name\":\"CallFirst\",\"doc\":\"Call first\"},{\"value\":\"D\",\"name\":\"PercentOfVolume\",\"doc\":\"Percent of volume\"},{\"value\":\"E\",\"name\":\"DoNotIncrease\",\"doc\":\"Do not increase - DNI\"},{\"value\":\"F\",\"name\":\"DoNotReduce\",\"doc\":\"Do not reduce - DNR\"},{\"value\":\"G\",\"name\":\"AllOrNone\",\"doc\":\"All or none - AON\"},{\"value\":\"H\",\"name\":\"ReinstateOnSystemFailure\",\"doc\":\"Reinstate on system failure\"},{\"value\":\"I\",\"name\":\"InstitutionsOnly\",\"doc\":\"Institutions only\"},{\"value\":\"J\",\"name\":\"ReinstateOnTradingHalt\",\"doc\":\"Reinstate on trading halt\"},{\"value\":\"K\",\"name\":\"CancelOnTradingHalt\",\"doc\":\"Cancel on trading halt\"},{\"value\":\"L\",\"name\":\"LastPeg\",\"doc\":\"Last peg (last sale)\"},{\"value\":\"M\",\"name\":\"MidPricePeg\",\"doc\":\"Mid-price peg (midprice of inside quote)\"},{\"value\":\"N\",\"name\":\"NonNegotiable\",\"doc\":\"Non-negotiable\"},{\"value\":\"O\",\"name\":\"OpeningPeg\",\"doc\":\"Opening peg\"},{\"value\":\"P\",\"name\":\"MarketPeg\",\"doc\":\"Market peg\"},{\"value\":\"Q\",\"name\":\"CancelOnSystemFailure\",\"doc\":\"Cancel on system failure\"},{\"value\":\"R\",\"name\":\"PrimaryPeg\",\"doc\":\"Primary peg\"},{\"value\":\"S\",\"name\":\"Suspend\",\"doc\":\"Suspend\"},{\"value\":\"T\",\"name\":\"FixedPegToLocalBestBidOrOfferAtTimeOfOrder\",\"doc\":\"Fixed peg to local best bid or offer at time of order\"},{\"value\":\"U\",\"name\":\"CustomerDisplayInstruction\",\"doc\":\"Customer display instruction\"},{\"value\":\"V\",\"name\":\"Netting\",\"doc\":\"Netting (for Forex)\"},{\"value\":\"W\",\"name\":\"PegToVWAP\",\"doc\":\"Peg to VWAP\"},{\"value\":\"X\",\"name\":\"TradeAlong\",\"doc\":\"Trade along\"},{\"value\":\"Y\",\"name\":\"TryToStop\",\"doc\":\"Try to stop\"},{\"value\":\"Z\",\"name\":\"CancelIfNotBest\",\"doc\":\"Cancel if not best\"},{\"value\":\"a\",\"name\":\"TrailingStopPeg\",\"doc\":\"Trailing stop peg\"},{\"value\":\"b\",\"name\":\"StrictLimit\",\"doc\":\"Strict limit\"},{\"value\":\"c\",\"name\":\"IgnorePriceValidityChecks\",\"doc\":\"Ignore price validity checks\"},{\"value\":\"d\",\"name\":\"PegToLimitPrice\",\"doc\":\"Peg to limit price\"},{\"value\":\"e\",\"name\":\"WorkToTargetStrategy\",\"doc\":\"Work to target strategy\"},{\"value\":\"f\",\"name\":\"IntermarketSweep\",\"doc\":\"Intermarket sweep\"},{\"value\":\"g\",\"name\":\"ExternalRoutingAllowed\",\"doc\":\"External routing allowed\"},{\"value\":\"h\",\"name\":\"ExternalRoutingNotAllowed\",\"doc\":\"External routing not allowed\"},{\"value\":\"i\",\"name\":\"ImbalanceOnly\",\"doc\":\"Imbalance only\"},{\"value\":\"j\",\"name\":\"SingleExecutionRequestedForBlockTrade\",\"doc\":\"Single execution requested for block trade\"},{\"value\":\"k\",\"name\":\"BestExecution\",\"doc\":\"Best execution\"},{\"value\":\"l\",\"name\":\"SuspendOnSystemFailure\",\"doc\":\"Suspend on system failure\"},{\"value\":\"m\",\"name\":\"SuspendOnTradingHalt\",\"doc\":\"Suspend on trading halt\"},{\"value\":\"n\",\"name\":\"ReinstateOnConnectionLoss\",\"doc\":\"Reinstate on connection loss\"},{\"value\":\"o\",\"name\":\"CancelOnConnectionLoss\",\"doc\":\"Cancel on connection loss\"},{\"value\":\"p\",\"name\":\"SuspendOnConnectionLoss\",\"doc\":\"Suspend on connection loss\"},{\"value\":\"q\",\"name\":\"Release\",\"aliases\":[\"ReleaseFromSuspension\"],\"doc\":\"Release\"},{\"value\":\"r\",\"name\":\"ExecuteAsDeltaNeutral\",\"doc\":\"Execute as delta neutral using volatility provided\"},{\"value\":\"s\",\"name\":\"ExecuteAsDurationNeutral\",\"doc\":\"Execute as duration neutral\"},{\"value\":\"t\",\"name\":\"ExecuteAsFXNeutral\",\"doc\":\"Execute as FX neutral\"},{\"value\":\"u\",\"name\":\"MinGuaranteedFillEligible\",\"doc\":\"Minimum guaranteed fill eligible\"},{\"value\":\"v\",\"name\":\"BypassNonDisplayLiquidity\",\"doc\":\"Bypass non-displayed liquidity\"},{\"value\":\"w\",\"name\":\"Lock\",\"doc\":\"Lock\"},{\"value\":\"x\",\"name\":\"IgnoreNotionalValueChecks\",\"doc\":\"Ignore notional value checks\"},{\"value\":\"y\",\"name\":\"TrdAtRefPx\",\"doc\":\"Trade at reference price\"},{\"value\":\"z\",\"name\":\"AllowFacilitation\",\"doc\":\"Allow facilitation\"}]",
-                          "FIX:replacements": "[{\"plan\":\"select '1' as pegmovetype, '1' as pegscope, 'R' as execinst where contains(execinst, 'T')\",\"doc\":\"ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as pegpricetype where contains(execinst, 'L')\",\"doc\":\"ExecInst L is PegPriceType 1 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '2' as pegpricetype where contains(execinst, 'M')\",\"doc\":\"ExecInst M is PegPriceType 2 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '3' as pegpricetype where contains(execinst, 'O')\",\"doc\":\"ExecInst O is PegPriceType 3 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '4' as pegpricetype where contains(execinst, 'P')\",\"doc\":\"ExecInst P is PegPriceType 4 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '5' as pegpricetype where contains(execinst, 'R')\",\"doc\":\"ExecInst R is PegPriceType 5 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '7' as pegpricetype where contains(execinst, 'W')\",\"doc\":\"ExecInst W is PegPriceType 7 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '8' as pegpricetype where contains(execinst, 'a')\",\"doc\":\"ExecInst a is PegPriceType 8 (FIX 5.0 Appendix 6-E)\"},{\"plan\":\"select '9' as pegpricetype where contains(execinst, 'd')\",\"doc\":\"ExecInst d is PegPriceType 9 (FIX 5.0 Appendix 6-E)\"}]",
                           "FIX:tag": "18",
                           "description": "Instructions for order handling on exchange trading floor. If more than one instruction is applicable to an order, this field can contain multiple instructions separated by space. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
                           "display": "ExecInst"
@@ -396308,7 +395835,6 @@
                           "type": "string"
                         },
                         "metadata": {
-                          "FIX:replacements": "[{\"plan\":\"select orderid as massactionreportid where :msgtype = 'r'\"}]",
                           "FIX:tag": "37",
                           "description": "Unique identifier for Order as assigned by sell-side (broker, exchange, ECN). Uniqueness must be guaranteed within a single trading day. Firms which accept multi-day orders should consider embedding a date within the OrderID field to assure uniqueness across days.",
                           "display": "OrderID"
@@ -396321,7 +395847,6 @@
                           "type": "string"
                         },
                         "metadata": {
-                          "FIX:replacements": "[{\"plan\":\"select secondaryorderid as massactionreportid where :msgtype = 'r'\"}]",
                           "FIX:tag": "198",
                           "description": "Assigned by the party which accepts the order. Can be used to provide the OrderID (37) used by an exchange or executing system.",
                           "display": "SecondaryOrderID"
@@ -397307,7 +396832,6 @@
                         "metadata": {
                           "FIX:codes": "[{\"value\":\"0\",\"name\":\"Regular\",\"doc\":\"Regular / FX Spot settlement (T+1 or T+2 depending on currency)\"},{\"value\":\"1\",\"name\":\"Cash\",\"doc\":\"Cash (TOD / T+0)\"},{\"value\":\"2\",\"name\":\"NextDay\",\"doc\":\"Next Day (TOM / T+1)\"},{\"value\":\"3\",\"name\":\"TPlus2\",\"doc\":\"T+2\"},{\"value\":\"4\",\"name\":\"TPlus3\",\"doc\":\"T+3\"},{\"value\":\"5\",\"name\":\"TPlus4\",\"doc\":\"T+4\"},{\"value\":\"6\",\"name\":\"Future\",\"doc\":\"Future\"},{\"value\":\"7\",\"name\":\"WhenAndIfIssued\",\"doc\":\"When And If Issued\"},{\"value\":\"8\",\"name\":\"SellersOption\",\"doc\":\"Sellers Option\"},{\"value\":\"9\",\"name\":\"TPlus5\",\"doc\":\"T+5\"},{\"value\":\"B\",\"name\":\"BrokenDate\",\"doc\":\"Broken date\"},{\"value\":\"C\",\"name\":\"FXSpotNextSettlement\",\"doc\":\"FX Spot Next settlement (Spot+1, aka next day)\"},{\"value\":\"A\",\"name\":\"T1\"}]",
                           "FIX:names": "[\"settlmnttyp\"]",
-                          "FIX:replacements": "[{\"plan\":\"select '2' as settltype where settltype = 'A'\",\"doc\":\"SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)\"}]",
                           "FIX:tag": "63",
                           "description": "Indicates order settlement period. If present, SettlDate (64) overrides this field. If both SettlType (63) and SettDate (64) are omitted, the default for SettlType (63) is 0 (Regular)",
                           "display": "SettlType"
@@ -399099,7 +398623,6 @@
               },
               "metadata": {
                 "FIX:codes": "[{\"value\":\"1\",\"name\":\"Market\",\"doc\":\"Market\"},{\"value\":\"2\",\"name\":\"Limit\",\"doc\":\"Limit\"},{\"value\":\"3\",\"name\":\"Stop\",\"doc\":\"Stop/Stop Loss.\"},{\"value\":\"4\",\"name\":\"StopLimit\",\"doc\":\"Stop Limit.\"},{\"value\":\"5\",\"name\":\"MarketOnClose\",\"doc\":\"Market On Close (No longer used)\"},{\"value\":\"6\",\"name\":\"WithOrWithout\",\"doc\":\"With Or Without\"},{\"value\":\"7\",\"name\":\"LimitOrBetter\",\"doc\":\"Limit Or Better\"},{\"value\":\"8\",\"name\":\"LimitWithOrWithout\",\"doc\":\"Limit With Or Without\"},{\"value\":\"9\",\"name\":\"OnBasis\",\"doc\":\"On Basis\"},{\"value\":\"A\",\"name\":\"OnClose\",\"doc\":\"On Close (No longer used)\"},{\"value\":\"B\",\"name\":\"LimitOnClose\",\"doc\":\"Limit On Close (No longer used)\"},{\"value\":\"C\",\"name\":\"ForexMarket\",\"doc\":\"Forex Market (No longer used)\"},{\"value\":\"D\",\"name\":\"PreviouslyQuoted\",\"doc\":\"Previously Quoted\"},{\"value\":\"E\",\"name\":\"PreviouslyIndicated\",\"doc\":\"Previously Indicated\"},{\"value\":\"F\",\"name\":\"ForexLimit\",\"doc\":\"Forex Limit (No longer used)\"},{\"value\":\"G\",\"name\":\"ForexSwap\",\"doc\":\"Forex Swap\"},{\"value\":\"H\",\"name\":\"ForexPreviouslyQuoted\",\"doc\":\"Forex Previously Quoted (No longer used)\"},{\"value\":\"I\",\"name\":\"Funari\",\"doc\":\"Funari (Limit day order with unexecuted portion handles as Market On Close. E.g. Japan)\"},{\"value\":\"J\",\"name\":\"MarketIfTouched\",\"doc\":\"Market If Touched (MIT)\"},{\"value\":\"K\",\"name\":\"MarketWithLeftOverAsLimit\",\"doc\":\"Market With Left Over as Limit\"},{\"value\":\"L\",\"name\":\"PreviousFundValuationPoint\",\"doc\":\"Previous Fund Valuation Point (Historic pricing; for CIV)\"},{\"value\":\"M\",\"name\":\"NextFundValuationPoint\",\"doc\":\"Next Fund Valuation Point (Forward pricing; for CIV)\"},{\"value\":\"P\",\"name\":\"Pegged\",\"doc\":\"Pegged\"},{\"value\":\"Q\",\"name\":\"CounterOrderSelection\",\"doc\":\"Counter-order selection\"},{\"value\":\"R\",\"name\":\"StopOnBidOrOffer\",\"doc\":\"Stop on Bid or Offer\"},{\"value\":\"S\",\"name\":\"StopLimitOnBidOrOffer\",\"doc\":\"Stop Limit on Bid or Offer\"},{\"value\":\"T\",\"name\":\"MarketWithinPriceBand\",\"doc\":\"Market within price band\"}]",
-                "FIX:replacements": "[{\"plan\":\"select '1' as ordtype, '7' as timeinforce where ordtype = '5'\",\"doc\":\"OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as ordtype, '7' as timeinforce where ordtype = 'A'\",\"doc\":\"OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '2' as ordtype, '7' as timeinforce where ordtype = 'B'\",\"doc\":\"OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '1' as ordtype, '4' as product where ordtype = 'C'\",\"doc\":\"OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select '2' as ordtype, '4' as product where ordtype = 'F'\",\"doc\":\"OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select 'D' as ordtype, '4' as product where ordtype = 'H'\",\"doc\":\"OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)\"}]",
                 "FIX:tag": "40",
                 "description": "Order type.",
                 "display": "OrdType"
@@ -399413,7 +398936,6 @@
               },
               "metadata": {
                 "FIX:derivation": "currency",
-                "FIX:replacements": "[{\"plan\":\"select settlcurrency as allocsettlcurrency where :group = 'allocgrp'\"}]",
                 "FIX:tag": "120",
                 "description": "Currency code of settlement denomination.",
                 "display": "SettlCurrency"
@@ -399743,7 +399265,6 @@
               "metadata": {
                 "FIX:codes": "[{\"value\":\"ABS\",\"name\":\"AssetBackedSecurities\",\"group\":\"Mortgage\",\"doc\":\"Asset-backed Securities\"},{\"value\":\"AN\",\"name\":\"OtherAnticipationNotes\",\"group\":\"Municipal\",\"doc\":\"Other Anticipation Notes (BAN, GAN, etc.)\"},{\"value\":\"BA\",\"name\":\"BankersAcceptance\",\"group\":\"Money Market\",\"doc\":\"Bankers Acceptance\"},{\"value\":\"BRADY\",\"name\":\"BradyBond\",\"group\":\"Government\",\"doc\":\"Brady Bond\"},{\"value\":\"CORP\",\"name\":\"CorporateBond\",\"group\":\"Corporate\",\"doc\":\"Corporate Bond\"},{\"value\":\"CS\",\"name\":\"CommonStock\",\"group\":\"Equity\",\"doc\":\"Common Stock\"},{\"value\":\"EUSUPRA\",\"name\":\"EuroSupranationalCoupons\",\"group\":\"Agency\",\"doc\":\"Euro Supranational Coupons\"},{\"value\":\"FOR\",\"name\":\"ForeignExchangeContract\",\"group\":\"Currency\",\"doc\":\"Foreign Exchange Contract\"},{\"value\":\"MF\",\"name\":\"MutualFund\",\"group\":\"Other\",\"doc\":\"Mutual Fund\"},{\"value\":\"REPO\",\"name\":\"Repurchase\",\"group\":\"Financing\",\"doc\":\"Repurchase\"},{\"value\":\"TERM\",\"name\":\"TermLoan\",\"group\":\"Loan\",\"doc\":\"Term Loan\"},{\"value\":\"BDN\",\"name\":\"BankDepositoryNote\",\"group\":\"Money Market\",\"doc\":\"Bank Depository Note\"},{\"value\":\"CAN\",\"name\":\"CanadianTreasuryNotes\",\"group\":\"Government\",\"doc\":\"Canadian Treasury Notes\"},{\"value\":\"CAP\",\"name\":\"Cap\",\"group\":\"Derivatives\",\"doc\":\"Cap\"},{\"value\":\"CMB\",\"name\":\"CanadianMortgageBonds\",\"group\":\"Mortgage\",\"doc\":\"Canadian Mortgage Bonds\"},{\"value\":\"COFO\",\"name\":\"CertificateOfObligation\",\"group\":\"Municipal\",\"doc\":\"Certificate Of Obligation\"},{\"value\":\"CPP\",\"name\":\"CorporatePrivatePlacement\",\"group\":\"Corporate\",\"doc\":\"Corporate Private Placement\"},{\"value\":\"FAC\",\"name\":\"FederalAgencyCoupon\",\"group\":\"Agency\",\"doc\":\"Federal Agency Coupon\"},{\"value\":\"FORWARD\",\"name\":\"Forward\",\"group\":\"Financing\",\"doc\":\"Forward\"},{\"value\":\"FXNDF\",\"name\":\"NonDeliverableForward\",\"group\":\"Currency\",\"doc\":\"Non-deliverable forward\"},{\"value\":\"MLEG\",\"name\":\"MultilegInstrument\",\"group\":\"Other\",\"doc\":\"Multileg Instrument\"},{\"value\":\"PS\",\"name\":\"PreferredStock\",\"group\":\"Equity\",\"doc\":\"Preferred Stock\"},{\"value\":\"RVLV\",\"name\":\"RevolverLoan\",\"group\":\"Loan\",\"doc\":\"Revolver Loan\"},{\"value\":\"BN\",\"name\":\"BankNotes\",\"group\":\"Money Market\",\"doc\":\"Bank Notes\"},{\"value\":\"BUYSELL\",\"name\":\"BuySellback\",\"group\":\"Financing\",\"doc\":\"Buy Sellback\"},{\"value\":\"CB\",\"name\":\"ConvertibleBond\",\"group\":\"Corporate\",\"doc\":\"Convertible Bond\"},{\"value\":\"CDS\",\"name\":\"CreditDefaultSwap\",\"group\":\"Derivatives\",\"doc\":\"Credit Default Swap\"},{\"value\":\"CMBS\",\"name\":\"Corp\",\"group\":\"Mortgage\",\"doc\":\"Corp. Mortgage-backed Securities\"},{\"value\":\"COFP\",\"name\":\"CertificateOfParticipation\",\"group\":\"Municipal\",\"doc\":\"Certificate Of Participation\"},{\"value\":\"CTB\",\"name\":\"CanadianTreasuryBills\",\"group\":\"Government\",\"doc\":\"Canadian Treasury Bills\"},{\"value\":\"DR\",\"name\":\"DepositoryReceipts\",\"group\":\"Equity\",\"doc\":\"Depository Receipts\"},{\"value\":\"FADN\",\"name\":\"FederalAgencyDiscountNote\",\"group\":\"Agency\",\"doc\":\"Federal Agency Discount Note\"},{\"value\":\"FXSPOT\",\"name\":\"FXSpot\",\"group\":\"Currency\",\"doc\":\"FX Spot\"},{\"value\":\"NONE\",\"name\":\"NoSecurityType\",\"group\":\"Other\",\"doc\":\"No Security Type\"},{\"value\":\"RVLVTRM\",\"name\":\"Revolver\",\"group\":\"Loan\",\"doc\":\"Revolver/Term Loan\"},{\"value\":\"BOX\",\"name\":\"BillOfExchanges\",\"group\":\"Money Market\",\"doc\":\"Bill Of Exchanges\"},{\"value\":\"BRIDGE\",\"name\":\"BridgeLoan\",\"group\":\"Loan\",\"doc\":\"Bridge Loan\"},{\"value\":\"CLLR\",\"name\":\"Collar\",\"group\":\"Derivatives\",\"doc\":\"Collar\"},{\"value\":\"CMO\",\"name\":\"CollateralizedMortgageObligation\",\"group\":\"Mortgage\",\"doc\":\"Collateralized Mortgage Obligation\"},{\"value\":\"DUAL\",\"name\":\"DualCurrency\",\"group\":\"Corporate\",\"doc\":\"Dual Currency\"},{\"value\":\"EUSOV\",\"name\":\"EuroSovereigns\",\"group\":\"Government\",\"doc\":\"Euro Sovereigns\"},{\"value\":\"FXFWD\",\"name\":\"FXForward\",\"group\":\"Currency\",\"doc\":\"FX Forward\"},{\"value\":\"GO\",\"name\":\"GeneralObligationBonds\",\"group\":\"Municipal\",\"doc\":\"General Obligation Bonds\"},{\"value\":\"PEF\",\"name\":\"PrivateExportFunding\",\"group\":\"Agency\",\"doc\":\"Private Export Funding\"},{\"value\":\"SECLOAN\",\"name\":\"SecuritiesLoan\",\"group\":\"Financing\",\"doc\":\"Securities Loan\"},{\"value\":\"UST\",\"name\":\"USTreasuryNoteOld\",\"doc\":\"US Treasury Note (Deprecated Value Use TNOTE)\"},{\"value\":\"CAMM\",\"name\":\"CanadianMoneyMarkets\",\"group\":\"Money Market\",\"doc\":\"Canadian Money Markets\"},{\"value\":\"CMDTYSWAP\",\"name\":\"CommoditySwap\",\"group\":\"Derivatives\",\"doc\":\"Commodity swap\"},{\"value\":\"EUCORP\",\"name\":\"EuroCorporateBond\",\"group\":\"Corporate\",\"doc\":\"Euro Corporate Bond\"},{\"value\":\"FXSWAP\",\"name\":\"FXSwap\",\"group\":\"Currency\",\"doc\":\"FX Swap\"},{\"value\":\"IET\",\"name\":\"IOETTEMortgage\",\"group\":\"Mortgage\",\"doc\":\"IOETTE Mortgage\"},{\"value\":\"LOFC\",\"name\":\"LetterOfCredit\",\"group\":\"Loan\",\"doc\":\"Letter Of Credit\"},{\"value\":\"MT\",\"name\":\"MandatoryTender\",\"group\":\"Municipal\",\"doc\":\"Mandatory Tender\"},{\"value\":\"PROV\",\"name\":\"CanadianProvincialBonds\",\"group\":\"Government\",\"doc\":\"Canadian Provincial Bonds\"},{\"value\":\"SECPLEDGE\",\"name\":\"SecuritiesPledge\",\"group\":\"Financing\",\"doc\":\"Securities Pledge\"},{\"value\":\"SUPRA\",\"name\":\"USDSupranationalCoupons\",\"group\":\"Agency\",\"doc\":\"USD Supranational Coupons\"},{\"value\":\"USTB\",\"name\":\"USTreasuryBillOld\",\"doc\":\"US Treasury Bill (Deprecated Value Use TBILL)\"},{\"value\":\"?\",\"name\":\"Wildcard\",\"group\":\"Other\",\"doc\":\"Wildcard entry for use on Security Definition Request\"},{\"value\":\"CD\",\"name\":\"CertificateOfDeposit\",\"group\":\"Money Market\",\"doc\":\"Certificate Of Deposit\"},{\"value\":\"DVPLDG\",\"name\":\"DeliveryVersusPledge\",\"group\":\"Financing\",\"doc\":\"Delivery versus pledge\"},{\"value\":\"EUFRN\",\"name\":\"EuroCorporateFloatingRateNotes\",\"group\":\"Corporate\",\"doc\":\"Euro Corporate Floating Rate Notes\"},{\"value\":\"EXOTIC\",\"name\":\"Exotic\",\"group\":\"Derivatives\",\"doc\":\"Exotic\"},{\"value\":\"FXNDS\",\"name\":\"NonDeliverableSwap\",\"group\":\"Currency\",\"doc\":\"Non-deliverable Swap\"},{\"value\":\"MBS\",\"name\":\"MortgageBackedSecurities\",\"group\":\"Mortgage\",\"doc\":\"Mortgage-backed Securities\"},{\"value\":\"RAN\",\"name\":\"RevenueAnticipationNote\",\"group\":\"Municipal\",\"doc\":\"Revenue Anticipation Note\"},{\"value\":\"SWING\",\"name\":\"SwingLineFacility\",\"group\":\"Loan\",\"doc\":\"Swing Line Facility\"},{\"value\":\"TB\",\"name\":\"TreasuryBill\",\"group\":\"Government\",\"doc\":\"Treasury Bill - non US\"},{\"value\":\"CASH\",\"name\":\"Cash\",\"group\":\"Other\",\"doc\":\"Cash\"},{\"value\":\"CL\",\"name\":\"CallLoans\",\"group\":\"Money Market\",\"doc\":\"Call Loans\"},{\"value\":\"COLLBSKT\",\"name\":\"CollateralBasket\",\"group\":\"Financing\",\"doc\":\"Collateral basket\"},{\"value\":\"DINP\",\"name\":\"DebtorInPossession\",\"group\":\"Loan\",\"doc\":\"Debtor In Possession\"},{\"value\":\"FLR\",\"name\":\"Floor\",\"group\":\"Derivatives\",\"doc\":\"Floor\"},{\"value\":\"FRN\",\"name\":\"USCorporateFloatingRateNotes\",\"group\":\"Corporate\",\"doc\":\"US Corporate Floating Rate Notes\"},{\"value\":\"FXBN\",\"name\":\"FXBankNote\",\"group\":\"Currency\",\"doc\":\"FX Bank Note\"},{\"value\":\"MIO\",\"name\":\"MortgageInterestOnly\",\"group\":\"Mortgage\",\"doc\":\"Mortgage Interest Only\"},{\"value\":\"OOC\",\"name\":\"OptionsOnCombo\",\"group\":\"Derivatives\",\"doc\":\"Options on Combo\"},{\"value\":\"REV\",\"name\":\"RevenueBonds\",\"group\":\"Municipal\",\"doc\":\"Revenue Bonds\"},{\"value\":\"TBOND\",\"name\":\"USTreasuryBond\",\"group\":\"Government\",\"doc\":\"US Treasury Bond\"},{\"value\":\"CP\",\"name\":\"CommercialPaper\",\"group\":\"Money Market\",\"doc\":\"Commercial Paper\"},{\"value\":\"DEFLTED\",\"name\":\"Defaulted\",\"group\":\"Loan\",\"doc\":\"Defaulted\"},{\"value\":\"FRA\",\"name\":\"FRA\",\"group\":\"Derivatives\",\"doc\":\"Forward Rate Agreement\"},{\"value\":\"FXDN\",\"name\":\"ForeignCurrencyDiscountNote\",\"group\":\"Currency\",\"doc\":\"Foreign Currency Discount Note\"},{\"value\":\"MPO\",\"name\":\"MortgagePrincipalOnly\",\"group\":\"Mortgage\",\"doc\":\"Mortgage Principal Only\"},{\"value\":\"Other\",\"name\":\"Other\",\"group\":\"Other\",\"doc\":\"Other\"},{\"value\":\"SFP\",\"name\":\"StructuredFinanceProduct\",\"group\":\"Financing\",\"doc\":\"Structured finance product\"},{\"value\":\"SPCLA\",\"name\":\"SpecialAssessment\",\"group\":\"Municipal\",\"doc\":\"Special Assessment\"},{\"value\":\"TINT\",\"name\":\"InterestStripFromAnyBondOrNote\",\"group\":\"Government\",\"doc\":\"Interest Strip From Any Bond Or Note\"},{\"value\":\"XLINKD\",\"name\":\"IndexedLinked\",\"group\":\"Corporate\",\"doc\":\"Indexed Linked\"},{\"value\":\"DN\",\"name\":\"DepositNotes\",\"group\":\"Money Market\",\"doc\":\"Deposit Notes\"},{\"value\":\"ETN\",\"name\":\"ExchangeTradedNote\",\"group\":\"Other\",\"doc\":\"Exchange traded note\"},{\"value\":\"FUT\",\"name\":\"Future\",\"group\":\"Derivatives\",\"doc\":\"Future\"},{\"value\":\"MPP\",\"name\":\"MortgagePrivatePlacement\",\"group\":\"Mortgage\",\"doc\":\"Mortgage Private Placement\"},{\"value\":\"SPCLO\",\"name\":\"SpecialObligation\",\"group\":\"Municipal\",\"doc\":\"Special Obligation\"},{\"value\":\"STRUCT\",\"name\":\"StructuredNotes\",\"group\":\"Corporate\",\"doc\":\"Structured Notes\"},{\"value\":\"TBILL\",\"name\":\"USTreasuryBill\",\"group\":\"Government\",\"doc\":\"US Treasury Bill\"},{\"value\":\"TIPS\",\"name\":\"TreasuryInflationProtectedSecurities\",\"group\":\"Government\",\"doc\":\"Treasury Inflation Protected Securities\"},{\"value\":\"WITHDRN\",\"name\":\"Withdrawn\",\"group\":\"Loan\",\"doc\":\"Withdrawn\"},{\"value\":\"EUCD\",\"name\":\"EuroCertificateOfDeposit\",\"group\":\"Money Market\",\"doc\":\"Euro Certificate Of Deposit\"},{\"value\":\"FWD\",\"name\":\"DerivativeForward\",\"group\":\"Derivatives\",\"doc\":\"Derivative forward\"},{\"value\":\"MPT\",\"name\":\"MiscellaneousPassThrough\",\"group\":\"Mortgage\",\"doc\":\"Miscellaneous Pass-through\"},{\"value\":\"MRGNLOAN\",\"name\":\"MarginLoan\",\"group\":\"Financing\",\"doc\":\"Margin loan\"},{\"value\":\"REPLACD\",\"name\":\"Replaced\",\"group\":\"Loan\",\"doc\":\"Replaced\"},{\"value\":\"SPCLT\",\"name\":\"SpecialTax\",\"group\":\"Municipal\",\"doc\":\"Special Tax\"},{\"value\":\"TCAL\",\"name\":\"PrincipalStripOfACallableBondOrNote\",\"group\":\"Government\",\"doc\":\"Principal Strip Of A Callable Bond Or Note\"},{\"value\":\"YANK\",\"name\":\"YankeeCorporateBond\",\"group\":\"Corporate\",\"doc\":\"Yankee Corporate Bond\"},{\"value\":\"DIMSUMCORP\",\"name\":\"OffshoreIssuedChineseYuanCorporateBond\",\"group\":\"Corporate\",\"doc\":\"Offshore issued Chinese Yuan (CNY) denominated corporate bond\"},{\"value\":\"EUCP\",\"name\":\"EuroCommercialPaper\",\"group\":\"Money Market\",\"doc\":\"Euro Commercial Paper\"},{\"value\":\"IRS\",\"name\":\"InterestRateSwap\",\"group\":\"Derivatives\",\"doc\":\"Interest Rate Swap\"},{\"value\":\"MATURED\",\"name\":\"Matured\",\"group\":\"Loan\",\"doc\":\"Matured\"},{\"value\":\"PFAND\",\"name\":\"Pfandbrief\",\"group\":\"Mortgage\",\"aliases\":[\"Pfandbriefe\"],\"doc\":\"Pfandbrief\"},{\"value\":\"SECDERIV\",\"name\":\"SecuritizedDerivative\",\"group\":\"Other\",\"doc\":\"Securitized derivative\"},{\"value\":\"TAN\",\"name\":\"TaxAnticipationNote\",\"group\":\"Municipal\",\"doc\":\"Tax Anticipation Note\"},{\"value\":\"TPRN\",\"name\":\"PrincipalStripFromANonCallableBondOrNote\",\"group\":\"Government\",\"doc\":\"Principal Strip From A Non-Callable Bond Or Note\"},{\"value\":\"TRS\",\"name\":\"TotalReturnSwap\",\"group\":\"Derivatives\",\"doc\":\"Total return swap\"},{\"value\":\"AMENDED\",\"name\":\"Amended\",\"group\":\"Loan\",\"doc\":\"Amended and restated\"},{\"value\":\"ETF\",\"name\":\"ExchangeTradedFund\",\"group\":\"Other\",\"doc\":\"Exchange Traded Fund\"},{\"value\":\"LOANLEASE\",\"name\":\"LoanLease\",\"group\":\"Derivatives\",\"doc\":\"Loan/lease\"},{\"value\":\"LQN\",\"name\":\"LiquidityNote\",\"group\":\"Money Market\",\"doc\":\"Liquidity Note\"},{\"value\":\"PRCORP\",\"name\":\"PreferredCorporateBond\",\"group\":\"Corporate\",\"doc\":\"Preferred Corporate Bond\"},{\"value\":\"TAXA\",\"name\":\"TaxAllocation\",\"group\":\"Municipal\",\"doc\":\"Tax Allocation\"},{\"value\":\"TBA\",\"name\":\"ToBeAnnounced\",\"group\":\"Mortgage\",\"doc\":\"To Be Announced\"},{\"value\":\"TNOTE\",\"name\":\"USTreasuryNote\",\"group\":\"Government\",\"doc\":\"US Treasury Note\"},{\"value\":\"DIGITAL\",\"name\":\"DigitalAsset\",\"group\":\"Other\",\"doc\":\"Digital Asset\"},{\"value\":\"DIMSUMSOV\",\"name\":\"OffshoreIssuedChineseYuanSovereignBond\",\"group\":\"Government\",\"doc\":\"Offshore issued Chinese Yuan (CNY) denominated sovereign bond\"},{\"value\":\"MTN\",\"name\":\"MediumTermNotes\",\"group\":\"Money Market\",\"doc\":\"Medium Term Notes\"},{\"value\":\"RETIRED\",\"name\":\"Retired\",\"group\":\"Loan\",\"doc\":\"Retired\"},{\"value\":\"TECP\",\"name\":\"TaxExemptCommercialPaper\",\"group\":\"Municipal\",\"doc\":\"Tax Exempt Commercial Paper\"},{\"value\":\"ONITE\",\"name\":\"Overnight\",\"group\":\"Money Market\",\"doc\":\"Overnight\"},{\"value\":\"OOF\",\"name\":\"OptionsOnFutures\",\"group\":\"Derivatives\",\"doc\":\"Options on Futures\"},{\"value\":\"SOV\",\"name\":\"SovereignBond\",\"group\":\"Government\",\"doc\":\"Sovereign Bond\"},{\"value\":\"TMCP\",\"name\":\"TaxableMunicipalCP\",\"group\":\"Municipal\",\"doc\":\"Taxable Municipal CP\"},{\"value\":\"OOP\",\"name\":\"OptionsOnPhysical\",\"group\":\"Derivatives\",\"doc\":\"Options on Physical - use not recommended\"},{\"value\":\"PN\",\"name\":\"PromissoryNote\",\"group\":\"Money Market\",\"doc\":\"Promissory Note\"},{\"value\":\"STN\",\"name\":\"ShortTermLoanNote\",\"group\":\"Money Market\",\"doc\":\"Short Term Loan Note\"},{\"value\":\"TFRN\",\"name\":\"USTreasuryFloatingRateNote\",\"group\":\"Government\",\"doc\":\"US Treasury Floating Rate Note\"},{\"value\":\"TRAN\",\"name\":\"TaxRevenueAnticipationNote\",\"group\":\"Municipal\",\"doc\":\"Tax Revenue Anticipation Note\"},{\"value\":\"OPT\",\"name\":\"Option\",\"group\":\"Derivatives\",\"doc\":\"Option\"},{\"value\":\"PZFJ\",\"name\":\"PlazosFijos\",\"group\":\"Money Market\",\"doc\":\"Plazos Fijos\"},{\"value\":\"VRDN\",\"name\":\"VariableRateDemandNote\",\"group\":\"Municipal\",\"doc\":\"Variable Rate Demand Note\"},{\"value\":\"SLQN\",\"name\":\"SecuredLiquidityNote\",\"group\":\"Money Market\",\"doc\":\"Secured Liquidity Note\"},{\"value\":\"SPOTFWD\",\"name\":\"SpotForward\",\"group\":\"Derivatives\",\"doc\":\"Spot forward\"},{\"value\":\"WAR\",\"name\":\"Warrant\",\"group\":\"Municipal\",\"doc\":\"Warrant\"},{\"value\":\"MCPIB\",\"name\":\"MunicipalInterestBearingCommercialPaper\",\"group\":\"Municipal\",\"doc\":\"Municipal Interest Bearing Commercial Paper\"},{\"value\":\"SWAPTION\",\"name\":\"SwapOption\",\"group\":\"Derivatives\",\"doc\":\"Swap option\"},{\"value\":\"TD\",\"name\":\"TimeDeposit\",\"group\":\"Money Market\",\"doc\":\"Time Deposit\"},{\"value\":\"TMB\",\"name\":\"TaxableMunicipalBond\",\"group\":\"Municipal\",\"doc\":\"Taxable Municipal Bond\"},{\"value\":\"XMISSION\",\"name\":\"Transmission\",\"group\":\"Derivatives\",\"doc\":\"Transmission\"},{\"value\":\"INDEX\",\"name\":\"Index\",\"group\":\"Derivatives\",\"doc\":\"General type for a contract based on an established index\"},{\"value\":\"TLQN\",\"name\":\"TermLiquidityNote\",\"group\":\"Money Market\",\"doc\":\"Term Liquidity Note\"},{\"value\":\"VRDO\",\"name\":\"VariableRateDemandObligation\",\"group\":\"Municipal\",\"doc\":\"Variable Rate Demand Obligation\"},{\"value\":\"BDBSKT\",\"name\":\"BondBasket\",\"group\":\"Derivatives\",\"doc\":\"Bond basket\"},{\"value\":\"XCN\",\"name\":\"ExtendedCommNote\",\"group\":\"Money Market\",\"doc\":\"Extended Comm Note\"},{\"value\":\"CFD\",\"name\":\"ContractForDifference\",\"group\":\"Derivatives\",\"doc\":\"Contract for difference\"},{\"value\":\"YCD\",\"name\":\"YankeeCertificateOfDeposit\",\"group\":\"Money Market\",\"doc\":\"Yankee Certificate Of Deposit\"},{\"value\":\"BAB\",\"name\":\"BankAcceptedBill\",\"group\":\"Money Market\",\"doc\":\"Bank Accepted Bill\"},{\"value\":\"CRLTNSWAP\",\"name\":\"CorrelationSwap\",\"group\":\"Derivatives\",\"doc\":\"Correlation swap\"},{\"value\":\"BNST\",\"name\":\"ShortTermBankNote\",\"group\":\"Money Market\",\"doc\":\"Short Term Bank Note\"},{\"value\":\"DVDNDSWAP\",\"name\":\"DiviendSwap\",\"group\":\"Derivatives\",\"doc\":\"Dividend swap\"},{\"value\":\"CLCP\",\"name\":\"CallableCommercialPaper\",\"group\":\"Money Market\",\"doc\":\"Callable Commercial Paper\"},{\"value\":\"EQBSKT\",\"name\":\"EquityBasket\",\"group\":\"Derivatives\",\"doc\":\"Equity basket\"},{\"value\":\"CN\",\"name\":\"CommercialNote\",\"group\":\"Money Market\",\"doc\":\"Commercial Note\"},{\"value\":\"EQFWD\",\"name\":\"EquityForward\",\"group\":\"Derivatives\",\"doc\":\"Equity forward\"},{\"value\":\"CPIB\",\"name\":\"InterestBearingCommercialPaper\",\"group\":\"Money Market\",\"doc\":\"Interest Bearing Commercial Paper\"},{\"value\":\"RTRNSWAP\",\"name\":\"ReturnSwap\",\"group\":\"Derivatives\",\"doc\":\"Return swap\"},{\"value\":\"EUMTN\",\"name\":\"EuroMediumTermNote\",\"group\":\"Money Market\",\"doc\":\"Euro Medium Term Note\"},{\"value\":\"VARSWAP\",\"name\":\"VarianceSwap\",\"group\":\"Derivatives\",\"doc\":\"Variance swap\"},{\"value\":\"EUNCP\",\"name\":\"EuroNegotiableCommercialPaper\",\"group\":\"Money Market\",\"doc\":\"Euro Negotiable Commercial Paper\"},{\"value\":\"PRTFLIOSWAP\",\"name\":\"PortfolioSwaps\",\"group\":\"Derivatives\",\"doc\":\"Portfolio swap\"},{\"value\":\"EUSTLQN\",\"name\":\"EuroStructuredLiquidityNote\",\"group\":\"Money Market\",\"doc\":\"Euro Structured Liquidity Note\"},{\"value\":\"FUTSWAP\",\"name\":\"FuturesOnASwap\",\"group\":\"Derivatives\",\"doc\":\"Futures on a Swap\"},{\"value\":\"EUTD\",\"name\":\"EuroTimeDeposit\",\"group\":\"Money Market\",\"doc\":\"Euro Time Deposit\"},{\"value\":\"FWDSWAP\",\"name\":\"ForwardsOnASwap\",\"group\":\"Derivatives\",\"doc\":\"Forwards on a Swap\"},{\"value\":\"FWDFRTAGMT\",\"name\":\"ForwardFreightAgreement\",\"group\":\"Derivatives\",\"doc\":\"Forward Freight Agreement\"},{\"value\":\"JCD\",\"name\":\"JumboCertificateOfDeposit\",\"group\":\"Money Market\",\"doc\":\"Jumbo Certificate of Deposit\"},{\"value\":\"MMF\",\"name\":\"MoneyMarketFund\",\"group\":\"Money Market\",\"doc\":\"Money Market Fund\"},{\"value\":\"SPREADBET\",\"name\":\"SpreadBetting\",\"group\":\"Derivatives\",\"doc\":\"Spread Betting\"},{\"value\":\"ETC\",\"name\":\"ExchangeTradedCommodity\",\"group\":\"Derivatives\",\"doc\":\"Exchange traded commodity\"},{\"value\":\"MN\",\"name\":\"MasterNote\",\"group\":\"Money Market\",\"doc\":\"Master Note\"},{\"value\":\"NCD\",\"name\":\"NegotiableCertificateOfDeposit\",\"group\":\"Money Market\",\"doc\":\"Negotiable Certificate of Deposit\"},{\"value\":\"NCP\",\"name\":\"NegotiableCommercialPaper\",\"group\":\"Money Market\",\"doc\":\"Negotiable Commercial Paper\"},{\"value\":\"RCD\",\"name\":\"RetailCertificateOfDeposit\",\"group\":\"Money Market\",\"doc\":\"Retail Certificate of Deposit\"},{\"value\":\"TDR\",\"name\":\"TermDepositReceipt\",\"group\":\"Money Market\",\"doc\":\"Term Deposit Receipt\"},{\"value\":\"FHA\",\"name\":\"FederalHousingAuthority\"},{\"value\":\"FHL\",\"name\":\"FederalHomeLoan\"},{\"value\":\"FN\",\"name\":\"FederalNationalMortgageAssociation\"},{\"value\":\"GN\",\"name\":\"GovernmentNationalMortgageAssociation\"},{\"value\":\"GOVT\",\"name\":\"TreasuriesAgencyDebenture\"},{\"value\":\"MUNI\",\"name\":\"MunicipalBond\"},{\"value\":\"POOL\",\"name\":\"AgencyPools\"},{\"value\":\"RP\",\"name\":\"RepurchaseAgreement\"},{\"value\":\"RVRP\",\"name\":\"ReverseRepurchaseAgreement\"},{\"value\":\"SL\",\"name\":\"StudentLoanMarketingAssociation\"},{\"value\":\"WLD\",\"name\":\"WildcardEntry\"},{\"value\":\"ZOO\",\"name\":\"CatsTigersAndLions\"}]",
                 "FIX:derivation": "case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end",
-                "FIX:replacements": "[{\"plan\":\"select 'TNOTE' as securitytype where securitytype = 'UST'\",\"doc\":\"SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)\"},{\"plan\":\"select 'TBILL' as securitytype where securitytype = 'USTB'\",\"doc\":\"SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)\"}]",
                 "FIX:tag": "167",
                 "description": "Indicates type of security. Security type enumerations are grouped by Product(460) field value. NOTE: Additional values may be used by mutual agreement of the counterparties.",
                 "display": "SecurityType"
@@ -399796,7 +399317,6 @@
               },
               "metadata": {
                 "FIX:derivation": "currency",
-                "FIX:replacements": "[{\"plan\":\"select settlcurrency as allocsettlcurrency where :group = 'allocgrp'\"}]",
                 "FIX:tag": "120",
                 "description": "Currency code of settlement denomination.",
                 "display": "SettlCurrency"
@@ -400939,7 +400459,6 @@
                 "type": "string"
               },
               "metadata": {
-                "FIX:replacements": "[{\"plan\":\"select [{partyid: clientid, partyrole: '3'}] as parties\",\"doc\":\"ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)\"}]",
                 "FIX:tag": "109",
                 "display": "ClientID"
               },

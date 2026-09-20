@@ -374,6 +374,9 @@ impl PyTextLine {
     /// value a message read from it records is a range of that page. A `str`
     /// body is its UTF-8; bytes that are not UTF-8 are decoded here, as the
     /// core decodes every line it reads, and `decoded_byte_size` counts them.
+    /// A body that states nothing is a `ValueError`: a line is the line it
+    /// holds, which is what lets a read's `body` column hold no null and no
+    /// empty cell.
     #[new]
     #[pyo3(signature = (index, body, captures=None, options=None))]
     fn new(
