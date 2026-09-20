@@ -169,6 +169,7 @@ test('a bridge capture parses whole and walks its chains', () => {
   const registry = seed()
   const codec = reading(registry, {
     captureNames: ['timestamp', 'msgthreadid', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid', 'level'],
+    defaultSendingTime: SENDING,
   })
   const messages = captured(codec)
   // Every line that carries a message is one message, the JSON documents
@@ -195,25 +196,107 @@ test('a bridge capture parses whole and walks its chains', () => {
   assert.equal(parties.value, '8')
   assert.equal(parties.entries.length, 8)
 
-  // The walk states a predecessor for every message that has one.
+  // The finite capture drops exact deliveries before it walks the chains.
+  // The bridge repeated 25 execution reports, six rows without a FIX type,
+  // and two cancel rejects. The one additional output is the expiry of a
+  // live order at its stated deadline.
   const walked = [...codec.lifecycle(messages)]
-  assert.equal(walked.length, messages.length)
-  assert.equal(walked.filter((message) => message.prevuuid !== null).length, 34)
-  assert.equal(walked.filter((message) => message.seqnum > 0).length, 34)
+  const expired = walked.filter((message) => message.state === '95EXPIRED')
+  const retained = walked.filter((message) => message.state !== '95EXPIRED')
+  assert.equal(retained.length, 61)
+  assert.equal(expired.length, 1)
+  assert.equal(walked.length, 62)
+
+  const counts = (held) => {
+    const found = new Map()
+    for (const message of held) {
+      const type = message.header().msgtype
+      found.set(type, (found.get(type) ?? 0) + 1)
+    }
+    return found
+  }
+  const inputCounts = counts(messages)
+  const retainedCounts = counts(retained)
+  const removed = Object.fromEntries(
+    [...inputCounts].map(([type, count]) => [type, count - (retainedCounts.get(type) ?? 0)]).filter(([, count]) => count > 0),
+  )
+  assert.deepEqual(removed, { 8: 25, '': 6, cancelreject: 2 })
+
+  // The walk states a predecessor for every message that has one.
+  assert.equal(walked.filter((message) => message.prevuuid !== null).length, 22)
+  assert.equal(walked.filter((message) => message.seqnum > 0).length, 22)
   // A walked message descends from the whole chain before it, and every
-  // message read from a line states that line as its one source, walked or
-  // not: provenance never travels along the chain.
+  // retained source message keeps its own input line. The synthetic expiry
+  // keeps its predecessor's provenance and lands at the stated deadline.
   assert.ok(walked.every((message) => message.parentuuids.length === message.seqnum))
   assert.ok(messages.every((message) => message.srcuuids.length === 1))
-  const sources = (held) => held.map((message) => message.srcuuids.join()).sort()
-  assert.deepEqual(sources(walked), sources(messages))
+  const inputSources = new Set(messages.flatMap((message) => message.srcuuids))
+  assert.ok(retained.every((message) =>
+    message.srcuuids.length === 1 && inputSources.has(message.srcuuids[0])))
+  assert.equal(new Set(retained.flatMap((message) => message.srcuuids)).size, retained.length)
+
+  const [expiry] = expired
+  const predecessor = retained.find((message) => message.curruuid === expiry.prevuuid)
+  assert.ok(predecessor)
+  assert.equal(expiry.currunix, predecessor.event().exprtime)
+  assert.equal(expiry.seqnum, predecessor.seqnum + 1)
+  assert.deepEqual(expiry.srcuuids, predecessor.srcuuids)
 
   // And the Arrow twin answers the same walk over the same corpus.
   const schema = fix.schema(registry)
   const rows = codec.lifecycleArrowReader(codec.arrowReader(schema, messages))
   const chained = [...codec.messages(rows)]
-  assert.equal(chained.length, messages.length)
-  assert.equal(chained.filter((message) => message.prevuuid !== null).length, 34)
+  assert.equal(chained.length, walked.length)
+  assert.equal(chained.filter((message) => message.prevuuid !== null).length, 22)
+
+  // Row intake settles a new content UUID and restates its intake-only header
+  // SendingTime. The lifecycle event clock, facts and chain topology are the
+  // same on both doors.
+  const signature = (message) => {
+    const header = message.header()
+    const event = message.event()
+    return {
+      header: {
+        beginstring: header.beginstring,
+        msgtype: header.msgtype,
+        sendercompid: header.sendercompid,
+        targetcompid: header.targetcompid,
+        msgseqnum: header.msgseqnum,
+        possdupflag: header.possdupflag,
+        msgdirection: header.msgdirection,
+      },
+      capture: message.capture(),
+      metadata: message.metadata,
+      event: {
+        crossuuid: event.crossuuid,
+        crosscode: event.crosscode,
+        crosshashcode: event.crosshashcode,
+        identifiers: event.identifiers,
+        srcuuids: event.srcuuids,
+        currunix: event.currunix,
+        state: event.state,
+        seqnum: event.seqnum,
+        creaunix: event.creaunix,
+        exprtime: event.exprtime,
+        prevunix: event.prevunix,
+        snapunix: event.snapunix,
+      },
+    }
+  }
+  assert.deepEqual(chained.map(signature), walked.map(signature))
+  const topology = (held) => {
+    const indices = new Map(held.map((message, at) => [message.curruuid, at]))
+    const indexOf = (uuid) => {
+      const at = indices.get(uuid)
+      assert.notEqual(at, undefined, `${uuid} names a row in the finite walk`)
+      return at
+    }
+    return held.map((message) => ({
+      previous: message.prevuuid === null ? null : indexOf(message.prevuuid),
+      parents: message.parentuuids.map(indexOf),
+    }))
+  }
+  assert.deepEqual(topology(chained), topology(walked))
 })
 
 test('a transaction time stating only a day leaves the sending clock standing', () => {

@@ -662,6 +662,14 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect(tmp_path: pathlib.Path) 
     assert message.field.fix.branches == ["bloomberg"]
     assert registry.dialects() == ["bloomberg"]
 
+    codec = _fixed(registry)
+    stated = next(codec.parse_line(b"8=FIX.4.4|35=D|10001=DEALER-A|10=0|"))
+    assert stated.by_name("ExcludedDealers").as_py() == "DEALER-A"
+    assert stated.by_tag(10001).as_py() == "DEALER-A"
+    excluded = next(codec.parse_line(b"8=FIX.4.4|35=D|10001=NONE|10=0|"))
+    assert excluded.get_by_name("ExcludedDealers") is None
+    assert excluded.get_by_tag(10001) is None
+
     unstamped, _ = FixRegistry.from_cfb_file(path)
     assert unstamped.dialects() == []
 

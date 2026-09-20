@@ -1153,7 +1153,8 @@ fn a_mark_is_judged_where_a_row_is_split_and_nowhere_else() {
     let DataType::Sequence(SequenceType::List(item)) = party.dtype() else {
         panic!("a list");
     };
-    let marked = item.field("#nopartysubids").expect("the marked group");
+    // A mark belongs to the literal name, quoted in the shared selector grammar.
+    let marked = item.field("\"#nopartysubids\"").expect("the marked group");
     let DataType::Sequence(SequenceType::List(sub)) = marked.dtype() else {
         panic!("a list, got {}", marked.dtype());
     };

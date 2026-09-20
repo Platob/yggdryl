@@ -1927,10 +1927,13 @@ test('a CBlock read under a dialect stamps membership on everything it produced'
 
   // Membership is provenance: the codec reads the one namespace with no pin
   // and the venue's field resolves like any other.
-  const message = reading(registry).parseLine(Buffer.from('8=FIX.4.4|35=D|10001=NONE|10=0|')).next().value
-  assert.equal(message.byName('ExcludedDealers').asJs(), 'NONE')
-  assert.equal(message.byTag(10001).asJs(), 'NONE')
+  const message = reading(registry).parseLine(Buffer.from('8=FIX.4.4|35=D|10001=DEALER-A|10=0|')).next().value
+  assert.equal(message.byName('ExcludedDealers').asJs(), 'DEALER-A')
+  assert.equal(message.byTag(10001).asJs(), 'DEALER-A')
   assert.ok(flat(message).every(([tag]) => Number.isInteger(tag)))
+  const excluded = reading(registry).parseLine(Buffer.from('8=FIX.4.4|35=D|10001=NONE|10=0|')).next().value
+  assert.equal(excluded.getByName('ExcludedDealers'), null)
+  assert.equal(excluded.getByTag(10001), null)
 
   // With no dialect named nothing is stamped, and a name that is empty or
   // carries the separator is refused before anything is read.
