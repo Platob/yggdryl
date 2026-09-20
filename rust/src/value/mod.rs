@@ -299,14 +299,17 @@ pub trait NestedValue: Value {
 ///
 /// A column is many values of one field. The field is the authority the rest
 /// of the project already uses - it decides nullability, dictionary options
-/// and extension identity - and the rows were canonicalized by it once, so
-/// nothing here re-checks a row.
+/// and extension identity - and it types every row the column holds.
 ///
 /// The trait sits over [`NestedValue`] rather than beside it because a column
 /// *is* a value: it widens to `Scalar::Sequence(Sequence::Serie(..))`, its
-/// rows are its children, and [`NestedValue::len`] is the row count. What a
-/// column owes past that is the field it is typed by, the rows themselves,
-/// and the two directions of the [`Serie`](crate::Serie) root.
+/// rows are its children, and [`NestedValue::len`] is the row count.
+///
+/// The rows are held the way Arrow lays them out, so the two readings are not
+/// one: [`Self::as_slice`] borrows them only where they are already values
+/// and answers `None` otherwise, and [`Self::rows`] decodes the buffers once
+/// and reports a value the field's own contract refuses. [`Self::get`] and
+/// [`Self::is_null`] read one row without decoding the rest.
 ///
 /// ```
 /// use yggdryl::{DataType, Field, Scalar, Serie, SerieValue};
@@ -316,7 +319,9 @@ pub trait NestedValue: Value {
 /// let serie = Serie::from_rows(field, [Scalar::from(7_i64), Scalar::Null])?;
 ///
 /// assert_eq!(SerieValue::field(&serie).name(), "size");
-/// assert_eq!(SerieValue::as_slice(&serie).len(), 2);
+/// assert_eq!(SerieValue::rows(&serie)?.len(), 2);
+/// assert_eq!(SerieValue::get(&serie, 0)?, Scalar::from(7_i64));
+/// assert!(SerieValue::is_null(&serie, 1));
 /// assert_eq!(Serie::from_serie(&serie), Some(&serie));
 /// # Ok(())
 /// # }
@@ -325,13 +330,29 @@ pub trait SerieValue: NestedValue {
     /// Return the field every row of this column is typed by.
     fn field(&self) -> &Field;
 
-    /// Borrow the rows without allocating.
-    fn as_slice(&self) -> &[Scalar];
+    /// Borrow the rows where they are already values, without decoding.
+    ///
+    /// Answers `None` for a column still holding its buffers; [`Self::rows`]
+    /// is the door that decodes one.
+    fn as_slice(&self) -> Option<&[Scalar]>;
 
-    /// Borrow one row, or `None` past the end.
-    fn get(&self, index: usize) -> Option<&Scalar> {
-        self.as_slice().get(index)
-    }
+    /// Return every row as a value, decoding the buffers once.
+    ///
+    /// # Errors
+    ///
+    /// Returns the field's own refusal where the buffers hold a value it does
+    /// not accept.
+    fn rows(&self) -> Result<&[Scalar]>;
+
+    /// Return row `index`, or [`Scalar::Null`] past the end.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::rows`] carries the rule, for that one row.
+    fn get(&self, index: usize) -> Result<Scalar>;
+
+    /// Return whether row `index` holds no value.
+    fn is_null(&self, index: usize) -> bool;
 
     /// Widen this column to the dynamic serie root.
     fn into_serie(self) -> crate::Serie;

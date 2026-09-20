@@ -294,11 +294,18 @@ fn encode(value: &Scalar, chunk: &mut Vec<u8>, pending: &mut Vec<Frame>) {
             chunk.push(DataTypeId::Geography.as_u8());
             write_variable(chunk, held.as_bytes());
         }
-        Scalar::Sequence(held) => {
-            chunk.push(DataTypeId::List.as_u8());
-            write_size(chunk, held.as_slice().len());
-            pending.extend(held.as_slice().iter().rev().cloned().map(Frame::Value));
-        }
+        // A column encodes as the list it is, so the encoding stays one
+        // reading of one value model whichever leaf held the rows. Rows that
+        // cannot be read encode as null, which is what an Arrow payload that
+        // cannot be made native does above.
+        Scalar::Sequence(held) => match held.rows() {
+            Ok(rows) => {
+                chunk.push(DataTypeId::List.as_u8());
+                write_size(chunk, rows.len());
+                pending.extend(rows.iter().rev().cloned().map(Frame::Value));
+            }
+            Err(_) => chunk.push(DataTypeId::Null.as_u8()),
+        },
         Scalar::Mapping(held) => {
             chunk.push(DataTypeId::Map.as_u8());
             write_size(chunk, held.as_slice().len());

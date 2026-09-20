@@ -450,7 +450,11 @@ impl Serialize for Scalar {
             // A column carries the field that types it, which the values
             // alone cannot say, so it writes under its own tag.
             Self::Sequence(Sequence::Serie(serie)) => tagged(serializer, "serie", serie),
-            Self::Sequence(values) => tagged(serializer, "sequence", &values.as_slice()),
+            Self::Sequence(values) => tagged(
+                serializer,
+                "sequence",
+                &values.rows().map_err(serde::ser::Error::custom)?,
+            ),
             Self::Mapping(entries) => tagged(serializer, "mapping", &entries.as_slice()),
             Self::Struct(entries) => tagged(serializer, "struct", &entries.as_map()),
             // A stream is drained to be written, which is what serializing a
@@ -1494,10 +1498,15 @@ impl Scalar {
         self.as_bytes()
     }
 
-    /// Return sequence children without allocating.
+    /// Return sequence children as values.
+    ///
+    /// A schema-free run lends its values and allocates nothing. A column
+    /// holds Arrow buffers, so this decodes them once and caches the reading;
+    /// a value the column's field refuses answers `None`, and
+    /// [`Sequence::rows`](crate::Sequence::rows) is what reports why.
     pub fn as_sequence(&self) -> Option<&[Self]> {
         match self {
-            Self::Sequence(values) => Some(values.as_slice()),
+            Self::Sequence(values) => values.rows().ok(),
             _ => None,
         }
     }
@@ -1519,9 +1528,12 @@ impl Scalar {
     }
 
     /// Return the number of direct children or mapping entries.
+    ///
+    /// Constant for every shape: a column answers from its chunk offsets
+    /// rather than by decoding a row.
     pub fn len(&self) -> usize {
         match self {
-            Self::Sequence(values) => values.as_slice().len(),
+            Self::Sequence(values) => values.row_count(),
             Self::Mapping(entries) => entries.as_slice().len(),
             Self::Struct(entries) => entries.as_map().len(),
             _ => 0,
@@ -1602,7 +1614,7 @@ impl Scalar {
     /// needed.
     pub fn iter(&self) -> Children<'_> {
         match self {
-            Self::Sequence(values) => Children::Sequence(values.as_slice().iter()),
+            Self::Sequence(values) => crate::NestedValue::children(values),
             Self::Mapping(entries) => Children::Mapping(entries.as_slice().iter()),
             Self::Struct(entries) => Children::Struct(entries.as_map().values()),
             _ => Children::Sequence([].iter()),

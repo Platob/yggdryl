@@ -293,7 +293,12 @@ fn empty_collections_share_process_wide_backing() {
     let (Scalar::Sequence(left), Scalar::Sequence(right)) = (&left, &right) else {
         unreachable!();
     };
-    assert!(std::ptr::eq(left.as_slice(), right.as_slice()));
+    assert!(std::ptr::eq(
+        left.as_slice().expect("a schema-free run lends its values"),
+        right
+            .as_slice()
+            .expect("a schema-free run lends its values"),
+    ));
 
     let left = Scalar::from_mapping([]).unwrap();
     let right = Scalar::from_mapping([]).unwrap();

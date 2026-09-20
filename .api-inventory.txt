@@ -3341,44 +3341,58 @@ pub enum DataType
   pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self
   pub fn as_slice(&self) -> &[Scalar]
   pub fn into_inner(self) -> Arc<[Scalar]>
-  pub enum Sequence  (#[non_exhaustive]; List(List), Serie(Serie); the family's value payload, and what Scalar::Sequence holds. Ord reads the rows first and the leaf only breaks the tie; Hash is the leaf's own, never the discriminant, so a run's stable hash is what it always was. Serialize forwards to the leaf, Deserialize is untagged over the two wire shapes)
+  pub enum Sequence  (#[non_exhaustive]; List(List), Serie(Serie); the family's value payload, and what Scalar::Sequence holds. Ord reads the rows first and the leaf only breaks the tie; Hash is the leaf's own, never the discriminant, so a run's stable hash is what it always was and a column's costs no decode. Serialize forwards to the leaf, Deserialize is untagged over the two wire shapes)
   pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self  (the schema-free leaf)
-  pub fn as_slice(&self) -> &[Scalar]  (either leaf's rows)
+  pub fn as_slice(&self) -> Option<&[Scalar]>  (borrowed only where the leaf already holds values; None for a column still in its buffers)
+  pub fn rows(&self) -> Result<&[Scalar]>  (the reading; decodes a column's buffers once and reports a value its field refuses)
+  pub fn row_count(&self) -> usize  (constant for either leaf, never a decode)
+  pub fn is_empty(&self) -> bool
   pub const fn as_list(&self) -> Option<&List>
   pub const fn as_serie(&self) -> Option<&Serie>
-  pub fn into_inner(self) -> Arc<[Scalar]>
+  pub fn into_inner(self) -> Result<Arc<[Scalar]>>
 
 ### yggdryl::serie  [rust/src/serie.rs]  (one column: the rows of one field, the fourth side of the value model; registered in the sequence family, so it adds no DataTypeId, no DataType variant and no Field variant)
-  pub struct Column  (one Arc<Field> and one Arc<[Scalar]>; the family's one leaf, rows canonicalized once by the field and never re-checked)
+  pub struct Column  (the family's one leaf: one Field, the Arrow buffers holding its rows in runs, the rows pushed since the last freeze, and a OnceLock cache of the decoded reading. The whole body is behind one Arc, so a clone copies eight bytes and a mutation copies the body only where it is shared; the cache never reaches equality, ordering, hashing, serde or display, and every mutation clears it)
+  pub fn empty(field: Field) -> Self
   pub fn from_rows(field: Field, rows: impl IntoIterator<Item = Scalar>) -> Result<Self>  (every row through Field::scalar, the one value contract)
   pub fn field(&self) -> &Field
-  pub const fn field_ref(&self) -> &Arc<Field>
-  pub fn as_slice(&self) -> &[Scalar]
-  pub fn into_inner(self) -> Arc<[Scalar]>
+  pub fn len(&self) -> usize  (constant: the run offsets plus the tail)
+  pub fn is_empty(&self) -> bool
   pub fn dtype(&self) -> Result<DataType>  (list(<the field>), read rather than inferred)
-  pub fn len(&self) -> usize
-  pub fn is_empty(&self) -> bool
-  pub fn get(&self, index: usize) -> Option<&Scalar>
+  pub fn is_null(&self, index: usize) -> bool  (constant; a row past the end holds no value either)
+  pub fn get(&self, index: usize) -> Result<Scalar>  (one binary search over the runs, then one buffer read; Scalar::Null past the end)
+  pub fn as_slice(&self) -> Option<&[Scalar]>  (borrowed only where the rows are already values, or already decoded)
+  pub fn rows(&self) -> Result<&[Scalar]>  (decodes every row once and caches the reading)
+  pub fn i128_at / i64_at / f64_at / bool_at / decimal_at / temporal_at(&self, index) -> Option<..>  (one buffer read, no value built; each spans the widths its family spans, the way Scalar::as_i128 and its siblings do)
+  pub fn str_at(&self, index: usize) -> Option<&str>  (borrowed out of the buffer, never copied)
+  pub fn bytes_at(&self, index: usize) -> Option<&[u8]>  (the same)
+  pub fn chunk_count(&self) -> usize / pub fn chunk(&self, index) -> Option<&ArrayRef> / pub fn chunks(&self) -> impl ExactSizeIterator<Item = &ArrayRef> / pub fn frozen_len(&self) -> usize
+  pub fn push(&mut self, value: impl Into<Scalar>) -> Result<()>  (amortized constant, into the unfrozen tail)
+  pub fn extend(&mut self, rows: impl IntoIterator<Item = Scalar>) -> Result<()>  (proven whole, so a refusal appends nothing)
+  pub fn slice(&self, offset: usize, len: usize) -> Self  (one slice per run the window spans, buffers shared)
+  pub fn truncate(&mut self, len: usize)
   pub fn with_field(&self, field: Field) -> Result<Self>
-  pub fn into_arrow_array(&self) -> crate::arrow::Result<ArrayRef>
-  pub fn from_arrow_array(field: Field, array: &dyn Array) -> crate::arrow::Result<Self>
-  pub enum Serie  (#[non_exhaustive]; Column(Column); the column family's value payload, one leaf today. A second layout is a leaf beside it, never a new Scalar variant)
-  pub fn from_rows(field: Field, rows: impl IntoIterator<Item = Scalar>) -> Result<Self>
-  pub fn field(&self) -> &Field
-  pub fn as_slice(&self) -> &[Scalar]
+  pub fn from_arrow_array(field: Field, array: ArrayRef) -> arrow::Result<Self>  (layout and nullability proven in constant time; no row read, nothing copied)
+  pub fn from_arrow_chunks(field: Field, arrays: Vec<ArrayRef>) -> arrow::Result<Self>
+  pub fn from_arrow_batch(batch: &RecordBatch) -> arrow::Result<Self>
+  pub fn from_arrow_reader(reader: BatchReader) -> arrow::Result<Self>  (one run per batch; nothing decoded and nothing gathered)
+  pub fn append_arrow_array(&mut self, array: ArrayRef) -> arrow::Result<()>  (one run, no row copied)
+  pub fn append(&mut self, other: &Self) -> arrow::Result<()>
+  pub fn freeze(&mut self) -> arrow::Result<()> / pub fn compact(&mut self) -> arrow::Result<()>
+  pub fn into_arrow_array(&self) -> arrow::Result<ArrayRef>  (the run itself when there is one, a concatenation when there are several)
+  pub fn into_arrow_chunks(&self) -> arrow::Result<Vec<ArrayRef>>
+  pub fn into_arrow_batch(&self) -> arrow::Result<RecordBatch>  (a bounded non-null Struct field is the record root)
+  pub fn into_arrow_reader(&self) -> arrow::Result<BatchReader>  (one batch per run, nothing gathered)
+  pub fn child(&self, name: &str) -> arrow::Result<Self> / pub fn child_at(&self, index: usize) -> arrow::Result<Self>  (one array per run, shared rather than copied, and never one row)
+  pub fn with_child(&self, child: &Self) -> arrow::Result<Self> / pub fn without_child(&self, name: &str) -> arrow::Result<Self>  (the children that stay are shared, not rebuilt)
+  pub enum Serie  (#[non_exhaustive]; Column(Column); the column family's value payload, one leaf today. A run that names where its rows are rather than holding them - one not fully materialized - is a second private Chunk shape and nothing else)
+  pub fn empty / from_rows / field / len / is_empty / dtype / is_null / get / as_slice / rows / into_sequence / with_field
   pub const fn as_column(&self) -> Option<&Column>
-  pub fn dtype(&self) -> Result<DataType>
-  pub fn len(&self) -> usize
-  pub fn is_empty(&self) -> bool
-  pub fn get(&self, index: usize) -> Option<&Scalar>
-  pub fn with_field(&self, field: Field) -> Result<Self>
-  pub fn into_sequence(self) -> Scalar  (the rows as the schema-free run they are; the one direction that drops the field, spelled rather than implied)
-  pub fn into_arrow_array(&self) -> crate::arrow::Result<ArrayRef>
-  pub fn from_arrow_array(field: Field, array: &dyn Array) -> crate::arrow::Result<Self>
-  pub fn into_arrow_batch(&self) -> crate::arrow::Result<RecordBatch>  (a bounded non-null Struct field is the record root)
-  pub fn from_arrow_batch(batch: &RecordBatch) -> crate::arrow::Result<Self>
-  pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader>  (one held column is one batch)
-  pub fn from_arrow_reader(reader: BatchReader) -> crate::arrow::Result<Self>  (drains: a stream is one-shot and a column is held)
+  pub fn i128_at / i64_at / f64_at / bool_at / str_at / bytes_at / decimal_at / temporal_at  (forwarded to the leaf)
+  pub fn chunk_count / chunk / chunks / frozen_len / push / extend / slice / truncate / freeze / compact / append / append_arrow_array  (forwarded to the leaf)
+  pub fn from_arrow_array / from_arrow_chunks / from_arrow_batch / from_arrow_reader / into_arrow_array / into_arrow_chunks / into_arrow_batch / into_arrow_reader  (forwarded to the leaf)
+  pub fn child / child_at / with_child / without_child  (forwarded to the leaf)
+  pub fn into_sequence(self) -> Result<Scalar>  (the rows as the schema-free run they are; the one direction that drops the field, spelled rather than implied)
   impl Value, NestedValue, SerieValue, Serialize and Deserialize for Serie and for Column; the serde shadow is the private SerieWire, one document of the field and the rows, and reading one rechecks every row
   impl From<Column> for Serie; impl From<Column> for Scalar; impl From<Serie> for Scalar; impl From<Serie> for Sequence
 
@@ -3840,8 +3854,10 @@ pub trait NestedValue: Value  (implemented by List, Sequence, Serie, Column, Map
   fn children(&self) -> Children<'_>
 pub trait SerieValue: NestedValue  (the fourth side: many values of one field, a column; implemented by Column and by the Serie root that redirects to it)
   fn field(&self) -> &Field
-  fn as_slice(&self) -> &[Scalar]
-  fn get(&self, index: usize) -> Option<&Scalar>  (provided: as_slice().get(index))
+  fn as_slice(&self) -> Option<&[Scalar]>  (borrowed only where the rows are already values)
+  fn rows(&self) -> Result<&[Scalar]>  (decodes the buffers once; reports a value the field refuses)
+  fn get(&self, index: usize) -> Result<Scalar>  (one row, without decoding the rest)
+  fn is_null(&self, index: usize) -> bool
   fn into_serie(self) -> Serie
   fn from_serie(value: &Serie) -> Option<&Self>
 pub enum Nested  (Sequence(Sequence), Mapping(Mapping), Struct(Struct); the nested family as one value, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)

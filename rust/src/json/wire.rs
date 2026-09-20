@@ -131,8 +131,11 @@ impl Serialize for JsonRef<'_> {
                 _ => Err(S::Error::custom("invalid interval layout")),
             },
             Scalar::Sequence(values) => {
-                let mut sequence = serializer.serialize_seq(Some(values.as_slice().len()))?;
-                for value in values.as_slice() {
+                // A document carries values, so a column's buffers are read
+                // here; a row its field refuses is the codec's refusal.
+                let rows = values.rows().map_err(S::Error::custom)?;
+                let mut sequence = serializer.serialize_seq(Some(rows.len()))?;
+                for value in rows {
                     sequence.serialize_element(&JsonRef(value))?;
                 }
                 sequence.end()

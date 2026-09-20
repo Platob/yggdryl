@@ -372,10 +372,15 @@ fn concatenated(left: &Scalar, operation: Arithmetic, right: &Scalar) -> Option<
             joined.extend_from_slice(right);
             Some(Scalar::from(std::sync::Arc::<[u8]>::from(joined)))
         }
+        // Two columns concatenate as the run of their rows: a column's
+        // field types its own rows and says nothing about another's, so the
+        // sum is a run. Rows that cannot be read concatenate to nothing,
+        // which is what every other reader here answers for them.
         (Scalar::Sequence(left), Scalar::Sequence(right)) => Some(Scalar::from_sequence(
-            left.as_slice()
+            left.rows()
+                .ok()?
                 .iter()
-                .chain(right.as_slice().iter())
+                .chain(right.rows().ok()?.iter())
                 .cloned(),
         )),
         _ => None,

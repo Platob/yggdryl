@@ -39,7 +39,7 @@ fn an_array_of_another_layout_is_refused_rather_than_reinterpreted() {
     // datatype and never reconciles one into another.
     let doubles: ArrayRef = Arc::new(arrow_array::Float64Array::from(vec![1.0, 2.0]));
     let refusal =
-        Serie::from_arrow_array(field.clone(), doubles.as_ref()).expect_err("float64 is not int64");
+        Serie::from_arrow_array(field.clone(), doubles).expect_err("float64 is not int64");
     assert!(
         refusal.to_string().to_lowercase().contains("int64"),
         "the refusal names the layout it wanted: {refusal}"
@@ -48,13 +48,14 @@ fn an_array_of_another_layout_is_refused_rather_than_reinterpreted() {
     // And a nullable array under a required field is refused for the null it
     // carries, not for its layout.
     let holes: ArrayRef = Arc::new(Int64Array::from(vec![Some(1), None]));
-    assert!(Serie::from_arrow_array(field, holes.as_ref()).is_err());
+    assert!(Serie::from_arrow_array(field, ArrayRef::clone(&holes)).is_err());
 
     // The same array under a nullable field is a column.
     let nullable = Field::new("price", DataType::Int64, true);
-    let read = Serie::from_arrow_array(nullable, holes.as_ref()).expect("a nullable column");
+    let read = Serie::from_arrow_array(nullable, holes).expect("a nullable column");
     assert_eq!(read.len(), 2);
-    assert_eq!(read.get(1), Some(&Scalar::Null));
+    assert_eq!(read.get(1).unwrap(), Scalar::Null);
+    assert!(read.is_null(1));
 }
 
 #[test]
@@ -71,9 +72,12 @@ fn a_multi_batch_stream_drains_into_one_column_of_every_row() {
 
     // Every row is there, in the order the batches yielded them.
     let ids = column
-        .as_slice()
+        .child("id")
+        .expect("a named child")
+        .rows()
+        .expect("readable rows")
         .iter()
-        .map(|row| row.get(0).and_then(Scalar::as_i64).expect("an id cell"))
+        .filter_map(Scalar::as_i64)
         .collect::<Vec<_>>();
     assert_eq!(ids, vec![0, 1, 2, 3, 4, 5]);
 }
@@ -106,7 +110,7 @@ fn a_column_round_trips_a_batch_through_the_reader_it_streams() {
     let column = Serie::from_rows(quotes_root(), rows).expect("four records");
 
     let back = Serie::from_arrow_reader(column.into_arrow_reader().unwrap()).unwrap();
-    assert_eq!(back.as_slice(), column.as_slice());
+    assert_eq!(back.rows().unwrap(), column.rows().unwrap());
 
     // One held column is one table, so the stream yields exactly one batch.
     let batches = column

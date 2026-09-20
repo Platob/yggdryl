@@ -864,7 +864,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert!(geospatial::Geography::new(vec![0xff]).is_err());
 
     let values = sequence::Sequence::new(Arc::from([Scalar::from(1_i32), Scalar::from("one")]));
-    assert_eq!(values.as_slice().len(), 2);
+    assert_eq!(values.row_count(), 2);
     let mapping = mapping::Mapping::Map(mapping::Map::new(Arc::from([(
         Scalar::from("one"),
         Scalar::from(1_i32),

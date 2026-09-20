@@ -309,11 +309,47 @@ impl Sequence {
         Self::List(List::new(values))
     }
 
-    /// Borrow the ordered values of whichever leaf this is.
-    pub fn as_slice(&self) -> &[Scalar] {
+    /// Borrow the ordered values where the leaf already holds them.
+    ///
+    /// A schema-free run always does. A column holds Arrow buffers, so it
+    /// lends a slice only once something has decoded one; [`Self::rows`] is
+    /// the door that decodes, and the one that reports a value the column's
+    /// field refuses.
+    pub fn as_slice(&self) -> Option<&[Scalar]> {
         match self {
-            Self::List(values) => values.as_slice(),
+            Self::List(values) => Some(values.as_slice()),
             Self::Serie(values) => values.as_slice(),
+        }
+    }
+
+    /// Return the ordered values of whichever leaf this is.
+    ///
+    /// # Errors
+    ///
+    /// Returns the column's field's own refusal where its buffers hold a
+    /// value that field does not accept. A schema-free run never refuses.
+    pub fn rows(&self) -> Result<&[Scalar]> {
+        match self {
+            Self::List(values) => Ok(values.as_slice()),
+            Self::Serie(values) => values.rows(),
+        }
+    }
+
+    /// Return whether this sequence holds no values.
+    ///
+    /// Constant for either leaf, the way [`Self::row_count`] is.
+    pub fn is_empty(&self) -> bool {
+        self.row_count() == 0
+    }
+
+    /// Return how many values this sequence holds.
+    ///
+    /// Constant for either leaf: a column knows its length without decoding
+    /// a row.
+    pub fn row_count(&self) -> usize {
+        match self {
+            Self::List(values) => values.as_slice().len(),
+            Self::Serie(values) => values.len(),
         }
     }
 
@@ -333,13 +369,15 @@ impl Sequence {
         }
     }
 
-    /// Consume this value and return its shared children.
-    pub fn into_inner(self) -> Arc<[Scalar]> {
-        match self {
-            Self::List(values) => values.into_inner(),
-            Self::Serie(values) => match values {
-                Serie::Column(column) => column.rows,
-            },
+    /// Consume this value and return its children as one shared run.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::rows`] carries the rule.
+    pub fn into_inner(self) -> Result<Arc<[Scalar]>> {
+        match &self {
+            Self::List(values) => Ok(Arc::clone(&values.0)),
+            Self::Serie(values) => Ok(Arc::from(values.rows()?)),
         }
     }
 
@@ -364,13 +402,20 @@ impl Ord for Sequence {
     /// holds, and two columns over one run order by the field that types
     /// them.
     fn cmp(&self, other: &Self) -> Ordering {
-        self.as_slice()
-            .cmp(other.as_slice())
-            .then_with(|| self.leaf_rank().cmp(&other.leaf_rank()))
-            .then_with(|| match (self, other) {
-                (Self::Serie(left), Self::Serie(right)) => left.cmp(right),
-                _ => Ordering::Equal,
-            })
+        // A column decodes here; a run has nothing to decode. Rows that
+        // cannot be decoded order after rows that can, and two runs that
+        // both refuse order equal, so the order stays total.
+        match (self.rows(), other.rows()) {
+            (Ok(left), Ok(right)) => left.cmp(right),
+            (Ok(_), Err(_)) => return Ordering::Less,
+            (Err(_), Ok(_)) => return Ordering::Greater,
+            (Err(_), Err(_)) => Ordering::Equal,
+        }
+        .then_with(|| self.leaf_rank().cmp(&other.leaf_rank()))
+        .then_with(|| match (self, other) {
+            (Self::Serie(left), Self::Serie(right)) => left.cmp(right),
+            _ => Ordering::Equal,
+        })
     }
 }
 
@@ -403,11 +448,14 @@ impl Hash for Sequence {
 
 impl NestedValue for Sequence {
     fn len(&self) -> usize {
-        self.as_slice().len()
+        self.row_count()
     }
 
     fn children(&self) -> Children<'_> {
-        Children::Sequence(self.as_slice().iter())
+        match self {
+            Self::List(values) => Children::Sequence(values.as_slice().iter()),
+            Self::Serie(values) => values.children(),
+        }
     }
 }
 

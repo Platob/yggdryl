@@ -563,11 +563,14 @@ fn write_node<W: Write>(
     // after a key the collection starts on the next line.
     let skip_first_indent = position == Position::AfterDash;
     match value {
-        Scalar::Sequence(values) if !values.as_slice().is_empty() => {
+        // The guard counts rows rather than reading them, so a column
+        // still in its buffers takes this arm and is read by `rows` below
+        // instead of falling through to the empty-collection one.
+        Scalar::Sequence(values) if !values.is_empty() => {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
-            write_sequence(writer, values.as_slice(), columns, skip_first_indent, width)
+            write_sequence(writer, values.rows()?, columns, skip_first_indent, width)
         }
         Scalar::Mapping(entries) if !entries.as_slice().is_empty() => {
             if position == Position::AfterKey {
@@ -892,7 +895,7 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         },
         Scalar::Sequence(values) => {
             // Only an empty sequence reaches here.
-            debug_assert!(values.as_slice().is_empty());
+            debug_assert!(values.is_empty());
             writer.write_all(b"[]")?;
         }
         Scalar::Mapping(entries) => {
@@ -971,9 +974,9 @@ fn write_float<W: Write>(writer: &mut W, value: f64) -> Result<()> {
 /// grammar cannot spell plainly falls back to YAML's explicit-key form.
 fn write_flow<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
     match value {
-        Scalar::Sequence(values) if !values.as_slice().is_empty() => {
+        Scalar::Sequence(values) if !values.is_empty() => {
             writer.write_all(b"[")?;
-            for (index, value) in values.as_slice().iter().enumerate() {
+            for (index, value) in values.rows()?.iter().enumerate() {
                 if index != 0 {
                     writer.write_all(b", ")?;
                 }

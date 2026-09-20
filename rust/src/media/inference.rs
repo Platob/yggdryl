@@ -220,7 +220,7 @@ impl Scalar {
                 Ok(DataType::list(serie.field().clone()))
             }
             Self::Sequence(values) => {
-                let (dtype, nullable) = agreed(values.as_slice().iter(), "sequence item", depth)?;
+                let (dtype, nullable) = agreed(values.rows()?.iter(), "sequence item", depth)?;
                 Ok(DataType::list(Field::new("item", dtype, nullable)))
             }
             // An Arrow payload already carries its exact field: one pinned

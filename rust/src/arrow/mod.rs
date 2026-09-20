@@ -17,7 +17,7 @@ use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
 
 pub(crate) mod rows;
-mod scalars;
+pub(crate) mod scalars;
 pub(crate) mod value;
 
 pub use scalars::{ArrowScalar, ArrowShape};
@@ -819,6 +819,14 @@ pub fn scalar_array(field: &Field, value: &Scalar) -> Result<ArrayRef> {
 /// Returns an error when `values` is not a sequence or an element violates
 /// `field`.
 pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
+    // A column already holds the buffers this would build. Where its field
+    // is the one asked for, the buffers cross as they are: no row is decoded
+    // and none is laid out a second time.
+    if let Scalar::Sequence(crate::Sequence::Serie(serie)) = values
+        && serie.field().dtype() == field.dtype()
+    {
+        return serie.into_arrow_array();
+    }
     let values = values.as_sequence().ok_or_else(|| Error::InvalidValue {
         path: SmolStr::new_static("$"),
         expected: SmolStr::new_static("a sequence of array values"),
@@ -846,6 +854,13 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
 /// Returns an error when `root` is not a record root, `rows` is not a
 /// sequence, or a row violates the schema.
 pub fn batch_from_value(root: &Field, rows: &Scalar) -> Result<RecordBatch> {
+    // The same short circuit a column's array crossing takes: a column of
+    // records is already the table this would build.
+    if let Scalar::Sequence(crate::Sequence::Serie(serie)) = rows
+        && serie.field().dtype() == root.dtype()
+    {
+        return serie.into_arrow_batch();
+    }
     let rows = rows.as_sequence().ok_or_else(|| Error::InvalidValue {
         path: SmolStr::new_static("$"),
         expected: SmolStr::new_static("a sequence of record values"),

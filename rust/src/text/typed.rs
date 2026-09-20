@@ -188,11 +188,11 @@ fn structure(value: Scalar, fields: &crate::StructType, field: &Field) -> Result
             Scalar::from_struct(prepared)
         }
         Scalar::Sequence(values) => {
-            if values.as_slice().len() != fields.len() {
+            if values.row_count() != fields.len() {
                 return Err(invalid(field, "struct array has the wrong length"));
             }
             values
-                .as_slice()
+                .rows()?
                 .iter()
                 .cloned()
                 .zip(fields.iter())

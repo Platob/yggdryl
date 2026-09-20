@@ -154,7 +154,7 @@ fn check_value(value: &Scalar, parent: usize, maximum: usize) -> Result<()> {
         Scalar::Sequence(values) => {
             let depth = parent.saturating_add(1);
             observe_depth(depth, maximum)?;
-            for value in values.as_slice() {
+            for value in values.rows()? {
                 check_value(value, depth, maximum)?;
             }
             Ok(())
@@ -341,7 +341,7 @@ fn write_scalar<W: Write>(
             )?,
             _ => return Err(codec_error("invalid interval layout")),
         },
-        Scalar::Sequence(values) => write_sequence(writer, values.as_slice(), layout, depth)?,
+        Scalar::Sequence(values) => write_sequence(writer, values.rows()?, layout, depth)?,
         Scalar::Struct(entries) => {
             writer.write_all(b"{")?;
             for (index, (name, value)) in entries.as_map().iter().enumerate() {

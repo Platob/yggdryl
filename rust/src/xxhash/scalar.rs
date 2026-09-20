@@ -342,12 +342,20 @@ impl Scalar {
             Self::Bytes(value) => write_binary(sink, value.as_bytes()),
             Self::Geometry(value) => write_geospatial(sink, value.as_bytes()),
             Self::Geography(value) => write_geospatial(sink, value.as_bytes()),
-            Self::Sequence(values) => {
-                write_sequence_header(sink, values.as_slice().len());
-                for value in values.as_slice() {
-                    value.feed(sink, depth + 1);
+            // A column feeds as the rows it holds, so the digest of a
+            // column is the digest of the same rows as values and does not
+            // depend on which side they crossed. Rows that cannot be read
+            // feed as null, exactly as an Arrow payload that cannot be made
+            // native does above.
+            Self::Sequence(values) => match values.rows() {
+                Ok(rows) => {
+                    write_sequence_header(sink, rows.len());
+                    for value in rows {
+                        value.feed(sink, depth + 1);
+                    }
                 }
-            }
+                Err(_) => write_null(sink),
+            },
             Self::Mapping(entries) => {
                 write_tag(sink, DataTypeId::Map);
                 write_len(sink, entries.as_slice().len());
