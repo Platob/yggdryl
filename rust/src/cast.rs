@@ -1618,8 +1618,24 @@ enum ArrayCastKind {
 }
 
 pub(crate) enum StructColumnPlan {
-    Source { index: usize, cast: ArrayCastPlan },
-    Missing(Field),
+    Source {
+        index: usize,
+        cast: ArrayCastPlan,
+    },
+    /// A target column no source carries, with its canonical one-row default
+    /// already materialized.
+    ///
+    /// That default is a function of the Field alone, but building it runs a
+    /// schema preflight and a full `Field::validate` - which the plan already
+    /// did for this exact Field - and then materializes a Scalar and a one-row
+    /// Arrow array. Paying that per batch is the repeated schema validation the
+    /// optimization contract forbids on a record path, so it is paid once here.
+    /// A Field whose default cannot be materialized keeps `None` and raises the
+    /// same failure from the same place it always did, on the batch.
+    Missing {
+        field: Field,
+        default: Option<ArrayRef>,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -2133,7 +2149,19 @@ impl ArrayCastPlan {
                                 nulls: None,
                             });
                         }
-                        None => StructColumnPlan::Missing(target.clone()),
+                        // A nullable hole is a null column, which needs no
+                        // default; anything else fills with one, so it is built
+                        // here rather than on every batch. A failure stays for
+                        // the batch that asks, so nothing fails earlier than it
+                        // used to.
+                        None => StructColumnPlan::Missing {
+                            field: target.clone(),
+                            default: if target.is_nullable() {
+                                None
+                            } else {
+                                target.default_arrow_array().ok()
+                            },
+                        },
                     };
                     columns.push(column);
                 }
@@ -2704,14 +2732,18 @@ impl ArrayCastPlan {
                 self.expected
             )));
         }
-        let remaining_nulls =
-            if matches!(self.null_policy, NullPolicy::Field | NullPolicy::DataType)
-                && (matches!(self.null_policy, NullPolicy::DataType) || !self.field.is_nullable())
-            {
-                exposed_logical_null_count(cast.as_ref(), self.field.dtype(), exposure)?
-            } else {
-                0
-            };
+        // Only a repaired column can still hold a hole, and only the arms
+        // above repair one. A column that arrived with no absence at all was
+        // handed on untouched, so recounting it would re-answer the count
+        // taken a few lines up.
+        let remaining_nulls = if null_count != 0
+            && matches!(self.null_policy, NullPolicy::Field | NullPolicy::DataType)
+            && (matches!(self.null_policy, NullPolicy::DataType) || !self.field.is_nullable())
+        {
+            exposed_logical_null_count(cast.as_ref(), self.field.dtype(), exposure)?
+        } else {
+            0
+        };
         if remaining_nulls != 0 {
             let default = if matches!(self.null_policy, NullPolicy::DataType) {
                 self.field.dtype().default_arrow_array()?
@@ -3948,9 +3980,15 @@ pub(crate) mod columns {
                                 && Arc::ptr_eq(&output, source_column);
                             output
                         }
-                        StructColumnPlan::Missing(field) => {
+                        StructColumnPlan::Missing { field, default } => {
                             unchanged = false;
-                            default_array(field, source.len(), child_exposure.as_ref(), budget)?
+                            default_array_with(
+                                field,
+                                default.as_ref(),
+                                source.len(),
+                                child_exposure.as_ref(),
+                                budget,
+                            )?
                         }
                     });
                 }
@@ -4213,9 +4251,7 @@ pub(crate) mod columns {
             }
             let phase = budget.mark();
             let logical = logical_validity_buffer(array.as_ref(), field.dtype(), budget)?;
-            let default_count = (0..array.len())
-                .filter(|index| is_exposed(exposure, *index) && logical.is_null(*index))
-                .count();
+            let default_count = exposed_null_count(&logical, exposure);
             if default_count == 0 {
                 budget.restore(phase);
                 return Ok(array);
@@ -4359,9 +4395,7 @@ pub(crate) mod columns {
             let source = downcast::<DictionaryArray<K>>(&array)?;
             let phase = budget.mark();
             let logical = logical_validity_buffer(source, field.dtype(), budget)?;
-            let repair_count = (0..source.len())
-                .filter(|index| is_exposed(exposure, *index) && logical.is_null(*index))
-                .count();
+            let repair_count = exposed_null_count(&logical, exposure);
             if repair_count == 0 {
                 budget.restore(phase);
                 return Ok(array);
@@ -4695,6 +4729,29 @@ pub(crate) mod columns {
             exposure: Option<&BooleanBuffer>,
             budget: &mut MaterializationBudget,
         ) -> Result<ArrayRef> {
+            default_array_with(field, None, len, exposure, budget)
+        }
+
+        /// The same column, over a one-row default a caller already holds.
+        ///
+        /// `prebuilt` is exactly what `Field::default_arrow_array` would answer
+        /// for this Field; a compiled plan materializes it once so a per-batch
+        /// fill does not re-run the schema preflight behind it. `None` keeps the
+        /// original behaviour, failure timing included.
+        pub(crate) fn default_array_with(
+            field: &Field,
+            prebuilt: Option<&ArrayRef>,
+            len: usize,
+            exposure: Option<&BooleanBuffer>,
+            budget: &mut MaterializationBudget,
+        ) -> Result<ArrayRef> {
+            // The one-row default, built once per plan or once per call.
+            let default_row = || -> Result<ArrayRef> {
+                match prebuilt {
+                    Some(prebuilt) => Ok(Arc::clone(prebuilt)),
+                    None => field.default_arrow_array(),
+                }
+            };
             let arrow_type = field.clone().into_arrow_field_ref()?.data_type().clone();
             if len == 0 {
                 return Ok(arrow_array::new_empty_array(&arrow_type));
@@ -4747,7 +4804,7 @@ pub(crate) mod columns {
                     if len != 1 {
                         budget.add_array(&DataType::UInt32, len)?;
                     }
-                    let default = field.default_arrow_array()?;
+                    let default = default_row()?;
                     repeat_scalar(&default, len)?
                 }
                 _ => {
@@ -4756,7 +4813,7 @@ pub(crate) mod columns {
                             "mixed missing-field exposure requires a mask".to_owned(),
                         )
                     })?;
-                    let default = field.default_arrow_array()?;
+                    let default = default_row()?;
                     let placeholder = crate::arrow::value::physical_placeholder_for_field(field)?;
                     let placeholder =
                         crate::arrow::value::array_from_values(field, &[&placeholder])?;
@@ -5930,6 +5987,16 @@ pub(crate) mod columns {
                 )),
             };
         }
+        // A datatype that does not derive absence from a child reads its nulls
+        // straight off the Arrow validity buffer, which already carries the
+        // count. Rediscovering it a row at a time is the one step whose cost is
+        // the batch height on a cast that is otherwise pointer work, and every
+        // node of every batch was paying it.
+        if !has_derived_logical_nulls(dtype) {
+            return Ok(array
+                .nulls()
+                .map_or(0, |nulls| exposed_null_count(nulls, exposure)));
+        }
         let mut null_count = 0usize;
         for index in 0..array.len() {
             if is_exposed(exposure, index) && logical_null_at(array, dtype, index)? {
@@ -5939,12 +6006,57 @@ pub(crate) mod columns {
         Ok(null_count)
     }
 
+    /// How many exposed rows a validity bitmap marks absent.
+    ///
+    /// The bitmap already carries its own count, so an unexposed read is a
+    /// field read; an exposed one is two bitmaps intersected a machine word at
+    /// a time. A mask of the wrong length is left to the row walk, which is
+    /// what reports it.
+    pub(crate) fn exposed_null_count(
+        logical: &arrow_buffer::NullBuffer,
+        exposure: Option<&BooleanBuffer>,
+    ) -> usize {
+        if logical.null_count() == 0 {
+            return 0;
+        }
+        match exposure {
+            None => logical.null_count(),
+            Some(exposure) if exposure.len() == logical.len() => {
+                exposure.count_set_bits() - both_set_bits(exposure, logical.inner())
+            }
+            Some(exposure) => (0..logical.len())
+                .filter(|index| exposure.value(*index) && logical.is_null(*index))
+                .count(),
+        }
+    }
+
+    /// The number of positions set in both buffers.
+    ///
+    /// Both carry the same bit length, so `iter_padded` yields the same number
+    /// of chunks for each and the padding is zero on both sides.
+    fn both_set_bits(left: &BooleanBuffer, right: &BooleanBuffer) -> usize {
+        left.bit_chunks()
+            .iter_padded()
+            .zip(right.bit_chunks().iter_padded())
+            .map(|(left, right)| (left & right).count_ones() as usize)
+            .sum()
+    }
+
     pub(crate) fn logical_validity_buffer(
         array: &dyn Array,
         dtype: &DataType,
         budget: &mut MaterializationBudget,
     ) -> Result<arrow_buffer::NullBuffer> {
         budget.add_bitmap(array.len())?;
+        // The same rule as the null count above: unless absence is derived
+        // from a child, the array's own validity *is* the logical validity, so
+        // it is shared rather than rebuilt one bit at a time.
+        if !has_derived_logical_nulls(dtype) {
+            return Ok(match array.nulls() {
+                Some(nulls) => nulls.clone(),
+                None => arrow_buffer::NullBuffer::new_valid(array.len()),
+            });
+        }
         let mut builder = BooleanBufferBuilder::new(array.len());
         for index in 0..array.len() {
             builder.append(!logical_null_at(array, dtype, index)?);
