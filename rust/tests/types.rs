@@ -34,6 +34,8 @@ mod metadata;
 mod regex;
 #[path = "types/scalar.rs"]
 mod scalar;
+#[path = "types/serie.rs"]
+mod serie;
 #[path = "types/strict_cast.rs"]
 mod strict_cast;
 #[path = "types/string_enum.rs"]

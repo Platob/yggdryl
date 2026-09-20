@@ -12,6 +12,7 @@
 //! | field | [`FieldValue`] | `into_field` | `from_field` |
 //! | value | [`Value`] | `into_scalar` | `from_scalar` |
 //! | family value | [`FamilyValue`] | `into_scalar` | `from_scalar` |
+//! | column | [`SerieValue`] | `into_serie` | `from_serie` |
 //!
 //! The roots implement their own trait too - [`DataType`] is a
 //! [`DataTypeValue`] and [`Field`] is a `FieldValue<DataType>` - so code that
@@ -30,6 +31,14 @@
 //! [`GeospatialValue`], [`CodeValue`] and [`NestedValue`] - declared here
 //! and implemented beside each leaf.
 //!
+//! A fourth side stands beside the three: many values of one field, which is
+//! a column. [`SerieValue`] is what a column owes the root that holds it, the
+//! root is [`Serie`], and its one leaf today is [`Column`]. A column is a
+//! value as well, because a serie widens to
+//! `Scalar::Sequence(Sequence::Serie(..))`, so [`SerieValue`] is declared
+//! over [`NestedValue`] rather than beside it and nothing about a column is a
+//! second value model.
+//!
 //! `canonical` is the schema-directed validation and canonicalization of row
 //! values: a struct [`Field`] is the schema of the rows it describes, so
 //! validating a row is validating one [`crate::sequence::Sequence`] against
@@ -40,6 +49,8 @@
 //!
 //! [`Field`]: crate::Field
 //! [`Scalar`]: crate::Scalar
+//! [`Serie`]: crate::Serie
+//! [`Column`]: crate::Column
 //! [`Integer`]: crate::Integer
 //! [`Floating`]: crate::Floating
 //! [`Decimal`]: crate::Decimal
@@ -282,6 +293,51 @@ pub trait NestedValue: Value {
     }
     /// Iterate over direct sequence values, mapping keys, or record values.
     fn children(&self) -> Children<'_>;
+}
+
+/// One column: a family's column, or the root that redirects to it.
+///
+/// A column is many values of one field. The field is the authority the rest
+/// of the project already uses - it decides nullability, dictionary options
+/// and extension identity - and the rows were canonicalized by it once, so
+/// nothing here re-checks a row.
+///
+/// The trait sits over [`NestedValue`] rather than beside it because a column
+/// *is* a value: it widens to `Scalar::Sequence(Sequence::Serie(..))`, its
+/// rows are its children, and [`NestedValue::len`] is the row count. What a
+/// column owes past that is the field it is typed by, the rows themselves,
+/// and the two directions of the [`Serie`](crate::Serie) root.
+///
+/// ```
+/// use yggdryl::{DataType, Field, Scalar, Serie, SerieValue};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let field = Field::new("size", DataType::Int64, true);
+/// let serie = Serie::from_rows(field, [Scalar::from(7_i64), Scalar::Null])?;
+///
+/// assert_eq!(SerieValue::field(&serie).name(), "size");
+/// assert_eq!(SerieValue::as_slice(&serie).len(), 2);
+/// assert_eq!(Serie::from_serie(&serie), Some(&serie));
+/// # Ok(())
+/// # }
+/// ```
+pub trait SerieValue: NestedValue {
+    /// Return the field every row of this column is typed by.
+    fn field(&self) -> &Field;
+
+    /// Borrow the rows without allocating.
+    fn as_slice(&self) -> &[Scalar];
+
+    /// Borrow one row, or `None` past the end.
+    fn get(&self, index: usize) -> Option<&Scalar> {
+        self.as_slice().get(index)
+    }
+
+    /// Widen this column to the dynamic serie root.
+    fn into_serie(self) -> crate::Serie;
+
+    /// Narrow a dynamic serie to this column without re-validating it.
+    fn from_serie(value: &crate::Serie) -> Option<&Self>;
 }
 
 family_value!(

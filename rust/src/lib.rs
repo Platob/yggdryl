@@ -101,6 +101,7 @@ mod scheme;
 pub mod sedol;
 pub mod sequence;
 pub(crate) mod serde;
+pub mod serie;
 pub mod side;
 pub mod state;
 pub mod string;
@@ -250,6 +251,7 @@ pub use scalar::Scalar;
 pub(crate) use scalar::code_scalars;
 pub use sedol::*;
 pub use sequence::*;
+pub use serie::{Column, Serie};
 pub use side::*;
 pub use state::*;
 pub(crate) use string::trim_padding;
@@ -271,7 +273,7 @@ pub(crate) use value::dtype_scalar;
 pub use value::{
     Children, CodeValue, DataTypeValue, DecimalValue, DictionaryOptions, FamilyValue, FieldSidecar,
     FieldValue, FloatingValue, GeographyType, GeometryType, GeospatialValue, IntegerValue, Nested,
-    NestedValue, RunEndType, TemporalValue, UnionType, Value,
+    NestedValue, RunEndType, SerieValue, TemporalValue, UnionType, Value,
 };
 pub use variant::{COMPRESS_FROM, VARIANT_VERSION, VariantStream};
 pub(crate) use version::VERSION_EXTENSION_NAME;

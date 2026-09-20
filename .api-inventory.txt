@@ -3328,7 +3328,7 @@ pub enum DataType
   pub const fn value(&self) -> &DataType
   pub fn dictionary(key: Self, value: Self) -> Result<Self>
 
-### yggdryl::sequence  [rust/src/sequence.rs]  (the sequence family: five layouts over one item)
+### yggdryl::sequence  [rust/src/sequence.rs]  (the sequence family: five layouts over one item, and two value leaves)
   pub enum SequenceType  (#[non_exhaustive]; List, ListView, FixedSizeList(_, i32), LargeList, LargeListView, each holding Arc<Field>)
   pub fn item(&self) -> &Field  (the one child every leaf repeats, so a reader walking children never branches on the layout)
   pub fn item_ref(&self) -> &Arc<Field>
@@ -3337,6 +3337,50 @@ pub enum DataType
   pub fn fixed_size_list(item: Field, length: i32) -> Result<Self>
   pub fn large_list(item: Field) -> Self
   pub fn large_list_view(item: Field) -> Self
+  pub struct List  (#[repr(transparent)] over Arc<[Scalar]>; one schema-free ordered run, the leaf Scalar::from_sequence builds)
+  pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self
+  pub fn as_slice(&self) -> &[Scalar]
+  pub fn into_inner(self) -> Arc<[Scalar]>
+  pub enum Sequence  (#[non_exhaustive]; List(List), Serie(Serie); the family's value payload, and what Scalar::Sequence holds. Ord reads the rows first and the leaf only breaks the tie; Hash is the leaf's own, never the discriminant, so a run's stable hash is what it always was. Serialize forwards to the leaf, Deserialize is untagged over the two wire shapes)
+  pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self  (the schema-free leaf)
+  pub fn as_slice(&self) -> &[Scalar]  (either leaf's rows)
+  pub const fn as_list(&self) -> Option<&List>
+  pub const fn as_serie(&self) -> Option<&Serie>
+  pub fn into_inner(self) -> Arc<[Scalar]>
+
+### yggdryl::serie  [rust/src/serie.rs]  (one column: the rows of one field, the fourth side of the value model; registered in the sequence family, so it adds no DataTypeId, no DataType variant and no Field variant)
+  pub struct Column  (one Arc<Field> and one Arc<[Scalar]>; the family's one leaf, rows canonicalized once by the field and never re-checked)
+  pub fn from_rows(field: Field, rows: impl IntoIterator<Item = Scalar>) -> Result<Self>  (every row through Field::scalar, the one value contract)
+  pub fn field(&self) -> &Field
+  pub const fn field_ref(&self) -> &Arc<Field>
+  pub fn as_slice(&self) -> &[Scalar]
+  pub fn into_inner(self) -> Arc<[Scalar]>
+  pub fn dtype(&self) -> Result<DataType>  (list(<the field>), read rather than inferred)
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn get(&self, index: usize) -> Option<&Scalar>
+  pub fn with_field(&self, field: Field) -> Result<Self>
+  pub fn into_arrow_array(&self) -> crate::arrow::Result<ArrayRef>
+  pub fn from_arrow_array(field: Field, array: &dyn Array) -> crate::arrow::Result<Self>
+  pub enum Serie  (#[non_exhaustive]; Column(Column); the column family's value payload, one leaf today. A second layout is a leaf beside it, never a new Scalar variant)
+  pub fn from_rows(field: Field, rows: impl IntoIterator<Item = Scalar>) -> Result<Self>
+  pub fn field(&self) -> &Field
+  pub fn as_slice(&self) -> &[Scalar]
+  pub const fn as_column(&self) -> Option<&Column>
+  pub fn dtype(&self) -> Result<DataType>
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn get(&self, index: usize) -> Option<&Scalar>
+  pub fn with_field(&self, field: Field) -> Result<Self>
+  pub fn into_sequence(self) -> Scalar  (the rows as the schema-free run they are; the one direction that drops the field, spelled rather than implied)
+  pub fn into_arrow_array(&self) -> crate::arrow::Result<ArrayRef>
+  pub fn from_arrow_array(field: Field, array: &dyn Array) -> crate::arrow::Result<Self>
+  pub fn into_arrow_batch(&self) -> crate::arrow::Result<RecordBatch>  (a bounded non-null Struct field is the record root)
+  pub fn from_arrow_batch(batch: &RecordBatch) -> crate::arrow::Result<Self>
+  pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader>  (one held column is one batch)
+  pub fn from_arrow_reader(reader: BatchReader) -> crate::arrow::Result<Self>  (drains: a stream is one-shot and a column is held)
+  impl Value, NestedValue, SerieValue, Serialize and Deserialize for Serie and for Column; the serde shadow is the private SerieWire, one document of the field and the rows, and reading one rechecks every row
+  impl From<Column> for Serie; impl From<Column> for Scalar; impl From<Serie> for Scalar; impl From<Serie> for Sequence
 
 ### yggdryl::mapping  [rust/src/mapping.rs]  (the mapping family: a list of key-value entries)
   pub enum MappingType  (#[non_exhaustive]; Map(Arc<MapType>), SortedMap(Arc<MapType>); the leaf is the promise, so no flag can disagree with it)
@@ -3790,10 +3834,16 @@ pub trait CodeValue: Value  (implemented by the eleven registered codes)
   fn as_str(&self) -> &str
   fn storage(&self) -> &SmolStr
   fn merge_with(self, other: &Self) -> Self  (provided as this code; the better statement of two codes of one kind: Cfi fills every `X` from the other where the two describe one instrument, State that reached none takes the other and otherwise the further along stands, Side `UNKNOWN`, Currency `XXX` and Mic `XXXX` take the other, every identifier stands as it is)
-pub trait NestedValue: Value  (implemented by Sequence, Mapping and Struct)
+pub trait NestedValue: Value  (implemented by List, Sequence, Serie, Column, Mapping, Map and Struct)
   fn len(&self) -> usize
   fn is_empty(&self) -> bool  (provided: len() == 0)
   fn children(&self) -> Children<'_>
+pub trait SerieValue: NestedValue  (the fourth side: many values of one field, a column; implemented by Column and by the Serie root that redirects to it)
+  fn field(&self) -> &Field
+  fn as_slice(&self) -> &[Scalar]
+  fn get(&self, index: usize) -> Option<&Scalar>  (provided: as_slice().get(index))
+  fn into_serie(self) -> Serie
+  fn from_serie(value: &Serie) -> Option<&Self>
 pub enum Nested  (Sequence(Sequence), Mapping(Mapping), Struct(Struct); the nested family as one value, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)
   impl FamilyValue for Nested  (KIND = DataTypeKind::Nested)
   impl From<Sequence>, From<Mapping>, From<Struct> for Nested

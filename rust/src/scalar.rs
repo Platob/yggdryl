@@ -447,6 +447,9 @@ impl Serialize for Scalar {
                 }
             }
             Self::Interval(value) => tagged(serializer, "interval", value),
+            // A column carries the field that types it, which the values
+            // alone cannot say, so it writes under its own tag.
+            Self::Sequence(Sequence::Serie(serie)) => tagged(serializer, "serie", serie),
             Self::Sequence(values) => tagged(serializer, "sequence", &values.as_slice()),
             Self::Mapping(entries) => tagged(serializer, "mapping", &entries.as_slice()),
             Self::Struct(entries) => tagged(serializer, "struct", &entries.as_map()),
@@ -576,6 +579,7 @@ impl<'de> Deserialize<'de> for Scalar {
             Duration64(Temporal64),
             Interval(crate::interval::Interval),
             Sequence(Vec<Scalar>),
+            Serie(crate::serie::Serie),
             Mapping(Vec<(Scalar, Scalar)>),
             Struct(RecordEntries),
         }
@@ -755,6 +759,7 @@ impl<'de> Deserialize<'de> for Scalar {
             }
             StructuralWire::Interval(value) => Ok(Self::Interval(value)),
             StructuralWire::Sequence(values) => Ok(Self::from_sequence(values)),
+            StructuralWire::Serie(serie) => Ok(Self::Sequence(Sequence::Serie(serie))),
             StructuralWire::Mapping(entries) => {
                 Self::from_mapping(entries).map_err(D::Error::custom)
             }
@@ -1249,6 +1254,7 @@ impl Scalar {
             Self::Duration32(_) => "duration32",
             Self::Duration64(_) => "duration64",
             Self::Interval(_) => "interval",
+            Self::Sequence(Sequence::Serie(_)) => "serie",
             Self::Sequence(_) => "sequence",
             Self::Mapping(_) => "mapping",
             Self::Struct(_) => "struct",

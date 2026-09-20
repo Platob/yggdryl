@@ -26,6 +26,7 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 | Families | [Codes](codes.md) | The ten registered codes over `utf8` storage, `ascii_packed`, `StringEnum` and the ISO listings, the three securities identifiers and their check digits, the `state` lifecycle |
 | Families | [UUID](uuid.md) | The 128-bit identifier over `fixed_size_binary(16)` storage |
 | Families | [Nested](nested.md) | Children, dictionary and run-end encodings, unions |
+| Families | [Serie](serie.md) | One column: the rows of one field, and the Arrow array, batch and batch reader they cross as |
 | Families | [Geospatial](geospatial.md) | Variant, geometry, geography, and the WKB reader |
 | Encoding | [Variant encoding](variant.md) | any value as one byte stream and back: the version, the family-laid datatype identifier, the payload; what pickle carries and a variant column stores |
 | Families | [Protocol](protocol.md) | Reserved metadata keys and scheme-prefixed protocol properties |

@@ -25,5 +25,7 @@ mod combined;
 mod row_value;
 #[path = "arrow/scalars.rs"]
 mod scalars;
+#[path = "arrow/serie.rs"]
+mod serie;
 #[path = "arrow/value.rs"]
 mod value;

@@ -212,6 +212,13 @@ impl Scalar {
             Self::Duration32(value) => DataType::duration32(value.unit()),
             Self::Duration64(value) => DataType::duration64(value.unit()),
             Self::Interval(value) => DataType::interval(value.unit()),
+            // A column already carries the field its rows are typed by, so
+            // its datatype is read off that field rather than agreed back
+            // out of the rows: an empty column names its datatype where an
+            // empty sequence cannot.
+            Self::Sequence(crate::Sequence::Serie(serie)) => {
+                Ok(DataType::list(serie.field().clone()))
+            }
             Self::Sequence(values) => {
                 let (dtype, nullable) = agreed(values.as_slice().iter(), "sequence item", depth)?;
                 Ok(DataType::list(Field::new("item", dtype, nullable)))

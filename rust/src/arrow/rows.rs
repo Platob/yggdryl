@@ -340,7 +340,7 @@ where
     }
 }
 
-pub(super) fn batch_from_values(
+pub(crate) fn batch_from_values(
     field: &Field,
     schema: SchemaRef,
     values: &[Scalar],

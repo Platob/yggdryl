@@ -143,6 +143,7 @@ nav:
       - Codes: types/codes.md
       - UUID: types/uuid.md
       - Nested: types/nested.md
+      - Serie: types/serie.md
       - Geospatial: types/geospatial.md
       - Variant encoding: types/variant.md
       - Protocol: types/protocol.md
