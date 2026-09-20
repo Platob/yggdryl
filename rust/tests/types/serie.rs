@@ -862,3 +862,45 @@ fn a_walk_over_a_column_reads_every_row_in_order_from_both_ends() {
         vec![1, 2, 3]
     );
 }
+
+#[test]
+fn a_column_reads_as_a_sequence_wherever_meaning_is_read_from_one() {
+    let field = Field::new("flag", DataType::Int64, false);
+
+    // Truthiness walks the rows, so a column answers what the same run
+    // answers - including the empty one, which borrowing would have called
+    // truthy by falling through.
+    let truthy = Scalar::from(Serie::from_scalars(field.clone(), [Scalar::from(1_i64)]).unwrap());
+    let falsy = Scalar::from(Serie::from_scalars(field.clone(), [Scalar::from(0_i64)]).unwrap());
+    let empty = Scalar::from(Serie::empty(field.clone()).unwrap());
+    assert!(truthy.is_truthy());
+    assert!(!falsy.is_truthy());
+    assert!(!empty.is_truthy());
+    assert_eq!(
+        truthy.is_truthy(),
+        Scalar::from_sequence([Scalar::from(1_i64)]).is_truthy()
+    );
+    assert_eq!(
+        empty.is_truthy(),
+        Scalar::from_sequence([]).is_truthy(),
+        "an empty column is as falsy as an empty run"
+    );
+
+    // And the reading door answers for both leaves where the borrowing one
+    // answers only for the run.
+    let run = Scalar::from_sequence([Scalar::from(1_i64)]);
+    assert_eq!(truthy.as_sequence(), None);
+    assert_eq!(
+        truthy
+            .sequence_rows()
+            .expect("a column is a sequence")
+            .unwrap()
+            .as_ref(),
+        &[Scalar::from(1_i64)]
+    );
+    assert!(matches!(
+        run.sequence_rows().expect("a run is a sequence").unwrap(),
+        std::borrow::Cow::Borrowed(_)
+    ));
+    assert_eq!(Scalar::from(1_i64).sequence_rows().is_none(), true);
+}

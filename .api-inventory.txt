@@ -3794,7 +3794,8 @@ pub struct ProtocolField<'field>
   pub fn into_json_bytes(&self) -> Result<Vec<u8>>
   pub fn into_json(&self) -> Result<String>
   pub fn as_wkb(&self) -> Option<&[u8]>
-  pub fn as_sequence(&self) -> Option<&[Self]>
+  pub fn as_sequence(&self) -> Option<&[Self]>  (borrows, so it answers for the schema-free run and not for a column, which stores no value to lend)
+  pub fn sequence_rows(&self) -> Option<Result<Cow<'_, [Self]>>>  (the reading door beside the borrowing one: lends a run's values, builds a column's rows; None where the value is not a sequence. Every place that reads a sequence for what it means goes through here)
   pub fn as_mapping(&self) -> Option<&[(Self, Self)]>
   pub fn as_struct(&self) -> Option<&BTreeMap<SmolStr, Self>>
   pub fn as_integer(&self) -> Option<Integer>  (the family accessors, by value through FamilyValue::from_scalar: the scalar holds the leaf and not the family, and every leaf is Copy or one shared pointer; None for another kind. The decimal family narrows through Decimal::from_scalar, `as_decimal` being the coefficient-and-scale reader)

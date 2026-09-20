@@ -604,8 +604,8 @@ impl Expression {
         if matches!(value, crate::Scalar::Boolean(_)) {
             return Filter::from_scalar(value).map(Self::Filter);
         }
-        if let Some(items) = value.as_sequence() {
-            let steps = items
+        if let Some(items) = value.sequence_rows() {
+            let steps = items?
                 .iter()
                 .map(Self::from_scalar)
                 .collect::<Result<Vec<_>>>()?;

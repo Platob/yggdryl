@@ -31,6 +31,7 @@
 //! # }
 //! ```
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
@@ -1390,6 +1391,17 @@ impl Scalar {
     /// assert!(Scalar::from("anything else").is_truthy());
     /// assert!(!Scalar::from_sequence([Scalar::Null, Scalar::from(0)]).is_truthy());
     /// assert!(Scalar::from_sequence([Scalar::from(1)]).is_truthy());
+    ///
+    /// // A column answers the same, because the walk reads either leaf -
+    /// // an empty column included, which borrowing would have called truthy.
+    /// # use yggdryl::{DataType, Field, Serie};
+    /// let field = Field::new("flag", DataType::Int64, false);
+    /// let column = |rows: [Scalar; 1]| {
+    ///     Scalar::from(Serie::from_scalars(field.clone(), rows).expect("one row"))
+    /// };
+    /// assert!(column([Scalar::from(1_i64)]).is_truthy());
+    /// assert!(!column([Scalar::from(0_i64)]).is_truthy());
+    /// assert!(!Scalar::from(Serie::empty(field).expect("an empty column")).is_truthy());
     /// ```
     #[must_use]
     pub fn is_truthy(&self) -> bool {
@@ -1419,8 +1431,11 @@ impl Scalar {
         if let Some(bytes) = self.as_bytes() {
             return !bytes.is_empty();
         }
-        if let Some(values) = self.as_sequence() {
-            return values.iter().any(Self::is_truthy);
+        if let Self::Sequence(_) = self {
+            // A run lends its values and a column builds its rows; the walk
+            // is total over both, so an empty column is as falsy as an empty
+            // run and a column of falsy rows is falsy too.
+            return self.iter().any(|value| value.is_truthy());
         }
         if let Some(entries) = self.as_mapping() {
             return entries.iter().any(|(_, value)| value.is_truthy());
@@ -1507,6 +1522,25 @@ impl Scalar {
     pub fn as_sequence(&self) -> Option<&[Self]> {
         match self {
             Self::Sequence(values) => values.as_slice(),
+            _ => None,
+        }
+    }
+
+    /// Read the ordered values of a sequence, borrowing where they are stored.
+    ///
+    /// [`Self::as_sequence`] borrows, so it answers only for the schema-free
+    /// run. This reads either leaf - lending the run's values, building a
+    /// column's rows - and it is what every place that reads a sequence for
+    /// what it *means* goes through. `None` says the value is not a sequence
+    /// at all.
+    ///
+    /// # Errors
+    ///
+    /// Returns the column's field's own refusal where its buffers hold a
+    /// value that field does not accept. A schema-free run never refuses.
+    pub fn sequence_rows(&self) -> Option<Result<Cow<'_, [Self]>>> {
+        match self {
+            Self::Sequence(values) => Some(values.rows()),
             _ => None,
         }
     }
