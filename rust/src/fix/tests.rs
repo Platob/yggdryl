@@ -4206,8 +4206,9 @@ fn every_committed_code_set_is_the_document_the_rust_writer_renders() {
             field.name()
         );
     }
-    assert_eq!(sets, 2_026, "fields carrying a code set");
-    assert_eq!(codes, 27_209, "code records");
+    // MsgCat adds its one inline set of the 22 fixed categories.
+    assert_eq!(sets, 2_027, "fields carrying a code set");
+    assert_eq!(codes, 27_231, "code records");
 }
 
 #[test]
