@@ -481,9 +481,27 @@ class Scalar:
     @staticmethod
     def _from_pickle(state: object) -> Scalar: ...
     @staticmethod
+    def from_variant_bytes(data: bytes | bytearray | memoryview) -> Scalar:
+        """The value one variant encoding holds, as ``into_variant_bytes`` wrote it.
+
+        Raises ``ValueError`` naming the byte where the bytes could not be
+        read: another version, a byte naming no datatype, a payload cut
+        short, or bytes left after the value.
+        """
+    def into_variant_bytes(self) -> bytes:
+        """This value as the variant encoding.
+
+        One ``bytes``: the version, the datatype's identifier and the payload
+        the identifier says how to read - a number as its little-endian
+        bytes, a text as a compression byte, a size and the characters, a
+        nested value as a count and its children - compressed with zstd past
+        four kibibytes. What pickle carries, and what a variant column stores
+        per row.
+        """
+    @staticmethod
     def from_(value: object) -> Scalar: ...
     @staticmethod
-    def from_record(
+    def from_struct(
         entries: Mapping[str, object] | Iterable[tuple[str, object]],
     ) -> Scalar: ...
     @staticmethod
@@ -517,7 +535,7 @@ class Scalar:
         "fixed_binary", "sized_binary",
         "geometry", "geography", "date32", "date64", "time32", "time64",
         "datetime64", "duration32", "duration64", "interval", "sequence",
-        "mapping", "record", "arrow",
+        "mapping", "struct", "arrow",
     ]: ...
     @property
     def id(self) -> str: ...
@@ -3704,21 +3722,34 @@ class TextLine:
         index: int,
         body: str | bytes | bytearray | memoryview,
         captures: Sequence[str | None] | None = None,
+        options: TextOptions | None = None,
     ) -> None: ...
     @property
     def index(self) -> int: ...
     @property
     def sourceurl(self) -> Url | None: ...
     @property
-    def timestamp(self) -> int | None: ...
+    def mtime(self) -> int | None: ...
     @property
-    def bodytype(self) -> MimeType | None: ...
+    def bodytype(self) -> MimeType: ...
     @property
     def body(self) -> str: ...
     @property
     def decoded_byte_size(self) -> int: ...
     @property
     def dropped_byte_size(self) -> int | None: ...
+    @property
+    def curruuid(self) -> Scalar: ...
+    @property
+    def crossuuid(self) -> Scalar: ...
+    @property
+    def crosscode(self) -> str: ...
+    @property
+    def currhashcode(self) -> int: ...
+    @property
+    def crosshashcode(self) -> int: ...
+    @property
+    def currunix(self) -> int: ...
     @property
     def captures(self) -> tuple[str | None, ...]: ...
     @property
@@ -5059,13 +5090,15 @@ class FixCapture:
     What a bridge's own row header states about the line it wrote - the
     plugin, the message context and the session instance - read off the
     line's own bytes like every other fact a message holds. None of it is
-    FIX and none is content, so nothing here reaches the code the message
-    digests to.
+    FIX and none is content, so none of it is an entry or on the wire; where
+    the row header brackets both a session instance and a message context,
+    the two name the chain through the cross code, which is the chain's
+    identity and not the message's, and which the content code leaves out.
 
-    What the *reader* said about the line is not here and is held nowhere on
-    a message: the object it was read from, and whatever else the reader
-    carried, are the capture's own columns, stated on the row by whoever
-    read it.
+    What the *reader* said about the line is not here: the object it was
+    read from, and whatever else the reader carried, are the capture's own
+    columns, which the message carries under their names - ``carried`` -
+    and ``into_row`` states again.
 
     A copy at the moment ``FixMsg.capture()`` answered it; immutable,
     comparing and hashing by its facts.
@@ -5112,6 +5145,8 @@ class MarketEventData:
     def identifiers(self) -> dict[str, str]: ...
     @property
     def parentuuids(self) -> list[Scalar]: ...
+    @property
+    def srcuuids(self) -> list[Scalar]: ...
     @property
     def currunix(self) -> int: ...
     @property
@@ -5201,9 +5236,11 @@ class FixMsg:
     ``set`` and ``remove`` write both the same way - a typed key its holder,
     with ``None`` clearing it, any other key the row, typed by the field the
     key resolves to - and every write settles the identity again: the cross
-    code from the first stated of ``OrderID``, ``ClOrdID``, ``OrigClOrdID``,
-    ``QuoteID``, ``QuoteReqID`` and ``MDReqID``, the hash code over the facts
-    and the row, ``curruuid`` and ``crossuuid`` from both. ``entries``
+    code from the bridge's ``msgsessionid:msgctxid`` where the row header
+    stated both, else the first stated of ``OrderID``, ``ClOrdID``,
+    ``OrigClOrdID``, ``QuoteID``, ``QuoteReqID`` and ``MDReqID``; the hash
+    code over the facts, the lifted fields and the row, the standard header
+    and trailer left out; ``curruuid`` and ``crossuuid`` from both. ``entries``
     reads the row as a tree; ``into_bytes`` and ``into_text`` re-emit the
     message as it now stands, the header and the event's own tags in front,
     ``SendingTime`` only when stated; ``digest`` digests that wire.
@@ -5227,7 +5264,7 @@ class FixMsg:
         registry: FixRegistry | None = None,
     ) -> FixMsg: ...
     @staticmethod
-    def _from_pickle(field: str, value: str, registry: str) -> FixMsg: ...
+    def _from_pickle(field: str, value: bytes, registry: str) -> FixMsg: ...
     @property
     def registry(self) -> FixRegistry: ...
     @property
@@ -5281,6 +5318,10 @@ class FixMsg:
     @property
     def parentuuids(self) -> list[Scalar]: ...
     @property
+    def srcuuids(self) -> list[Scalar]: ...
+    @property
+    def carried(self) -> list[tuple[str, Scalar]]: ...
+    @property
     def identifiers(self) -> dict[str, str]: ...
     @property
     def px(self) -> Scalar: ...
@@ -5306,7 +5347,7 @@ class FixMsg:
     def into_row(self, schema: FieldLike) -> Scalar: ...
     def into_bytes(self, separator: int = 1) -> bytes: ...
     def into_text(self, separator: str = "\x01") -> str: ...
-    def __reduce__(self) -> tuple[object, tuple[str, str, str]]: ...
+    def __reduce__(self) -> tuple[object, tuple[str, bytes, str]]: ...
     def __copy__(self) -> FixMsg: ...
     def __deepcopy__(self, memo: Any) -> FixMsg: ...
     def __repr__(self) -> str: ...

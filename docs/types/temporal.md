@@ -167,8 +167,8 @@ and `DateType::validate` never refuses.
 
 | leaf | id | holds | unit | Arrow |
 | --- | --- | --- | --- | --- |
-| `date32` | 16 | `i32` days since the Unix epoch | `d` | `Date32` |
-| `date64` | 17 | `i64` milliseconds since the Unix epoch, at a midnight | `ms` | `Date64` |
+| `date32` | `0x32` | `i32` days since the Unix epoch | `d` | `Date32` |
+| `date64` | `0x33` | `i64` milliseconds since the Unix epoch, at a midnight | `ms` | `Date64` |
 
 | spelling | datatype | also parsed as |
 | --- | --- | --- |

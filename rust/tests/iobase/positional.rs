@@ -118,7 +118,7 @@ fn an_undeclared_media_type_is_inferred_from_content() {
 
 #[test]
 fn structured_values_follow_the_declared_format_and_content_coding() {
-    let expected = Scalar::from_record([
+    let expected = Scalar::from_struct([
         ("quantity", Scalar::from(2)),
         ("symbol", Scalar::from("AAPL")),
     ])

@@ -90,9 +90,13 @@ fn a_declared_charset_is_read_below_the_splitter_and_an_undeclared_one_is_the_wi
             Some("London".to_owned())
         ]
     );
+    // The body is the whole line, the row header included, read as declared.
     assert_eq!(
         strings(&batches, "body"),
-        [Some("first".to_owned()), Some("second".to_owned())]
+        [
+            Some("\u{41c}\u{43e}\u{441}\u{43a}\u{432}\u{430} first".to_owned()),
+            Some("London second".to_owned())
+        ]
     );
     for line in lines(&source, &city_header()) {
         assert_eq!(
@@ -103,10 +107,10 @@ fn a_declared_charset_is_read_below_the_splitter_and_an_undeclared_one_is_the_wi
     }
 
     // Undeclared: the same bytes are the wire, read by rule one - never
-    // refused, each stray byte as the Windows-1252 character it is - and a
-    // Unicode class matches no byte that is not a character, so the header
-    // does not match and the whole line is the body. The line counts the six
-    // bytes it read that way.
+    // refused, each stray byte as the Windows-1252 character it is - and the
+    // line matches its header over the text it is, so a class that matches
+    // no stray byte matches the characters they were read as. The line
+    // counts the six bytes it read that way.
     let source = declared("text/plain", wire);
     let read_lines = lines(&source, &city_header());
     assert_eq!(read_lines.len(), 2);
@@ -114,9 +118,12 @@ fn a_declared_charset_is_read_below_the_splitter_and_an_undeclared_one_is_the_wi
         read_lines[0].body(),
         "\u{cc}\u{ee}\u{f1}\u{ea}\u{e2}\u{e0} first"
     );
-    assert_eq!(read_lines[0].capture(0), None);
+    assert_eq!(
+        read_lines[0].capture(0),
+        Some("\u{cc}\u{ee}\u{f1}\u{ea}\u{e2}\u{e0}")
+    );
     assert_eq!(read_lines[0].decoded_byte_size(), 6);
-    assert_eq!(read_lines[1].body(), "second");
+    assert_eq!(read_lines[1].body(), "London second");
     assert_eq!(read_lines[1].capture(0), Some("London"));
     assert_eq!(read_lines[1].decoded_byte_size(), 0);
 }
@@ -155,7 +162,10 @@ fn a_declared_line_reaches_its_row_as_text_with_nothing_repaired() {
             .data_type(),
         &arrow_schema::DataType::Utf8
     );
-    assert_eq!(strings(&batches, "body"), [Some("premi\u{e8}r".to_owned())]);
+    assert_eq!(
+        strings(&batches, "body"),
+        [Some("Z\u{fc}rich premi\u{e8}r".to_owned())]
+    );
     assert_eq!(strings(&batches, "city"), [Some("Z\u{fc}rich".to_owned())]);
     let without_header = lines(&source, &TextOptions::new());
     assert_eq!(without_header[0].body(), "Z\u{fc}rich premi\u{e8}r");
@@ -199,7 +209,10 @@ fn a_utf_16_capture_splits_into_rows_with_its_mark_gone() {
         );
         assert_eq!(
             strings(&batches, "body"),
-            [Some("first".to_owned()), Some("second".to_owned())]
+            [
+                Some("Z\u{fc}rich first".to_owned()),
+                Some("London second".to_owned())
+            ]
         );
         for line in lines(&source, &TextOptions::new()) {
             assert!(!line.body().contains('\u{feff}'), "{:?}", line.body());

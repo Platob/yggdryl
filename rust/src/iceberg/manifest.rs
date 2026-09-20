@@ -854,7 +854,7 @@ fn strip_uuid_logical_type(value: &Scalar) -> Result<Scalar> {
             .collect::<Result<Vec<_>>>()
             .map(Scalar::from_sequence);
     }
-    if value.as_record().is_none() && value.as_mapping().is_none() {
+    if value.as_struct().is_none() && value.as_mapping().is_none() {
         return Ok(value.clone());
     }
 
@@ -919,7 +919,7 @@ fn uuid_as_fixed(value: &Scalar) -> Result<Scalar> {
 
 /// Replace one JSON-object member while preserving its scalar object shape.
 fn object_with(value: &Scalar, key: &str, child: Scalar) -> Result<Scalar> {
-    if value.as_record().is_some() {
+    if value.as_struct().is_some() {
         value.with_field(key, child)
     } else {
         value.with_key(key, child)
@@ -928,7 +928,7 @@ fn object_with(value: &Scalar, key: &str, child: Scalar) -> Result<Scalar> {
 
 /// Remove one JSON-object member while preserving its scalar object shape.
 fn object_without(value: &Scalar, key: &str) -> Result<Scalar> {
-    if value.as_record().is_some() {
+    if value.as_struct().is_some() {
         value.without_field(key)
     } else {
         value.without_key(key)
@@ -2491,7 +2491,7 @@ mod official_read_tests {
 
     use crate::IOBase;
     use crate::holder::Buffer;
-    use crate::{DataType, StructureType};
+    use crate::{DataType, StructType};
 
     struct OversizedHandle {
         handle: Buffer,
@@ -2544,7 +2544,7 @@ mod official_read_tests {
     }
 
     fn field() -> Field {
-        let mut field = StructureType::from_fields([
+        let mut field = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("venue"),
         ])
@@ -3210,7 +3210,7 @@ mod official_read_tests {
 
     #[test]
     fn planning_reader_preserves_nonlexical_partition_spec_order() {
-        let mut field = StructureType::from_fields([
+        let mut field = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().required_field("z"),
             DataType::utf8().required_field("a"),

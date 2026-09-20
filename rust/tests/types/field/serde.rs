@@ -3,13 +3,13 @@
 
 use yggdryl::DateTimeType;
 use yggdryl::Scalar;
-use yggdryl::{DataType, Field, Metadata, PythonKind, PythonMetadata, StructureType, TimeUnit};
+use yggdryl::{DataType, Field, Metadata, PythonKind, PythonMetadata, StructType, TimeUnit};
 
 /// One representative field per shape the model can carry.
 fn shapes() -> Vec<Field> {
-    let nested = StructureType::from_fields([
+    let nested = StructType::from_fields([
         DataType::Int64.required_field("id"),
-        StructureType::from_fields([StructureType::from_fields([
+        StructType::from_fields([StructType::from_fields([
             DataType::utf8().nullable_field("leaf")
         ])
         .map(DataType::from)
@@ -42,7 +42,7 @@ fn shapes() -> Vec<Field> {
     );
     dictionary.set_dictionary_options(42, true).unwrap();
 
-    let partitioned = StructureType::from_fields([
+    let partitioned = StructType::from_fields([
         DataType::utf8()
             .required_field("venue")
             .with_partition(true),
@@ -56,7 +56,7 @@ fn shapes() -> Vec<Field> {
         DataType::Int64.required_field("flat"),
         nested,
         DataType::list(
-            StructureType::from_fields([DataType::Int64.required_field("id")])
+            StructType::from_fields([DataType::Int64.required_field("id")])
                 .map(DataType::from)
                 .unwrap()
                 .nullable_field("item"),
@@ -205,7 +205,7 @@ fn the_trait_forms_sit_beside_the_inherent_ones() {
 
 /// One representative small field, for literal-text assertions.
 fn small() -> Field {
-    StructureType::from_fields([DataType::Int64.required_field("id")])
+    StructType::from_fields([DataType::Int64.required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row")
@@ -314,9 +314,9 @@ fn natural_text_objects_feed_record_aware_structural_readers() {
     ];
 
     for document in documents {
-        assert!(document.as_record().is_some(), "{document:?}");
+        assert!(document.as_struct().is_some(), "{document:?}");
         let dtype = document.get_key_str("dtype").unwrap().clone();
-        assert!(dtype.as_record().is_some(), "{dtype:?}");
+        assert!(dtype.as_struct().is_some(), "{dtype:?}");
         assert_eq!(DataType::from_value(dtype).unwrap(), field.dtype().clone());
         assert_eq!(Field::from_value(document).unwrap(), field);
     }
@@ -466,12 +466,12 @@ fn indentation_reads_literally_in_every_format() {
 fn depth_three_indents_one_level_per_level() {
     use yggdryl::text::Formatting;
 
-    let deep = StructureType::from_fields([StructureType::from_fields([
-        StructureType::from_fields([DataType::Int64.required_field("leaf")])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("inner"),
+    let deep = StructType::from_fields([StructType::from_fields([StructType::from_fields([
+        DataType::Int64.required_field("leaf"),
     ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("inner")])
     .map(DataType::from)
     .unwrap()
     .required_field("middle")])
@@ -567,9 +567,9 @@ fn the_compact_form_is_unchanged_and_still_parses_back() {
 
 #[test]
 fn the_readable_form_indents_by_depth_and_omits_unset_attributes() {
-    let mut field = StructureType::from_fields([
+    let mut field = StructType::from_fields([
         DataType::Int64.required_field("id"),
-        StructureType::from_fields([DataType::Float64.required_field("price")])
+        StructType::from_fields([DataType::Float64.required_field("price")])
             .map(DataType::from)
             .unwrap()
             .nullable_field("line"),
@@ -616,7 +616,7 @@ fn the_readable_form_is_stable_across_runs() {
     // Nothing here iterates a hash map, so two renderings of one value - and
     // of two equal values built independently - agree exactly.
     let build = || {
-        let mut field = StructureType::from_fields([DataType::Int64.required_field("id")])
+        let mut field = StructType::from_fields([DataType::Int64.required_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("row");
@@ -637,13 +637,13 @@ fn the_readable_form_is_stable_across_runs() {
 fn json_bytes_and_text_carry_the_same_nested_document() {
     // struct > list > struct > map, so the assertion is about nesting rather
     // than about a flat field.
-    let inner = StructureType::from_fields([
+    let inner = StructType::from_fields([
         DataType::utf8().required_field("sym"),
         DataType::decimal128(18, 4).unwrap().nullable_field("px"),
     ])
     .map(DataType::from)
     .unwrap();
-    let row = StructureType::from_fields([
+    let row = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::list(inner.nullable_field("item")).nullable_field("levels"),
         DataType::map_of(DataType::utf8(), DataType::Int64, true)
@@ -681,9 +681,9 @@ fn json_bytes_and_text_carry_the_same_nested_document() {
 
 #[test]
 fn every_format_round_trips_the_same_nested_field() {
-    let field = StructureType::from_fields([
+    let field = StructType::from_fields([
         DataType::list(DataType::Int64.nullable_field("item")).nullable_field("levels"),
-        StructureType::from_fields([DataType::Boolean.required_field("ok")])
+        StructType::from_fields([DataType::Boolean.required_field("ok")])
             .map(DataType::from)
             .unwrap()
             .required_field("flags"),

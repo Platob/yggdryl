@@ -1278,7 +1278,7 @@ mod single_object {
             ]}"#,
         )
         .unwrap();
-        let value = Scalar::from_record([
+        let value = Scalar::from_struct([
             ("symbol", Scalar::from("AAPL")),
             ("qty", Scalar::from(100_i64)),
         ])
@@ -1437,7 +1437,7 @@ mod records {
 
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
     use yggdryl::avro::Avro;
 
     use arrow_array::builder::{Float64Builder, Int64Builder, ListBuilder, StringBuilder};
@@ -1456,7 +1456,7 @@ mod records {
     fn batch() -> (Field, RecordBatch) {
         let schema = Field::new(
             "trades",
-            StructureType::from_fields([
+            StructType::from_fields([
                 DataType::Int64.required_field("id"),
                 DataType::utf8().nullable_field("symbol"),
                 DataType::Float64.nullable_field("price"),
@@ -1674,7 +1674,7 @@ mod records {
 
     #[test]
     fn record_batches_keep_exact_avro_logical_and_fixed_leaves() {
-        let field = StructureType::from_fields([
+        let field = StructType::from_fields([
             DataType::uuid().required_field("id"),
             DataType::decimal32(9, 2).unwrap().required_field("small"),
             DataType::decimal64(18, 2).unwrap().required_field("large"),
@@ -1686,7 +1686,7 @@ mod records {
         .map(DataType::from)
         .unwrap()
         .required_field("row");
-        let rows = Scalar::from_sequence([Scalar::from_record([
+        let rows = Scalar::from_sequence([Scalar::from_struct([
             ("id", Scalar::from("00112233-4455-6677-8899-aabbccddeeff")),
             ("small", Scalar::d128(123, 2)),
             ("large", Scalar::d128(456, 2)),
@@ -1746,7 +1746,7 @@ mod records {
 
         let narrow = Field::new(
             "trades",
-            StructureType::from_fields([
+            StructType::from_fields([
                 DataType::Int64.required_field("id"),
                 DataType::Float64.nullable_field("price"),
             ])
@@ -1860,7 +1860,7 @@ mod records {
 
     #[test]
     fn dimensions_skip_a_large_avro_payload_without_decoding_it() {
-        let field = StructureType::from_fields([DataType::utf8().required_field("payload")])
+        let field = StructType::from_fields([DataType::utf8().required_field("payload")])
             .map(DataType::from)
             .unwrap()
             .required_field("rows");
@@ -1988,7 +1988,7 @@ mod records {
 
     #[test]
     fn an_open_cache_tracks_the_final_avro_field_after_casting() {
-        let stored = StructureType::from_fields([
+        let stored = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
         ])
@@ -2013,7 +2013,7 @@ mod records {
             .unwrap();
         media.open().unwrap();
 
-        let loose = StructureType::from_fields([
+        let loose = StructType::from_fields([
             DataType::utf8().required_field("id"),
             DataType::utf8().nullable_field("symbol"),
         ])
@@ -2196,7 +2196,7 @@ mod records {
         // declared type is already the null the wrap would add.
         let schema = Field::new(
             "row",
-            StructureType::from_fields([
+            StructType::from_fields([
                 DataType::Int64.required_field("id"),
                 DataType::Null.nullable_field("gap"),
             ])
@@ -2234,7 +2234,7 @@ mod records {
         // cannot be spelled.
         let schema = Field::new(
             "row",
-            StructureType::from_fields([DataType::interval(yggdryl::TimeUnit::MonthDayNano)
+            StructType::from_fields([DataType::interval(yggdryl::TimeUnit::MonthDayNano)
                 .unwrap()
                 .required_field("span")])
             .map(DataType::from)
@@ -2286,7 +2286,7 @@ mod records {
     fn logical_columns_round_trip_columnar() {
         let schema = Field::new(
             "row",
-            StructureType::from_fields([
+            StructType::from_fields([
                 DataType::date32().required_field("day"),
                 DataType::DateTime(DateTimeType::DateTime64 {
                     unit: yggdryl::TimeUnit::Microsecond,
@@ -2374,7 +2374,7 @@ mod matrix {
         let schema = r#"{"type":"record","name":"row","fields":[
             {"name":"counts","type":{"type":"map","values":"long"}}
         ]}"#;
-        let full = Scalar::from_record([(
+        let full = Scalar::from_struct([(
             "counts",
             Scalar::from_mapping([
                 (Scalar::from("a"), Scalar::from(1_i64)),
@@ -2383,7 +2383,7 @@ mod matrix {
             .unwrap(),
         )])
         .unwrap();
-        let empty = Scalar::from_record([("counts", Scalar::from_mapping([]).unwrap())]).unwrap();
+        let empty = Scalar::from_struct([("counts", Scalar::from_mapping([]).unwrap())]).unwrap();
         let rows = round_trip(schema, &[full.clone(), empty.clone()]);
         assert_eq!(rows, [full, empty]);
     }
@@ -2406,7 +2406,7 @@ mod matrix {
         )
         .unwrap();
         let rows = round_trip(schema, std::slice::from_ref(&row));
-        assert!(rows[0].as_record().is_some());
+        assert!(rows[0].as_struct().is_some());
         assert!(
             rows[0]
                 .path("outer.0.by_name")
@@ -2441,7 +2441,7 @@ mod matrix {
             {"name":"ms","type":{"type":"int","logicalType":"time-millis"}},
             {"name":"us","type":{"type":"long","logicalType":"time-micros"}}
         ]}"#;
-        let row = Scalar::from_record([
+        let row = Scalar::from_struct([
             (
                 "ms",
                 Scalar::time32(0, TimeUnit::Millisecond, yggdryl::Timezone::NAIVE).unwrap(),
@@ -2466,7 +2466,7 @@ mod matrix {
         let schema = r#"{"type":"record","name":"row","fields":[
             {"name":"day","type":{"type":"int","logicalType":"date"}}
         ]}"#;
-        let row = Scalar::from_record([("day", Scalar::date32(19_782))]).unwrap();
+        let row = Scalar::from_struct([("day", Scalar::date32(19_782))]).unwrap();
         assert_eq!(round_trip(schema, std::slice::from_ref(&row))[0], row);
     }
 
@@ -2657,7 +2657,7 @@ mod fuzz_lite {
 mod limits {
 
     use std::sync::Arc;
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
 
     use arrow_array::RecordBatchReader;
 
@@ -2668,7 +2668,7 @@ mod limits {
 
     /// A struct field is the schema of the batches it describes.
     fn schema() -> Field {
-        StructureType::from_fields([DataType::Int64.required_field("id")])
+        StructType::from_fields([DataType::Int64.required_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("row")

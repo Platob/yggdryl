@@ -33,16 +33,21 @@
 //! anything else is a value the message stated, and what the message stated
 //! stands.
 
+use std::cell::RefCell;
+use std::sync::Arc;
+
 use smol_str::SmolStr;
 
 use super::build::{stated as stated_field, typed_spelling};
 use super::entry::wire_text;
 use super::msg::FixMsg;
-use super::schema::item_fields;
+use super::registry::FixMap;
+use super::replacements::FixReplacementEntry;
+use super::schema::{item_fields, same_shape, shape_digest, tag_and_counter};
 use super::{FixRegistry, occurrence_name};
-use crate::expression::Term;
+use crate::expression::{Bound, Term};
 use crate::sequence::SequenceType;
-use crate::{DataType, Field, Plan, Result, Scalar, StructureType};
+use crate::{DataType, Field, Plan, Result, Scalar, StructType};
 
 /// One level of the row: the root, or one occurrence of a repeating group.
 ///
@@ -65,6 +70,18 @@ enum Child {
     /// A repeating group: its List field, and each occurrence unpacked -
     /// `None` where the row states no occurrence at that index.
     Group(Field, Vec<Option<Level>>),
+}
+
+/// What one message's root is to the pass, read without unpacking it.
+enum Shape {
+    /// The message the pass would answer: nothing to rename, merge, retype
+    /// or replace.
+    Canonical,
+    /// Stated under the dictionary's own fields, with a rule at the root
+    /// whose condition holds: the rule's writes are owed and nothing else.
+    Ruled,
+    /// Rebuilt whole.
+    Rebuilt,
 }
 
 /// What canonicalization decided for one child that reaches a registry
@@ -312,8 +329,9 @@ fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Sc
             members.push(member);
         }
     }
-    let mut item =
-        DataType::from(StructureType::from_fields(members)?).required_field(occurrence_name(&list));
+    // The union took each member once by name.
+    let mut item = DataType::from(StructType::from_unique_fields(members))
+        .required_field(occurrence_name(&list));
     if finished.iter().any(Option::is_none) {
         item.set_nullable(true);
     }
@@ -339,9 +357,14 @@ fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Sc
         DataType::Sequence(SequenceType::LargeList(_)) => DataType::large_list(item),
         _ => DataType::list(item),
     };
-    let mut rebuilt = dtype.required_field(list.name());
-    rebuilt.set_nullable(list.is_nullable());
-    rebuilt.set_metadata(list.as_metadata().iter())?;
+    // The List's own metadata travels as the one it is rather than as a map
+    // rebuilt from its entries for every group of every message.
+    let rebuilt = Field::new_with_metadata(
+        list.name(),
+        dtype,
+        list.is_nullable(),
+        list.as_metadata().clone(),
+    );
     Ok((rebuilt, rows))
 }
 
@@ -473,7 +496,7 @@ impl<'msg> Restater<'msg> {
     /// The registry field a child reaches: by its own tag, else by its name
     /// or alias, else by the decimal tag its name spells.
     fn resolve(&self, child: &Field) -> Option<&'msg Field> {
-        if let Ok(Some(tag)) = child.as_fix().tag() {
+        if let Some(tag) = tag_and_counter(self.registry, child).0 {
             if let Some(known) = self.msg.known_by_tag(tag) {
                 return Some(known);
             }
@@ -499,10 +522,136 @@ impl<'msg> Restater<'msg> {
             .filter(|held| !held.is_null())
     }
 
+    /// What one level is to the pass, read without unpacking it.
+    ///
+    /// A level is canonical where every scalar child the dictionary knows
+    /// is the dictionary's own field as the builder states one - the
+    /// canonical name, the field's datatype, its metadata shared and not
+    /// nullable - holding a value, reached by no other child of the level,
+    /// and carrying no replacement rule that could fire; every group
+    /// occurrence is such a level in turn. Canonicalizing such a level
+    /// keeps every child as it is, no rule restates one, and the group
+    /// packs back to the List it arrived as - so the pass would rebuild
+    /// the level it was handed. A child the dictionary does not know is
+    /// kept as it is either way, and a nested child no group declares is
+    /// too.
+    ///
+    /// A rule fires only where its condition holds at the root, so a root
+    /// child carrying rules leaves the level canonical exactly when none of
+    /// them applies: the plan is read once per rule and bound to the root
+    /// as the restatement would bind it, and the first that applies makes
+    /// the level ruled - canonical but for that rule's writes, which the
+    /// restatement lands on the level as it stands.
+    fn shape(&self, fields: &[Field], values: &[Scalar], shape: u64) -> Shape {
+        let mut ruled: Vec<&Field> = Vec::new();
+        if !self.canonical_level(fields, values, false, &mut ruled) {
+            return Shape::Rebuilt;
+        }
+        if ruled.is_empty() {
+            return Shape::Canonical;
+        }
+        let root = self.msg.as_field();
+        let row = self.msg.as_value();
+        let parameters = self.parameters(None);
+        for field in ruled {
+            let mut rules = field.as_fix().replacements();
+            while let Some(rule) = rules.next_ok() {
+                let Some(plan) = plan_of(rule) else {
+                    continue;
+                };
+                if Self::applies(&plan, root, row, shape, &parameters) {
+                    return Shape::Ruled;
+                }
+            }
+        }
+        Shape::Canonical
+    }
+
+    /// One level of [`Self::canonical`]: `member` for a group occurrence,
+    /// whose members the builder closes nullable and the group packs back
+    /// nullable, so nullability says nothing there; at the root a child is
+    /// nullable exactly where its value is null. A root child carrying
+    /// replacement rules is collected into `ruled` for the caller to test,
+    /// and one inside an occurrence is not canonical, because a rule at
+    /// that level binds to the occurrence and not to the root.
+    fn canonical_level(
+        &self,
+        fields: &[Field],
+        values: &[Scalar],
+        member: bool,
+        ruled: &mut Vec<&'msg Field>,
+    ) -> bool {
+        let mut reached: Vec<*const Field> = Vec::new();
+        for (field, value) in fields.iter().zip(values) {
+            if tag_and_counter(self.registry, field).1.is_some() {
+                if let (Some(members), Some(rows)) =
+                    (super::schema::item_fields(field), value.as_sequence())
+                {
+                    // The List as `pack_group` would rebuild it: a List and
+                    // not a map, its item nullable exactly where an
+                    // occurrence is null, and every member nullable.
+                    let DataType::Sequence(
+                        SequenceType::List(item) | SequenceType::LargeList(item),
+                    ) = field.dtype()
+                    else {
+                        return false;
+                    };
+                    if item.is_nullable() != rows.iter().any(Scalar::is_null) {
+                        return false;
+                    }
+                    let canonical = rows.iter().all(|row| {
+                        row.as_sequence()
+                            .is_none_or(|values| self.canonical_level(members, values, true, ruled))
+                    });
+                    if !canonical {
+                        return false;
+                    }
+                    continue;
+                }
+            }
+            if field.dtype().is_nested() {
+                continue;
+            }
+            if member && !field.is_nullable() {
+                return false;
+            }
+            let Some(known) = self.resolve(field) else {
+                continue;
+            };
+            if reached.iter().any(|held| std::ptr::eq(*held, known)) {
+                return false;
+            }
+            reached.push(known);
+            let nullable = if member {
+                field.is_nullable()
+            } else {
+                field.is_nullable() == value.is_null()
+            };
+            if !nullable
+                || field.name() != known.name()
+                || field.dtype() != known.dtype()
+                || !field.as_metadata().shares_storage_with(known.as_metadata())
+            {
+                return false;
+            }
+            let carries_rules = self.registry.facts_of(known).map_or_else(
+                || known.as_fix().replacements().next_ok().is_some(),
+                |facts| facts.ruled,
+            );
+            if !value.is_null() && carries_rules {
+                if member {
+                    return false;
+                }
+                ruled.push(known);
+            }
+        }
+        true
+    }
+
     /// One level canonicalized and restated, its group occurrences first.
     fn level(&self, level: Level, group: Option<&str>) -> Result<Level> {
         let mut level = self.canonicalized(level)?;
-        self.restated(&mut level, group);
+        self.restated(&mut level, group, None);
         Ok(level)
     }
 
@@ -620,20 +769,31 @@ impl<'msg> Restater<'msg> {
     /// becomes `R`, which FIX 5.0 retired for `PegPriceType` - so one pass
     /// reaches what a second pass would otherwise find; a chain is bounded
     /// by the rules the field states, so two rules restating each other end.
-    fn restated(&self, level: &mut Level, group: Option<&str>) {
+    ///
+    /// `pristine` is the level as its root and row already state it, where
+    /// the caller hands the level over as it arrived: the first rule read
+    /// against it reads those rather than a view rebuilt from the level,
+    /// and a view is rebuilt only once a write has landed.
+    fn restated(
+        &self,
+        level: &mut Level,
+        group: Option<&str>,
+        pristine: Option<(&Field, &Scalar, u64)>,
+    ) {
         let mut sources: Vec<(i32, usize)> = level
             .children
             .iter()
             .enumerate()
             .filter_map(|(at, child)| match child {
                 Child::Flat(field, value) if !value.is_null() => {
-                    Some((field.as_fix().tag().ok().flatten()?, at))
+                    Some((tag_and_counter(self.registry, field).0?, at))
                 }
                 _ => None,
             })
             .collect();
         sources.sort_unstable();
         let parameters = self.parameters(group);
+        let mut touched = false;
         for (tag, at) in sources {
             let mut remaining = usize::MAX;
             while remaining > 0 {
@@ -661,16 +821,21 @@ impl<'msg> Restater<'msg> {
                         if planned.is_some() {
                             continue;
                         }
-                        let Ok(plan) = rule.parse_plan() else {
+                        let Some(plan) = plan_of(rule) else {
                             continue;
                         };
                         if view.is_none() {
-                            view = Self::view(level);
+                            view = match pristine {
+                                Some((root, row, shape)) if !touched => {
+                                    Some((root.clone(), row.clone(), shape))
+                                }
+                                _ => Self::view(level),
+                            };
                         }
-                        let Some((root, row)) = view.as_ref() else {
+                        let Some((root, row, shape)) = view.as_ref() else {
                             break;
                         };
-                        if !Self::applies(&plan, root, row, &parameters) {
+                        if !Self::applies(&plan, root, row, *shape, &parameters) {
                             continue;
                         }
                         let source = Source { value, tag };
@@ -679,6 +844,7 @@ impl<'msg> Restater<'msg> {
                             level,
                             root,
                             row,
+                            *shape,
                             &source,
                             &plan,
                             &parameters,
@@ -693,6 +859,7 @@ impl<'msg> Restater<'msg> {
                 for write in writes {
                     level.apply(write);
                 }
+                touched = true;
                 remaining -= 1;
                 // A field the specification deprecated is restated and not
                 // kept: what it said now lives under what replaced it, and
@@ -717,13 +884,13 @@ impl<'msg> Restater<'msg> {
     /// thirty-seven fields of six thousand - so the clone it costs is paid
     /// once per firing rather than once per child. Rebuilt after a rule's
     /// writes land, because the next rule reads the level as it then is.
-    fn view(level: &Level) -> Option<(Field, Scalar)> {
+    fn view(level: &Level) -> Option<(Field, Scalar, u64)> {
         let (fields, values) = level.clone().pack().ok()?;
-        let root = StructureType::from_fields(fields)
-            .map(DataType::from)
-            .ok()?
-            .required_field("row");
-        Some((root, Scalar::from_sequence(values)))
+        // A write replaces the child it reached or appends a field no child
+        // is named as, so the level's children stay named once.
+        let root = DataType::from(StructType::from_unique_fields(fields)).required_field("row");
+        let shape = shape_digest(&root, false);
+        Some((root, Scalar::from_sequence(values), shape))
     }
 
     /// The parameters a rule's condition may name: `:msgtype`, the root's
@@ -743,11 +910,15 @@ impl<'msg> Restater<'msg> {
     /// comparison with no common type - does not hold, rather than refusing
     /// the pass: a rule is data, and one that does not apply here applies
     /// nowhere.
-    fn applies(plan: &Plan, root: &Field, row: &Scalar, parameters: &[(&str, Scalar)]) -> bool {
-        plan.filter_section()
-            .bind_with(root, parameters)
-            .and_then(|bound| bound.matches(row))
-            .unwrap_or(false)
+    fn applies(
+        plan: &Arc<Plan>,
+        root: &Field,
+        row: &Scalar,
+        shape: u64,
+        parameters: &[(&str, Scalar)],
+    ) -> bool {
+        bound_term(plan, None, root, shape, parameters)
+            .is_some_and(|bound| bound.matches(row).unwrap_or(false))
     }
 
     /// Every write one rule makes at `level`, or nothing when one target
@@ -761,8 +932,9 @@ impl<'msg> Restater<'msg> {
         level: &Level,
         root: &Field,
         row: &Scalar,
+        shape: u64,
         source: &Source<'_>,
-        plan: &Plan,
+        plan: &Arc<Plan>,
         parameters: &[(&str, Scalar)],
         rooted: bool,
     ) -> Option<Vec<Write>> {
@@ -777,8 +949,10 @@ impl<'msg> Restater<'msg> {
                 &named,
                 &name,
                 term,
+                plan,
                 root,
                 row,
+                shape,
                 parameters,
                 rooted,
             )?);
@@ -801,8 +975,10 @@ impl<'msg> Restater<'msg> {
         named: &[SmolStr],
         name: &str,
         term: &Term,
+        plan: &Arc<Plan>,
         root: &Field,
         row: &Scalar,
+        shape: u64,
         parameters: &[(&str, Scalar)],
         rooted: bool,
     ) -> Option<Write> {
@@ -811,9 +987,13 @@ impl<'msg> Restater<'msg> {
             .get_definition(crate::FixCategory::Groups, name)
         {
             let members = occurrence_members(term)?;
-            return self.plan_group(writes, definition, &members, root, row, parameters);
+            return self.plan_group(
+                writes, definition, &members, plan, root, row, shape, parameters,
+            );
         }
-        let value = term.bind_with(root, parameters).ok()?.eval(row).ok()?;
+        let value = bound_term(plan, Some(term), root, shape, parameters)?
+            .eval(row)
+            .ok()?;
         self.plan_column(writes, source, named, name, term, value, rooted)
     }
 
@@ -878,13 +1058,19 @@ impl<'msg> Restater<'msg> {
     /// An occurrence stating no literal matches the first occurrence there
     /// is, so a second pass finds what the first wrote rather than appending
     /// it again.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one rule's whole context, threaded"
+    )]
     fn plan_group(
         &self,
         level: &Level,
         definition: &Field,
         members: &[(SmolStr, &Term)],
+        plan: &Arc<Plan>,
         root: &Field,
         row: &Scalar,
+        shape: u64,
         parameters: &[(&str, Scalar)],
     ) -> Option<Write> {
         let counter_tag = definition.as_fix().counter().ok().flatten()?;
@@ -938,8 +1124,10 @@ impl<'msg> Restater<'msg> {
                 &[],
                 name,
                 term,
+                plan,
                 root,
                 row,
+                shape,
                 parameters,
                 // A group's occurrence, never the root: no typed fact lives
                 // here.
@@ -985,6 +1173,136 @@ fn retyped(known: &Field, held: &Field, value: &Scalar) -> Scalar {
     converted(known, value)
 }
 
+/// The replacement plans one thread has read, by the text each is read from.
+pub(super) type ReplacementPlans = FixMap<SmolStr, Option<Arc<Plan>>>;
+
+thread_local! {
+    /// Every replacement plan this thread has read, by the text it is read
+    /// from: a rule is data the dictionary states once, and a capture of a
+    /// million messages reads the same forty rules a million times.
+    static REPLACEMENT_PLANS: RefCell<ReplacementPlans> = RefCell::new(ReplacementPlans::default());
+}
+
+/// This thread's replacement plans exchanged with `with`.
+pub(super) fn swap_replacement_plans(with: &mut ReplacementPlans) {
+    REPLACEMENT_PLANS.with(|held| std::mem::swap(&mut *held.borrow_mut(), with));
+}
+
+/// How many plans one thread remembers; past it a plan is still read and
+/// simply not kept, and a dictionary states far fewer.
+const REMEMBERED_PLANS: usize = 4_096;
+
+/// One term of one plan bound against one shape of root under one pair of
+/// parameters: what names a binding this thread may read again.
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub(super) struct BoundKey {
+    /// The plan, by address: kept alive beside the binding, so the address
+    /// names it for as long as the binding is remembered.
+    plan: usize,
+    /// The term within the plan, by address, or zero for the plan's own
+    /// condition.
+    term: usize,
+    shape: u64,
+    msgtype: Option<SmolStr>,
+    group: Option<SmolStr>,
+}
+
+/// What one binding remembers: the plan it is read from, the root it was
+/// bound against, and the binding - or none, for a term that does not bind
+/// against that root.
+type Remembered = (Arc<Plan>, Field, Option<Arc<Bound>>);
+
+/// The bindings one thread has read, by what names each.
+pub(super) type BoundTerms = FixMap<BoundKey, Remembered>;
+
+thread_local! {
+    /// Every rule term this thread has bound, by the shape of the root it
+    /// was bound against: a term binds by column position and type, so a
+    /// binding read against one root answers every root of that shape, and
+    /// a capture states a few shapes a hundred thousand times each.
+    static BOUND_TERMS: RefCell<BoundTerms> = RefCell::new(BoundTerms::default());
+}
+
+/// This thread's bindings exchanged with `with`.
+pub(super) fn swap_bound_terms(with: &mut BoundTerms) {
+    BOUND_TERMS.with(|held| std::mem::swap(&mut *held.borrow_mut(), with));
+}
+
+/// How many bindings one thread remembers; past it a term is still bound
+/// and simply not kept.
+const REMEMBERED_BINDINGS: usize = 4_096;
+
+/// The text one parameter supplies, where it supplies one.
+fn parameter_text(parameters: &[(&str, Scalar)], name: &str) -> Option<SmolStr> {
+    parameters
+        .iter()
+        .find(|(held, _)| *held == name)
+        .and_then(|(_, value)| value.as_str().map(SmolStr::new))
+}
+
+/// `term` of `plan` - the plan's own condition where `None` - bound against
+/// `root`, whose shape digests to `shape`, under `parameters`, read once
+/// per shape of root per thread; nothing where it does not bind, exactly
+/// as a bind's refusal reads.
+///
+/// The shape digest names a bucket; the root the remembered binding was
+/// read against says whether this root is that shape, so a digest two
+/// shapes share costs a bind and never a wrong answer.
+fn bound_term(
+    plan: &Arc<Plan>,
+    term: Option<&Term>,
+    root: &Field,
+    shape: u64,
+    parameters: &[(&str, Scalar)],
+) -> Option<Arc<Bound>> {
+    let key = BoundKey {
+        plan: Arc::as_ptr(plan) as usize,
+        term: term.map_or(0, |term| std::ptr::from_ref(term) as usize),
+        shape,
+        msgtype: parameter_text(parameters, "msgtype"),
+        group: parameter_text(parameters, "group"),
+    };
+    let known = BOUND_TERMS.with(|held| {
+        held.borrow()
+            .get(&key)
+            .filter(|(_, schema, _)| same_shape(schema, root))
+            .map(|(_, _, bound)| bound.clone())
+    });
+    if let Some(bound) = known {
+        return bound;
+    }
+    let bound = match term {
+        Some(term) => term.bind_with(root, parameters),
+        None => plan.filter_section().bind_with(root, parameters),
+    }
+    .ok()
+    .map(Arc::new);
+    BOUND_TERMS.with(|held| {
+        let mut held = held.borrow_mut();
+        if held.len() < REMEMBERED_BINDINGS {
+            held.insert(key, (Arc::clone(plan), root.clone(), bound.clone()));
+        }
+    });
+    bound
+}
+
+/// The plan one rule is, read once per thread and shared after; nothing
+/// for a rule whose text is not a plan, exactly as the restatement skips
+/// one.
+fn plan_of(rule: FixReplacementEntry<'_>) -> Option<Arc<Plan>> {
+    REPLACEMENT_PLANS.with(|held| {
+        if let Some(known) = held.borrow().get(rule.plan()) {
+            return known.clone();
+        }
+        let plan = rule.parse_plan().ok().map(Arc::new);
+        let mut held = held.borrow_mut();
+        if held.len() < REMEMBERED_PLANS {
+            held.insert(SmolStr::new(rule.plan()), plan.clone());
+        }
+        plan
+    })
+}
+
 /// The message restated under the dictionary its registry holds.
 ///
 /// The levels are rebuilt whole, because canonicalizing merges and drops
@@ -1008,15 +1326,29 @@ pub(super) fn restate(mut msg: FixMsg) -> Result<FixMsg> {
             registry: msg.registry(),
             msgtype: Some(msg.header().msgtype()).filter(|held| !held.is_empty()),
         };
-        restater
-            .level(Level::unpack(children, values), None)?
-            .pack()?
+        // A message the builder stated under the dictionary's own fields is
+        // the message this pass would answer: nothing to rename, merge,
+        // retype or replace, so nothing is rebuilt. One a rule applies to
+        // is that message but for the rule's writes, which land on the
+        // level as it arrived.
+        let shape = shape_digest(root, false);
+        match restater.shape(children, values, shape) {
+            Shape::Canonical => return Ok(msg),
+            Shape::Ruled => {
+                let mut level = Level::unpack(children, values);
+                restater.restated(&mut level, None, Some((root, msg.as_value(), shape)));
+                level.pack()?
+            }
+            Shape::Rebuilt => restater
+                .level(Level::unpack(children, values), None)?
+                .pack()?,
+        }
     };
     // The children were each checked by `from_fields`, which is what the
     // root's setter would check a second time before comparing every child.
     let root = Field::new_with_metadata(
         root.name(),
-        DataType::from(StructureType::from_fields(fields)?),
+        DataType::from(StructType::from_checked_fields(fields)?),
         root.is_nullable(),
         root.as_metadata().clone(),
     );

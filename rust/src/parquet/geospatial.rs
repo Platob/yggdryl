@@ -1,12 +1,14 @@
-//! Parquet's `GEOMETRY`, `GEOGRAPHY`, and `VARIANT` logical types.
+//! Parquet's `GEOMETRY` and `GEOGRAPHY` logical types.
 //!
-//! The pinned parquet crate can spell all three logical types, but its Arrow
-//! schema conversion only maps them from extension metadata behind crate
-//! features that pull new dependencies (`geospatial`, `variant_experimental`).
-//! This module closes that gap without them: the writer converts the Arrow
-//! schema itself, walks it beside the converted Parquet schema, and attaches
-//! the logical type wherever the Arrow field metadata declares the
-//! `geoarrow.wkb` or `arrow.parquet.variant` extension.
+//! The pinned parquet crate can spell both logical types, but its Arrow
+//! schema conversion only maps them from extension metadata behind a crate
+//! feature that pulls new dependencies (`geospatial`). This module closes
+//! that gap without it: the writer converts the Arrow schema itself, walks
+//! it beside the converted Parquet schema, and attaches the logical type
+//! wherever the Arrow field metadata declares the `geoarrow.wkb` extension.
+//! A variant column is a plain binary column of the crate's own encoding,
+//! under its `yggdryl.variant` extension name in the Arrow schema the file
+//! carries, and takes no Parquet logical type.
 //!
 //! Attaching `GEOMETRY`/`GEOGRAPHY` is also what turns the format's
 //! statistics contract on: the Parquet writer refuses min/max value bounds
@@ -38,7 +40,7 @@ use crate::GeospatialParameters;
 use crate::IOBase;
 use crate::arrow::{Error, Result, from_reader_error};
 use crate::wkb;
-use crate::{DEFAULT_CRS, GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
+use crate::{DEFAULT_CRS, GEOARROW_WKB_EXTENSION_NAME};
 
 /// Bounds and geometry types of one geospatial column, in WKB vocabulary.
 ///
@@ -316,7 +318,7 @@ fn subtree_has_extension(field: &ArrowField) -> bool {
             .metadata()
             .get(EXTENSION_TYPE_NAME_KEY)
             .map(String::as_str),
-        Some(GEOARROW_WKB_EXTENSION_NAME | VARIANT_EXTENSION_NAME)
+        Some(GEOARROW_WKB_EXTENSION_NAME)
     ) {
         return true;
     }
@@ -341,7 +343,6 @@ fn annotated(field: &ArrowField, ty: &TypePtr, path: &str) -> Result<TypePtr> {
         .map(String::as_str)
     {
         Some(GEOARROW_WKB_EXTENSION_NAME) => Ok(Arc::new(geospatial_primitive(field, ty, path)?)),
-        Some(VARIANT_EXTENSION_NAME) => Ok(Arc::new(variant_group(ty, path)?)),
         _ => descend(field, ty, path),
     }
 }
@@ -419,22 +420,6 @@ fn geospatial_primitive(field: &ArrowField, ty: &Type, path: &str) -> Result<Typ
         builder = builder.with_repetition(info.repetition());
     }
     Ok(builder.build()?)
-}
-
-/// Rebuild one `arrow.parquet.variant` storage group with `VARIANT` attached.
-fn variant_group(ty: &Type, path: &str) -> Result<Type> {
-    if !ty.is_group() {
-        return Err(invalid(
-            path,
-            "a metadata/value struct storage for an arrow.parquet.variant column",
-            storage_name(ty),
-        ));
-    }
-    rebuilt_group(
-        ty,
-        ty.get_fields().to_vec(),
-        Some(LogicalType::variant(None)),
-    )
 }
 
 /// Rebuild one group node, preserving its identity and optionally attaching

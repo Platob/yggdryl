@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructureType};
+use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructType};
 
 #[test]
 fn an_installed_registry_is_the_default_and_cannot_be_replaced() {
@@ -24,11 +24,11 @@ fn an_installed_registry_is_the_default_and_cannot_be_replaced() {
     assert_eq!(global.field_by_tag(55).expect("Symbol").name(), "Symbol");
 
     // A message built without a registry links that very `Arc`.
-    let root = StructureType::from_fields([symbol])
+    let root = StructType::from_fields([symbol])
         .map(DataType::from)
         .expect("one child")
         .required_field("row");
-    let value = Scalar::from_record([("Symbol", Scalar::from("AAPL"))]).expect("one entry");
+    let value = Scalar::from_struct([("Symbol", Scalar::from("AAPL"))]).expect("one entry");
     let msg = FixMsg::new(root, value).expect("a valid message");
     assert!(Arc::ptr_eq(msg.registry(), global));
     assert_eq!(msg.by_tag(55).expect("Symbol"), Scalar::from("AAPL"));

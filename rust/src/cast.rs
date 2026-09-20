@@ -585,10 +585,10 @@ mod plan {
     /// use std::sync::Arc;
     ///
     /// use arrow_array::{ArrayRef, Int32Array, RecordBatch};
-    /// use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, StructureType};
+    /// use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, StructType};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let root = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+    /// let root = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
     ///     .required_field("row");
     /// let source = RecordBatch::try_from_iter([(
     ///     "id",
@@ -1248,15 +1248,14 @@ mod typed {
     // A UUID stores as the fixed binary of its sixteen bytes.
     typed_array!(crate::uuid::UuidType, arrow_array::FixedSizeBinaryArray);
     // The sequence family covers five layouts whose arrays genuinely differ,
-    // so it names none of them. The structure family's two leaves are both
-    // struct arrays - a pair is a struct of two children - so it names that.
+    // so it names none of them; a struct is one struct array.
     typed_array!(crate::SequenceType, ArrayRef);
-    typed_array!(crate::StructureType, arrow_array::StructArray);
+    typed_array!(crate::StructType, arrow_array::StructArray);
     typed_array!(crate::UnionType, arrow_array::UnionArray);
     typed_array!(crate::MappingType, arrow_array::MapArray);
-    // A variant's storage is the canonical struct of two required binaries, and a
-    // geospatial value is its WKB payload, so their physical arrays are fixed.
-    typed_array!(crate::VariantType, arrow_array::StructArray);
+    // A variant's storage is the binary of its encoding, and a geospatial
+    // value is its WKB payload, so their physical arrays are fixed.
+    typed_array!(crate::VariantType, arrow_array::BinaryArray);
     typed_array!(crate::GeometryType, arrow_array::BinaryArray);
     typed_array!(crate::GeographyType, arrow_array::BinaryArray);
 
@@ -1878,15 +1877,14 @@ impl ArrayCastPlan {
             },
             (DataType::Variant, source) => {
                 if crate::is_variant_storage(source) {
-                    // The identity: physically the same two required binary
-                    // children, reconciled to the canonical child spelling.
+                    // The identity: the same binary, holding the encoding.
                     ArrayCastKind::Kernel
                 } else {
                     return Err(Error::Unsupported {
                         kind: dtype.name(),
                         reason: format!(
-                            "casting {source:?} to variant goes through the variant codec, \
-                             which lands with the Iceberg v3 layer"
+                            "casting {source:?} to variant: a variant column holds the \
+                             variant encoding of each value, which `into_variant_bytes` writes"
                         ),
                     });
                 }
@@ -2083,7 +2081,7 @@ impl ArrayCastPlan {
             (target, source) if holds_decimal(target) && holds_text(source) => {
                 ArrayCastKind::DecimalIngest
             }
-            (DataType::Structure(fields), ArrowDataType::Struct(source_fields)) => {
+            (DataType::Struct(fields), ArrowDataType::Struct(source_fields)) => {
                 let ArrowDataType::Struct(target_fields) = expected else {
                     return Err(internal_target_error("struct"));
                 };
@@ -2849,8 +2847,8 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         (other, RecognizedExtension::Variant) => Err(Error::Unsupported {
             kind: "variant",
             reason: format!(
-                "casting variant to {} goes through the variant codec, which lands \
-                 with the Iceberg v3 layer",
+                "casting variant to {}: a variant column holds the variant encoding of \
+                 each value, which `decode_variant_bytes` reads",
                 other.name()
             ),
         }),
@@ -3049,7 +3047,7 @@ pub(crate) mod columns {
                 | DataType::Sequence(SequenceType::LargeListView(field)) => {
                     contains_dictionary(field.dtype())
                 }
-                DataType::Structure(fields) => fields
+                DataType::Struct(fields) => fields
                     .iter()
                     .any(|field| contains_dictionary(field.dtype())),
                 DataType::Union(fields, _) => fields
@@ -3121,7 +3119,7 @@ pub(crate) mod columns {
                     right_exposure,
                     budget,
                 ),
-                DataType::Structure(fields) => {
+                DataType::Struct(fields) => {
                     let left_struct = downcast::<StructArray>(left.as_ref())?;
                     let right_struct = downcast::<StructArray>(right.as_ref())?;
                     let left_child_exposure =
@@ -5061,7 +5059,7 @@ pub(crate) mod columns {
             | DataType::Sequence(SequenceType::LargeListView(child)) => {
                 requires_yggdryl_key_comparator(child.dtype())
             }
-            DataType::Structure(fields) => fields
+            DataType::Struct(fields) => fields
                 .iter()
                 .any(|field| requires_yggdryl_key_comparator(field.dtype())),
             DataType::Mapping(map) => requires_yggdryl_key_comparator(map.entries().dtype()),
@@ -5352,7 +5350,7 @@ pub(crate) mod columns {
                     Ordering::Equal
                 })
             }
-            DataType::Structure(fields) => {
+            DataType::Struct(fields) => {
                 let left_source = downcast::<StructArray>(left.as_ref())?;
                 let right_source = downcast::<StructArray>(right.as_ref())?;
                 let comparators = fields
@@ -5726,7 +5724,7 @@ pub(crate) mod columns {
 
     pub(crate) fn contains_struct(dtype: &DataType) -> bool {
         match dtype {
-            DataType::Structure(_) | DataType::Mapping(_) => true,
+            DataType::Struct(_) | DataType::Mapping(_) => true,
             DataType::Sequence(SequenceType::List(field))
             | DataType::Sequence(SequenceType::ListView(field))
             | DataType::Sequence(SequenceType::FixedSizeList(field, _))
@@ -5751,7 +5749,7 @@ pub(crate) mod columns {
                 | DataType::Sequence(SequenceType::FixedSizeList(_, _))
                 | DataType::Sequence(SequenceType::LargeList(_))
                 | DataType::Sequence(SequenceType::LargeListView(_))
-                | DataType::Structure(_)
+                | DataType::Struct(_)
                 | DataType::Union(_, _)
                 | DataType::Enum(EnumType::Dictionary(_))
                 | DataType::Mapping(_)

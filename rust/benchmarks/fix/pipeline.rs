@@ -202,6 +202,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             TextLine::from_bytes(
                 index as u64,
                 TextBytes::from_bytes(body.as_slice()).expect("a page"),
+                std::sync::Arc::new(yggdryl::text::TextOptions::new()),
             )
             .expect("a line")
             .with_captures(vec![Some(

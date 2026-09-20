@@ -91,6 +91,16 @@ test('a message no live one precedes is answered as it came', () => {
   assert.equal(walkedPair[1].prevuuid, null, 'another chain, another first message')
   assert.equal(walkedPair[2].prevuuid, walkedPair[0].curruuid)
   assert.equal(walkedPair[3].prevuuid, walkedPair[1].curruuid)
+
+  // A message read from a line states the line as its one source, and the
+  // source is no part of the code: the same bytes are the same content,
+  // whether the walk dated the message by its transaction or not.
+  const line = new TextLine(0, lines[0])
+  const [sourced] = codec.parseTextLine(line)
+  assert.deepEqual(sourced.srcuuids, [line.curruuid])
+  assert.deepEqual(sourced.event().srcuuids, [line.curruuid])
+  assert.equal(sourced.currhashcode, walkedPair[0].currhashcode)
+  assert.deepEqual(walkedPair[0].srcuuids, [])
 })
 
 test('the stream is lazy, pulls one message at a time and throws what its source throws', () => {
@@ -145,7 +155,8 @@ test('the walk crosses Arrow both ways without a second parse', () => {
     assert.equal(message.crosscode, expected[at].crosscode, `message ${at}`)
     assert.deepEqual(message.entries(), expected[at].entries(), `message ${at}`)
     assert.equal(message.prevuuid, at === 0 ? null : back[at - 1].curruuid, `message ${at}`)
-    assert.deepEqual(message.parentuuids, at === 0 ? [] : [back[at - 1].curruuid], `message ${at}`)
+    assert.deepEqual(message.parentuuids, back.slice(0, at).map((held) => held.curruuid), `message ${at}`)
+    assert.deepEqual(message.srcuuids, [], `message ${at} was read from bytes`)
     assert.equal(message.crossuuid, back[0].crossuuid, `message ${at}`)
   }
   // The source is consumed, as every batch door consumes one.
@@ -187,22 +198,29 @@ test('a bridge capture parses whole and walks its chains', () => {
   // The walk states a predecessor for every message that has one.
   const walked = [...codec.lifecycle(messages)]
   assert.equal(walked.length, messages.length)
-  assert.equal(walked.filter((message) => message.prevuuid !== null).length, 35)
-  assert.equal(walked.filter((message) => message.seqnum > 0).length, 35)
-  assert.ok(walked.every((message) => message.parentuuids.length === (message.prevuuid === null ? 0 : 1)))
+  assert.equal(walked.filter((message) => message.prevuuid !== null).length, 34)
+  assert.equal(walked.filter((message) => message.seqnum > 0).length, 34)
+  // A walked message descends from the whole chain before it, and every
+  // message read from a line states that line as its one source, walked or
+  // not: provenance never travels along the chain.
+  assert.ok(walked.every((message) => message.parentuuids.length === message.seqnum))
+  assert.ok(messages.every((message) => message.srcuuids.length === 1))
+  const sources = (held) => held.map((message) => message.srcuuids.join()).sort()
+  assert.deepEqual(sources(walked), sources(messages))
 
   // And the Arrow twin answers the same walk over the same corpus.
   const schema = fix.schema(registry)
   const rows = codec.lifecycleArrowReader(codec.arrowReader(schema, messages))
   const chained = [...codec.messages(rows)]
   assert.equal(chained.length, messages.length)
-  assert.equal(chained.filter((message) => message.prevuuid !== null).length, 35)
+  assert.equal(chained.filter((message) => message.prevuuid !== null).length, 34)
 })
 
 test('a transaction time stating only a day leaves the sending clock standing', () => {
   const codec = reading(seed(), { defaultSendingTime: SENDING })
-  // `60=20260814` states a day and no clock, so the event is the sending
-  // time rather than midnight (`rust/tests/fix/`).
+  // `60=20260814` states a day and no clock, and a transaction time dates
+  // nothing at the parse anyway: the event is the sending time
+  // (`rust/tests/fix/`).
   const day = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A|60=20260814|10=0|'))
   assert.equal(day.currunix, 1_704_190_530_000_000_000n)
   assert.equal(day.header().sendingtime, day.currunix)

@@ -10,11 +10,11 @@ use arrow_schema::{ArrowError, SchemaRef};
 use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{ArrowWriteSession, IOBase, IOMedia, StructureType};
+use yggdryl::{ArrowWriteSession, IOBase, IOMedia, StructType};
 use yggdryl::{DataType, Error, Field, IOMode, MimeType, Scalar, Url};
 
 fn schema() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])

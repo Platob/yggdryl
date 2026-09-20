@@ -8,7 +8,7 @@ One line per row, in and out: the record surface a `text/plain` handle answers w
 | --- | --- |
 | Reads | Python `read_records`, JavaScript `readRecords` - one row per physical line, or per framed record; Rust reads Arrow and crosses with `ArrowScalar::into_scalar` |
 | Writes | `overwrite_records`, `append_records`; each row's non-null `utf8` `body` becomes one line plus the terminator |
-| Row | the [row schema](index.md#row-schema): `sourceurl`, `rownum`, `body`, `mtime`, plus every row-header capture and lifted entry |
+| Row | the [row schema](index.md#row-schema): the sixteen [event columns](../../graph.md#columns), then `sourceurl`, `rownum`, `body`, `mtime`, plus every row-header capture and lifted entry |
 | Terminator | `linesep` when pinned, otherwise LF on write; a read accepts LF, CRLF, or CR |
 | Charset | the body crosses in the charset the handle's media type [declares](index.md#declaring-a-charset) |
 | Merge | refused: a line has no row identity |
@@ -22,7 +22,7 @@ A write consumes the `body` column and adds the terminator; a read hands the lin
     ```rust
     use yggdryl::holder::Buffer;
     use yggdryl::media::IORecordOptions;
-    use yggdryl::{DataType, IOBase, IOMedia, Scalar, StructureType, Url};
+    use yggdryl::{DataType, IOBase, IOMedia, Scalar, StructType, Url};
 
     struct Line(&'static str);
 
@@ -32,7 +32,7 @@ A write consumes the `body` column and adds the terminator; a read hands the lin
         }
     }
 
-    let body = DataType::from(StructureType::from_fields([DataType::utf8().required_field("body")])?)
+    let body = DataType::from(StructType::from_fields([DataType::utf8().required_field("body")])?)
         .required_field("row");
     let mut handle =
         Buffer::new().with_media_type(Url::from_str("file:///app.log")?.media_type());

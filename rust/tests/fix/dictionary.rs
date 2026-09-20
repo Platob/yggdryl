@@ -27,7 +27,7 @@ fn definitions(registry: &FixRegistry, category: FixCategory) -> impl Iterator<I
 
 fn category_of(field: &Field) -> FixCategory {
     match field.dtype() {
-        DataType::Structure(_) => FixCategory::Components,
+        DataType::Struct(_) => FixCategory::Components,
         dtype if dtype.is_nested() => FixCategory::Groups,
         _ => FixCategory::Fields,
     }
@@ -349,7 +349,7 @@ fn every_field(registry: &FixRegistry) -> Vec<Field> {
         match field.dtype() {
             DataType::Sequence(SequenceType::List(item))
             | DataType::Sequence(SequenceType::LargeList(item)) => walk(item, out),
-            DataType::Structure(fields) => {
+            DataType::Struct(fields) => {
                 for held in fields.iter() {
                     walk(held, out);
                 }
@@ -419,8 +419,8 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
-    // Sixty-eight shipped fields, plus the crate's four clocks: `currunix`,
-    // `creaunix`, `prevunix` and `snapunix`.
+    // Sixty-eight shipped fields, plus the crate's five clocks: `currunix`,
+    // `creaunix`, `prevunix`, `snapunix` and `expirunix`.
     let crated = registry
         .iter()
         .filter(|field| {
@@ -433,7 +433,7 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
                     .is_some_and(yggdryl::is_crate_tag)
         })
         .count();
-    assert_eq!(crated, 4, "the crate's own clocks");
+    assert_eq!(crated, 5, "the crate's own clocks");
     assert_eq!(utc, 68 + crated, "instants stated in UTC");
 }
 
@@ -555,8 +555,8 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// its hash, so a family variant contributes its leaf's discriminant too, and
 /// every sequence, struct and mapping in the dictionary hashes one level
 /// deeper than it did. `identifiers` and `metadata` also declare sorted keys, so they are
-/// `sorted_map` rather than `map` beside a flag, and their entries are the
-/// `struct2` pair rather than a struct that happens to hold two children. It
+/// `sorted_map` rather than `map` beside a flag, and their entries the struct
+/// of two children every mapping's are. It
 /// last moved when a field became an enum over its leaves and the dictionary
 /// sidecar moved onto the one leaf that has it: a field hashes the datatype
 /// its leaf holds rather than the `DataType` it widens to, and it hashes one
@@ -580,11 +580,22 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// deeper, where it used to hash a variant of its own. It last moved when
 /// uuid became one parameter-free datatype again: a uuid column hashes a
 /// variant with nothing in it, where it used to hash the leaf that said which
-/// RFC 9562 versions it admitted.
+/// RFC 9562 versions it admitted. It last moved when the crate's own block
+/// gained `srcuuids`: a twentieth definition, the list of the elements a
+/// message was read from, hashes beside the nineteen and as a member of the
+/// fixed row. It last moved when the datatype identifiers were laid out by
+/// family and a mapping's entries became the plain struct of two children:
+/// every datatype tag in the hash is the family-laid byte, and `identifiers`
+/// and `metadata` hash their entries as a struct rather than a leaf of their
+/// own. It last moved when the crate's own block gained `state` and
+/// `expirunix`: the two lifecycle facts a walk folds forward hash as a
+/// twenty-first and a twenty-second definition, each at its event column's
+/// datatype - a ranked state and a nanosecond clock - and as members of the
+/// fixed row, the state ahead of `OrdStatus` and the expiry beside the clocks.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 12_108_555_590_315_433_617);
+    assert_eq!(registry.stable_hash(), 10_120_278_288_742_142_511);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

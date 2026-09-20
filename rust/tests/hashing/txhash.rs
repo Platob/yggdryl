@@ -4,7 +4,7 @@ use yggdryl::txhash::{
 };
 use yggdryl::xxhash::{self, Xxh3};
 use yggdryl::{
-    DataType, Digest, DigestAlgorithm, Error, Field, Scalar, StructureType, TimeUnit, Timezone,
+    DataType, Digest, DigestAlgorithm, Error, Field, Scalar, StructType, TimeUnit, Timezone,
 };
 
 const INSTANT: i64 = 1_700_000_000_000_000;
@@ -700,7 +700,7 @@ fn a_scalar_couples_its_own_digest() {
         typed.txhash(1, DigestAlgorithm::Xxh3),
         Scalar::from(1_i64).txhash(1, DigestAlgorithm::Xxh3)
     );
-    let row = StructureType::from_fields([field.clone()])
+    let row = StructType::from_fields([field.clone()])
         .map(DataType::from)
         .unwrap()
         .required_field("row");

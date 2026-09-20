@@ -344,7 +344,7 @@ impl JsScalar {
     #[napi(js_name = "_getNative", skip_typescript)]
     pub fn get_native(&self, key: &JsScalar) -> Option<JsScalar> {
         let value = match &self.inner {
-            Scalar::Record(_) => key
+            Scalar::Struct(_) => key
                 .inner
                 .as_str()
                 .and_then(|name| self.inner.get_key_str(name)),
@@ -359,7 +359,7 @@ impl JsScalar {
     pub fn set_native(&self, key: &JsScalar, value: &JsScalar) -> Result<Self> {
         let rebuilt = match &self.inner {
             Scalar::Mapping(_) => self.inner.with_key(key.inner.clone(), value.inner.clone()),
-            Scalar::Record(_) => {
+            Scalar::Struct(_) => {
                 let name = key
                     .inner
                     .as_str()
@@ -385,7 +385,7 @@ impl JsScalar {
             .ok_or_else(|| napi_error("remove requires a string key"))?;
         let rebuilt = match &self.inner {
             Scalar::Mapping(_) => self.inner.without_key(name),
-            Scalar::Record(_) => self.inner.without_field(name),
+            Scalar::Struct(_) => self.inner.without_field(name),
             _ => {
                 return Err(napi_error(format!(
                     "expected a mapping or record to remove a value from, got {}",
@@ -470,6 +470,28 @@ impl JsScalar {
     #[napi]
     pub fn stable_hash(&self) -> u64 {
         self.inner.stable_hash()
+    }
+
+    /// This value as the variant encoding: one `Buffer` holding the
+    /// version, the datatype's identifier and the payload the identifier
+    /// says how to read - a number as its little-endian bytes, a text as a
+    /// compression byte, a size and the characters, a nested value as a
+    /// count and its children - compressed with zstd past four kibibytes.
+    /// What a variant column stores per row.
+    #[napi]
+    pub fn into_variant_bytes(&self) -> Buffer {
+        self.inner.into_variant_bytes().into()
+    }
+
+    /// The value one variant encoding holds, as `intoVariantBytes` wrote
+    /// it. Throws naming the byte where the bytes could not be read:
+    /// another version, a byte naming no datatype, a payload cut short, or
+    /// bytes left after the value.
+    #[napi(factory)]
+    pub fn from_variant_bytes(data: Uint8Array) -> Result<Self> {
+        Scalar::decode_variant_bytes(data.as_ref())
+            .map(Self::from_core)
+            .map_err(napi_error)
     }
 
     /// Digest this value's canonical byte representation.
@@ -2189,7 +2211,7 @@ impl<'env> JsEncoder<'env> {
             };
             entries.push((key, value));
         }
-        Scalar::from_record(entries).map_err(napi_error)
+        Scalar::from_struct(entries).map_err(napi_error)
     }
 
     fn encode_required_property(
@@ -2385,7 +2407,7 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         Scalar::Duration32(leaf) => Ok(fixed_temporal_transport(value, leaf)),
         Scalar::Duration64(leaf) => Ok(fixed_temporal_transport(value, leaf)),
         Scalar::Mapping(entries) => mapping_transport(entries.as_slice(), depth, max_depth),
-        Scalar::Record(entries) => record_transport(entries.as_map(), depth, max_depth),
+        Scalar::Struct(entries) => record_transport(entries.as_map(), depth, max_depth),
         _ => Err(napi_error("unsupported native Scalar representation")),
     }
 }
@@ -2406,7 +2428,7 @@ fn struct_transport_with_field(
         Scalar::Sequence(values) if values.as_slice().len() == fields.len() => {
             fields.iter().zip(values.as_slice()).collect::<Vec<_>>()
         }
-        Scalar::Record(values) => fields
+        Scalar::Struct(values) => fields
             .iter()
             .map(|field| {
                 values
@@ -2443,7 +2465,7 @@ fn struct_transport_with_field(
             .into_iter()
             .map(|(name, value)| JsonValue::Array(vec![JsonValue::String(name.to_owned()), value]))
             .collect();
-        return Ok(marker("record", [("value", JsonValue::Array(pairs))]));
+        return Ok(marker("struct", [("value", JsonValue::Array(pairs))]));
     }
     let mut object = JsonMap::with_capacity(entries.len());
     for (name, value) in entries {
@@ -2491,7 +2513,7 @@ pub(crate) fn value_to_transport_with_field(
         return value_to_transport(value, depth, max_depth);
     }
     match field.dtype() {
-        CoreDataType::Structure(structure) => {
+        CoreDataType::Struct(structure) => {
             struct_transport_with_field(value, structure.as_fields(), depth, max_depth)
         }
         CoreDataType::Sequence(sequence) => value
@@ -2625,7 +2647,7 @@ fn record_transport<K: AsRef<str> + Ord>(
                 ]))
             })
             .collect::<Result<Vec<_>>>()?;
-        return Ok(marker("record", [("value", JsonValue::Array(pairs))]));
+        return Ok(marker("struct", [("value", JsonValue::Array(pairs))]));
     }
     let mut object = JsonMap::with_capacity(entries.len());
     for (key, value) in entries {

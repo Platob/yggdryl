@@ -232,5 +232,54 @@
       "description": "The identifier every message of one lifecycle shares: OrderID, else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the first stated.",
       "display": "CrossCode"
     }
+  },
+  {
+    "name": "srcuuids",
+    "dtype": {
+      "type": "list",
+      "field": {
+        "name": "srcuuid",
+        "dtype": {
+          "type": "uuid"
+        },
+        "nullable": false,
+        "metadata": {}
+      }
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65051",
+      "FIX:transient": "false",
+      "description": "The identities of the elements this message was read from: the text line it was parsed out of, and none for one parsed from raw bytes. Provenance, never lineage: no walk moves it.",
+      "display": "SrcUuids"
+    }
+  },
+  {
+    "name": "state",
+    "dtype": {
+      "type": "state"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65052",
+      "FIX:transient": "false",
+      "description": "The state the message reached, ranked so the column sorts by lifecycle: OrdStatus, else ExecType, 00UNKNOWN where neither states one; the furthest its chain knows once followed.",
+      "display": "State"
+    }
+  },
+  {
+    "name": "expirunix",
+    "dtype": {
+      "type": "datetime64",
+      "unit": "nanosecond",
+      "timezone": "UTC"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65053",
+      "FIX:transient": "false",
+      "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; the latest its chain knows once followed.",
+      "display": "ExpirUnix"
+    }
   }
 ]

@@ -10,7 +10,7 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::string::is_text_storage;
-use crate::{DataType, Field, Result, Scalar, StructureType, TimeUnit};
+use crate::{DataType, Field, Result, Scalar, StructType, TimeUnit};
 
 use super::datum::invalid;
 use super::schema::{Node, Schema};
@@ -42,7 +42,7 @@ pub(crate) fn field_from_schema(schema: &Schema, root_name: &str) -> Result<Fiel
     let value = Field::new("value", dtype, nullable);
     Ok(Field::new(
         root_name,
-        DataType::from(StructureType::from_fields([value])?),
+        DataType::from(StructType::from_fields([value])?),
         false,
     ))
 }
@@ -73,7 +73,7 @@ fn struct_of(
         fields.push(built);
     }
     visiting.pop();
-    Ok((DataType::from(StructureType::from_fields(fields)?), false))
+    Ok((DataType::from(StructType::from_fields(fields)?), false))
 }
 
 /// Map one Avro node onto a datatype and its nullability.
@@ -100,7 +100,7 @@ fn dtype_from(
             let key = Field::new("key", DataType::utf8(), false);
             let entries = Field::new(
                 "entries",
-                DataType::from(StructureType::from_fields([key, value])?),
+                DataType::from(StructType::from_fields([key, value])?),
                 false,
             );
             (DataType::map(entries, false)?, false)
@@ -154,7 +154,7 @@ fn union_from(
 /// Returns an error naming any datatype Avro cannot spell.
 pub(crate) fn schema_json_from_field(field: &Field) -> Result<Scalar> {
     let mut counter = 0_usize;
-    let DataType::Structure(_) = field.dtype() else {
+    let DataType::Struct(_) = field.dtype() else {
         return Err(invalid(format_smolstr!(
             "expected a struct root to write Avro records, got {}",
             field.dtype()
@@ -181,9 +181,9 @@ fn record_json(name: &str, fields: &[Field], counter: &mut usize) -> Result<Scal
         if let Ok(Some(id)) = field.parquet_field_id() {
             pairs.push(("field-id", Scalar::from(i64::from(id))));
         }
-        entries.push(Scalar::from_record(pairs)?);
+        entries.push(Scalar::from_struct(pairs)?);
     }
-    Scalar::from_record([
+    Scalar::from_struct([
         ("type", Scalar::from("record")),
         ("name", Scalar::from(name)),
         ("fields", Scalar::from_sequence(entries)),
@@ -194,7 +194,7 @@ fn record_json(name: &str, fields: &[Field], counter: &mut usize) -> Result<Scal
 fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar> {
     let plain = |kind: &'static str| Ok(Scalar::from(kind));
     let logical = |kind: &'static str, annotation: &'static str| {
-        Scalar::from_record([
+        Scalar::from_struct([
             ("type", Scalar::from(kind)),
             ("logicalType", Scalar::from(annotation)),
         ])
@@ -232,7 +232,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         }
         DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)) => {
             *counter += 1;
-            Scalar::from_record([
+            Scalar::from_struct([
                 ("type", Scalar::from("fixed")),
                 ("name", Scalar::from(unique_name(name, counter))),
                 ("size", Scalar::from(12_i64)),
@@ -242,7 +242,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         DataType::Bytes(parameters) => {
             let width = parameters.fixed().ok_or_else(|| unspellable(dtype))?;
             *counter += 1;
-            Scalar::from_record([
+            Scalar::from_struct([
                 ("type", Scalar::from("fixed")),
                 ("name", Scalar::from(unique_name(name, counter))),
                 ("size", Scalar::from(i64::from(width))),
@@ -254,14 +254,14 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
             if *scale < 0 {
                 return Err(unspellable(dtype));
             }
-            Scalar::from_record([
+            Scalar::from_struct([
                 ("type", Scalar::from("bytes")),
                 ("logicalType", Scalar::from("decimal")),
                 ("precision", Scalar::from(i64::from(*precision))),
                 ("scale", Scalar::from(i64::from(*scale))),
             ])
         }
-        DataType::Structure(_) => {
+        DataType::Struct(_) => {
             *counter += 1;
             let record_name = unique_name(name, counter);
             let fields = dtype.as_fields().ok_or_else(|| unspellable(dtype))?;
@@ -273,7 +273,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
             if item.is_nullable() && items.as_str() != Some("null") {
                 items = Scalar::from_sequence([Scalar::from("null"), items]);
             }
-            Scalar::from_record([("type", Scalar::from("array")), ("items", items)])
+            Scalar::from_struct([("type", Scalar::from("array")), ("items", items)])
         }
         DataType::Mapping(map) => {
             let entries = map.entries().fields();
@@ -286,7 +286,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
             if value.is_nullable() && values.as_str() != Some("null") {
                 values = Scalar::from_sequence([Scalar::from("null"), values]);
             }
-            Scalar::from_record([("type", Scalar::from("map")), ("values", values)])
+            Scalar::from_struct([("type", Scalar::from("map")), ("values", values)])
         }
         other => Err(unspellable(other)),
     }

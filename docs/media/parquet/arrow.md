@@ -26,9 +26,9 @@ The handle's media type selects Parquet, so no call names a format. The three in
     use yggdryl::media::IORecordOptions;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, StructureType, Url};
+    use yggdryl::{DataType, StructType, Url};
 
-    let field = DataType::from(StructureType::from_fields([
+    let field = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])?)
@@ -116,9 +116,9 @@ A non-null struct root naming a subset of the stored columns reads only those ch
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
     use yggdryl::parquet::Parquet;
-    use yggdryl::{DataType, MimeType, StructureType};
+    use yggdryl::{DataType, MimeType, StructType};
 
-    let stored = DataType::from(StructureType::from_fields([
+    let stored = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
         DataType::Float64.required_field("price"),
@@ -142,7 +142,7 @@ A non-null struct root naming a subset of the stored columns reads only those ch
     media.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options)?;
 
     // Two of the four columns, named by a root Field of its own.
-    let wanted = DataType::from(StructureType::from_fields([
+    let wanted = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float64.required_field("price"),
     ])?)

@@ -1,4 +1,4 @@
-use yggdryl::{DataType, Field, StructureType, UnionMode};
+use yggdryl::{DataType, Field, StructType, UnionMode};
 
 #[test]
 fn variant_builder_canonicalizes_to_a_dense_sequential_union() {
@@ -110,12 +110,12 @@ fn wide_struct_validation_accepts_unique_names_and_reports_a_late_duplicate() {
     let fields = (0..1_024)
         .map(|index| Field::new(format!("column_{index:04}"), DataType::Int64, false))
         .collect::<Vec<_>>();
-    let dtype = DataType::from(StructureType::from_fields(fields.clone()).unwrap());
+    let dtype = DataType::from(StructType::from_fields(fields.clone()).unwrap());
     assert_eq!(dtype.field_len(), 1_024);
 
     let mut duplicate = fields;
     duplicate.push(Field::new("column_0001", DataType::utf8(), true));
-    let error = StructureType::from_fields(duplicate)
+    let error = StructType::from_fields(duplicate)
         .map(DataType::from)
         .unwrap_err();
     assert!(
@@ -130,14 +130,14 @@ fn the_nested_family_stands_for_a_sequence_a_mapping_and_a_record() {
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
-    use yggdryl::{DataTypeKind, FamilyValue, Map, Mapping, Nested, Record, Scalar, Sequence};
+    use yggdryl::{DataTypeKind, FamilyValue, Map, Mapping, Nested, Scalar, Sequence, Struct};
 
     let sequence = Sequence::new(Arc::from([Scalar::from(1_i64), Scalar::from(2_i64)]));
     let mapping = Mapping::Map(Map::new(Arc::from([(
         Scalar::from("k"),
         Scalar::from(1_i64),
     )])));
-    let record = Record::new(Arc::new(BTreeMap::from([(
+    let record = Struct::new(Arc::new(BTreeMap::from([(
         "id".into(),
         Scalar::from(1_i64),
     )])));
@@ -146,7 +146,7 @@ fn the_nested_family_stands_for_a_sequence_a_mapping_and_a_record() {
         vec![
             crate::family_leaf!(Nested::Sequence, sequence.clone()),
             crate::family_leaf!(Nested::Mapping, mapping.clone()),
-            crate::family_leaf!(Nested::Record, record.clone()),
+            crate::family_leaf!(Nested::Struct, record.clone()),
         ],
         DataTypeKind::Nested,
         &Scalar::from(1_i64),
@@ -164,6 +164,6 @@ fn the_nested_family_stands_for_a_sequence_a_mapping_and_a_record() {
     );
     assert_eq!(
         Nested::from(record).dtype().unwrap(),
-        DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")]).unwrap())
+        DataType::from(StructType::from_fields([DataType::Int64.required_field("id")]).unwrap())
     );
 }

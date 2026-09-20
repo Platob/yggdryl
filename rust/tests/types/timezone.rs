@@ -9,8 +9,8 @@ use yggdryl::DataType;
 use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
-    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StructureType,
-    Timezone, TimezoneField,
+    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StructType, Timezone,
+    TimezoneField,
 };
 
 fn zone(text: &str) -> Scalar {
@@ -18,7 +18,7 @@ fn zone(text: &str) -> Scalar {
 }
 
 fn root(field: Field) -> Field {
-    StructureType::from_fields([field])
+    StructType::from_fields([field])
         .map(DataType::from)
         .unwrap()
         .required_field("row")
@@ -47,8 +47,9 @@ fn datatype_identity_naming_and_serde_are_total() {
         DataTypeId::Timezone
     );
     assert_eq!(DataTypeId::Timezone.as_str(), "timezone");
-    // Appended, because `as_u8` is a wire contract.
-    assert_eq!(DataTypeId::Timezone.as_u8(), 61);
+    // In the text family's range, because `as_u8` is a wire contract laid
+    // out by family.
+    assert_eq!(DataTypeId::Timezone.as_u8(), 0x66);
     assert_eq!(DataTypeId::Timezone.fixed_byte_width(), None);
     assert!(!DataTypeId::Timezone.is_parameterized());
     assert!(!dtype.is_nested());

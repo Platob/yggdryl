@@ -389,13 +389,31 @@ class TestFramedText:
         options.batch_row_size = 1
 
         reader = IOBase.from_fs(filesystem, location).read_arrow_reader(options=options)
-        assert reader.schema.names == [
+        assert reader.schema.names[16:] == [
             "sourceurl",
             "rownum",
             "mtime",
             "body",
             "dropped_byte_size",
             "kind",
+        ]
+        assert reader.schema.names[:16] == [
+            "currunix",
+            "creaunix",
+            "expirunix",
+            "prevunix",
+            "snapunix",
+            "curruuid",
+            "crossuuid",
+            "crosscode",
+            "currhashcode",
+            "crosshashcode",
+            "prevuuid",
+            "seqnum",
+            "parentuuids",
+            "srcuuids",
+            "identifiers",
+            "state",
         ]
         assert reader.schema.field("dropped_byte_size") == pa.field(
             "dropped_byte_size", pa.uint64(), nullable=True
@@ -406,9 +424,9 @@ class TestFramedText:
 
         table = reader.read_all()
         assert table.column("body").to_pylist() == [
-            "first\ncontinued in a",
+            "[A] first\ncontinued in a",
             "leading in b",
-            "second",
+            "[B] second",
         ]
         assert table.column("rownum").to_pylist() == [1, 1, 2]
         assert table.column("kind").to_pylist() == ["A", None, "B"]
@@ -437,7 +455,7 @@ class TestFramedText:
             options=options
         )
 
-        assert reader.schema.names == ["sourceurl", "mtime", "body", "dropped_byte_size", "kind"]
+        assert reader.schema.names[16:] == ["sourceurl", "mtime", "body", "dropped_byte_size", "kind"]
         assert reader.schema.field("dropped_byte_size").type == pa.uint64()
 
 

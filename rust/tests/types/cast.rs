@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use arrow_array::{
     Array, ArrayRef, BinaryArray, Datum, Float64Array, Int32Array, Int64Array, StringArray,
-    StructArray, UInt32Array, UInt64Array,
+    UInt32Array, UInt64Array,
 };
 
 use yggdryl::cast::ArrowCastOptions;
@@ -14,10 +14,10 @@ fn bits() -> ArrowCastOptions {
     ArrowCastOptions::new().with_representation(yggdryl::Representation::Bits)
 }
 use yggdryl::FieldValue as _;
-use yggdryl::{DataType, EdgeAlgorithm, Field, StructureType};
+use yggdryl::{DataType, EdgeAlgorithm, Field, Scalar, StructType};
 use yggdryl::{
-    DateTimeField, DateTimeType, GeometryField, Int32Field, Int64Field, StringField,
-    StructureField, UInt32Field, UInt64Field, VariantField,
+    DateTimeField, DateTimeType, GeometryField, Int32Field, Int64Field, StringField, StructField,
+    UInt32Field, UInt64Field, VariantField,
 };
 use yggdryl::{TimeUnit, Timezone};
 
@@ -80,9 +80,9 @@ fn a_nullable_field_keeps_the_null_a_safe_cast_produced() {
 
 #[test]
 fn a_struct_field_casts_children_by_name() {
-    let field = StructureField::try_from_field(Field::new(
+    let field = StructField::try_from_field(Field::new(
         "row",
-        StructureType::from_fields([
+        StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
         ])
@@ -344,22 +344,15 @@ fn wkb_point(x: f64, y: f64) -> Vec<u8> {
 }
 
 fn variant_storage_array(rows: usize) -> ArrayRef {
-    let fields = arrow_schema::Fields::from(vec![
-        arrow_schema::Field::new("metadata", arrow_schema::DataType::Binary, false),
-        arrow_schema::Field::new("value", arrow_schema::DataType::Binary, false),
-    ]);
-    let empty: Vec<&[u8]> = vec![b""; rows];
-    let columns: Vec<ArrayRef> = vec![
-        Arc::new(BinaryArray::from(empty.clone())),
-        Arc::new(BinaryArray::from(empty)),
-    ];
-    Arc::new(StructArray::new(fields, columns, None))
+    Arc::new(BinaryArray::from_iter_values(
+        (0..rows).map(|row| Scalar::from(row as i64).into_variant_bytes()),
+    ))
 }
 
 fn geospatial_batch(dtype: DataType, cells: Vec<Option<Vec<u8>>>) -> arrow_array::RecordBatch {
     let root = Field::new(
         "row",
-        DataType::from(StructureType::from_fields([Field::new("shape", dtype, true)]).unwrap()),
+        DataType::from(StructType::from_fields([Field::new("shape", dtype, true)]).unwrap()),
         false,
     );
     let schema = root.clone().into_arrow_schema().unwrap();
@@ -373,7 +366,7 @@ fn cast_shape_to(
 ) -> yggdryl::arrow::Result<arrow_array::RecordBatch> {
     let root = Field::new(
         "row",
-        DataType::from(StructureType::from_fields([target]).unwrap()),
+        DataType::from(StructType::from_fields([target]).unwrap()),
         false,
     );
     root.cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
@@ -518,7 +511,7 @@ fn text_into_a_geospatial_target_names_the_absent_wkt_parser() {
 }
 
 #[test]
-fn a_variant_casts_only_to_itself_until_the_codec_lands() {
+fn a_variant_casts_only_from_its_own_storage() {
     let field = VariantField::new("payload", yggdryl::VariantType, true);
     let storage = variant_storage_array(2);
 
@@ -539,22 +532,23 @@ fn a_variant_casts_only_to_itself_until_the_codec_lands() {
         .unwrap();
     assert!(Arc::ptr_eq(&identity, &storage));
 
-    // Anything else refuses by name until the codec lands.
+    // Anything else refuses by name: the column holds the encoding, which
+    // a caller writes with `into_variant_bytes`.
     let numbers: ArrayRef = Arc::new(Int64Array::from(vec![7]));
     let refused = field
         .to_field()
         .cast_arrow_array(numbers, ArrowCastOptions::new().with_safe(false))
         .unwrap_err()
         .to_string();
-    assert!(refused.contains("Iceberg v3 layer"), "{refused}");
+    assert!(refused.contains("into_variant_bytes"), "{refused}");
 }
 
 #[test]
-fn a_variant_column_refuses_to_leave_the_type_until_the_codec_lands() {
+fn a_variant_column_refuses_to_leave_the_type_by_a_cast() {
     let root = Field::new(
         "row",
         DataType::from(
-            StructureType::from_fields([Field::new("payload", DataType::variant(), true)]).unwrap(),
+            StructType::from_fields([Field::new("payload", DataType::variant(), true)]).unwrap(),
         ),
         false,
     );
@@ -563,7 +557,7 @@ fn a_variant_column_refuses_to_leave_the_type_until_the_codec_lands() {
     let target = Field::new(
         "row",
         DataType::from(
-            StructureType::from_fields([Field::new("payload", DataType::utf8(), true)]).unwrap(),
+            StructType::from_fields([Field::new("payload", DataType::utf8(), true)]).unwrap(),
         ),
         false,
     );
@@ -571,7 +565,7 @@ fn a_variant_column_refuses_to_leave_the_type_until_the_codec_lands() {
         .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
         .unwrap_err()
         .to_string();
-    assert!(refused.contains("Iceberg v3 layer"), "{refused}");
+    assert!(refused.contains("decode_variant_bytes"), "{refused}");
 }
 
 /// Every wrapper reads what the value inside it reads: a list layout is a
@@ -794,7 +788,7 @@ mod strings {
         array.as_any().downcast_ref::<T>()
     }
     use std::sync::Arc;
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
 
     use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
 
@@ -815,7 +809,7 @@ mod strings {
     fn batch(field: Field, column: ArrayRef) -> arrow_array::RecordBatch {
         let root = Field::new(
             "row",
-            DataType::from(StructureType::from_fields([field]).unwrap()),
+            DataType::from(StructType::from_fields([field]).unwrap()),
             false,
         );
         let schema = root.clone().into_arrow_schema().unwrap();
@@ -829,7 +823,7 @@ mod strings {
     ) -> yggdryl::arrow::Result<ArrayRef> {
         let root = Field::new(
             "row",
-            DataType::from(StructureType::from_fields([Field::new("text", target, true)]).unwrap()),
+            DataType::from(StructType::from_fields([Field::new("text", target, true)]).unwrap()),
             false,
         );
         Ok(Arc::clone(
@@ -1022,7 +1016,7 @@ mod bytes {
         array.as_any().downcast_ref::<T>()
     }
     use std::sync::Arc;
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
 
     use arrow_array::{Array, ArrayRef, BinaryArray, LargeBinaryArray, StringArray};
 
@@ -1043,7 +1037,7 @@ mod bytes {
     fn batch(field: Field, column: ArrayRef) -> arrow_array::RecordBatch {
         let root = Field::new(
             "row",
-            DataType::from(StructureType::from_fields([field]).unwrap()),
+            DataType::from(StructType::from_fields([field]).unwrap()),
             false,
         );
         let schema = root.clone().into_arrow_schema().unwrap();
@@ -1114,8 +1108,7 @@ mod bytes {
         let root = Field::new(
             "row",
             DataType::from(
-                StructureType::from_fields([Field::new("payload", dtype("binary(4)"), true)])
-                    .unwrap(),
+                StructType::from_fields([Field::new("payload", dtype("binary(4)"), true)]).unwrap(),
             ),
             false,
         );

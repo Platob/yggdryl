@@ -29,7 +29,7 @@ A caller holding rows and a dotted name needs nothing else.
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::iceberg::Catalog;
     use yggdryl::local::Folder;
-    use yggdryl::{DataType, StructureType};
+    use yggdryl::{DataType, StructType};
 
     let warehouse = Folder::temporary()?.path()?.join("yggdryl-doc-warehouse");
     let _ = std::fs::remove_dir_all(&warehouse);
@@ -37,7 +37,7 @@ A caller holding rows and a dotted name needs nothing else.
 
     // Rows and a name are enough: the first append creates the table with the
     // schema the rows carry, and the second appends to it.
-    let schema = DataType::from(StructureType::from_fields([
+    let schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])?)
@@ -320,7 +320,7 @@ use std::sync::Arc;
 
 use arrow_array::{Float32Array, Float64Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::holder::Holder;
-use yggdryl::StructureType;
+use yggdryl::StructType;
 use yggdryl::iceberg::Table;
 use yggdryl::local::Folder;
 use yggdryl::DataType;
@@ -331,7 +331,7 @@ let catalog = yggdryl::iceberg::Catalog::new(Folder::new(&root)?);
 
 // CREATE TABLE nyc.taxis (...) PARTITIONED BY (vendor_id)
 // The partition mark on the schema is the whole PARTITIONED BY clause.
-let schema = DataType::from(StructureType::from_fields([
+let schema = DataType::from(StructType::from_fields([
     DataType::Int64.required_field("vendor_id"),
     DataType::Int64.required_field("trip_id"),
     DataType::Float32.nullable_field("trip_distance"),

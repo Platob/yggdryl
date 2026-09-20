@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use super::SoleMessage;
 
-use yggdryl::{DataType, Field, FixCodec, FixMsg, FixRegistry, Scalar, StructureType, fix_schema};
+use yggdryl::{DataType, Field, FixCodec, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
@@ -77,7 +77,7 @@ fn a_format_target_is_any_message_field_a_caller_names() {
         .iter()
         .map(|name| schema.fields()[schema.index_of(name).expect("a column")].clone())
         .collect();
-    let narrow = StructureType::from_fields(columns)
+    let narrow = StructType::from_fields(columns)
         .map(DataType::from)
         .unwrap()
         .required_field("blotter");
@@ -121,7 +121,7 @@ fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
         .iter()
         .map(|name| schema.fields()[schema.index_of(name).expect("a column")].clone())
         .collect();
-    let narrow = StructureType::from_fields(columns)
+    let narrow = StructType::from_fields(columns)
         .map(DataType::from)
         .unwrap()
         .required_field("fix");
@@ -180,7 +180,7 @@ fn a_group_is_lifted_out_of_the_record_with_its_members() {
         .iter()
         .map(|name| schema.fields()[schema.index_of(name).expect("a column")].clone())
         .collect();
-    let narrow = StructureType::from_fields(columns)
+    let narrow = StructType::from_fields(columns)
         .map(DataType::from)
         .unwrap()
         .required_field("fix");

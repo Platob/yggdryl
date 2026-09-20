@@ -165,32 +165,20 @@ def test_retired_msgtype_datatype_is_absent_and_url_keeps_its_new_index():
     assert not hasattr(types, "msgtype")
     assert not hasattr(types, "MsgTypeField")
     assert "msgtype" not in enums.DATA_TYPE_IDS
-    # Eighty-six: `msgdirection` was retired (discriminant 58, never
-    # reused), so `url` keeps its byte 59 and sits one index earlier;
-    # `timezone`, `mimetype` and `mediatype` were appended after it, then
-    # `cusip` and `sedol` as code datatypes of their own, and `bloomberg`
-    # after them - the one code whose width is only a bound, because a
-    # ticker, a market and a yellow key have no fixed length between them.
-    # The families appended the rest: three versioned uuid leaves (69-71,
-    # retired when uuid became one datatype again, never reused), then
-    # `large_binary_view` and `sized_binary` when the byte family became six
-    # real leaves, then the thirteen string leaves - `sized_utf8`, the six
-    # US-ASCII ones and the six windows-1252 ones - when the string family
-    # became eighteen; the five UTF-8 leaves kept the slots of the layouts
-    # they replaced - and `urn` last, the name beside the `url` location. An
-    # identifier is a wire contract, so nothing ever moves.
+    # Eighty-three, laid out by family: every identifier sits in its
+    # family's range and the list states them in that order, so `url` and
+    # `urn` follow `version` in the text family, `sized_utf8` follows
+    # `fixed_utf8`, and the geospatial pair closes the list. An identifier is
+    # a wire contract laid out by family, so a leaf added later lands beside
+    # its family and nothing ever moves.
     assert "msgdirection" not in enums.DATA_TYPE_IDS
-    assert len(enums.DATA_TYPE_IDS) == 84
-    assert enums.DATA_TYPE_IDS.index("url") == 58
-    assert enums.DATA_TYPE_IDS.index("urn") == 83
-    assert enums.DATA_TYPE_IDS.index("sized_utf8") == 70
-    assert list(enums.DATA_TYPE_IDS[-5:]) == [
-        "cp1252_view",
-        "large_cp1252_view",
-        "fixed_cp1252",
-        "sized_cp1252",
-        "urn",
-    ]
+    assert len(enums.DATA_TYPE_IDS) == 83
+    ids = list(enums.DATA_TYPE_IDS)
+    assert ids.index("url") == ids.index("version") + 1
+    assert ids.index("urn") == ids.index("url") + 1
+    assert ids.index("sized_utf8") == ids.index("fixed_utf8") + 1
+    assert ids[-2:] == ["geometry", "geography"]
+    assert ids[:2] == ["null", "boolean"]
     with pytest.raises(ValueError):
         DataType("msgtype")
     with pytest.raises(ValueError):

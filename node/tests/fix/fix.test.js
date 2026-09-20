@@ -34,7 +34,7 @@ function reading(registry, options) {
 // beside the seeded SendingTime (52) and TransactTime (60) clocks. A
 // definition is filed by the shape it has: the columns are scalar fields,
 // the `identifiers` and `metadata` Maps are groups, and the `parentuuids`
-// list is a column of the fixed row alone, held by no registry.
+// and `srcuuids` lists are columns of the fixed row alone, held by no registry.
 const CRATE = fix.crateFields()
 // Which category a definition lands in is the core's answer, not a shape a
 // test guesses: a snapshot states the three, so the fields it lists are the
@@ -1145,6 +1145,7 @@ test('a message holds its typed facts beside the content row it resolves through
   assert.equal(message.seqnum, 0)
   assert.equal(message.prevuuid, null)
   assert.deepEqual(message.parentuuids, [])
+  assert.deepEqual(message.srcuuids, [])
   assert.equal(message.px, '0')
   // `OrderQty(38)` is the quantity the event is about, so the root's child
   // filled it rather than staying a column.
@@ -1560,14 +1561,16 @@ test('a reader parses every frame shape the core reads', () => {
   assert.equal(pairs.event().creaunix, SENDING_NS)
   assert.deepEqual(flat(pairs), [[55, 'symbol', 'AAPL']])
   assert.equal(pairs.intoText('|'), '8=FIX.4.4|55=AAPL|')
-  // The stated clock is the one that goes back out, and the event is the
-  // transaction time where the message states one with a clock.
+  // The stated clock is the one that goes back out and the one the event
+  // is dated by; the transaction time is a typed field the parse leaves
+  // for the lifecycle to read.
   const dated = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|52=20240102-10:15:30|60=20260102-10:15:31.5|11=A|10=0|'))
   assert.equal(dated.header().sendingtime, SENDING_NS)
-  assert.equal(dated.currunix, 1_767_348_931_500_000_000n)
+  assert.equal(dated.currunix, SENDING_NS)
+  assert.ok(dated.byTag(60).equals(new DataType('datetime64(ns,"UTC")').scalar(1_767_348_931_500_000_000n)))
   assert.equal(dated.intoText('|').startsWith('8=FIX.4.4|35=D|52=20240102-10:15:30|'), true)
-  // A transaction time stating only a day sets no event instant: the
-  // sending clock stands in.
+  // A transaction time stating only a day is no different: the sending
+  // clock stands.
   const day = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|60=20260814|11=A|10=0|'))
   assert.equal(day.currunix, SENDING_NS)
 

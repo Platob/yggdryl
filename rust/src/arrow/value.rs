@@ -255,7 +255,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::Sequence(SequenceType::LargeListView(child)) => {
             list_view_array::<i64>(child, values, ListKind::LargeListView)?
         }
-        DataType::Structure(fields) => struct_array(fields, values)?,
+        DataType::Struct(fields) => struct_array(fields, values)?,
         DataType::Union(fields, mode) => union_array(fields, *mode, values)?,
         DataType::Enum(EnumType::Dictionary(dictionary)) => dictionary_array(dictionary, values)?,
         DataType::Decimal(DecimalType::Decimal32 { scale, .. }) => {
@@ -288,16 +288,12 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 .map(|value| optional_wkb(value))
                 .collect::<Result<Vec<_>>>()?,
         )),
-        // A variant value crosses this boundary as the Parquet Variant binary
-        // encoding, which the Iceberg v3 layer owns; until that codec lands a
-        // variant column refuses by name rather than inventing a second
-        // encoding here.
-        DataType::Variant => {
-            return Err(unsupported(
-                dtype,
-                "the variant binary encoding lands with the Iceberg v3 layer",
-            ));
-        }
+        // A variant value crosses this boundary as the variant encoding,
+        // one binary per row; a null value is the encoding's own null, a
+        // value the column holds, and never an absent cell.
+        DataType::Variant => Arc::new(BinaryArray::from_iter_values(
+            values.iter().map(|value| value.into_variant_bytes()),
+        )),
     };
     Ok(array)
 }
@@ -561,7 +557,7 @@ pub(crate) fn value_from_array(
             child,
             downcast::<LargeListViewArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::Structure(fields) => {
+        DataType::Struct(fields) => {
             let array = downcast::<StructArray>(array)?;
             // A downcast answers the layout and nothing else, and the zip
             // below reads children by position: a declaration naming fewer or
@@ -658,10 +654,7 @@ pub(crate) fn value_from_array(
             downcast::<BinaryArray>(array)?.value(index),
         ))?),
         DataType::Variant => {
-            return Err(unsupported(
-                dtype,
-                "the variant binary encoding lands with the Iceberg v3 layer",
-            ));
+            Scalar::decode_variant_bytes(downcast::<BinaryArray>(array)?.value(index))?
         }
     };
     Ok(value)
@@ -856,7 +849,7 @@ fn fixed_size_list_array(child: &Field, size: i32, values: &[&Scalar]) -> Result
     )?))
 }
 
-fn struct_array(fields: &crate::StructureType, values: &[&Scalar]) -> Result<ArrayRef> {
+fn struct_array(fields: &crate::StructType, values: &[&Scalar]) -> Result<ArrayRef> {
     let null_rows = values
         .iter()
         .filter(|value| matches!(value, Scalar::Null))

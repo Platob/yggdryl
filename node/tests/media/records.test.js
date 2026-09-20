@@ -61,6 +61,14 @@ function wkbPoint(x, y) {
   return bytes
 }
 
+// The sixteen event columns every line batch opens with: the line as the
+// event it is, the same sixteen a FIX row parsed out of it opens with.
+const EVENT_COLUMNS = [
+  'currunix', 'creaunix', 'expirunix', 'prevunix', 'snapunix',
+  'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
+  'prevuuid', 'seqnum', 'parentuuids', 'srcuuids', 'identifiers', 'state',
+]
+
 test('a handle names its own encoding and round-trips Arrow batches', () => {
   const handle = IOBase.fromBytes()
   handle.mediaType = MimeType.ARROW_STREAM
@@ -437,7 +445,11 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
   assert.equal(options.parseMtime, true)
   const table = handle.readArrowReader(options).intoTable()
   assert.deepEqual(
-    table.schema.fields.map((field) => [
+    table.schema.fields.slice(0, 16).map((field) => field.name),
+    EVENT_COLUMNS,
+  )
+  assert.deepEqual(
+    table.schema.fields.slice(16).map((field) => [
       field.name,
       field.type.toString(),
       field.nullable,
@@ -451,7 +463,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
   // The url column is the `url` datatype: Utf8 storage carrying the extension
   // identity, and nullable because a handle without a location has no URL.
   assert.equal(
-    table.schema.fields[0].metadata.get('ARROW:extension:name'),
+    table.schema.fields[16].metadata.get('ARROW:extension:name'),
     'yggdryl.url',
   )
   // A located handle fills it with the canonical URL text of its location.
@@ -479,7 +491,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
       .readArrowReader(numbered)
       .intoTable()
       .schema.fields.map((field) => field.name),
-    ['sourceurl', 'rownum', 'mtime', 'body', 'word'],
+    [...EVENT_COLUMNS, 'sourceurl', 'rownum', 'mtime', 'body', 'word'],
   )
 
   // Turning the flag off takes the column away rather than nulling it.
@@ -490,7 +502,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
       .readArrowReader(undated)
       .intoTable()
       .schema.fields.map((field) => field.name),
-    ['sourceurl', 'body'],
+    [...EVENT_COLUMNS, 'sourceurl', 'body'],
   )
 
   // A buffer records no modification time, so the column is there and null:
@@ -499,7 +511,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
   const held = buffer.readArrowReader(options).intoTable()
   assert.deepEqual(
     held.schema.fields.map((field) => field.name),
-    ['sourceurl', 'mtime', 'body'],
+    [...EVENT_COLUMNS, 'sourceurl', 'mtime', 'body'],
   )
   assert.deepEqual([...held.getChild('mtime')], [null, null])
   assert.deepEqual(
@@ -521,10 +533,10 @@ test('a row header that dates a line fills mtime rather than adding a column', (
   // column's own datatype rather than at the one its syntax suggests.
   assert.deepEqual(
     table.schema.fields.map((field) => field.name),
-    ['sourceurl', 'mtime', 'body', 'id'],
+    [...EVENT_COLUMNS, 'sourceurl', 'mtime', 'body', 'id'],
   )
-  assert.equal(table.schema.fields[1].type.unit, arrow.TimeUnit.NANOSECOND)
-  assert.equal(table.schema.fields[1].type.timezone, 'UTC')
+  assert.equal(table.schema.fields[17].type.unit, arrow.TimeUnit.NANOSECOND)
+  assert.equal(table.schema.fields[17].type.timezone, 'UTC')
   assert.deepEqual(
     [...table.getChild('mtime').toArray()],
     [1_577_934_245_123_456_789n],
@@ -539,7 +551,7 @@ test('a row header that dates a line fills mtime rather than adding a column', (
     .readArrowReader(undated)
     .intoTable()
   assert.deepEqual(
-    counted.schema.fields.map((field) => [field.name, field.type.toString()]),
+    counted.schema.fields.slice(16).map((field) => [field.name, field.type.toString()]),
     [
       ['sourceurl', 'Utf8'],
       ['body', 'Utf8'],

@@ -20,7 +20,7 @@
 //! use yggdryl::Scalar;
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! let quote = Scalar::from_record([
+//! let quote = Scalar::from_struct([
 //!     ("symbol", Scalar::from("AAPL")),
 //!     ("price", Scalar::d128(125, 1)),
 //! ])?;
@@ -57,7 +57,7 @@ use crate::interval::Interval;
 use crate::mapping::{Map, Mapping};
 use crate::sequence::Sequence;
 use crate::string::Str;
-use crate::structure::Record;
+use crate::structure::Struct;
 use crate::temporal::scalars::temporal_key;
 use crate::time::{Time32, Time64};
 use crate::uuid::Uuid;
@@ -224,7 +224,7 @@ pub enum Scalar {
     /// A schema-free insertion-ordered mapping of arbitrary keys.
     Mapping(Mapping),
     /// A schema-free record of values sorted by field name.
-    Record(Record),
+    Struct(Struct),
     /// An Arrow payload - one pinned row, a column, a table, or a stream -
     /// carrying the exact field that types it, behind one shared pointer so
     /// a clone shares the buffers rather than the rows.
@@ -449,7 +449,7 @@ impl Serialize for Scalar {
             Self::Interval(value) => tagged(serializer, "interval", value),
             Self::Sequence(values) => tagged(serializer, "sequence", &values.as_slice()),
             Self::Mapping(entries) => tagged(serializer, "mapping", &entries.as_slice()),
-            Self::Record(entries) => tagged(serializer, "record", &entries.as_map()),
+            Self::Struct(entries) => tagged(serializer, "struct", &entries.as_map()),
             // A stream is drained to be written, which is what serializing a
             // one-shot value means; a held shape is shared and stays readable.
             Self::Arrow(value) => match (**value).clone().into_scalar() {
@@ -577,7 +577,7 @@ impl<'de> Deserialize<'de> for Scalar {
             Interval(crate::interval::Interval),
             Sequence(Vec<Scalar>),
             Mapping(Vec<(Scalar, Scalar)>),
-            Record(RecordEntries),
+            Struct(RecordEntries),
         }
 
         match StructuralWire::deserialize(deserializer)? {
@@ -758,8 +758,8 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::Mapping(entries) => {
                 Self::from_mapping(entries).map_err(D::Error::custom)
             }
-            StructuralWire::Record(entries) => {
-                Self::from_record(entries.0).map_err(D::Error::custom)
+            StructuralWire::Struct(entries) => {
+                Self::from_struct(entries.0).map_err(D::Error::custom)
             }
         }
     }
@@ -876,7 +876,7 @@ impl Ord for Scalar {
             }
             Self::Sequence(left) => same_kind!(Self::Sequence(right) => left.cmp(right)),
             Self::Mapping(left) => same_kind!(Self::Mapping(right) => left.cmp(right)),
-            Self::Record(left) => same_kind!(Self::Record(right) => left.cmp(right)),
+            Self::Struct(left) => same_kind!(Self::Struct(right) => left.cmp(right)),
             Self::Arrow(left) => same_kind!(Self::Arrow(right) => left.cmp(right)),
         }
     }
@@ -968,7 +968,7 @@ impl Hash for Scalar {
                 1_isize.hash(state);
                 value.hash(state);
             }
-            Self::Record(value) => {
+            Self::Struct(value) => {
                 2_isize.hash(state);
                 value.hash(state);
             }
@@ -1078,7 +1078,7 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Duration32(_) | Scalar::Duration64(_) => 10,
         Scalar::Sequence(_) => 11,
         Scalar::Mapping(_) => 12,
-        Scalar::Record(_) => 13,
+        Scalar::Struct(_) => 13,
         Scalar::Geometry(_) | Scalar::Geography(_) => 14,
         // 15 was the enum member, since retired: a member is its name, so it
         // ranks with the text at 5. Only the order between kinds is read, so
@@ -1177,7 +1177,7 @@ impl Scalar {
             Self::Geography(_) => DataTypeId::Geography,
             Self::Sequence(_) => DataTypeId::List,
             Self::Mapping(_) => DataTypeId::Map,
-            Self::Record(_) => DataTypeId::Struct,
+            Self::Struct(_) => DataTypeId::Struct,
         }
     }
 
@@ -1251,7 +1251,7 @@ impl Scalar {
             Self::Interval(_) => "interval",
             Self::Sequence(_) => "sequence",
             Self::Mapping(_) => "mapping",
-            Self::Record(_) => "record",
+            Self::Struct(_) => "struct",
         }
     }
 
@@ -1314,7 +1314,7 @@ impl Scalar {
     /// # Errors
     ///
     /// Returns an error when a field name occurs more than once.
-    pub fn from_record<K, I>(entries: I) -> Result<Self>
+    pub fn from_struct<K, I>(entries: I) -> Result<Self>
     where
         K: Into<SmolStr>,
         I: IntoIterator<Item = (K, Self)>,
@@ -1331,11 +1331,11 @@ impl Scalar {
         }
         if record.is_empty() {
             static EMPTY: OnceLock<Arc<BTreeMap<SmolStr, Scalar>>> = OnceLock::new();
-            return Ok(Self::Record(Record::new(Arc::clone(
+            return Ok(Self::Struct(Struct::new(Arc::clone(
                 EMPTY.get_or_init(|| Arc::new(BTreeMap::new())),
             ))));
         }
-        Ok(Self::Record(Record::new(Arc::new(record))))
+        Ok(Self::Struct(Struct::new(Arc::new(record))))
     }
 
     /// Return a boolean when this is a boolean.
@@ -1415,7 +1415,7 @@ impl Scalar {
         if let Some(entries) = self.as_mapping() {
             return entries.iter().any(|(_, value)| value.is_truthy());
         }
-        if let Some(entries) = self.as_record() {
+        if let Some(entries) = self.as_struct() {
             return entries.values().any(Self::is_truthy);
         }
         true
@@ -1505,9 +1505,9 @@ impl Scalar {
     }
 
     /// Return record fields in deterministic name order.
-    pub fn as_record(&self) -> Option<&BTreeMap<SmolStr, Self>> {
+    pub fn as_struct(&self) -> Option<&BTreeMap<SmolStr, Self>> {
         match self {
-            Self::Record(entries) => Some(entries.as_map()),
+            Self::Struct(entries) => Some(entries.as_map()),
             _ => None,
         }
     }
@@ -1517,7 +1517,7 @@ impl Scalar {
         match self {
             Self::Sequence(values) => values.as_slice().len(),
             Self::Mapping(entries) => entries.as_slice().len(),
-            Self::Record(entries) => entries.as_map().len(),
+            Self::Struct(entries) => entries.as_map().len(),
             _ => 0,
         }
     }
@@ -1541,7 +1541,7 @@ impl Scalar {
 
     /// Look up a string mapping key without constructing a temporary value.
     pub fn get_key_str(&self, key: &str) -> Option<&Self> {
-        if let Self::Record(entries) = self {
+        if let Self::Struct(entries) = self {
             return entries.as_map().get(key);
         }
         self.as_mapping()?
@@ -1598,7 +1598,7 @@ impl Scalar {
         match self {
             Self::Sequence(values) => Children::Sequence(values.as_slice().iter()),
             Self::Mapping(entries) => Children::Mapping(entries.as_slice().iter()),
-            Self::Record(entries) => Children::Record(entries.as_map().values()),
+            Self::Struct(entries) => Children::Struct(entries.as_map().values()),
             _ => Children::Sequence([].iter()),
         }
     }
@@ -1616,7 +1616,7 @@ impl Scalar {
     /// Iterate over record name/value pairs in deterministic name order.
     pub fn record_iter(&self) -> std::collections::btree_map::Iter<'_, SmolStr, Self> {
         static EMPTY: OnceLock<BTreeMap<SmolStr, Scalar>> = OnceLock::new();
-        self.as_record()
+        self.as_struct()
             .unwrap_or_else(|| EMPTY.get_or_init(BTreeMap::new))
             .iter()
     }
@@ -1628,7 +1628,7 @@ impl Scalar {
 
     /// Return whether this value holds other values.
     pub const fn is_container(&self) -> bool {
-        matches!(self, Self::Sequence(_) | Self::Mapping(_) | Self::Record(_))
+        matches!(self, Self::Sequence(_) | Self::Mapping(_) | Self::Struct(_))
     }
 
     /// Return whether this is a number of any width.
@@ -1681,7 +1681,7 @@ impl Scalar {
             Self::Interval(value) => value,
             Self::Sequence(value) => value,
             Self::Mapping(value) => value,
-            Self::Record(value) => value,
+            Self::Struct(value) => value,
             Self::Arrow(_) => return None,
             Self::Null
             | Self::Boolean(_)
@@ -1738,7 +1738,7 @@ impl Scalar {
         let mut current = self;
         for segment in path.split('.').filter(|segment| !segment.is_empty()) {
             current = match current {
-                Self::Mapping(_) | Self::Record(_) => current.get_key_str(segment)?,
+                Self::Mapping(_) | Self::Struct(_) => current.get_key_str(segment)?,
                 Self::Sequence(_) => current.get(segment.parse::<usize>().ok()?)?,
                 _ => return None,
             };
@@ -1767,7 +1767,7 @@ impl Scalar {
     /// Non-string keys are skipped, because a caller asking for names wants the
     /// ones it can use.
     pub fn keys(&self) -> Vec<&str> {
-        if let Self::Record(entries) = self {
+        if let Self::Struct(entries) = self {
             return entries.as_map().keys().map(SmolStr::as_str).collect();
         }
         self.mapping_iter()
@@ -1840,7 +1840,7 @@ impl Scalar {
 
     /// Return this record with one named field added or replaced.
     pub fn with_field(&self, name: impl Into<SmolStr>, value: impl Into<Self>) -> Result<Self> {
-        let entries = self.as_record().ok_or_else(|| Error::InvalidRecord {
+        let entries = self.as_struct().ok_or_else(|| Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: smol_str::format_smolstr!(
                 "expected a record to set a field on, got {}",
@@ -1849,12 +1849,12 @@ impl Scalar {
         })?;
         let mut rebuilt = entries.clone();
         rebuilt.insert(name.into(), value.into());
-        Ok(Self::Record(Record::new(Arc::new(rebuilt))))
+        Ok(Self::Struct(Struct::new(Arc::new(rebuilt))))
     }
 
     /// Return this record without `name`, preserving deterministic order.
     pub fn without_field(&self, name: &str) -> Result<Self> {
-        let entries = self.as_record().ok_or_else(|| Error::InvalidRecord {
+        let entries = self.as_struct().ok_or_else(|| Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: smol_str::format_smolstr!(
                 "expected a record to remove a field from, got {}",
@@ -1866,7 +1866,7 @@ impl Scalar {
         }
         let mut rebuilt = entries.clone();
         rebuilt.remove(name);
-        Ok(Self::Record(Record::new(Arc::new(rebuilt))))
+        Ok(Self::Struct(Struct::new(Arc::new(rebuilt))))
     }
 }
 
@@ -2090,7 +2090,7 @@ mod tests {
             (Scalar::from_sequence([]), 11),
             (Scalar::from_mapping([]).unwrap(), 12),
             (
-                Scalar::from_record(Vec::<(&str, Scalar)>::new()).unwrap(),
+                Scalar::from_struct(Vec::<(&str, Scalar)>::new()).unwrap(),
                 13,
             ),
         ];
@@ -2133,7 +2133,7 @@ mod tests {
             ),
             (
                 "record",
-                Scalar::from_record([("a", Scalar::from(1_i32))]).unwrap(),
+                Scalar::from_struct([("a", Scalar::from(1_i32))]).unwrap(),
                 12_407_753_854_889_480_402,
             ),
             (

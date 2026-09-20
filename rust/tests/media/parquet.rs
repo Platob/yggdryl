@@ -10,7 +10,7 @@ use parquet::basic::Compression;
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::parquet::{Parquet, ParquetOptions};
-use yggdryl::{DataType, Field, MediaType, StructureType, Url};
+use yggdryl::{DataType, Field, MediaType, StructType, Url};
 use yggdryl::{IOBase, IOMedia};
 
 #[test]
@@ -96,7 +96,7 @@ impl IOBase for Shared {
 
 /// A root carrying explicit Iceberg-style field identifiers.
 fn root() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::Int64
             .required_field("id")
             .with_parquet_field_id(1),
@@ -244,7 +244,7 @@ fn an_empty_open_parquet_file_has_explicit_lifecycle_and_dimensions() {
     assert_eq!(media.row_size().unwrap(), 0);
     assert_eq!(media.column_size().unwrap(), field.field_len());
 
-    let narrowed = StructureType::from_fields([DataType::Int64.required_field("id")])
+    let narrowed = StructType::from_fields([DataType::Int64.required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -546,7 +546,7 @@ fn a_coded_location_is_rejected_with_the_reason() {
 #[test]
 fn a_mismatched_batch_reports_which_index_disagreed() {
     let field = root();
-    let other = StructureType::from_fields([DataType::utf8().required_field("unrelated")])
+    let other = StructType::from_fields([DataType::utf8().required_field("unrelated")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -727,7 +727,7 @@ fn a_bounded_batch_row_size_splits_the_read() {
 mod pushdown {
 
     use std::sync::Arc;
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
 
     use arrow_array::{
         Array, Float64Array, Int64Array, RecordBatch, RecordBatchReader, StringArray,
@@ -741,7 +741,7 @@ mod pushdown {
 
     /// Four columns, so a two-column read is a genuine subset.
     fn wide() -> Field {
-        StructureType::from_fields([
+        StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
             DataType::Float64.required_field("price"),
@@ -754,7 +754,7 @@ mod pushdown {
 
     /// The two columns a caller actually wants.
     fn narrow() -> Field {
-        StructureType::from_fields([
+        StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::Float64.required_field("price"),
         ])
@@ -864,7 +864,7 @@ mod pushdown {
 
         // A mask can only drop columns, so the encoding reads what is present
         // and the canonical declared-Field cast supplies the absent column.
-        let invented = StructureType::from_fields([
+        let invented = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("nowhere"),
         ])

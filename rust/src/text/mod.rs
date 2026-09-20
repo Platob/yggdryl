@@ -54,7 +54,8 @@ pub use leading::LeadingFragment;
 pub use limits::Limits;
 pub use line::TextLine;
 pub use loading::Loading;
-pub use options::TextOptions;
+pub(crate) use options::MTIME_COLUMN;
+pub use options::{DEFAULT_TEXT_BATCH_BYTE_SIZE, DEFAULT_TEXT_BATCH_ROW_SIZE, TextOptions};
 pub use placeholder::Placeholders;
 pub use sep::LineSep;
 
@@ -684,7 +685,7 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
                     visit(value, child_depth, maximum, format)?;
                 }
             }
-            Scalar::Record(entries) => {
+            Scalar::Struct(entries) => {
                 for value in entries.as_map().values() {
                     visit(value, child_depth, maximum, format)?;
                 }

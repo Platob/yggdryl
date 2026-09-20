@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
 use yggdryl::expression::{Expression, Selector, Term};
 use yggdryl::expression::{IntoPlan, Location, Ordering, Plan, Source, Target, Verb, Write};
-use yggdryl::{DataType, Field, Scalar, StructureType, Url};
+use yggdryl::{DataType, Field, Scalar, StructType, Url};
 
 // ---------------------------------------------------------------------------
 // Text
@@ -295,7 +295,7 @@ fn a_create_section_is_the_field_it_declares() {
         None
     );
     // Applied to a root, the read sections say what comes out.
-    let root = StructureType::from_fields([
+    let root = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("ccy"),
         DataType::Float64.nullable_field("price"),
@@ -447,7 +447,7 @@ mod streams {
     }
 
     fn trades(rows: &[(i64, &str)]) -> RecordBatch {
-        let schema = StructureType::from_fields([
+        let schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("name"),
         ])
@@ -751,7 +751,7 @@ mod streams {
             [(1_i64, "a"), (2, "b"), (3, "c")]
                 .into_iter()
                 .map(|(id, name)| {
-                    Scalar::from_record([("id", Scalar::from(id)), ("name", Scalar::from(name))])
+                    Scalar::from_struct([("id", Scalar::from(id)), ("name", Scalar::from(name))])
                         .unwrap()
                 })
         };
@@ -793,7 +793,7 @@ mod streams {
             .to_string();
         assert!(error.contains("schema"), "{error}");
         // A declared schema binds even an empty stream.
-        let schema = StructureType::from_fields([DataType::Int64.required_field("id")])
+        let schema = StructType::from_fields([DataType::Int64.required_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("rows");

@@ -24,7 +24,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::PrimitiveType;
 use crate::SequenceType;
-use crate::{DataType, Error, Field, Result, Scalar, StructureType};
+use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 /// The Iceberg property naming a schema identifier.
 pub(super) const SCHEMA_ID: &str = "schema-id";
@@ -53,7 +53,7 @@ pub(super) const IDENTIFIER: &str = "identifier-field-ids";
 /// field is missing `id`, `name`, `required`, or `type`, or when a type has no
 /// core representation.
 pub fn schema_from_json(name: &str, schema: &Scalar) -> Result<Field> {
-    if schema.as_record().is_none() && schema.as_mapping().is_none() {
+    if schema.as_struct().is_none() && schema.as_mapping().is_none() {
         return Err(invalid(format_smolstr!(
             "expected an Iceberg schema object, got {}",
             schema.kind()
@@ -123,7 +123,7 @@ pub fn schema_into_json(root: &Field) -> Result<Scalar> {
             Scalar::from_sequence(parsed),
         ));
     }
-    let document = Scalar::from_record(entries.into_iter().map(|(key, value)| {
+    let document = Scalar::from_struct(entries.into_iter().map(|(key, value)| {
         (
             SmolStr::new(
                 key.as_str()
@@ -179,14 +179,14 @@ fn struct_field_from_json(name: &str, object: &Scalar, nullable: bool) -> Result
     }
     Ok(Field::new(
         name,
-        DataType::from(StructureType::from_fields(children)?),
+        DataType::from(StructType::from_fields(children)?),
         nullable,
     ))
 }
 
 /// Build one column from an Iceberg field object.
 fn field_from_json(entry: &Scalar) -> Result<Field> {
-    if entry.as_record().is_none() && entry.as_mapping().is_none() {
+    if entry.as_struct().is_none() && entry.as_mapping().is_none() {
         return Err(invalid(format_smolstr!(
             "expected an Iceberg field object, got {}",
             entry.kind()
@@ -243,7 +243,7 @@ fn typed_field_from_json(name: &str, type_json: &Scalar, nullable: bool) -> Resu
         return Ok(Field::new(name, dtype, nullable));
     }
 
-    if type_json.as_record().is_none() && type_json.as_mapping().is_none() {
+    if type_json.as_struct().is_none() && type_json.as_mapping().is_none() {
         return Err(invalid(format_smolstr!(
             "expected an Iceberg type name or object on {name:?}, got {}",
             type_json.kind()
@@ -290,7 +290,7 @@ fn typed_field_from_json(name: &str, type_json: &Scalar, nullable: bool) -> Resu
             }
             let entries = Field::new(
                 "entries",
-                DataType::from(StructureType::from_fields([key, value])?),
+                DataType::from(StructType::from_fields([key, value])?),
                 false,
             );
             Ok(Field::new(name, DataType::map(entries, false)?, nullable))
@@ -335,7 +335,7 @@ fn fields_to_json(root: &Field) -> Result<Vec<Scalar>> {
         if let Some(default) = field.as_iceberg().write_default()? {
             object.push((Scalar::from(WRITE_DEFAULT), default));
         }
-        entries.push(Scalar::from_record(object.into_iter().map(
+        entries.push(Scalar::from_struct(object.into_iter().map(
             |(key, value)| {
                 (
                     SmolStr::new(
@@ -353,7 +353,7 @@ fn fields_to_json(root: &Field) -> Result<Vec<Scalar>> {
 /// Render one field's datatype as an Iceberg type.
 fn type_to_json(field: &Field) -> Result<Scalar> {
     match field.dtype() {
-        DataType::Structure(_) => Scalar::from_record([
+        DataType::Struct(_) => Scalar::from_struct([
             ("type", Scalar::from("struct")),
             ("fields", Scalar::from_sequence(fields_to_json(field)?)),
         ]),
@@ -369,7 +369,7 @@ fn type_to_json(field: &Field) -> Result<Scalar> {
                 Scalar::from("element-required"),
                 Scalar::from(!item.is_nullable()),
             ));
-            Scalar::from_record(object.into_iter().map(|(key, value)| {
+            Scalar::from_struct(object.into_iter().map(|(key, value)| {
                 (
                     SmolStr::new(
                         key.as_str()
@@ -406,7 +406,7 @@ fn type_to_json(field: &Field) -> Result<Scalar> {
                 Scalar::from("value-required"),
                 Scalar::from(!value.is_nullable()),
             ));
-            Scalar::from_record(object.into_iter().map(|(key, value)| {
+            Scalar::from_struct(object.into_iter().map(|(key, value)| {
                 (
                     SmolStr::new(
                         key.as_str()

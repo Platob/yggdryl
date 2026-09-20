@@ -25,7 +25,7 @@ use yggdryl::iceberg::{
 };
 use yggdryl::local::Folder;
 use yggdryl::media::partition::partition_text;
-use yggdryl::{DataType, Field, MediaType, MimeType, Scalar, StructureType};
+use yggdryl::{DataType, Field, MediaType, MimeType, Scalar, StructType};
 
 use crate::bench_profile;
 
@@ -93,7 +93,7 @@ fn scratch(label: &str) -> PathBuf {
 
 /// The two-column schema every planning table writes: an id and its venue.
 fn plan_schema() -> Field {
-    let mut schema = StructureType::from_fields([
+    let mut schema = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])
@@ -201,7 +201,7 @@ fn plan_benchmarks(criterion: &mut Criterion) {
 /// A fifty-column schema, distinct per revision the way evolution leaves them.
 fn wide_schema(revision: i32) -> Field {
     let mut schema =
-        StructureType::from_fields((0..50).map(|column| {
+        StructType::from_fields((0..50).map(|column| {
             DataType::Int64.required_field(format!("column-{revision}-{column:02}"))
         }))
         .map(DataType::from)
@@ -855,7 +855,7 @@ fn parallel_commit_benchmarks(criterion: &mut Criterion) {
 
 /// The four-column trade schema the read benchmark scans.
 fn read_schema() -> Field {
-    let mut schema = StructureType::from_fields([
+    let mut schema = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float64.nullable_field("price"),
         DataType::utf8().nullable_field("venue"),
@@ -1183,7 +1183,7 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
     }
 
     let schema = || {
-        StructureType::from_fields([DataType::Int64.required_field("id")])
+        StructType::from_fields([DataType::Int64.required_field("id")])
             .map(DataType::from)
             .expect("a valid struct root")
             .required_field("row")
@@ -1295,7 +1295,7 @@ mod s3 {
     use std::hint::black_box;
     use std::path::PathBuf;
     use std::sync::Arc;
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
 
     use arrow_array::RecordBatch;
     use criterion::{BatchSize, Criterion, Throughput};
@@ -1597,7 +1597,7 @@ mod s3 {
         // compatibility walk names before the table numbers it.
         let mut schema = Field::from_parts(
             carried.name(),
-            DataType::from(StructureType::from_fields(columns).expect("the columns are distinct")),
+            DataType::from(StructType::from_fields(columns).expect("the columns are distinct")),
             carried.is_nullable(),
             carried.metadata_iter(),
         )

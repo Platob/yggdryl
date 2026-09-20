@@ -340,13 +340,13 @@ fn container_into_scalar(container: Container) -> yggdryl::Result<Scalar> {
         .metadata
         .into_iter()
         .map(|(key, value)| {
-            Scalar::from_record([
+            Scalar::from_struct([
                 ("key", Scalar::from(key.as_str())),
                 ("value", Scalar::from(value.as_str())),
             ])
         })
         .collect::<yggdryl::Result<Vec<_>>>()?;
-    Scalar::from_record([
+    Scalar::from_struct([
         ("schema", container.schema.into_json()),
         ("metadata", Scalar::from_sequence(metadata)),
         ("rows", Scalar::from_sequence(container.rows)),

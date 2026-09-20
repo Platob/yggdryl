@@ -40,7 +40,7 @@ impl Scalar {
     ///
     /// `None` is the answer for [`Self::Null`], which has no payload, and for
     /// [`crate::sequence::Sequence`], [`crate::mapping::Mapping`], and
-    /// [`crate::structure::Record`], whose
+    /// [`crate::structure::Struct`], whose
     /// bytes exist only under a framing. Use [`Self::write_bytes`] for those.
     ///
     /// A decimal answers its coefficient, and a temporal its stored count: the
@@ -68,7 +68,7 @@ impl Scalar {
             Self::Null
             | Self::Sequence(_)
             | Self::Mapping(_)
-            | Self::Record(_)
+            | Self::Struct(_)
             | Self::Version(_)
             | Self::Url(_)
             | Self::Urn(_)
@@ -356,7 +356,7 @@ impl Scalar {
                     value.feed(sink, depth + 1);
                 }
             }
-            Self::Record(entries) => {
+            Self::Struct(entries) => {
                 write_named_bytes(
                     sink,
                     entries

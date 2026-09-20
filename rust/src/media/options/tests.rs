@@ -12,11 +12,11 @@ use arrow_schema::{ArrowError, SchemaRef};
 use crate::arrow::BatchReader;
 use crate::ipc::IpcOptions;
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::{DataType, Field, StructureType};
+use crate::{DataType, Field, StructType};
 
 /// A struct field is the schema of the batches it describes.
 fn schema() -> Field {
-    StructureType::from_fields([DataType::Int64.required_field("id")])
+    StructType::from_fields([DataType::Int64.required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row")

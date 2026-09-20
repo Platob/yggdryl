@@ -14,7 +14,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple, PyType};
 use yggdryl::{
     DataType as CoreDataType, DateTimeType, EdgeAlgorithm as CoreEdgeAlgorithm,
-    Scheme as CoreScheme, StringEnum as CoreStringEnum, StructureType, TimeUnit as CoreTimeUnit,
+    Scheme as CoreScheme, StringEnum as CoreStringEnum, StructType, TimeUnit as CoreTimeUnit,
     UnionMode as CoreUnionMode,
 };
 use yggdryl::{DataTypeValue as _, FieldValue as _, SequenceType};
@@ -910,7 +910,7 @@ impl PyDataType {
     /// Builds a native Struct directly from native child fields.
     #[staticmethod]
     fn from_fields(fields: &Bound<'_, PyAny>) -> PyResult<Self> {
-        StructureType::from_fields(core_fields_from_iterable(fields)?)
+        StructType::from_fields(core_fields_from_iterable(fields)?)
             .map(CoreDataType::from)
             .map(Self::from_inner)
             .map_err(value_error)

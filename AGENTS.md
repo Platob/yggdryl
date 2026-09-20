@@ -328,15 +328,17 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `media/` | what every medium shares: the `Media` value naming every implementation, record options, inference, magic, merge, partition, structured routing |
 | `ipc/`, `parquet/`, `avro/` | one root folder per record medium; each owns free functions over `IOBase` plus a stateful wrapper |
 | `iceberg/` | separate modules: types, schema, partition, snapshots, metadata, manifests, statistics, scalar rendering, scan, table, options, catalog, evolution, inspection |
-| `text/` | the plain-text medium - `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering, `TextBytes`/`TextLine`/`TextEntries` - beside what the structured codecs share: `Format`, `Limits`, `Formatting`, `Loading`, placeholders, `TextCodec`, io, wire, typed |
+| `text/` | the plain-text medium - `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering, `TextBytes`/`TextLine`/`TextEntries` - `TextLine` an `Event` of the graph holding the whole line, row header included, and the `Arc<TextOptions>` it reads itself by, every reading resolved once on its first ask and a `set_` stated over it - beside what the structured codecs share: `Format`, `Limits`, `Formatting`, `Loading`, placeholders, `TextCodec`, io, wire, typed |
 | `json/`, `toml/`, `yaml/` | one root folder per structured codec over `Scalar`, each its own parser over the machinery in `text/` |
 | `uri/` | the URI, URL and URN values and, in `datatype.rs`, the `uri` family - `UriType` with its `url` and `urn` leaves - and the fields and scalars over them |
 | `arrow/` | Arrow interop; recursive cast planning stays with `Field` |
 | `expression/` | one term grammar and one plan grammar: `Term`/`Bound`, `Filter`, `Selector`/`BoundSelector`, `Plan` (create, write verbs, `select`, `from`, `where`, `order by`, `limit`, `offset`), `Expression` (clause, plan, or `;` sequence), `Records`, `Attribute`, `Bounds`, `explain`, `FieldPath`/`FieldSegment`, `user` (registered `namespace.name` functions, `FunctionSignature` as a struct field, `Function::User`), `transform` (`TRANSFORM:function`/`TRANSFORM:sources`, else `TRANSFORM:expression`); every application (`apply_datatype` first and `apply_field` derived from it, `apply_scalar`, `apply_arrow_reader` first and `apply_arrow_batch` derived from it, `apply_records`, `from_scalar` readers) lives here and nowhere else |
-| `graph/` | the graph vocabulary: `element.rs` holds `Element` - an element's `Uuid` and its parents' UUIDs, read and written - and `TimeElement`, an element with an instant (`currunix`, `i128` nanoseconds since the epoch, UTC) and a `currhashcode`; signatures only, no storage and no walk |
+| `graph/` | the graph vocabulary: `element.rs` holds `Element` - an element's `Uuid`, its cross identity and code, its codes, its names, its parents' UUIDs (the whole lineage, oldest first) and its sources' UUIDs (the elements it was read from: provenance, never carried along a chain), read and written - `Event`, an element with an instant (`currunix`, `i64` nanoseconds since the epoch, UTC), a state and a place in its chain, and `MarketElement`/`MarketEvent`; `event.rs` the two holders, `iterator.rs` the one walk, `column.rs` the sixteen event columns (`EventColumn`) every generated schema of an event opens with - the text line's batch, the FIX row through the crate's own fields, the lifecycle's rows - one name and one datatype each; signatures and provided readings, no storage |
 | `hashing/` | the private structural/display stable-hash adapters the digests share; shared dispatch vocabulary is `digest.rs` |
 | `xxhash/` | one-shot digests, four resumable states, `reader`/`writer`, `Hashed<H>`, the canonical `Scalar` byte feed, Arrow row digests |
+| `variant.rs` | the variant encoding: any `Scalar` as one byte stream - version, `DataTypeId`, payload, children - and back; the stream, the whole, the `DataType` doors; what a `variant` column stores per row and what pickle carries |
 | `txhash/` | raw Unix-count/digest pairs, clock-unit conversion, configured hashing and Arrow coupling; not RFC UUIDs |
+| `parallel.rs` | the one ordered map over threads the FIX doors read on: a stream read a chunk ahead, each item answered on a scoped thread, the answers in the items' order; one thread is the sequential map |
 | `fix/` | FIX protocol behavior |
 | binding `lib.rs` | boundary helpers, exports, registration - nothing else |
 
@@ -374,7 +376,7 @@ would put a test fixture in the crate's API.
 ## Ownership
 
 - One row schema: a non-null Struct `Field`. Rows canonicalize to ordered
-  `Scalar::Sequence`; `Scalar::Record` is a sorted name-to-scalar *input* shape.
+  `Scalar::Sequence`; `Scalar::Struct` is a sorted name-to-scalar *input* shape.
   No second row/schema class or accessor; `FieldRecord<'_>` is a borrowed view
   of one row under that field, never a class of its own.
 - `Field` alone owns metadata, Arrow IPC dictionary identity and cache-aware
@@ -459,7 +461,7 @@ Equivalences a change keeps lossless, in both directions:
 - `Scalar` <-> Arrow array or scalar, through `arrow::scalar_array` and
   `arrow::scalar_value` under the exact `Field`, which decides nullability,
   dictionaries, extension identity.
-- rows <-> ordered `Scalar::Sequence`; named input <-> sorted `Scalar::Record`
+- rows <-> ordered `Scalar::Sequence`; named input <-> sorted `Scalar::Struct`
   (`from_record`), canonicalized against the Struct `Field`;
   `ArrowScalar::from_rows` and `into_scalar` cross the same way.
 - a datatype's canonical default is `default_value`/`is_default_value` - the
@@ -487,7 +489,7 @@ Wrappers compose over a handle, never inside it - `Coded` (coding),
 (`ArrowWriteSession::{overwrite,append,merge}` with `push` and `finish`/`abort`),
 never to a wrapper's own buffer.
 
-### Record and row accessors
+### Struct and row accessors
 
 - Whole value: `read_scalar(field)` / `write_scalar(value)`. Schema alone:
   `read_arrow_field(options)`.
@@ -504,7 +506,7 @@ never to a wrapper's own buffer.
   `into_array`/`into_batch`/`into_reader`/`into_scalar`; converts with `cast`.
 - `FieldRecord<'_>` is the row view under one Struct `Field`, borrowing
   the field: cell `i` is a `FieldScalar` borrowing child `i`, built by the
-  field's own row canonicalization from a `Sequence` or a `Record`, read with
+  field's own row canonicalization from a `Sequence` or a `Struct`, read with
   `get`/`get_by_name`/`get_by_index`/`names`/`iter`/`as_str` and subscripts,
   and collapsed with `into_scalar`. A name reaches a cell exactly as
   `Field::index_of` resolves it - by exact match; a folded name or a dotted
@@ -646,11 +648,11 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   `Int128`, `UInt128`; `Float16`, `Float32`, `Float64`; `Decimal32`,
   `Decimal64`, `Decimal128`, `Decimal256`; `Date32`, `Date64`;
   `Time32`, `Time64`; `Duration32`, `Duration64`; one `DateTime64`; `Interval`;
-  `Geometry`, `Geography`; `Sequence`, `Mapping`, `Record`. Temporals keep the `TimeUnit`/`TimeZone` their datatype needs;
+  `Geometry`, `Geography`; `Sequence`, `Mapping`, `Struct`. Temporals keep the `TimeUnit`/`TimeZone` their datatype needs;
   `DateTime64` always has a non-null `TimeZone`, naive spelled `TimeZone::Naive`.
   The wire vocabulary does not follow the spelling: `Scalar::kind()` and the
   serde tags keep the short `i8`, `d128` names they always wrote.
-- `Scalar::Record` is a deterministic sorted name-to-`Scalar` map, resolved to an
+- `Scalar::Struct` is a deterministic sorted name-to-`Scalar` map, resolved to an
   ordered sequence by Struct-field canonicalization; enum scalars keep generic
   enum identity in the smallest lossless integer representation.
 - Implement `Clone`, `Debug`, canonical `Display`, `Eq`, total `Ord`, `Hash`,
@@ -879,7 +881,9 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
 - Encoding comes from `MediaType` through `RecordOptions`, with no format
   argument; generic `write_*` takes an `IOMode` and redirects to specialized core
   paths.
-- Plain-text rows start with required `url: utf8` and `body: utf8` - a line is
+- Plain-text rows open with the sixteen event columns `EventColumn::ALL` names -
+  the line as the event it is, `currunix` first and `state` last - then nullable
+  `sourceurl: url` and required `body: utf8` - a line is
   text by construction - its bytes decoded at the transport in the charset the
   handle's media type declares other than UTF-8 or US-ASCII, and otherwise
   once where the line is made,
@@ -1063,9 +1067,9 @@ to any of the eighteen leaves or to what a string declares.
 - **The leaf is the name.** `DataTypeId::as_str` and `Display` are the leaf's
   canonical name - `utf8`, `large_utf8`, `utf8_view`, `large_utf8_view`,
   `fixed_utf8(n)`, `sized_utf8(n)`, and the same six under `ascii` and
-  `cp1252` - and `DataTypeId` has one identifier per leaf: the five UTF-8 ones
-  where the five layouts they replaced sat (27-31), the thirteen others
-  appended (74-86), because `as_u8` is a wire contract. The charset-free
+  `cp1252` - and `DataTypeId` has one identifier per leaf, the eighteen in
+  the text family's range (`0x51`-`0x62`), because `as_u8` is a wire contract
+  laid out by family. The charset-free
   spellings `string`, `fixed_string`, `string_view`, `large_string`,
   `large_string_view`, `sized_string` and SQL's `varchar`, `text`, `char(n)`
   name the UTF-8 leaf of their shape, and they alone take a `(charset)`

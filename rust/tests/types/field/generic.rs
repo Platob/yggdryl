@@ -5,7 +5,7 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::TimeType;
 use yggdryl::{
     DataType, DigestAlgorithm, Error, Field, MediaType, Metadata, MimeType, PythonKind,
-    PythonMetadata, Scheme, StructureType, TimeUnit, Url,
+    PythonMetadata, Scheme, StructType, TimeUnit, Url,
 };
 
 #[test]
@@ -219,11 +219,11 @@ fn arrow_dictionary_options_survive_parsing_and_cache_invalidation() {
     assert_eq!(Field::from_str(&field.to_string()).unwrap(), field);
     assert_eq!(Field::from_str(&arrow.to_string()).unwrap(), field);
 
-    let nested = DataType::from(StructureType::from_fields([field.clone()]).unwrap());
+    let nested = DataType::from(StructType::from_fields([field.clone()]).unwrap());
     assert_eq!(DataType::from_str(&nested.to_string()).unwrap(), nested);
     let mut different_field = field.clone();
     different_field.set_dictionary_options(42, false).unwrap();
-    let different = DataType::from(StructureType::from_fields([different_field]).unwrap());
+    let different = DataType::from(StructType::from_fields([different_field]).unwrap());
     assert_ne!(nested, different);
     assert_ne!(nested.cmp(&different), std::cmp::Ordering::Equal);
 
@@ -1046,7 +1046,7 @@ fn datatype_builds_fields_in_schema_reading_order() {
 
 #[test]
 fn a_struct_field_is_usable_as_a_schema_root() {
-    let root = StructureType::from_fields([
+    let root = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])
@@ -1075,7 +1075,7 @@ fn a_root_must_be_a_non_null_struct_and_says_why() {
     assert!(message.contains("expected a struct root"), "{message}");
     assert!(message.contains("int64"), "{message}");
 
-    let nullable = StructureType::from_fields([DataType::Int64.required_field("id")])
+    let nullable = StructType::from_fields([DataType::Int64.required_field("id")])
         .map(DataType::from)
         .unwrap()
         .nullable_field("row");
@@ -1532,11 +1532,10 @@ fn digest_field_selection_defaults_to_every_non_holder_then_honors_components() 
     let mut holder = DataType::UInt64.required_field("row_digest");
     holder.as_digest_mut().set_holder().unwrap();
 
-    let mut fallback =
-        StructureType::from_fields([symbol.clone(), holder.clone(), quantity.clone()])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("row");
+    let mut fallback = StructType::from_fields([symbol.clone(), holder.clone(), quantity.clone()])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
     fallback.set_comment("trade row").unwrap();
     assert_eq!(
         fallback.digest_field_names().collect::<Vec<_>>(),
@@ -1557,7 +1556,7 @@ fn digest_field_selection_defaults_to_every_non_holder_then_honors_components() 
     // ordinary columns, and the default selection is still every non-holder.
     let mut narrowed = holder.clone();
     narrowed.as_digest_mut().set_sources(["quantity"]).unwrap();
-    let explicit = StructureType::from_fields([symbol, narrowed.clone(), quantity])
+    let explicit = StructType::from_fields([symbol, narrowed.clone(), quantity])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -1573,7 +1572,7 @@ fn digest_field_selection_defaults_to_every_non_holder_then_honors_components() 
 
     let mut other_holder = DataType::UInt32.required_field("narrow_digest");
     other_holder.as_digest_mut().set_holder().unwrap();
-    let holders = StructureType::from_fields([holder, other_holder])
+    let holders = StructType::from_fields([holder, other_holder])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -1669,7 +1668,7 @@ fn a_typed_read_outlives_the_view_it_was_read_through() {
 
 #[test]
 fn indexing_a_view_reads_a_property_where_indexing_a_field_reads_a_child() {
-    let mut row = StructureType::from_fields([
+    let mut row = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])
@@ -1739,7 +1738,7 @@ fn a_typed_protocol_write_invalidates_a_populated_projection_exactly_once() {
 
 #[test]
 fn a_field_can_act_as_a_partition_column_and_a_root_reports_only_those() {
-    let schema = StructureType::from_fields([
+    let schema = StructType::from_fields([
         DataType::Int32.required_field("year"),
         DataType::utf8().required_field("venue"),
         DataType::Int64.required_field("price"),
@@ -1804,7 +1803,7 @@ fn unmarking_a_partition_column_removes_the_marker_rather_than_storing_a_default
     assert!(plain.without_partition_fields().is_err());
 
     // A field that never partitions anything answers the accessors anyway.
-    let root = StructureType::from_fields([DataType::Int64.required_field("price")])
+    let root = StructType::from_fields([DataType::Int64.required_field("price")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -1838,10 +1837,10 @@ fn unmarking_a_partition_column_removes_the_marker_rather_than_storing_a_default
 
 #[test]
 fn one_walk_numbers_finds_and_bounds_every_identifier_in_a_tree() {
-    let mut schema = StructureType::from_fields([
+    let mut schema = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::list(DataType::utf8().nullable_field("item")).nullable_field("tags"),
-        StructureType::from_fields([DataType::Int32.required_field("depth")])
+        StructType::from_fields([DataType::Int32.required_field("depth")])
             .map(DataType::from)
             .unwrap()
             .nullable_field("book"),
@@ -1873,7 +1872,7 @@ fn one_walk_numbers_finds_and_bounds_every_identifier_in_a_tree() {
     let mut evolved = schema
         .clone()
         .try_with_dtype(
-            StructureType::from_fields(
+            StructType::from_fields(
                 schema
                     .fields()
                     .iter()
@@ -1946,14 +1945,14 @@ fn a_datatype_rebuilds_any_layout_from_replacement_children() {
 
 #[test]
 fn subscripting_a_schema_node_reaches_a_nested_child() {
-    let line = StructureType::from_fields([
+    let line = StructType::from_fields([
         DataType::Float64.required_field("price"),
         DataType::Int64.required_field("qty"),
     ])
     .map(DataType::from)
     .unwrap()
     .required_field("line");
-    let mut order = StructureType::from_fields([
+    let mut order = StructType::from_fields([
         DataType::Int64.required_field("id"),
         line.clone(),
         DataType::list(DataType::utf8().nullable_field("tag")).nullable_field("tags"),
@@ -1988,7 +1987,7 @@ fn subscripting_a_schema_node_reaches_a_nested_child() {
 #[test]
 #[should_panic(expected = "is not a child of the field")]
 fn subscripting_an_absent_child_panics_by_name() {
-    let row = StructureType::from_fields([DataType::Int64.required_field("id")])
+    let row = StructType::from_fields([DataType::Int64.required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -1998,7 +1997,7 @@ fn subscripting_an_absent_child_panics_by_name() {
 #[test]
 #[should_panic(expected = "so position 3 is out of range")]
 fn subscripting_an_absent_child_panics_by_position() {
-    let row = StructureType::from_fields([DataType::Int64.required_field("id")])
+    let row = StructType::from_fields([DataType::Int64.required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -2013,7 +2012,7 @@ fn subscripting_a_scalar_datatype_panics() {
 
 #[test]
 fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
-    let mut row = StructureType::from_fields([
+    let mut row = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("venue"),
     ])
@@ -2063,7 +2062,7 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
 
 #[test]
 fn child_mutation_invalidates_the_arrow_cache_exactly_once() {
-    let mut row = StructureType::from_fields([DataType::Int64.required_field("id")])
+    let mut row = StructType::from_fields([DataType::Int64.required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");

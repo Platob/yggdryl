@@ -242,13 +242,12 @@ impl GeospatialParameters {
     }
 }
 
-/// The canonical Arrow extension name of the variant type.
+/// The Arrow extension name of the variant type.
 ///
-/// The storage is a struct of a non-nullable `metadata` Binary and a
-/// non-nullable `value` Binary, and the extension metadata is the empty
-/// string, exactly as the canonical `arrow.parquet.variant` extension spells
-/// them.
-pub(crate) const VARIANT_EXTENSION_NAME: &str = "arrow.parquet.variant";
+/// The storage is a `Binary` holding [the variant
+/// encoding](crate::Scalar::into_variant_bytes) of each value, and the
+/// extension metadata is the empty string.
+pub(crate) const VARIANT_EXTENSION_NAME: &str = "yggdryl.variant";
 
 /// The community GeoArrow extension name of the geospatial pair.
 ///
@@ -549,25 +548,20 @@ geospatial_value!(Geometry, DataType::geometry(None));
 geospatial_value!(Geography, DataType::geography(None, None));
 
 // ------------------------------------------------------------------------
-// Arrow projection: WKB bytes, and the canonical variant storage struct.
+// Arrow projection: WKB bytes, and the variant encoding as binary.
 // ------------------------------------------------------------------------
 
 mod arrow {
-    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields as ArrowFields};
+    use arrow_schema::DataType as ArrowDataType;
 
     use crate::VariantType;
 
     impl VariantType {
-        /// The Arrow storage a variant column lays out.
-        ///
-        /// The canonical `arrow.parquet.variant` struct: a non-nullable
-        /// `metadata` binary followed by a non-nullable `value` binary.
-        /// Shredding is a physical layout, so nothing else appears here.
-        pub(crate) fn arrow_storage() -> ArrowDataType {
-            ArrowDataType::Struct(ArrowFields::from(vec![
-                ArrowField::new("metadata", ArrowDataType::Binary, false),
-                ArrowField::new("value", ArrowDataType::Binary, false),
-            ]))
+        /// The Arrow storage a variant column lays out: one binary per
+        /// row, holding [the variant encoding](crate::Scalar::into_variant_bytes)
+        /// of the row's value, under the `yggdryl.variant` extension name.
+        pub(crate) const fn arrow_storage() -> ArrowDataType {
+            ArrowDataType::Binary
         }
     }
 
@@ -579,23 +573,9 @@ mod arrow {
         ArrowDataType::Binary
     }
 
-    /// Reports whether an Arrow datatype is exactly the canonical variant
-    /// storage: a struct of a non-nullable `metadata` Binary followed by a
-    /// non-nullable `value` Binary.
-    ///
-    /// Child field metadata does not participate - it is transport, not
-    /// identity - but the order is fixed because Arrow's own struct casting is
-    /// positional and would silently relabel swapped children.
+    /// Reports whether an Arrow datatype is the variant storage: a binary.
     pub(crate) fn is_variant_storage(dtype: &ArrowDataType) -> bool {
-        let ArrowDataType::Struct(fields) = dtype else {
-            return false;
-        };
-        fields.len() == 2
-            && fields[0].name() == "metadata"
-            && fields[1].name() == "value"
-            && fields
-                .iter()
-                .all(|field| field.data_type() == &ArrowDataType::Binary && !field.is_nullable())
+        matches!(dtype, ArrowDataType::Binary)
     }
 }
 

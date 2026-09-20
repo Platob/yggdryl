@@ -314,7 +314,7 @@ impl DatumCodec<'_> {
                             self.decode(&field.schema, cursor, depth, budget)?,
                         ));
                     }
-                    Scalar::from_record(entries)?
+                    Scalar::from_struct(entries)?
                 }
                 Node::Array(items) => {
                     let depth = self.descend(depth)?;
@@ -741,7 +741,7 @@ impl DatumCodec<'_> {
                 Node::Map(values) => {
                     let depth = self.descend(depth)?;
                     match value {
-                        Scalar::Record(entries) => {
+                        Scalar::Struct(entries) => {
                             if !entries.as_map().is_empty() {
                                 put_long(target, entries.as_map().len() as i64);
                                 for (key, item) in entries.as_map() {
@@ -796,7 +796,7 @@ impl DatumCodec<'_> {
         target: &mut Vec<u8>,
         depth: usize,
     ) -> Result<()> {
-        if value.as_record().is_none() && value.as_mapping().is_none() {
+        if value.as_struct().is_none() && value.as_mapping().is_none() {
             return Err(mismatch(&format_smolstr!("record {}", record.name), value));
         }
         for field in &record.fields {
@@ -863,8 +863,8 @@ impl DatumCodec<'_> {
                     || (fixed.size == 16 && matches!(value, Scalar::Uuid(_)))
             }
             Node::UuidFixed(fixed) => fixed.size == 16 && uuid_value(value).is_ok(),
-            Node::Record(_) => value.as_record().is_some() || value.as_mapping().is_some(),
-            Node::Map(_) => value.as_record().is_some() || value.as_mapping().is_some(),
+            Node::Record(_) => value.as_struct().is_some() || value.as_mapping().is_some(),
+            Node::Map(_) => value.as_struct().is_some() || value.as_mapping().is_some(),
             Node::Array(_) => value.as_sequence().is_some(),
             Node::Union(_) => false,
             Node::Ref(name) => self

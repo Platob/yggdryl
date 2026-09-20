@@ -37,7 +37,7 @@ use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
 use crate::sequence::SequenceType;
 use crate::text::TextBytes;
-use crate::{DataType, Error, Field, Result, Scalar, StructureType, Version};
+use crate::{DataType, Error, Field, Result, Scalar, StructType, Version};
 use crate::{Side, State};
 
 /// What a key resolved to, before any field is built.
@@ -381,6 +381,10 @@ pub(super) struct RowExtras<'row> {
     /// The code a line stating no direction takes - the codec's pin on the
     /// batch door - and nothing on the line door, where silence is silence.
     pub(super) direction_pin: Option<&'row str>,
+    /// The identity of the line the row was read from, which every message
+    /// the row answers for states as its one source; none for bytes no line
+    /// stands behind.
+    pub(super) source: Option<crate::Uuid>,
 }
 
 /// What a row stated, owned, for the messages it answers for.
@@ -399,12 +403,18 @@ pub(super) struct RowStamp {
     fills: Vec<(Field, i32, Scalar)>,
     /// The direction resolved for the row, a code of tag 385's set.
     direction: Option<SmolStr>,
+    /// The identity of the line the row was read from.
+    source: Option<crate::Uuid>,
 }
 
 impl RowStamp {
     /// What a row stated, retained; nothing at all where it stated nothing.
     pub(super) fn retained(extras: RowExtras<'_>) -> Option<Arc<Self>> {
-        if extras.version.is_none() && extras.fills.is_empty() && extras.direction.is_none() {
+        if extras.version.is_none()
+            && extras.fills.is_empty()
+            && extras.direction.is_none()
+            && extras.source.is_none()
+        {
             return None;
         }
         Some(Arc::new(Self {
@@ -415,6 +425,7 @@ impl RowStamp {
                 .map(|fill| (fill.field.clone(), fill.tag, fill.value.clone()))
                 .collect(),
             direction: extras.direction.map(SmolStr::new),
+            source: extras.source,
         }))
     }
 
@@ -437,6 +448,7 @@ impl RowStamp {
             fills,
             direction: self.direction.as_deref(),
             direction_pin: None,
+            source: self.source,
         }
     }
 
@@ -472,6 +484,7 @@ impl RowExtras<'static> {
         fills: &[],
         direction: None,
         direction_pin: None,
+        source: None,
     };
 }
 
@@ -1682,6 +1695,7 @@ impl<'registry> Builder<'registry> {
     /// after namespace composition, never while the payload is still built.
     pub(super) fn finish(self, name: &str) -> Result<Built> {
         let Self {
+            registry,
             beginstring,
             version,
             mut slots,
@@ -1751,16 +1765,15 @@ impl<'registry> Builder<'registry> {
             .iter()
             .zip(&values)
             .filter_map(|(field, value)| {
-                let counter = field.as_fix().counter().ok().flatten()?;
+                let counter = super::schema::tag_and_counter(registry, field).1?;
                 let held = value.as_sequence()?.len();
                 Some((counter, held))
             })
             .collect();
         for (counter, held) in counted {
             if let Some(at) = fields.iter().position(|field| {
-                field.as_fix().tag().ok().flatten() == Some(counter)
-                    && field.as_fix().counter().ok().flatten().is_none()
-                    && !field.dtype().is_nested()
+                let (tag, counts) = super::schema::tag_and_counter(registry, field);
+                tag == Some(counter) && counts.is_none() && !field.dtype().is_nested()
             }) {
                 let count = i32::try_from(held).unwrap_or(i32::MAX);
                 if let Ok(value) = fields[at].scalar(Scalar::from(count)) {
@@ -1769,7 +1782,10 @@ impl<'registry> Builder<'registry> {
             }
         }
         tags.sort_unstable();
-        let root = DataType::from(StructureType::from_fields(fields)?).required_field(name);
+        // Every child is the dictionary's own field, a field built for a key
+        // the dictionary lacks, or a group closed above, and one slot holds
+        // each name, so the root is built as it stands.
+        let root = DataType::from(StructType::from_unique_fields(fields)).required_field(name);
         Ok(Built {
             field: root,
             value: Scalar::from_sequence(values),
@@ -1930,13 +1946,12 @@ impl Slot {
             let mut item = match self.field.dtype() {
                 DataType::Sequence(SequenceType::List(item))
                 | DataType::Sequence(SequenceType::LargeList(item)) => item.as_ref().clone(),
-                _ => DataType::from(StructureType::from_fields([])?)
+                _ => DataType::from(StructType::from_fields([])?)
                     .required_field(occurrence_name(&self.field)),
             };
             item.set_nullable(true);
             let values = Scalar::from_sequence(self.values.into_iter().map(|_| Scalar::Null));
-            let mut list = DataType::list(item).required_field(self.field.name());
-            let _ = list.set_metadata(self.field.as_metadata().iter());
+            let list = list_of(&self.field, item);
             return Ok((list, values));
         }
         if self.occurrences.is_empty() {
@@ -1961,8 +1976,7 @@ impl Slot {
             let mut item = self.field.clone().with_name(self.field.name().to_owned());
             item.set_nullable(absent);
             let values = Scalar::from_sequence(self.values);
-            let mut list = DataType::list(item).required_field(self.field.name());
-            let _ = list.set_metadata(self.field.as_metadata().iter());
+            let list = list_of(&self.field, item);
             return Ok((list, values));
         }
 
@@ -2001,7 +2015,7 @@ impl Slot {
                 member_fields.push(member);
             }
         }
-        let mut item = DataType::from(StructureType::from_fields(member_fields.clone())?)
+        let mut item = DataType::from(StructType::from_fields(member_fields.clone())?)
             .required_field(occurrence_name(&self.field));
         // A gapped index leaves an occurrence nobody stated, which is null.
         if finished.iter().any(Option::is_none) {
@@ -2038,10 +2052,21 @@ impl Slot {
             item.set_nullable(true);
         }
         let rows: Vec<Scalar> = rows.into_iter().map(|(_, row)| row).collect();
-        let mut list = DataType::list(item).required_field(self.field.name());
-        let _ = list.set_metadata(self.field.as_metadata().iter());
+        let list = list_of(&self.field, item);
         Ok((list, Scalar::from_sequence(rows)))
     }
+}
+
+/// The List a slot closes as: its field's name and metadata - the metadata
+/// shared as the one it is, never rebuilt from its entries - over `item`,
+/// required.
+fn list_of(field: &Field, item: Field) -> Field {
+    Field::new_with_metadata(
+        field.name(),
+        DataType::list(item),
+        false,
+        field.as_metadata().clone(),
+    )
 }
 
 /// The day a FIX temporal that states no date is read on.
@@ -2199,6 +2224,16 @@ pub(super) fn typed_spelling(field: &Field, text: &str) -> Scalar {
 pub(super) fn typed_spelling_checked(field: &Field, text: &str) -> Result<Scalar> {
     let translated = field.as_fix().code_value(text);
     typed_translation(field, text, translated)
+}
+
+/// [`typed_spelling`] for a field the registry keeps, the translation
+/// read off the registry's memo: what a rebuilt row types a million
+/// entries through, each code set scanned once per spelling rather than
+/// once per entry.
+pub(super) fn typed_spelling_remembered(memo: &Memo, field: &Field, text: &str) -> Scalar {
+    let facts = memo.facts(field);
+    let translated = memo.translation(field, &facts, text);
+    typed_translation(field, text, translated.as_deref()).unwrap_or(Scalar::Null)
 }
 
 /// [`typed_spelling`], the translation already made: `translated` is the wire

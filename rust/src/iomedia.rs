@@ -625,7 +625,7 @@ pub trait IOMedia: Send {
     ///
     /// ```
     /// use yggdryl::media::IORecordOptions;
-    /// use yggdryl::{IOMedia, StructureType, holder::Buffer};
+    /// use yggdryl::{IOMedia, StructType, holder::Buffer};
     /// use yggdryl::{DataType, MimeType, Scalar};
     ///
     /// struct Quote {
@@ -640,7 +640,7 @@ pub trait IOMedia: Send {
     /// }
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let field = DataType::from(StructureType::from_fields([
+    /// let field = DataType::from(StructType::from_fields([
     ///     DataType::Int32.required_field("id"),
     ///     DataType::utf8().required_field("symbol"),
     /// ])?)

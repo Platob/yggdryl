@@ -15,6 +15,35 @@ use super::{LeadingFragment, LineSep};
 /// Reserved columns emitted before decoded row-header captures.
 pub(crate) const BASE_COLUMNS: [&str; 4] = ["sourceurl", "rownum", "body", "dropped_byte_size"];
 
+/// The event columns a row-header capture feeds by its exact name: the
+/// capture's value is the fact's, read at the fact's own datatype, and the
+/// column that states the fact is the event's rather than a capture column
+/// beside it. `mtime` feeds the instant the same way, under its own rule.
+pub(crate) const EVENT_CAPTURES: [&str; 8] = [
+    "seqnum",
+    "state",
+    "crosscode",
+    "creaunix",
+    "expirunix",
+    "prevunix",
+    "snapunix",
+    "prevuuid",
+];
+
+/// The event columns no capture can feed, because the line derives them -
+/// its identity, the chain's, the codes, the names it goes by - or a walk
+/// states them: a capture spelled as one is refused.
+pub(crate) const DERIVED_EVENT_COLUMNS: [&str; 8] = [
+    "currunix",
+    "curruuid",
+    "crossuuid",
+    "currhashcode",
+    "crosshashcode",
+    "parentuuids",
+    "srcuuids",
+    "identifiers",
+];
+
 /// The column stating when a record was written, and the row-header capture
 /// that fills it.
 ///
@@ -25,6 +54,17 @@ pub(crate) const MTIME_COLUMN: &str = "mtime";
 
 /// The column stating what a line was classified as.
 pub(crate) const MIMETYPE_COLUMN: &str = "mimetype";
+
+/// The rows a text batch holds until its byte target binds first: `35 * 1024`.
+///
+/// A text read batches on two targets, whichever binds first, because a
+/// heartbeat capture and a market-data capture differ by orders of
+/// magnitude in bytes for one row count: this many rows of short lines, or
+/// [`DEFAULT_TEXT_BATCH_BYTE_SIZE`] of long ones.
+pub const DEFAULT_TEXT_BATCH_ROW_SIZE: usize = 35 * 1024;
+
+/// The bytes a text batch holds until its row target binds first: `64 MiB`.
+pub const DEFAULT_TEXT_BATCH_BYTE_SIZE: u64 = 64 * 1024 * 1024;
 
 /// The one datatype the `mtime` column is read and stored at.
 ///
@@ -86,10 +126,13 @@ impl PartialOrd for Expression {
 
 /// Settings for text rows reached through the ordinary record-media methods.
 ///
+/// A new value batches on [`DEFAULT_TEXT_BATCH_ROW_SIZE`] rows or
+/// [`DEFAULT_TEXT_BATCH_BYTE_SIZE`] bytes, whichever binds first.
 /// Physical-line mode emits one row per line. With `framing` enabled,
 /// `rowheader` starts a logical record and following nonmatching lines join its
-/// body with normalized `\n` separators. Named captures remain nullable and the
-/// complete header match is removed only from the first physical line.
+/// body with normalized `\n` separators. Named captures remain nullable, and
+/// the header stays in the body: the first physical line carries it, and a
+/// line reads its captures off its own body.
 /// `lstrip` and `rstrip` remove edge matches, and `autotype` infers capture
 /// datatypes from regex syntax before the resource is read.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -106,12 +149,14 @@ pub struct TextOptions {
     pub merge_by: crate::Selector,
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
-    /// Rows per emitted batch.
-    /// Bytes per batch, whichever of this and `batch_row_size` binds first.
+    /// Bytes per emitted batch, whichever of this and `batch_row_size` binds
+    /// first; [`DEFAULT_TEXT_BATCH_BYTE_SIZE`] as `new()` states it.
     ///
     /// A target rather than a ceiling, and a non-zero bound always yields at
     /// least one row.
     pub batch_byte_size: Option<u64>,
+    /// Rows per emitted batch, whichever of this and `batch_byte_size` binds
+    /// first; [`DEFAULT_TEXT_BATCH_ROW_SIZE`] as `new()` states it.
     pub batch_row_size: Option<usize>,
     /// Most result rows in total.
     pub max_row_size: Option<u64>,
@@ -179,8 +224,8 @@ impl TextOptions {
             select: crate::Selector::all(),
             merge_by: crate::Selector::all(),
             safe: false,
-            batch_byte_size: None,
-            batch_row_size: None,
+            batch_byte_size: Some(DEFAULT_TEXT_BATCH_BYTE_SIZE),
+            batch_row_size: Some(DEFAULT_TEXT_BATCH_ROW_SIZE),
             max_row_size: None,
             max_byte_size: None,
             commit_row_size: None,
@@ -246,12 +291,14 @@ impl TextOptions {
         self.max_record_byte_size
     }
 
-    /// Set or clear the retained decoded-body byte limit for each record.
+    /// Set or clear the retained byte limit for each record, counted past
+    /// its row header.
     pub const fn set_max_record_byte_size(&mut self, size: Option<u64>) {
         self.max_record_byte_size = size;
     }
 
-    /// Return these options with a decoded-body byte limit for each record.
+    /// Return these options with a byte limit for each record, counted past
+    /// its row header.
     #[must_use]
     pub const fn with_max_record_byte_size(mut self, size: u64) -> Self {
         self.set_max_record_byte_size(Some(size));
@@ -298,12 +345,13 @@ impl TextOptions {
         for capture in &captures {
             if BASE_COLUMNS
                 .iter()
+                .chain(DERIVED_EVENT_COLUMNS.iter())
                 .any(|base| base.eq_ignore_ascii_case(capture.name()))
             {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$.rowheader"),
                     reason: format_smolstr!(
-                        "expected named captures distinct from sourceurl, rownum, body, and dropped_byte_size, got {:?}",
+                        "expected named captures distinct from sourceurl, rownum, body, dropped_byte_size and the event columns the line derives - currunix, curruuid, crossuuid, currhashcode, crosshashcode, parentuuids, srcuuids, identifiers - got {:?}",
                         capture.name()
                     ),
                 });
@@ -604,18 +652,23 @@ impl TextOptions {
         self.line_plan()?.field(self.name.clone())
     }
 
-    /// Whether the `mtime` column, rather than a column of its own, is where
-    /// this capture's value goes.
+    /// Whether a column the line already states - `mtime`, or one of the
+    /// event columns a capture feeds - rather than a column of its own, is
+    /// where this capture's value goes.
     ///
     /// One owner per fact: with `parse_mtime` on, a capture spelled `mtime`
     /// fills that column and is not repeated beside it; with it off, there is
-    /// no such column and the capture is an ordinary one.
+    /// no such column and the capture is an ordinary one. A capture spelled
+    /// as an event fact - `seqnum`, `state`, `crosscode`, `prevuuid`, one of
+    /// the four lifecycle instants, by that exact name, as the reading that
+    /// takes it looks it up - feeds that fact, and the event column states
+    /// it at the fact's own datatype; `SeqNum` is an ordinary capture.
     pub(crate) fn consumes_capture(&self, index: usize) -> bool {
-        self.parse_mtime
-            && self
-                .captures
-                .get(index)
-                .is_some_and(|capture| capture.name() == MTIME_COLUMN)
+        let Some(capture) = self.captures.get(index) else {
+            return false;
+        };
+        (self.parse_mtime && capture.name() == MTIME_COLUMN)
+            || EVENT_CAPTURES.contains(&capture.name())
     }
 
     /// The datatype one row-header capture is read at, in regex order.
@@ -625,6 +678,9 @@ impl TextOptions {
     /// would parse a value into a column that cannot hold it.
     pub(crate) fn capture_dtype(&self, index: usize) -> DataType {
         if self.consumes_capture(index) {
+            // The instant's column, or the fact's own reading: no capture
+            // column is built, and the datatype answered is the clock's for
+            // the one column that is.
             return mtime_dtype();
         }
         let Some(capture) = self.captures.get(index) else {

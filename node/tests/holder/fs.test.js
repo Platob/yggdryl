@@ -949,8 +949,11 @@ test('handler-backed framed text resets at every leaf', () => {
   const table = IOBase.fromFs(handler, 'bucket/logs')
     .readArrowReader(options)
     .intoTable()
+  // The sixteen event columns lead the row, the line's own behind them.
+  assert.equal(table.schema.fields[0].name, 'currunix')
+  assert.equal(table.schema.fields[15].name, 'state')
   assert.deepEqual(
-    table.schema.fields.map((field) => [field.name, field.nullable]),
+    table.schema.fields.slice(16).map((field) => [field.name, field.nullable]),
     [
       ['sourceurl', true],
       ['mtime', true],
@@ -960,9 +963,9 @@ test('handler-backed framed text resets at every leaf', () => {
   )
   // The url column is the `url` datatype: Utf8 storage under the extension
   // identity, and it names the leaf each row was actually read from.
-  assert.equal(table.schema.fields[0].type.toString(), 'Utf8')
+  assert.equal(table.schema.fields[16].type.toString(), 'Utf8')
   assert.equal(
-    table.schema.fields[0].metadata.get('ARROW:extension:name'),
+    table.schema.fields[16].metadata.get('ARROW:extension:name'),
     'yggdryl.url',
   )
   assert.deepEqual(
@@ -975,7 +978,7 @@ test('handler-backed framed text resets at every leaf', () => {
   )
   assert.deepEqual(
     [...table.getChild('body')].map((body) => Buffer.from(body).toString()),
-    ['first\ncontinuation from a', 'leading fragment from b', 'second'],
+    ['[INFO] first\ncontinuation from a', 'leading fragment from b', '[WARN] second'],
   )
   assert.deepEqual([...table.getChild('level')], ['INFO', null, 'WARN'])
 })

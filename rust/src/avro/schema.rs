@@ -337,7 +337,7 @@ fn normalized_schema_json(value: &Scalar) -> Result<Scalar> {
                 .map(normalized_schema_json)
                 .collect::<Result<Vec<_>>>()?,
         )),
-        Scalar::Record(entries) => Scalar::from_record(
+        Scalar::Struct(entries) => Scalar::from_struct(
             entries
                 .as_map()
                 .iter()
@@ -346,7 +346,7 @@ fn normalized_schema_json(value: &Scalar) -> Result<Scalar> {
                 })
                 .collect::<Result<Vec<_>>>()?,
         ),
-        Scalar::Mapping(entries) => Scalar::from_record(
+        Scalar::Mapping(entries) => Scalar::from_struct(
             entries
                 .as_slice()
                 .iter()
@@ -610,7 +610,7 @@ impl Parser {
             }
             return Ok(Node::Union(parsed.into()));
         }
-        if document.as_record().is_none() && document.as_mapping().is_none() {
+        if document.as_struct().is_none() && document.as_mapping().is_none() {
             return Err(invalid(format_smolstr!(
                 "expected an Avro schema name, union, or object, got {}",
                 document.kind()

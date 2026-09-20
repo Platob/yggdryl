@@ -127,7 +127,7 @@ fn a_content_coding_is_read_and_written_in_place_over_a_store() {
     assert_eq!(handle.codec(), crate::Codec::Gzip);
 
     let value =
-        crate::Scalar::from_record([("symbol", crate::Scalar::from("AAPL"))]).expect("a record");
+        crate::Scalar::from_struct([("symbol", crate::Scalar::from("AAPL"))]).expect("a record");
     handle.write_scalar(&value).expect("a compressed write");
     assert_eq!(handle.read_scalar(None).expect("the value"), value);
 
@@ -144,7 +144,7 @@ fn records_round_trip_through_a_store_like_any_other_handle() {
     use std::sync::Arc;
 
     let store = store();
-    let field = crate::StructureType::from_fields([
+    let field = crate::StructType::from_fields([
         crate::DataType::Int64.required_field("id"),
         crate::DataType::utf8().required_field("symbol"),
     ])

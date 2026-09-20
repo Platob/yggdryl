@@ -23,7 +23,7 @@ Rust only.
 
     ```rust
     use arrow_schema::{Schema, ffi::FFI_ArrowSchema};
-    use yggdryl::{DataType, Field, StructureType};
+    use yggdryl::{DataType, Field, StructType};
 
     let mut symbol = DataType::dictionary(DataType::Int16, DataType::utf8())?
         .nullable_field("symbol");
@@ -31,7 +31,7 @@ Rust only.
 
     let schema = Field::from_parts(
         "row",
-        DataType::from(StructureType::from_fields([
+        DataType::from(StructType::from_fields([
             DataType::Int64.required_field("id"),
             symbol,
         ])?),

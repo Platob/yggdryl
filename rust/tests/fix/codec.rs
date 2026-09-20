@@ -10,7 +10,7 @@ use yggdryl::SequenceType;
 use yggdryl::State;
 use yggdryl::graph::Event;
 use yggdryl::text::{TextBytes, TextLine};
-use yggdryl::{DataType, Field, FixCodec, FixEntry, FixId, FixRegistry, Scalar, StructureType};
+use yggdryl::{DataType, Field, FixCodec, FixEntry, FixId, FixRegistry, Scalar, StructType};
 
 fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
@@ -1186,7 +1186,7 @@ fn a_code_declared_under_another_name_is_a_second_message_and_the_bare_code_answ
     let declare = |name: &str| {
         let mut allocation = DataType::Int32.nullable_field("AllocQty");
         allocation.as_fix_mut().set_tag(80).unwrap();
-        let mut message = StructureType::from_fields([allocation])
+        let mut message = StructType::from_fields([allocation])
             .map(DataType::from)
             .unwrap()
             .required_field(name);
@@ -1426,7 +1426,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     sub_id.as_fix_mut().set_tag(523).unwrap();
     let mut sub_type = DataType::Int32.nullable_field("partysubidtype");
     sub_type.as_fix_mut().set_tag(803).unwrap();
-    let sub_item = StructureType::from_fields([sub_id.clone(), sub_type.clone()])
+    let sub_item = StructType::from_fields([sub_id.clone(), sub_type.clone()])
         .map(DataType::from)
         .unwrap()
         .required_field("partysub");
@@ -1438,7 +1438,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     party_id.as_fix_mut().set_tag(448).unwrap();
     let mut role = DataType::Int32.nullable_field("partyrole");
     role.as_fix_mut().set_tag(452).unwrap();
-    let item = StructureType::from_fields([
+    let item = StructType::from_fields([
         party_id.clone(),
         role.clone(),
         sub_count.clone(),
@@ -1564,7 +1564,7 @@ fn an_unnamed_occurrence_opens_the_declared_component_under_its_counter() {
         panic!("{}", group.dtype());
     };
     assert_eq!(item.name(), "party");
-    assert!(matches!(item.dtype(), DataType::Structure(_)));
+    assert!(matches!(item.dtype(), DataType::Struct(_)));
     assert!(item.is_nullable());
     // The group is what the wire says of it: two occurrences under their
     // count, each one the declared component states nothing in.
@@ -1624,7 +1624,7 @@ fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
     // its group in the wider variant is still a dictionary of groups.
     let mut party_id = DataType::utf8().nullable_field("partyid");
     party_id.as_fix_mut().set_tag(448).unwrap();
-    let item = StructureType::from_fields([party_id])
+    let item = StructType::from_fields([party_id])
         .map(DataType::from)
         .unwrap()
         .required_field("item");
@@ -1777,7 +1777,7 @@ fn separatorless_group_inference_uses_only_direct_members() {
     // A selected message's direct members outrank the wider global Parties
     // definition, even when the key addresses its numeric counter.
     let mut scoped = registry().as_ref().clone();
-    let item = StructureType::from_fields([scoped.field_by_tag(448).unwrap().clone()])
+    let item = StructType::from_fields([scoped.field_by_tag(448).unwrap().clone()])
         .map(DataType::from)
         .unwrap()
         .required_field("minimalparty");
@@ -1785,7 +1785,7 @@ fn separatorless_group_inference_uses_only_direct_members() {
     group.as_fix_mut().set_counter(453).unwrap();
     scoped.insert(group.clone()).unwrap();
     let mut definition =
-        StructureType::from_fields([scoped.field_by_tag(453).unwrap().clone(), group])
+        StructType::from_fields([scoped.field_by_tag(453).unwrap().clone(), group])
             .map(DataType::from)
             .unwrap()
             .required_field("minimalpartiesmessage");
@@ -1976,10 +1976,20 @@ fn clock_intake_keeps_the_declared_datatypes_contract_and_refuses_wrong_layouts(
     let reader = super::fixed_codec(Arc::new(FixRegistry::new()));
     // A native ns/UTC datetime accepts time with an offset on the epoch day.
     // The seed has no stricter FIX UTCTimestamp metadata, pinned above.
+    // The parse dates the message by `SendingTime` alone - here the codec's
+    // clock, the line stating none - and `TransactTime` stays the typed
+    // field it is, for the lifecycle to read.
     let dateless = reader
         .parse_fix_line(b"8=FIX.4.4|35=D|60=07:39:12.123+05:30|10=0|")
         .unwrap();
-    assert_eq!(dateless.get_currunix(), 7_752_123_000_000);
+    assert_eq!(dateless.get_currunix(), 1_704_190_530_000_000_000);
+    assert_eq!(
+        dateless
+            .by_tag(60)
+            .expect("the typed clock")
+            .temporal_count_at(yggdryl::TimeUnit::Nanosecond),
+        Some(7_752_123_000_000)
+    );
     // A parse is not a snapshot, so the snapshot clock is a fact the
     // message does not state: a row that said it was taken at a moment
     // nothing took it at would be a fact nobody stated.
@@ -2086,7 +2096,12 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
     let lines: Vec<TextLine> = rows
         .iter()
         .map(|row| {
-            TextLine::from_bytes(0, TextBytes::from_bytes(row).expect("a capture page")).unwrap()
+            TextLine::from_bytes(
+                0,
+                TextBytes::from_bytes(row).expect("a capture page"),
+                std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+            )
+            .unwrap()
         })
         .collect();
 
@@ -2101,7 +2116,7 @@ fn every_batch_reader_answers_what_the_single_reader_answers() {
 
     // The same rows as one Arrow batch in and one Arrow batch out, with the
     // row count preserved: a capture joins back to its source by position.
-    let capture = StructureType::from_fields([DataType::binary().required_field("body")])
+    let capture = StructType::from_fields([DataType::binary().required_field("body")])
         .map(DataType::from)
         .expect("a capture shape")
         .required_field("capture");

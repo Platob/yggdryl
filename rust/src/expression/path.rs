@@ -189,7 +189,7 @@ impl FieldSegment {
         let dtype = unwrap_dictionary(field.dtype());
         match self {
             Self::Field(name) => match dtype {
-                DataType::Structure(_) => struct_child_field(field, name),
+                DataType::Struct(_) => struct_child_field(field, name),
                 DataType::Mapping(map) => Ok(map_value_field(map)?.with_nullable(true)),
                 other => Err(typing_error(format_smolstr!(
                     "expected a struct or a map to reach .{name} through, got {other}"
@@ -224,7 +224,7 @@ impl FieldSegment {
                     })?;
                     Ok(map_value_field(map)?.with_nullable(true))
                 }
-                DataType::Structure(_) => match key.value().as_str() {
+                DataType::Struct(_) => match key.value().as_str() {
                     Some(name) => struct_child_field(field, name),
                     None => Err(typing_error(format_smolstr!(
                         "expected a text key to reach a struct child, got {}",
@@ -359,7 +359,7 @@ pub(crate) fn struct_values<'value>(
         padded.resize(width, Scalar::Null);
         return Some(Cow::Owned(padded));
     }
-    if value.as_record().is_none() && value.as_mapping().is_none() {
+    if value.as_struct().is_none() && value.as_mapping().is_none() {
         return None;
     }
     Some(Cow::Owned(
@@ -412,14 +412,14 @@ fn struct_child(field: &Field, value: &Scalar, name: &str) -> Scalar {
             })
             .map_or(Scalar::Null, |(_, held)| held.clone());
     }
-    if let Some(record) = value.as_record() {
+    if let Some(record) = value.as_struct() {
         return record
             .iter()
             .find(|(key, _)| key.eq_ignore_ascii_case(name))
             .map_or(Scalar::Null, |(_, held)| held.clone());
     }
     // A struct spelled as a bare sequence takes its order from the schema.
-    if let (Some(values), DataType::Structure(fields)) =
+    if let (Some(values), DataType::Struct(fields)) =
         (value.as_sequence(), unwrap_dictionary(field.dtype()))
     {
         return fields

@@ -5,12 +5,12 @@ Arrow-native schemas, byte storage, and structured values, implemented once in R
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, StructureType};
+    use yggdryl::{DataType, Field, StructType};
 
     // A non-null struct field is the schema. There is no separate schema type.
     let schema = Field::new(
         "row",
-        DataType::from(StructureType::from_fields([
+        DataType::from(StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
         ])?),

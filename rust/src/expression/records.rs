@@ -125,10 +125,10 @@ where
     };
     let first = first?;
     let dtype = first.dtype()?;
-    if first.as_record().is_none() || !matches!(dtype, crate::DataType::Structure(_)) {
+    if first.as_struct().is_none() || !matches!(dtype, crate::DataType::Struct(_)) {
         return Err(unwritable_rows(format_args!(
             "expected a named record to infer a schema from, got {}; declare the schema, or pass \
-             records built by Scalar::from_record",
+             records built by Scalar::from_struct",
             first.kind()
         )));
     }
@@ -150,8 +150,8 @@ impl Selector {
     /// # fn main() -> yggdryl::Result<()> {
     /// let selector: Selector = "symbol, price * 2 as doubled".parse()?;
     /// let rows = [
-    ///     Scalar::from_record([("symbol", Scalar::from("AAPL")), ("price", Scalar::from(10_i64))])?,
-    ///     Scalar::from_record([("symbol", Scalar::from("MSFT")), ("price", Scalar::from(20_i64))])?,
+    ///     Scalar::from_struct([("symbol", Scalar::from("AAPL")), ("price", Scalar::from(10_i64))])?,
+    ///     Scalar::from_struct([("symbol", Scalar::from("MSFT")), ("price", Scalar::from(20_i64))])?,
     /// ];
     /// let records = selector.apply_records(None, rows)?;
     /// assert_eq!(records.field().fields()[1].name(), "doubled");

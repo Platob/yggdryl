@@ -4,7 +4,7 @@ use std::str::FromStr;
 use yggdryl::DateTimeType;
 use yggdryl::toml as ytoml;
 use yggdryl::{
-    DataType, DataTypeId, Error, Field, Limits, Scalar, StructureType, TimeUnit, Timezone,
+    DataType, DataTypeId, Error, Field, Limits, Scalar, StructType, TimeUnit, Timezone,
     from_toml_scalar, from_toml_scalar_with_field, i256, into_toml_scalar,
 };
 
@@ -12,14 +12,14 @@ use yggdryl::{
 fn field_directed_toml_restores_exact_leaves_inside_a_record() {
     let decimal = DataType::decimal32(9, 2).unwrap();
     let interval = DataType::interval(TimeUnit::MonthDayNano).unwrap();
-    let field = StructureType::from_fields([
+    let field = StructType::from_fields([
         decimal.clone().required_field("price"),
         interval.clone().required_field("span"),
     ])
     .map(DataType::from)
     .unwrap()
     .required_field("row");
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         ("price", decimal.scalar(Scalar::from(125)).unwrap()),
         (
             "span",
@@ -53,7 +53,7 @@ impl<R: Read> Read for OneByte<R> {
 
 #[test]
 fn natural_output_is_accepted_by_the_toml_crate() {
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         ("active", Scalar::from(true)),
         ("id", Scalar::from(7)),
         ("tags", Scalar::from_sequence([Scalar::from("rust")])),
@@ -71,7 +71,7 @@ fn empty_toml_is_an_empty_record() {
     for source in ["", "  \n", "# comment\n"] {
         assert_eq!(
             ytoml::from_utf8(source).unwrap(),
-            Scalar::from_record(std::iter::empty::<(&str, Scalar)>()).unwrap()
+            Scalar::from_struct(std::iter::empty::<(&str, Scalar)>()).unwrap()
         );
     }
 }
@@ -81,7 +81,7 @@ fn native_toml_temporals_are_syntax_proven_values() {
     let value =
         ytoml::from_utf8("date = 1979-05-27\ntime = 07:32:00.1\nat = 1970-01-01T00:00:00Z\n")
             .unwrap();
-    let record = value.as_record().unwrap();
+    let record = value.as_struct().unwrap();
     assert!(record["date"].as_date32().is_some());
     assert!(record["time"].as_time32().is_some());
     assert!(record["at"].as_datetime64().is_some());
@@ -90,7 +90,7 @@ fn native_toml_temporals_are_syntax_proven_values() {
 fn typed_row_field() -> Field {
     Field::new(
         "row",
-        StructureType::from_fields([
+        StructType::from_fields([
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
@@ -133,7 +133,7 @@ fn a_field_restores_exact_types_from_natural_toml() {
 
 #[test]
 fn exact_values_emit_natural_scalars_without_private_tags() {
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         (
             "amount",
             Scalar::d256(i256::from_str("1234500").unwrap(), 4),
@@ -155,7 +155,7 @@ fn exact_values_emit_natural_scalars_without_private_tags() {
     let typed = ytoml::from_utf8_with_field(&encoded, &typed_row_field()).unwrap();
     assert_eq!(
         typed.as_sequence().unwrap()[0],
-        value.as_record().unwrap()["amount"]
+        value.as_struct().unwrap()["amount"]
     );
 }
 
@@ -167,11 +167,11 @@ fn time_of_day_is_naive_and_zoned_text_is_refused() {
         false,
     );
     let value = Scalar::time64(1_500_000_000, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap();
-    let document = Scalar::from_record([("clock", value.clone())]).unwrap();
+    let document = Scalar::from_struct([("clock", value.clone())]).unwrap();
     let encoded = ytoml::into_utf8(&document).unwrap();
     let row_field = Field::new(
         "row",
-        DataType::from(StructureType::from_fields([field]).unwrap()),
+        DataType::from(StructType::from_fields([field]).unwrap()),
         false,
     );
     assert_eq!(
@@ -215,7 +215,7 @@ fn readers_single_document_rules_and_limits_are_explicit() {
 fn toml_refuses_shapes_its_grammar_cannot_represent() {
     assert!(ytoml::into_bytes(&Scalar::Null).is_err());
     assert!(ytoml::into_bytes(&Scalar::from(1)).is_err());
-    assert!(ytoml::into_bytes(&Scalar::from_record([("missing", Scalar::Null)]).unwrap()).is_err());
+    assert!(ytoml::into_bytes(&Scalar::from_struct([("missing", Scalar::Null)]).unwrap()).is_err());
     assert!(
         ytoml::into_bytes(&Scalar::from_mapping([(Scalar::from(1), Scalar::from(2))]).unwrap())
             .is_err()
@@ -224,7 +224,7 @@ fn toml_refuses_shapes_its_grammar_cannot_represent() {
 
 #[test]
 fn the_scalar_entry_points_answer_what_the_explicit_forms_answer() {
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         ("active", Scalar::from(true)),
         ("id", Scalar::from(7)),
         ("tags", Scalar::from_sequence([Scalar::from("rust")])),
@@ -271,7 +271,7 @@ fn from_toml_scalar_with_field_types_and_orders_as_from_bytes_with_field_does() 
         Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
     );
     let untyped = from_toml_scalar(input).unwrap();
-    assert!(untyped.as_record().unwrap()["amount"].as_str().is_some());
+    assert!(untyped.as_struct().unwrap()["amount"].as_str().is_some());
 }
 
 #[test]

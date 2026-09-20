@@ -1084,7 +1084,7 @@ function fromTransport(value) {
     }
     return result
   }
-  if (markerShape(value, 'record', [TRANSPORT_KEY, 'value'].sort())) {
+  if (markerShape(value, 'struct', [TRANSPORT_KEY, 'value'].sort())) {
     const result = {}
     for (const [key, item] of value.value) {
       Object.defineProperty(result, key, {
@@ -1270,8 +1270,8 @@ Object.defineProperties(Scalar.prototype, {
         }
         return this.at(key)
       }
-      if (this.kind === 'record' && typeof key !== 'string') {
-        throw new TypeError('record field names must be strings')
+      if (this.kind === 'struct' && typeof key !== 'string') {
+        throw new TypeError('struct field names must be strings')
       }
       const nativeKey = key instanceof Scalar ? key : Scalar.from(key)
       return Reflect.apply(nativeScalarGet, this, [nativeKey])
@@ -1286,8 +1286,8 @@ Object.defineProperties(Scalar.prototype, {
   set: {
     configurable: true,
     value(key, value) {
-      if (this.kind === 'record' && typeof key !== 'string') {
-        throw new TypeError('record field names must be strings')
+      if (this.kind === 'struct' && typeof key !== 'string') {
+        throw new TypeError('struct field names must be strings')
       }
       const nativeKey = key instanceof Scalar ? key : Scalar.from(key)
       const nativeItem = value instanceof Scalar ? value : Scalar.from(value)

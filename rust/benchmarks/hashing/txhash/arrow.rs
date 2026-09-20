@@ -11,7 +11,7 @@ use arrow_array::{
 };
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use yggdryl::DateTimeType;
-use yggdryl::{DataType, DigestAlgorithm, Field, StructureType, TimeUnit, Timezone};
+use yggdryl::{DataType, DigestAlgorithm, Field, StructType, TimeUnit, Timezone};
 
 /// Rows per fixture, enough that the per-row cost dominates the setup.
 const ROWS: usize = crate::bench_profile::corpus(65_536, 4_096);
@@ -197,11 +197,11 @@ fn holder_fixtures() -> (Field, Field, RecordBatch) {
         .as_digest_mut()
         .set_time("event")
         .expect("a valid instant path");
-    let plain_root = StructureType::from_fields([event.clone(), symbol.clone(), plain])
+    let plain_root = StructType::from_fields([event.clone(), symbol.clone(), plain])
         .map(DataType::from)
         .expect("a valid Struct")
         .required_field("row");
-    let coupled_root = StructureType::from_fields([event.clone(), symbol.clone(), coupled])
+    let coupled_root = StructType::from_fields([event.clone(), symbol.clone(), coupled])
         .map(DataType::from)
         .expect("a valid Struct")
         .required_field("row");

@@ -7,7 +7,7 @@ import pickle
 import pytest
 
 import yggdryl
-from yggdryl import FieldPath, TextLine, TextOptions
+from yggdryl import FieldPath, MimeType, Scalar, TextLine, TextOptions
 from yggdryl.holder import Buffer
 
 CAPTURE = b"8=FIX|55=AAPL|35=D\n35=D|55=MSFT\n"
@@ -68,10 +68,33 @@ class TestTextLine:
         assert lines[0].body == "8=FIX|55=AAPL|35=D"
         assert lines[0].sourceurl is not None
 
-    def test_a_read_wanting_no_entry_builds_no_tree(self) -> None:
+    def test_a_line_reads_itself_on_the_first_ask(self) -> None:
         lines = list(source().read_text_lines(options=TextOptions()))
-        assert lines[0].entries is None
-        assert lines[0].bodytype is None
+        # Nothing asked for a tree while the line was read; the payload's own
+        # pairs, and what the line is classified as, resolve on the first ask.
+        assert lines[0].entries is not None
+        assert lines[0].get_entry_by_path("55").value == "AAPL"
+        assert lines[0].bodytype == MimeType("text/fix")
+
+    def test_a_line_is_an_event_under_the_options_it_reads_itself_by(self) -> None:
+        options = TextOptions()
+        options.rowheader = r"^\[(?P<level>[A-Z]+)\] "
+        line = TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D", None, options)
+        # The body is the whole line, and the header is read off it when asked.
+        assert line.body == "[INFO] 8=FIX|55=AAPL|35=D"
+        assert line.captures == ("INFO",)
+        assert line.mtime is None
+        assert line.currunix == 0
+        # Its identity derives from its bytes and its instant: the same line
+        # is the same event, and another instant is another one.
+        assert isinstance(line.curruuid, Scalar)
+        assert line.curruuid == TextLine(7, "[INFO] 8=FIX|55=AAPL|35=D", None, options).curruuid
+        assert line.currhashcode == TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D").currhashcode
+        assert line.crosscode == "" and line.crosshashcode == 0
+        assert line.crossuuid != line.curruuid or line.crosscode == ""
+        # Stated captures are the line's word over its own header.
+        stated = TextLine(0, "[INFO] 8=FIX|55=AAPL|35=D", ["WARN"], options)
+        assert stated.captures == ("WARN",)
 
     def test_a_lifted_path_builds_the_tree_and_is_found(self) -> None:
         lines = list(source().read_text_lines(options=lifted()))

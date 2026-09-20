@@ -20,12 +20,24 @@ use crate::{
 use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 
 /// One element of a graph: a node that knows its own identity, the identity
-/// it has elsewhere, the codes it digests to, the names it goes by, and the
-/// identities of the elements it descends from.
+/// it has elsewhere, the codes it digests to, the names it goes by, the
+/// identities of the elements it descends from and the identities of the
+/// elements it was read from.
 ///
-/// The parents are an ordered list, and the order is the implementor's to
-/// state: a message's chain, a node's lineage. An element with no parent is
-/// a root. The cross element, `crossuuid`, is what this element is in another
+/// The parents are the element's lineage, oldest first: every identity of
+/// the lifecycle it stands in, from the first incarnation to the one it
+/// follows, which [`Self::lineage`] hands a follower whole. An element with
+/// no parent is a root. The sources are its provenance: the elements it was
+/// read from - a message parsed from a text line has that line's identity as
+/// its one source - and never its lineage, so an element follows another
+/// without being read from it and is read from a line without descending
+/// from it. Sources travel along no chain: following and restating leave
+/// them as they are, and only a merge of two statements of one element
+/// unions them, because the merged element was built from both. The
+/// sources never feed the code the element digests to: a source is where an
+/// element was read, not what it states. The parents do, as [`Self::digest`]
+/// states them: a lineage is part of what an element says. The cross
+/// element, `crossuuid`, is what this element is in another
 /// graph - the same order in a venue's book and in a ledger - and
 /// `crosscode` is the text that names it there: the identifier every
 /// incarnation of one thing shares, an order's `OrderID`, a quote's
@@ -56,8 +68,9 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// reading an event delegates to. [`Self::merge_with`] folds another
 /// statement of the same element into this one, and is provided: the cross
 /// element and the cross code are taken where this one states none, the
-/// identifiers this one lacks are taken, and the parents are the union in
-/// this element's order, then the other's. An event delegates to
+/// identifiers this one lacks are taken, and the parents and the sources
+/// are each the union in this element's order, then the other's. An event
+/// delegates to
 /// [`Event::merging`], which folds the instants and the state too.
 ///
 /// ```
@@ -74,6 +87,7 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///     crosshashcode: u64,
 ///     identifiers: BTreeMap<String, String>,
 ///     parents: Vec<Uuid>,
+///     sources: Vec<Uuid>,
 /// }
 ///
 /// impl Node {
@@ -86,6 +100,7 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///             crosshashcode: 0,
 ///             identifiers: BTreeMap::new(),
 ///             parents: Vec::new(),
+///             sources: Vec::new(),
 ///         }
 ///     }
 /// }
@@ -133,6 +148,12 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///     fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
 ///         self.parents = parents;
 ///     }
+///     fn get_srcuuids(&self) -> &[Uuid] {
+///         &self.sources
+///     }
+///     fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+///         self.sources = sources;
+///     }
 ///     // A node's order is its lineage: it is after the nodes it descends from.
 ///     fn is_after(&self, other: &Self) -> bool {
 ///         self.parents.contains(&other.get_curruuid())
@@ -143,12 +164,13 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///         self.sync_cross();
 ///         self.hashcode = self.digest().as_u64();
 ///     }
-///     // A node follows another by descending from it, and never itself.
+///     // A node follows another by descending from it - taking its whole
+///     // lineage, the node itself last - and never itself.
 ///     fn with_previous(mut self, previous: &Self) -> Option<Self> {
 ///         if previous.get_curruuid() == self.get_curruuid() {
 ///             return None;
 ///         }
-///         self.parents = vec![previous.get_curruuid()];
+///         self.parents = previous.lineage();
 ///         self.finalize();
 ///         Some(self)
 ///     }
@@ -164,6 +186,11 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// let child = child.with_previous(&root).expect("a node follows another");
 /// assert_eq!(child.get_parentuuids(), [root.get_curruuid()]);
 /// assert!(child.is_after(&root) && root.is_before(&child));
+/// // A third node follows the second and descends from the whole lineage,
+/// // oldest first: the root, then the node it follows.
+/// let leaf = Node::new(3).with_previous(&child).expect("a node follows another");
+/// assert_eq!(leaf.get_parentuuids(), [root.get_curruuid(), child.get_curruuid()]);
+/// assert_eq!(leaf.get_parentuuids(), child.lineage());
 /// // The cross code stated, its digest and the cross identity follow it.
 /// assert_ne!(child.get_crosshashcode(), 0);
 /// assert_eq!(child.get_crossuuid(), child.cross_uuid());
@@ -180,11 +207,14 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///     ("OrderID".to_owned(), "O-1".to_owned()),
 /// ]));
 /// again.set_parentuuids(vec![Uuid::from_v8(9), root.get_curruuid()]);
+/// again.set_srcuuids(vec![Uuid::from_v8(70)]);
 /// let merged = child.merge_with(&again).expect("the same node");
 /// assert_eq!(merged.get_crosscode(), "O-100", "this element's word wins");
 /// assert_eq!(merged.get_identifiers()["ClOrdID"], "C-1");
 /// assert_eq!(merged.get_identifiers()["OrderID"], "O-1", "and what it lacked is taken");
 /// assert_eq!(merged.get_parentuuids(), [root.get_curruuid(), Uuid::from_v8(9)]);
+/// // A source is provenance: unioned by the merge, and never fed to the code.
+/// assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(70)]);
 /// assert!(merged.merge_with(&root).is_none());
 /// ```
 pub trait Element {
@@ -239,6 +269,36 @@ pub trait Element {
     /// Records the identities of the elements this one descends from, in
     /// the given order; an empty list makes it a root.
     fn set_parentuuids(&mut self, parents: Vec<Uuid>);
+
+    /// The identities of the elements this one was read from, in the order
+    /// the element states them: its provenance, never its lineage. Empty
+    /// for an element read from a handle rather than from another element.
+    fn get_srcuuids(&self) -> &[Uuid];
+
+    /// Records the identities of the elements this one was read from; the
+    /// list is replaced whole, and an empty one states none.
+    fn set_srcuuids(&mut self, sources: Vec<Uuid>);
+
+    /// The lineage an element following this one descends from: this
+    /// element's parents as they stand, oldest first, then this element
+    /// itself where the parents do not name it already.
+    ///
+    /// Provided, and the one rule every following reading sets a follower's
+    /// parents by, so a chain of three ends with two parents in order and a
+    /// chain walked twice answers the same parents. As long as the chain
+    /// before the follower: every provided reading keeps the parents each
+    /// identity once, so the list grows by one per link and is read in one
+    /// pass.
+    fn lineage(&self) -> Vec<Uuid> {
+        let parents = self.get_parentuuids();
+        let own = self.get_curruuid();
+        let mut lineage = Vec::with_capacity(parents.len() + 1);
+        lineage.extend_from_slice(parents);
+        if !parents.contains(&own) {
+            lineage.push(own);
+        }
+        lineage
+    }
 
     /// Whether this element comes after `other` in the order the implementor
     /// states: an event's instant, a node's lineage.
@@ -315,8 +375,11 @@ pub trait Element {
     /// Starts the digest of this element's content: an XXH3-64 state
     /// already fed the facts every element states that are not derived -
     /// the cross code, the names it goes by and its parents, each under its
-    /// own name - for an implementor to feed what it says and finish. The
-    /// identities are derived from the digest and never fed to it.
+    /// own name - for an implementor to feed what it says and finish. What
+    /// is derived is never fed: not the current identity, not the cross hash
+    /// code and not the cross element, which the code and the cross code
+    /// derive; and neither are the sources, because where an element was
+    /// read from is its provenance and not what it states.
     ///
     /// Provided, and what an implementor's [`Self::finalize`] starts from:
     /// an event continues with [`Event::digest_event`], a market element
@@ -330,12 +393,7 @@ pub trait Element {
         if !self.get_crosscode().is_empty() {
             feed(&mut state, "crosscode", self.get_crosscode().as_bytes());
         }
-        for (scheme, identifier) in self.get_identifiers() {
-            feed(&mut state, scheme, identifier.as_bytes());
-        }
-        for parent in self.get_parentuuids() {
-            feed(&mut state, "parentuuid", &parent.into_bytes());
-        }
+        feed_named(&mut state, self);
         state
     }
 
@@ -355,9 +413,10 @@ pub trait Element {
     ///
     /// Provided: the cross code is taken from `other` where this one states
     /// none, the identifiers this one lacks are taken from it, the parents
-    /// become the union - this element's in its order, then the ones only
-    /// `other` names, in its - the cross codes are brought in step, and the
-    /// element is finalized where any of that moved. An event delegates to
+    /// and the sources each become the union - this element's in its order,
+    /// then the ones only `other` names, in its - the cross codes are
+    /// brought in step, and the element is finalized where any of that
+    /// moved. An event delegates to
     /// [`Event::merging`], which folds the rest.
     fn merge_with(mut self, other: &Self) -> Option<Self>
     where
@@ -372,8 +431,8 @@ pub trait Element {
 }
 
 /// The facts an element takes from another statement of itself: the cross
-/// code it left out, the identifiers it lacks, and the parents it did not
-/// name; whether any of them moved.
+/// code it left out, the identifiers it lacks, and the parents and the
+/// sources it did not name; whether any of them moved.
 pub(super) fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
     let mut changed = false;
     if this.get_crosscode().is_empty() && !other.get_crosscode().is_empty() {
@@ -383,23 +442,74 @@ pub(super) fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> boo
     changed |= this.sync_cross();
     changed |= take_identifiers(this, other);
     changed |= union_parents(this, other);
+    changed |= union_sources(this, other);
     changed
 }
 
-/// The parents `other` names and `this` does not, appended in `other`'s
-/// order behind this element's own; whether any was.
-fn union_parents<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
-    let mut parents = this.get_parentuuids().to_vec();
-    let known = parents.len();
-    for parent in other.get_parentuuids() {
-        if !parents.contains(parent) {
-            parents.push(*parent);
+/// The identities `other` names and `held` does not, appended in `other`'s
+/// order behind the held ones, each once; nothing where `other` adds none,
+/// so a union that changes nothing costs no list.
+///
+/// The one union rule, for the parents and the sources alike.
+fn union_uuids(held: &[Uuid], other: &[Uuid]) -> Option<Vec<Uuid>> {
+    if other.iter().all(|uuid| held.contains(uuid)) {
+        return None;
+    }
+    let mut union = Vec::with_capacity(held.len() + other.len());
+    union.extend_from_slice(held);
+    for uuid in other {
+        if !union.contains(uuid) {
+            union.push(*uuid);
         }
     }
-    if parents.len() == known {
+    Some(union)
+}
+
+/// The parents `other` names and `this` does not, taken by [`union_uuids`];
+/// whether any was.
+fn union_parents<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
+    match union_uuids(this.get_parentuuids(), other.get_parentuuids()) {
+        Some(parents) => {
+            this.set_parentuuids(parents);
+            true
+        }
+        None => false,
+    }
+}
+
+/// The sources `other` names and `this` does not, taken by [`union_uuids`];
+/// whether any was.
+fn union_sources<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
+    match union_uuids(this.get_srcuuids(), other.get_srcuuids()) {
+        Some(sources) => {
+            this.set_srcuuids(sources);
+            true
+        }
+        None => false,
+    }
+}
+
+/// The lineage an element takes from following `previous`: the
+/// predecessor's [`Element::lineage`] - its parents, oldest first, then the
+/// predecessor itself - in place of whatever the element named before;
+/// whether it moved.
+pub(super) fn descend_from<E: Element + ?Sized>(this: &mut E, previous: &E) -> bool {
+    // Compared in place before anything is built: a chain walked twice
+    // answers the same parents, and answers them without a list per step.
+    let parents = previous.get_parentuuids();
+    let own = previous.get_curruuid();
+    let held = this.get_parentuuids();
+    let unchanged = if parents.contains(&own) {
+        held == parents
+    } else {
+        held.len() == parents.len() + 1
+            && held[..parents.len()] == *parents
+            && held[parents.len()] == own
+    };
+    if unchanged {
         return false;
     }
-    this.set_parentuuids(parents);
+    this.set_parentuuids(previous.lineage());
     true
 }
 
@@ -407,7 +517,9 @@ fn union_parents<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
 /// the same event: the predecessor's chain facts as [`follow_element`]
 /// takes them, the parents `live` names, and the place `live` holds in its
 /// chain - its predecessor, its position, its snapshot - because the two
-/// statements are one event and the chain grows by nothing.
+/// statements are one event and the chain grows by nothing. Its sources
+/// stay its own: where a statement was read from travels along no chain,
+/// so a twin keeps the line it came from and never the live one's.
 pub(super) fn restate_event<E: Event + ?Sized>(this: &mut E, live: &E) {
     follow_element(this, live);
     union_parents(this, live);
@@ -452,8 +564,9 @@ fn take_identifiers<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
     true
 }
 
-/// The XXH3-64 digest of one cross code's bytes.
-fn crosshash(crosscode: &str) -> u64 {
+/// The XXH3-64 digest of one cross code's bytes: the one derivation of a
+/// cross hash code, which every element that resolves its own reads.
+pub(crate) fn crosshash(crosscode: &str) -> u64 {
     let mut state = Xxh3::new();
     state.write(crosscode.as_bytes());
     state.as_u64()
@@ -505,9 +618,10 @@ fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 }
 
 /// The timed facts an event takes from following `previous`: the
-/// predecessor's identity and instant, the next place in the chain, and
-/// what any element takes from following - the cross code, the names it
-/// went by - with the lifecycle carried forward; whether any moved.
+/// predecessor's identity and instant, the next place in the chain, the
+/// predecessor's whole lineage as its parents, and what any element takes
+/// from following - the cross code, the names it went by - with the
+/// lifecycle carried forward; whether any moved.
 fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
     let mut changed = moved(this.get_prevuuid(), Some(previous.get_curruuid()), |uuid| {
         this.set_prevuuid(uuid)
@@ -521,6 +635,7 @@ fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
         |place| this.set_seqnum(place),
     );
     changed |= follow_element(this, previous);
+    changed |= descend_from(this, previous);
     changed |= this.fold_lifecycle(previous);
     changed
 }
@@ -551,6 +666,29 @@ fn merge_timed<E: Event>(this: &mut E, other: &E) -> bool {
         changed = true;
     }
     changed
+}
+
+/// Continues a digest with the names an element goes by and its parents,
+/// each under its own name: what [`Element::digest`] feeds behind the
+/// cross code.
+fn feed_named<E: Element + ?Sized>(state: &mut Xxh3, this: &E) {
+    for (scheme, identifier) in this.get_identifiers() {
+        feed(state, scheme, identifier.as_bytes());
+    }
+    for parent in this.get_parentuuids() {
+        feed(state, "parentuuid", &parent.into_bytes());
+    }
+}
+
+/// Feeds what [`Event::digest_event`] feeds, less the cross code: the names
+/// the event goes by, its parents, its state, its place in the chain and
+/// its predecessor's identity. For a content code that names no chain -
+/// a FIX message's, whose cross code is the conversation one hop of a
+/// bridge bracketed it in, so a code over it would make one message as
+/// many messages as hops.
+pub(crate) fn feed_event_facts<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
+    feed_named(state, this);
+    feed_timed(state, this);
 }
 
 /// Continues a digest with the facts an event states that are not
@@ -610,6 +748,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     crosshashcode: u64,
 ///     identifiers: BTreeMap<String, String>,
 ///     parents: Vec<Uuid>,
+///     sources: Vec<Uuid>,
 ///     unix: i64,
 ///     state: State,
 ///     seqnum: u64,
@@ -630,6 +769,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///             crosshashcode: 0,
 ///             identifiers: BTreeMap::new(),
 ///             parents: Vec::new(),
+///             sources: Vec::new(),
 ///             unix,
 ///             state: State::from_spelling("New").expect("a shipped state"),
 ///             seqnum: 0,
@@ -684,6 +824,12 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     }
 ///     fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
 ///         self.parents = parents;
+///     }
+///     fn get_srcuuids(&self) -> &[Uuid] {
+///         &self.sources
+///     }
+///     fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+///         self.sources = sources;
 ///     }
 ///     // An event's order is its instant.
 ///     fn is_after(&self, other: &Self) -> bool {
@@ -765,6 +911,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// let second = second.with_previous(&first).expect("the later one follows");
 /// assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
 /// assert_eq!(second.get_prevunix(), Some(10_000));
+/// assert_eq!(second.get_parentuuids(), first.lineage(), "the chain so far");
 /// // Following carries the lifecycle forward: the earliest creation known,
 /// // the names the predecessor went by, the cross code the chain shares -
 /// // its digest and the cross identity in step - and the next place in it.
@@ -864,10 +1011,12 @@ pub trait Event: Element {
     /// creation holds for the whole lifecycle; and the predecessor's cross
     /// code is forced onto this event where its own differs, with the cross
     /// hash code and the cross element brought in step, because two events
-    /// of one chain share it. What the event itself says - its instant, its
-    /// parents, the snapshot it is - is its own and moves nowhere. An event
-    /// that moved is finalized, so it never carries the identity of what it
-    /// was.
+    /// of one chain share it; and its parents become the predecessor's
+    /// [`lineage`](Element::lineage) - every identity of the chain, oldest
+    /// first, the predecessor last - so a walked event carries its whole
+    /// lifecycle. What the event itself says - its instant, its sources, the
+    /// snapshot it is - is its own and moves nowhere. An event that moved is
+    /// finalized, so it never carries the identity of what it was.
     ///
     /// Provided, so an implementor's [`Element::with_previous`] has a
     /// default to delegate to; an event that means something else by
@@ -892,7 +1041,8 @@ pub trait Event: Element {
     /// `live` holds in its chain - the predecessor, the position, the
     /// snapshot - the chain's cross code, the names and parents `live`
     /// knows, and the lifecycle folded, so the two statements finalize to
-    /// one identity and the chain grows by nothing. What the event states
+    /// one identity and the chain grows by nothing. Its sources stay its
+    /// own: provenance travels along no chain. What the event states
     /// of its own - its instant, its content - is its own.
     ///
     /// The caller establishes that the event is `live`'s twin, by the
@@ -915,7 +1065,8 @@ pub trait Event: Element {
     /// timed reading, or nothing where `other` is another event.
     ///
     /// The element-level merge first - the cross code where this one states
-    /// none, the parents' union - and then the timed facts: the instant is
+    /// none, the parents' and the sources' unions - and then the timed
+    /// facts: the instant is
     /// the later of the two and the code the later
     /// statement's, because the last word on what an event says is the
     /// latest one; the place in the chain is the further of the two; the

@@ -21,9 +21,9 @@
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::{DataType, Filter, StructureType};
+    use yggdryl::{DataType, Filter, StructType};
 
-    let root = DataType::from(StructureType::from_fields([
+    let root = DataType::from(StructType::from_fields([
         DataType::utf8().nullable_field("ccy"),
         DataType::Int64.nullable_field("size"),
     ])?)

@@ -146,7 +146,7 @@ fn a_structured_write_encodes_in_the_charset_the_handle_declares() {
             .unwrap()
             .with_charset(Charset::Latin1),
     );
-    let value = Scalar::from_record([("desk", Scalar::from("Zürich"))]).unwrap();
+    let value = Scalar::from_struct([("desk", Scalar::from("Zürich"))]).unwrap();
     text::into_io(&value, &mut target).unwrap();
 
     let written = target.read_all_bytes().unwrap();

@@ -13,9 +13,9 @@
 | Constructors | `FixMsg::new` links `FixRegistry::global()`; `FixMsg::with_registry` keeps the `Arc` it is given, lifts every typed fact out of the children that state it, settles the clocks and derives the identity, and runs no derivation - a [parse](capture.md#a-reader-is-the-whole-parse-surface) does; `FixMsg::from_row` reads a [fixed row](#a-row-is-a-message-again) back, entries included |
 | Lookups | every one answers an owned `Scalar`: a typed tag its holder's fact, or nothing where the holder states none; any other key the row child it reaches |
 | Writes | `set`, `set_many`, `with_value` and `remove`: a key reaching a typed fact writes its holder, a `Null` clearing it; a key reaching [the capture's own column](#a-row-is-a-message-again) - `sourceurl` - is refused, naming the column, because a message holds no fact for it; any other key [writes the row](#written-into-the-row), typed through the registry's field; every write settles the identity again; a refusal leaves the message unchanged. `set_many` and `with_value` are Rust-only |
-| Settled | `currunix` is a stated `currunix`, else `TransactTime(60)` stating a clock, else `SendingTime(52)`; `SendingTime` is the message's own, else the codec's `default_sending_time`, else one UTC-now read at intake, and only a stated one is a fact of the message - it goes back on the wire and into a row, while a stand-in intake supplied does neither; `creaunix` is a stated one, else `OrigSendingTime(122)`, else `currunix`; the [identity](../hashing.md) - `crosscode`, `crosshashcode`, `currhashcode`, `curruuid`, `crossuuid` - is derived from what the message *states*: the event's facts, the text, the metadata, the header fields it stated, then the entry tree, so two readings that lay one message out differently answer one code |
+| Settled | `currunix` is a stated `currunix`, else `SendingTime(52)`; `SendingTime` is the message's own, else the codec's `default_sending_time`, else one UTC-now read at intake, and only a stated one is a fact of the message - it goes back on the wire and into a row, while a stand-in intake supplied does neither; `creaunix` is a stated one, else `currunix`; the [identity](../hashing.md) - `crosscode`, `crosshashcode`, `currhashcode`, `curruuid`, `crossuuid` - is derived from what the message *states* but the standard header and trailer, less `MsgType(35)`, and never the chain it is in: the event's own facts - the names it goes by, its parents, its state and place - the text, the metadata, `MsgType`, the FIX fields it lifted, then the entry tree, so two readings that lay one message out differently answer one code and one message logged at two hops answers one whatever each hop bracketed it with; the cross code is the bridge's conversation, `msgsessionid:msgctxid`, where the row header stated both, else the first stated of the identifiers a chain is named by |
 | Identity | a field is its tag and its name; a message speaks no dialect and carries no membership, so a bare tag or name resolves in the registry's [one namespace](#one-namespace) |
-| Graph | `FixMsg` implements `Element`, `Event` and `MarketElement` - so `MarketEvent` - through its event: `is_after` is the instant, `finalize` settles the identity again, which re-derives every market fact from the FIX fields the message states unless a caller or a walk wrote one through the traits, `with_previous` is `Event::following` with the predecessor adopted as a parent, `merge_with` is `MarketEvent::merging_market_event`; import the traits to call them |
+| Graph | `FixMsg` implements `Element`, `Event` and `MarketElement` - so `MarketEvent` - through its event: `is_after` is the instant, `finalize` settles the identity again, which re-derives every market fact from the FIX fields the message states unless a caller or a walk wrote one through the traits, `with_previous` is `MarketEvent::following_market`, which descends from the predecessor's whole lineage, `merge_with` is `MarketEvent::merging_market_event`; import the traits to call them |
 | Serialization | inherited: `as_field().clone().into_json()` renders the row's schema, [`into_json_scalar`](../media/json/index.md) its value, `from_json_scalar_with_field` reads it back typed, ordered and canonicalized against the same root; `into_row` is the whole message as one fixed row |
 | Equality | over the holders, the row and the registry - the same `Arc`, or registries holding the same fields; `Hash` over the hashcode, the row's schema and its value |
 | Bindings | Rust, Python, JavaScript |
@@ -28,7 +28,7 @@
     use std::sync::Arc;
 
     use yggdryl::graph::{Element, Event, MarketElement};
-    use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, FieldPath, StructureType, from_json_scalar_with_field, into_json_scalar};
+    use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, FieldPath, StructType, from_json_scalar_with_field, into_json_scalar};
 
     let mut msgtype = DataType::utf8().nullable_field("MsgType");
     msgtype.as_fix_mut().set_tag(35)?;
@@ -43,7 +43,7 @@
     party_id.as_fix_mut().set_tag(448)?;
     let mut count = DataType::Int32.required_field("NoPartyIDs");
     count.as_fix_mut().set_tag(453)?;
-    let party = DataType::from(StructureType::from_fields([party_id.clone()])?).required_field("Party");
+    let party = DataType::from(StructType::from_fields([party_id.clone()])?).required_field("Party");
     let mut parties = DataType::list(party.clone()).nullable_field("Parties");
     parties.as_fix_mut().set_counter(453)?;
     parties.as_fix_mut().set_component("Party")?;
@@ -53,16 +53,16 @@
     let registry = Arc::new(registry);
 
     // The root carries two typed tags and a tag no dictionary explains.
-    let root = DataType::from(StructureType::from_fields([msgtype, side, qty, symbol, count, parties, DataType::utf8().nullable_field("9999")])?)
+    let root = DataType::from(StructType::from_fields([msgtype, side, qty, symbol, count, parties, DataType::utf8().nullable_field("9999")])?)
         .required_field("NewOrderSingle");
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         ("MsgType", Scalar::from("D")),
         ("Side", Scalar::from("1")),
         ("Symbol", Scalar::from("AAPL")),
         ("OrderQty", Scalar::from(100_i64)),
         ("NoPartyIDs", Scalar::from(1_i32)),
         ("Parties", Scalar::from_sequence([
-            Scalar::from_record([("PartyID", Scalar::from("BROKER"))])?,
+            Scalar::from_struct([("PartyID", Scalar::from("BROKER"))])?,
         ])),
         ("9999", Scalar::from("custom")),
     ])?;
@@ -333,12 +333,12 @@ A message holds each fact once. The tags below are the holders' and are never in
 | --- | --- | --- |
 | 8, 35, 49, 56, 34, 52, 43, 385, 93, 89, 10 | `header()` | the frame: `beginstring`, `msgtype`, `sendercompid`, `targetcompid`, `msgseqnum`, `sendingtime` with `stated_sendingtime`, `possdupflag`, `msgdirection`, and the trailer `signaturelength`, `signature`, `checksum` |
 | 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 198, 262, 1003 | `lifted()` | the numbers a consumer reads first and the identifiers one message of a chain shares with the next: `Price`, `OrderQty`, `Quantity`, `LastPx`, `LastQty`, `AvgPx`, `CumQty`, `LeavesQty`, `ClOrdID`, `OrigClOrdID`, `OrderID`, `SecondaryOrderID`, `ExecID`, `QuoteID`, `QuoteReqID`, `MDReqID`, `TradeID` - each exactly as the message stated it |
-| every [crate tag](capture.md#the-crates-own-columns), 65000 to 65099, but `sourceurl` (65026) | `event()` and `capture()` | the identities, the codes, the instants and the place in the chain on the event; `msgpluginid`, `msgctxid` and `msgsessionid` on the capture; `identifiers` and `metadata` are the event's names and the bridge's namespaced keys. The one exception is [the capture's own column](#a-row-is-a-message-again): no holder answers it, so `get_by_tag(SOURCEURL_TAG_NAME.0)` is a miss on every message |
+| every [crate tag](capture.md#the-crates-own-columns), 65000 to 65099, but `sourceurl` (65026) | `event()` and `capture()` | the identities, the codes, the instants, the place in the chain, the state it reached and when it expires on the event; `msgpluginid`, `msgctxid` and `msgsessionid` on the capture; `identifiers` and `metadata` are the event's names and the bridge's namespaced keys. The one exception is [the capture's own column](#a-row-is-a-message-again): no holder answers it, so `get_by_tag(SOURCEURL_TAG_NAME.0)` is a miss on every message |
 | 58 | `text()` | the free text |
 
-Every market fact is *not* here. `Currency(15)`, `Side(54)`, `CFICode(461)`, the lanes 132 to 135, `SecurityID(48)` under its source, the market and the state are ordinary children of the row, and what a [`MarketElement`](../graph.md) getter answers is derived from them and from the lifted numbers - `get_px` is `Price(44)`, else `LastPx(31)`, else `AvgPx(6)`, else the price its own side's lane quotes. A derived fact is the traits' to answer and nobody's to emit: it reaches no column, no entry, no byte on the wire and no input to the code the message digests to.
+Every market fact is *not* here. `Currency(15)`, `Side(54)`, `CFICode(461)`, the lanes 132 to 135, `SecurityID(48)` under its source and the market are ordinary children of the row, and what a [`MarketElement`](../graph.md) getter answers is derived from them and from the lifted numbers - `get_px` is `Price(44)`, else `LastPx(31)`, else `AvgPx(6)`, else the price its own side's lane quotes. A derived market fact is the traits' to answer and nobody's to emit: it reaches no column, no entry, no byte on the wire and no input to the code the message digests to. The state the message reached and when it expires are read off `OrdStatus(39)`, `ExecType(150)` and the expiry clocks the same way, and are the two exceptions: each is an event fact with a [column of the crate's own](capture.md#the-crates-own-columns), `state` (65052) and `expirunix` (65053), because a walk folds them forward and a reader of the rows must see what it folded - a row stating either is the row's word, and neither reaches the wire or the entries.
 
-A typed fact answers as its column types it: `by_tag(35)` is text, `by_tag(52)` a `datetime64(ns, UTC)`, `by_tag(54)` the side's name - `BUY`, `SELL` - `by_tag(CURRHASHCODE_TAG_NAME.0)` a `UInt64`, `by_tag(CURRUUID_TAG_NAME.0)` a `Uuid`, `by_tag(IDENTIFIERS_TAG_NAME.0)` a sorted map; a holder stating nothing - a side of `UNKNOWN`, a state of `00UNKNOWN`, a place of zero in no chain - answers nothing.
+A typed fact answers as its column types it: `by_tag(35)` is text, `by_tag(52)` a `datetime64(ns, UTC)`, `by_tag(54)` the side's name - `BUY`, `SELL` - `by_tag(CURRHASHCODE_TAG_NAME.0)` a `UInt64`, `by_tag(CURRUUID_TAG_NAME.0)` a `Uuid`, `by_tag(IDENTIFIERS_TAG_NAME.0)` a sorted map; a holder stating nothing - a side of `UNKNOWN`, a place of zero in no chain - answers nothing, and a state of `00UNKNOWN` answers as it is, the state stated as none, so `by_tag(STATE_TAG_NAME.0)` is never a miss and the `state` column never null on a row a message wrote.
 
 ## One namespace
 
@@ -367,7 +367,7 @@ Every lookup answers an owned `Scalar`: a holder's fact is rendered into the col
 
 ## Written into the row
 
-A message is read once and then written to: a [walk](lifecycle.md) stamps what the stream implied, a caller corrects a value. All of it goes through one door. `set` writes one value, `set_many` lands several with one rebuild, `with_value` is the consuming twin, and `remove` takes a value out and answers what it held. A key reaching a [typed tag](#typed-tags) writes its holder - `set(34, ..)` is the header's sequence number, `set(PX_TAG_NAME.0, ..)` the event's price - and a `Null` clears it; any other key writes the row, typed by the field the key reaches. Every write settles the [identity](../hashing.md) again, so a content write moves `currhashcode` and `curruuid` while `crossuuid` stays with the cross code; and every write drops the derived entries, so `into_bytes` re-emits the message as it now stands.
+A message is read once and then written to: a [walk](lifecycle.md) stamps what the stream implied, a caller corrects a value. All of it goes through one door. `set` writes one value, `set_many` lands several with one rebuild, `with_value` is the consuming twin, and `remove` takes a value out and answers what it held. A key reaching a [typed tag](#typed-tags) writes its holder - `set(34, ..)` is the header's sequence number, `set(PX_TAG_NAME.0, ..)` the event's price - and a `Null` clears it; any other key writes the row, typed by the field the key reaches. Every write settles the [identity](../hashing.md) again, so a content write moves `currhashcode` and `curruuid` - a write to the frame, `set(34, ..)`, does not, because the standard header and trailer are outside the code - while `crossuuid` stays with the cross code; and every write drops the derived entries, so `into_bytes` re-emits the message as it now stands.
 
 | Key | Reaches |
 | --- | --- |
@@ -405,14 +405,18 @@ A written child keeps its position, so every reader already holding the row addr
     assert_eq!(message.header().msgseqnum(), Some(7));
     assert_eq!(message.by_name("MsgSeqNum")?.as_u64(), Some(7));
     assert_eq!(message.as_field().fields().len(), children);
-    // The content identity moved with the content; the chain's is the cross code's alone.
-    assert_ne!(message.get_currhashcode(), hashcode);
+    // A header fact is the session's, outside the content identity: neither moved.
+    assert_eq!(message.get_currhashcode(), hashcode);
     assert_eq!(message.get_crossuuid(), crossuuid);
 
-    // Replaced where it stands: the position is kept, the value changes.
+    // Replaced where it stands: the position is kept, the value changes, and
+    // the content identity moves with the content; the chain's is the cross
+    // code's alone.
     message.set("Symbol", Scalar::from("MSFT"))?;
     assert_eq!(message.as_field().index_of("symbol"), Some(at));
     assert_eq!(message.by_tag(55)?.as_str(), Some("MSFT"));
+    assert_ne!(message.get_currhashcode(), hashcode);
+    assert_eq!(message.get_crossuuid(), crossuuid);
 
     // A tag no dictionary explains is kept under its decimal spelling, and
     // appended to the row.
@@ -473,13 +477,16 @@ A written child keeps its position, so every reader already holding the row addr
     assert message.header().msgseqnum == 7
     assert message.by_name("MsgSeqNum").as_py() == 7
     assert len(message) == children
-    # The content identity moved with the content; the chain's is the cross code's alone.
-    assert message.currhashcode != hashcode
+    # A header fact is the session's, outside the content identity: neither moved.
+    assert message.currhashcode == hashcode
     assert message.crossuuid == crossuuid
 
-    # Replaced where it stands: the position is kept, the value changes.
+    # Replaced where it stands: the position is kept, the value changes, and the
+    # content identity moves with the content; the chain's is the cross code's alone.
     message.set("Symbol", "MSFT")
     assert [name for name, _ in message].index("symbol") == names.index("symbol")
+    assert message.currhashcode != hashcode
+    assert message.crossuuid == crossuuid
     assert message.by_tag(55).as_py() == "MSFT"
 
     # A tag no dictionary explains is kept under its decimal spelling, and
@@ -538,14 +545,17 @@ A written child keeps its position, so every reader already holding the row addr
     assert.equal(message.header().msgseqnum, 7)
     assert.equal(message.byName('MsgSeqNum').asJs(), 7)
     assert.equal(message.size, children)
-    // The content identity moved with the content; the chain's is the cross code's alone.
-    assert.notEqual(message.currhashcode, hashcode)
+    // A header fact is the session's, outside the content identity: neither moved.
+    assert.equal(message.currhashcode, hashcode)
     assert.equal(message.crossuuid, crossuuid)
 
-    // Replaced where it stands: the position is kept, the value changes.
+    // Replaced where it stands: the position is kept, the value changes, and the
+    // content identity moves with the content; the chain's is the cross code's alone.
     message.set('Symbol', 'MSFT')
     assert.equal([...message].map(entry => entry.name).indexOf('symbol'), names.indexOf('symbol'))
     assert.equal(message.byTag(55).asJs(), 'MSFT')
+    assert.notEqual(message.currhashcode, hashcode)
+    assert.equal(message.crossuuid, crossuuid)
 
     // A tag no dictionary explains is kept under its decimal spelling, and
     // appended to the row.
@@ -585,7 +595,7 @@ A written child keeps its position, so every reader already holding the row addr
 
 ## A row is a message again
 
-`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the typed facts are read off the columns that hold them, and the content is rebuilt from the `fixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - each entry typed through the dictionary exactly as the builder types a pair, so every lookup reaches the rebuilt message as it reaches a parsed one; the row's `beginstring`, `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and `crossuuid` columns must be stated, and every other one may be null - `sendingtime` among them, because a row states tag 52 only where the message did. Every one of the capture's own columns is read past: the one the crate tags, `sourceurl`, and every column no tag and no counter names - the body the line was cut from, its place in the object, its media type, what a bound dropped. A message is what parsing one line answered, and what a *reader* said about that line is not it, so nothing on the message holds one and none can reach an entry, the code the message answers to, or a `body=` at a counterparty. They stay the row's: a namespaced column lands in the [metadata](#typed-tags) as a parsed line's does, and whoever writes rows back restates the rest from the batch they arrived in, which is how a row walked through `from_row` and back [returns to its schema whole](arrow.md#chained-where-it-sits). Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds. A row without the entries column rebuilds a message with the typed facts and no content.
+`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the typed facts are read off the columns that hold them, and the content is rebuilt from the `fixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - each entry typed through the dictionary exactly as the builder types a pair, so every lookup reaches the rebuilt message as it reaches a parsed one; the row's `beginstring`, `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and `crossuuid` columns must be stated, and every other one may be null - `sendingtime` among them, because a row states tag 52 only where the message did. Every one of the capture's own columns is carried: the one the crate tags, `sourceurl`, and every column no tag and no counter names - the body the line was cut from, its place in the object, its media type, what a bound dropped - each non-null cell under its column's name, answered by `carried`. A message is what parsing one line answered, and what a *reader* said about that line is not it, so none of them is content: none reaches an entry, the code the message answers to, or a `body=` at a counterparty, and a namespaced column lands in the [metadata](#typed-tags) as a parsed line's does. `into_row` states each carried cell again at its column, which is how a row walked through `from_row` and back [returns to its schema whole](arrow.md#chained-where-it-sits). Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds. A row without the entries column rebuilds a message with the typed facts and no content.
 
 The round trip is exact for an entry whose bytes are text - which is every entry a log wrote. It cannot be for one whose bytes are not: the row spells a value as `utf8` because a column a reader can read is what a row is for, and a `data` field carrying bytes no text holds reaches that column as the decode of them. One shape is not exact yet, and `FixMsg::from_row`'s own documentation names it: a repeating group whose occurrences nest a second group that only some of them state - the row holds each occurrence on the union of the members any of them stated, so rebuilding lays the nested level out in the order the entries met it rather than the order the parse did. Over `rust/tests/fix/ulbridge.log`, a bridge capture of 94 messages, 83 rebuild exactly and the 11 that do not are all parties nesting `PtysSubGrp`. A group no dictionary declares - a bridge packing `NOTRADINGSESSIONS[0]=...` under a counter's own name - rebuilds from the row as the list it is. The [example above](#written-into-the-row) ends with the round trip.
 

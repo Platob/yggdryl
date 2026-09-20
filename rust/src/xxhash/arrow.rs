@@ -1220,7 +1220,7 @@ fn feed_cell(
         | DataType::Sequence(SequenceType::FixedSizeList(..))
         | DataType::Sequence(SequenceType::LargeList(_))
         | DataType::Sequence(SequenceType::LargeListView(_))
-        | DataType::Structure(_)
+        | DataType::Struct(_)
         | DataType::Union(..)
         | DataType::Enum(EnumType::Dictionary(_))
         | DataType::Mapping(_)

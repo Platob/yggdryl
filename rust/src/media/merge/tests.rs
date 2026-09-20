@@ -11,10 +11,10 @@ use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, StringArray};
 use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::arrow::BatchReader;
-use crate::{DataType, Field, StructureType};
+use crate::{DataType, Field, StructType};
 
 fn schema() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])

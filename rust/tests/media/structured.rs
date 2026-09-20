@@ -3,7 +3,7 @@
 use yggdryl::DecimalType;
 use yggdryl::holder::Buffer;
 use yggdryl::{
-    ArrowScalar, ArrowShape, DataType, Field, IOBase, IOMedia, IOMode, Scalar, StructureType, Url,
+    ArrowScalar, ArrowShape, DataType, Field, IOBase, IOMedia, IOMode, Scalar, StructType, Url,
 };
 
 fn handle(name: &str) -> Buffer {
@@ -29,7 +29,7 @@ fn options_declaring(field: &Field) -> yggdryl::media::RecordOptions {
 }
 
 fn quote_root() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("size"),
     ])
@@ -94,7 +94,7 @@ fn a_declared_root_types_the_documents_natural_strings() {
         .write_all_bytes(br#"{"symbol": "AAPL", "size": "100.00"}"#)
         .expect("the bytes write");
 
-    let widened = StructureType::from_fields([
+    let widened = StructType::from_fields([
         DataType::utf8().required_field("symbol"),
         DataType::Decimal(DecimalType::Decimal128 {
             precision: 12,

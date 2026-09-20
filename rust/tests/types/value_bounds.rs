@@ -2,7 +2,7 @@
 
 use arrow_array::Array;
 use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::{DataType, Field, Scalar, StructureType, UnionMode};
+use yggdryl::{DataType, Field, Scalar, StructType, UnionMode};
 
 fn round_trip(field: &Field, value: &Scalar) -> Scalar {
     let array = scalar_array(field, value).expect("the value materializes");
@@ -87,7 +87,7 @@ fn dense_union_remains_lazy_below_a_generated_struct_slot() {
     )
     .unwrap();
     let structure =
-        DataType::from(StructureType::from_fields([Field::new("choice", dense, false)]).unwrap());
+        DataType::from(StructType::from_fields([Field::new("choice", dense, false)]).unwrap());
     let field = Field::new("row", structure, true);
     assert_eq!(round_trip(&field, &Scalar::Null), Scalar::Null);
 }
@@ -95,7 +95,7 @@ fn dense_union_remains_lazy_below_a_generated_struct_slot() {
 #[test]
 fn nullable_struct_rejects_aggregate_fixed_physical_bytes() {
     let width = 40 * 1024 * 1024;
-    let structure = StructureType::from_fields([
+    let structure = StructType::from_fields([
         Field::new("left", DataType::fixed_binary(width).unwrap(), false),
         Field::new("right", DataType::fixed_binary(width).unwrap(), false),
     ])
@@ -123,7 +123,7 @@ fn nullable_struct_aggregates_selected_dense_union_payloads() {
         )
         .unwrap()
     };
-    let structure = StructureType::from_fields([
+    let structure = StructType::from_fields([
         Field::new("left", member(), false),
         Field::new("right", member(), false),
     ])
@@ -145,7 +145,7 @@ fn dictionary_and_run_end_wrappers_join_the_hidden_byte_budget() {
         Field::new("values", DataType::fixed_binary(width).unwrap(), false),
     )
     .unwrap();
-    let structure = StructureType::from_fields([
+    let structure = StructType::from_fields([
         Field::new("dictionary", dictionary, false),
         Field::new("encoded", encoded, false),
     ])
@@ -161,8 +161,7 @@ fn dictionary_and_run_end_wrappers_join_the_hidden_byte_budget() {
 fn every_valid_nested_datatype_can_materialize_zero_rows_without_a_default() {
     let required_null_struct = || {
         DataType::from(
-            StructureType::from_fields([Field::new("required_null", DataType::Null, false)])
-                .unwrap(),
+            StructType::from_fields([Field::new("required_null", DataType::Null, false)]).unwrap(),
         )
     };
     let wrappers = [
@@ -189,9 +188,7 @@ fn every_valid_nested_datatype_can_materialize_zero_rows_without_a_default() {
     for (index, dtype) in wrappers.into_iter().enumerate() {
         let root = Field::new(
             "Root",
-            DataType::from(
-                StructureType::from_fields([Field::new("value", dtype, false)]).unwrap(),
-            ),
+            DataType::from(StructType::from_fields([Field::new("value", dtype, false)]).unwrap()),
             false,
         );
         let schema = root
@@ -207,12 +204,12 @@ fn every_valid_nested_datatype_can_materialize_zero_rows_without_a_default() {
 fn masked_hidden_slots_do_not_require_a_logical_default() {
     let impossible = || {
         DataType::from(
-            StructureType::from_fields([Field::new("nothing", DataType::Null, false)]).unwrap(),
+            StructType::from_fields([Field::new("nothing", DataType::Null, false)]).unwrap(),
         )
     };
 
     let structure = DataType::from(
-        StructureType::from_fields([Field::new("inner", impossible(), false)]).unwrap(),
+        StructType::from_fields([Field::new("inner", impossible(), false)]).unwrap(),
     );
     let field = Field::new("outer", structure, true);
     assert_eq!(round_trip(&field, &Scalar::Null), Scalar::Null);
@@ -238,9 +235,8 @@ fn masked_hidden_slots_do_not_require_a_logical_default() {
         Field::new("values", DataType::Null, false),
     )
     .unwrap();
-    let nested = DataType::from(
-        StructureType::from_fields([Field::new("encoded", encoded, false)]).unwrap(),
-    );
+    let nested =
+        DataType::from(StructType::from_fields([Field::new("encoded", encoded, false)]).unwrap());
     let field = Field::new("outer", nested, true);
     assert_eq!(round_trip(&field, &Scalar::Null), Scalar::Null);
 }

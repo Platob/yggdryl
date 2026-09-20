@@ -5,8 +5,8 @@ use yggdryl::DateTimeType;
 use yggdryl::json;
 use yggdryl::text::{self, Format, Formatting, Limits};
 use yggdryl::{
-    DataType, DataTypeId, Error, Field, Scalar, StructureType, TimeUnit, Timezone,
-    from_json_scalar, from_json_scalar_with_field, i256, into_json_scalar,
+    DataType, DataTypeId, Error, Field, Scalar, StructType, TimeUnit, Timezone, from_json_scalar,
+    from_json_scalar_with_field, i256, into_json_scalar,
 };
 
 #[test]
@@ -44,7 +44,7 @@ impl<R: Read> Read for OneByte<R> {
 
 #[test]
 fn natural_output_is_an_ordinary_json_document() {
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         ("active", Scalar::from(true)),
         ("id", Scalar::from(7)),
         ("tags", Scalar::from_sequence([Scalar::from("rust")])),
@@ -63,7 +63,7 @@ fn untyped_reads_return_only_what_json_proves() {
     let value =
         json::from_utf8(r#"{"amount":"123.4500","at":"1970-01-01T00:00:00Z","payload":"AP8="}"#)
             .unwrap();
-    let record = value.as_record().unwrap();
+    let record = value.as_struct().unwrap();
     assert!(record["amount"].as_str().is_some());
     assert!(record["at"].as_str().is_some());
     assert!(record["payload"].as_str().is_some());
@@ -72,7 +72,7 @@ fn untyped_reads_return_only_what_json_proves() {
 fn typed_row_field() -> Field {
     Field::new(
         "row",
-        StructureType::from_fields([
+        StructType::from_fields([
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
@@ -237,7 +237,7 @@ fn limits_and_invalid_inputs_fail_at_the_boundary() {
 
 #[test]
 fn formatting_changes_layout_not_meaning() {
-    let value = Scalar::from_record([("id", Scalar::from(1))]).unwrap();
+    let value = Scalar::from_struct([("id", Scalar::from(1))]).unwrap();
     let pretty = json::into_utf8_with_formatting(&value, Formatting::indented(2)).unwrap();
     assert!(pretty.contains("\n  \"id\": 1\n"));
     assert_eq!(json::from_utf8(&pretty).unwrap(), value);
@@ -258,7 +258,7 @@ fn codec_errors_keep_the_format_and_byte_position() {
 
 #[test]
 fn an_ascii_field_reads_natural_text_trimmed_and_refuses_what_does_not_fit() {
-    let row = StructureType::from_fields([DataType::fixed_ascii(4).unwrap().required_field("ccy")])
+    let row = StructType::from_fields([DataType::fixed_ascii(4).unwrap().required_field("ccy")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -281,7 +281,7 @@ fn an_ascii_field_reads_natural_text_trimmed_and_refuses_what_does_not_fit() {
 
 #[test]
 fn the_scalar_entry_points_answer_what_the_explicit_forms_answer() {
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         ("id", Scalar::from(7)),
         ("name", Scalar::from("ada")),
         ("tags", Scalar::from_sequence([Scalar::from("rust")])),
@@ -329,7 +329,7 @@ fn from_json_scalar_with_field_types_and_orders_as_from_bytes_with_field_does() 
         Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
     );
     let untyped = from_json_scalar(input).unwrap();
-    assert!(untyped.as_record().unwrap()["amount"].as_str().is_some());
+    assert!(untyped.as_struct().unwrap()["amount"].as_str().is_some());
 }
 
 #[test]

@@ -13,14 +13,14 @@ use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
     ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StringEnum,
-    StructureType,
+    StructType,
 };
 use yggdryl::{CfiField, CountryField, CurrencyField, MicField};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new(
         "row",
-        DataType::from(StructureType::from_fields(fields).unwrap()),
+        DataType::from(StructType::from_fields(fields).unwrap()),
         false,
     )
 }
@@ -321,7 +321,7 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     let field = Field::new("side", DataType::Side, true);
     let row = Field::new(
         "row",
-        DataType::from(StructureType::from_fields([field.clone()]).unwrap()),
+        DataType::from(StructType::from_fields([field.clone()]).unwrap()),
         false,
     );
     let value = row
@@ -334,7 +334,7 @@ fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
     let required = Field::new(
         "row",
         DataType::from(
-            StructureType::from_fields([Field::new("side", DataType::Side, false)]).unwrap(),
+            StructType::from_fields([Field::new("side", DataType::Side, false)]).unwrap(),
         ),
         false,
     );

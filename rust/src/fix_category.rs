@@ -11,14 +11,14 @@ use crate::{Error, Result};
 /// category for it.
 ///
 /// ```
-/// use yggdryl::{DataType, FixRegistry, StructureType};
+/// use yggdryl::{DataType, FixRegistry, StructType};
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut registry = FixRegistry::new();
-/// let component = DataType::from(StructureType::from_fields([])?).required_field("Party");
+/// let component = DataType::from(StructType::from_fields([])?).required_field("Party");
 /// registry.insert(component)?;
 /// // A definition is filed by the shape it has: a Struct is a component,
 /// // and every shape is reached through the one set of field doors.
-/// assert_eq!(registry.field_by_name("Party")?.dtype(), &DataType::from(StructureType::from_fields([])?));
+/// assert_eq!(registry.field_by_name("Party")?.dtype(), &DataType::from(StructType::from_fields([])?));
 /// assert!(registry.get_field_by_tag(448).is_none());
 /// # Ok(())
 /// # }

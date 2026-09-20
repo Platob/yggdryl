@@ -1322,7 +1322,10 @@ export declare class FixCodec {
    * `"R"` - the core's `Send` code when unstated and no pin at all when
    * empty; `batchByteSize` and `batchRowSize` are the raw bytes and the
    * rows one Arrow batch targets, the core's 128 MiB and 32,768 rows when
-   * unstated, whichever the batch reaches first; `includeMsgtypes` and
+   * unstated, whichever the batch reaches first; `threads` is how many
+   * threads the line and row doors read on, one when unstated - more
+   * read a stream a chunk ahead, each line on some thread, and answer in
+   * the lines' order; `includeMsgtypes` and
    * `excludeMsgtypes` are the message types a parse keeps and refuses,
    * each read before a frame is built and spelled as a code or a name -
    * `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type - the
@@ -1357,6 +1360,11 @@ export declare class FixCodec {
   get batchByteSize(): number
   /** The rows one Arrow batch targets. */
   get batchRowSize(): number
+  /**
+   * The threads the line and row doors read on; one reads a stream
+   * where it stands.
+   */
+  get threads(): number
   /**
    * The message types a parse keeps, empty where it keeps every type the
    * refusals leave.
@@ -1408,8 +1416,8 @@ export declare class FixCodec {
    *
    * The schema is decided before the first row: the capture's own columns
    * lead and the fixed FIX columns follow. Every row is parsed as the
-   * line door parses one, and batches close on the raw bytes of
-   * the payload column against `batchByteSize`. The source is consumed.
+   * line door parses one, and batches close on the bytes each row lands
+   * as against `batchByteSize`. The source is consumed.
    *
    * The capture's own columns fill nothing: the carried ones, and the one
    * the crate tags - a `sourceurl` column - are read off the source row
@@ -1426,10 +1434,10 @@ export declare class FixCodec {
    * and written back under the **same** schema, so a carried column
    * returns to its place. Nothing is parsed again. The source is consumed.
    *
-   * A carried column returns to its place because the door keeps it, not
-   * because the message does: each row's own cells travel beside the
-   * message it made and are stated again where that message lands. The
-   * pairing is by message and never by position - a walk answers messages
+   * A carried column returns to its place because the message carries
+   * it: each row's own cells are read into the message it made, under
+   * their names, and stated again where that message lands. The pairing
+   * is by message and never by position - a walk answers messages
    * in their own order, which a capture's lines are routinely not in.
    */
   lifecycleArrowReader(source: JsBatchReader): JsBatchReader
@@ -1442,10 +1450,9 @@ export declare class FixCodec {
    * without a parse. One half of what the Arrow twins compose;
    * `arrowReader` is the other. The source is consumed.
    *
-   * The capture's own columns are not carried: a message holds none of
-   * them, so `arrowReader(schema, messages(reader))` answers them null
-   * where `lifecycleArrowReader(reader)` keeps them. A stage that has to
-   * keep them runs as one pass instead.
+   * The capture's own columns are carried: each row's own cells are read
+   * into the message it makes, so `arrowReader(schema, messages(reader))`
+   * states them again exactly as `lifecycleArrowReader(reader)` does.
    */
   messages(source: JsBatchReader): FixMessages
   /**
@@ -1454,9 +1461,8 @@ export declare class FixCodec {
    * The Arrow twin of `formatMessages`, and the last stage of the pipeline
    * a capture runs. The schema is answered before a row is read, from the
    * source's carried columns and `field`, and the capture's own columns
-   * still lead the row - restated from the source batch, not asked of the
-   * message, which holds none of them. A source carrying no arrival
-   * record is a
+   * still lead the row - stated from the cells each message carries. A
+   * source carrying no arrival record is a
    * projection already and is cast batch by batch instead of read back as
    * messages. The source is consumed.
    */
@@ -1547,8 +1553,10 @@ export type JsFixMessages = FixMessages
  * by its facts and its row, against the registry it was resolved against.
  *
  * Every message carries its identity settled: the cross code read off the
- * first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
- * over it, the `currhashcode` over everything the message says, the `curruuid`
+ * bridge's `msgsessionid:msgctxid` where the row header stated both, else
+ * the first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
+ * over it, the `currhashcode` over everything the message says but the
+ * standard header and trailer, the `curruuid`
  * over its instant and that hash, and the `crossuuid` over the cross hash -
  * or the `curruuid` itself when no cross code names a chain. Every write
  * settles it again.
@@ -1562,10 +1570,10 @@ export declare class FixMsg {
    * against `field`. A child stating a typed fact - a header or trailer
    * tag, a crate column, one of the FIX fields a message lifts,
    * `Text(58)` - fills the holder that owns it and leaves the row. `SendingTime` reads UTC now
-   * when the value states none; the event's instant is `TransactTime(60)`
-   * where it states one with a clock, else the sending time; the creation
-   * instant is `OrigSendingTime(122)` else that instant. The identity is
-   * then settled.
+   * when the value states none; the event's instant is the stated one,
+   * else that sending time, and the creation the stated one, else the
+   * instant - what `TransactTime(60)` or `OrigSendingTime(122)` says is
+   * the lifecycle's to read. The identity is then settled.
    */
   constructor(field: JsField, value: JsScalar, registry?: FixRegistry | undefined | null)
   /**
@@ -1579,11 +1587,12 @@ export declare class FixMsg {
    * through the dictionary exactly as the builder types a pair, so
    * `intoBytes` re-emits the line the row was read from; a row without
    * that column has the typed facts and no content. Every capture column
-   * is read past - the one the crate tags, `sourceurl`, and every column
-   * no tag and no counter names - so nothing on the message holds one; a
-   * column whose name holds a `.` is a bridge's own statement and lands
-   * in the metadata. They stay the row's, and whoever writes rows back
-   * restates them. Nothing is parsed again and no clock is read. The
+   * is carried - the one the crate tags, `sourceurl`, and every column
+   * no tag and no counter names - each under its name, as `carried`
+   * answers, and held as no fact; a column whose name holds a `.` is a
+   * bridge's own statement and lands in the metadata. `intoRow` states
+   * each carried cell again at its column. Nothing is parsed again and
+   * no clock is read. The
    * process default is the registry when none is named.
    */
   static fromRow(schema: JsField, row: JsScalar, registry?: FixRegistry | undefined | null): FixMsg
@@ -1649,8 +1658,26 @@ export declare class FixMsg {
   get seqnum(): number
   /** The identity of the message this one follows, or `null`. */
   get prevuuid(): string | null
-  /** The identities of the messages this one descends from. */
+  /**
+   * The identities of the messages this one descends from: the whole
+   * chain before it, oldest first.
+   */
   get parentuuids(): Array<string>
+  /**
+   * The identities of the elements this one was read from: the text line
+   * it was parsed out of, and none for one parsed from bytes. Provenance,
+   * never lineage: no walk moves it.
+   */
+  get srcuuids(): Array<string>
+  /**
+   * The capture's own cells the message carries, each under the column
+   * it was read from: where the line was read from, its place in the
+   * object, the body it was cut from, when it was recorded. Provenance
+   * and never content - none is an entry, none reaches the wire or the
+   * hash code - and `intoRow` states each again at its column. Empty
+   * for a message parsed from bytes.
+   */
+  get carried(): Record<string, Scalar>
   /** The identifiers the message is known by, scheme to value, sorted. */
   get identifiers(): Record<string, string>
   /** The price, as decimal text; `0` where none is stated. */
@@ -3841,6 +3868,22 @@ export declare class Scalar {
   /** Return deterministic hash bits shared with Rust and Python. */
   stableHash(): bigint
   /**
+   * This value as the variant encoding: one `Buffer` holding the
+   * version, the datatype's identifier and the payload the identifier
+   * says how to read - a number as its little-endian bytes, a text as a
+   * compression byte, a size and the characters, a nested value as a
+   * count and its children - compressed with zstd past four kibibytes.
+   * What a variant column stores per row.
+   */
+  intoVariantBytes(): Buffer
+  /**
+   * The value one variant encoding holds, as `intoVariantBytes` wrote
+   * it. Throws naming the byte where the bytes could not be read:
+   * another version, a byte naming no datatype, a payload cut short, or
+   * bytes left after the value.
+   */
+  static fromVariantBytes(data: Uint8Array): Scalar
+  /**
    * Digest this value's canonical byte representation.
    *
    * Equal values answer equal digests across integer, float, decimal, and
@@ -4738,10 +4781,17 @@ export declare class TextLine {
   /**
    * One line a caller holds itself, rather than one a text read answered.
    *
-   * A capture is what a row header stated about the line, in the order the
-   * header declares them, and `null` is a capture it declared and this line
-   * did not match. The codec reads them by position, so the order is the
-   * contract and `FixCodec`'s `captureNames` is what names it.
+   * The body is the whole line, its row header included: the options are
+   * what the line reads itself by - the header expression, the entry
+   * separators, the framing - and a line built under none reads itself
+   * under `new TextOptions()`. Every reading resolves on its first ask,
+   * once.
+   *
+   * A capture states what a row header matched about the line, in the
+   * order the header declares them, and `null` is a capture it declared
+   * and this line did not match; stated, the captures are the line's word
+   * over its own header. The codec reads them by position, so the order
+   * is the contract and `FixCodec`'s `captureNames` is what names it.
    *
    * The body is copied into a page this line owns, once: every key and
    * value a message read from it records is a range of that page. A
@@ -4749,7 +4799,7 @@ export declare class TextLine {
    * decoded as the core decodes one, each invalid byte as its Windows-1252
    * character, and `decodedByteSize` counts them.
    */
-  constructor(index: number, body: string | Buffer, captures?: Array<string | null>)
+  constructor(index: number, body: string | Buffer, captures?: Array<string | null> | null, options?: TextOptions)
   /**
    * The physical line number within the object, from zero.
    *
@@ -4760,17 +4810,18 @@ export declare class TextLine {
   /** The object this line was read from. */
   get sourceurl(): string | null
   /**
-   * When the record was written, in nanoseconds UTC.
-   *
-   * The core counts in 128 bits so a reading past what 64 bits hold has
-   * somewhere to land; this boundary answers `null` for one that does not
-   * fit rather than wrapping it.
+   * When the record was written, in nanoseconds UTC: the row header's own
+   * captured instant, else the modification time of the handle it was read
+   * from, else `null`. Throws for a capture that is not an instant.
    */
-  get timestamp(): number | null
-  /** What the line was classified as. */
-  get bodytype(): string | null
+  get mtime(): bigint | null
   /**
-   * The line, with whatever was read off its front removed.
+   * What the line is classified as: the stated classification, else the
+   * payload's, read on the first ask.
+   */
+  get bodytype(): string
+  /**
+   * The line itself, its row header included.
    *
    * Text, always: what the constructor or the reader decoded.
    */
@@ -4785,11 +4836,40 @@ export declare class TextLine {
   /** How many bytes of this record went over the retained limit. */
   get droppedByteSize(): number | null
   /**
+   * The line's identity, as its hyphenated text: the uuid its instant and
+   * its hash code derive. A line is an event of the graph, and a message
+   * parsed out of it states this among its `srcuuids`.
+   */
+  get curruuid(): string
+  /**
+   * The identity every event of one lifecycle shares: derived from the
+   * cross code, and the line's own where it names none.
+   */
+  get crossuuid(): string
+  /**
+   * The code the chain is named by: a `crosscode` capture where the row
+   * header has one, and empty where it names none.
+   */
+  get crosscode(): string
+  /** The XXH3-64 of the line's bytes. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where there is none. */
+  get crosshashcode(): bigint
+  /**
+   * When the line happened, nanoseconds since the Unix epoch, UTC: the
+   * stated instant, else `mtime`, else `0n`.
+   */
+  get currunix(): bigint
+  /**
    * The row header's named captures, in the order the expression declares
-   * them.
+   * them; resolved on the first ask where none were stated.
    */
   get captures(): Array<string | null>
-  /** The key/value tree this line carries. */
+  /**
+   * The key/value tree this line carries: what was stated, else the
+   * payload's own entries, read on the first ask; `null` where it parses
+   * as none.
+   */
   get entries(): TextEntries | null
   /** The entry a path reaches, or `null`. */
   getEntryByPath(path: string | FieldPath): TextEntry | null
@@ -5804,12 +5884,16 @@ export interface FileSelector {
  * plain values.
  *
  * What the line itself said about the capture it was written for: a
- * bridge's own row header. None of it is FIX, none is content, and none
- * reaches the code the message digests to.
+ * bridge's own row header. None of it is FIX and none is content, so none
+ * of it is an entry or on the wire; where the row header brackets both a
+ * session instance and a message context, the two name the chain through
+ * the cross code, which is the chain's identity and not the message's,
+ * and which the content code leaves out.
  *
  * What the *reader* said about the line - the object it came out of, when
- * it was recorded - is held nowhere on a message: those are the capture's
- * own columns, and they are read off the row.
+ * it was recorded - is not here: those are the capture's own columns,
+ * which the message carries under their names - `carried` - and `intoRow`
+ * states again.
  */
 export interface FixCaptureView {
   /**
@@ -5850,6 +5934,13 @@ export interface FixCodecOptions {
    */
   batchRowSize?: number
   /**
+   * The threads the line and row doors read on; one when unstated. More
+   * read a stream a chunk ahead, each line on some thread, and answer in
+   * the lines' order, so the doors answer what one thread answers,
+   * sooner. Zero reads as one.
+   */
+  threads?: number
+  /**
    * The message types a parse keeps, spelled as codes or as names -
    * `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type. Empty
    * or unstated keeps every type the refusals leave.
@@ -5874,20 +5965,25 @@ export interface FixCodecOptions {
  * The definitions this crate owns, in tag order, above every tag FIX or a
  * venue publishes.
  *
- * The event's instant `currunix` and the chain's `creaunix`, `prevunix`
- * and `snapunix`; the identities `currhashcode`, `crosshashcode`,
- * `curruuid`, `crossuuid`, `prevuuid` and the `parentuuids` list; the
- * `crosscode` and the `seqnum`; the `identifiers` and `metadata` Map
- * groups; what a bridge's capture states - `msgctxid`, `msgpluginid`,
- * `msgsessionid`; the capture's own column, `sourceurl`, which whoever read
- * the line states on the row and no message holds; and the `nofixentries`
- * that counts the content record. Nothing about the market is here: every
- * market fact is FIX's own field, and the graph traits answer it off those.
+ * The event's instant `currunix` and the chain's `creaunix`, `prevunix`,
+ * `snapunix` and `expirunix`; the identities `currhashcode`,
+ * `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid` and the
+ * `parentuuids` list; the `srcuuids` list of the lines it was read from;
+ * the `crosscode`, the `seqnum` and the `state` reached; the `identifiers`
+ * and `metadata` Map groups; what a bridge's capture states - `msgctxid`,
+ * `msgpluginid`, `msgsessionid`; the capture's own column, `sourceurl`,
+ * which whoever read the line states on the row and no message holds; and
+ * the `nofixentries` that counts the content record. Twenty-two in all.
+ * Nothing about the market is here: every market fact is FIX's own field,
+ * and the graph traits answer it off those; the state and the expiry are
+ * the event's own, the two facts a lifecycle walk folds forward, each at
+ * the datatype its graph event column names.
  *
  * `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and
- * `crossuuid` are non-null. Every registry already holds them, so this is
- * the listing a schema or a document walks rather than something a caller
- * registers.
+ * `crossuuid` are non-null; `state` is written on every row a message
+ * writes and stays nullable, a state having no neutral member. Every
+ * registry already holds them, so this is the listing a schema or a
+ * document walks rather than something a caller registers.
  */
 export declare function fixCrateFields(): Array<JsField>
 
@@ -5948,25 +6044,34 @@ export interface FixEventView {
    */
   crossuuid: string
   /**
-   * The code the chain is named by: the first stated of `OrderID(37)`,
-   * `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)`
-   * and `MDReqID(262)`, or empty.
+   * The code the chain is named by: the bridge's `msgsessionid:msgctxid`
+   * where the row header stated both, else the first stated of
+   * `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`,
+   * `QuoteReqID(131)` and `MDReqID(262)`, or empty.
    */
   crosscode: string
   /**
-   * The XXH3-64 of the event, the text, the metadata, the header and the
-   * row.
+   * The XXH3-64 of the event, the text, the metadata, the lifted fields
+   * and the row - every field but the standard header and trailer.
    */
   currhashcode: bigint
   /** The XXH3-64 of the cross code, `0n` where there is none. */
   crosshashcode: bigint
   /** The identifiers the message is known by, scheme to value, sorted. */
   identifiers: Record<string, string>
-  /** The UUIDs of the messages this one descends from. */
+  /**
+   * The UUIDs of the messages this one descends from: the whole chain
+   * before it, oldest first.
+   */
   parentuuids: Array<string>
   /**
-   * When the event happened: `TransactTime(60)` where the message states
-   * one with a clock, else its sending time.
+   * The UUIDs of the elements this one was read from: the text line it
+   * was parsed out of, and none for one parsed from bytes.
+   */
+  srcuuids: Array<string>
+  /**
+   * When the event happened: the message's sending time, the one clock
+   * every message carries.
    */
   currunix: bigint
   /** The order state the message reached, ranked: `20NEW`, `80FILLED`. */

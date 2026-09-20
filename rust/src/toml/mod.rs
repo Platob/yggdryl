@@ -37,7 +37,7 @@ pub const MAX_PARSER_DEPTH: usize = 64;
 /// use yggdryl::{Scalar, from_toml_scalar, into_toml_scalar};
 ///
 /// let value = from_toml_scalar("id = 1\n")?;
-/// assert_eq!(value, Scalar::from_record([("id", Scalar::from(1))])?);
+/// assert_eq!(value, Scalar::from_struct([("id", Scalar::from(1))])?);
 /// assert_eq!(from_toml_scalar(into_toml_scalar(&value)?)?, value);
 /// # Ok::<(), yggdryl::Error>(())
 /// ```
@@ -55,10 +55,10 @@ pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar> {
 /// through [`from_bytes_with_field_and_limits`].
 ///
 /// ```
-/// use yggdryl::{DataType, Field, Scalar, StructureType, from_toml_scalar_with_field};
+/// use yggdryl::{DataType, Field, Scalar, StructType, from_toml_scalar_with_field};
 ///
 /// let amount = Field::new("amount", DataType::decimal128(10, 2)?, false);
-/// let field = Field::new("row", DataType::from(StructureType::from_fields([amount])?), false);
+/// let field = Field::new("row", DataType::from(StructType::from_fields([amount])?), false);
 /// let value = from_toml_scalar_with_field("amount = \"12.50\"\n", &field)?;
 /// assert_eq!(value, Scalar::from_sequence([Scalar::d128(1250, 2)]));
 /// # Ok::<(), yggdryl::Error>(())
@@ -76,7 +76,7 @@ pub fn from_toml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Re
 /// ```
 /// use yggdryl::{Scalar, into_toml_scalar};
 ///
-/// let value = Scalar::from_record([("id", Scalar::from(1))])?;
+/// let value = Scalar::from_struct([("id", Scalar::from(1))])?;
 /// assert_eq!(into_toml_scalar(&value)?, "\"id\" = 1\n");
 /// # Ok::<(), yggdryl::Error>(())
 /// ```

@@ -6,7 +6,7 @@ use napi::bindgen_prelude::{
     BigInt, ClassInstance, Either, Either3, Env, Error, Object, Result, Unknown,
 };
 use napi_derive::napi;
-use yggdryl::{BytesType as CoreBytesType, StringType as CoreStringType, StructureType};
+use yggdryl::{BytesType as CoreBytesType, StringType as CoreStringType, StructType};
 use yggdryl::{
     DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField,
     Scheme as CoreScheme, StringEnum as CoreStringEnum, TimeUnit as CoreTimeUnit,
@@ -369,7 +369,7 @@ impl JsDataType {
     /// Internal direct Struct constructor preserving exact child Fields.
     #[napi(factory, js_name = "_fromFields", skip_typescript)]
     pub fn from_fields(fields: Vec<ClassInstance<'_, JsField>>) -> Result<Self> {
-        let inner = StructureType::from_fields(fields.into_iter().map(|field| field.inner.clone()))
+        let inner = StructType::from_fields(fields.into_iter().map(|field| field.inner.clone()))
             .map(CoreDataType::from)
             .map_err(napi_error)?;
         Ok(Self::from_core(inner))

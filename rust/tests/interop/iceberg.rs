@@ -20,7 +20,7 @@ use yggdryl::IOMedia;
 use yggdryl::iceberg::{EntryStatus, FormatVersion, PartitionSpec, Table, assign_field_ids};
 use yggdryl::local::Folder;
 use yggdryl::media::IORecordOptions;
-use yggdryl::{DataType, Field, StructureType};
+use yggdryl::{DataType, Field, StructType};
 
 /// The directory both halves of the exchange live under.
 fn interop_root() -> std::path::PathBuf {
@@ -34,7 +34,7 @@ fn interop_root() -> std::path::PathBuf {
 
 /// The schema both sides agree on, numbered the way Iceberg numbers one.
 fn schema() -> Field {
-    let mut schema = StructureType::from_fields([
+    let mut schema = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
         DataType::utf8().nullable_field("venue"),

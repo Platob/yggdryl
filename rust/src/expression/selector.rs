@@ -37,7 +37,7 @@ use super::bind::Bound;
 use super::eval::convert;
 use super::path::FieldPath;
 use super::term::Term;
-use crate::{DataType, Error, Field, Metadata, Result, Scalar, StructureType};
+use crate::{DataType, Error, Field, Metadata, Result, Scalar, StructType};
 
 /// One output column: the term that computes it, its name, and what it is
 /// published as.
@@ -392,7 +392,7 @@ impl Selector {
             }
             return Ok(Self::new(projections));
         }
-        if let Some(entries) = value.as_record() {
+        if let Some(entries) = value.as_struct() {
             let mut projections = Vec::with_capacity(entries.len());
             for (alias, term) in entries {
                 projections.push(Projection::aliased(Term::from_scalar(term)?, alias.clone()));
@@ -592,7 +592,7 @@ impl Selector {
             }
             children.push(child);
         }
-        StructureType::from_fields(children).map(DataType::from)
+        StructType::from_fields(children).map(DataType::from)
     }
 
     /// The struct root this selector publishes from `root`.
@@ -786,7 +786,7 @@ impl Selector {
             }
             children.push(child);
         }
-        Ok(DataType::from(StructureType::from_fields(children)?).required_field(name))
+        Ok(DataType::from(StructType::from_fields(children)?).required_field(name))
     }
 
     /// Write this selector into the struct root it publishes from `root`.

@@ -4,9 +4,9 @@
 //! with a FIX body around it - and what this crate owns is only the facts
 //! the event states that *no dictionary publishes*: its identity and the one
 //! it has across its lifecycle and the code that names it there, the names
-//! it goes by, its parents, the code its content digests to, when it
-//! happened, was created and was read as a snapshot, the element it follows
-//! and its place in the chain. Beside them stand the facts a capture states
+//! it goes by, its parents, the lines it was read from, the code its content
+//! digests to, when it happened, was created and was read as a snapshot, the
+//! element it follows and its place in the chain. Beside them stand the facts a capture states
 //! about the line - where it was read from and how many pairs it carried -
 //! and the ones a bridge's own log states about the line it wrote: the
 //! session instance, the message context and the plugin that logged it.
@@ -15,10 +15,19 @@
 //!
 //! What a message says about its *market* is not here and never was this
 //! crate's to name: the price, the quantity, the instrument's codes, the
-//! market, the state and the lanes are FIX's own fields, lifted or read off
-//! the row, and the [`MarketElement`](crate::graph::MarketElement) getters
-//! answer them from those. A column restating one would have been a second
-//! owner of a fact the dictionary already types.
+//! market and the lanes are FIX's own fields, lifted or read off the row,
+//! and the [`MarketElement`](crate::graph::MarketElement) getters answer
+//! them from those. A column restating one would have been a second owner
+//! of a fact the dictionary already types. The state the event reached and
+//! when it stops being good are the event's own - ranked, and folded
+//! forward by a walk to the furthest and the latest its chain knows - so
+//! they have columns beside the other event facts, read off `OrdStatus`,
+//! `ExecType` and the expiry clocks where no row states them.
+//!
+//! The sixteen event facts are the sixteen columns every graph event is
+//! stated in, [`EventColumn`]: each crate field here takes that column's
+//! datatype, so a text line's batch, a FIX row and a chained message carry
+//! one column under one name and join on it.
 //!
 //! # Why 65000, and why each is a tag and a name
 //!
@@ -61,10 +70,11 @@
 //! read past for the same reason: the crate's own definition is the one that
 //! types a row. Folding another dictionary in never counts them either.
 //!
-//! Seventeen scalar fields and two Map groups, each registered by its shape.
+//! Twenty scalar fields and two Map groups, each registered by its shape.
 
 use std::sync::LazyLock;
 
+use crate::graph::EventColumn;
 use crate::{DataType, Field, Result};
 
 /// The first tag this crate claims.
@@ -180,6 +190,68 @@ pub const METADATA_TAG_NAME: (i32, &str) = (65_049, "metadata");
 /// running this crate, and nothing this crate reads back.
 pub const FIXMSG_TAG_NAME: (i32, &str) = (65_050, "fixmsg");
 
+/// The tag and name carrying the identities of the elements the message
+/// was read from: its provenance, never its lineage.
+///
+/// A message parsed from a text line has that line's identity as its one
+/// source, and a message parsed from raw bytes has none. Sources travel along
+/// no chain - following and restating leave them as they are - and never
+/// feed the code the message digests to, because where a message was read
+/// from is not what it states.
+pub const SRCUUIDS_TAG_NAME: (i32, &str) = (65_051, "srcuuids");
+
+/// The state the event reached, ranked so the column sorts by lifecycle.
+///
+/// Read off `OrdStatus(39)`, else `ExecType(150)`, as a message is built,
+/// `00UNKNOWN` where neither states one; the furthest its chain knows once
+/// the lifecycle followed it, and a row stating one is the row's word. A
+/// column, because a monitor asking which orders are still live reads a
+/// ranked column rather than two code sets.
+pub const STATE_TAG_NAME: (i32, &str) = (65_052, "state");
+
+/// When the message stops being good, where it does.
+///
+/// `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or
+/// `MaturityDate(541)`, the first stated, as a message is built; the
+/// latest its chain knows once the lifecycle followed it, and a row
+/// stating one is the row's word.
+pub const EXPIRUNIX_TAG_NAME: (i32, &str) = (65_053, "expirunix");
+
+/// The graph event column one crate tag is, for the sixteen that are one.
+///
+/// The event facts a row states are read and written through the column,
+/// [`EventColumn::fact`] and [`EventColumn::record`], so a FIX row and a
+/// text line's batch answer one cell for one fact.
+#[must_use]
+pub fn event_column_of(tag: i32) -> Option<EventColumn> {
+    EventColumn::ALL
+        .into_iter()
+        .find(|column| crate_tag_of(*column).0 == tag)
+}
+
+/// The crate's own tag and name of one graph event column.
+#[must_use]
+pub const fn crate_tag_of(column: EventColumn) -> (i32, &'static str) {
+    match column {
+        EventColumn::CurrUnix => CURRUNIX_TAG_NAME,
+        EventColumn::CreaUnix => CREAUNIX_TAG_NAME,
+        EventColumn::ExpirUnix => EXPIRUNIX_TAG_NAME,
+        EventColumn::PrevUnix => PREVUNIX_TAG_NAME,
+        EventColumn::SnapUnix => SNAPUNIX_TAG_NAME,
+        EventColumn::CurrUuid => CURRUUID_TAG_NAME,
+        EventColumn::CrossUuid => CROSSUUID_TAG_NAME,
+        EventColumn::CrossCode => CROSSCODE_TAG_NAME,
+        EventColumn::CurrHashCode => CURRHASHCODE_TAG_NAME,
+        EventColumn::CrossHashCode => CROSSHASHCODE_TAG_NAME,
+        EventColumn::PrevUuid => PREVUUID_TAG_NAME,
+        EventColumn::SeqNum => SEQNUM_TAG_NAME,
+        EventColumn::ParentUuids => PARENTUUIDS_TAG_NAME,
+        EventColumn::SrcUuids => SRCUUIDS_TAG_NAME,
+        EventColumn::Identifiers => IDENTIFIERS_TAG_NAME,
+        EventColumn::State => STATE_TAG_NAME,
+    }
+}
+
 /// Whether a tag is one of this crate's own.
 #[must_use]
 pub const fn is_crate_tag(tag: i32) -> bool {
@@ -207,17 +279,20 @@ static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
 /// The instants, because a later message has its own; the identities and
 /// the codes, because they are computed from the message that carries them;
 /// the place in the chain and the element it follows, because a walk states
-/// them per message; `nofixentries` and `sourceurl`, because they are facts
-/// about the line this row was read from.
+/// them per message; the state it reached and when it expires, because a
+/// walk folds them per message; `nofixentries`, `sourceurl` and
+/// `srcuuids`, because they are facts about the line this row was read from.
 ///
 /// Everything else the crate owns is about the session or the chain the
 /// message stands in - the identifiers it resolved, the keys a bridge
 /// stated, the plugin, the context and the session instance - and carries.
-const SETTLED_TO_ONE_MESSAGE: [i32; 14] = [
+const SETTLED_TO_ONE_MESSAGE: [i32; 17] = [
     CURRUNIX_TAG_NAME.0,
     CREAUNIX_TAG_NAME.0,
     SNAPUNIX_TAG_NAME.0,
     PREVUNIX_TAG_NAME.0,
+    EXPIRUNIX_TAG_NAME.0,
+    STATE_TAG_NAME.0,
     PREVUUID_TAG_NAME.0,
     CURRHASHCODE_TAG_NAME.0,
     CROSSHASHCODE_TAG_NAME.0,
@@ -228,10 +303,16 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 14] = [
     PARENTUUIDS_TAG_NAME.0,
     NOFIXENTRIES_TAG_NAME.0,
     SOURCEURL_TAG_NAME.0,
+    SRCUUIDS_TAG_NAME.0,
 ];
 
 /// The crate's own columns every message states: the instants the identity
 /// is settled against, the codes and the identity it settles to.
+///
+/// The state a message reached is stated on every row a message writes -
+/// `00UNKNOWN` where nothing states one - but the column admits a null,
+/// because a state has no neutral member for an empty cell to read as, and
+/// a column no default can fill is not one a row can be required to state.
 const ALWAYS_STATED: [i32; 6] = [
     CURRUNIX_TAG_NAME.0,
     CREAUNIX_TAG_NAME.0,
@@ -262,9 +343,19 @@ fn crated(
     Ok(field)
 }
 
+/// One of the sixteen event columns as a field of the crate's own: the
+/// column's datatype under the crate's tag, display and wording.
+fn event(column: EventColumn, display: &str, description: &str) -> Result<Field> {
+    crated(
+        crate_tag_of(column),
+        display,
+        column.datatype()?,
+        description,
+    )
+}
+
 /// Builds every field this crate defines, in tag order.
 fn build() -> Result<Vec<Field>> {
-    let clock = || super::schema::CLOCK_DATATYPE;
     let mut metadata = crated(
         METADATA_TAG_NAME,
         "Metadata",
@@ -274,10 +365,9 @@ fn build() -> Result<Vec<Field>> {
          in sorted order.",
     )?;
     metadata.as_fix_mut().set_counter(METADATA_TAG_NAME.0)?;
-    let mut identifiers = crated(
-        IDENTIFIERS_TAG_NAME,
+    let mut identifiers = event(
+        EventColumn::Identifiers,
         "Identifiers",
-        DataType::map_of(DataType::utf8(), DataType::utf8(), true)?,
         "The names this message goes by, each under the canonical name of the \
          field that stated it, in sorted order; repeating-group members are \
          not flattened.",
@@ -288,10 +378,9 @@ fn build() -> Result<Vec<Field>> {
     Ok(vec![
         // When the message happened: the settled instant every clock a
         // message states resolves to, and what its identity opens with.
-        crated(
-            CURRUNIX_TAG_NAME,
+        event(
+            EventColumn::CurrUnix,
             "CurrUnix",
-            clock(),
             "When the message happened: the settled instant, UTC.",
         )?,
         // The message context a bridge handled the line in, from the bracket
@@ -322,44 +411,38 @@ fn build() -> Result<Vec<Field>> {
         // The state the order is in, whatever code set or word stated it.
         // The two codes: what the message's content digests to, and what
         // the identifier its lifecycle shares digests to.
-        crated(
-            CURRHASHCODE_TAG_NAME,
+        event(
+            EventColumn::CurrHashCode,
             "CurrHashCode",
-            DataType::UInt64,
             "The XXH3-64 of what the event states and the named FIX content \
              behind it.",
         )?,
-        crated(
-            CROSSHASHCODE_TAG_NAME,
+        event(
+            EventColumn::CrossHashCode,
             "CrossHashCode",
-            DataType::UInt64,
             "The XXH3-64 of the cross code; zero where the message names none.",
         )?,
         identifiers,
-        crated(
-            PREVUNIX_TAG_NAME,
+        event(
+            EventColumn::PrevUnix,
             "PrevUnix",
-            clock(),
             "When the message this one follows happened, where it follows one.",
         )?,
-        crated(
-            PREVUUID_TAG_NAME,
+        event(
+            EventColumn::PrevUuid,
             "PrevUuid",
-            DataType::Uuid,
             "The identity of the message this one follows, where it follows one.",
         )?,
-        crated(
-            CREAUNIX_TAG_NAME,
+        event(
+            EventColumn::CreaUnix,
             "CreaUnix",
-            clock(),
             "When the message was created: what it states, else when the \
              original was sent, else when it happened; the earliest its \
              chain knows once followed.",
         )?,
-        crated(
-            SNAPUNIX_TAG_NAME,
+        event(
+            EventColumn::SnapUnix,
             "SnapUnix",
-            clock(),
             "The grid instant a walk read this message as the snapshot of; \
              empty on every row no snapshot was taken of.",
         )?,
@@ -397,30 +480,26 @@ fn build() -> Result<Vec<Field>> {
         // is so a row joins on it rather than on text that looks like one.
         // The identities: the message's own, the one its lifecycle shares,
         // and the ones it descends from.
-        crated(
-            CURRUUID_TAG_NAME,
+        event(
+            EventColumn::CurrUuid,
             "CurrUuid",
-            DataType::Uuid,
             "The message's identity: the UUIDv7 its instant and its code derive.",
         )?,
-        crated(
-            CROSSUUID_TAG_NAME,
+        event(
+            EventColumn::CrossUuid,
             "CrossUuid",
-            DataType::Uuid,
             "The identity every message of one lifecycle shares, derived from \
              the identifier they share; the message's own where it names none.",
         )?,
-        crated(
-            PARENTUUIDS_TAG_NAME,
+        event(
+            EventColumn::ParentUuids,
             "ParentUuids",
-            DataType::list(DataType::Uuid.required_field("parentuuid")),
             "The identities of the messages this one descends from, in the \
              order it states them.",
         )?,
-        crated(
-            SEQNUM_TAG_NAME,
+        event(
+            EventColumn::SeqNum,
             "SeqNum",
-            DataType::UInt64,
             "The message's place in its chain: how many came before it.",
         )?,
         // The market's numbers, exact. Price and quantity carry no
@@ -431,19 +510,44 @@ fn build() -> Result<Vec<Field>> {
         // The chain's own name, as the message spells it: what the cross
         // hash code and the cross identity derive from, and what a walk
         // forces onto a message of the chain that spells none.
-        crated(
-            CROSSCODE_TAG_NAME,
+        event(
+            EventColumn::CrossCode,
             "CrossCode",
-            DataType::utf8(),
             "The identifier every message of one lifecycle shares: OrderID, \
              else ClOrdID, OrigClOrdID, QuoteID, QuoteReqID or MDReqID, the \
              first stated.",
         )?,
         metadata,
-        // The step before this message in its chain: what a price moved
-        // from, and what the market said about the instrument. Declared
-        // last because the list is in tag order and these are the crate's
-        // newest columns.
+        // Where the message was read from: the identities of the lines it
+        // was parsed out of, its provenance beside its lineage. Declared
+        // last because the list is in tag order and this is the crate's
+        // newest column, above the fixed row's own tag.
+        event(
+            EventColumn::SrcUuids,
+            "SrcUuids",
+            "The identities of the elements this message was read from: the \
+             text line it was parsed out of, and none for one parsed from \
+             raw bytes. Provenance, never lineage: no walk moves it.",
+        )?,
+        // The two lifecycle facts a walk folds forward: the state the
+        // message reached and when it stops being good. Read off FIX's own
+        // fields as a message is built, and the furthest and the latest its
+        // chain knows once followed - which a reader of the rows could not
+        // see while the traits alone answered them.
+        event(
+            EventColumn::State,
+            "State",
+            "The state the message reached, ranked so the column sorts by \
+             lifecycle: OrdStatus, else ExecType, 00UNKNOWN where neither \
+             states one; the furthest its chain knows once followed.",
+        )?,
+        event(
+            EventColumn::ExpirUnix,
+            "ExpirUnix",
+            "When the message stops being good: ExpireTime, else \
+             ValidUntilTime, ExpireDate or MaturityDate; the latest its chain \
+             knows once followed.",
+        )?,
     ])
 }
 
@@ -456,7 +560,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 19);
+/// assert_eq!(held.len(), 22);
 /// assert_eq!(held[0].name(), "currunix");
 /// assert_eq!(held[0].display(), Some("CurrUnix"));
 /// // No partition column: how a layout is cut is the target's to decide -
@@ -510,7 +614,7 @@ impl super::FixRegistry {
     /// let mut registry = FixRegistry::from_fields([field])?;
     /// let message = registry.register_msgtype("P Report Ack", Some("AllocationReportAck"), None)?;
     /// assert_eq!(message.as_str(), "P Report Ack");
-    /// assert!(matches!(message.as_field().dtype(), DataType::Structure(_)));
+    /// assert!(matches!(message.as_field().dtype(), DataType::Struct(_)));
     /// assert!(std::ptr::eq(
     ///     registry.msgtype("P Report Ack")?,
     ///     registry.msgtype("AllocationReportAck")?,
@@ -597,7 +701,7 @@ impl super::FixRegistry {
                 }
                 name
             };
-            let mut message = crate::DataType::from(crate::StructureType::from_fields([])?)
+            let mut message = crate::DataType::from(crate::StructType::from_fields([])?)
                 .required_field(canonical);
             message.as_fix_mut().set_msgtype(&value)?;
             next.create_definition(crate::FixCategory::Components, message)?;

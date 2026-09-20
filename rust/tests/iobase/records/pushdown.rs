@@ -3,7 +3,7 @@
 use arrow_array::RecordBatchReader;
 use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
-use yggdryl::{DataType, Field, StructureType};
+use yggdryl::{DataType, Field, StructType};
 
 use super::handle;
 
@@ -15,7 +15,7 @@ use yggdryl::IOMedia;
 
 /// Four columns, so a two-column read is a genuine subset.
 fn wide() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
         DataType::Float64.required_field("price"),
@@ -28,7 +28,7 @@ fn wide() -> Field {
 
 /// The two columns a caller actually wants.
 fn narrow() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float64.required_field("price"),
     ])
@@ -106,7 +106,7 @@ fn the_projection_only_drops_columns_and_the_cast_does_the_rest() {
 
     // A column the resource does not hold cannot be projected out of
     // it, so the encoding reads everything and the cast supplies it.
-    let invented = StructureType::from_fields([
+    let invented = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("nowhere"),
     ])
@@ -126,7 +126,7 @@ fn the_projection_only_drops_columns_and_the_cast_does_the_rest() {
 #[test]
 fn a_declared_schema_reorders_what_the_resource_stores() {
     let handle = stored("reordered.arrows");
-    let reversed = StructureType::from_fields([
+    let reversed = StructType::from_fields([
         DataType::Float64.required_field("price"),
         DataType::Int64.required_field("id"),
     ])

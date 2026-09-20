@@ -1,10 +1,10 @@
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::{DataType, Field, Scheme, StructureType};
+use yggdryl::{DataType, Field, Scheme, StructType};
 
 pub(crate) fn default_and_compatibility_benchmarks(criterion: &mut Criterion) {
-    let nested = StructureType::from_fields([
+    let nested = StructType::from_fields([
         Field::new("id", DataType::Int64, false),
         Field::new("label", DataType::utf8(), true),
         Field::new(
@@ -30,7 +30,7 @@ pub(crate) fn default_and_compatibility_benchmarks(criterion: &mut Criterion) {
     });
     defaults.finish();
 
-    let arrow_wide = StructureType::from_fields((0..1_024).map(|index| {
+    let arrow_wide = StructType::from_fields((0..1_024).map(|index| {
         Field::new(
             format!("column_{index:04}"),
             if index == 1_023 {
@@ -43,7 +43,7 @@ pub(crate) fn default_and_compatibility_benchmarks(criterion: &mut Criterion) {
     }))
     .map(DataType::from)
     .unwrap();
-    let spark_wide = StructureType::from_fields(
+    let spark_wide = StructType::from_fields(
         (0..1_024).map(|index| Field::new(format!("column_{index:04}"), DataType::Int64, false)),
     )
     .map(DataType::from)

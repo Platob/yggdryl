@@ -706,7 +706,7 @@ fn a_scan_that_reads_a_header_out_of_each_object_keeps_one_connection() {
 #[cfg(feature = "iceberg")]
 mod iceberg {
 
-    use crate::StructureType;
+    use crate::StructType;
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
@@ -765,7 +765,7 @@ mod iceberg {
     }
 
     fn schema() -> Field {
-        let mut schema = StructureType::from_fields([
+        let mut schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
             DataType::utf8().nullable_field("venue"),
@@ -941,7 +941,7 @@ mod iceberg {
 
         // A projection opens each file once too: the table never renamed a
         // column, so no footer is read for the names first.
-        let target: Field = StructureType::from_fields([DataType::Int64.required_field("id")])
+        let target: Field = StructType::from_fields([DataType::Int64.required_field("id")])
             .map(DataType::from)
             .expect("one column")
             .required_field("row");

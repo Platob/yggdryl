@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::Criterion;
-use yggdryl::{DataType, Field, StructureType};
+use yggdryl::{DataType, Field, StructType};
 
 use super::NESTED_SQL;
 
@@ -27,7 +27,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         .collect::<Vec<_>>();
     group.bench_function("struct_from_fields_1024", |bencher| {
         bencher.iter(|| {
-            StructureType::from_fields(black_box(wide_fields.clone()))
+            StructType::from_fields(black_box(wide_fields.clone()))
                 .map(DataType::from)
                 .expect("the generated field names are unique")
         });

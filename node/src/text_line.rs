@@ -6,15 +6,19 @@
 //! `Bytes` accessors answer the same ranges as `Buffer`, copied - state that in
 //! the docs rather than claiming a zero copy this boundary does not have.
 
-use napi::bindgen_prelude::{Buffer, Either, Generator, Result};
+use std::sync::Arc;
+
+use napi::bindgen_prelude::{BigInt, Buffer, Either, Generator, Result};
 use napi_derive::napi;
 
+use yggdryl::graph::{Element as _, Event as _};
 use yggdryl::text::{
     TextBytes, TextEntries as CoreTextEntries, TextEntry as CoreTextEntry,
-    TextLine as CoreTextLine, TextLines as CoreTextLines,
+    TextLine as CoreTextLine, TextLines as CoreTextLines, TextOptions as CoreTextOptions,
 };
 use yggdryl::{FieldPath as CoreFieldPath, FieldSegment};
 
+use crate::media::text::JsTextOptions;
 use crate::napi_error;
 
 /// Whatever spelling of a value the caller used, as the bytes the line holds.
@@ -302,10 +306,17 @@ impl JsTextLine {
 impl JsTextLine {
     /// One line a caller holds itself, rather than one a text read answered.
     ///
-    /// A capture is what a row header stated about the line, in the order the
-    /// header declares them, and `null` is a capture it declared and this line
-    /// did not match. The codec reads them by position, so the order is the
-    /// contract and `FixCodec`'s `captureNames` is what names it.
+    /// The body is the whole line, its row header included: the options are
+    /// what the line reads itself by - the header expression, the entry
+    /// separators, the framing - and a line built under none reads itself
+    /// under `new TextOptions()`. Every reading resolves on its first ask,
+    /// once.
+    ///
+    /// A capture states what a row header matched about the line, in the
+    /// order the header declares them, and `null` is a capture it declared
+    /// and this line did not match; stated, the captures are the line's word
+    /// over its own header. The codec reads them by position, so the order
+    /// is the contract and `FixCodec`'s `captureNames` is what names it.
     ///
     /// The body is copied into a page this line owns, once: every key and
     /// value a message read from it records is a range of that page. A
@@ -314,15 +325,19 @@ impl JsTextLine {
     /// character, and `decodedByteSize` counts them.
     #[napi(
         constructor,
-        ts_args_type = "index: number, body: string | Buffer, captures?: Array<string | null>"
+        ts_args_type = "index: number, body: string | Buffer, captures?: Array<string | null> | null, options?: TextOptions"
     )]
     pub fn new(
         index: i64,
         body: Either<Buffer, String>,
         captures: Option<Vec<Option<String>>>,
+        options: Option<&JsTextOptions>,
     ) -> Result<Self> {
         let page = bytes_from_input(body)?;
-        let mut line = CoreTextLine::from_bytes(index.unsigned_abs(), page).map_err(napi_error)?;
+        let options =
+            Arc::new(options.map_or_else(CoreTextOptions::new, |held| held.inner.clone()));
+        let mut line =
+            CoreTextLine::from_bytes(index.unsigned_abs(), page, options).map_err(napi_error)?;
         if let Some(held) = captures {
             let mut read = Vec::with_capacity(held.len());
             for capture in held {
@@ -351,25 +366,25 @@ impl JsTextLine {
         self.inner.sourceurl().map(ToString::to_string)
     }
 
-    /// When the record was written, in nanoseconds UTC.
-    ///
-    /// The core counts in 128 bits so a reading past what 64 bits hold has
-    /// somewhere to land; this boundary answers `null` for one that does not
-    /// fit rather than wrapping it.
-    #[napi(getter)]
-    pub fn timestamp(&self) -> Option<i64> {
+    /// When the record was written, in nanoseconds UTC: the row header's own
+    /// captured instant, else the modification time of the handle it was read
+    /// from, else `null`. Throws for a capture that is not an instant.
+    #[napi(getter, ts_return_type = "bigint | null")]
+    pub fn mtime(&self) -> Result<Option<BigInt>> {
         self.inner
-            .timestamp()
-            .and_then(|held| i64::try_from(held).ok())
+            .mtime()
+            .map(|held| held.map(BigInt::from))
+            .map_err(napi_error)
     }
 
-    /// What the line was classified as.
+    /// What the line is classified as: the stated classification, else the
+    /// payload's, read on the first ask.
     #[napi(getter)]
-    pub fn bodytype(&self) -> Option<String> {
-        self.inner.bodytype().map(|held| held.as_str().to_owned())
+    pub fn bodytype(&self) -> String {
+        self.inner.bodytype().as_str().to_owned()
     }
 
-    /// The line, with whatever was read off its front removed.
+    /// The line itself, its row header included.
     ///
     /// Text, always: what the constructor or the reader decoded.
     #[napi(getter)]
@@ -394,8 +409,49 @@ impl JsTextLine {
             .and_then(|held| i64::try_from(held).ok())
     }
 
+    /// The line's identity, as its hyphenated text: the uuid its instant and
+    /// its hash code derive. A line is an event of the graph, and a message
+    /// parsed out of it states this among its `srcuuids`.
+    #[napi(getter)]
+    pub fn curruuid(&self) -> String {
+        self.inner.get_curruuid().to_string()
+    }
+
+    /// The identity every event of one lifecycle shares: derived from the
+    /// cross code, and the line's own where it names none.
+    #[napi(getter)]
+    pub fn crossuuid(&self) -> String {
+        self.inner.get_crossuuid().to_string()
+    }
+
+    /// The code the chain is named by: a `crosscode` capture where the row
+    /// header has one, and empty where it names none.
+    #[napi(getter)]
+    pub fn crosscode(&self) -> String {
+        self.inner.get_crosscode().to_owned()
+    }
+
+    /// The XXH3-64 of the line's bytes.
+    #[napi(getter)]
+    pub fn currhashcode(&self) -> BigInt {
+        BigInt::from(self.inner.get_currhashcode())
+    }
+
+    /// The XXH3-64 of the cross code, `0n` where there is none.
+    #[napi(getter)]
+    pub fn crosshashcode(&self) -> BigInt {
+        BigInt::from(self.inner.get_crosshashcode())
+    }
+
+    /// When the line happened, nanoseconds since the Unix epoch, UTC: the
+    /// stated instant, else `mtime`, else `0n`.
+    #[napi(getter)]
+    pub fn currunix(&self) -> BigInt {
+        BigInt::from(self.inner.get_currunix())
+    }
+
     /// The row header's named captures, in the order the expression declares
-    /// them.
+    /// them; resolved on the first ask where none were stated.
     #[napi(getter, ts_return_type = "Array<string | null>")]
     pub fn captures(&self) -> Vec<Option<String>> {
         (0..self.inner.captures().len())
@@ -403,7 +459,9 @@ impl JsTextLine {
             .collect()
     }
 
-    /// The key/value tree this line carries.
+    /// The key/value tree this line carries: what was stated, else the
+    /// payload's own entries, read on the first ask; `null` where it parses
+    /// as none.
     #[napi(getter, ts_return_type = "TextEntries | null")]
     pub fn entries(&self) -> Option<JsTextEntries> {
         self.inner.entries().cloned().map(JsTextEntries::from_core)

@@ -78,7 +78,7 @@ Totals are checked before allocation and cover validity bitmaps, offsets, union 
 
     ```rust
     use yggdryl::arrow::{scalar_array, scalar_value};
-    use yggdryl::{DataType, Field, Scalar, StructureType, UnionMode};
+    use yggdryl::{DataType, Field, Scalar, StructType, UnionMode};
 
     // One logical null, one million and one mandatory physical child slots.
     let items = Field::new(
@@ -92,7 +92,7 @@ Totals are checked before allocation and cover validity bitmaps, offsets, union 
     assert!(message.contains("got 1000001"), "{message}");
 
     // Fixed width is counted across siblings, not per column.
-    let wide = DataType::from(StructureType::from_fields([
+    let wide = DataType::from(StructType::from_fields([
         Field::new("left", DataType::fixed_binary(40 * 1024 * 1024)?, false),
         Field::new("right", DataType::fixed_binary(40 * 1024 * 1024)?, false),
     ])?);

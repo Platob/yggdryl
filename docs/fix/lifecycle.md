@@ -1,17 +1,18 @@
 # Lifecycle
 
-A message says what happened; it does not say which order's life it belongs to beyond the identifiers a venue chose. `FixCodec::lifecycle` is the one [walk](../graph.md) over messages: each is stated as the one after the live message of its chain - the chain named by the cross code every incarnation of one order shares - so a chained message carries its predecessor's identity and instant, its place in the chain, the predecessor as a parent and the lifecycle carried forward, and a monitor joins an order's whole life on `crossuuid` rather than rebuilding it from `ClOrdID`, `OrigClOrdID` and `OrderID` on its own.
+A message says what happened; it does not say which order's life it belongs to beyond the identifiers a venue chose. `FixCodec::lifecycle` is the one [walk](../graph.md) over messages: each is stated as the one after the live message of its chain - the chain named by the cross code every incarnation of one order shares - so a chained message carries its predecessor's identity and instant, its place in the chain, the predecessor's whole lineage as its parents and the lifecycle carried forward, and a monitor joins an order's whole life on `crossuuid` rather than rebuilding it from `ClOrdID`, `OrigClOrdID` and `OrderID` on its own.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
 | Owns | `FixCodec::lifecycle`, `FixCodec::lifecycle_arrow_reader`; the walk itself is [`graph::EventIterator`](../graph.md), which a caller opens over messages directly for a grid |
-| Columns | the [crate's own](capture.md#the-crates-own-columns): `crosscode` (65048), `crosshashcode` (65018) and `crossuuid` (65040) name the chain; `prevuuid` (65022), `prevunix` (65021), `seqnum` (65042) and `parentuuids` (65041) place a message in it; `creaunix` (65023) is the lifecycle carried forward, and the expiry and the state the walk folds are the traits' to answer off FIX's own fields rather than columns of their own; `snapunix` (65025) is a grid's stamp. `currhashcode` (65017) and `curruuid` (65039) are settled again after every stamp |
-| Chain name | the cross code: the first the message states of `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` and `MDReqID(262)`; `crosshashcode` is its XXH3-64 and `crossuuid` the UUIDv8 of that, so every message spelling one code shares one identity whatever else it says. A message naming none is a chain of one: its `crossuuid` is its own `curruuid` |
+| Columns | the [crate's own](capture.md#the-crates-own-columns): `crosscode` (65048), `crosshashcode` (65018) and `crossuuid` (65040) name the chain; `prevuuid` (65022), `prevunix` (65021), `seqnum` (65042) and `parentuuids` (65041) place a message in it; `creaunix` (65023), `expirunix` (65053) and `state` (65052) are the lifecycle carried forward - the earliest creation, the latest expiry and the furthest state the chain knows; `snapunix` (65025) is a grid's stamp. `currhashcode` (65017) and `curruuid` (65039) are settled again after every stamp |
+| Chain name | the cross code: the bridge's conversation, `msgsessionid:msgctxid`, where the row header stated both, else the first the message states of `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` and `MDReqID(262)`; `crosshashcode` is its XXH3-64 and `crossuuid` the UUIDv8 of that, so every message spelling one code shares one identity whatever else it says. A message naming none is a chain of one: its `crossuuid` is its own `curruuid` |
 | Joins | a message arriving under the identity a live message holds follows it; one arriving under no live identity, but going by a name a live message goes by - the same `(scheme, value)` in its [`identifiers`](capture.md#the-crates-own-columns), a report stating only the `ClOrdID` an order was placed under - follows that one, and takes the chain's cross code as its own |
-| Follows | the predecessor's `curruuid` and `currunix` recorded, `seqnum` one past the predecessor's, the predecessor adopted as a parent, the chain's cross code forced, the names the predecessor went by taken, and the lifecycle folded: the earliest `creaunix` the two know, the latest expiry, the furthest [state](../types/codes.md#a-state-sorts-by-its-lifecycle) - the last two answered by the traits, because a fold is not a statement and reaches no column; a message that moved is settled again, so its `currhashcode` and `curruuid` are its own |
+| Follows | the predecessor's `curruuid` and `currunix` recorded, `seqnum` one past the predecessor's, the predecessor's whole lineage as its parents, oldest first, the chain's cross code forced, the names the predecessor went by taken, and the lifecycle folded: the earliest `creaunix` the two know, the latest `expirunix`, the furthest [state](../types/codes.md#a-state-sorts-by-its-lifecycle) - each stated at its column, so a reader of the rows sees what the walk folded; a message that moved is settled again, so its `currhashcode` and `curruuid` are its own |
 | Twins | a message arriving under the identity the live one *arrived* under - the same instant and content, one message a bridge logged at every hop it passed - is another statement of it, not the one after it: it takes the live one's place, predecessor, position and lifecycle, and finalizes to the same `curruuid`, so the chain grows by nothing |
+| Dating | a message whose `SendingTime(52)` the parse supplied rather than read - a carrier's, the codec's default, the intake's clock - is dated by the `TransactTime(60)` it states with a clock before the walk, and a resend's `OrigSendingTime(122)` is its creation where earlier; a stated sending clock stands. `FixMsg::dated_by_transaction` is the reading, so a capture whose frames state no sending clock still orders, expires and folds by when its transactions happened |
 | Order | collected and stably sorted by instant before the walk, because a capture's lines are in the order they were written and two messages of one chain routinely arrive out of their own order |
 | Ends | a terminal state - filled, done for day, cancelled, rejected, expired - or a message past the expiry its fields state retires the chain once yielded, so a venue reusing a `ClOrdID` tomorrow starts a chain afresh under the same `crossuuid` |
 | Grid | `EventIterator::with_snapshot_ns(step)` reads one snapshot per step per chain: the first message to reach a step its chain has not consumed is stamped with the step's opening instant as `snapunix`, every later one in that step with none; `lifecycle` reads no grid |
@@ -36,11 +37,11 @@ One order's life: the order under its client identifier, the acknowledgement und
     let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
     let reader = FixCodec::new(Arc::clone(&registry));
     let lines: [&[u8]; 5] = [
-        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|60=20260102-10:15:30.250|10=0|",
-        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|",
-        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|",
-        b"8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|31=10.5|32=100|55=AAPL|60=20260102-10:15:33.100|10=0|",
-        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=50|60=20260102-10:15:40.000|10=0|",
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|52=20260102-10:15:30.250|10=0|",
+        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|52=20260102-10:15:30.500|10=0|",
+        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|52=20260102-10:15:30.500|10=0|",
+        b"8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|31=10.5|32=100|55=AAPL|52=20260102-10:15:33.100|10=0|",
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=50|52=20260102-10:15:40.000|10=0|",
     ];
     let parsed: Vec<FixMsg> = reader.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
     // Parsed, each message names the chain it spells: the order its ClOrdID,
@@ -62,6 +63,8 @@ One order's life: the order under its client identifier, the acknowledgement und
     assert_eq!(ack.get_prevunix(), Some(order.get_currunix()));
     assert_eq!(ack.get_parentuuids(), [order.get_curruuid()]);
     assert_eq!((fill.get_seqnum(), fill.get_prevuuid()), (2, Some(ack.get_curruuid())));
+    // A message descends from the whole chain before it, oldest first.
+    assert_eq!(fill.get_parentuuids(), [order.get_curruuid(), ack.get_curruuid()]);
     // The lifecycle travels: the chain's first creation, and the state.
     assert_eq!(fill.get_creaunix(), order.get_creaunix());
     assert_eq!(fill.get_state().as_str(), "80FILLED");
@@ -82,7 +85,7 @@ One order's life: the order under its client identifier, the acknowledgement und
     assert_eq!(parsed[1].get_side().as_str(), "UNKNOWN");
     assert_eq!(ack.get_side().as_str(), "BUY");
     let wire = ack.into_text('|')?;
-    assert!(wire.starts_with("8=FIX.4.4|35=8|11=A1|37=O1|150=0|"), "{wire}");
+    assert!(wire.starts_with("8=FIX.4.4|35=8|52=20260102-10:15:30.500|11=A1|37=O1|150=0|"), "{wire}");
     assert!(!wire.contains("65042="), "no stamp is a field");
 
     // A chained stream replayed answers the same messages.
@@ -101,11 +104,11 @@ One order's life: the order under its client identifier, the acknowledgement und
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     reader = FixCodec(registry)
     lines = [
-        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|60=20260102-10:15:30.250|10=0|",
-        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|",
-        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|",
-        b"8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|31=10.5|32=100|55=AAPL|60=20260102-10:15:33.100|10=0|",
-        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=50|60=20260102-10:15:40.000|10=0|",
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|52=20260102-10:15:30.250|10=0|",
+        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|52=20260102-10:15:30.500|10=0|",
+        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|52=20260102-10:15:30.500|10=0|",
+        b"8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|31=10.5|32=100|55=AAPL|52=20260102-10:15:33.100|10=0|",
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=50|52=20260102-10:15:40.000|10=0|",
     ]
     parsed = list(reader.parse_lines(lines))
     # Parsed, each message names the chain it spells: the order its ClOrdID, the
@@ -127,6 +130,8 @@ One order's life: the order under its client identifier, the acknowledgement und
     assert ack.event().prevunix == order.currunix
     assert ack.parentuuids == [order.curruuid]
     assert (fill.seqnum, fill.prevuuid) == (2, ack.curruuid)
+    # A message descends from the whole chain before it, oldest first.
+    assert fill.parentuuids == [order.curruuid, ack.curruuid]
     # The lifecycle travels: the chain's first creation, and the state.
     assert fill.event().creaunix == order.event().creaunix
     assert fill.state.as_py() == "80FILLED"
@@ -147,7 +152,7 @@ One order's life: the order under its client identifier, the acknowledgement und
     assert parsed[1].side.as_py() == "UNKNOWN"
     assert ack.side.as_py() == "BUY"
     wire = ack.into_text("|")
-    assert wire.startswith("8=FIX.4.4|35=8|11=A1|37=O1|150=0|")
+    assert wire.startswith("8=FIX.4.4|35=8|52=20260102-10:15:30.500|11=A1|37=O1|150=0|")
     assert "65042=" not in wire  # no stamp is a field
 
     # A chained stream replayed answers the same messages.
@@ -165,11 +170,11 @@ One order's life: the order under its client identifier, the acknowledgement und
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const reader = new fix.FixCodec(registry)
     const lines = [
-      '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|60=20260102-10:15:30.250|10=0|',
-      '8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|',
-      '8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|',
-      '8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|31=10.5|32=100|55=AAPL|60=20260102-10:15:33.100|10=0|',
-      '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=50|60=20260102-10:15:40.000|10=0|',
+      '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|44=10.5|52=20260102-10:15:30.250|10=0|',
+      '8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|52=20260102-10:15:30.500|10=0|',
+      '8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|52=20260102-10:15:30.500|10=0|',
+      '8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|31=10.5|32=100|55=AAPL|52=20260102-10:15:33.100|10=0|',
+      '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=50|52=20260102-10:15:40.000|10=0|',
     ].map((line) => Buffer.from(line))
     const parsed = [...reader.parseLines(lines)]
     // Parsed, each message names the chain it spells: the order its ClOrdID, the
@@ -191,6 +196,8 @@ One order's life: the order under its client identifier, the acknowledgement und
     assert.equal(ack.event().prevunix, order.currunix)
     assert.deepEqual(ack.parentuuids, [order.curruuid])
     assert.deepEqual([fill.seqnum, fill.prevuuid], [2, ack.curruuid])
+    // A message descends from the whole chain before it, oldest first.
+    assert.deepEqual(fill.parentuuids, [order.curruuid, ack.curruuid])
     // The lifecycle travels: the chain's first creation, and the state.
     assert.equal(fill.event().creaunix, order.event().creaunix)
     assert.equal(fill.state, '80FILLED')
@@ -211,7 +218,7 @@ One order's life: the order under its client identifier, the acknowledgement und
     assert.equal(parsed[1].side, 'UNKNOWN')
     assert.equal(ack.side, 'BUY')
     const wire = ack.intoText('|')
-    assert.ok(wire.startsWith('8=FIX.4.4|35=8|11=A1|37=O1|150=0|'), wire)
+    assert.ok(wire.startsWith('8=FIX.4.4|35=8|52=20260102-10:15:30.500|11=A1|37=O1|150=0|'), wire)
     assert.ok(!wire.includes('65042='), 'no stamp is a field')
 
     // A chained stream replayed answers the same messages.
@@ -221,17 +228,19 @@ One order's life: the order under its client identifier, the acknowledgement und
 
 ## A chain is named by its cross code
 
-The cross code is what a message spells to name the thing it is about, read off the first stated of `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` and `MDReqID(262)` when the message is [built](message.md), and `crossuuid` is derived from it - the UUIDv8 of its XXH3-64 - so two messages spelling one `OrderID` share one identity before any walk reads them. A message spelling none - a heartbeat, a logon - is a chain of one: its `crossuuid` is its own `curruuid`, and it opens nothing anyone else joins.
+The cross code is what a message spells to name the thing it is about: the bridge's conversation, `msgsessionid:msgctxid`, where the row header bracketed both, else the first stated of `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` and `MDReqID(262)`, read when the message is [built](message.md), and `crossuuid` is derived from it - the UUIDv8 of its XXH3-64 - so two messages spelling one `OrderID` share one identity before any walk reads them. A message spelling none - a heartbeat, a logon - is a chain of one: its `crossuuid` is its own `curruuid`, and it opens nothing anyone else joins.
 
 The walk keys the live chains on that identity, and where a message arrives under an identity nothing live holds, on the names a live message goes by: the message's [`identifiers`](capture.md#the-crates-own-columns) - the message component's own [`FIX:identifiers`](registry.md#component-identifiers), each under its canonical field name - are matched pair by pair, `(clordid, A1)`, against the names every live message went by, so a report stating only the `ClOrdID` an order was placed under joins the order, and a fill stating only the venue's `OrderID` joins through the acknowledgement that went by both. A message that follows takes the chain's cross code as its own, so `crosscode` and `crossuuid` name one chain whichever identifier each message chose, and a message's own spelling is still in its row and its wire. A replace's `OrigClOrdID(41)` is a different scheme from `ClOrdID(11)`, so it joins nothing by itself; the replace joins where it states the venue's `OrderID` or a `ClOrdID` a live message went by.
 
 ## A chain carries its creation and its history
 
-Following records the predecessor's `curruuid` and `currunix` as `prevuuid` and `prevunix`, adopts the predecessor as a parent - `parentuuids` is a message's own list, so a chain is also a lineage a caller walks backward - and puts the message one place after the predecessor's, `seqnum`. The lifecycle folds with it: `creaunix` is the earliest the two know, so the chain's first creation instant travels to every message of it; the expiry is the latest and the [state](../types/codes.md#a-state-sorts-by-its-lifecycle) the furthest along, each answered by the trait rather than stamped on a column. What the message itself said - its instant, its content - stays its own, and the message is settled again once it moved, so its `currhashcode` and `curruuid` are those of the chained message and never of what it was before the walk; a stamped stream replayed answers the same messages, because a message already following its predecessor is one following changes nothing on.
+Following records the predecessor's `curruuid` and `currunix` as `prevuuid` and `prevunix`, descends from the predecessor's whole lineage - `parentuuids` becomes the predecessor's parents then the predecessor, oldest first, each once, so every message of a chain names the whole chain before it and a caller reads a lineage off one row - and puts the message one place after the predecessor's, `seqnum`. The `srcuuids` a message states - the text line it was parsed out of - are its own and travel nowhere: provenance names what a node was read from, never what it follows. The lifecycle folds with it: `creaunix` is the earliest the two know, so the chain's first creation instant travels to every message of it; the expiry is the latest and the [state](../types/codes.md#a-state-sorts-by-its-lifecycle) the furthest along, each stamped on its column - `expirunix` and `state` - as `creaunix` is, so a row read back keeps what the walk folded: a stated state or expiry is the row's word, and the derivation off `OrdStatus` and the expiry clocks fills only a row stating none. What the message itself said - its instant, its content - stays its own, and the message is settled again once it moved, so its `currhashcode` and `curruuid` are those of the chained message and never of what it was before the walk; a stamped stream replayed answers the same messages, because a message already following its predecessor is one following changes nothing on.
+
+Read across the three steps, the lineage is joins on one column set: a message's `srcuuids` are the `curruuid` of the [line](../media/text/index.md#row-schema) it was parsed out of, a chained message's `prevuuid` and `parentuuids` are the `curruuid` of the messages before it, and the line's batch, the parsed row and the chained row open with the same sixteen [event columns](../graph.md#columns) under one name and one datatype each, so the joins need no mapping.
 
 ## A twin is not a successor
 
-A bridge logs one message at every hop it passes, so a capture routinely holds the same message twice: the same instant, the same content, a second line. The walk records the identity each live message *arrived* under, and a message arriving under that identity is yielded restating the live one - it takes the live one's predecessor, position and lifecycle and finalizes to the same `curruuid` - rather than chained behind it, so the chain grows by nothing and a monitor counting places in it counts messages the venue sent. Over the 94 messages of `rust/tests/fix/ulbridge.log`, a bridge's own second of capture, [`FixDedup`](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) drops 38 adjacent republished copies before the walk, and the walk chains 35 messages to a predecessor and folds the remaining twins into their first statement.
+A bridge logs one message at every hop it passes, so a capture routinely holds the same message twice: the same instant, the same content, a second line. The walk records the identity each live message *arrived* under, and a message arriving under that identity is yielded restating the live one - it takes the live one's predecessor, position and lifecycle and finalizes to the same `curruuid` - rather than chained behind it, so the chain grows by nothing and a monitor counting places in it counts messages the venue sent. Over the 94 messages of `rust/tests/fix/ulbridge.log`, a bridge's own second of capture, [`FixDedup`](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) drops 38 adjacent republished copies before the walk, and the walk chains 34 messages to a predecessor and folds the remaining twins into their first statement: each message dated by its transaction, because the bridge's frames state no sending clock, and each chain named by the hop's conversation, joined across hops by the identifiers its messages go by.
 
 ## Snapshots are a grid
 
@@ -250,10 +259,10 @@ A bridge logs one message at every hop it passes, so a capture routinely holds t
     let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
     let reader = FixCodec::new(Arc::clone(&registry));
     let lines: [&[u8]; 4] = [
-        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|60=20260102-10:15:30.250|10=0|",
-        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|",
-        b"8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|55=AAPL|60=20260102-10:15:33.100|10=0|",
-        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=50|60=20260102-10:15:40.000|10=0|",
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|52=20260102-10:15:30.250|10=0|",
+        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|52=20260102-10:15:30.500|10=0|",
+        b"8=FIX.4.4|35=8|37=O1|150=F|39=2|14=100|151=0|55=AAPL|52=20260102-10:15:33.100|10=0|",
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=50|52=20260102-10:15:40.000|10=0|",
     ];
     let parsed: Vec<FixMsg> = reader.parse_lines(lines).collect::<yggdryl::Result<_>>()?;
 
@@ -282,7 +291,7 @@ A bridge logs one message at every hop it passes, so a capture routinely holds t
 
 ## In a batch read
 
-The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a stage is a call: `codec.lifecycle_arrow_reader(reader)` chains a whole read of FIX rows under the schema it read, and `codec.arrow_reader(schema, codec.lifecycle(codec.messages(reader)))` is the same composition spelled out - the same messages and the same rows, except for [the capture's own columns](message.md#a-row-is-a-message-again), which no message holds: the door keeps each row's own cells beside its message, and the spelled-out composition has nowhere to put them, so it answers them null. `lifecycle` takes owned messages or their `Result`s (Python and JavaScript accept any iterable of messages); a source error is yielded as an item without advancing the walk, and only exhaustion fuses. Nothing chains unasked: a parse answers messages that follow nothing, because a stamped value is indistinguishable from a stated one, and a batch that is walked twice is walked into the same rows.
+The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a stage is a call: `codec.lifecycle_arrow_reader(reader)` chains a whole read of FIX rows under the schema it read, and `codec.arrow_reader(schema, codec.lifecycle(codec.messages(reader)))` is the same composition spelled out - the same messages and the same rows, [the capture's own columns](message.md#a-row-is-a-message-again) included: `messages` reads each row's own cells into the message it makes and `into_row` states them again at their columns, so the spelled-out composition keeps them exactly as the door does. `lifecycle` takes owned messages or their `Result`s (Python and JavaScript accept any iterable of messages); a source error is yielded as an item without advancing the walk, and only exhaustion fuses. Nothing chains unasked: a parse answers messages that follow nothing, because a stamped value is indistinguishable from a stated one, and a batch that is walked twice is walked into the same rows.
 
 === "Rust"
 

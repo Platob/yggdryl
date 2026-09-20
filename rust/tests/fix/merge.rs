@@ -5,7 +5,7 @@
 use super::path as fpath;
 
 use yggdryl::SequenceType;
-use yggdryl::{DataType, Error, Field, FixCategory, FixId, FixRegistry, StructureType};
+use yggdryl::{DataType, Error, Field, FixCategory, FixId, FixRegistry, StructType};
 
 fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
     let mut field = dtype.nullable_field(name);
@@ -24,7 +24,7 @@ fn catalog_with(members: impl IntoIterator<Item = Field>) -> FixRegistry {
     .unwrap();
     let mut partyid = registry.field(448).unwrap().clone();
     partyid.as_fix_mut().set_field_ref("PartyID").unwrap();
-    let component = StructureType::from_fields(std::iter::once(partyid).chain(members))
+    let component = StructType::from_fields(std::iter::once(partyid).chain(members))
         .map(DataType::from)
         .unwrap()
         .required_field("Party");
@@ -38,7 +38,7 @@ fn catalog_with(members: impl IntoIterator<Item = Field>) -> FixRegistry {
     group.as_fix_mut().set_group("Parties").unwrap();
     let mut counter = registry.field(453).unwrap().clone();
     counter.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
-    let mut message = StructureType::from_fields([counter, group])
+    let mut message = StructType::from_fields([counter, group])
         .map(DataType::from)
         .unwrap()
         .required_field("NewOrderSingle");
@@ -224,13 +224,12 @@ fn nested_fields_redirect_to_the_category_their_shape_names() {
     let mut registry =
         FixRegistry::from_fields([tagged("NoPartyIDs", 453, DataType::Int32)]).unwrap();
 
-    let mut message =
-        DataType::from(StructureType::from_fields([]).unwrap()).required_field("Order");
+    let mut message = DataType::from(StructType::from_fields([]).unwrap()).required_field("Order");
     message.as_fix_mut().set_msgtype("D").unwrap();
     assert!(registry.add_field(message).unwrap());
     assert_eq!(registry.msgtype("D").unwrap().name(), "Order");
 
-    let item = StructureType::from_fields([DataType::utf8().nullable_field("PartyID")])
+    let item = StructType::from_fields([DataType::utf8().nullable_field("PartyID")])
         .map(DataType::from)
         .unwrap()
         .required_field("Party");
@@ -267,7 +266,7 @@ fn nested_fields_redirect_to_the_category_their_shape_names() {
 
     // A nested datatype that is no definition is refused as a scalar is.
     let before = registry.clone();
-    let nullable = DataType::from(StructureType::from_fields([]).unwrap()).nullable_field("Loose");
+    let nullable = DataType::from(StructType::from_fields([]).unwrap()).nullable_field("Loose");
     for refused in [
         DataType::list(nullable).nullable_field("Occurrences"),
         DataType::list(DataType::utf8().nullable_field("Text")).nullable_field("Texts"),
@@ -292,7 +291,7 @@ fn a_component_extended_by_a_member_is_seen_extended_by_every_reference() {
     let mut extended = registry.field_by_name("Party").unwrap().clone();
     extended
         .set_dtype(DataType::from(
-            StructureType::from_fields(extended.fields().iter().cloned().chain([note])).unwrap(),
+            StructType::from_fields(extended.fields().iter().cloned().chain([note])).unwrap(),
         ))
         .unwrap();
 
@@ -340,7 +339,7 @@ fn a_component_extended_by_a_member_is_seen_extended_by_every_reference() {
     let mut order = registry.msgtype("D").unwrap().as_field().clone();
     order
         .set_dtype(
-            StructureType::from_fields(
+            StructType::from_fields(
                 order
                     .fields()
                     .iter()
@@ -364,7 +363,7 @@ fn a_group_occurrence_is_extended_where_its_members_live() {
     // A bare list stating one more member of the occurrence: the stored
     // occurrence is the component's, so the member lands there and the
     // group keeps its markers.
-    let member = StructureType::from_fields([DataType::utf8().nullable_field("PartyNote")])
+    let member = StructType::from_fields([DataType::utf8().nullable_field("PartyNote")])
         .map(DataType::from)
         .unwrap()
         .required_field("party");
@@ -390,14 +389,14 @@ fn a_group_occurrence_is_extended_where_its_members_live() {
     registry
         .add_field(tagged("NoHops", 627, DataType::Int32))
         .unwrap();
-    let hop = StructureType::from_fields([DataType::utf8().nullable_field("HopID")])
+    let hop = StructType::from_fields([DataType::utf8().nullable_field("HopID")])
         .map(DataType::from)
         .unwrap()
         .required_field("Hop");
     let mut hops = DataType::list(hop).nullable_field("Hops");
     hops.as_fix_mut().set_counter(627).unwrap();
     assert!(registry.add_field(hops.clone()).unwrap());
-    let more = StructureType::from_fields([
+    let more = StructType::from_fields([
         DataType::utf8().nullable_field("HopNote"),
         DataType::utf8().nullable_field("hopid"),
     ])
@@ -421,7 +420,7 @@ fn definition_merges_refuse_a_member_that_disagrees_atomically() {
     let before = registry.clone();
 
     // The same member under another datatype.
-    let changed = StructureType::from_fields([DataType::Int64.nullable_field("extra")])
+    let changed = StructType::from_fields([DataType::Int64.nullable_field("extra")])
         .map(DataType::from)
         .unwrap()
         .required_field("Party");
@@ -436,7 +435,7 @@ fn definition_merges_refuse_a_member_that_disagrees_atomically() {
 
     // A reference restated inline under another datatype is the same
     // disagreement, and the refusal names the reference and both datatypes.
-    let inline = StructureType::from_fields([tagged("PartyID", 448, DataType::Int32)])
+    let inline = StructType::from_fields([tagged("PartyID", 448, DataType::Int32)])
         .map(DataType::from)
         .unwrap()
         .required_field("Party");
@@ -474,7 +473,7 @@ fn add_fields_counts_what_arrived_and_what_folded() {
         FixRegistry::from_fields([symbol, tagged("Price", 44, DataType::Float64)]).unwrap();
     registry
         .insert(
-            StructureType::from_fields([])
+            StructType::from_fields([])
                 .map(DataType::from)
                 .unwrap()
                 .required_field("Instrument"),
@@ -486,7 +485,7 @@ fn add_fields_counts_what_arrived_and_what_folded() {
         .as_fix_mut()
         .set_description("by identity")
         .unwrap();
-    let mut extended = StructureType::from_fields([DataType::utf8().nullable_field("Symbol")])
+    let mut extended = StructType::from_fields([DataType::utf8().nullable_field("Symbol")])
         .map(DataType::from)
         .unwrap()
         .required_field("instrument");
@@ -497,7 +496,7 @@ fn add_fields_counts_what_arrived_and_what_folded() {
             described,
             tagged("ticker", 9001, DataType::utf8()),
             tagged("Text", 58, DataType::utf8()),
-            DataType::from(StructureType::from_fields([]).unwrap()).required_field("Header"),
+            DataType::from(StructType::from_fields([]).unwrap()).required_field("Header"),
             extended,
         ])
         .unwrap();
@@ -550,7 +549,7 @@ fn merging_a_dictionary_folds_its_definitions_rather_than_replacing_them() {
     let mut extended = source.field_by_name("Party").unwrap().clone();
     extended
         .set_dtype(DataType::from(
-            StructureType::from_fields(extended.fields().iter().cloned().chain([note])).unwrap(),
+            StructType::from_fields(extended.fields().iter().cloned().chain([note])).unwrap(),
         ))
         .unwrap();
     source.add_field(extended).unwrap();
@@ -593,7 +592,7 @@ fn the_strict_verbs_keep_refusing_and_replacing() {
     let mut registry = FixRegistry::from_fields([tagged("Symbol", 55, DataType::utf8())]).unwrap();
     registry
         .insert(
-            StructureType::from_fields([DataType::Int32.nullable_field("Count")])
+            StructType::from_fields([DataType::Int32.nullable_field("Count")])
                 .map(DataType::from)
                 .unwrap()
                 .required_field("Plain"),
@@ -614,7 +613,7 @@ fn the_strict_verbs_keep_refusing_and_replacing() {
     // A definition insert replaces what the fold names, and the stored
     // spelling stays whatever the incoming one spelled.
     let replaced = registry
-        .insert(DataType::from(StructureType::from_fields([]).unwrap()).required_field("plain"))
+        .insert(DataType::from(StructType::from_fields([]).unwrap()).required_field("plain"))
         .unwrap();
     assert_eq!(
         replaced.as_ref().map(Field::name),
@@ -627,7 +626,7 @@ fn the_strict_verbs_keep_refusing_and_replacing() {
     // have kept `Count`.
     registry
         .insert(
-            StructureType::from_fields([DataType::utf8().nullable_field("Other")])
+            StructType::from_fields([DataType::utf8().nullable_field("Other")])
                 .map(DataType::from)
                 .unwrap()
                 .required_field("Plain"),
@@ -643,7 +642,7 @@ fn a_member_stated_inline_agrees_with_the_reference_stored_for_it() {
     // A dictionary built in memory states `PartyID` inline where the loaded
     // one references it: both describe tag 448 as utf8, so the stored
     // reference stays and only the new member arrives.
-    let inline = StructureType::from_fields([
+    let inline = StructType::from_fields([
         tagged("partyid", 448, DataType::utf8()),
         DataType::utf8().nullable_field("PartyNote"),
     ])
@@ -670,7 +669,7 @@ fn a_member_stated_inline_agrees_with_the_reference_stored_for_it() {
         .unwrap();
     registry
         .insert(
-            StructureType::from_fields([DataType::utf8().nullable_field("Symbol")])
+            StructType::from_fields([DataType::utf8().nullable_field("Symbol")])
                 .map(DataType::from)
                 .unwrap()
                 .required_field("Instrument"),
@@ -678,7 +677,7 @@ fn a_member_stated_inline_agrees_with_the_reference_stored_for_it() {
         .unwrap();
     let mut symbol = registry.field(55).unwrap().clone();
     symbol.as_fix_mut().set_field_ref("Symbol").unwrap();
-    let restated = StructureType::from_fields([symbol])
+    let restated = StructType::from_fields([symbol])
         .map(DataType::from)
         .unwrap()
         .required_field("Instrument");
@@ -688,7 +687,7 @@ fn a_member_stated_inline_agrees_with_the_reference_stored_for_it() {
     let before = registry.clone();
     let mut count = tagged("Symbol", 9003, DataType::Int32);
     count.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
-    let disagreeing = StructureType::from_fields([count])
+    let disagreeing = StructType::from_fields([count])
         .map(DataType::from)
         .unwrap()
         .required_field("Instrument");
@@ -826,7 +825,7 @@ fn a_canonical_identity_supersedes_the_alternate_another_field_lists() {
 #[test]
 fn a_group_occurrence_folds_its_members_into_the_component_and_nothing_else() {
     let mut registry = catalog();
-    let mut member = StructureType::from_fields([DataType::utf8().nullable_field("PartyNote")])
+    let mut member = StructType::from_fields([DataType::utf8().nullable_field("PartyNote")])
         .map(DataType::from)
         .unwrap()
         .required_field("party");
@@ -860,14 +859,14 @@ fn a_reference_to_a_definition_arriving_in_the_same_merge_restates_an_inline_mem
         tagged("NoHops", 627, DataType::Int32),
         tagged("HopID", 628, DataType::utf8()),
     ];
-    let hop = StructureType::from_fields([DataType::utf8().nullable_field("HopID")])
+    let hop = StructType::from_fields([DataType::utf8().nullable_field("HopID")])
         .map(DataType::from)
         .unwrap()
         .required_field("Hop");
     let mut target = FixRegistry::from_fields(fields.clone()).unwrap();
     target
         .insert(
-            StructureType::from_fields([DataType::list(hop.clone()).nullable_field("Hops")])
+            StructType::from_fields([DataType::list(hop.clone()).nullable_field("Hops")])
                 .map(DataType::from)
                 .unwrap()
                 .required_field("Route"),
@@ -882,7 +881,7 @@ fn a_reference_to_a_definition_arriving_in_the_same_merge_restates_an_inline_mem
     restated.as_fix_mut().set_group("Hops").unwrap();
     source
         .insert(
-            StructureType::from_fields([restated, DataType::utf8().nullable_field("RouteID")])
+            StructType::from_fields([restated, DataType::utf8().nullable_field("RouteID")])
                 .map(DataType::from)
                 .unwrap()
                 .required_field("Route"),
@@ -1223,7 +1222,7 @@ fn message_codes_live_in_one_namespace() {
     // A second message on a held code under another name is a second
     // message: the bare code keeps answering the first holder, the newcomer
     // is reached by its name, and its code is the held one.
-    let mut venue = StructureType::from_fields([DataType::utf8().nullable_field("VenueID")])
+    let mut venue = StructType::from_fields([DataType::utf8().nullable_field("VenueID")])
         .map(DataType::from)
         .unwrap()
         .required_field("VenueOrder");
@@ -1247,7 +1246,7 @@ fn message_codes_live_in_one_namespace() {
 
     // A re-declaration under the same folded name folds into the stored
     // message, keeping its spelling and its code.
-    let mut restated = StructureType::from_fields([DataType::utf8().nullable_field("Text")])
+    let mut restated = StructType::from_fields([DataType::utf8().nullable_field("Text")])
         .map(DataType::from)
         .unwrap()
         .required_field("new_order_single");
@@ -1284,7 +1283,7 @@ fn a_bare_code_answers_the_message_the_code_set_names_else_the_first_in_name_ord
     // `D`, name order decides: `AlgoOrder` sorts before `NewOrderSingle`
     // however late it arrives.
     let mut registry = catalog();
-    let mut algo = StructureType::from_fields([DataType::utf8().nullable_field("AlgoID")])
+    let mut algo = StructType::from_fields([DataType::utf8().nullable_field("AlgoID")])
         .map(DataType::from)
         .unwrap()
         .required_field("AlgoOrder");
@@ -1334,7 +1333,7 @@ fn merging_two_spellings_of_one_field_keeps_one_member() {
     member.as_fix_mut().set_field_ref("PartyID").unwrap();
     registry
         .insert(
-            StructureType::from_fields([member])
+            StructType::from_fields([member])
                 .map(DataType::from)
                 .unwrap()
                 .required_field("Party"),
@@ -1346,7 +1345,7 @@ fn merging_two_spellings_of_one_field_keeps_one_member() {
     member.as_fix_mut().set_field_ref("party_id").unwrap();
     other
         .insert(
-            StructureType::from_fields([member])
+            StructType::from_fields([member])
                 .map(DataType::from)
                 .unwrap()
                 .required_field("Party"),

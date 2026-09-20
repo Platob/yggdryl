@@ -28,9 +28,9 @@ The media type names the encoding, so no format argument is passed.
 
     ```rust
     use yggdryl::media::{IORecordOptions, RecordOptions};
-    use yggdryl::{DataType, MimeType, StructureType, Url};
+    use yggdryl::{DataType, MimeType, StructType, Url};
 
-    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
+    let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
 
     let options = RecordOptions::for_media_type(&Url::from_str("file:///trades.parquet")?.media_type())?
         .with_field(schema.clone())
@@ -121,9 +121,9 @@ The media type names the encoding, so no format argument is passed.
 
     ```rust
     use yggdryl::media::{IORecordOptions, RecordOptions};
-    use yggdryl::{DataType, MimeType, StructureType};
+    use yggdryl::{DataType, MimeType, StructType};
 
-    let schema = DataType::from(StructureType::from_fields([
+    let schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])?)
@@ -249,9 +249,9 @@ Rust; Python binds the same `RecordOptions.apply_arrow_batch` / `apply_arrow_rea
 ```rust
 use arrow_array::RecordBatch;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{DataType, MimeType, StructureType};
+use yggdryl::{DataType, MimeType, StructType};
 
-let declared = DataType::from(StructureType::from_fields([
+let declared = DataType::from(StructType::from_fields([
     DataType::utf8().required_field("symbol"),
     DataType::Int64.required_field("price"),
 ])?)

@@ -101,6 +101,9 @@ called.
 | `mimetype` | `bodytype`, `content_type`, `contenttype`, `media_type` |
 | `body` | `payload`, `message`, `line`, `text`, `content`, `raw` |
 | `dropped_byte_size` | `dropped`, `dropped_bytes`, `truncated_bytes` |
+| the sixteen [event columns](../../graph.md#columns) | their own names only, exactly or ignoring case |
+
+A batch carrying the event columns restates them on each line read back - the identity a message named as its source survives the round trip - and a batch without them is read as before, each line deriving its own from its body and instant.
 
 - The column plan is resolved once, at intake: a matched column whose Arrow
   datatype is not the one the options plan for it is refused there, at
@@ -137,7 +140,9 @@ use yggdryl::text::{
 
 let mut options = TextOptions::new().try_with_rowheader(r"^(?<level>[A-Z]+) (?<id>\d+) ")?;
 options.start_rownum = Some(10);
-let line = TextLine::from_bytes(2, TextBytes::from_bytes("first")?)?
+// The line reads itself by the options it is built under; stated captures are
+// its word over the header it would otherwise match.
+let line = TextLine::from_bytes(2, TextBytes::from_bytes("first")?, Arc::new(options.clone()))?
     .with_captures(vec![None, Some(TextBytes::from_bytes("0007")?)])?;
 let batch = into_arrow_batch([line], &options)?;
 

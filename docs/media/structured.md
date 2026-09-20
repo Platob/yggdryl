@@ -134,9 +134,9 @@ A document has no frame to read a prefix of, so a read holds the parsed document
     use yggdryl::{json, toml, yaml};
     use yggdryl::Scalar;
 
-    let value = Scalar::from_record([(
+    let value = Scalar::from_struct([(
         "child",
-        Scalar::from_record([("id", Scalar::from(1_i64))])?,
+        Scalar::from_struct([("id", Scalar::from(1_i64))])?,
     )])?;
 
     // JSON is compact by default and spaces each level out under an indent.

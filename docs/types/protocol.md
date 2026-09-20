@@ -306,14 +306,14 @@ holder, in declaration order.
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, StructureType};
+    use yggdryl::{DataType, Field, StructType};
 
     let id = Field::new("id", DataType::Int64, false);
     let price = Field::new("price", DataType::Float64, false);
     let mut stored = Field::new("row_digest", DataType::UInt64, false);
     stored.as_digest_mut().set_holder()?;
 
-    let fallback = DataType::from(StructureType::from_fields([id.clone(), price.clone(), stored.clone()])?)
+    let fallback = DataType::from(StructType::from_fields([id.clone(), price.clone(), stored.clone()])?)
         .required_field("row");
     assert_eq!(fallback.digest_field_names().collect::<Vec<_>>(), ["id", "price"]);
 
@@ -323,7 +323,7 @@ holder, in declaration order.
     assert_eq!(narrowed.as_digest().sources()?, Some(vec!["id".to_owned()]));
     assert!(id.as_digest().is_empty());
 
-    let explicit = DataType::from(StructureType::from_fields([id, price, narrowed])?).required_field("row");
+    let explicit = DataType::from(StructType::from_fields([id, price, narrowed])?).required_field("row");
     assert_eq!(explicit.digest_field_names().collect::<Vec<_>>(), ["id", "price"]);
     assert_eq!(explicit.only_digest_fields()?.field_len(), 2);
     ```
@@ -403,9 +403,9 @@ The reserved `FIELD:partition` key marks partition columns on the fields themsel
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, StructureType};
+    use yggdryl::{DataType, StructType};
 
-    let schema = DataType::from(StructureType::from_fields([
+    let schema = DataType::from(StructType::from_fields([
         DataType::Int32.required_field("year"),
         DataType::utf8().required_field("venue"),
         DataType::Int64.required_field("price"),

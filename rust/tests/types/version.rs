@@ -10,7 +10,7 @@ use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
     ArrowCastOptions, DataTypeId, DataTypeKind, Error, Field, FieldScalar, Scalar, Scheme,
-    StructureType, Version, VersionField,
+    StructType, Version, VersionField,
 };
 
 fn version(text: &str) -> Version {
@@ -36,7 +36,7 @@ fn digest(value: &Version) -> u64 {
 }
 
 fn root(field: Field) -> Field {
-    StructureType::from_fields([field])
+    StructType::from_fields([field])
         .map(DataType::from)
         .unwrap()
         .required_field("row")
@@ -262,18 +262,13 @@ fn datatype_identity_naming_and_serde_are_total() {
         DataTypeId::Version
     );
     assert_eq!(DataTypeId::Version.as_str(), "version");
-    assert_eq!(DataTypeId::Version.as_u8(), 54);
+    // In the text family's range, after the eighteen string leaves: `as_u8`
+    // is a wire contract laid out by family, so a version sits beside the
+    // text it is rather than at the end of the enum.
+    assert_eq!(DataTypeId::Version.as_u8(), 0x63);
     assert_eq!(DataTypeId::Version.fixed_byte_width(), None);
-    // `Version` is no longer last: the coded FIX datatypes, then `Url`,
-    // `Isin`, the three canonical text datatypes and the three securities
-    // identifiers `Cusip`, `Sedol` and `Bloomberg`, the mapping family's
-    // `SortedMap` leaf, the structure family's `Struct2` leaf, the uuid
-    // family's three versioned leaves, the byte family's two and the
-    // string family's thirteen, and the `uri` datatype were appended after it,
-    // which is what `as_u8` being a wire contract requires; the five UTF-8
-    // string leaves took the slots the text variants they replaced held.
-    assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::Urn));
-    assert_eq!(DataTypeId::LargeUtf8StringView.as_u8(), 31);
+    assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::Geography));
+    assert_eq!(DataTypeId::LargeUtf8StringView.as_u8(), 0x54);
     assert!(!DataTypeId::Version.is_parameterized());
     assert!(DataTypeId::Version.is_string());
     assert!(!dtype.is_nested());

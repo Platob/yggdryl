@@ -1,5 +1,5 @@
 use super::*;
-use yggdryl::StructureType;
+use yggdryl::StructType;
 
 #[test]
 fn native_struct_row_adapters_route_all_three_intents() {
@@ -395,7 +395,7 @@ fn appending_casts_incoming_batches_to_the_target_shape() {
 
     // The incoming batch merely fits: `id` is narrower and the columns are
     // the other way round.
-    let loose = StructureType::from_fields([
+    let loose = StructType::from_fields([
         DataType::utf8().nullable_field("symbol"),
         DataType::Int32.required_field("id"),
     ])
@@ -438,7 +438,7 @@ fn a_cast_that_cannot_be_planned_leaves_the_resource_alone() {
     // Text that is not a number cannot become the declared Int64, and this
     // write is strict, so the append fails while the batches are being
     // encoded - before anything is published.
-    let hostile = StructureType::from_fields([DataType::utf8().required_field("id")])
+    let hostile = StructType::from_fields([DataType::utf8().required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");

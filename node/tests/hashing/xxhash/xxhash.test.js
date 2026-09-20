@@ -341,8 +341,16 @@ test('signed holders retain the complete digest bits', () => {
 
   assert.deepEqual([...filled.getChild('signed32')], expected32)
   assert.deepEqual([...filled.getChild('signed64')], expected64)
-  assert.ok(expected32[1] < 0)
-  assert.ok(expected64[0] < 0n)
+  // The signed holder keeps every bit: read unsigned again, each value is
+  // the digest itself, whichever way its high bit fell.
+  assert.deepEqual(
+    expected32.map((value) => BigInt.asUintN(32, BigInt(value))),
+    ['AAPL', '8'].map((value) => BigInt(Scalar.from([value]).digest('xxh32').value())),
+  )
+  assert.deepEqual(
+    expected64.map((value) => BigInt.asUintN(64, value)),
+    ['AAPL', '8'].map((value) => Scalar.from([value]).digest('xxh3-64').value()),
+  )
 
   const conditionalRoot = new Field(
     'row',

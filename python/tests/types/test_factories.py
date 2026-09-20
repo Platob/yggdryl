@@ -114,9 +114,8 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
     }
     # The factories cover every datatype Arrow has a layout for. `int128` and
     # `uint128` are the two identifiers `Scalar` stores and `DataType` cannot,
-    # so no field builds them, and `struct2` is the two-child leaf a mapping's
-    # entries have rather than a shape a caller declares.
-    unbuildable = {"int128", "uint128", "struct2"}
+    # so no field builds them.
+    unbuildable = {"int128", "uint128"}
     assert len(values_by_kind) == len(enums.DATA_TYPE_IDS) - len(unbuildable)
     assert set(values_by_kind) == set(enums.DATA_TYPE_IDS) - unbuildable
     assert all(type(value) is Field for value in values_by_kind.values())

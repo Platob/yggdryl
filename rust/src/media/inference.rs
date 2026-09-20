@@ -40,7 +40,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Field, Result, Scalar, StructureType, i256};
+use crate::{DataType, Error, Field, Result, Scalar, StructType, i256};
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
 const MAX_DECIMAL_PRECISION: usize = 76;
@@ -115,7 +115,7 @@ impl Scalar {
                 "cannot infer a Struct Field from empty rows; pass a Struct Field",
             )));
         }
-        if rows.iter().any(|row| !matches!(row, Self::Record(_))) {
+        if rows.iter().any(|row| !matches!(row, Self::Struct(_))) {
             return Err(unnameable(SmolStr::new_static(
                 "positional Sequence rows cannot infer field names; pass a Struct Field",
             )));
@@ -242,7 +242,7 @@ impl Scalar {
                 let (value, _) = agreed(values, "mapping value", depth)?;
                 DataType::map_of(key, value, false)
             }
-            Self::Record(entries) => StructureType::from_fields(
+            Self::Struct(entries) => StructType::from_fields(
                 entries
                     .as_map()
                     .iter()

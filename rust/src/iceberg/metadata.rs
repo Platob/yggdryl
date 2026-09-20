@@ -1000,7 +1000,7 @@ impl TableMetadata {
 
         let mut refs = Vec::new();
         if let Some(entries) = document.get_key_str("refs") {
-            if let Some(record) = entries.as_record() {
+            if let Some(record) = entries.as_struct() {
                 for (name, entry) in record {
                     refs.push((name.clone(), SnapshotRef::from_json(entry)?));
                 }
@@ -1017,7 +1017,7 @@ impl TableMetadata {
         let mut properties: Vec<(SmolStr, SmolStr)> = document
             .get_key_str("properties")
             .map(|entries| {
-                if let Some(record) = entries.as_record() {
+                if let Some(record) = entries.as_struct() {
                     record
                         .iter()
                         .map(|(key, value)| (key.clone(), super::value::scalar_text(value)))
@@ -1691,11 +1691,11 @@ impl TableMetadata {
     /// ```
     /// use yggdryl::iceberg::{FormatVersion, PartitionSpec, Snapshot, TableMetadata};
     /// use yggdryl::iceberg::assign_field_ids;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+    /// let mut schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
     ///     .required_field("row");
     /// assign_field_ids(&mut schema, 1)?;
     /// let mut metadata = TableMetadata::new(
@@ -2694,7 +2694,7 @@ fn validate_v1_wire_refs(document: &Scalar) -> Result<()> {
     let Some(entries) = document.get_key_str("refs") else {
         return Ok(());
     };
-    let refs = if let Some(record) = entries.as_record() {
+    let refs = if let Some(record) = entries.as_struct() {
         record
             .iter()
             .map(|(name, value)| Ok((name.clone(), SnapshotRef::from_json(value)?)))
@@ -2992,11 +2992,11 @@ fn invalid(reason: SmolStr) -> Error {
 mod strict_metadata_tests {
     use super::{FormatVersion, SortOrder, TableMetadata};
     use crate::iceberg::{PartitionSpec, Snapshot, SnapshotRef};
-    use crate::{DataType, Scalar, StructureType};
+    use crate::{DataType, Scalar, StructType};
     use smol_str::SmolStr;
 
     fn document(version: FormatVersion) -> Scalar {
-        let schema = StructureType::from_fields([DataType::Int64.required_field("id")])
+        let schema = StructType::from_fields([DataType::Int64.required_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("row");

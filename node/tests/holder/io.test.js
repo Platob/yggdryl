@@ -711,12 +711,19 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
   const table = new IOBase(target).readArrowReader(options).intoTable()
   assert.deepEqual(
     table.schema.fields.map((field) => field.name),
-    ['sourceurl', 'rownum', 'mtime', 'body', 'level', 'id'],
+    [
+      'currunix', 'creaunix', 'expirunix', 'prevunix', 'snapunix',
+      'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
+      'prevuuid', 'seqnum', 'parentuuids', 'srcuuids', 'identifiers', 'state',
+      'sourceurl', 'rownum', 'mtime', 'body', 'level', 'id',
+    ],
   )
   assert.deepEqual([...table.getChild('rownum')], [10n, 11n, 12n])
+  // The body is the whole line, its row header included; the edges are
+  // what stripping removes.
   assert.deepEqual(
     [...table.getChild('body')],
-    ['first', 'second', 'plain'],
+    ['[INFO] id=7 first', '[WARN] id=9 second', 'plain'],
   )
   assert.deepEqual([...table.getChild('level')], ['INFO', 'WARN', null])
   assert.deepEqual([...table.getChild('id')], [7n, 9n, null])
@@ -724,7 +731,7 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
   const records = [...new IOBase(target).readRecords(options)]
   assert.deepEqual(
     records.map((row) => row.body),
-    ['first', 'second', 'plain'],
+    ['[INFO] id=7 first', '[WARN] id=9 second', 'plain'],
   )
   assert.deepEqual(
     records.map((row) => row.id),
@@ -749,8 +756,11 @@ test('framed text keeps physical row starts and reports a bounded prefix', () =>
     batches.map((batch) => batch.numRows),
     [1, 1, 1],
   )
+  // The sixteen event columns lead the row, the line's own behind them.
+  assert.equal(batches[0].schema.fields[0].name, 'currunix')
+  assert.equal(batches[0].schema.fields[15].name, 'state')
   assert.deepEqual(
-    batches[0].schema.fields.map((field) => [field.name, field.nullable]),
+    batches[0].schema.fields.slice(16).map((field) => [field.name, field.nullable]),
     [
       ['sourceurl', true],
       ['rownum', false],
@@ -762,9 +772,9 @@ test('framed text keeps physical row starts and reports a bounded prefix', () =>
   )
   // The url column is the `url` datatype over Utf8 storage, and every row
   // carries the canonical URL text of the handle it was read from.
-  assert.equal(batches[0].schema.fields[0].type.toString(), 'Utf8')
+  assert.equal(batches[0].schema.fields[16].type.toString(), 'Utf8')
   assert.equal(
-    batches[0].schema.fields[0].metadata.get('ARROW:extension:name'),
+    batches[0].schema.fields[16].metadata.get('ARROW:extension:name'),
     'yggdryl.url',
   )
   assert.deepEqual(
@@ -779,7 +789,8 @@ test('framed text keeps physical row starts and reports a bounded prefix', () =>
     batches
       .flatMap((batch) => [...batch.getChild('body')])
       .map((body) => Buffer.from(body).toString()),
-    ['12345678', 'abc\ndefg', 'z'],
+    // The header is always retained; the limit bounds what follows it.
+    ['[A] 12345678', '[B] abc\ndefg', '[C] z'],
   )
   assert.deepEqual(
     batches.flatMap((batch) => [...batch.getChild('dropped_byte_size')]),
@@ -837,7 +848,7 @@ test('text-only settings are flat native TextOptions value state', () => {
 
   assert.throws(() => {
     options.rowheader = '(?<body>.+)'
-  }, /distinct from sourceurl, rownum, body, and dropped_byte_size/)
+  }, /distinct from sourceurl, rownum, body, dropped_byte_size and the event columns/)
   assert.throws(() => {
     options.startRownum = 1
   })
@@ -882,7 +893,9 @@ test('retained text options parse the real execution row', () => {
   assert.equal(row.level, 'DEBUG')
   assert.equal(
     row.body,
-    'Execution report (execId: 20260828180000369318, from session:',
+    '2026-08-29 00:00:00.434_958 [77-2f3e6ff7:9f4d2a08b1:128] ' +
+      '[ModuleFailFastFilterChecker] (DEBUG) Execution report ' +
+      '(execId: 20260828180000369318, from session:',
   )
 })
 
@@ -939,7 +952,7 @@ test('text folders decode coded leaves through the same record path', (t) => {
   )
   assert.deepEqual(
     rows.map((row) => row.body),
-    ['from a', 'from b'],
+    ['[INFO] id=1 from a', '[WARN] id=2 from b'],
   )
   assert.deepEqual(
     rows.map((row) => row.id),

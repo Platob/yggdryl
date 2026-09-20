@@ -82,10 +82,10 @@ impl PyScalar {
         &'value self,
         key: &Bound<'_, PyAny>,
     ) -> PyResult<Option<&'value Scalar>> {
-        if self.inner.as_record().is_some() {
+        if self.inner.as_struct().is_some() {
             let key = key
                 .cast::<PyString>()
-                .map_err(|_| PyTypeError::new_err("record keys must be str"))?;
+                .map_err(|_| PyTypeError::new_err("struct keys must be str"))?;
             return Ok(self.inner.get_key_str(key.to_str()?));
         }
         if self.inner.as_mapping().is_some() {
@@ -460,7 +460,7 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
                 .collect::<PyResult<Vec<_>>>()?;
             tagged_pickle_state(py, "mapping", Some(pickle_tuple(py, entries)?))
         }
-        Scalar::Record(entries) => {
+        Scalar::Struct(entries) => {
             let entries = entries
                 .as_map()
                 .iter()
@@ -474,7 +474,7 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
                     )
                 })
                 .collect::<PyResult<Vec<_>>>()?;
-            tagged_pickle_state(py, "record", Some(pickle_tuple(py, entries)?))
+            tagged_pickle_state(py, "struct", Some(pickle_tuple(py, entries)?))
         }
         _ => Err(PyValueError::new_err(
             "unsupported Scalar representation in pickle state",
@@ -771,7 +771,7 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .collect::<PyResult<Vec<_>>>()?;
             Scalar::from_mapping(entries).map_err(value_error)
         }
-        "record" => {
+        "struct" => {
             let payload = payload()?;
             let entries = payload
                 .cast::<PyTuple>()
@@ -793,7 +793,7 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                     ))
                 })
                 .collect::<PyResult<Vec<_>>>()?;
-            Scalar::from_record(entries).map_err(value_error)
+            Scalar::from_struct(entries).map_err(value_error)
         }
         _ => Err(PyValueError::new_err(format!(
             "unknown Scalar pickle tag {tag:?}"
@@ -804,10 +804,43 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
 #[pymethods]
 #[allow(clippy::wrong_self_convention)] // Python `into_*` methods do not consume wrappers.
 impl PyScalar {
-    /// Rebuild exact private state used by pickle and reconstructible repr.
+    /// Rebuild a value from what pickle or a reconstructible repr carried:
+    /// the variant encoding as `bytes`, which is what `__reduce__` hands
+    /// pickle, or the tagged state a `repr` spells.
     #[staticmethod]
     fn _from_pickle(state: &Bound<'_, PyAny>) -> PyResult<Self> {
+        if state.is_instance_of::<PyBytes>() {
+            return Self::from_variant_bytes(state);
+        }
         scalar_from_pickle_state(state, 0).map(Self::from_inner)
+    }
+
+    /// The value one variant encoding holds: the version, the datatype's
+    /// identifier and the payload, as `into_variant_bytes` wrote them,
+    /// nested values inside.
+    ///
+    /// Raises `ValueError` naming the byte where the bytes could not be
+    /// read: another version, a byte naming no datatype, a payload cut
+    /// short, or bytes left after the value.
+    #[staticmethod]
+    fn from_variant_bytes(data: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let buffer = pyo3::buffer::PyBuffer::<u8>::get(data).map_err(|_| {
+            PyTypeError::new_err("variant bytes must be bytes, a bytearray or a buffer")
+        })?;
+        let held = buffer.to_vec(data.py())?;
+        Scalar::decode_variant_bytes(&held)
+            .map(Self::from_inner)
+            .map_err(value_error)
+    }
+
+    /// This value as the variant encoding: one `bytes` holding the
+    /// version, the datatype's identifier and the payload the identifier
+    /// says how to read - a number as its little-endian bytes, a text as a
+    /// compression byte, a size and the characters, a nested value as a
+    /// count and its children - compressed with zstd past four kibibytes.
+    /// What pickle carries, and what a variant column stores per row.
+    fn into_variant_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new(py, &self.inner.into_variant_bytes())
     }
 
     /// Convert a Python-native value without a text intermediate.
@@ -827,7 +860,7 @@ impl PyScalar {
     /// A Python mapping is a mapping, so this is how a caller says that names
     /// are field names rather than keys. A duplicate name is a `ValueError`.
     #[staticmethod]
-    fn from_record(entries: &Bound<'_, PyAny>) -> PyResult<Self> {
+    fn from_struct(entries: &Bound<'_, PyAny>) -> PyResult<Self> {
         let mut pairs: Vec<(String, Scalar)> = Vec::new();
         if let Ok(mapping) = entries.cast::<PyDict>() {
             for (name, value) in mapping.iter() {
@@ -840,7 +873,7 @@ impl PyScalar {
                 pairs.push((record_name(&name)?, from_py(&value)?));
             }
         }
-        Scalar::from_record(pairs)
+        Scalar::from_struct(pairs)
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -1285,10 +1318,10 @@ impl PyScalar {
     /// Persistently add or replace one mapping key or record field.
     fn set(&self, key: &Bound<'_, PyAny>, value: &Bound<'_, PyAny>) -> PyResult<Self> {
         let value = from_py(value)?;
-        let rebuilt = if self.inner.as_record().is_some() {
+        let rebuilt = if self.inner.as_struct().is_some() {
             let key = key
                 .cast::<PyString>()
-                .map_err(|_| PyTypeError::new_err("record keys must be str"))?;
+                .map_err(|_| PyTypeError::new_err("struct keys must be str"))?;
             self.inner.with_field(key.to_str()?, value)
         } else {
             self.inner.with_key(from_py(key)?, value)
@@ -1301,7 +1334,7 @@ impl PyScalar {
         let key = key
             .cast::<PyString>()
             .map_err(|_| PyTypeError::new_err("remove() key must be str"))?;
-        let rebuilt = if self.inner.as_record().is_some() {
+        let rebuilt = if self.inner.as_struct().is_some() {
             self.inner.without_field(key.to_str()?)
         } else {
             self.inner.without_key(key.to_str()?)
@@ -1313,7 +1346,7 @@ impl PyScalar {
     fn keys(&self) -> PyScalarIterator {
         let keys = if let Some(entries) = self.inner.as_mapping() {
             entries.iter().map(|(key, _)| key.clone()).collect()
-        } else if let Some(entries) = self.inner.as_record() {
+        } else if let Some(entries) = self.inner.as_struct() {
             entries.keys().cloned().map(Scalar::from).collect()
         } else {
             Vec::new()
@@ -1325,7 +1358,7 @@ impl PyScalar {
     fn values(&self) -> PyScalarIterator {
         let values = if let Some(entries) = self.inner.as_mapping() {
             entries.iter().map(|(_, value)| value.clone()).collect()
-        } else if let Some(entries) = self.inner.as_record() {
+        } else if let Some(entries) = self.inner.as_struct() {
             entries.values().cloned().collect()
         } else {
             Vec::new()
@@ -1337,7 +1370,7 @@ impl PyScalar {
     fn items(&self) -> PyScalarEntryIterator {
         let entries = if let Some(entries) = self.inner.as_mapping() {
             entries.to_vec()
-        } else if let Some(entries) = self.inner.as_record() {
+        } else if let Some(entries) = self.inner.as_struct() {
             entries
                 .iter()
                 .map(|(key, value)| (Scalar::from(key.clone()), value.clone()))
@@ -1396,7 +1429,7 @@ impl PyScalar {
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
         Ok((
             py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
-            (scalar_pickle_state(py, &self.inner)?,),
+            (self.into_variant_bytes(py).into_any().unbind(),),
         ))
     }
 
@@ -1576,7 +1609,7 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
             Ok(PyList::new(py, items)?.into_any().unbind())
         }
         Scalar::Mapping(entries) => mapping_to_python(py, entries.as_slice()),
-        Scalar::Record(entries) => {
+        Scalar::Struct(entries) => {
             let output = PyDict::new(py);
             for (name, value) in entries.as_map() {
                 output.set_item(name.as_str(), as_py(py, value)?)?;
@@ -1597,7 +1630,7 @@ pub(crate) fn as_py_with_field(
         return as_py(py, value);
     }
     match field.dtype() {
-        CoreDataType::Structure(structure) => {
+        CoreDataType::Struct(structure) => {
             let fields = structure.as_fields();
             let output = PyDict::new(py);
             match value {
@@ -1606,7 +1639,7 @@ pub(crate) fn as_py_with_field(
                         output.set_item(child.name(), as_py_with_field(py, value, child)?)?;
                     }
                 }
-                Scalar::Record(values) => {
+                Scalar::Struct(values) => {
                     for child in fields {
                         let value = values.as_map().get(child.name()).ok_or_else(|| {
                             PyValueError::new_err(format!(
@@ -1733,7 +1766,7 @@ fn as_py_key(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
                 .collect::<PyResult<Vec<_>>>()?;
             Ok(PyTuple::new(py, entries)?.into_any().unbind())
         }
-        Scalar::Record(entries) => {
+        Scalar::Struct(entries) => {
             let entries = entries
                 .as_map()
                 .iter()
@@ -2135,7 +2168,7 @@ impl Encoder {
                     ));
                 }
             }
-            Scalar::from_record(entries).map_err(value_error)
+            Scalar::from_struct(entries).map_err(value_error)
         })
         .map(Some)
     }
@@ -2152,7 +2185,7 @@ impl Encoder {
                     Ok((name, encoder.convert(&item, depth + 1)?))
                 })
                 .collect::<PyResult<Vec<_>>>()?;
-            Scalar::from_record(entries).map_err(value_error)
+            Scalar::from_struct(entries).map_err(value_error)
         })
     }
 
@@ -2192,7 +2225,7 @@ impl Encoder {
                     }
                 }
             }
-            Scalar::from_record(entries).map_err(value_error)
+            Scalar::from_struct(entries).map_err(value_error)
         })
     }
 

@@ -9,12 +9,12 @@ use yggdryl::holder::buffered::BufferedOptions;
 use yggdryl::media::Media;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::TextOptions;
-use yggdryl::{DataType, Field, MediaType, MimeType, StructureType, Url};
+use yggdryl::{DataType, Field, MediaType, MimeType, StructType, Url};
 use yggdryl::{IOBase, IOMedia};
 
 /// A struct field is the schema of the batches it describes.
 fn schema() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])

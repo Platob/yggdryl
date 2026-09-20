@@ -15,263 +15,231 @@ use crate::{Error, Result};
 /// or child fields, so it compares and hashes without touching nested state and
 /// is the value bindings use for type names and annotations.
 ///
+/// The number each variant states is one byte laid out by family: every
+/// [`DataTypeKind`] owns a range that starts at the family's own number -
+/// [`DataTypeKind::id`], a placeholder no leaf takes - and its leaves follow
+/// in that range, so the high bits of a leaf's byte say its family and a
+/// family has room for the leaves it does not have yet. The byte is what
+/// [the variant encoding](crate::Scalar::into_variant_bytes) and
+/// [`crate::Scalar::write_bytes`] write as a value's tag, and
+/// [`Self::from_u8`] reads it back.
+///
 /// Use [`DataTypeKind`] through [`Self::kind`] when only the family matters.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
 #[repr(u8)]
 pub enum DataTypeId {
+    // Null: 0x00..0x07
     /// Null values.
-    Null = 0,
+    Null = 0x00,
+    // Boolean: 0x08..0x0f
     /// Boolean values.
-    Boolean = 1,
+    Boolean = 0x09,
+    // Integer: 0x10..0x1f
     /// Signed 8-bit integers.
-    Int8 = 2,
+    Int8 = 0x11,
     /// Signed 16-bit integers.
-    Int16 = 3,
+    Int16 = 0x12,
     /// Signed 32-bit integers.
-    Int32 = 4,
+    Int32 = 0x13,
     /// Signed 64-bit integers.
-    Int64 = 5,
-    /// Unsigned 8-bit integers.
-    UInt8 = 6,
-    /// Unsigned 16-bit integers.
-    UInt16 = 7,
-    /// Unsigned 32-bit integers.
-    UInt32 = 8,
-    /// Unsigned 64-bit integers.
-    UInt64 = 9,
+    Int64 = 0x14,
     /// Signed 128-bit integers.
     ///
     /// Arrow has no 128-bit integer layout, so no [`crate::DataType`] answers
     /// this identifier. It names the width [`crate::integer::Int128`] stores and
     /// the canonical identity a negative integer of any width carries into
     /// [`crate::Scalar::write_bytes`].
-    Int128 = 10,
+    Int128 = 0x15,
+    /// Unsigned 8-bit integers.
+    UInt8 = 0x19,
+    /// Unsigned 16-bit integers.
+    UInt16 = 0x1a,
+    /// Unsigned 32-bit integers.
+    UInt32 = 0x1b,
+    /// Unsigned 64-bit integers.
+    UInt64 = 0x1c,
     /// Unsigned 128-bit integers.
     ///
     /// The unsigned half of the pair [`Self::Int128`] documents.
-    UInt128 = 11,
+    UInt128 = 0x1d,
+    // Floating: 0x20..0x27
     /// IEEE 16-bit floating point.
-    Float16 = 12,
+    Float16 = 0x21,
     /// IEEE 32-bit floating point.
-    Float32 = 13,
+    Float32 = 0x22,
     /// IEEE 64-bit floating point.
-    Float64 = 14,
-    /// A 64-bit datetime with a resolution and explicit timezone marker.
-    DateTime64 = 15,
-    /// Days since the Unix epoch.
-    Date32 = 16,
-    /// Milliseconds since the Unix epoch representing whole days.
-    Date64 = 17,
-    /// 32-bit time of day.
-    Time32 = 18,
-    /// 64-bit time of day.
-    Time64 = 19,
-    /// 32-bit elapsed time.
-    Duration32 = 20,
-    /// 64-bit elapsed time.
-    Duration64 = 21,
-    /// Calendar interval.
-    Interval = 22,
-    /// Bytes with 32-bit offsets, under any bound.
-    Binary = 23,
-    /// Bytes of one fixed width.
-    FixedBinary = 24,
-    /// Bytes with 64-bit offsets.
-    LargeBinary = 25,
-    /// Bytes in the view layout.
-    BinaryView = 26,
-    /// Any length of UTF-8 with 32-bit offsets.
-    ///
-    /// The five UTF-8 leaves sit where the five string layouts they replaced
-    /// sat - and those sat where the five text identifiers before them did -
-    /// so every later number, and every digest tag, stays what it was; this
-    /// one is the number UTF-8 text always fed.
-    Utf8String = 27,
-    /// UTF-8 of one fixed, padded byte width.
-    FixedUtf8String = 28,
-    /// UTF-8 in the view layout.
-    Utf8StringView = 29,
-    /// UTF-8 with 64-bit offsets.
-    LargeUtf8String = 30,
-    /// UTF-8 in the view layout, declared large.
-    LargeUtf8StringView = 31,
-    /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
-    Country = 32,
-    /// ISO 4217: a currency code, three ASCII bytes.
-    Currency = 33,
-    /// ISO 10383: a market identifier code, four ASCII bytes.
-    Mic = 34,
-    /// ISO 10962: a classification of financial instruments, six ASCII bytes.
-    Cfi = 35,
-    /// One 128-bit universally unique identifier.
-    Uuid = 36,
-    /// Variable list with 32-bit offsets.
-    List = 37,
-    /// Variable list-view with 32-bit offsets.
-    ListView = 38,
-    /// Fixed-length list.
-    FixedSizeList = 39,
-    /// Variable list with 64-bit offsets.
-    LargeList = 40,
-    /// Variable list-view with 64-bit offsets.
-    LargeListView = 41,
-    /// Ordered struct fields.
-    Struct = 42,
-    /// Tagged union fields.
-    Union = 43,
-    /// Dictionary-encoded values.
-    Dictionary = 44,
+    Float64 = 0x23,
+    // Decimal: 0x28..0x2f
     /// Exact decimal backed by 32 bits.
-    Decimal32 = 45,
+    Decimal32 = 0x29,
     /// Exact decimal backed by 64 bits.
-    Decimal64 = 46,
+    Decimal64 = 0x2a,
     /// Exact decimal backed by 128 bits.
-    Decimal128 = 47,
+    Decimal128 = 0x2b,
     /// Exact decimal backed by 256 bits.
-    Decimal256 = 48,
-    /// Arrow map entries.
-    Map = 49,
-    /// Run-end encoded values.
-    RunEndEncoded = 50,
-    /// Self-describing semi-structured values.
-    Variant = 51,
-    /// Geospatial features on a planar coordinate system.
-    Geometry = 52,
-    /// Geospatial features on the surface of a sphere or spheroid.
-    Geography = 53,
+    Decimal256 = 0x2c,
+    // Temporal: 0x30..0x3f
+    /// A 64-bit datetime with a resolution and explicit timezone marker.
+    DateTime64 = 0x31,
+    /// Days since the Unix epoch.
+    Date32 = 0x32,
+    /// Milliseconds since the Unix epoch representing whole days.
+    Date64 = 0x33,
+    /// 32-bit time of day.
+    Time32 = 0x34,
+    /// 64-bit time of day.
+    Time64 = 0x35,
+    /// 32-bit elapsed time.
+    Duration32 = 0x36,
+    /// 64-bit elapsed time.
+    Duration64 = 0x37,
+    /// Calendar interval.
+    Interval = 0x38,
+    // Bytes: 0x40..0x4f
+    /// Bytes with 32-bit offsets, under any bound.
+    Binary = 0x41,
+    /// Bytes with 64-bit offsets.
+    LargeBinary = 0x42,
+    /// Bytes in the view layout.
+    BinaryView = 0x43,
+    /// The viewed byte layout over 64-bit offsets.
+    LargeBinaryView = 0x44,
+    /// Bytes of one fixed width.
+    FixedBinary = 0x45,
+    /// Bytes under a declared maximum.
+    SizedBinary = 0x46,
+    // Text: 0x50..0x6f
+    /// Any length of UTF-8 with 32-bit offsets.
+    Utf8String = 0x51,
+    /// UTF-8 with 64-bit offsets.
+    LargeUtf8String = 0x52,
+    /// UTF-8 in the view layout.
+    Utf8StringView = 0x53,
+    /// UTF-8 in the view layout, declared large.
+    LargeUtf8StringView = 0x54,
+    /// UTF-8 of one fixed, padded byte width.
+    FixedUtf8String = 0x55,
+    /// UTF-8 under a declared maximum.
+    SizedUtf8String = 0x56,
+    /// Any length of US-ASCII with 32-bit offsets.
+    AsciiString = 0x57,
+    /// US-ASCII with 64-bit offsets.
+    LargeAsciiString = 0x58,
+    /// US-ASCII in the view layout.
+    AsciiStringView = 0x59,
+    /// US-ASCII in the view layout, declared large.
+    LargeAsciiStringView = 0x5a,
+    /// US-ASCII of one fixed, padded byte width.
+    FixedAsciiString = 0x5b,
+    /// US-ASCII under a declared maximum.
+    SizedAsciiString = 0x5c,
+    /// Any length of windows-1252 with 32-bit offsets.
+    Cp1252String = 0x5d,
+    /// Windows-1252 with 64-bit offsets.
+    LargeCp1252String = 0x5e,
+    /// Windows-1252 in the view layout.
+    Cp1252StringView = 0x5f,
+    /// Windows-1252 in the view layout, declared large.
+    LargeCp1252StringView = 0x60,
+    /// Windows-1252 of one fixed, padded byte width.
+    FixedCp1252String = 0x61,
+    /// Windows-1252 under a declared maximum.
+    SizedCp1252String = 0x62,
     /// A canonical, numerically ordered software or protocol version.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    Version = 54,
-    /// FIX's side of a trade, four ASCII bytes.
-    Side = 55,
-    /// What state one thing is in.
-    State = 56,
-    /// How long an order stands.
-    TimeInForce = 57,
+    Version = 0x63,
     /// A validated, canonical location.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    Url = 59,
-    /// ISO 6166: a securities identification number, twelve ASCII bytes.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    Isin = 60,
+    Url = 0x64,
+    /// A validated, canonical resource name.
+    Urn = 0x65,
     /// A canonical time zone name, a fixed offset, or the zone-free marker.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    Timezone = 61,
+    Timezone = 0x66,
     /// A validated, canonical MIME type.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    MimeType = 62,
+    MimeType = 0x67,
     /// A MIME type with its charset and content codings.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    MediaType = 63,
+    MediaType = 0x68,
+    // Code: 0x70..0x7f
+    /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
+    Country = 0x71,
+    /// ISO 4217: a currency code, three ASCII bytes.
+    Currency = 0x72,
+    /// ISO 10383: a market identifier code, four ASCII bytes.
+    Mic = 0x73,
+    /// ISO 10962: a classification of financial instruments, six ASCII bytes.
+    Cfi = 0x74,
+    /// FIX's side of a trade, four ASCII bytes.
+    Side = 0x75,
+    /// What state one thing is in.
+    State = 0x76,
+    /// How long an order stands.
+    TimeInForce = 0x77,
+    /// ISO 6166: a securities identification number, twelve ASCII bytes.
+    Isin = 0x78,
     /// CUSIP: a North American securities identifier, nine ASCII bytes.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    Cusip = 64,
+    Cusip = 0x79,
     /// SEDOL: a London Stock Exchange securities identifier, seven ASCII
     /// bytes.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    Sedol = 65,
-    Bloomberg = 66,
+    Sedol = 0x7a,
+    /// A Bloomberg identifier: ticker, market and yellow key, up to thirty-two
+    /// ASCII bytes.
+    Bloomberg = 0x7b,
+    // Uuid: 0x80..0x8f
+    /// One 128-bit universally unique identifier.
+    Uuid = 0x81,
+    // Nested: 0x90..0xaf
+    /// Variable list with 32-bit offsets.
+    List = 0x91,
+    /// Variable list with 64-bit offsets.
+    LargeList = 0x92,
+    /// Variable list-view with 32-bit offsets.
+    ListView = 0x93,
+    /// Variable list-view with 64-bit offsets.
+    LargeListView = 0x94,
+    /// Fixed-length list.
+    FixedSizeList = 0x95,
+    /// Ordered struct fields.
+    Struct = 0x96,
+    /// Arrow map entries.
+    Map = 0x97,
     /// Arrow map entries whose keys are ordered within each row.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    SortedMap = 67,
-    /// Exactly two children: a structure of a first and a second field.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    Struct2 = 68,
-    /// The viewed byte layout over 64-bit offsets.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    LargeBinaryView = 72,
-    /// Bytes under a declared maximum.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    SizedBinary = 73,
-    /// UTF-8 under a declared maximum.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    SizedUtf8String = 74,
-    /// Any length of US-ASCII with 32-bit offsets.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    AsciiString = 75,
-    /// US-ASCII with 64-bit offsets.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    LargeAsciiString = 76,
-    /// US-ASCII in the view layout.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    AsciiStringView = 77,
-    /// US-ASCII in the view layout, declared large.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    LargeAsciiStringView = 78,
-    /// US-ASCII of one fixed, padded byte width.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    FixedAsciiString = 79,
-    /// US-ASCII under a declared maximum.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    SizedAsciiString = 80,
-    /// Any length of windows-1252 with 32-bit offsets.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    Cp1252String = 81,
-    /// Windows-1252 with 64-bit offsets.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    LargeCp1252String = 82,
-    /// Windows-1252 in the view layout.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    Cp1252StringView = 83,
-    /// Windows-1252 in the view layout, declared large.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    LargeCp1252StringView = 84,
-    /// Windows-1252 of one fixed, padded byte width.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    FixedCp1252String = 85,
-    /// Windows-1252 under a declared maximum.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    SizedCp1252String = 86,
-    /// A validated, canonical resource name.
-    ///
-    /// Appended because [`Self::as_u8`] is a wire contract.
-    Urn = 87,
+    SortedMap = 0x98,
+    /// Tagged union fields.
+    Union = 0x99,
+    /// Dictionary-encoded values.
+    Dictionary = 0x9a,
+    /// Run-end encoded values.
+    RunEndEncoded = 0x9b,
+    /// Self-describing semi-structured values.
+    Variant = 0x9c,
+    // Geospatial: 0xb0..0xbf
+    /// Geospatial features on a planar coordinate system.
+    Geometry = 0xb1,
+    /// Geospatial features on the surface of a sphere or spheroid.
+    Geography = 0xb2,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 84] = [
+    pub const ALL: [Self; 83] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
         Self::Int16,
         Self::Int32,
         Self::Int64,
+        Self::Int128,
         Self::UInt8,
         Self::UInt16,
         Self::UInt32,
         Self::UInt64,
-        Self::Int128,
         Self::UInt128,
         Self::Float16,
         Self::Float32,
         Self::Float64,
+        Self::Decimal32,
+        Self::Decimal64,
+        Self::Decimal128,
+        Self::Decimal256,
         Self::DateTime64,
         Self::Date32,
         Self::Date64,
@@ -281,52 +249,16 @@ impl DataTypeId {
         Self::Duration64,
         Self::Interval,
         Self::Binary,
-        Self::FixedBinary,
         Self::LargeBinary,
         Self::BinaryView,
-        Self::Utf8String,
-        Self::FixedUtf8String,
-        Self::Utf8StringView,
-        Self::LargeUtf8String,
-        Self::LargeUtf8StringView,
-        Self::Country,
-        Self::Currency,
-        Self::Mic,
-        Self::Cfi,
-        Self::Uuid,
-        Self::List,
-        Self::ListView,
-        Self::FixedSizeList,
-        Self::LargeList,
-        Self::LargeListView,
-        Self::Struct,
-        Self::Union,
-        Self::Dictionary,
-        Self::Decimal32,
-        Self::Decimal64,
-        Self::Decimal128,
-        Self::Decimal256,
-        Self::Map,
-        Self::RunEndEncoded,
-        Self::Variant,
-        Self::Geometry,
-        Self::Geography,
-        Self::Version,
-        Self::Side,
-        Self::State,
-        Self::TimeInForce,
-        Self::Url,
-        Self::Isin,
-        Self::Timezone,
-        Self::MimeType,
-        Self::MediaType,
-        Self::Cusip,
-        Self::Sedol,
-        Self::Bloomberg,
-        Self::SortedMap,
-        Self::Struct2,
         Self::LargeBinaryView,
+        Self::FixedBinary,
         Self::SizedBinary,
+        Self::Utf8String,
+        Self::LargeUtf8String,
+        Self::Utf8StringView,
+        Self::LargeUtf8StringView,
+        Self::FixedUtf8String,
         Self::SizedUtf8String,
         Self::AsciiString,
         Self::LargeAsciiString,
@@ -340,7 +272,38 @@ impl DataTypeId {
         Self::LargeCp1252StringView,
         Self::FixedCp1252String,
         Self::SizedCp1252String,
+        Self::Version,
+        Self::Url,
         Self::Urn,
+        Self::Timezone,
+        Self::MimeType,
+        Self::MediaType,
+        Self::Country,
+        Self::Currency,
+        Self::Mic,
+        Self::Cfi,
+        Self::Side,
+        Self::State,
+        Self::TimeInForce,
+        Self::Isin,
+        Self::Cusip,
+        Self::Sedol,
+        Self::Bloomberg,
+        Self::Uuid,
+        Self::List,
+        Self::LargeList,
+        Self::ListView,
+        Self::LargeListView,
+        Self::FixedSizeList,
+        Self::Struct,
+        Self::Map,
+        Self::SortedMap,
+        Self::Union,
+        Self::Dictionary,
+        Self::RunEndEncoded,
+        Self::Variant,
+        Self::Geometry,
+        Self::Geography,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -415,7 +378,6 @@ impl DataTypeId {
             Self::Decimal256 => "decimal256",
             Self::Map => "map",
             Self::SortedMap => "sorted_map",
-            Self::Struct2 => "struct2",
             Self::RunEndEncoded => "run_end_encoded",
             Self::Variant => "variant",
             Self::Geometry => "geometry",
@@ -449,23 +411,34 @@ impl DataTypeId {
 
     /// Return this identifier's discriminant as one byte.
     ///
-    /// Every variant states its discriminant, and it is a wire contract:
-    /// [`crate::Scalar::write_bytes`] writes it as the tag of every value, so
-    /// a number is never reused and never moves. A retired variant leaves its
-    /// number unused - 58 was `msgdirection` and 69 to 71 were the versioned
-    /// `uuidv4`, `uuidv7` and `uuidv8` leaves, all since retired - so the
-    /// byte is no longer the variant's position in [`Self::ALL`]; the
-    /// test pinning every value is what makes a moved number a failure rather
-    /// than a surprise.
+    /// Every variant states its number, and the number is a wire contract:
+    /// [the variant encoding](crate::Scalar::into_variant_bytes) and
+    /// [`crate::Scalar::write_bytes`] write it as the tag of every value, so
+    /// a number is never reused and never moves. The numbers are laid out
+    /// by family - the family's own number first, [`DataTypeKind::id`],
+    /// then its leaves - and a byte no variant states is a placeholder in
+    /// its family's range, which is how a leaf added later lands beside its
+    /// family rather than at the end; the test pinning every value is what
+    /// makes a moved number a failure rather than a surprise.
     ///
     /// ```
-    /// use yggdryl::DataTypeId;
+    /// use yggdryl::{DataTypeId, DataTypeKind};
     ///
-    /// assert_eq!(DataTypeId::Null.as_u8(), 0);
-    /// assert_eq!(DataTypeId::Int128.as_u8(), 10);
+    /// assert_eq!(DataTypeId::Null.as_u8(), 0x00);
+    /// assert_eq!(DataTypeId::Int32.as_u8(), 0x13);
+    /// assert_eq!(DataTypeKind::Integer.id(), 0x10);
+    /// assert_eq!(DataTypeId::from_u8(0x13), Some(DataTypeId::Int32));
+    /// assert_eq!(DataTypeId::from_u8(0x10), None, "a family's own number names no leaf");
     /// ```
     pub const fn as_u8(self) -> u8 {
         self as u8
+    }
+
+    /// The identifier one byte names, or nothing for a byte no variant
+    /// states: a family's own number, a placeholder in a family's range, or
+    /// a byte past every family.
+    pub const fn from_u8(byte: u8) -> Option<Self> {
+        FROM_U8[byte as usize]
     }
 
     /// Return the coarse family this identifier belongs to.
@@ -549,7 +522,6 @@ impl DataTypeId {
             | Self::Union
             | Self::Map
             | Self::SortedMap
-            | Self::Struct2
             | Self::Dictionary
             | Self::RunEndEncoded
             | Self::Variant => DataTypeKind::Nested,
@@ -608,7 +580,6 @@ impl DataTypeId {
                 | Self::Decimal256
                 | Self::Map
                 | Self::SortedMap
-                | Self::Struct2
                 | Self::RunEndEncoded
                 | Self::Geometry
                 | Self::Geography
@@ -678,7 +649,6 @@ impl DataTypeId {
                 | Self::Union
                 | Self::Map
                 | Self::SortedMap
-                | Self::Struct2
                 | Self::Variant
         )
     }
@@ -743,6 +713,18 @@ impl DataTypeId {
         }
     }
 }
+
+/// Every byte's identifier, built once from [`DataTypeId::ALL`].
+const FROM_U8: [Option<DataTypeId>; 256] = {
+    let mut table = [None; 256];
+    let mut index = 0;
+    while index < DataTypeId::ALL.len() {
+        let id = DataTypeId::ALL[index];
+        table[id.as_u8() as usize] = Some(id);
+        index += 1;
+    }
+    table
+};
 
 impl FromStr for DataTypeId {
     type Err = Error;

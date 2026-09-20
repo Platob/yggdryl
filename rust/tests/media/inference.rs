@@ -173,8 +173,8 @@ mod containers {
     #[test]
     fn record_fields_merge_nullability_by_name() {
         let rows = Scalar::from_sequence([
-            Scalar::from_record([("id", Scalar::from(1_i64)), ("venue", Scalar::Null)]).unwrap(),
-            Scalar::from_record([("id", Scalar::from(2_i64)), ("venue", Scalar::from("XNAS"))])
+            Scalar::from_struct([("id", Scalar::from(1_i64)), ("venue", Scalar::Null)]).unwrap(),
+            Scalar::from_struct([("id", Scalar::from(2_i64)), ("venue", Scalar::from("XNAS"))])
                 .unwrap(),
         ]);
         let dtype = rows.dtype().unwrap();
@@ -206,8 +206,8 @@ mod fields {
         assert!(array.is_nullable());
 
         let rows = Scalar::from_sequence([
-            Scalar::from_record([("id", Scalar::from(1_i64)), ("venue", Scalar::Null)]).unwrap(),
-            Scalar::from_record([("id", Scalar::from(2_i64)), ("venue", Scalar::from("XNAS"))])
+            Scalar::from_struct([("id", Scalar::from(1_i64)), ("venue", Scalar::Null)]).unwrap(),
+            Scalar::from_struct([("id", Scalar::from(2_i64)), ("venue", Scalar::from("XNAS"))])
                 .unwrap(),
         ]);
         let root = rows.inferred_struct_field().unwrap();

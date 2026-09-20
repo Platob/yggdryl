@@ -12,7 +12,6 @@ use crate::enums::EnumType;
 use crate::mapping::MappingType;
 use crate::metadata::write_json_string as write_quoted;
 use crate::sequence::SequenceType;
-use crate::structure::StructureType;
 use crate::{
     DataType, Metadata, RunEndEncodedType, StructType, UnionFields, hashing::stable_hash_display,
 };
@@ -124,7 +123,7 @@ fn dtype_snapshots_identical(left: &DataType, right: &DataType) -> bool {
             D::Sequence(SequenceType::FixedSizeList(left, left_size)),
             D::Sequence(SequenceType::FixedSizeList(right, right_size)),
         ) => left_size == right_size && Arc::ptr_eq(left, right),
-        (D::Structure(left), D::Structure(right)) => left.shares_storage_with(right),
+        (D::Struct(left), D::Struct(right)) => left.shares_storage_with(right),
         (D::Union(left, left_mode), D::Union(right, right_mode)) => {
             left_mode == right_mode && left.shares_storage_with(right)
         }
@@ -398,7 +397,7 @@ impl DiffEngine {
                 }
                 self.push_field_property(left, right, &path, "item");
             }
-            (D::Structure(left), D::Structure(right)) => {
+            (D::Struct(left), D::Struct(right)) => {
                 self.push_field_slices(left.clone(), right.clone(), &path);
             }
             (D::Union(left, left_mode), D::Union(right, right_mode)) => {
@@ -551,7 +550,7 @@ impl DiffEngine {
         });
     }
 
-    fn push_field_slices(&mut self, left: StructureType, right: StructureType, path: &str) {
+    fn push_field_slices(&mut self, left: StructType, right: StructType, path: &str) {
         if left.shares_storage_with(&right) {
             return;
         }
@@ -564,8 +563,8 @@ impl DiffEngine {
         }
         let right_len = right.len();
         self.work.push(Work::FieldSlices {
-            left: left.into_fields(),
-            right: right.into_fields(),
+            left,
+            right,
             path: path.to_owned(),
             phase: SlicePhase::LeftExtras,
             index: right_len,
@@ -962,7 +961,7 @@ pub(crate) fn dtypes_equal(left: &DataType, right: &DataType, with_metadata: boo
             D::Sequence(SequenceType::FixedSizeList(left, left_size)),
             D::Sequence(SequenceType::FixedSizeList(right, right_size)),
         ) => left_size == right_size && fields_equal(left, right, false),
-        (D::Structure(left), D::Structure(right)) => {
+        (D::Struct(left), D::Struct(right)) => {
             left.len() == right.len()
                 && left
                     .iter()
@@ -1158,7 +1157,7 @@ fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
             D::Sequence(SequenceType::FixedSizeList(left, left_size)),
             D::Sequence(SequenceType::FixedSizeList(right, right_size)),
         ) => left_size == right_size && field_layout_eq(left, right),
-        (D::Structure(left), D::Structure(right)) => {
+        (D::Struct(left), D::Struct(right)) => {
             left.len() == right.len()
                 && left
                     .iter()
@@ -1236,10 +1235,10 @@ impl DataType {
 mod tests {
 
     use super::{Differences, OwnedDifferences};
-    use crate::{DataType, Field, StructureType};
+    use crate::{DataType, Field, StructType};
 
     fn wide_struct(prefix: &str) -> DataType {
-        StructureType::from_fields(
+        StructType::from_fields(
             (0..1_024)
                 .map(|index| Field::new(format!("{prefix}_{index:04}"), DataType::Int64, false)),
         )
@@ -1264,7 +1263,7 @@ mod tests {
 
         let left = Field::new(
             "root",
-            DataType::from(StructureType::from_fields(std::iter::empty()).unwrap()),
+            DataType::from(StructType::from_fields(std::iter::empty()).unwrap()),
             false,
         );
         let right = Field::new("root", wide_struct("added"), false);

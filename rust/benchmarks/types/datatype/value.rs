@@ -7,7 +7,7 @@ use yggdryl::{
 };
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
-    let record = Scalar::from_record([
+    let record = Scalar::from_struct([
         (
             "at",
             Scalar::datetime64(

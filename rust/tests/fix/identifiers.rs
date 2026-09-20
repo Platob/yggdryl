@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use super::SoleMessage;
 use yggdryl::graph::Element;
-use yggdryl::{DataType, Error, Field, FixMsg, FixRegistry, Scalar, StructureType, fix_schema};
+use yggdryl::{DataType, Error, Field, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
 
 fn tagged(name: &str, tag: i32) -> Field {
     let mut field = DataType::utf8().nullable_field(name);
@@ -18,13 +18,13 @@ fn component() -> Field {
     order.as_fix_mut().set_names(["ClientOrder"]).unwrap();
     order.as_fix_mut().set_tags(&[9001]).unwrap();
     let nested = DataType::list(
-        StructureType::from_fields([tagged("execid", 17)])
+        StructType::from_fields([tagged("execid", 17)])
             .map(DataType::from)
             .unwrap()
             .required_field("item"),
     )
     .nullable_field("executions");
-    StructureType::from_fields([order, tagged("orderid", 37), nested])
+    StructType::from_fields([order, tagged("orderid", 37), nested])
         .map(DataType::from)
         .unwrap()
         .required_field("order")
@@ -78,7 +78,7 @@ fn identifier_refusals_are_located_atomic_and_do_not_accept_paths() {
     ambiguous.as_fix_mut().set_names(["ClientOrder"]).unwrap();
     field
         .set_dtype(DataType::from(
-            StructureType::from_fields(field.fields().iter().cloned().chain([ambiguous])).unwrap(),
+            StructType::from_fields(field.fields().iter().cloned().chain([ambiguous])).unwrap(),
         ))
         .unwrap();
     let before = field.clone();
@@ -120,14 +120,14 @@ fn registry_merge_orders_the_incoming_selection_by_the_final_members() {
                 child.as_fix_mut().set_field_ref(&name).unwrap();
             }
         }
-        let mut stored = StructureType::from_fields(members.clone())
+        let mut stored = StructType::from_fields(members.clone())
             .map(DataType::from)
             .unwrap()
             .required_field("order");
         stored.as_fix_mut().set_identifiers(["11"]).unwrap();
         registry.insert(stored).unwrap();
         members.reverse();
-        let mut incoming = StructureType::from_fields(members)
+        let mut incoming = StructType::from_fields(members)
             .map(DataType::from)
             .unwrap()
             .required_field("order");
@@ -157,10 +157,10 @@ fn compiled_selection_borrows_tagged_reordered_values_and_skips_nulls_and_groups
     let mut registry = FixRegistry::new();
     registry.insert(definition).unwrap();
     let registry = Arc::new(registry);
-    let field = StructureType::from_fields([
+    let field = StructType::from_fields([
         tagged("venue_order", 37),
         tagged("clordid", 11),
-        StructureType::from_fields([tagged("execid", 17)])
+        StructType::from_fields([tagged("execid", 17)])
             .map(DataType::from)
             .unwrap()
             .nullable_field("executions"),
@@ -188,7 +188,7 @@ fn compiled_selection_borrows_tagged_reordered_values_and_skips_nulls_and_groups
 
 #[test]
 fn compiled_selection_keeps_member_identity_when_several_fields_share_a_tag() {
-    let mut definition = StructureType::from_fields([tagged("clordid", 11), tagged("venueid", 11)])
+    let mut definition = StructType::from_fields([tagged("clordid", 11), tagged("venueid", 11)])
         .map(DataType::from)
         .unwrap()
         .required_field("order");
@@ -200,7 +200,7 @@ fn compiled_selection_keeps_member_identity_when_several_fields_share_a_tag() {
     let mut registry = FixRegistry::new();
     registry.insert(definition).unwrap();
     let registry = Arc::new(registry);
-    let field = StructureType::from_fields([
+    let field = StructType::from_fields([
         tagged("first_tag_holder", 11),
         tagged("venueid", 11),
         tagged("clordid", 11),
@@ -239,7 +239,7 @@ fn compiled_selection_keeps_member_identity_when_several_fields_share_a_tag() {
 
     let unnamed = FixMsg::with_registry(
         Arc::clone(&registry),
-        StructureType::from_fields([tagged("unresolved", 11)])
+        StructType::from_fields([tagged("unresolved", 11)])
             .map(DataType::from)
             .unwrap()
             .required_field("row"),
@@ -259,7 +259,7 @@ fn compiled_selection_keeps_member_identity_when_several_fields_share_a_tag() {
 
 #[test]
 fn compiled_selection_skips_a_tag_shared_by_unnamed_row_children() {
-    let mut definition = StructureType::from_fields([tagged("clordid", 11)])
+    let mut definition = StructType::from_fields([tagged("clordid", 11)])
         .map(DataType::from)
         .unwrap()
         .required_field("order");
@@ -271,7 +271,7 @@ fn compiled_selection_skips_a_tag_shared_by_unnamed_row_children() {
     let mut registry = FixRegistry::new();
     registry.insert(definition).unwrap();
     let registry = Arc::new(registry);
-    let field = StructureType::from_fields([tagged("first", 11), tagged("second", 11)])
+    let field = StructType::from_fields([tagged("first", 11), tagged("second", 11)])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -381,7 +381,7 @@ fn raw_identifier_spellings_normalize_on_create_and_merge_before_references_comp
                 child.as_fix_mut().set_field_ref(&name).unwrap();
             }
         }
-        let mut raw = StructureType::from_fields(members)
+        let mut raw = StructType::from_fields(members)
             .map(DataType::from)
             .unwrap()
             .required_field("order");
@@ -428,7 +428,7 @@ fn raw_identifier_spellings_normalize_after_inline_or_compact_json_children_reso
             [first, second]
         };
         for declaration in ["37,11", "OrderID,ClientOrder", "orderid,clordid"] {
-            let mut component = StructureType::from_fields(members.clone())
+            let mut component = StructType::from_fields(members.clone())
                 .map(DataType::from)
                 .unwrap()
                 .required_field("order");
@@ -437,7 +437,7 @@ fn raw_identifier_spellings_normalize_after_inline_or_compact_json_children_reso
                 .unwrap();
             // The store's own shape: a field's `FIX:names` is the array it is
             // there, never the escaped text a native document holds.
-            let snapshot = Scalar::from_record([
+            let snapshot = Scalar::from_struct([
                 (
                     "fields",
                     Scalar::from_sequence(

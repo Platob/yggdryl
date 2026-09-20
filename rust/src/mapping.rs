@@ -23,7 +23,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
 use crate::invalid;
-use crate::structure::StructureType;
+use crate::structure::StructType;
 use crate::structure::cmp_fields;
 use crate::value::Children;
 use crate::value::DataTypeValue;
@@ -205,9 +205,8 @@ impl DataType {
     /// Creates a map from a non-null entries field holding a key and a value.
     ///
     /// `keys_sorted` picks the leaf; after this it is the type, not a flag.
-    /// The entries are stored as [`crate::Struct2Type`], so a caller may hand
-    /// this either a pair or the two-child struct Arrow spells it with, and
-    /// what comes back is always the pair.
+    /// The entries are the struct of exactly two children Arrow spells them
+    /// with, a key and a value, checked here once.
     pub fn map(entries: Field, keys_sorted: bool) -> Result<Self> {
         let entries = pair_entries(entries)?;
         Ok(Self::Mapping(MappingType::with_keys_sorted(
@@ -218,15 +217,12 @@ impl DataType {
 
     /// Creates a map from logical key and value types using Arrow names.
     pub fn map_of(key: Self, value: Self, keys_sorted: bool) -> Result<Self> {
+        let entries = StructType::from_unique_fields(vec![
+            Field::new("key", key, false),
+            Field::new("value", value, true),
+        ]);
         Self::map(
-            Field::new(
-                "entries",
-                Self::struct2(
-                    Field::new("key", key, false),
-                    Field::new("value", value, true),
-                ),
-                false,
-            ),
+            Field::new("entries", Self::Struct(entries), false),
             keys_sorted,
         )
     }
@@ -237,37 +233,28 @@ impl DataType {
     }
 }
 
-/// Reads one entries field as the key-value pair a mapping stores.
+/// Reads one entries field as the key-value struct a mapping stores.
 ///
-/// Arrow spells map entries as a struct of exactly two children, and callers
-/// coming from Arrow, Iceberg and Avro build them that way; the pair is what
-/// this crate stores, so the struct spelling is folded into it here, once,
-/// rather than re-checked at every reader.
-fn pair_entries(mut entries: Field) -> Result<Field> {
+/// Arrow spells map entries as a struct of exactly two children, the key
+/// non-null, and that is what this crate stores too: the shape is checked
+/// here, once, rather than at every reader.
+fn pair_entries(entries: Field) -> Result<Field> {
     if entries.is_nullable() {
         return Err(Error::InvalidDataType {
             kind: "map",
             reason: SmolStr::new_static("entries field must be non-null"),
         });
     }
-    let pair = match entries.dtype() {
-        DataType::Structure(StructureType::Struct2(_)) => None,
-        DataType::Structure(structure) if structure.len() == 2 => Some(DataType::struct2(
-            structure[0].clone(),
-            structure[1].clone(),
-        )),
-        _ => {
-            return Err(Error::InvalidDataType {
-                kind: "map",
-                reason: SmolStr::new_static("entries field must hold a key and a value"),
-            });
+    match entries.dtype() {
+        DataType::Struct(fields) if fields.len() == 2 => {
+            validate_map_entries(&entries)?;
+            Ok(entries)
         }
-    };
-    if let Some(pair) = pair {
-        entries.set_dtype(pair)?;
+        _ => Err(Error::InvalidDataType {
+            kind: "map",
+            reason: SmolStr::new_static("entries field must hold a key and a value"),
+        }),
     }
-    validate_map_entries(&entries)?;
-    Ok(entries)
 }
 
 // ------------------------------------------------------------------------
@@ -429,13 +416,19 @@ pub(crate) fn validate_map_entries(entries: &Field) -> Result<()> {
     if entries.is_nullable() {
         return Err(invalid("Map", "entries field must be non-null"));
     }
-    let DataType::Structure(StructureType::Struct2(pair)) = entries.dtype() else {
+    let DataType::Struct(pair) = entries.dtype() else {
         return Err(invalid(
             "Map",
             "entries field must contain a key and a value",
         ));
     };
-    if pair.first().is_nullable() {
+    if pair.len() != 2 {
+        return Err(invalid(
+            "Map",
+            "entries field must contain a key and a value",
+        ));
+    }
+    if pair[0].is_nullable() {
         return Err(invalid("Map", "key field must be non-null"));
     }
     Ok(())
@@ -463,8 +456,8 @@ mod arrow {
         ///
         /// # Errors
         ///
-        /// Returns an error when the entries are not the non-null two-child
-        /// struct a map declares, or have no Arrow projection.
+        /// Returns an error when the entries are not the non-null struct of
+        /// a key and a value a map declares, or have no Arrow projection.
         pub(crate) fn arrow_storage(&self) -> Result<ArrowDataType> {
             validate_map_entries(self.entries())?;
             Ok(ArrowDataType::Map(
@@ -517,7 +510,7 @@ mod arrow {
         /// # Errors
         ///
         /// Returns an error when the entries cannot be imported or are not the
-        /// non-null two-child struct a map declares.
+        /// non-null struct of a key and a value a map declares.
         pub(crate) fn from_arrow_storage_at_depth(
             entries: &arrow_schema::FieldRef,
             keys_sorted: bool,

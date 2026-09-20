@@ -342,7 +342,7 @@ Without a schema, `Scalar` exposes the inferred `Field`: `value`, `item`, or `ro
 
     let scalar = Scalar::from(42_i64).inferred_scalar_field()?;
     let array = Scalar::from_sequence([Scalar::from(1_i64), Scalar::Null]);
-    let row = Scalar::from_record([("id", Scalar::from(1_i64))])?;
+    let row = Scalar::from_struct([("id", Scalar::from(1_i64))])?;
     let rows = Scalar::from_sequence([row]);
 
     assert_eq!(scalar.name(), "value");

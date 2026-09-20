@@ -22,13 +22,13 @@
 //! use std::sync::Arc;
 //!
 //! use arrow_array::{Int64Array, RecordBatch};
-//! use yggdryl::{IOBase, IOMedia, StructureType, holder::Buffer};
+//! use yggdryl::{IOBase, IOMedia, StructType, holder::Buffer};
 //! use yggdryl::ipc::Ipc;
 //! use yggdryl::{DataType, Url};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // A struct field is the schema of the batches it describes.
-//! let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+//! let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
 //!     .required_field("row");
 //! let arrow_schema = schema.clone().into_arrow_schema()?;
 //! let batch = RecordBatch::try_new(

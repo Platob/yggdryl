@@ -56,7 +56,7 @@ fn format_dispatch_uses_the_same_natural_codec() {
         vec![Scalar::from(1_u64), Scalar::from(2_u64)]
     );
     assert_eq!(json::from_bytes(&direct).unwrap(), value);
-    let table = Scalar::from_record([("value", value)]).unwrap();
+    let table = Scalar::from_struct([("value", value)]).unwrap();
     let encoded = toml::into_bytes(&table).unwrap();
     assert_eq!(toml::from_bytes(&encoded).unwrap(), table);
 }

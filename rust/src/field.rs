@@ -19,7 +19,7 @@ use crate::{
     DateTimeType, DateType, DecimalType, DurationType, EnumType, Float16Type, Float32Type,
     Float64Type, GeographyType, GeometryType, Int8Type, Int16Type, Int32Type, Int64Type,
     IntervalType, IsinType, MappingType, MediaTypeType, MicType, MimeTypeType, NullType,
-    RunEndType, SedolType, SequenceType, SideType, StateType, StringType, StructureType,
+    RunEndType, SedolType, SequenceType, SideType, StateType, StringType, StructType,
     TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
     UnionType, UriType, UuidType, VariantType, VersionType,
 };
@@ -1611,7 +1611,7 @@ field_leaves! {
     Version => VersionField / VersionType,
     Uri => UriField / UriType,
     Sequence => SequenceField / SequenceType,
-    Structure => StructureField / StructureType,
+    Struct => StructField / StructType,
     Union => UnionField / UnionType,
     Enum => EnumField / EnumType,
     Decimal => DecimalField / DecimalType,
@@ -1705,10 +1705,10 @@ impl Field {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut schema = DataType::from(StructureType::from_fields([
+    /// let mut schema = DataType::from(StructType::from_fields([
     ///     DataType::Int64.required_field("id"),
     ///     DataType::list(DataType::utf8().nullable_field("item")).nullable_field("tags"),
     /// ])?)
@@ -1819,12 +1819,12 @@ impl Field {
 /// [`Field::get_field_by_path`] is the non-panicking form.
 ///
 /// ```
-/// use yggdryl::{DataType, Field, StructureType};
+/// use yggdryl::{DataType, Field, StructType};
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let order = DataType::from(StructureType::from_fields([
+/// let order = DataType::from(StructType::from_fields([
 ///     DataType::Int64.required_field("id"),
-///     DataType::from(StructureType::from_fields([DataType::Float64.required_field("price")])?)
+///     DataType::from(StructType::from_fields([DataType::Float64.required_field("price")])?)
 ///         .required_field("line"),
 /// ])?)
 /// .required_field("order");
@@ -1854,10 +1854,10 @@ impl Index<&str> for Field {
 ///
 /// ```
 /// use yggdryl::DataType;
-/// use yggdryl::StructureType;
+/// use yggdryl::StructType;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let order = DataType::from(StructureType::from_fields([
+/// let order = DataType::from(StructType::from_fields([
 ///     DataType::Int64.required_field("id"),
 ///     DataType::utf8().required_field("venue"),
 /// ])?)
@@ -2102,7 +2102,7 @@ mod arrow {
         ///
         /// use arrow_array::{ArrayRef, Date32Array, RecordBatch};
         /// use yggdryl::expression::Function;
-        /// use yggdryl::{ArrowCastOptions, DataType, StructureType};
+        /// use yggdryl::{ArrowCastOptions, DataType, StructType};
         ///
         /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
         /// let mut year = DataType::Int32.nullable_field("year");
@@ -2110,7 +2110,7 @@ mod arrow {
         /// year.as_partition_mut().set_transform(Function::Year)?;
         /// let mut stored = DataType::UInt64.nullable_field("row_digest");
         /// stored.as_digest_mut().set_holder()?;
-        /// let root = DataType::from(StructureType::from_fields([
+        /// let root = DataType::from(StructType::from_fields([
         ///     DataType::date32().required_field("event"),
         ///     year,
         ///     stored,
@@ -2168,13 +2168,13 @@ mod arrow {
         /// ```
         /// use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
         /// use yggdryl::expression::Function;
-        /// use yggdryl::{ArrowCastOptions, DataType, StructureType};
+        /// use yggdryl::{ArrowCastOptions, DataType, StructType};
         ///
         /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
         /// let mut year = DataType::Int32.nullable_field("year");
         /// year.as_partition_mut().set_sources(["event"])?;
         /// year.as_partition_mut().set_transform(Function::Year)?;
-        /// let root = DataType::from(StructureType::from_fields([DataType::date32().required_field("event"), year])?)
+        /// let root = DataType::from(StructType::from_fields([DataType::date32().required_field("event"), year])?)
         ///     .required_field("row");
         ///
         /// let stored = Schema::new(vec![ArrowField::new(
@@ -2315,7 +2315,8 @@ mod arrow {
     /// The core identity an Arrow field's extension metadata declares, when it
     /// declares one of the first-class extension-typed datatypes.
     pub(crate) enum RecognizedExtension {
-        /// The canonical `arrow.parquet.variant` over its exact storage struct.
+        /// The crate's own `yggdryl.variant` over its binary storage, the
+        /// variant encoding of each value.
         Variant,
         /// The community `geoarrow.wkb` over Binary storage; the parsed GeoArrow
         /// document says whether it is a geometry or a geography.
@@ -2374,8 +2375,8 @@ mod arrow {
     }
 
     /// Recognizes the Arrow extension spellings the first-class datatypes ride:
-    /// `geoarrow.wkb` over Binary storage, the canonical `arrow.parquet.variant`
-    /// over its exact storage struct with an empty extension metadata document,
+    /// `geoarrow.wkb` over Binary storage, the crate's own `yggdryl.variant`
+    /// over Binary storage with an empty extension metadata document,
     /// `yggdryl.string` and `yggdryl.bytes` over the storage their documents lay
     /// out, each registered code's own `yggdryl.{country,currency,mic,cfi}` over
     /// Utf8, and the canonical `arrow.uuid` over `FixedSizeBinary(16)`, each with

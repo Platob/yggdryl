@@ -46,11 +46,11 @@ pub(crate) fn read_arrow_reader(
 }
 
 /// The handle's own modification time, asked for only when a column wants it.
-fn handle_mtime(handle: &(impl IOBase + ?Sized), options: &TextOptions) -> Option<i128> {
+fn handle_mtime(handle: &(impl IOBase + ?Sized), options: &TextOptions) -> Option<i64> {
     if !options.parse_mtime {
         return None;
     }
-    handle.mtime().map(i128::from)
+    handle.mtime()
 }
 
 /// Decode an owned leaf without retaining decoded pages in its caller.
@@ -66,7 +66,7 @@ pub(crate) fn read_owned_arrow_reader<H: IOBase + 'static>(
 fn read_owned_arrow_reader_at<H: IOBase + 'static>(
     handle: H,
     url: Option<Url>,
-    mtime: Option<i128>,
+    mtime: Option<i64>,
     options: &TextOptions,
 ) -> Result<BatchReader> {
     options.require_framing_rowheader()?;
@@ -91,28 +91,24 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
 
 /// Build the one decode iterator over an already-opened stream.
 ///
-/// The plan decides here, once, which optional work every line pays for: a read
-/// whose columns never touch an entry never materializes a tree, and one whose
-/// columns never name the classification never scans for it.
+/// The options are shared once, with the splitter and with every line it
+/// cuts: a line resolves its readings under them on its first ask, so
+/// nothing optional is paid for here.
 fn text_lines(
     source: Box<dyn Read + Send + 'static>,
     url: Option<Url>,
-    mtime: Option<i128>,
+    mtime: Option<i64>,
     options: &TextOptions,
 ) -> Result<TextLines> {
-    let plan = options.line_plan()?;
-    let timestamp_capture = options
-        .parse_mtime
-        .then(|| (0..options.capture_names().len()).find(|index| options.consumes_capture(*index)))
-        .flatten();
+    // The plan's refusals - a rename naming no column, a lifted path with no
+    // name - before a byte is read.
+    options.line_plan()?;
+    let options = Arc::new(options.clone());
     Ok(TextLines {
-        raw: RawRows::new(source, url.clone(), Arc::new(options.clone())),
+        raw: RawRows::new(source, url.clone(), Arc::clone(&options)),
         url: url.map(Arc::new),
         mtime,
-        reads_entries: plan.reads_entries(),
-        reads_classification: plan.reads_classification(),
-        timezone: options.timezone().copied(),
-        timestamp_capture,
+        options,
     })
 }
 
@@ -143,7 +139,7 @@ pub fn read_text_lines(
 fn read_owned_text_lines_at<H: IOBase + 'static>(
     handle: H,
     url: Option<Url>,
-    mtime: Option<i128>,
+    mtime: Option<i64>,
     options: &TextOptions,
 ) -> Result<TextLines> {
     options.require_framing_rowheader()?;
@@ -172,7 +168,12 @@ pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -
     counting.parse_mtime = false;
     counting.set_lstrip::<[&str; 0], &str>([])?;
     counting.set_rstrip::<[&str; 0], &str>([])?;
-    counting.set_max_record_byte_size(Some(0));
+    // A count keeps no body - unless adjacent duplicates are dropped, where
+    // the digest that drops them reads the retained body past the header
+    // exactly as the reading path does, so the two paths count alike.
+    if !options.dedup_adjacent {
+        counting.set_max_record_byte_size(Some(0));
+    }
     // One ask of the handle answers both: the codings the transport peels
     // and the charset it decodes under, which the call-count pins hold to
     // the one `media_type` read the codings always took.
@@ -539,7 +540,10 @@ struct RawRow {
     /// page of its own instead.
     body: TextBytes,
     dropped_byte_size: Option<u64>,
-    captures: Vec<Option<TextBytes>>,
+    /// The row header as the cut matched it - where it ends and the captures
+    /// it named - where the cut needed the match; the line matches it on
+    /// its first ask otherwise.
+    header: Option<(usize, Vec<Option<TextBytes>>)>,
 }
 
 /// Physical lines or framed records parsed against one precomputed schema.
@@ -549,6 +553,11 @@ struct RawRows<R> {
     url: Option<Url>,
     options: Arc<TextOptions>,
     capture_values: bool,
+    /// Whether the cut itself reads the row header: a framed read decides
+    /// its records by it, a bounded one matches it over bytes the record
+    /// may not retain, and adjacent deduplication digests what follows it.
+    /// Otherwise the header is the line's to match, once, when asked.
+    resolves_header: bool,
     /// Where the row header's groups land, reused across every line.
     ///
     /// Built from the expression on the first line that is scanned, so a
@@ -627,26 +636,6 @@ impl Held {
         }
     }
 
-    /// Remove `range` from what this holds.
-    ///
-    /// A match at either edge is still a range of the page; one in the
-    /// middle leaves two runs that are not contiguous, and the line takes a
-    /// vector of its own for them.
-    fn remove(&mut self, range: Range<usize>) {
-        let len = self.len();
-        if range.start == 0 {
-            self.narrow(range.end, len);
-            return;
-        }
-        if range.end == len {
-            self.truncate(range.start);
-            return;
-        }
-        let mut bytes = self.as_bytes().to_vec();
-        bytes.drain(range);
-        *self = Self::Owned(bytes);
-    }
-
     /// Append `bytes`, taking a vector of this line's own to hold them.
     fn push(&mut self, bytes: &[u8]) {
         match self {
@@ -697,11 +686,11 @@ impl Held {
     }
 }
 
-/// One physical line after header removal and edge stripping.
+/// One physical line after edge stripping, with the header the cut matched.
 struct ParsedLine {
     index: u64,
     body: Body,
-    captures: Vec<Option<TextBytes>>,
+    header: Option<(usize, Vec<Option<TextBytes>>)>,
     matched: bool,
 }
 
@@ -718,9 +707,10 @@ enum ScannedHeader {
     Unresolved,
     /// No later byte can make this physical line match.
     Nonmatching,
-    /// The header was removed while its match prefix was still retained.
+    /// The header matched while its bytes were still retained: where the
+    /// match ends and the captures it named.
     Matched {
-        removed_size: u64,
+        end: usize,
         captures: Vec<Option<TextBytes>>,
     },
 }
@@ -742,7 +732,10 @@ struct RawRecord {
     index: u64,
     body: Held,
     decoded_size: u64,
-    captures: Vec<Option<TextBytes>>,
+    header: Option<(usize, Vec<Option<TextBytes>>)>,
+    /// Where the header ends in the body, zero where none matched: the
+    /// bytes the limit does not count.
+    header_end: usize,
 }
 
 fn header_dfa(source: &str) -> Option<DFA<Vec<u32>>> {
@@ -823,12 +816,17 @@ impl<R: Read> RawRows<R> {
             .max_record_byte_size()
             .and_then(|_| options.rowheader())
             .and_then(header_dfa);
+        let resolves_header = options.rowheader().is_some()
+            && (options.framing()
+                || options.max_record_byte_size().is_some()
+                || options.dedup_adjacent);
         Self {
             lines: Lines::new(source),
             header_dfa,
             url,
             options,
             capture_values,
+            resolves_header,
             locations: None,
             index: 0,
             active: None,
@@ -842,6 +840,7 @@ impl<R: Read> RawRows<R> {
         line: PhysicalLine,
         index: u64,
         capture_values: bool,
+        resolves_header: bool,
         locations: &mut Option<CaptureLocations>,
     ) -> Result<ParsedLine> {
         let PhysicalLine {
@@ -849,56 +848,27 @@ impl<R: Read> RawRows<R> {
             decoded_size,
             header,
         } = line;
-        let absent = || {
-            if capture_values {
-                vec![None; options.capture_names().len()]
-            } else {
-                Vec::new()
-            }
-        };
-        let (captures, matched, body_decoded_size) = match header {
-            ScannedHeader::Nonmatching => (absent(), false, decoded_size),
-            ScannedHeader::Matched {
-                removed_size,
-                captures,
-            } => {
-                let body_decoded_size =
-                    decoded_size
-                        .checked_sub(removed_size)
-                        .ok_or_else(|| Error::InvalidRecord {
-                            path: format_smolstr!("$[{index}].body"),
-                            reason: SmolStr::new_static(
-                                "row-header match exceeds the decoded physical line",
-                            ),
-                        })?;
-                (captures, true, body_decoded_size)
-            }
-            ScannedHeader::Unresolved => {
+        // The header stays in the body: it is the line's to read, and the
+        // cut matches it only where the cut itself depends on it, handing
+        // the line the match so nothing matches it twice. The captures are
+        // ranges of the same page the body is, so the strips and the limit
+        // below move the body's ends and reach none of them.
+        let (header, matched) = match header {
+            ScannedHeader::Nonmatching => (None, false),
+            ScannedHeader::Matched { end, captures } => (Some((end, captures)), true),
+            ScannedHeader::Unresolved if resolves_header => {
                 let scan = bytes.len();
-                if let Some(found) = header_match(options, &bytes, scan, capture_values, locations)?
-                {
-                    let removed_size =
-                        u64::try_from(found.range.len()).map_err(|_| Error::InvalidRecord {
-                            path: format_smolstr!("$[{index}].body"),
-                            reason: SmolStr::new_static("row-header match exceeds u64::MAX bytes"),
-                        })?;
-                    let captures = found.captures;
-                    bytes.remove(found.range);
-                    let body_decoded_size =
-                        decoded_size.checked_sub(removed_size).ok_or_else(|| {
-                            Error::InvalidRecord {
-                                path: format_smolstr!("$[{index}].body"),
-                                reason: SmolStr::new_static(
-                                    "row-header match exceeds the decoded physical line",
-                                ),
-                            }
-                        })?;
-                    (captures, true, body_decoded_size)
-                } else {
-                    (absent(), false, decoded_size)
+                match header_match(options, &bytes, scan, capture_values, locations)? {
+                    Some(found) => (Some((found.range.end, found.captures)), true),
+                    None => (None, false),
                 }
             }
+            ScannedHeader::Unresolved => (None, false),
         };
+        // A counting read wants the record boundaries and no captures: the
+        // match answers where the header ends and an empty list, so the
+        // limit and the dedup digest count past the header on both paths.
+        let body_decoded_size = decoded_size;
         let body = &mut bytes;
 
         let mut start = 0;
@@ -931,11 +901,16 @@ impl<R: Read> RawRows<R> {
         } else {
             body_decoded_size
         };
-        let retained = options.max_record_byte_size().map_or(end - start, |limit| {
-            usize::try_from(limit)
-                .unwrap_or(usize::MAX)
-                .min(end - start)
+        // The header is always retained, and the limit bounds what follows
+        // it: a record is known by its header, so a limit shorter than the
+        // header still leaves the header - and its captures - whole. Where
+        // the match ends is stated against the body the strips left.
+        let header = header.map(|(matched_end, captures)| {
+            (matched_end.saturating_sub(start).min(end - start), captures)
         });
+        let header_end = header.as_ref().map_or(0, |(end, _)| *end);
+        let retained =
+            header_end + retained_size(options.max_record_byte_size(), 0, end - start - header_end);
         // The strips and the limit move the line's ends and nothing else:
         // where it is a range of the splitter's page they are two offsets,
         // and where it is a vector of its own they are moved within it.
@@ -946,7 +921,7 @@ impl<R: Read> RawRows<R> {
                 bytes,
                 decoded_size,
             },
-            captures,
+            header,
             matched,
         })
     }
@@ -975,6 +950,9 @@ impl<R: Read> RawRows<R> {
             .max_record_byte_size()
             .and_then(|size| usize::try_from(size).ok())
             .unwrap_or(usize::MAX);
+        // What the line retains: the limit, and the header in front of it
+        // once the scan has matched one.
+        let mut budget = retained;
         // A line opens as the range of the window the splitter cut it from
         // and stays one unless it has to leave: `Held` takes a vector of its
         // own where a second window or a header in the middle forces one.
@@ -1004,7 +982,7 @@ impl<R: Read> RawRows<R> {
             };
             let ends = part.end;
             if !matches!(header, ScannedHeader::Unresolved) {
-                let available = retained.saturating_sub(bytes.len()).min(part.len());
+                let available = budget.saturating_sub(bytes.len()).min(part.len());
                 let range = part.range.start..part.range.start + available;
                 if opened {
                     bytes.push(&self.lines.window()[range]);
@@ -1049,29 +1027,21 @@ impl<R: Read> RawRows<R> {
                                     }
                                 };
                                 if let Some(found) = found {
-                                    let removed_size = match u64::try_from(found.range.len()) {
-                                        Ok(size) => size,
-                                        Err(_) => {
-                                            self.done = true;
-                                            return Some(Err(Error::InvalidRecord {
-                                                path: format_smolstr!("$[{index}].body"),
-                                                reason: SmolStr::new_static(
-                                                    "row-header match exceeds u64::MAX bytes",
-                                                ),
-                                            }));
-                                        }
-                                    };
-                                    let captures = found.captures;
-                                    bytes.remove(found.range);
-                                    bytes.truncate(retained);
+                                    // The captures are ranges of the page the
+                                    // header was scanned in, so the body is
+                                    // bounded under them and they stay whole;
+                                    // the header itself is retained, and the
+                                    // limit bounds what follows it.
+                                    budget = found.range.end.saturating_add(retained);
+                                    bytes.truncate(budget);
                                     header = ScannedHeader::Matched {
-                                        removed_size,
-                                        captures,
+                                        end: found.range.end,
+                                        captures: found.captures,
                                     };
                                 }
                             } else {
                                 header = ScannedHeader::Nonmatching;
-                                bytes.truncate(retained);
+                                bytes.truncate(budget);
                             }
                             state = None;
                             break;
@@ -1110,6 +1080,7 @@ impl<R: Read> RawRows<R> {
             line,
             index,
             self.capture_values,
+            self.resolves_header,
             &mut self.locations,
         ))
     }
@@ -1168,18 +1139,21 @@ impl RawRecord {
                 mut bytes,
                 decoded_size,
             },
-            captures,
+            header,
             ..
         } = line;
         // The record opens on the line exactly as the line holds it: one
         // that stays a single physical line never appends, so it stays a
-        // range of the splitter's page and a limit only moves its end.
-        bytes.truncate(retained_size(limit, 0, bytes.len()));
+        // range of the splitter's page and a limit only moves its end. The
+        // header is retained whole, and the limit counts from its end.
+        let header_end = header.as_ref().map_or(0, |(end, _)| *end);
+        bytes.truncate(header_end + retained_size(limit, 0, bytes.len() - header_end));
         Self {
             index,
             body: bytes,
             decoded_size,
-            captures,
+            header,
+            header_end,
         }
     }
 
@@ -1192,11 +1166,11 @@ impl RawRecord {
                 path: format_smolstr!("$[{}].body", self.index),
                 reason: SmolStr::new_static("decoded text record exceeds u64::MAX bytes"),
             })?;
-        let separator = retained_size(limit, self.body.len(), 1);
+        let separator = retained_size(limit, self.body.len() - self.header_end, 1);
         if separator == 1 {
             self.body.push_byte(b'\n');
         }
-        let retained = retained_size(limit, self.body.len(), body.bytes.len());
+        let retained = retained_size(limit, self.body.len() - self.header_end, body.bytes.len());
         self.body.push(&body.bytes.as_bytes()[..retained]);
         Ok(())
     }
@@ -1211,7 +1185,7 @@ impl RawRecord {
             index: self.index,
             body: self.body.into_text_bytes()?,
             dropped_byte_size,
-            captures: self.captures,
+            header: self.header,
         })
     }
 }
@@ -1248,7 +1222,11 @@ impl<R: Read> Iterator for RawRows<R> {
             let Ok(row) = row else {
                 return Some(row);
             };
-            let digest = crate::xxhash::xxh128(row.body.as_bytes());
+            // The digest is of what follows the header: two republished
+            // copies of one line differ in the clock their headers state
+            // and in nothing the line says.
+            let past_header = row.header.as_ref().map_or(0, |(end, _)| *end);
+            let digest = crate::xxhash::xxh128(&row.body.as_bytes()[past_header..]);
             if self.previous == Some(digest) {
                 continue;
             }
@@ -1266,14 +1244,12 @@ pub struct TextLines {
     raw: RawRows<Box<dyn Read + Send + 'static>>,
     /// The object every line of this read came from, shared rather than rebuilt.
     url: Option<Arc<Url>>,
-    /// The handle's own modification time, the fallback every row shares.
-    mtime: Option<i128>,
-    /// Which optional work the plan actually asked for, decided once.
-    reads_entries: bool,
-    reads_classification: bool,
-    timezone: Option<Timezone>,
-    /// Where the timestamp capture sits, when the header declares one.
-    timestamp_capture: Option<usize>,
+    /// The handle's own modification time, the instant every line its
+    /// header does not date shares.
+    mtime: Option<i64>,
+    /// The options every line of this read resolves its readings under,
+    /// shared with the splitter rather than cloned per line.
+    options: Arc<TextOptions>,
 }
 
 impl Iterator for TextLines {
@@ -1288,57 +1264,22 @@ impl Iterator for TextLines {
 impl std::iter::FusedIterator for TextLines {}
 
 impl TextLines {
-    /// Turn one parsed row into the typed line the columns are built from.
+    /// Turn one parsed row into the line every reading is resolved from.
+    ///
+    /// The line is made text here - the body decoded where it is not UTF-8 -
+    /// and everything after this reads text. Everything before it read the
+    /// bytes as they were, and the counts it took are counts of those bytes.
+    /// Nothing else is read: the header is stated only where the cut
+    /// matched it, and every other reading is the line's, on its first ask.
     fn convert(&self, row: RawRow) -> Result<TextLine> {
-        let index = row.index;
-        // The line is made text here - the body and every capture decoded
-        // where they are not UTF-8 - and everything after this reads text.
-        // Everything before it read the bytes as they were, and the counts it
-        // took are counts of those bytes.
-        let mut line = TextLine::from_bytes(index, row.body)?;
+        let mut line = TextLine::from_bytes(row.index, row.body, Arc::clone(&self.options))?;
         line.set_sourceurl(self.url.clone());
+        line.set_handle_mtime(self.mtime);
         line.set_dropped_byte_size(row.dropped_byte_size);
-
-        if self.reads_classification {
-            let (shape, _) = crate::mime_type::line::classify(line.body_bytes().as_bytes());
-            line.set_bodytype(Some(shape));
-        }
-        if self.reads_entries {
-            let entries = super::TextEntries::from_bytes(line.body_bytes());
-            line.set_entries(entries);
-        }
-
-        line.set_captures(row.captures)?;
-        match self.timestamp_capture {
-            Some(at) => {
-                let stamp = self.row_timestamp(line.capture(at), index)?;
-                line.set_timestamp(stamp);
-            }
-            None => line.set_timestamp(self.mtime),
+        if let Some((end, captures)) = row.header {
+            line.state_matched_header(end, captures);
         }
         Ok(line)
-    }
-
-    /// The record's own captured write time, falling back to the handle's.
-    ///
-    /// A header that declares the capture but did not match it on this line
-    /// falls back too: a line the expression did not date is exactly the case
-    /// the handle's own time is there to answer.
-    fn row_timestamp(&self, capture: Option<&str>, index: u64) -> Result<Option<i128>> {
-        let Some(text) = capture else {
-            return Ok(self.mtime);
-        };
-        let parsed = parse_capture(text, &super::options::mtime_dtype(), self.timezone.as_ref())
-            .map_err(|reason| {
-                row_error(
-                    index,
-                    None,
-                    self.url.as_deref(),
-                    super::options::MTIME_COLUMN,
-                    reason,
-                )
-            })?;
-        Ok(parsed.temporal_count().map(i128::from).or(self.mtime))
     }
 }
 

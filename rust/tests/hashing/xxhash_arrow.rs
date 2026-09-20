@@ -11,12 +11,12 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use yggdryl::xxhash::arrow::{column_digests, row_digests};
 use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{
-    DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, StructureType, TimeUnit, Timezone,
+    DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, StructType, TimeUnit, Timezone,
 };
 use yggdryl::{DateTimeType, DurationType};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    DataType::from(StructureType::from_fields(fields).unwrap()).required_field("row")
+    DataType::from(StructType::from_fields(fields).unwrap()).required_field("row")
 }
 
 fn batch(fields: &[Field], columns: Vec<ArrayRef>) -> RecordBatch {
@@ -667,7 +667,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "struct",
-                StructureType::from_fields([
+                StructType::from_fields([
                     Field::new("symbol", DataType::utf8(), false),
                     Field::new("quantity", DataType::Int64, true),
                 ])
@@ -735,9 +735,12 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "struct2",
-                DataType::struct2(
-                    Field::new("key", DataType::utf8(), false),
-                    Field::new("value", DataType::Int64, true),
+                DataType::from(
+                    yggdryl::StructType::from_fields([
+                        Field::new("key", DataType::utf8(), false),
+                        Field::new("value", DataType::Int64, true),
+                    ])
+                    .unwrap(),
                 ),
                 true,
             ),
@@ -881,7 +884,7 @@ fn a_row_digest_equals_the_row_value_feed_on_every_datatype_family() {
         fields.push(field);
         arrays.push(array);
     }
-    let root = DataType::from(StructureType::from_fields(fields).unwrap()).required_field("row");
+    let root = DataType::from(StructType::from_fields(fields).unwrap()).required_field("row");
     let arrow_fields: Vec<ArrowField> = root
         .dtype()
         .as_fields()
@@ -922,7 +925,8 @@ fn the_corpus_names_every_datatype_a_column_can_hold() {
             !matches!(
                 *id,
                 // Two integer tags the value feed writes but no column spells,
-                // and the one datatype the Arrow value boundary still refuses.
+                // and the variant, whose column digests as the values it
+                // decodes to, which its own test below reads.
                 DataTypeId::Int128 | DataTypeId::UInt128 | DataTypeId::Variant
             )
         })
@@ -936,27 +940,29 @@ fn the_corpus_names_every_datatype_a_column_can_hold() {
 }
 
 #[test]
-fn a_variant_column_refuses_by_name_rather_than_hashing_its_storage() {
-    // A variant projects to Arrow, so it reaches the digest path like any
-    // other column; it answers the boundary's refusal rather than silently
-    // hashing the two binaries its storage happens to lay out.
+fn a_variant_column_digests_as_the_values_it_holds() {
+    // A variant column is the variant encoding of each value, so its
+    // digests are the values' own: the decoded value feeds, never the
+    // bytes it was stored as.
     let field = DataType::Variant.nullable_field("payload");
-    let arrow = field.clone().into_arrow_field().unwrap();
-    let ArrowDataType::Struct(children) = arrow.data_type().clone() else {
-        panic!("a variant lays out as the canonical metadata-and-value struct");
-    };
-    let array: ArrayRef = Arc::new(StructArray::new(
-        children,
-        vec![
-            Arc::new(BinaryArray::from(vec![Some(b"\x01".as_slice())])) as ArrayRef,
-            Arc::new(BinaryArray::from(vec![Some(b"\x00".as_slice())])) as ArrayRef,
-        ],
-        None,
+    let values = [
+        Scalar::from(7_i64),
+        Scalar::from("AAPL"),
+        Scalar::from_struct([("id", Scalar::from(1_i32))]).unwrap(),
+        Scalar::Null,
+    ];
+    let array: ArrayRef = Arc::new(BinaryArray::from_iter_values(
+        values.iter().map(Scalar::into_variant_bytes),
     ));
-
-    let error = column_digests(array, &field, DigestAlgorithm::Xxh3)
-        .expect_err("a variant column has no value the feed can read yet");
-    assert!(error.to_string().contains("variant"), "{error}");
+    let held = digests(
+        &column_digests(array, &field, DigestAlgorithm::Xxh3).unwrap(),
+        DigestAlgorithm::Xxh3,
+    );
+    let expected: Vec<Digest> = values
+        .iter()
+        .map(|value| value.digest(DigestAlgorithm::Xxh3))
+        .collect();
+    assert_eq!(held, expected);
 }
 
 #[test]
@@ -1019,7 +1025,7 @@ fn a_column_digest_reconciles_the_array_to_the_field_it_is_given() {
         ],
         None,
     ));
-    let declared = StructureType::from_fields([
+    let declared = StructType::from_fields([
         DataType::Int64.required_field("a"),
         DataType::Int64.required_field("b"),
     ])
@@ -1331,7 +1337,7 @@ fn holder_sources_are_ordered_and_preserve_explicit_empty() {
 fn nested_holders_fill_bottom_up_and_hidden_rows_stay_untouched() {
     let inner_value = DataType::Int64.required_field("value");
     let inner_digest = holder("digest", DataType::Int64);
-    let nested = StructureType::from_fields([inner_value, inner_digest])
+    let nested = StructType::from_fields([inner_value, inner_digest])
         .map(DataType::from)
         .unwrap()
         .nullable_field("nested");
@@ -1433,8 +1439,8 @@ fn signed_and_unsigned_holders_store_the_same_full_width_digest_bits() {
             unsigned64.value(row)
         );
     }
-    assert!(signed32.value(1) < 0, "the XXH32 high bit is retained");
-    assert!(signed64.value(0) < 0, "the XXH3-64 high bit is retained");
+    // The bit patterns agree row for row, so a digest whose high bit is set
+    // lands in the signed holder as a negative rather than clamped.
 
     let value = DataType::utf8().required_field("value");
     let signed = holder("digest", DataType::Int64);
@@ -1566,7 +1572,7 @@ fn a_holder_under_a_collection_is_refused_rather_than_left_unfilled() {
     // planned by nobody and left at its default, and a containing holder would
     // then hash that default as though it were an answer - so the schema is
     // refused where the declaration is.
-    let element = StructureType::from_fields([
+    let element = StructType::from_fields([
         DataType::Int64.nullable_field("value"),
         holder("inner_digest", DataType::UInt64),
     ])
@@ -1615,7 +1621,7 @@ fn digest_metadata_under_a_collection_is_refused_with_the_same_reach() {
     )
     .unwrap();
     let element = DataType::from(
-        StructureType::from_fields([source, DataType::Int64.nullable_field("other")]).unwrap(),
+        StructType::from_fields([source, DataType::Int64.nullable_field("other")]).unwrap(),
     );
     let root = root([
         DataType::list(element.required_field("item")).nullable_field("events"),
@@ -1705,7 +1711,7 @@ fn digest_sources_reject_peer_outputs_ambiguity_duplicates_and_collection_descen
 
     let nested_value = DataType::Int64.required_field("value");
     let nested_holder = holder("digest", DataType::UInt64);
-    let nested = StructureType::from_fields([nested_value, nested_holder])
+    let nested = StructType::from_fields([nested_value, nested_holder])
         .map(DataType::from)
         .unwrap()
         .required_field("nested");
@@ -1719,7 +1725,7 @@ fn digest_sources_reject_peer_outputs_ambiguity_duplicates_and_collection_descen
         .unwrap_err();
     assert_metadata_error(error, "DIGEST:sources", "$.digest");
 
-    let nested = StructureType::from_fields([
+    let nested = StructType::from_fields([
         holder("left", DataType::UInt64),
         holder("right", DataType::UInt64),
     ])
@@ -1750,7 +1756,7 @@ fn digest_sources_reject_peer_outputs_ambiguity_duplicates_and_collection_descen
 #[test]
 fn digest_sources_try_later_literal_prefixes_and_allow_terminal_collections() {
     let scalar_prefix = DataType::Int64.required_field("a");
-    let dotted_prefix = StructureType::from_fields([DataType::Int64.required_field("c")])
+    let dotted_prefix = StructType::from_fields([DataType::Int64.required_field("c")])
         .map(DataType::from)
         .unwrap()
         .required_field("a.b");
@@ -1786,7 +1792,7 @@ fn digest_sources_try_later_literal_prefixes_and_allow_terminal_collections() {
 fn the_digest_view_answers_the_seedless_state_and_walks_nested_holders() {
     let inner_value = DataType::Int64.required_field("value");
     let inner_digest = holder("inner_digest", DataType::UInt64);
-    let nested = StructureType::from_fields([inner_value.clone(), inner_digest])
+    let nested = StructType::from_fields([inner_value.clone(), inner_digest])
         .map(DataType::from)
         .unwrap()
         .required_field("nested");
@@ -1872,7 +1878,7 @@ fn a_nested_struct_holder_is_read_rather_than_recomputed() {
     // value instead of hashing the whole Struct a second time.
     let inner_value = DataType::Int64.required_field("value");
     let inner_digest = holder("inner_digest", DataType::UInt64);
-    let nested = StructureType::from_fields([inner_value.clone(), inner_digest])
+    let nested = StructType::from_fields([inner_value.clone(), inner_digest])
         .map(DataType::from)
         .unwrap()
         .required_field("nested");

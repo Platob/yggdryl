@@ -15,7 +15,7 @@ use yggdryl::txhash::{TxHash, TxHasher};
 use yggdryl::xxhash::Xxh3;
 use yggdryl::xxhash::arrow::{column_digests, row_digests};
 use yggdryl::{
-    ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, StructureType, TimeUnit, Timezone,
+    ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, StructType, TimeUnit, Timezone,
 };
 
 const INSTANTS: [i64; 3] = [
@@ -26,7 +26,7 @@ const INSTANTS: [i64; 3] = [
 const UNIT: TimeUnit = TimeUnit::Microsecond;
 
 fn struct_root(fields: impl IntoIterator<Item = Field>) -> Field {
-    DataType::from(StructureType::from_fields(fields).unwrap()).required_field("row")
+    DataType::from(StructType::from_fields(fields).unwrap()).required_field("row")
 }
 
 fn batch(fields: &[Field], columns: Vec<ArrayRef>) -> RecordBatch {
@@ -544,8 +544,7 @@ fn quantity_field() -> Field {
 
 #[test]
 fn a_dotted_time_path_reads_an_instant_under_a_nested_struct() {
-    let inner =
-        DataType::from(StructureType::from_fields([event_field(), symbol_field()]).unwrap());
+    let inner = DataType::from(StructType::from_fields([event_field(), symbol_field()]).unwrap());
     let meta = Field::new("meta", inner, true);
     let struct_fields = match meta.clone().into_arrow_field().unwrap().data_type() {
         ArrowDataType::Struct(fields) => fields.clone(),
@@ -678,7 +677,7 @@ fn a_null_instant_nulls_a_nullable_holder_and_refuses_a_required_one() {
 #[test]
 fn a_coupled_holder_under_a_null_struct_stays_untouched() {
     let inner =
-        StructureType::from_fields([event_field(), symbol_field(), coupled("key", 16, "event")])
+        StructType::from_fields([event_field(), symbol_field(), coupled("key", 16, "event")])
             .map(DataType::from)
             .unwrap();
     let nested = Field::new("nested", inner.clone(), true);
@@ -712,7 +711,7 @@ fn a_coupled_holder_under_a_null_struct_stays_untouched() {
 #[test]
 fn a_containing_holder_reads_a_nested_coupled_holder_as_its_bytes() {
     let inner =
-        StructureType::from_fields([event_field(), symbol_field(), coupled("key", 16, "event")])
+        StructType::from_fields([event_field(), symbol_field(), coupled("key", 16, "event")])
             .map(DataType::from)
             .unwrap();
     let nested = Field::new("nested", inner, false);

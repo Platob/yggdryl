@@ -45,12 +45,13 @@
 //! rather than nothing. No second projection duplicates them.
 
 use std::cell::RefCell;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use smol_str::SmolStr;
 
 use crate::{DataType, Field, Result};
-use crate::{DateTimeType, StructureType};
+use crate::{DateTimeType, StructType};
 
 use super::FixRegistry;
 use crate::sequence::SequenceType;
@@ -164,12 +165,13 @@ pub fn fix_schema_tags() -> Vec<i32> {
         CREAUNIX_TAG_NAME as CREAUNIX, CROSSCODE_TAG_NAME as CROSSCODE,
         CROSSHASHCODE_TAG_NAME as CROSSHASHCODE, CROSSUUID_TAG_NAME as CROSSUUID,
         CURRHASHCODE_TAG_NAME as HASHCODE, CURRUNIX_TAG_NAME as UNIX,
-        CURRUUID_TAG_NAME as CURRUUID, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
-        METADATA_TAG_NAME as METADATA, MSGCTXID_TAG_NAME as MSGCTXID,
-        MSGDIRECTION_TAG_NAME as MSGDIRECTION, MSGPLUGINID_TAG_NAME as MSGPLUGINID,
-        MSGSESSIONID_TAG_NAME as MSGSESSIONID, PARENTUUIDS_TAG_NAME as PARENTUUIDS,
-        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID, SEQNUM_TAG_NAME as SEQNUM,
-        SNAPUNIX_TAG_NAME as SNAPUNIX, SOURCEURL_TAG_NAME as SOURCEURL,
+        CURRUUID_TAG_NAME as CURRUUID, EXPIRUNIX_TAG_NAME as EXPIRUNIX,
+        IDENTIFIERS_TAG_NAME as IDENTIFIERS, METADATA_TAG_NAME as METADATA,
+        MSGCTXID_TAG_NAME as MSGCTXID, MSGDIRECTION_TAG_NAME as MSGDIRECTION,
+        MSGPLUGINID_TAG_NAME as MSGPLUGINID, MSGSESSIONID_TAG_NAME as MSGSESSIONID,
+        PARENTUUIDS_TAG_NAME as PARENTUUIDS, PREVUNIX_TAG_NAME as PREVUNIX,
+        PREVUUID_TAG_NAME as PREVUUID, SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX,
+        SOURCEURL_TAG_NAME as SOURCEURL, SRCUUIDS_TAG_NAME as SRCUUIDS, STATE_TAG_NAME as STATE,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
     let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
@@ -184,16 +186,29 @@ pub fn fix_schema_tags() -> Vec<i32> {
         }
     };
     // When it happened: the instant itself, then the instants that instant
-    // is read against - created, followed, expiring, snapped -
-    // then the clocks the protocol states.
+    // is read against - created, followed, snapped, expiring - then the
+    // clocks the protocol states.
     band(
         &mut tags,
         &[
-            UNIX.0, CREAUNIX.0, PREVUNIX.0, SNAPUNIX.0, 52, 122, 60, 64, 75, 126, 62, 432,
+            UNIX.0,
+            CREAUNIX.0,
+            PREVUNIX.0,
+            SNAPUNIX.0,
+            EXPIRUNIX.0,
+            52,
+            122,
+            60,
+            64,
+            75,
+            126,
+            62,
+            432,
         ],
     );
-    // Which event: its own identity, the chain it stands in and what it
-    // descends from. A join reads these and nothing else.
+    // Which event: its own identity, the chain it stands in, what it
+    // descends from and what it was read from. A join reads these and
+    // nothing else.
     band(
         &mut tags,
         &[
@@ -205,6 +220,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
             PREVUUID.0,
             SEQNUM.0,
             PARENTUUIDS.0,
+            SRCUUIDS.0,
             IDENTIFIERS.0,
         ],
     );
@@ -256,10 +272,11 @@ pub fn fix_schema_tags() -> Vec<i32> {
             54, 44, 140, 31, 6, 38, 53, 32, 14, 151, 996, 15, 120, 854, 40, 59, 132, 134, 133, 135,
         ],
     );
-    // How it went: the protocol's own statuses and reasons, and whatever the
-    // venue said in words. The ranked state the traits answer is read off
-    // `OrdStatus` and `ExecType` and is no column of its own.
-    band(&mut tags, &[39, 150, 297, 301, 368, 103, 102, 58]);
+    // How it went: the ranked state the message reached - read off
+    // `OrdStatus` and `ExecType`, the furthest its chain knows once walked -
+    // then the protocol's own statuses and reasons, and whatever the venue
+    // said in words.
+    band(&mut tags, &[STATE.0, 39, 150, 297, 301, 368, 103, 102, 58]);
     // The groups kept whole, which no scalar column can hold.
     band(&mut tags, &GROUP_TAGS);
     // The frame: every standard header, body and trailer field no band above
@@ -284,7 +301,10 @@ pub fn fix_schema_tags() -> Vec<i32> {
 
 /// The columns every row states: `BeginString`, which the builder fills
 /// where a line stated none, and the crate's own columns every message
-/// settles - its instant, its creation, its codes and its identity.
+/// settles - its instant, its creation, its codes and its identity. The
+/// state it reached is stated on every row a message writes and admits a
+/// null all the same: a state has no neutral member, so no default fills
+/// the column a row leaves empty.
 fn is_required(tag: i32) -> bool {
     tag == 8
         || [
@@ -362,7 +382,7 @@ pub(super) fn fixmsg_definition(registry: &FixRegistry) -> Result<Field> {
     }
     let mut root = Field::new_with_metadata(
         schema.name(),
-        DataType::from(StructureType::from_fields(members)?),
+        DataType::from(StructType::from_fields(members)?),
         schema.is_nullable(),
         schema.as_metadata().clone(),
     );
@@ -437,7 +457,7 @@ pub(super) fn rooted(
         }
     }
     fields.push(entries_field()?);
-    let schema = DataType::from(StructureType::from_fields(fields)?).required_field(name);
+    let schema = DataType::from(StructType::from_fields(fields)?).required_field(name);
     column_plan(&schema, registry)?;
     Ok(schema)
 }
@@ -474,13 +494,13 @@ pub(super) fn rooted(
 /// every one of them and never write that null.
 ///
 /// ```
-/// use yggdryl::StructureType;
+/// use yggdryl::StructType;
 /// # fn main() -> yggdryl::Result<()> {
 /// # use yggdryl::local::Folder;
 /// # use yggdryl::{DataType, FixRegistry, fix_schema, fix_schema_carrying};
 /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-/// let capture = DataType::from(StructureType::from_fields([
+/// let capture = DataType::from(StructType::from_fields([
 ///     DataType::utf8().required_field("url"),
 ///     DataType::Int64.required_field("rownum"),
 ///     DataType::utf8().required_field("body"),
@@ -514,7 +534,7 @@ pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field> {
         })
         .collect();
     fields.extend(read.fields().iter().cloned());
-    Ok(DataType::from(StructureType::from_fields(fields)?).required_field(read.name()))
+    Ok(DataType::from(StructType::from_fields(fields)?).required_field(read.name()))
 }
 
 /// Where each of a capture's own columns sits, in the order they lead the row.
@@ -588,6 +608,16 @@ pub(super) struct Columns {
     columns: Box<[Column]>,
 }
 
+impl Columns {
+    /// The plan over columns already resolved: what a root rebuilt out of
+    /// a planned root's children keeps of that root's plan.
+    pub(super) fn over(columns: Vec<Column>) -> ColumnPlan {
+        Arc::new(Self {
+            columns: columns.into_boxed_slice(),
+        })
+    }
+}
+
 pub(super) type ColumnPlan = Arc<Columns>;
 
 impl std::ops::Deref for Columns {
@@ -598,7 +628,7 @@ impl std::ops::Deref for Columns {
 }
 
 pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<ColumnPlan> {
-    let DataType::Structure(fields) = schema.dtype() else {
+    let DataType::Struct(fields) = schema.dtype() else {
         return Err(super::identity::refused(
             schema.name(),
             "a Struct field",
@@ -611,39 +641,144 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
         if let Some(tag) = tag {
             super::identity::validate_field(column, tag)?;
         }
-        columns.push(Column {
-            tag,
-            counter: column.as_fix().counter()?,
-        });
+        let counter = match registry.facts_of(column) {
+            Some(facts) => facts.counter,
+            None if column.as_metadata().is_empty() => None,
+            None => column.as_fix().counter()?,
+        };
+        columns.push(Column { tag, counter });
     }
     Ok(Arc::new(Columns {
         columns: columns.into_boxed_slice(),
     }))
 }
 
+/// One schema's plan as this thread read it, beside the schema and the
+/// registry it was read against: aliases belong to the resolving registry.
+type PlannedSchema = (StructType, Arc<FixRegistry>, ColumnPlan);
+
+/// The plans one thread has read, by the shape of the schema each is for.
+pub(super) type ColumnPlans = super::registry::FixMap<u64, Vec<PlannedSchema>>;
+
 thread_local! {
-    // One retained schema and registry: aliases belong to the resolving registry.
-    static LAST_COLUMN_PLAN: RefCell<Option<(StructureType, Arc<FixRegistry>, ColumnPlan)>> = const { RefCell::new(None) };
+    /// Every schema this thread has planned, by its shape: a capture
+    /// states a few shapes a million times each, and a plan is one metadata
+    /// read per column.
+    static COLUMN_PLANS: RefCell<ColumnPlans> = RefCell::new(ColumnPlans::default());
 }
 
-/// Pointer identity is fast; equal reconstructed layouts need a structural comparison.
+/// How many shapes one thread remembers plans for; past it a plan is still
+/// read and simply not kept.
+const REMEMBERED_COLUMN_PLANS: usize = 4_096;
+
+/// How many schemas of one shape one thread remembers plans for - one
+/// per registry they were planned against - past which the oldest is
+/// forgotten: a service planning one schema against a registry per request
+/// keeps this many registries alive and no more.
+const REMEMBERED_SCHEMAS_PER_SHAPE: usize = 4;
+
+/// This thread's plans exchanged with `with`: how a thread that dies with
+/// its chunk hands what it read to the one spawned for the next.
+pub(super) fn swap_column_plans(with: &mut ColumnPlans) {
+    COLUMN_PLANS.with(|held| std::mem::swap(&mut *held.borrow_mut(), with));
+}
+
+/// The plan one schema has, read once per shape per thread.
+///
+/// The shape digest names a bucket; pointer identity, else a structural
+/// comparison, says which remembered schema is this one.
 pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Result<ColumnPlan> {
-    let DataType::Structure(columns) = schema.dtype() else {
+    let DataType::Struct(columns) = schema.dtype() else {
         return column_plan(schema, registry);
     };
-    LAST_COLUMN_PLAN.with(|held| {
-        let mut held = held.borrow_mut();
-        if let Some((known, resolver, plan)) = held.as_ref() {
-            if Arc::ptr_eq(resolver, registry)
-                && (known.shares_storage_with(columns) || known == columns)
-            {
-                return Ok(Arc::clone(plan));
+    let shape = shape_digest(schema, true);
+    COLUMN_PLANS.with(|held| {
+        if let Some(planned) = held.borrow().get(&shape) {
+            for (known, resolver, plan) in planned {
+                if Arc::ptr_eq(resolver, registry)
+                    && (known.shares_storage_with(columns) || known == columns)
+                {
+                    return Ok(Arc::clone(plan));
+                }
             }
         }
         let plan = column_plan(schema, registry)?;
-        *held = Some((columns.clone(), Arc::clone(registry), Arc::clone(&plan)));
+        let mut held = held.borrow_mut();
+        if held.len() < REMEMBERED_COLUMN_PLANS || held.contains_key(&shape) {
+            let planned = held.entry(shape).or_default();
+            if planned.len() >= REMEMBERED_SCHEMAS_PER_SHAPE {
+                planned.remove(0);
+            }
+            planned.push((columns.clone(), Arc::clone(registry), Arc::clone(&plan)));
+        }
         Ok(plan)
     })
+}
+
+/// The tag one field carries and the group it counts: off the registry's
+/// index where the field is the dictionary's own or stated under it, off
+/// the field's metadata otherwise.
+pub(super) fn tag_and_counter(registry: &FixRegistry, field: &Field) -> (Option<i32>, Option<i32>) {
+    // A field stating nothing states no tag and counts nothing: a key the
+    // dictionary does not explain is most of every bridge row.
+    if field.as_metadata().is_empty() {
+        return (None, None);
+    }
+    match registry.facts_of(field) {
+        Some(facts) => (facts.tag, facts.counter),
+        None => {
+            let view = field.as_fix();
+            (view.tag().ok().flatten(), view.counter().ok().flatten())
+        }
+    }
+}
+
+/// A digest of one root's shape: its children's names, datatype
+/// identifiers and nullability, nested children included, and each
+/// child's metadata storage where `metadata` says so.
+///
+/// Two roots of one shape digest alike, so a table keyed by the digest
+/// finds what was read against a root of this shape; two of different
+/// shapes may collide, so what the table holds says whether it is the
+/// same shape - [`same_shape`], or the schema equality a caller compares.
+pub(super) fn shape_digest(root: &Field, metadata: bool) -> u64 {
+    // The dictionary's own fold rather than a keyed hash: a root is a
+    // hundred children, each a few writes, read once per message, and
+    // what the digest names is verified before it is believed.
+    let mut state = super::registry::Mix::default();
+    digest_shape(root.fields(), metadata, &mut state);
+    state.finish()
+}
+
+fn digest_shape(fields: &[Field], metadata: bool, state: &mut super::registry::Mix) {
+    state.write_usize(fields.len());
+    for field in fields {
+        state.write(field.name().as_bytes());
+        field.dtype().id().hash(state);
+        state.write_u8(u8::from(field.is_nullable()));
+        if metadata {
+            state.write_usize(field.as_metadata().storage_address());
+        }
+        match field.dtype() {
+            DataType::Struct(children) => digest_shape(children.as_fields(), metadata, state),
+            DataType::Sequence(SequenceType::List(item) | SequenceType::LargeList(item)) => {
+                digest_shape(std::slice::from_ref(&**item), metadata, state);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Whether two roots are one shape to a term bound against either: the
+/// same children by name, datatype and nullability, in the same order.
+pub(super) fn same_shape(left: &Field, right: &Field) -> bool {
+    let (left, right) = (left.fields(), right.fields());
+    left.len() == right.len()
+        && left.iter().zip(right).all(|(left, right)| {
+            left.name() == right.name()
+                && left.dtype() == right.dtype()
+                && left.is_nullable() == right.is_nullable()
+        })
 }
 
 /// How many `fixentry` structs any root-to-leaf path materializes.
@@ -713,7 +848,7 @@ fn entry_item(level: usize) -> Result<Field> {
         field.set_display(display)?;
         Ok(field)
     };
-    Ok(DataType::from(StructureType::from_fields([
+    Ok(DataType::from(StructType::from_fields([
         named(DataType::Int32, TAG_COLUMN, true)?,
         named(DataType::utf8(), NAME_COLUMN, true)?,
         named(DataType::utf8(), VALUE_COLUMN, false)?,
@@ -1012,7 +1147,7 @@ fn group_from_entry(
     // occurrence stated them in: the root's own contract places a record.
     let rows: Vec<crate::Scalar> = stated
         .into_iter()
-        .map(crate::Scalar::from_record)
+        .map(crate::Scalar::from_struct)
         .collect::<Result<Vec<_>>>()?;
     let name = item.map_or_else(
         || {
@@ -1023,7 +1158,7 @@ fn group_from_entry(
         },
         |item| item.name().to_owned(),
     );
-    let occurrence = DataType::from(StructureType::from_fields(union)?).required_field(name);
+    let occurrence = DataType::from(StructType::from_fields(union)?).required_field(name);
     let dtype = match known.dtype() {
         DataType::Sequence(SequenceType::LargeList(_)) => DataType::large_list(occurrence),
         DataType::Mapping(map) => DataType::map(occurrence, map.keys_sorted())?,
@@ -1103,7 +1238,7 @@ fn child_from_entry(
             };
             group_from_entry(registry, entry, known, Some(item))
         }
-        DataType::Structure(_) => {
+        DataType::Struct(_) => {
             let mut fields: Vec<Field> = Vec::with_capacity(entry.entries().len());
             let mut values: Vec<crate::Scalar> = Vec::with_capacity(entry.entries().len());
             for member in entry.entries() {
@@ -1118,15 +1253,15 @@ fn child_from_entry(
                 .collect();
             let field = Field::new_with_metadata(
                 known.name(),
-                DataType::from(StructureType::from_fields(fields)?),
+                DataType::from(StructType::from_fields(fields)?),
                 false,
                 known.as_metadata().clone(),
             );
-            Ok((field, crate::Scalar::from_record(named)?))
+            Ok((field, crate::Scalar::from_struct(named)?))
         }
         _ => {
             let value = entry.value().map_or(crate::Scalar::Null, |text| {
-                super::build::typed_spelling(known, text)
+                super::build::typed_spelling_remembered(registry.memo(), known, text)
             });
             let mut field = known.clone();
             field.set_nullable(value.is_null());
@@ -1148,24 +1283,23 @@ impl super::FixMsg {
     /// types a pair, so every lookup reaches the rebuilt message as it
     /// reaches a parsed one.
     ///
-    /// # The capture's own columns are read past
+    /// # The capture's own columns are carried
     ///
     /// A column no tag and no counter names is the capture's own - the body
     /// the line was cut from, its place in the object, its media type, what
     /// a bound dropped - and so is the one the crate does tag,
-    /// [`sourceurl`](crate::SOURCEURL_TAG_NAME). All of them are read
-    /// past: a message is what parsing one line answered, and what a
-    /// *reader* said about that line is not it. Nothing on the message
-    /// holds them, so none can reach a digest, an entry, or a `body=` at a
-    /// counterparty, and no rule has to keep telling one apart from a key
-    /// no dictionary explains.
+    /// [`sourceurl`](crate::SOURCEURL_TAG_NAME). All of them are carried:
+    /// each cell holding a value is read into the message under its
+    /// column's name, as [`Self::carried`] answers it, and none of them is
+    /// content - a message is what parsing one line answered, and what a
+    /// *reader* said about that line is not it - so none can reach a
+    /// digest, an entry, or a `body=` at a counterparty, and no rule has to
+    /// keep telling one apart from a key no dictionary explains.
     ///
-    /// They stay columns of the row, and the row is still where they are
-    /// read: whoever writes rows back restates them from the batch they
-    /// arrived in - [`parse_text_arrow_reader`](super::FixCodec::parse_text_arrow_reader)
-    /// and [`format_arrow_reader`](super::FixCodec::format_arrow_reader) do -
-    /// which is the one place that can state them without a message
-    /// pretending to.
+    /// [`Self::into_row`] states each again at the column of its name,
+    /// which is how a row read back here and written again keeps what it
+    /// said for itself, and how a walk answers messages in their own order
+    /// with each row's cells still beside the message they were read with.
     ///
     /// Nothing is parsed again: this is
     /// what makes a batch of rows a stream of messages at the cost of the
@@ -1237,10 +1371,31 @@ impl super::FixMsg {
         row: &crate::Scalar,
     ) -> Result<Self> {
         let value = schema.canonicalize_value(row.clone())?;
+        Self::rebuilt(registry, schema, &value)
+    }
+
+    /// [`Self::from_row`] for a row read straight out of an Arrow batch
+    /// under `schema`: the array reader answered it in the schema's own
+    /// canonical form, so it is validated against the schema - a null
+    /// where the schema requires a value, a text past the bound a column
+    /// states, which Arrow does not police below the root - and rebuilt as
+    /// it stands rather than canonicalized a second time.
+    pub(super) fn from_arrow_row(
+        registry: Arc<FixRegistry>,
+        schema: &Field,
+        row: &crate::Scalar,
+    ) -> Result<Self> {
+        crate::value::validate_row(schema, row)?;
+        Self::rebuilt(registry, schema, row)
+    }
+
+    /// The message a canonical row of `schema` holds.
+    fn rebuilt(registry: Arc<FixRegistry>, schema: &Field, value: &crate::Scalar) -> Result<Self> {
         let plan = column_plan_of(schema, &registry)?;
         let mut members: Vec<Field> = Vec::with_capacity(schema.fields().len());
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(schema.fields().len());
         let mut content: Option<(Vec<Field>, Vec<crate::Scalar>)> = None;
+        let mut carried: Vec<(smol_str::SmolStr, crate::Scalar)> = Vec::new();
         let held = value.as_sequence().unwrap_or_default();
         for ((column, planned), value) in schema.fields().iter().zip(plan.iter()).zip(held) {
             if column.name() == FIXENTRIES_COLUMN {
@@ -1257,6 +1412,13 @@ impl super::FixMsg {
                     members.push(column.clone());
                     values.push(value.clone());
                 }
+                // The one the crate tags - `sourceurl` - is the capture's
+                // own, carried under its name as the untagged ones below.
+                Some(tag) if super::identity::is_capture_tag(tag) => {
+                    if !value.is_null() {
+                        carried.push((smol_str::SmolStr::new(column.name()), value.clone()));
+                    }
+                }
                 Some(_) => {}
                 None if planned.counter.is_some() => {}
                 // A key spelled under a namespace is a bridge's own
@@ -1268,15 +1430,18 @@ impl super::FixMsg {
                     values.push(value.clone());
                 }
                 // Any other column no tag and no counter names is the
-                // capture's own, as the two tagged ones above are: the body
-                // the line was cut from, its place in the object, its media
-                // type, what a bound dropped. Read past, every one of them.
-                // A message is what parsing a line answered, and a column
-                // that outlived the reading would be content - an entry, a
-                // digest input, a `body=` at a counterparty. Whoever reads
-                // the row back restates them from the batch they are
-                // still in.
-                None => {}
+                // capture's own: the body the line was cut from, its place
+                // in the object, its media type, what a bound dropped. Read
+                // into the message as the cells it carries, and never as a
+                // child - a column that became content would be an entry, a
+                // digest input, a `body=` at a counterparty - so the row
+                // written again states each at its column and the message
+                // is the message the line parsed into.
+                None => {
+                    if !value.is_null() {
+                        carried.push((smol_str::SmolStr::new(column.name()), value.clone()));
+                    }
+                }
             }
         }
         if let Some((fields, held)) = content {
@@ -1293,11 +1458,14 @@ impl super::FixMsg {
         }
         let root = Field::new_with_metadata(
             schema.name(),
-            DataType::from(StructureType::from_fields(members)?),
+            DataType::from(StructType::from_fields(members)?),
             schema.is_nullable(),
             schema.as_metadata().clone(),
         );
-        Self::with_registry(registry, root, crate::Scalar::from_sequence(values))
+        let mut message =
+            Self::with_registry(registry, root, crate::Scalar::from_sequence(values))?;
+        message.set_carried(carried);
+        Ok(message)
     }
 
     /// This message as the fixed row a table holds.
@@ -1307,13 +1475,12 @@ impl super::FixMsg {
     /// nothing at a column answers null there rather than shifting its neighbours, which
     /// is what makes two rows of one capture comparable at all.
     ///
-    /// [The capture's own columns](Self::from_row) answer null here, because
-    /// a message holds no fact for any of them: the one the crate tags,
-    /// `sourceurl`, and every column no tag and no counter names. Whoever
-    /// read the rows states them instead, each at its own column and before
-    /// the field contract runs, which is what the capture readers do.
-    /// Nothing derives one either: where a line was read from is whoever
-    /// read it to say, so a column nobody stated is null.
+    /// [The capture's own columns](Self::carried) - the one the crate tags,
+    /// `sourceurl`, and every column no tag and no counter names - answer the
+    /// cell the message carries under the column's name, and null where it
+    /// carries none: a message holds no fact for any of them, and what it
+    /// carries is what whoever read its row stated. Nothing derives one:
+    /// where a line was read from is whoever read it to say.
     ///
     /// The arrival record closes the row under [`FIXENTRIES_COLUMN`], so the row
     /// stays lossless whatever the columns made of it. Keys no dictionary
@@ -1358,52 +1525,23 @@ impl super::FixMsg {
     /// arrival subtree.
     pub fn into_row(&self, schema: &Field) -> Result<crate::Scalar> {
         let plan = column_plan_of(schema, self.registry())?;
-        let values = self.row_values(schema, &plan, Vec::new())?;
+        let values = self.row_values(schema, &plan)?;
         Ok(crate::Scalar::from_sequence(values))
     }
 
     /// The fixed row as the values it is made of, before they are wrapped.
     ///
-    /// What [`Self::into_row`] answers, still open: a reader holding the
-    /// capture's own cells states each at the column it lands in and wraps
-    /// the row once, rather than unwrapping a row to wrap it again. `plan`
-    /// is [`column_plan`] over the same schema, read once by the caller
-    /// rather than once per row.
-    ///
-    /// `restated` is those cells, each beside its column's position in
-    /// `schema`, in ascending order - the carried prefix leading the row and
-    /// the two tagged capture columns wherever the schema puts them. A cell
-    /// states its column outright: the message holds no fact for any of
-    /// them, and a column nobody restates answers null.
-    pub(super) fn row_values(
-        &self,
-        schema: &Field,
-        plan: &Columns,
-        restated: Vec<(usize, crate::Scalar)>,
-    ) -> Result<Vec<crate::Scalar>> {
+    /// What [`Self::into_row`] answers, still open, so a door writing rows
+    /// wraps each once. `plan` is [`column_plan`] over the same schema, read
+    /// once by the caller rather than once per row.
+    pub(super) fn row_values(&self, schema: &Field, plan: &Columns) -> Result<Vec<crate::Scalar>> {
         let columns = schema.fields();
-        if let Some((at, _)) = restated.iter().find(|(at, _)| *at >= columns.len()) {
-            return Err(super::identity::refused(
-                schema.name(),
-                format_args!("a column of the {} this row has", columns.len()),
-                format_args!("a cell restated at column {at}"),
-            ));
-        }
-        let mut restated = restated.into_iter().peekable();
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(columns.len());
         // The crate columns' derivations and the working row they read,
         // gathered off this message once for the three of them, and only
         // when one is asked for.
         let mut derived: Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)> = None;
-        for (at, (column, planned)) in columns.iter().zip(plan.iter()).enumerate() {
-            // A position already passed is dropped rather than left to
-            // block the ones behind it, so a caller stating one column twice
-            // loses the second statement and nothing else.
-            while restated.next_if(|(held, _)| *held < at).is_some() {}
-            if let Some((_, value)) = restated.next_if(|(held, _)| *held == at) {
-                values.push(fitted(column, value)?);
-                continue;
-            }
+        for (column, planned) in columns.iter().zip(plan.iter()) {
             let value = match column.name() {
                 FIXENTRIES_COLUMN => crate::Scalar::from_sequence(
                     self.entries()
@@ -1420,14 +1558,18 @@ impl super::FixMsg {
                 // A column declaring a group's `FIX:counter` answers with
                 // that group, read from the message's own occurrences. Any
                 // other column answers for the tag its field carries; one
-                // that carries none is a capture's own column, which no
-                // message holds, so only a content child spelled exactly as
-                // it is could answer for it - and nothing else does.
+                // that carries none is a capture's own column, which the
+                // message answers from the cell it carries under that name,
+                // else from a content child spelled exactly as it is.
                 _ => match (planned.tag, planned.counter) {
                     // A typed fact is its holder's, whatever shape its
                     // column takes: the identifiers Map is the event's.
                     (Some(tag), _) if super::identity::is_typed_tag(tag) => {
                         self.column_value(tag, &mut derived)?
+                    }
+                    // The one the crate tags - `sourceurl` - is carried.
+                    (Some(tag), _) if super::identity::is_capture_tag(tag) => {
+                        self.carried_cell(column.name())
                     }
                     (_, Some(counter)) => {
                         let value = self
@@ -1440,11 +1582,14 @@ impl super::FixMsg {
                     (Some(tag), None) => {
                         self.regrouped(tag, column, self.column_value(tag, &mut derived)?)
                     }
-                    (None, None) => self
-                        .index_of_name(column.name())
-                        .and_then(|at| self.as_value().get(at))
-                        .cloned()
-                        .unwrap_or(crate::Scalar::Null),
+                    (None, None) => match self.carried_cell(column.name()) {
+                        crate::Scalar::Null => self
+                            .index_of_name(column.name())
+                            .and_then(|at| self.as_value().get(at))
+                            .cloned()
+                            .unwrap_or(crate::Scalar::Null),
+                        carried => carried,
+                    },
                 },
             };
             values.push(fitted(column, value)?);
@@ -1679,7 +1824,7 @@ pub(super) fn narrowed(column: &Field, value: crate::Scalar) -> crate::Scalar {
 /// for it.
 fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
     let rebuilt = match field.dtype() {
-        DataType::Structure(members) => value.as_sequence().map(|stated| {
+        DataType::Struct(members) => value.as_sequence().map(|stated| {
             // A member the value never reached is the null the column would
             // have held anyway; one it reached is refitted in place.
             let held: Option<Vec<crate::Scalar>> = members

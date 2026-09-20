@@ -7,9 +7,7 @@ use arrow_array::RecordBatch;
 use yggdryl::arrow::BatchReader;
 use yggdryl::graph::{Element, Event};
 use yggdryl::text::{TextBytes, TextLine};
-use yggdryl::{
-    DataType, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, StructureType, fix_schema,
-};
+use yggdryl::{DataType, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
 
 fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
@@ -60,7 +58,7 @@ const CAPTURE: &[&str] = &[
 /// The capture as the batches a text reader hands the codec: one `body`
 /// column of bytes, `rows` lines to an input batch.
 fn capture_reader(lines: &[&str], rows: usize) -> BatchReader {
-    let field = StructureType::from_fields([DataType::binary().required_field("body")])
+    let field = StructType::from_fields([DataType::binary().required_field("body")])
         .map(DataType::from)
         .unwrap()
         .required_field("capture");
@@ -304,16 +302,18 @@ fn one_large_input_batch_splits_by_rows_in_proportion() {
         200,
         "the bound shapes batches, it does not drop rows"
     );
-    // One input batch charges every row the same share of its bytes, so the
-    // cut is even: every closed batch holds the same number of rows, and
-    // that many rows of raw capture is about the target.
+    // Every row of one shape lands as the same bytes, so the cut is even:
+    // every closed batch holds the same number of rows. A fixed row lands
+    // wider than the line it was parsed from - its typed columns stand
+    // beside its record - so about half the target of raw capture is what
+    // closes a batch.
     let closed = &batches[..batches.len() - 1];
     let rows = closed[0].num_rows();
     assert!(closed.iter().all(|batch| batch.num_rows() == rows));
     let per_row = raw / lines.len();
     let held = (rows * per_row) as u64;
     assert!(
-        (TARGET / 2..=TARGET * 2).contains(&held),
+        (TARGET / 4..=TARGET).contains(&held),
         "{held} raw bytes against a {TARGET} target over {rows} rows",
     );
 }
@@ -340,7 +340,7 @@ fn a_batch_always_holds_at_least_one_row_and_the_default_target_is_stated_once()
 }
 
 #[test]
-fn messages_to_batches_close_on_the_arrival_records_raw_bytes() {
+fn messages_to_batches_close_on_the_bytes_their_rows_land_as() {
     let codec = codec();
     let schema = fix_schema(codec.registry(), "fix").unwrap();
     let lines = wide();
@@ -353,11 +353,11 @@ fn messages_to_batches_close_on_the_arrival_records_raw_bytes() {
     assert_eq!(one.len(), 1);
     assert_eq!(one[0].num_rows(), 200);
 
-    // A bound of about ten lines of pairs cuts the stream into batches of
-    // about ten, and every row survives the cut. A line is measured by the
-    // record it arrived as, which is smaller than it was: the frame and the
-    // fields a message lifts are held rather than recorded.
-    let bounded = codec.clone().with_batch_byte_size(10 * 46);
+    // A bound of about ten rows cuts the stream into batches of about ten,
+    // and every row survives the cut. A row is measured by what it lands
+    // as - the leaves of every column, the four hundred bytes of text among
+    // them - and never by the line it was parsed from.
+    let bounded = codec.clone().with_batch_byte_size(10 * 470);
     let many = batches(
         bounded
             .arrow_reader(schema.clone(), codec.parse_lines(lines.clone()))
@@ -406,7 +406,7 @@ fn messages_with_no_arrival_record_are_charged_by_their_row() {
 
     // Under a bound of about ten rows of leaves, the stream is cut into
     // batches of about ten - it is not one batch of everything, which is
-    // what charging a message with no wire the bare row width would make.
+    // what charging a row the bare row width would make.
     let bounded = codec.clone().with_batch_byte_size(10 * 450);
     let many = batches(bounded.lifecycle_arrow_reader(reader()).unwrap());
     assert!((5..60).contains(&many.len()), "{} batches", many.len());
@@ -441,7 +441,7 @@ fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() 
 
     // The column is named otherwise: refused, naming what was asked for and
     // what the source carries.
-    let named_line = StructureType::from_fields([DataType::binary().required_field("line")])
+    let named_line = StructType::from_fields([DataType::binary().required_field("line")])
         .map(DataType::from)
         .unwrap()
         .required_field("capture");
@@ -467,7 +467,7 @@ fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() 
     assert_eq!(first_tag_value(&read[0], 11).as_str(), Some("A"));
 
     // The column holds neither text nor bytes: refused, naming its type.
-    let numbered = StructureType::from_fields([DataType::Int64.required_field("body")])
+    let numbered = StructType::from_fields([DataType::Int64.required_field("body")])
         .map(DataType::from)
         .unwrap()
         .required_field("capture");
@@ -486,7 +486,14 @@ fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() 
     // no bytes carries no message either: an empty payload column is a row
     // that had nothing to read, not a row holding an empty message.
     let mut silent = codec
-        .parse_text_line(&TextLine::from_bytes(0, TextBytes::default()).unwrap())
+        .parse_text_line(
+            &TextLine::from_bytes(
+                0,
+                TextBytes::default(),
+                std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+            )
+            .unwrap(),
+        )
         .unwrap();
     assert!(silent.next().is_none(), "no payload, no message");
 
@@ -495,7 +502,14 @@ fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() 
     // on.
     let malformed = TextBytes::from_bytes(b"<Order ClOrdID='X'></Nope>").unwrap();
     let mut broken = codec
-        .parse_text_line(&TextLine::from_bytes(0, malformed).unwrap())
+        .parse_text_line(
+            &TextLine::from_bytes(
+                0,
+                malformed,
+                std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+            )
+            .unwrap(),
+        )
         .unwrap();
     let empty = broken.next().unwrap().unwrap();
     assert!(broken.next().is_none());
@@ -550,6 +564,7 @@ fn decoded_line_intake_accepts_owned_borrowed_and_both_fallible_forms() {
     let line = TextLine::from_bytes(
         0,
         TextBytes::from_bytes(b"8=FIX.4.4|35=D|11=A|10=0|8=FIX.4.4|35=D|11=B|10=0|").unwrap(),
+        std::sync::Arc::new(yggdryl::text::TextOptions::new()),
     )
     .unwrap();
     let expected = codec
@@ -618,7 +633,14 @@ pub(super) fn same_source_failure(error: yggdryl::Error, marker: &Arc<()>) {
 #[test]
 fn composed_fallible_stages_are_lazy_preserve_errors_and_fuse_exhaustion() {
     let codec = codec();
-    let line = |body: &[u8]| TextLine::from_bytes(0, TextBytes::from_bytes(body).unwrap()).unwrap();
+    let line = |body: &[u8]| {
+        TextLine::from_bytes(
+            0,
+            TextBytes::from_bytes(body).unwrap(),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+    };
     let first = line(b"8=FIX.4.4|35=D|11=A|65024=stream|52=20260102-10:15:30|10=0|");
     let last = line(b"8=FIX.4.4|35=D|11=A|65024=stream|52=20260102-10:15:31|10=0|");
     let marker = Arc::new(());
@@ -652,6 +674,72 @@ fn composed_fallible_stages_are_lazy_preserve_errors_and_fuse_exhaustion() {
     assert_eq!(pulls.get(), 4);
 }
 
+/// A walked message descends from the whole of its chain.
+///
+/// Its parents are every message before it in the chain, oldest first, each
+/// once - the lineage the walk carries forward - and its previous is the
+/// last of them. Its sources stay its own line's: provenance names what a
+/// node was read from and never what it follows, so nothing of a
+/// predecessor's source reaches its successor. Walked again, the chain is
+/// the same chain under the same identities.
+#[test]
+fn a_walked_message_descends_from_the_whole_chain_and_keeps_its_own_source() {
+    const LINES: [&[u8]; 3] = [
+        b"8=FIX.4.4|35=D|11=CHAIN-1|55=AAPL|54=1|38=100|52=20260102-10:15:30|10=0|",
+        b"8=FIX.4.4|35=8|11=CHAIN-1|37=O-1|17=E-1|39=1|150=F|55=AAPL|54=1|38=100|14=40|32=40|31=10.5|52=20260102-10:15:31|10=0|",
+        b"8=FIX.4.4|35=8|11=CHAIN-1|37=O-1|17=E-2|39=2|150=F|55=AAPL|54=1|38=100|14=100|32=60|31=10.5|52=20260102-10:15:32|10=0|",
+    ];
+    let codec = codec();
+    let lines: Vec<TextLine> = LINES
+        .iter()
+        .enumerate()
+        .map(|(index, body)| {
+            TextLine::from_bytes(
+                index as u64,
+                TextBytes::from_bytes(body).unwrap(),
+                Arc::new(yggdryl::text::TextOptions::new()),
+            )
+            .unwrap()
+            .with_handle_mtime(1_704_190_530_000_000_000 + index as i64)
+        })
+        .collect();
+    let sources: Vec<_> = lines.iter().map(Element::get_curruuid).collect();
+    let walked: Vec<FixMsg> = codec
+        .lifecycle(codec.parse_text_lines(lines.into_iter().map(Ok::<TextLine, yggdryl::Error>)))
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(walked.len(), 3);
+    let identities: Vec<_> = walked.iter().map(Element::get_curruuid).collect();
+    assert!(
+        walked[0].get_parentuuids().is_empty(),
+        "the first of a chain descends from nothing"
+    );
+    assert_eq!(walked[1].get_parentuuids(), [identities[0]]);
+    assert_eq!(
+        walked[2].get_parentuuids(),
+        [identities[0], identities[1]],
+        "the whole chain, oldest first"
+    );
+    assert_eq!(walked[2].get_prevuuid(), Some(identities[1]));
+    for (message, source) in walked.iter().zip(&sources) {
+        assert_eq!(
+            message.get_srcuuids(),
+            [*source],
+            "a source never travels along the chain"
+        );
+    }
+    let again: Vec<FixMsg> = codec
+        .lifecycle(walked.clone())
+        .map(Result::unwrap)
+        .collect();
+    for (before, after) in walked.iter().zip(&again) {
+        assert_eq!(after.get_parentuuids(), before.get_parentuuids());
+        assert_eq!(after.get_srcuuids(), before.get_srcuuids());
+        assert_eq!(after.get_prevuuid(), before.get_prevuuid());
+        assert_eq!(after.get_curruuid(), before.get_curruuid());
+    }
+}
+
 /// A source that answers `item`, then `None` once, then resumes a bounded
 /// number of times: a door that did not fuse would read the resumed items.
 fn resuming<T: Clone>(item: T) -> impl Iterator<Item = T> {
@@ -668,6 +756,7 @@ fn every_stream_door_fuses_its_own_source() {
     let line = TextLine::from_bytes(
         0,
         TextBytes::from_bytes(b"8=FIX.4.4|35=D|11=A|10=0|").unwrap(),
+        std::sync::Arc::new(yggdryl::text::TextOptions::new()),
     )
     .unwrap();
     let message = codec
@@ -740,6 +829,178 @@ fn the_batch_door_fills_what_a_parse_fills_and_leaves_the_record_alone() {
     );
 }
 
+/// The batch door reads a row as the line it is, and states that line as the
+/// message's one source - the same identity the line door states for the
+/// same bytes at the same instant, so a message names its line whichever
+/// door read it.
+#[test]
+fn the_batch_door_states_the_row_as_the_source_the_line_door_states() {
+    const REPORT: &str = "8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|";
+    let codec = codec();
+    let filled = codec
+        .parse_text_arrow_reader(capture_reader(&[REPORT], 1))
+        .unwrap()
+        .map(std::result::Result::unwrap)
+        .next()
+        .expect("one batch");
+    let schema = yggdryl::Field::from_arrow_schema("row", &filled.schema()).unwrap();
+    let at =
+        yggdryl::fix_column_of(&schema, yggdryl::SRCUUIDS_TAG_NAME.0).expect("a srcuuids column");
+    let sources: Vec<yggdryl::Uuid> = first_at(&filled, at)
+        .as_sequence()
+        .expect("a list of sources")
+        .iter()
+        .map(|item| match item {
+            Scalar::Uuid(uuid) => *uuid,
+            other => panic!("a uuid, got {other:?}"),
+        })
+        .collect();
+    // The row states no `mtime`, so the line is dated at the epoch - as the
+    // line door dates one built from the same bytes under no handle.
+    let line = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(REPORT).unwrap(),
+        Arc::new(yggdryl::text::TextOptions::new()),
+    )
+    .unwrap();
+    assert_eq!(sources, [line.get_curruuid()]);
+    let through_line = codec
+        .parse_text_line(&line)
+        .unwrap()
+        .next()
+        .expect("one message")
+        .unwrap();
+    assert_eq!(through_line.get_srcuuids(), sources.as_slice());
+    let through_row = codec
+        .messages(yggdryl::arrow::batch_reader(
+            filled.schema(),
+            [filled.clone()],
+        ))
+        .next()
+        .expect("one message")
+        .unwrap();
+    assert_eq!(through_row.get_srcuuids(), sources.as_slice());
+    assert_eq!(through_row.get_curruuid(), through_line.get_curruuid());
+}
+
+/// The three steps - the lines as a batch, the messages parsed out of it,
+/// the lifecycle's rows - each open with the sixteen columns every event is
+/// stated in, under one name and one datatype, and join on them: a
+/// message's `srcuuids` is the `curruuid` its line's batch states, read off
+/// that column rather than recomputed, and a chained message's `prevuuid`
+/// and `parentuuids` are the `curruuid` of the messages before it, its
+/// `state` the furthest the chain reached.
+#[test]
+fn the_three_steps_join_on_the_columns_every_event_opens_with() {
+    use yggdryl::graph::EventColumn;
+
+    const PLACED: &str = "8=FIX.4.4|35=D|11=C-1|37=A|39=0|54=1|38=100|10=0|";
+    const FILLED: &str = "8=FIX.4.4|35=8|11=C-1|37=A|39=2|150=F|54=1|38=100|14=100|10=0|";
+    let codec = codec();
+    let options = Arc::new(yggdryl::text::TextOptions::new());
+    let mut lines: Vec<TextLine> = [PLACED, FILLED]
+        .iter()
+        .enumerate()
+        .map(|(index, wire)| {
+            let mut line = TextLine::from_bytes(
+                index as u64,
+                TextBytes::from_bytes(wire).unwrap(),
+                Arc::clone(&options),
+            )
+            .unwrap();
+            line.set_handle_mtime(Some(1_704_190_530_000_000_000 + index as i64));
+            line
+        })
+        .collect();
+    // An identity the carrier states and no recomputation of the bytes
+    // would ever derive: what the message names is what the batch said.
+    lines[1].set_curruuid(yggdryl::Uuid::from_v8(7));
+    let identities: Vec<yggdryl::Uuid> = lines.iter().map(Element::get_curruuid).collect();
+
+    // Step 1: the lines as a batch, opening with the sixteen as fields.
+    let carrier = yggdryl::text::into_arrow_batch(lines.clone(), &options).unwrap();
+    let stated = yggdryl::Field::from_arrow_schema("lines", &carrier.schema()).unwrap();
+    let expected = EventColumn::fields().unwrap();
+    for (held, column) in stated.fields().iter().zip(&expected) {
+        assert_eq!(held.name(), column.name());
+        assert_eq!(held.dtype(), column.dtype(), "{}", column.name());
+        assert_eq!(
+            held.is_nullable(),
+            column.is_nullable(),
+            "{}",
+            column.name()
+        );
+    }
+
+    // Step 2: the messages parsed out of the batch, each stating the line
+    // the carrier said it was as its one source, and the same sixteen under
+    // the row's own names and datatypes.
+    let parsed = codec
+        .parse_text_arrow_reader(yggdryl::arrow::batch_reader(
+            carrier.schema(),
+            [carrier.clone()],
+        ))
+        .unwrap()
+        .map(std::result::Result::unwrap)
+        .next()
+        .expect("one batch");
+    let row = yggdryl::Field::from_arrow_schema("row", &parsed.schema()).unwrap();
+    for column in EventColumn::ALL {
+        let held = row
+            .field(column.name())
+            .unwrap_or_else(|error| panic!("{}: {error}", column.name()));
+        assert_eq!(
+            held.dtype(),
+            &column.datatype().unwrap(),
+            "{}",
+            column.name()
+        );
+    }
+    let messages: Vec<FixMsg> = codec
+        .messages(yggdryl::arrow::batch_reader(
+            parsed.schema(),
+            [parsed.clone()],
+        ))
+        .map(std::result::Result::unwrap)
+        .collect();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].get_srcuuids(), &identities[..1]);
+    assert_eq!(messages[1].get_srcuuids(), [yggdryl::Uuid::from_v8(7)]);
+    // The row's own sixteen name the message, never the line it came from.
+    assert_ne!(messages[0].get_curruuid(), identities[0]);
+    assert_eq!(messages[0].get_currunix(), 1_704_190_530_000_000_000);
+
+    // Step 3: the lifecycle's rows carry the chain and the state it reached,
+    // and a message read back off them keeps both.
+    let walked = codec
+        .lifecycle_arrow_reader(yggdryl::arrow::batch_reader(parsed.schema(), [parsed]))
+        .unwrap()
+        .map(std::result::Result::unwrap)
+        .next()
+        .expect("one batch");
+    let chained: Vec<FixMsg> = codec
+        .messages(yggdryl::arrow::batch_reader(walked.schema(), [walked]))
+        .map(std::result::Result::unwrap)
+        .collect();
+    assert_eq!(chained.len(), 2);
+    assert_eq!(chained[1].get_prevuuid(), Some(chained[0].get_curruuid()));
+    assert_eq!(chained[1].get_parentuuids(), [chained[0].get_curruuid()]);
+    assert_eq!(chained[1].get_seqnum(), 1);
+    assert!(
+        chained[1].get_state().is_done(),
+        "{}",
+        chained[1].get_state()
+    );
+    assert!(
+        chained[0].get_state().is_live(),
+        "{}",
+        chained[0].get_state()
+    );
+    // Provenance travels along no chain: each keeps its own line.
+    assert_eq!(chained[0].get_srcuuids(), &identities[..1]);
+    assert_eq!(chained[1].get_srcuuids(), [yggdryl::Uuid::from_v8(7)]);
+}
+
 #[test]
 fn a_batch_with_no_arrival_record_cannot_be_written() {
     let codec = codec();
@@ -783,10 +1044,14 @@ const PLUGIN_CAPTURES: [&str; 1] = ["msgpluginid"];
 /// A bridge line naming the plugin that logged it, where it names one.
 fn plugin_line(body: &[u8], plugin: Option<&str>) -> TextLine {
     let page = |text: &str| TextBytes::from_bytes(text.as_bytes()).unwrap();
-    TextLine::from_bytes(0, TextBytes::from_bytes(body).unwrap())
-        .unwrap()
-        .with_captures(vec![plugin.map(page)])
-        .unwrap()
+    TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(body).unwrap(),
+        std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+    )
+    .unwrap()
+    .with_captures(vec![plugin.map(page)])
+    .unwrap()
 }
 
 /// The one message one line reads as.
@@ -1068,7 +1333,12 @@ fn a_payload_column_spelled_msgpluginid_is_the_payload_and_fills_no_plugin() {
     let lines: Vec<TextLine> = bodies
         .iter()
         .map(|body| {
-            TextLine::from_bytes(0, TextBytes::from_bytes(body.as_bytes()).unwrap()).unwrap()
+            TextLine::from_bytes(
+                0,
+                TextBytes::from_bytes(body.as_bytes()).unwrap(),
+                std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+            )
+            .unwrap()
         })
         .collect();
     // Read as the payload it is, `venue` is one word: it opens no frame,
@@ -1082,7 +1352,7 @@ fn a_payload_column_spelled_msgpluginid_is_the_payload_and_fills_no_plugin() {
     );
     let alone = one_of(&codec, &lines[1]);
 
-    let capture = StructureType::from_fields([DataType::utf8().required_field("msgpluginid")])
+    let capture = StructType::from_fields([DataType::utf8().required_field("msgpluginid")])
         .map(DataType::from)
         .unwrap()
         .required_field("capture");
@@ -1191,7 +1461,7 @@ fn a_capture_answers_one_row_per_message_and_a_sentence_is_no_row() {
 
 #[test]
 fn a_document_row_is_one_unknown_row_carrying_its_source_columns_and_stated_direction() {
-    let field = StructureType::from_fields([
+    let field = StructType::from_fields([
         DataType::Int64.required_field("rownum"),
         DataType::utf8().required_field("msgdirection"),
         DataType::binary().required_field("body"),
@@ -1226,7 +1496,7 @@ fn a_document_row_is_one_unknown_row_carrying_its_source_columns_and_stated_dire
 fn a_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
     // Shaped the way the text line reader shapes a capture: where the line was
     // read from, which line it was, what stamped it, and the frame itself.
-    let capture = StructureType::from_fields([
+    let capture = StructType::from_fields([
         DataType::utf8().required_field("url"),
         DataType::Int64.required_field("rownum"),
         DataType::utf8().nullable_field("threadname"),
@@ -1353,10 +1623,14 @@ fn a_stream_carries_nothing_from_a_document_to_the_rows_after_it() {
         .with_exclude_msgtypes::<[&str; 0], &str>([])
         .with_capture_names(["msgpluginid"]);
     let line = |body: &[u8]| {
-        TextLine::from_bytes(0, TextBytes::from_bytes(body).unwrap())
-            .unwrap()
-            .with_captures(vec![Some(TextBytes::from_bytes(b"STREAM").unwrap())])
-            .unwrap()
+        TextLine::from_bytes(
+            0,
+            TextBytes::from_bytes(body).unwrap(),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_captures(vec![Some(TextBytes::from_bytes(b"STREAM").unwrap())])
+        .unwrap()
     };
     // A Jolokia answer naming the plugin every line here names, and the two
     // ends of its session: a document, which the codec does not read.
@@ -1401,15 +1675,19 @@ fn a_dated_capture_reads_a_retired_spelling_and_the_fact_it_names_is_the_events(
     let codec = codec().with_capture_names(["beginstring", "msgpluginid"]);
     let page = |bytes: &[u8]| TextBytes::from_bytes(bytes).unwrap();
     let line = |body: &[u8], captures: [Option<&str>; 2]| {
-        TextLine::from_bytes(0, page(body))
-            .unwrap()
-            .with_captures(
-                captures
-                    .iter()
-                    .map(|held| held.map(|text| page(text.as_bytes())))
-                    .collect(),
-            )
-            .unwrap()
+        TextLine::from_bytes(
+            0,
+            page(body),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_captures(
+            captures
+                .iter()
+                .map(|held| held.map(|text| page(text.as_bytes())))
+                .collect(),
+        )
+        .unwrap()
     };
     let one = |line: &TextLine| -> FixMsg {
         let mut messages = codec.parse_text_line(line).unwrap();

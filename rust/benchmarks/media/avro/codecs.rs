@@ -16,14 +16,14 @@ use yggdryl::avro;
 use yggdryl::avro::AvroOptions;
 use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
-use yggdryl::{DataType, StructureType, Url};
+use yggdryl::{DataType, StructType, Url};
 
 /// Rows in the sweep fixture.
 const ROWS: usize = crate::bench_profile::corpus(65_536, 1_024);
 
 /// One canonical batch of `rows` trades starting at `base`.
 fn batch(base: usize, rows: usize) -> RecordBatch {
-    let schema = StructureType::from_fields([
+    let schema = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
         DataType::Float64.required_field("price"),

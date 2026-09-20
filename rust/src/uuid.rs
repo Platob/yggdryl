@@ -505,6 +505,13 @@ impl Uuid {
         ((self.0 >> 76) & 0xf) as u8
     }
 
+    /// Whether this is the nil identifier, RFC 9562's all-zero value: the
+    /// one no element has, and what an instant no UUIDv7 holds derives.
+    #[must_use]
+    pub const fn is_nil(self) -> bool {
+        self.0 == 0
+    }
+
     /// Return the canonical sixteen storage bytes.
     pub const fn into_bytes(self) -> [u8; 16] {
         self.0.to_be_bytes()

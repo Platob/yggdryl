@@ -324,7 +324,7 @@ A column of locations declares `url`; a column of names declares `urn`. The two 
     assert.equal(named.asJs(), 'urn:isbn:0451450523')
     ```
 
-| rule | `url` (59) | `urn` (87) |
+| rule | `url` (`0x64`) | `urn` (`0x65`) |
 | --- | --- | --- |
 | Kind | `text`; `UriField` over `UriType::Url`, `types.url`, `fields.url` | `text`; `UriField` over `UriType::Urn`, `types.urn`, `fields.urn` |
 | Value | `Url` behind one shared pointer, so a row clone moves a reference count rather than an identifier | `Urn`, the same way |

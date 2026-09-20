@@ -45,7 +45,7 @@
 
 use smol_str::format_smolstr;
 
-use crate::{Charset, DataType, Error, Field, Result, StructureType};
+use crate::{Charset, DataType, Error, Field, Result, StructType};
 use crate::{TimeUnit, UnionMode};
 
 use crate::bytes::BytesType;
@@ -273,7 +273,7 @@ fn merge_nested(
     recode: Recode,
 ) -> Result<Option<DataType>> {
     match (left, right) {
-        (DataType::Structure(left_fields), DataType::Structure(right_fields)) => {
+        (DataType::Struct(left_fields), DataType::Struct(right_fields)) => {
             merge_struct(left_fields.as_ref(), right_fields.as_ref(), how, recode).map(Some)
         }
         (DataType::Mapping(left_map), DataType::Mapping(right_map)) => {
@@ -345,7 +345,7 @@ fn merge_struct(
             merged.push(optional(field));
         }
     }
-    StructureType::from_fields(merged).map(DataType::from)
+    StructType::from_fields(merged).map(DataType::from)
 }
 
 /// The same field, but nullable, because one side never described it.
@@ -465,7 +465,7 @@ fn merge_scalar(
 fn is_mergeable_into_bytes(dtype: &DataType) -> bool {
     !matches!(
         dtype,
-        DataType::Structure(_) | DataType::Union(..) | DataType::Mapping(_)
+        DataType::Struct(_) | DataType::Union(..) | DataType::Mapping(_)
     ) && list_parts(dtype).is_none()
 }
 

@@ -1,54 +1,205 @@
-//! One decoded text row.
+//! One text row: the line as the reader cut it, and every reading of it
+//! resolved from the body under the options on first ask.
 
+use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::Arc;
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, OnceLock};
 
-use crate::{FieldPath, MimeType, Result, Url};
+use smol_str::{SmolStr, format_smolstr};
 
+use crate::graph::{Element, Event};
+use crate::{DataType, FieldPath, MimeType, Result, Scalar, State, Url, Uuid};
+
+use super::arrow::{parse_capture, physical_rownum, row_error};
+use super::options::{MTIME_COLUMN, TextOptions, mtime_dtype};
 use super::{TextBytes, TextEntries, TextEntry};
 
-/// One decoded text row, typed the way its columns are.
+/// One text row, and the [`Event`] it is.
 ///
-/// Every field already holds what its column holds, so building a batch reads
-/// the struct rather than re-deriving a datatype per value. The row is not a
-/// map: nothing here is looked up by name on the per-row path.
+/// A line holds what the reader cut and nothing it derived: its position in
+/// the object, the object, the handle's own modification time, the body -
+/// the whole line as cut, the row header included, made text where it is
+/// made - and one `Arc<TextOptions>` every line of a read shares. Every
+/// other fact is a reading of the body under those options, resolved on the
+/// first ask, once, into a slot of its own, so a caller that reads the body
+/// and the row number resolves nothing else:
 ///
-/// The body is text, and it is text by construction: a line is made from the
-/// bytes the reader cut, and where those are not UTF-8 they are read once,
-/// where the line is made, by the charset layer's one rule for bytes offered
-/// as UTF-8 that are not - the rule behind
+/// | reading | resolves as |
+/// | --- | --- |
+/// | [`captures`](Self::captures) | `rowheader` matched over the body, one slot per declared capture, in the order the expression declares them |
+/// | [`payload_bytes`](Self::payload_bytes) | the body past the header match; the body where the header declares nothing or did not match |
+/// | [`entries`](Self::entries) | the key/value tree the payload states, by [`TextEntries::from_bytes`] |
+/// | [`bodytype`](Self::bodytype) | what the payload is classified as |
+/// | [`mtime`](Self::mtime) | the header's `mtime` capture as an instant, else the handle's modification time |
+/// | `get_identifiers` | the named captures the line matched, each under the capture's name |
+/// | `get_currunix` | [`mtime`](Self::mtime); the handle's time over a refused capture, the epoch where the line has none |
+/// | `get_seqnum` | a `seqnum` capture, else the row number under `start_rownum`, else the index |
+/// | `get_state` | a `state` capture, else `00UNKNOWN` |
+/// | `get_creaunix`, `get_expirunix`, `get_prevunix`, `get_snapunix` | the capture of that name as an instant, else none |
+/// | `get_prevuuid` | a `prevuuid` capture, else none |
+/// | `get_crosscode` | a `crosscode` capture, else none |
+/// | `get_currhashcode` | the XXH3-64 of the body's bytes |
+/// | `get_crosshashcode` | the cross code's XXH3-64, zero where none |
+/// | `get_curruuid` | [`Event::time_uuid`] over the instant and the code |
+/// | `get_crossuuid` | [`Element::cross_uuid`] |
+/// | `get_parentuuids`, `get_srcuuids` | none: a line is read from a handle, and follows nothing until a walk states it |
+///
+/// A capture named for an [`Event`] fact feeds that reading by its exact
+/// name, parsed at the fact's own datatype - an instant at the `mtime`
+/// column's clock, a `uuid`, a `state`, a count - and a capture that does
+/// not parse as it is a named refusal on the inherent reading that owns it
+/// and on every column built from it; the trait door, which cannot refuse,
+/// answers the fact's default over a refused reading. A `set_*` states a
+/// fact and wins over the resolved reading; [`set_body`](Self::set_body)
+/// drops every resolved slot, because every one of them read the body.
+/// Equality, order and hash read the stated facts alone and never a
+/// resolved slot.
+///
+/// The body is text by construction: a line is made from the bytes the
+/// reader cut, and where those are not UTF-8 they are read once, where the
+/// line is made, by the charset layer's one rule for bytes offered as UTF-8
+/// that are not - the rule behind
 /// [`Charset::transcribe`](crate::Charset::transcribe) - so every reader
 /// after that point reads text and none of them validates again. A body that
 /// was UTF-8 - every line of every capture this crate holds - stays the range
 /// of the page it was read into, so nothing is copied between the stream and
-/// the line.
-#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+/// the line, and a capture is a range of that same page.
+#[derive(Clone, Debug)]
 pub struct TextLine {
     index: u64,
     url: Option<Arc<Url>>,
-    timestamp: Option<i128>,
+    /// The handle's own modification time, nanoseconds since the Unix epoch,
+    /// UTC: the instant a line its header does not date happened at.
+    handle_mtime: Option<i64>,
     bodytype: Option<MimeType>,
     /// Text: [`decoded`] made it so, and every door onto this field goes
     /// through it.
     body: TextBytes,
-    /// Each text, by the same door.
-    captures: Vec<Option<TextBytes>>,
-    entries: Option<TextEntries>,
+    /// The options the line is read under, shared by every line of a read.
+    options: Arc<TextOptions>,
     dropped_byte_size: Option<u64>,
-    /// How many bytes of the body, and of the captures, were decoded.
+    /// How many bytes of the body were decoded.
     decoded_body: u64,
-    decoded_captures: u64,
+    stated: Stated,
+    resolved: Resolved,
+}
+
+/// One row-header match: where it ends in the body, and the captures it
+/// named, one slot per declared capture.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct Header {
+    end: usize,
+    captures: Vec<Option<TextBytes>>,
+    /// Whether a caller stated the captures - the line's word, standing over
+    /// every body - or the cut matched them over the body it read.
+    stated: bool,
+}
+
+/// The facts a `set_*` stated, each winning over the resolved reading of
+/// the same name; `None` leaves the reading to the body.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct Stated {
+    header: Option<Header>,
+    entries: Option<Option<TextEntries>>,
+    curruuid: Option<Uuid>,
+    crossuuid: Option<Uuid>,
+    crosscode: Option<String>,
+    currhashcode: Option<u64>,
+    crosshashcode: Option<u64>,
+    identifiers: Option<BTreeMap<String, String>>,
+    parentuuids: Option<Vec<Uuid>>,
+    srcuuids: Option<Vec<Uuid>>,
+    currunix: Option<i64>,
+    state: Option<State>,
+    seqnum: Option<u64>,
+    creaunix: Option<Option<i64>>,
+    expirunix: Option<Option<i64>>,
+    prevunix: Option<Option<i64>>,
+    prevuuid: Option<Option<Uuid>>,
+    snapunix: Option<Option<i64>>,
+}
+
+/// One reading of a capture: the value it answers, and the refusal where
+/// the capture did not parse as the fact it names - the value is then the
+/// fact's default, which the trait door answers.
+#[derive(Clone, Debug)]
+struct Reading<T> {
+    value: T,
+    refused: Option<Refusal>,
+}
+
+impl<T> Reading<T> {
+    const fn read(value: T) -> Self {
+        Self {
+            value,
+            refused: None,
+        }
+    }
+
+    fn refused(value: T, column: &str, reason: SmolStr) -> Self {
+        Self {
+            value,
+            refused: Some(Refusal {
+                column: SmolStr::new(column),
+                reason,
+            }),
+        }
+    }
+}
+
+/// A capture that does not read as the fact it names: the column and why.
+#[derive(Clone, Debug)]
+struct Refusal {
+    column: SmolStr,
+    reason: SmolStr,
+}
+
+/// Every reading of the body, each resolved once on the first ask.
+#[derive(Clone, Debug, Default)]
+struct Resolved {
+    header: OnceLock<Header>,
+    bodytype: OnceLock<MimeType>,
+    entries: OnceLock<Option<TextEntries>>,
+    identifiers: OnceLock<BTreeMap<String, String>>,
+    mtime: OnceLock<Reading<Option<i64>>>,
+    seqnum: OnceLock<Reading<u64>>,
+    state: OnceLock<Reading<State>>,
+    creaunix: OnceLock<Reading<Option<i64>>>,
+    expirunix: OnceLock<Reading<Option<i64>>>,
+    prevunix: OnceLock<Reading<Option<i64>>>,
+    snapunix: OnceLock<Reading<Option<i64>>>,
+    prevuuid: OnceLock<Reading<Option<Uuid>>>,
+    crosscode: OnceLock<String>,
+    currhashcode: OnceLock<u64>,
+    crosshashcode: OnceLock<u64>,
+    curruuid: OnceLock<Uuid>,
+    crossuuid: OnceLock<Uuid>,
+}
+
+impl Resolved {
+    /// Drops the four readings the identity derives from, so they resolve
+    /// afresh from the body, the instant and the cross code as they now are.
+    fn reset_identity(&mut self) {
+        self.currhashcode = OnceLock::new();
+        self.crosshashcode = OnceLock::new();
+        self.curruuid = OnceLock::new();
+        self.crossuuid = OnceLock::new();
+    }
 }
 
 impl TextLine {
-    /// One line from its position and the bytes the reader cut for it.
+    /// One line from its position in the object, the bytes the reader cut
+    /// for it and the options it is read under.
     ///
     /// The bytes become text here. A body that is valid UTF-8 is kept as the
     /// range it is; one that is not is read once into a page of its own, as
     /// [`Charset::transcribe`](crate::Charset::transcribe) reads bytes offered
     /// as UTF-8 - every valid run kept, every other byte as Windows-1252
     /// through the charset layer's table - and how many bytes were read that
-    /// way is what [`decoded_byte_size`] counts.
+    /// way is what [`decoded_byte_size`] counts. Nothing else is read: the
+    /// header, the entries, the instant and the identity resolve on their
+    /// first ask.
     ///
     /// # Errors
     ///
@@ -56,19 +207,19 @@ impl TextLine {
     /// decoded text is longer than a page can address in 32-bit offsets.
     ///
     /// [`decoded_byte_size`]: Self::decoded_byte_size
-    pub fn from_bytes(index: u64, body: TextBytes) -> Result<Self> {
+    pub fn from_bytes(index: u64, body: TextBytes, options: Arc<TextOptions>) -> Result<Self> {
         let (body, decoded_body) = decoded(body)?;
         Ok(Self {
             index,
             url: None,
-            timestamp: None,
+            handle_mtime: None,
             bodytype: None,
             body,
-            captures: Vec::new(),
-            entries: None,
+            options,
             dropped_byte_size: None,
             decoded_body,
-            decoded_captures: 0,
+            stated: Stated::default(),
+            resolved: Resolved::default(),
         })
     }
 
@@ -81,9 +232,18 @@ impl TextLine {
         self.index
     }
 
-    /// Set the physical line number.
-    pub const fn set_index(&mut self, index: u64) {
+    /// Set the physical line number; the place in the chain it answers
+    /// resolves afresh.
+    pub fn set_index(&mut self, index: u64) {
         self.index = index;
+        self.resolved.seqnum = OnceLock::new();
+    }
+
+    /// The options this line is read under: the row header, the strips, the
+    /// first row number, the clock's zone.
+    #[must_use]
+    pub fn options(&self) -> &TextOptions {
+        &self.options
     }
 
     /// The object this line was read from.
@@ -120,42 +280,43 @@ impl TextLine {
         self
     }
 
-    /// When the record was written, in nanoseconds UTC.
-    ///
-    /// A raw count, not a scalar: the unit and the zone are fixed and the
-    /// options state them before the read, so carrying a datatype beside every
-    /// value would carry the same two facts once per row.
-    ///
-    /// Counted in 128 bits, which is wider than the column it fills. A
-    /// nanosecond count in 64 bits runs out in 2262, and a capture reading a
-    /// date past that, or an arithmetic step over one, has somewhere to land
-    /// here rather than wrapping silently. Narrowing to the column's own width
-    /// happens once, where the column is built, and a count that will not fit
-    /// is refused there by name rather than truncated.
+    /// The handle's own modification time, in nanoseconds since the Unix
+    /// epoch, UTC: what dates a line whose header declares no `mtime`
+    /// capture or did not match it.
     #[must_use]
-    pub const fn timestamp(&self) -> Option<i128> {
-        self.timestamp
+    pub const fn handle_mtime(&self) -> Option<i64> {
+        self.handle_mtime
     }
 
-    /// Set or clear when the record was written.
-    pub const fn set_timestamp(&mut self, timestamp: Option<i128>) {
-        self.timestamp = timestamp;
+    /// Set or clear the handle's own modification time; the instant and the
+    /// identity it dates resolve afresh.
+    pub fn set_handle_mtime(&mut self, mtime: Option<i64>) {
+        self.handle_mtime = mtime;
+        self.resolved.mtime = OnceLock::new();
+        self.resolved.reset_identity();
     }
 
-    /// Return this line stamped with a write time.
+    /// Return this line dated by its handle.
     #[must_use]
-    pub const fn with_timestamp(mut self, timestamp: i128) -> Self {
-        self.timestamp = Some(timestamp);
+    pub fn with_handle_mtime(mut self, mtime: i64) -> Self {
+        self.set_handle_mtime(Some(mtime));
         self
     }
 
-    /// What the line was classified as.
+    /// What the line is classified as: the stated classification, else the
+    /// payload's, read on the first ask.
     #[must_use]
-    pub const fn bodytype(&self) -> Option<&MimeType> {
-        self.bodytype.as_ref()
+    pub fn bodytype(&self) -> &MimeType {
+        if let Some(stated) = &self.bodytype {
+            return stated;
+        }
+        self.resolved.bodytype.get_or_init(|| {
+            let (shape, _) = crate::mime_type::line::classify(self.payload());
+            shape
+        })
     }
 
-    /// Set or clear the classification.
+    /// State or unsay the classification; unsaid, it resolves afresh.
     pub fn set_bodytype(&mut self, bodytype: Option<MimeType>) {
         self.bodytype = bodytype;
     }
@@ -167,15 +328,15 @@ impl TextLine {
         self
     }
 
-    /// The line, with whatever was read off its front removed.
+    /// The line as the reader cut it: the row header included, the edges
+    /// stripped, the byte limit applied.
     ///
-    /// Text, always: what [`from_bytes`](Self::from_bytes) decoded is what
-    /// this answers. Readers that address the line by offset - the scanner,
-    /// the codec re-slicing a data field, the Arrow builder registering a
-    /// page - take the same bytes as a range through
-    /// [`body_bytes`](Self::body_bytes), which is free; this validates the
-    /// range on the way out, once per call, so the per-line path does not
-    /// ask it.
+    /// Text, always: what [`from_bytes`](Self::from_bytes) decoded is what this answers.
+    /// Readers that address the line by offset - the codec re-slicing a data
+    /// field, the Arrow builder registering a page - take the same bytes as
+    /// a range through [`body_bytes`](Self::body_bytes), which is free; this
+    /// validates the range on the way out, once per call, so the per-line
+    /// path does not ask it.
     #[must_use]
     pub fn body(&self) -> &str {
         std::str::from_utf8(self.body.as_bytes()).expect("a line's body is text by construction")
@@ -187,39 +348,44 @@ impl TextLine {
         &self.body
     }
 
-    /// Replace the body, decoded exactly as [`from_bytes`](Self::from_bytes)
-    /// decodes one; [`decoded_byte_size`](Self::decoded_byte_size) counts
-    /// the new body.
+    /// Replace the body, decoded exactly as [`from_bytes`](Self::from_bytes) decodes one;
+    /// [`decoded_byte_size`](Self::decoded_byte_size) counts the new body,
+    /// and every resolved reading is dropped, because every one of them read
+    /// the body - the header the cut matched with them, since it was read
+    /// over a body the line no longer has. What a `set_*` stated stands:
+    /// stated captures are the line's word over every body, and the payload
+    /// is then the whole of the new one.
     ///
     /// # Errors
     ///
-    /// Returns the refusal [`from_bytes`](Self::from_bytes) does, leaving
-    /// the line unchanged.
+    /// Returns the refusal [`from_bytes`](Self::from_bytes) does, leaving the line
+    /// unchanged.
     pub fn set_body(&mut self, body: TextBytes) -> Result<()> {
         let (body, decoded_body) = decoded(body)?;
         self.body = body;
         self.decoded_body = decoded_body;
+        self.stated.header = self.stated.header.take().filter(|header| header.stated);
+        self.resolved = Resolved::default();
         Ok(())
     }
 
     /// How many bytes of the line as read were not UTF-8 and were read as
     /// [`Charset::transcribe`](crate::Charset::transcribe) reads them.
     ///
-    /// Zero for a line that was text as read. The body's count and the
-    /// captures' together, because both are bytes the line held; it is the
-    /// one fact the decode keeps, so a reader auditing a capture can find the
-    /// lines that were repaired without decoding them again. `0` under a
-    /// declared charset for a line the byte limit did not cut inside a
-    /// scalar: the transport read it as declared and the line repaired
-    /// nothing - whether a resource was declared is the handle's fact,
-    /// `MediaType::charset`, and not a per-line count. A limit that lands
-    /// inside one scalar of the decoded text leaves the stray bytes the cut
-    /// made, and the line reads and counts them exactly as on an undeclared
-    /// read: `Zürich` declared `windows-1252` under a limit of `2` is the
-    /// body `ZÃ` with `1` decoded.
+    /// Zero for a line that was text as read. It is the one fact the decode
+    /// keeps, so a reader auditing a capture can find the lines that were
+    /// repaired without decoding them again. `0` under a declared charset
+    /// for a line the byte limit did not cut inside a scalar: the transport
+    /// read it as declared and the line repaired nothing - whether a
+    /// resource was declared is the handle's fact, `MediaType::charset`,
+    /// and not a per-line count. A limit that lands inside one scalar of
+    /// the decoded text leaves the stray bytes the cut made, and the line
+    /// reads and counts them exactly as on an undeclared read: `Zürich`
+    /// declared `windows-1252` under a limit of `2` is the body `ZÃ` with
+    /// `1` decoded.
     #[must_use]
     pub const fn decoded_byte_size(&self) -> u64 {
-        self.decoded_body + self.decoded_captures
+        self.decoded_body
     }
 
     /// How many bytes of this record went over the retained limit.
@@ -233,52 +399,64 @@ impl TextLine {
         self.dropped_byte_size = size;
     }
 
+    /// The row header's match: stated, else `rowheader` matched over the
+    /// body on the first ask.
+    fn header(&self) -> &Header {
+        if let Some(stated) = &self.stated.header {
+            return stated;
+        }
+        self.resolved
+            .header
+            .get_or_init(|| match_header(&self.options, &self.body))
+    }
+
     /// The row header's named captures, in the order the expression declares
     /// them.
     ///
     /// Positional, not named: the expression fixes the order before the read,
     /// so a column reads its capture by position and never by a per-row name
     /// lookup. A capture the header declared but did not match on this line is
-    /// `None`, which is the null its column holds.
+    /// `None`, which is the null its column holds; a header that declares
+    /// none answers an empty list.
     ///
-    /// Separate from the entries, because they are different facts with
-    /// different owners: a capture is what the caller's expression asked for,
-    /// an entry is what the line itself wrote down.
+    /// Resolved on the first ask, once: the match over the body and the
+    /// list it fills. Separate from the entries, because they are different
+    /// facts with different owners: a capture is what the caller's expression
+    /// asked for, an entry is what the line itself wrote down.
     #[must_use]
     pub fn captures(&self) -> &[Option<TextBytes>] {
-        &self.captures
+        &self.header().captures
     }
 
     /// The capture at `index`, when the header declared and matched it.
     ///
-    /// Text, by the same door the body came through; a column reads its
-    /// capture here and parses it at its own datatype.
+    /// Text, a range of the body; a column reads its capture here and
+    /// parses it at its own datatype.
     #[must_use]
     pub fn capture(&self, index: usize) -> Option<&str> {
-        let held = self.captures.get(index)?.as_ref()?;
-        Some(std::str::from_utf8(held.as_bytes()).expect("a capture is text by construction"))
+        self.captures().get(index)?.as_ref()?.as_str()
     }
 
-    /// Replace the captures, each decoded exactly as the body is.
+    /// The capture named `name`, when the header declares and matched it.
+    fn capture_named(&self, name: &str) -> Option<&str> {
+        let at = self.options.capture_names().position(|held| held == name)?;
+        self.capture(at)
+    }
+
+    /// State the captures, each decoded exactly as the body is, and that
+    /// the body carries no header: the payload is the whole body.
     ///
     /// # Errors
     ///
-    /// Returns the refusal [`from_bytes`](Self::from_bytes) does, leaving
-    /// the line unchanged.
-    pub fn set_captures(&mut self, mut captures: Vec<Option<TextBytes>>) -> Result<()> {
-        let mut decoded_captures = 0;
-        // Read where they stand: a capture that was already text is the range
-        // it was, so a second vector would allocate once per line to hold
-        // what this one already holds. A refusal drops the vector that came
-        // in and leaves the line untouched, which is the stated contract.
-        for capture in &mut captures {
-            let Some(held) = capture.take() else { continue };
-            let (held, count) = decoded(held)?;
-            decoded_captures += count;
-            *capture = Some(held);
-        }
-        self.captures = captures;
-        self.decoded_captures = decoded_captures;
+    /// Returns the refusal [`from_bytes`](Self::from_bytes) does, leaving the line
+    /// unchanged.
+    pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>) -> Result<()> {
+        let header = Header {
+            end: 0,
+            captures: decoded_captures(captures)?,
+            stated: true,
+        };
+        self.state_header(header);
         Ok(())
     }
 
@@ -293,30 +471,114 @@ impl TextLine {
         Ok(self)
     }
 
-    /// The key/value tree this line carries.
+    /// States the header the reader matched at the cut - where it ends and
+    /// the captures it named - so the line does not match it again.
     ///
-    /// `None` where nothing asked for one. Materializing the tree is the only
-    /// thing on the decode path that allocates, so it happens when a column
-    /// reads an entry or a caller asks, and not otherwise.
+    /// A body the decode rewrote is not the page the cut matched over: its
+    /// offsets and ranges name the wire and not the text, so such a line is
+    /// handed nothing and matches its header over the text it is, on the
+    /// first ask. A capture a byte class cut inside a character is decoded
+    /// as the body was.
+    pub(super) fn state_matched_header(&mut self, end: usize, captures: Vec<Option<TextBytes>>) {
+        if self.decoded_body > 0 {
+            return;
+        }
+        if let Ok(captures) = decoded_captures(captures) {
+            self.state_header(Header {
+                end,
+                captures,
+                stated: false,
+            });
+        }
+    }
+
+    /// States one header match, dropping every reading that read past it.
+    fn state_header(&mut self, header: Header) {
+        self.stated.header = Some(header);
+        self.resolved.header = OnceLock::new();
+        self.resolved.entries = OnceLock::new();
+        self.resolved.bodytype = OnceLock::new();
+        self.resolved.identifiers = OnceLock::new();
+        self.resolved.mtime = OnceLock::new();
+        self.resolved.seqnum = OnceLock::new();
+        self.resolved.state = OnceLock::new();
+        self.resolved.creaunix = OnceLock::new();
+        self.resolved.expirunix = OnceLock::new();
+        self.resolved.prevunix = OnceLock::new();
+        self.resolved.snapunix = OnceLock::new();
+        self.resolved.prevuuid = OnceLock::new();
+        self.resolved.crosscode = OnceLock::new();
+        self.resolved.reset_identity();
+    }
+
+    /// The body past the row header: what the line carries once its header
+    /// is read off it, and the body itself where the header declares
+    /// nothing, did not match, or was stated with the captures.
+    fn payload(&self) -> &[u8] {
+        &self.body.as_bytes()[self.header().end..]
+    }
+
+    /// The body past the row header, as the range of its page.
+    ///
+    /// Resolves the header where nothing did yet; costs a reference count
+    /// of the page and no copy.
     #[must_use]
-    pub const fn entries(&self) -> Option<&TextEntries> {
-        self.entries.as_ref()
+    pub fn payload_bytes(&self) -> TextBytes {
+        let end = self.header().end;
+        self.body
+            .slice(end, self.body.len())
+            .expect("the header ends inside the body it matched")
     }
 
-    /// Borrow the tree for mutation.
-    pub const fn entries_mut(&mut self) -> Option<&mut TextEntries> {
-        self.entries.as_mut()
+    /// The key/value tree this line carries past its header: the stated
+    /// tree, else the payload's own, resolved on the first ask by
+    /// [`TextEntries::from_bytes`].
+    ///
+    /// `None` where the payload states no pair. Materializing the tree is
+    /// the one allocation past the header match, so it happens when a
+    /// column reads an entry or a caller asks, and not otherwise.
+    #[must_use]
+    pub fn entries(&self) -> Option<&TextEntries> {
+        if let Some(stated) = &self.stated.entries {
+            return stated.as_ref();
+        }
+        self.resolved
+            .entries
+            .get_or_init(|| TextEntries::from_bytes(&self.payload_bytes()))
+            .as_ref()
     }
 
-    /// Set or clear the tree.
+    /// Borrow the tree for mutation, resolving it where nothing did yet.
+    ///
+    /// A tree handed out for mutation is the line's word from then on: it
+    /// moves from the resolved slot to the stated fact, so a body set later
+    /// leaves it standing.
+    pub fn entries_mut(&mut self) -> Option<&mut TextEntries> {
+        self.stated_entries_mut().as_mut()
+    }
+
+    /// The stated tree, for mutation: the resolved one moved into the stated
+    /// fact where nothing was stated yet, so what is mutated is what stands.
+    fn stated_entries_mut(&mut self) -> &mut Option<TextEntries> {
+        if self.stated.entries.is_none() {
+            let _ = self.entries();
+            self.stated.entries = Some(self.resolved.entries.take().flatten());
+        }
+        self.stated
+            .entries
+            .as_mut()
+            .expect("the tree was stated above")
+    }
+
+    /// State or clear the tree; stated, it stands over the payload's own.
     pub fn set_entries(&mut self, entries: Option<TextEntries>) {
-        self.entries = entries;
+        self.stated.entries = Some(entries);
     }
 
     /// Return this line carrying a tree.
     #[must_use]
     pub fn with_entries(mut self, entries: TextEntries) -> Self {
-        self.entries = Some(entries);
+        self.set_entries(Some(entries));
         self
     }
 
@@ -326,7 +588,7 @@ impl TextLine {
     /// the ordinary case, and it becomes a null in the column that lifted it.
     #[must_use]
     pub fn get_entry_by_path(&self, path: &FieldPath) -> Option<&TextEntry> {
-        self.entries.as_ref()?.get_entry_by_path(path)
+        self.entries()?.get_entry_by_path(path)
     }
 
     /// The entry a path reaches, raising absence.
@@ -336,20 +598,18 @@ impl TextLine {
     /// Returns [`crate::Error::InvalidRecord`] naming the path when no entry is
     /// there.
     pub fn entry_by_path(&self, path: &FieldPath) -> Result<&TextEntry> {
-        match &self.entries {
+        match self.entries() {
             Some(entries) => entries.entry_by_path(path),
             None => Err(crate::Error::InvalidRecord {
-                path: smol_str::format_smolstr!("$.entries.{path}"),
-                reason: smol_str::format_smolstr!(
-                    "expected an entry at {path}, got a line carrying none"
-                ),
+                path: format_smolstr!("$.entries.{path}"),
+                reason: format_smolstr!("expected an entry at {path}, got a line carrying none"),
             }),
         }
     }
 
     /// The entry a path reaches, for mutation.
     pub fn get_entry_by_path_mut(&mut self, path: &FieldPath) -> Option<&mut TextEntry> {
-        self.entries.as_mut()?.get_entry_by_path_mut(path)
+        self.entries_mut()?.get_entry_by_path_mut(path)
     }
 
     /// Set the value a path reaches, creating what is not there.
@@ -359,14 +619,672 @@ impl TextLine {
     /// Returns the refusals [`TextEntries::set_entry_by_path`] states. Failure
     /// leaves this line unchanged.
     pub fn set_entry_by_path(&mut self, path: &FieldPath, value: TextBytes) -> Result<()> {
-        self.entries
+        self.stated_entries_mut()
             .get_or_insert_with(TextEntries::new)
             .set_entry_by_path(path, value)
     }
 
     /// Remove the entry a path reaches.
     pub fn remove_entry_by_path(&mut self, path: &FieldPath) -> Option<TextEntry> {
-        self.entries.as_mut()?.remove_entry_by_path(path)
+        self.entries_mut()?.remove_entry_by_path(path)
+    }
+
+    /// One reading's value, or the refusal it recorded, located on this
+    /// line and the column that owns it.
+    fn answer<'reading, T>(&self, reading: &'reading Reading<T>) -> Result<&'reading T> {
+        match &reading.refused {
+            None => Ok(&reading.value),
+            Some(refusal) => Err(row_error(
+                self.index,
+                None,
+                self.sourceurl(),
+                &refusal.column,
+                refusal.reason.clone(),
+            )),
+        }
+    }
+
+    /// The capture named `name` read as an instant at the `mtime` column's
+    /// clock - nanoseconds UTC, a naive reading in the options' zone - or
+    /// nothing where the header declares none or did not match it.
+    fn instant_capture(&self, name: &str) -> Reading<Option<i64>> {
+        let Some(text) = self.capture_named(name) else {
+            return Reading::read(None);
+        };
+        match parse_capture(text, &mtime_dtype(), self.options.timezone()) {
+            Ok(value) => Reading::read(value.temporal_count()),
+            Err(reason) => Reading::refused(None, name, reason),
+        }
+    }
+
+    /// When the record was written: the header's `mtime` capture, else the
+    /// handle's own modification time, in nanoseconds since the Unix epoch,
+    /// UTC; `None` where neither dates it. [`Event::set_currunix`] states
+    /// the instant, and this answers it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
+    /// the `mtime` column when the capture does not read as an instant.
+    pub fn mtime(&self) -> Result<Option<i64>> {
+        if let Some(stated) = self.stated.currunix {
+            return Ok(Some(stated));
+        }
+        let reading = self.resolved.mtime.get_or_init(|| {
+            let mut reading = self.instant_capture(MTIME_COLUMN);
+            // A header that did not date the line falls back to the handle's
+            // own time: a line the expression did not date is exactly the
+            // case it is there for. A capture that did not read holds the
+            // same fallback as its value, which the trait door - unable to
+            // refuse - answers, while this reading refuses it by name.
+            if reading.value.is_none() {
+                reading.value = self.handle_mtime;
+            }
+            reading
+        });
+        self.answer(reading).copied()
+    }
+
+    /// Where the line stands in its chain: a `seqnum` capture, else the row
+    /// number under `start_rownum`, else the physical line number.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
+    /// `seqnum` for a capture that is not a count, and naming `rownum` for a
+    /// row number no count can hold.
+    pub fn seqnum(&self) -> Result<u64> {
+        if let Some(stated) = self.stated.seqnum {
+            return Ok(stated);
+        }
+        let reading = self.resolved.seqnum.get_or_init(|| {
+            if let Some(text) = self.capture_named("seqnum") {
+                return match text.parse::<u64>() {
+                    Ok(count) => Reading::read(count),
+                    Err(_) => Reading::refused(
+                        self.index,
+                        "seqnum",
+                        format_smolstr!(
+                            "expected a count for seqnum, got {:?}",
+                            super::elide_to(text, super::ERROR_TEXT_LIMIT)
+                        ),
+                    ),
+                };
+            }
+            match physical_rownum(self.options.start_rownum, self.index) {
+                Ok(Some(rownum)) => match u64::try_from(rownum) {
+                    Ok(count) => Reading::read(count),
+                    Err(_) => Reading::refused(
+                        self.index,
+                        "rownum",
+                        format_smolstr!("expected a row number a count can hold, got {rownum}"),
+                    ),
+                },
+                Ok(None) => Reading::read(self.index),
+                // The row number's own refusal, under this reading's name:
+                // the reason as it was stated, never a located refusal
+                // located again.
+                Err(error) => Reading::refused(
+                    self.index,
+                    "rownum",
+                    match &error {
+                        crate::Error::InvalidRecord { reason, .. } => reason.clone(),
+                        other => format_smolstr!("{}", super::elide_display(other)),
+                    },
+                ),
+            }
+        });
+        self.answer(reading).copied()
+    }
+
+    /// Where the line stands in its lifecycle: a `state` capture, else
+    /// `00UNKNOWN`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
+    /// `state` when the capture names no state.
+    pub fn state(&self) -> Result<&State> {
+        if let Some(stated) = &self.stated.state {
+            return Ok(stated);
+        }
+        let reading = self.resolved.state.get_or_init(|| {
+            let Some(text) = self.capture_named("state") else {
+                return Reading::read(State::unknown());
+            };
+            match State::read(text) {
+                Ok(state) => Reading::read(state),
+                Err(error) => Reading::refused(
+                    State::unknown(),
+                    "state",
+                    format_smolstr!("{}", super::elide_display(&error)),
+                ),
+            }
+        });
+        self.answer(reading)
+    }
+
+    /// When the line's record was created: a `creaunix` capture, else none.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
+    /// the capture when it does not read as an instant.
+    pub fn creaunix(&self) -> Result<Option<i64>> {
+        if let Some(stated) = self.stated.creaunix {
+            return Ok(stated);
+        }
+        let reading = self
+            .resolved
+            .creaunix
+            .get_or_init(|| self.instant_capture("creaunix"));
+        self.answer(reading).copied()
+    }
+
+    /// When the line's record expires: an `expirunix` capture, else none.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
+    /// the capture when it does not read as an instant.
+    pub fn expirunix(&self) -> Result<Option<i64>> {
+        if let Some(stated) = self.stated.expirunix {
+            return Ok(stated);
+        }
+        let reading = self
+            .resolved
+            .expirunix
+            .get_or_init(|| self.instant_capture("expirunix"));
+        self.answer(reading).copied()
+    }
+
+    /// When the record this one follows happened: a `prevunix` capture,
+    /// else none.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
+    /// the capture when it does not read as an instant.
+    pub fn prevunix(&self) -> Result<Option<i64>> {
+        if let Some(stated) = self.stated.prevunix {
+            return Ok(stated);
+        }
+        let reading = self
+            .resolved
+            .prevunix
+            .get_or_init(|| self.instant_capture("prevunix"));
+        self.answer(reading).copied()
+    }
+
+    /// The grid instant a walk read this line as the snapshot of: a
+    /// `snapunix` capture, else none.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
+    /// the capture when it does not read as an instant.
+    pub fn snapunix(&self) -> Result<Option<i64>> {
+        if let Some(stated) = self.stated.snapunix {
+            return Ok(stated);
+        }
+        let reading = self
+            .resolved
+            .snapunix
+            .get_or_init(|| self.instant_capture("snapunix"));
+        self.answer(reading).copied()
+    }
+
+    /// The identity of the record this one follows: a `prevuuid` capture,
+    /// else none.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
+    /// the capture when it does not read as a UUID.
+    pub fn prevuuid(&self) -> Result<Option<Uuid>> {
+        if let Some(stated) = self.stated.prevuuid {
+            return Ok(stated);
+        }
+        let reading = self.resolved.prevuuid.get_or_init(|| {
+            let Some(text) = self.capture_named("prevuuid") else {
+                return Reading::read(None);
+            };
+            match DataType::Uuid.scalar(Scalar::from(text)) {
+                Ok(Scalar::Uuid(uuid)) => Reading::read(Some(uuid)),
+                Ok(_) => Reading::read(None),
+                Err(error) => Reading::refused(
+                    None,
+                    "prevuuid",
+                    format_smolstr!("{}", super::elide_display(&error)),
+                ),
+            }
+        });
+        self.answer(reading).copied()
+    }
+
+    /// Drops what the identity derives - the code, the cross hash code, the
+    /// identity and the cross element - stated or resolved, so each resolves
+    /// afresh from the body, the instant and the cross code as they now are.
+    fn derive_identity(&mut self) {
+        self.stated.currhashcode = None;
+        self.stated.crosshashcode = None;
+        self.stated.curruuid = None;
+        self.stated.crossuuid = None;
+        self.resolved.reset_identity();
+    }
+}
+
+/// The row header matched over the body: where the match ends and the
+/// captures it named, one slot per declared capture, each a range of the
+/// body's page; a header that declares nothing ends at zero with no slot,
+/// and one that did not match ends at zero with every slot empty.
+fn match_header(options: &TextOptions, body: &TextBytes) -> Header {
+    let Some(rowheader) = options.rowheader_regex() else {
+        return Header::default();
+    };
+    let count = options.capture_names().len();
+    let Some(found) = rowheader.captures(body.as_bytes()) else {
+        return Header {
+            end: 0,
+            captures: vec![None; count],
+            stated: false,
+        };
+    };
+    let end = found.get(0).map_or(0, |whole| whole.end());
+    let mut captures: Vec<Option<TextBytes>> = vec![None; count];
+    for (target, index) in captures.iter_mut().zip(
+        rowheader
+            .capture_names()
+            .enumerate()
+            .filter_map(|(index, name)| name.map(|_| index)),
+    ) {
+        let Some(matched) = found.get(index) else {
+            continue;
+        };
+        // A range of a body that is text is text, but a byte class can cut a
+        // character: such a capture is read as the body was, on its own
+        // page. A capture is a range of a body that fits a page, so its own
+        // reading fits one too.
+        let held = body
+            .slice(matched.start(), matched.end())
+            .expect("a match is a range of the body");
+        *target = decoded(held).map(|(held, _)| held).ok();
+    }
+    Header {
+        end,
+        captures,
+        stated: false,
+    }
+}
+
+/// Captures a caller stated, each decoded exactly as a body is.
+fn decoded_captures(mut captures: Vec<Option<TextBytes>>) -> Result<Vec<Option<TextBytes>>> {
+    // Read where they stand: a capture that was already text is the range
+    // it was, so a second vector would allocate once per line to hold what
+    // this one already holds. A refusal drops the vector that came in and
+    // leaves the line untouched, which is the stated contract.
+    for capture in &mut captures {
+        let Some(held) = capture.take() else { continue };
+        let (held, _) = decoded(held)?;
+        *capture = Some(held);
+    }
+    Ok(captures)
+}
+
+impl TextLine {
+    /// What the line states under one of the sixteen event columns, as the
+    /// column's cell, or nothing where it states no fact.
+    ///
+    /// The facts a capture feeds - the instant, the state, the place, the
+    /// four lifecycle instants, the element it follows - are read through
+    /// the line's own readings, so a capture the fact's type cannot read
+    /// is refused by the fact's name rather than answered as the default
+    /// the trait doors fall back to.
+    ///
+    /// # Errors
+    ///
+    /// Returns the reading's refusal for a capture that does not parse at
+    /// the fact's datatype.
+    pub fn event_fact(&self, column: crate::graph::EventColumn) -> Result<Option<Scalar>> {
+        use crate::graph::EventColumn;
+        match column {
+            // The instant is the `mtime` capture where one reads as an
+            // instant, else the handle's, whatever the column flag says; the
+            // reading is asked to refuse a capture that does not read only
+            // where the capture is the column's - with the column off, the
+            // capture is an ordinary one typed by its own syntax, and the
+            // trait door answers the handle's time over it.
+            EventColumn::CurrUnix if self.options.parse_mtime => {
+                self.mtime()?;
+            }
+            EventColumn::State => {
+                self.state()?;
+            }
+            EventColumn::SeqNum => {
+                self.seqnum()?;
+            }
+            EventColumn::CreaUnix => {
+                self.creaunix()?;
+            }
+            EventColumn::ExpirUnix => {
+                self.expirunix()?;
+            }
+            EventColumn::PrevUnix => {
+                self.prevunix()?;
+            }
+            EventColumn::SnapUnix => {
+                self.snapunix()?;
+            }
+            EventColumn::PrevUuid => {
+                self.prevuuid()?;
+            }
+            _ => {}
+        }
+        Ok(column.fact(self))
+    }
+}
+
+impl Element for TextLine {
+    fn get_curruuid(&self) -> Uuid {
+        if let Some(stated) = self.stated.curruuid {
+            return stated;
+        }
+        // The UUIDv7 the instant and the code derive; an instant a UUIDv7
+        // cannot hold - before the epoch, past its 48-bit millisecond count -
+        // is the nil identity, never a truncated one.
+        *self
+            .resolved
+            .curruuid
+            .get_or_init(|| self.time_uuid().unwrap_or_default())
+    }
+
+    fn set_curruuid(&mut self, curruuid: Uuid) {
+        self.stated.curruuid = Some(curruuid);
+        self.resolved.crossuuid = OnceLock::new();
+    }
+
+    fn get_crossuuid(&self) -> Uuid {
+        if let Some(stated) = self.stated.crossuuid {
+            return stated;
+        }
+        *self.resolved.crossuuid.get_or_init(|| self.cross_uuid())
+    }
+
+    fn set_crossuuid(&mut self, crossuuid: Uuid) {
+        self.stated.crossuuid = Some(crossuuid);
+    }
+
+    fn get_crosscode(&self) -> &str {
+        if let Some(stated) = &self.stated.crosscode {
+            return stated;
+        }
+        self.resolved.crosscode.get_or_init(|| {
+            self.capture_named("crosscode")
+                .map(str::to_owned)
+                .unwrap_or_default()
+        })
+    }
+
+    fn set_crosscode(&mut self, crosscode: String) {
+        self.stated.crosscode = Some(crosscode);
+        self.resolved.crosshashcode = OnceLock::new();
+        self.resolved.crossuuid = OnceLock::new();
+    }
+
+    fn get_currhashcode(&self) -> u64 {
+        if let Some(stated) = self.stated.currhashcode {
+            return stated;
+        }
+        *self
+            .resolved
+            .currhashcode
+            .get_or_init(|| crate::xxhash::xxh3(self.body.as_bytes()))
+    }
+
+    fn set_currhashcode(&mut self, hashcode: u64) {
+        self.stated.currhashcode = Some(hashcode);
+        self.resolved.curruuid = OnceLock::new();
+        self.resolved.crossuuid = OnceLock::new();
+    }
+
+    fn get_crosshashcode(&self) -> u64 {
+        if let Some(stated) = self.stated.crosshashcode {
+            return stated;
+        }
+        *self.resolved.crosshashcode.get_or_init(|| {
+            let crosscode = self.get_crosscode();
+            if crosscode.is_empty() {
+                0
+            } else {
+                crate::graph::element::crosshash(crosscode)
+            }
+        })
+    }
+
+    fn set_crosshashcode(&mut self, crosshashcode: u64) {
+        self.stated.crosshashcode = Some(crosshashcode);
+        self.resolved.crossuuid = OnceLock::new();
+    }
+
+    fn get_identifiers(&self) -> &BTreeMap<String, String> {
+        if let Some(stated) = &self.stated.identifiers {
+            return stated;
+        }
+        self.resolved.identifiers.get_or_init(|| {
+            self.options
+                .capture_names()
+                .enumerate()
+                .filter_map(|(at, name)| Some((name.to_owned(), self.capture(at)?.to_owned())))
+                .collect()
+        })
+    }
+
+    fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
+        self.stated.identifiers = Some(identifiers);
+    }
+
+    fn get_parentuuids(&self) -> &[Uuid] {
+        self.stated.parentuuids.as_deref().unwrap_or_default()
+    }
+
+    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
+        self.stated.parentuuids = Some(parents);
+    }
+
+    fn get_srcuuids(&self) -> &[Uuid] {
+        self.stated.srcuuids.as_deref().unwrap_or_default()
+    }
+
+    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+        self.stated.srcuuids = Some(sources);
+    }
+
+    /// A line's order is its instant, then its place in the object: two
+    /// lines of one handle the header did not date stand in the order they
+    /// were written.
+    fn is_after(&self, other: &Self) -> bool {
+        (self.get_currunix(), self.index) > (other.get_currunix(), other.index)
+    }
+
+    /// The identity is what the body and the instant derive: the code, the
+    /// cross hash code, the identity and the cross element resolve afresh
+    /// on their next ask.
+    fn finalize(&mut self) {
+        self.derive_identity();
+    }
+
+    /// The timed reading: a line follows a line as any event follows one.
+    fn with_previous(self, previous: &Self) -> Option<Self> {
+        self.following(previous)
+    }
+
+    fn merge_with(self, other: &Self) -> Option<Self> {
+        self.merging(other)
+    }
+}
+
+impl Event for TextLine {
+    /// When the record was written, [`TextLine::mtime`]; the handle's own
+    /// time over a refused capture, and the epoch where the line has no
+    /// instant at all.
+    fn get_currunix(&self) -> i64 {
+        if let Some(stated) = self.stated.currunix {
+            return stated;
+        }
+        let _ = self.mtime();
+        self.resolved
+            .mtime
+            .get()
+            .and_then(|reading| reading.value)
+            .unwrap_or(0)
+    }
+
+    fn set_currunix(&mut self, unix: i64) {
+        self.stated.currunix = Some(unix);
+        self.resolved.reset_identity();
+    }
+
+    /// [`TextLine::state`]; `00UNKNOWN` over a refused capture.
+    fn get_state(&self) -> &State {
+        if let Some(stated) = &self.stated.state {
+            return stated;
+        }
+        let _ = self.state();
+        &self
+            .resolved
+            .state
+            .get()
+            .expect("the state was resolved above")
+            .value
+    }
+
+    fn set_state(&mut self, state: State) {
+        self.stated.state = Some(state);
+    }
+
+    /// [`TextLine::seqnum`]; the physical line number over a refused capture.
+    fn get_seqnum(&self) -> u64 {
+        self.seqnum().unwrap_or(self.index)
+    }
+
+    fn set_seqnum(&mut self, seqnum: u64) {
+        self.stated.seqnum = Some(seqnum);
+    }
+
+    /// [`TextLine::creaunix`]; none over a refused capture.
+    fn get_creaunix(&self) -> Option<i64> {
+        self.creaunix().ok().flatten()
+    }
+
+    fn set_creaunix(&mut self, unix: Option<i64>) {
+        self.stated.creaunix = Some(unix);
+    }
+
+    /// [`TextLine::expirunix`]; none over a refused capture.
+    fn get_expirunix(&self) -> Option<i64> {
+        self.expirunix().ok().flatten()
+    }
+
+    fn set_expirunix(&mut self, unix: Option<i64>) {
+        self.stated.expirunix = Some(unix);
+    }
+
+    /// [`TextLine::prevunix`]; none over a refused capture.
+    fn get_prevunix(&self) -> Option<i64> {
+        self.prevunix().ok().flatten()
+    }
+
+    fn set_prevunix(&mut self, unix: Option<i64>) {
+        self.stated.prevunix = Some(unix);
+    }
+
+    /// [`TextLine::prevuuid`]; none over a refused capture.
+    fn get_prevuuid(&self) -> Option<Uuid> {
+        self.prevuuid().ok().flatten()
+    }
+
+    fn set_prevuuid(&mut self, uuid: Option<Uuid>) {
+        self.stated.prevuuid = Some(uuid);
+    }
+
+    /// [`TextLine::snapunix`]; none over a refused capture.
+    fn get_snapunix(&self) -> Option<i64> {
+        self.snapunix().ok().flatten()
+    }
+
+    fn set_snapunix(&mut self, unix: Option<i64>) {
+        self.stated.snapunix = Some(unix);
+    }
+}
+
+/// The facts a line states, which is what it is compared, ordered and
+/// hashed by: what the reader cut and what a `set_*` stated, and never a
+/// resolved slot. The options stand beside them: every line of one read
+/// shares one `Arc`, so they are compared by pointer first and by value
+/// only where the pointers differ, ordered last, and left out of the hash -
+/// equal lines hash equal without them, and a hash that walked them would
+/// pay for the one shared value once per line.
+type Facts<'line> = (
+    u64,
+    Option<&'line Url>,
+    Option<i64>,
+    Option<&'line MimeType>,
+    &'line TextBytes,
+    Option<u64>,
+    u64,
+    &'line Stated,
+);
+
+impl TextLine {
+    fn facts(&self) -> Facts<'_> {
+        (
+            self.index,
+            self.url.as_deref(),
+            self.handle_mtime,
+            self.bodytype.as_ref(),
+            &self.body,
+            self.dropped_byte_size,
+            self.decoded_body,
+            &self.stated,
+        )
+    }
+
+    /// Whether two lines read themselves by the same options: the one
+    /// `Arc` a read shares, else the same value.
+    fn same_options(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.options, &other.options) || self.options == other.options
+    }
+}
+
+impl PartialEq for TextLine {
+    fn eq(&self, other: &Self) -> bool {
+        self.facts() == other.facts() && self.same_options(other)
+    }
+}
+
+impl Eq for TextLine {}
+
+impl PartialOrd for TextLine {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TextLine {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.facts().cmp(&other.facts()).then_with(|| {
+            if self.same_options(other) {
+                std::cmp::Ordering::Equal
+            } else {
+                self.options.cmp(&other.options)
+            }
+        })
+    }
+}
+
+impl Hash for TextLine {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.facts().hash(state);
     }
 }
 
@@ -427,11 +1345,18 @@ pub(crate) fn decoded(bytes: TextBytes) -> Result<(TextBytes, u64)> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::{TextLine, decoded};
-    use crate::text::TextBytes;
+    use crate::text::{TextBytes, TextOptions};
 
     fn line(bytes: &[u8]) -> TextLine {
-        TextLine::from_bytes(0, TextBytes::from_bytes(bytes).expect("a page")).expect("a line")
+        TextLine::from_bytes(
+            0,
+            TextBytes::from_bytes(bytes).expect("a page"),
+            Arc::new(TextOptions::new()),
+        )
+        .expect("a line")
     }
 
     #[test]
@@ -440,10 +1365,7 @@ mod tests {
             TextBytes::from_bytes("8=FIX.4.4|58=caf\u{e9}|10=0|".as_bytes()).expect("a page");
         let (body, count) = decoded(page.clone()).expect("text");
         assert_eq!(count, 0);
-        assert!(std::sync::Arc::ptr_eq(
-            body.page().unwrap(),
-            page.page().unwrap()
-        ));
+        assert!(Arc::ptr_eq(body.page().unwrap(), page.page().unwrap()));
         assert_eq!((body.start(), body.end()), (page.start(), page.end()));
     }
 
@@ -486,7 +1408,7 @@ mod tests {
     }
 
     #[test]
-    fn captures_take_the_same_decode_and_count_with_the_body() {
+    fn stated_captures_take_the_same_decode_and_make_the_body_the_payload() {
         let mut read = line(b"body \xE9");
         read.set_captures(vec![
             Some(TextBytes::from_bytes(b"caf\xE9").expect("a page")),
@@ -498,10 +1420,15 @@ mod tests {
         assert_eq!(read.capture(1), None);
         assert_eq!(read.capture(2), Some("plain"));
         assert_eq!(read.capture(3), None);
-        assert_eq!(read.decoded_byte_size(), 2);
+        assert_eq!(read.decoded_byte_size(), 1, "the body's own count");
+        assert_eq!(
+            read.payload_bytes().as_bytes(),
+            read.body_bytes().as_bytes()
+        );
         read.set_body(TextBytes::from_bytes(b"clean").expect("a page"))
             .expect("a body");
         assert_eq!(read.body(), "clean");
-        assert_eq!(read.decoded_byte_size(), 1, "the captures' count stays");
+        assert_eq!(read.decoded_byte_size(), 0);
+        assert_eq!(read.capture(0), Some("caf\u{e9}"), "a stated fact stands");
     }
 }

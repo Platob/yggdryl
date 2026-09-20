@@ -24,10 +24,10 @@
 //!
 //! ```
 //! use yggdryl::media::{IORecordOptions, RecordOptions};
-//! use yggdryl::{DataType, StructureType, Url};
+//! use yggdryl::{DataType, StructType, Url};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+//! let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
 //!     .required_field("row");
 //!
 //! // Arrow IPC is available in every Arrow build.

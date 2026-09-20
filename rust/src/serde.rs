@@ -6,7 +6,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::enums::EnumType;
 use crate::sequence::SequenceType;
-use crate::{DataType, StructureType, TimeUnit, UnionFields, UnionMode};
+use crate::{DataType, StructType, TimeUnit, UnionFields, UnionMode};
 use crate::{DateTimeType, DateType, DecimalType, DurationType, TimeType, UriType};
 use crate::{Error, Field, Result, Scalar};
 
@@ -238,10 +238,10 @@ mod field {
         /// through its own.
         ///
         /// ```
-        /// use yggdryl::{DataType, Field, StructureType};
+        /// use yggdryl::{DataType, Field, StructType};
         ///
         /// # fn main() -> yggdryl::Result<()> {
-        /// let nested = DataType::from(StructureType::from_fields([
+        /// let nested = DataType::from(StructType::from_fields([
         ///     DataType::Int64.required_field("id"),
         ///     DataType::utf8().nullable_field("venue"),
         /// ])?)
@@ -258,7 +258,7 @@ mod field {
         /// not a field mapping, a required key is missing or wrongly typed, or the
         /// assembled field does not validate.
         pub fn from_value(value: Scalar) -> Result<Self> {
-            if value.as_mapping().is_none() && value.as_record().is_none() {
+            if value.as_mapping().is_none() && value.as_struct().is_none() {
                 return Err(invalid("$", "a field mapping", value.kind()));
             }
             let at = |name: &str| value.get_key_str(name);
@@ -297,7 +297,7 @@ mod field {
 
             if let Some(held) = at("metadata").filter(|held| !matches!(held, Scalar::Null)) {
                 let mut collected = Vec::with_capacity(held.len());
-                if let Some(pairs) = held.as_record() {
+                if let Some(pairs) = held.as_struct() {
                     for (name, value) in pairs {
                         let value = value.as_str().ok_or_else(|| {
                             invalid(
@@ -760,7 +760,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             },
             D::Sequence(SequenceType::LargeList(field)) => Self::LargeList { field },
             D::Sequence(SequenceType::LargeListView(field)) => Self::LargeListView { field },
-            D::Structure(fields) => Self::Struct {
+            D::Struct(fields) => Self::Struct {
                 fields: fields.as_fields(),
             },
             D::Union(fields, mode) => Self::Union {
@@ -1026,7 +1026,7 @@ impl TryFrom<DataTypeWire> for DataType {
             DataTypeWire::FixedSizeList { field, length } => Self::fixed_size_list(field, length)?,
             DataTypeWire::LargeList { field } => Self::large_list(field),
             DataTypeWire::LargeListView { field } => Self::large_list_view(field),
-            DataTypeWire::Struct { fields } => Self::from(StructureType::from_fields(fields)?),
+            DataTypeWire::Struct { fields } => Self::from(StructType::from_fields(fields)?),
             DataTypeWire::Union { mode, fields } => Self::union(
                 fields
                     .into_iter()
@@ -1102,11 +1102,11 @@ impl DataType {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     /// use yggdryl::Scalar;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let row = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?);
+    /// let row = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?);
     /// let value = row.clone().into_value();
     ///
     /// assert_eq!(value.get_key_str("type").and_then(Scalar::as_str), Some("struct"));
@@ -1239,7 +1239,7 @@ impl DataType {
                 tag("large_list_view");
                 entries.push((key("field"), field.as_ref().clone().into_value()));
             }
-            D::Structure(fields) => {
+            D::Struct(fields) => {
                 tag("struct");
                 entries.push((
                     key("fields"),
@@ -1341,7 +1341,7 @@ impl DataType {
     /// datatype does not validate.
     #[allow(clippy::too_many_lines)]
     pub fn from_value(value: Scalar) -> Result<Self> {
-        if value.as_mapping().is_none() && value.as_record().is_none() {
+        if value.as_mapping().is_none() && value.as_struct().is_none() {
             return Err(invalid(
                 "$",
                 "a datatype mapping",
@@ -1498,7 +1498,7 @@ impl DataType {
                 for held in fields {
                     children.push(Field::from_value(held.clone())?);
                 }
-                Self::from(StructureType::from_fields(children)?)
+                Self::from(StructType::from_fields(children)?)
             }
             "union" => {
                 let mode = match at("mode").and_then(Scalar::as_str) {

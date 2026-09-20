@@ -78,9 +78,9 @@ A table's columns are the children of a struct field with `nullable` false, the 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, StructureType};
+    use yggdryl::{DataType, Field, StructType};
 
-    let schema = DataType::from(StructureType::from_fields([
+    let schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])?)
@@ -166,11 +166,11 @@ Each lookup exists by position, by path, or either:
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, StructureType};
+    use yggdryl::{DataType, StructType};
 
-    let row = DataType::from(StructureType::from_fields([
+    let row = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::from(StructureType::from_fields([DataType::Float64.required_field("px")])?)
+        DataType::from(StructType::from_fields([DataType::Float64.required_field("px")])?)
             .nullable_field("line"),
         DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
     ])?);
@@ -241,13 +241,13 @@ Anything left is refused. Every rule answers in Python and JavaScript too; the p
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, StructureType};
+    use yggdryl::{DataType, Field, StructType};
 
-    let left = DataType::from(StructureType::from_fields([
+    let left = DataType::from(StructType::from_fields([
         DataType::Int32.required_field("id"),
         DataType::utf8().required_field("venue"),
     ])?);
-    let right = DataType::from(StructureType::from_fields([
+    let right = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float64.required_field("price"),
     ])?);
@@ -378,11 +378,11 @@ Subscripting a `Field` or a `DataType` reaches a child: a `str` is a name, an `i
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, StructureType};
+    use yggdryl::{DataType, Field, StructType};
 
-    let mut order = DataType::from(StructureType::from_fields([
+    let mut order = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::from(StructureType::from_fields([DataType::Float64.required_field("price")])?)
+        DataType::from(StructType::from_fields([DataType::Float64.required_field("price")])?)
             .required_field("line"),
     ])?)
     .required_field("order");
@@ -675,14 +675,14 @@ protocol is done, so a required column its protocol did not write is still refus
 
     use arrow_array::{ArrayRef, Date32Array, RecordBatch};
     use yggdryl::expression::Function;
-    use yggdryl::{ArrowCastOptions, DataType, StructureType};
+    use yggdryl::{ArrowCastOptions, DataType, StructType};
 
     let mut year = DataType::Int32.nullable_field("year");
     year.as_partition_mut().set_sources(["event"])?;
     year.as_partition_mut().set_transform(Function::Year)?;
     let mut row_digest = DataType::UInt64.nullable_field("row_digest");
     row_digest.as_digest_mut().set_holder()?;
-    let root = DataType::from(StructureType::from_fields([
+    let root = DataType::from(StructType::from_fields([
         DataType::date32().required_field("event"),
         year,
         row_digest,
@@ -840,11 +840,11 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, StructureType};
+    use yggdryl::{DataType, Field, StructType};
 
-    let order = DataType::from(StructureType::from_fields([
+    let order = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::from(StructureType::from_fields([DataType::Float64.required_field("price")])?)
+        DataType::from(StructType::from_fields([DataType::Float64.required_field("price")])?)
             .nullable_field("line"),
     ])?)
     .required_field("order");
@@ -967,7 +967,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - `unnest_fields` names -> each one resolves through `field_by_path`.
 - `explode_fields` -> a list gives its item, a map its entries, a dictionary or run-end its values.
 - `explode_fields` -> one level per call; the column keeps its name and place; nullable when the collection or its element is.
-- both projections -> a list of fields, not a node; `DataType::from(StructureType::from_fields(..)?)` rebuilds one.
+- both projections -> a list of fields, not a node; `DataType::from(StructType::from_fields(..)?)` rebuilds one.
 - `merge_with(other, upscale)` -> `upscale` widens by default and loses nothing; `false` meets at the tightest type naming both, keeping a code, a `uuid`, or a fixed string over the plainer shape storing it.
 - widening a decimal -> the widest backing either side declared, never a re-encoding down to what the merged precision needs.
 - `Field::merge_with` -> receiver's name; nullable when either side is; dictionary options only where both encode; metadata unioned, receiver winning.

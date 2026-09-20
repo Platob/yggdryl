@@ -81,19 +81,20 @@ rules, fills the identifiers the message component declares and an order's
 lanes, and settles the identity: ``SendingTime`` is the message's own, else
 the carrier's, else the codec's ``default_sending_time``, else UTC now
 read once, and the instant ``currunix`` is the stated one, else
-``TransactTime``, else ``SendingTime``. No clock is read after that intake,
+``SendingTime``; what ``TransactTime`` says is the lifecycle's to read off
+the structured message. No clock is read after that intake,
 so replay carries the settled row or pins the same ``default_sending_time``.
 There is no separate enriching step: a parsed message already carries what
 it implied.
 :meth:`FixCodec.parse_text_arrow_reader` turns a whole Arrow capture into
 batches of FIX rows - the capture's own columns first, the dictionary's fixed
 columns after, one source row's columns repeated for each message a bulk
-document expands to - closed on the raw bytes of the payload column against
-the codec's ``batch_byte_size``. :meth:`FixCodec.lifecycle` chains a stream
+document expands to - closed on the bytes each row lands as against the
+codec's ``batch_byte_size``. :meth:`FixCodec.lifecycle` chains a stream
 of messages lazily - each stated as the one after the live message it
 follows under its cross identity, carrying ``prevuuid``, ``prevunix``,
-``seqnum``, the predecessor among its ``parentuuids`` and the lifecycle's
-``creaunix`` - and :meth:`FixCodec.lifecycle_arrow_reader` does the same
+``seqnum``, the predecessor's whole lineage as its ``parentuuids`` and the
+lifecycle's ``creaunix`` - and :meth:`FixCodec.lifecycle_arrow_reader` does the same
 over batches of rows without parsing them again. Both compose through the two
 converters every stage composes over batches: :meth:`FixCodec.messages`
 reads a batch back as the messages that made it and

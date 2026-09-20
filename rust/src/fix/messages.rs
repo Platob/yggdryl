@@ -10,6 +10,8 @@ use crate::text::TextEntries;
 enum Source {
     Empty,
     One(Option<Result<FixMsg>>),
+    /// The messages a row held, read on another thread and carried over.
+    Many(std::vec::IntoIter<Result<FixMsg>>),
     /// The frames one row still holds, read where they open.
     Frames {
         codec: FixCodec,
@@ -70,6 +72,15 @@ impl FixMessages {
             source: Source::One(Some(Err(error))),
         })
     }
+
+    /// The same messages, read here and now: what a door reading on
+    /// several threads hands back, so the reading happens on the thread
+    /// that was given the row rather than on the one that pulls.
+    pub(super) fn collected(self) -> Self {
+        Self {
+            source: Source::Many(self.collect::<Vec<_>>().into_iter()),
+        }
+    }
 }
 
 impl Iterator for FixMessages {
@@ -79,6 +90,7 @@ impl Iterator for FixMessages {
         let value = match &mut self.source {
             Source::Empty => None,
             Source::One(value) => value.take(),
+            Source::Many(read) => read.next(),
             Source::Frames {
                 codec,
                 entries,

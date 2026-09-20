@@ -10,7 +10,7 @@ use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
     ArrowCastOptions, DataTypeId, DataTypeKind, DataTypeValue as _, Field, FieldScalar, Scalar,
-    StructureType, Uri, UriField, UriType, Urn,
+    StructType, Uri, UriField, UriType, Urn,
 };
 
 fn urn(text: &str) -> Scalar {
@@ -18,7 +18,7 @@ fn urn(text: &str) -> Scalar {
 }
 
 fn root(field: Field) -> Field {
-    StructureType::from_fields([field])
+    StructType::from_fields([field])
         .map(DataType::from)
         .unwrap()
         .required_field("row")
@@ -69,9 +69,10 @@ fn datatype_identity_naming_and_serde_are_total() {
     assert_eq!("URN".parse::<DataType>().unwrap(), dtype);
     assert_eq!("URN".parse::<DataTypeId>().unwrap(), DataTypeId::Urn);
     assert_eq!(DataTypeId::Urn.as_str(), "urn");
-    // Appended last, because `as_u8` is a wire contract.
-    assert_eq!(DataTypeId::Urn.as_u8(), 87);
-    assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::Urn));
+    // In the text family's range, because `as_u8` is a wire contract laid
+    // out by family.
+    assert_eq!(DataTypeId::Urn.as_u8(), 0x65);
+    assert_eq!(DataTypeId::Urn.kind(), yggdryl::DataTypeKind::Text);
     assert_eq!(DataTypeId::Urn.fixed_byte_width(), None);
     assert!(!DataTypeId::Urn.is_parameterized());
     assert!(DataTypeId::Urn.is_string());

@@ -1,0 +1,519 @@
+//! The columns a graph event is stated in: one per fact the traits answer.
+//!
+//! Every generated schema of an event - a [text line](crate::text::TextLine)
+//! read into a batch, a FIX message parsed out of it, a message the
+//! lifecycle chained - opens with these sixteen, under one name and one
+//! datatype each, so the three join on them without a mapping: a message's
+//! `srcuuids` are the `curruuid` of the lines it was read from, and a
+//! chained message's `prevuuid` and `parentuuids` are the `curruuid` of the
+//! messages before it. The names are the traits' own: what
+//! [`Element`](super::Element) and [`Event`] read and write under
+//! `get_`/`set_` is what a column is called.
+
+use std::collections::BTreeMap;
+
+use crate::{DataType, Field, Result, Scalar, State, TimeUnit, Timezone, Uuid};
+
+use super::Event;
+
+/// One column of the sixteen every graph event is stated in.
+///
+/// [`Self::ALL`] is the order a schema opens with: **when** it happened -
+/// the instant, then the instants it is read against - then **which**
+/// event it is - its identity, the chain's, the codes, what it follows, its
+/// place, what it descends from, what it was read from, the names it goes
+/// by - and last the state it reached.
+///
+/// ```
+/// use yggdryl::graph::{EventColumn, MarketEventData, Element, Event};
+/// use yggdryl::{Scalar, Uuid};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let fields = EventColumn::fields()?;
+/// assert_eq!(fields.len(), 16);
+/// assert_eq!(fields[0].name(), "currunix");
+/// assert_eq!(fields[5].name(), "curruuid");
+/// assert_eq!(fields[15].name(), "state");
+/// // What an event states under a column, and the same fact stated back.
+/// let mut event = MarketEventData::at(1_700_000_000_000_000_000);
+/// event.set_srcuuids(vec![Uuid::from_v8(7)]);
+/// let sources = EventColumn::SrcUuids.fact(&event).expect("a source");
+/// let mut again = MarketEventData::default();
+/// EventColumn::SrcUuids.record(&mut again, &sources);
+/// assert_eq!(again.get_srcuuids(), [Uuid::from_v8(7)]);
+/// // Nothing stated is a null: an empty list, an empty code, no instant.
+/// assert_eq!(EventColumn::ParentUuids.fact(&event), None);
+/// assert_eq!(EventColumn::CrossCode.fact(&event), None);
+/// assert_eq!(EventColumn::PrevUnix.fact(&event), None);
+/// assert_eq!(EventColumn::of_name("SrcUuids"), Some(EventColumn::SrcUuids));
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum EventColumn {
+    /// When the event happened, a nanosecond UTC clock; never absent.
+    CurrUnix,
+    /// When it was created, where that is known.
+    CreaUnix,
+    /// When it stops being good, where it does.
+    ExpirUnix,
+    /// When the event it follows happened, where it follows one.
+    PrevUnix,
+    /// The grid instant a walk read it as the snapshot of, where one did.
+    SnapUnix,
+    /// The event's identity; never absent.
+    CurrUuid,
+    /// The identity every event of one chain shares; the event's own where
+    /// it names no cross code, so never absent.
+    CrossUuid,
+    /// The code naming the chain, as the event spells it; empty where none.
+    CrossCode,
+    /// The XXH3-64 the event's content digests to; never absent.
+    CurrHashCode,
+    /// The XXH3-64 of the cross code, zero where none; never absent.
+    CrossHashCode,
+    /// The identity of the event this one follows, where it follows one.
+    PrevUuid,
+    /// The event's place in its chain: how many came before it; none where
+    /// none did.
+    SeqNum,
+    /// The identities this event descends from, oldest first.
+    ParentUuids,
+    /// The identities this event was read from: provenance, never lineage.
+    SrcUuids,
+    /// The names the event goes by, each under the scheme that issued it.
+    Identifiers,
+    /// The state the event reached, ranked so it sorts by lifecycle:
+    /// `00UNKNOWN` where nothing states one, so never absent on a row an
+    /// event wrote; null only where a row states none, because a state has
+    /// no neutral member for an empty cell to read as.
+    State,
+}
+
+impl EventColumn {
+    /// Every column, in the order a schema opens with them.
+    pub const ALL: [Self; 16] = [
+        Self::CurrUnix,
+        Self::CreaUnix,
+        Self::ExpirUnix,
+        Self::PrevUnix,
+        Self::SnapUnix,
+        Self::CurrUuid,
+        Self::CrossUuid,
+        Self::CrossCode,
+        Self::CurrHashCode,
+        Self::CrossHashCode,
+        Self::PrevUuid,
+        Self::SeqNum,
+        Self::ParentUuids,
+        Self::SrcUuids,
+        Self::Identifiers,
+        Self::State,
+    ];
+
+    /// The column's name: the fact's, as the traits spell it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::CurrUnix => "currunix",
+            Self::CreaUnix => "creaunix",
+            Self::ExpirUnix => "expirunix",
+            Self::PrevUnix => "prevunix",
+            Self::SnapUnix => "snapunix",
+            Self::CurrUuid => "curruuid",
+            Self::CrossUuid => "crossuuid",
+            Self::CrossCode => "crosscode",
+            Self::CurrHashCode => "currhashcode",
+            Self::CrossHashCode => "crosshashcode",
+            Self::PrevUuid => "prevuuid",
+            Self::SeqNum => "seqnum",
+            Self::ParentUuids => "parentuuids",
+            Self::SrcUuids => "srcuuids",
+            Self::Identifiers => "identifiers",
+            Self::State => "state",
+        }
+    }
+
+    /// The column's display, for a catalog.
+    #[must_use]
+    pub const fn display(self) -> &'static str {
+        match self {
+            Self::CurrUnix => "CurrUnix",
+            Self::CreaUnix => "CreaUnix",
+            Self::ExpirUnix => "ExpirUnix",
+            Self::PrevUnix => "PrevUnix",
+            Self::SnapUnix => "SnapUnix",
+            Self::CurrUuid => "CurrUuid",
+            Self::CrossUuid => "CrossUuid",
+            Self::CrossCode => "CrossCode",
+            Self::CurrHashCode => "CurrHashCode",
+            Self::CrossHashCode => "CrossHashCode",
+            Self::PrevUuid => "PrevUuid",
+            Self::SeqNum => "SeqNum",
+            Self::ParentUuids => "ParentUuids",
+            Self::SrcUuids => "SrcUuids",
+            Self::Identifiers => "Identifiers",
+            Self::State => "State",
+        }
+    }
+
+    /// What the column holds, for a catalog.
+    #[must_use]
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::CurrUnix => "When the event happened: the settled instant, UTC.",
+            Self::CreaUnix => {
+                "When the event was created, where that is known; the earliest its chain knows once followed."
+            }
+            Self::ExpirUnix => {
+                "When the event stops being good, where it does; the latest its chain knows once followed."
+            }
+            Self::PrevUnix => "When the event this one follows happened, where it follows one.",
+            Self::SnapUnix => {
+                "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of."
+            }
+            Self::CurrUuid => "The event's identity: the UUIDv7 its instant and its code derive.",
+            Self::CrossUuid => {
+                "The identity every event of one chain shares, derived from the code they share; the event's own where it names none."
+            }
+            Self::CrossCode => {
+                "The code every event of one chain shares, as the event spells it; empty where none."
+            }
+            Self::CurrHashCode => "The XXH3-64 of what the event states.",
+            Self::CrossHashCode => {
+                "The XXH3-64 of the cross code; zero where the event names none."
+            }
+            Self::PrevUuid => "The identity of the event this one follows, where it follows one.",
+            Self::SeqNum => "The event's place in its chain: how many came before it.",
+            Self::ParentUuids => {
+                "The identities of the events this one descends from, oldest first, each once."
+            }
+            Self::SrcUuids => {
+                "The identities of the elements this event was read from: provenance, never lineage - no walk moves it."
+            }
+            Self::Identifiers => {
+                "The names this event goes by, each under the scheme that issued it, in sorted order."
+            }
+            Self::State => {
+                "The state the event reached, ranked so it sorts by lifecycle; 00UNKNOWN where nothing states one, the furthest its chain knows once followed."
+            }
+        }
+    }
+
+    /// The one datatype the column is built and read at.
+    ///
+    /// The clocks are nanoseconds UTC, the identities the crate's own
+    /// [`Uuid`], the codes `uint64`, the lists `list<uuid>` with the item
+    /// named by the fact, the names a sorted `map<utf8, utf8>`, the state a
+    /// [`State`] code.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when the names' map does not
+    /// build, which is a defect in this module rather than anything a
+    /// caller did.
+    pub fn datatype(self) -> Result<DataType> {
+        let clock = || {
+            DataType::DateTime(crate::DateTimeType::DateTime64 {
+                unit: TimeUnit::Nanosecond,
+                timezone: Timezone::UTC,
+            })
+        };
+        Ok(match self {
+            Self::CurrUnix | Self::CreaUnix | Self::ExpirUnix | Self::PrevUnix | Self::SnapUnix => {
+                clock()
+            }
+            Self::CurrUuid | Self::CrossUuid | Self::PrevUuid => DataType::Uuid,
+            Self::CrossCode => DataType::utf8(),
+            Self::CurrHashCode | Self::CrossHashCode | Self::SeqNum => DataType::UInt64,
+            Self::ParentUuids => DataType::list(DataType::Uuid.required_field("parentuuid")),
+            Self::SrcUuids => DataType::list(DataType::Uuid.required_field("srcuuid")),
+            Self::Identifiers => DataType::map_of(DataType::utf8(), DataType::utf8(), true)?,
+            Self::State => DataType::State,
+        })
+    }
+
+    /// Whether the column may hold a null: the facts the traits answer as
+    /// an option or as nothing - an empty code, list or map, a place of
+    /// zero - may, and so may the state, which an event always answers -
+    /// `00UNKNOWN` where nothing states one - but a row may leave unstated,
+    /// a state having no neutral member for an empty cell to read as; the
+    /// instant, the identities and the codes are never absent.
+    #[must_use]
+    pub const fn nullable(self) -> bool {
+        !matches!(
+            self,
+            Self::CurrUnix
+                | Self::CurrUuid
+                | Self::CrossUuid
+                | Self::CurrHashCode
+                | Self::CrossHashCode
+        )
+    }
+
+    /// The column as a field: its name, datatype and nullability, with
+    /// its display and description for a catalog.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Self::datatype`]'s refusal.
+    pub fn field(self) -> Result<Field> {
+        let mut field = Field::new(self.name(), self.datatype()?, self.nullable());
+        field.set_display(self.display())?;
+        field.set_description(self.description())?;
+        Ok(field)
+    }
+
+    /// Every column as a field, in [`Self::ALL`]'s order.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Self::datatype`]'s refusal.
+    pub fn fields() -> Result<Vec<Field>> {
+        Self::ALL.into_iter().map(Self::field).collect()
+    }
+
+    /// The column one name spells, whatever its case.
+    #[must_use]
+    pub fn of_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|column| crate::folds_equal(column.name(), name))
+    }
+
+    /// What an event states under this column, as the raw value the
+    /// column's datatype types, or nothing where it states no fact: an
+    /// absent instant, identity or place, an empty code, list or map.
+    pub fn fact<E: Event + ?Sized>(self, event: &E) -> Option<Scalar> {
+        let instant =
+            |unix: i64| Scalar::datetime64(unix, TimeUnit::Nanosecond, Timezone::UTC).ok();
+        match self {
+            Self::CurrUnix => instant(event.get_currunix()),
+            Self::CreaUnix => event.get_creaunix().and_then(instant),
+            Self::ExpirUnix => event.get_expirunix().and_then(instant),
+            Self::PrevUnix => event.get_prevunix().and_then(instant),
+            Self::SnapUnix => event.get_snapunix().and_then(instant),
+            Self::CurrUuid => Some(Scalar::Uuid(event.get_curruuid())),
+            Self::CrossUuid => Some(Scalar::Uuid(event.get_crossuuid())),
+            Self::CrossCode => {
+                let code = event.get_crosscode();
+                (!code.is_empty()).then(|| Scalar::from(code))
+            }
+            Self::CurrHashCode => Some(Scalar::from(event.get_currhashcode())),
+            Self::CrossHashCode => Some(Scalar::from(event.get_crosshashcode())),
+            Self::PrevUuid => event.get_prevuuid().map(Scalar::Uuid),
+            Self::SeqNum => (event.get_seqnum() != 0).then(|| Scalar::from(event.get_seqnum())),
+            Self::ParentUuids => uuids_fact(event.get_parentuuids()),
+            Self::SrcUuids => uuids_fact(event.get_srcuuids()),
+            Self::Identifiers => {
+                let identifiers = event.get_identifiers();
+                (!identifiers.is_empty()).then(|| {
+                    Scalar::from_mapping(identifiers.iter().map(|(scheme, identifier)| {
+                        (
+                            Scalar::from(scheme.as_str()),
+                            Scalar::from(identifier.as_str()),
+                        )
+                    }))
+                    .ok()
+                })?
+            }
+            Self::State => Some(Scalar::State(event.get_state().clone())),
+        }
+    }
+
+    /// Records what one cell states on the event, through the traits: a
+    /// null clears the fact, and a value the fact's type refuses is
+    /// silence.
+    pub fn record<E: Event + ?Sized>(self, event: &mut E, value: &Scalar) {
+        let instant = || value.temporal_count_at(TimeUnit::Nanosecond);
+        match self {
+            Self::CurrUnix => {
+                if let Some(unix) = instant() {
+                    event.set_currunix(unix);
+                }
+            }
+            Self::CreaUnix => event.set_creaunix(instant()),
+            Self::ExpirUnix => event.set_expirunix(instant()),
+            Self::PrevUnix => event.set_prevunix(instant()),
+            Self::SnapUnix => event.set_snapunix(instant()),
+            Self::CurrUuid => {
+                if let Scalar::Uuid(uuid) = value {
+                    event.set_curruuid(*uuid);
+                }
+            }
+            Self::CrossUuid => {
+                if let Scalar::Uuid(uuid) = value {
+                    event.set_crossuuid(*uuid);
+                }
+            }
+            Self::CrossCode => event.set_crosscode(
+                value
+                    .as_str()
+                    .filter(|held| !held.is_empty())
+                    .map(str::to_owned)
+                    .unwrap_or_default(),
+            ),
+            Self::CurrHashCode => {
+                if let Some(code) = value.as_u64() {
+                    event.set_currhashcode(code);
+                }
+            }
+            Self::CrossHashCode => {
+                if let Some(code) = value.as_u64() {
+                    event.set_crosshashcode(code);
+                }
+            }
+            Self::PrevUuid => event.set_prevuuid(match value {
+                Scalar::Uuid(uuid) => Some(*uuid),
+                _ => None,
+            }),
+            Self::SeqNum => event.set_seqnum(value.as_u64().unwrap_or(0)),
+            Self::ParentUuids => event.set_parentuuids(uuids_of(value)),
+            Self::SrcUuids => event.set_srcuuids(uuids_of(value)),
+            Self::Identifiers => event.set_identifiers(identifiers_of(value)),
+            Self::State => event.set_state(match value {
+                Scalar::State(state) => state.clone(),
+                other => other
+                    .as_str()
+                    .and_then(|text| State::read(text).ok())
+                    .unwrap_or_else(State::unknown),
+            }),
+        }
+    }
+}
+
+/// One list of identities as the raw value its `list<uuid>` column types,
+/// or nothing where the list is empty.
+fn uuids_fact(uuids: &[Uuid]) -> Option<Scalar> {
+    (!uuids.is_empty()).then(|| Scalar::from_sequence(uuids.iter().copied().map(Scalar::Uuid)))
+}
+
+/// The identities one `list<uuid>` cell states, every other item passed
+/// over; none for a cell stating no list.
+fn uuids_of(value: &Scalar) -> Vec<Uuid> {
+    value
+        .as_sequence()
+        .map(|held| {
+            held.iter()
+                .filter_map(|item| match item {
+                    Scalar::Uuid(uuid) => Some(*uuid),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The names one `map<utf8, utf8>` cell states, every other entry passed
+/// over; none for a cell stating no map.
+fn identifiers_of(value: &Scalar) -> BTreeMap<String, String> {
+    value
+        .as_mapping()
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|(scheme, identifier)| {
+                    Some((scheme.as_str()?.to_owned(), identifier.as_str()?.to_owned()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::{Element, MarketEventData};
+
+    #[test]
+    fn every_column_states_back_what_it_read() {
+        let mut event = MarketEventData::at(1_700_000_000_000_000_000);
+        event.set_creaunix(Some(1_600_000_000_000_000_000));
+        event.set_expirunix(Some(1_800_000_000_000_000_000));
+        event.set_prevunix(Some(1_650_000_000_000_000_000));
+        event.set_snapunix(Some(1_700_000_000_000_000_001));
+        event.set_curruuid(Uuid::from_v8(1));
+        event.set_crossuuid(Uuid::from_v8(2));
+        event.set_crosscode("O-1".to_owned());
+        event.set_currhashcode(3);
+        event.set_crosshashcode(4);
+        event.set_prevuuid(Some(Uuid::from_v8(5)));
+        event.set_seqnum(6);
+        event.set_parentuuids(vec![Uuid::from_v8(7), Uuid::from_v8(8)]);
+        event.set_srcuuids(vec![Uuid::from_v8(9)]);
+        event.set_identifiers([("OrderID".to_owned(), "O-1".to_owned())].into());
+        event.set_state(State::read("Filled").expect("a state"));
+        let mut again = MarketEventData::default();
+        for column in EventColumn::ALL {
+            let fact = column.fact(&event).expect("every fact is stated");
+            let dtype = column.datatype().expect("a datatype");
+            dtype
+                .required_field(column.name())
+                .scalar(fact.clone())
+                .expect("the fact fits the column");
+            column.record(&mut again, &fact);
+        }
+        assert_eq!(again.get_currunix(), event.get_currunix());
+        assert_eq!(again.get_creaunix(), event.get_creaunix());
+        assert_eq!(again.get_expirunix(), event.get_expirunix());
+        assert_eq!(again.get_prevunix(), event.get_prevunix());
+        assert_eq!(again.get_snapunix(), event.get_snapunix());
+        assert_eq!(again.get_curruuid(), event.get_curruuid());
+        assert_eq!(again.get_crossuuid(), event.get_crossuuid());
+        assert_eq!(again.get_crosscode(), "O-1");
+        assert_eq!(again.get_currhashcode(), 3);
+        assert_eq!(again.get_crosshashcode(), 4);
+        assert_eq!(again.get_prevuuid(), Some(Uuid::from_v8(5)));
+        assert_eq!(again.get_seqnum(), 6);
+        assert_eq!(again.get_parentuuids(), event.get_parentuuids());
+        assert_eq!(again.get_srcuuids(), event.get_srcuuids());
+        assert_eq!(again.get_identifiers(), event.get_identifiers());
+        assert_eq!(again.get_state(), event.get_state());
+    }
+
+    #[test]
+    fn a_null_clears_and_nothing_stated_is_none() {
+        let mut event = MarketEventData::at(7);
+        event.set_seqnum(3);
+        event.set_crosscode("X".to_owned());
+        EventColumn::SeqNum.record(&mut event, &Scalar::Null);
+        EventColumn::CrossCode.record(&mut event, &Scalar::Null);
+        EventColumn::State.record(&mut event, &Scalar::Null);
+        assert_eq!(event.get_seqnum(), 0);
+        assert_eq!(event.get_crosscode(), "");
+        assert_eq!(event.get_state(), &State::unknown());
+        assert_eq!(EventColumn::SeqNum.fact(&event), None);
+        assert_eq!(EventColumn::CrossCode.fact(&event), None);
+        assert_eq!(
+            EventColumn::State.fact(&event),
+            Some(Scalar::State(State::unknown())),
+            "the state is never absent"
+        );
+        let names: Vec<&str> = EventColumn::ALL
+            .iter()
+            .map(|column| column.name())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "currunix",
+                "creaunix",
+                "expirunix",
+                "prevunix",
+                "snapunix",
+                "curruuid",
+                "crossuuid",
+                "crosscode",
+                "currhashcode",
+                "crosshashcode",
+                "prevuuid",
+                "seqnum",
+                "parentuuids",
+                "srcuuids",
+                "identifiers",
+                "state",
+            ]
+        );
+        assert_eq!(EventColumn::of_name("no such"), None);
+    }
+}

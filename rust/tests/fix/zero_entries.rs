@@ -5,7 +5,7 @@ use std::sync::Arc;
 use super::SoleMessage;
 use yggdryl::graph::Element;
 use yggdryl::xxhash::xxh128;
-use yggdryl::{DataType, Error, Field, FixEntry, FixRegistry, Scalar, StructureType};
+use yggdryl::{DataType, Error, Field, FixEntry, FixRegistry, Scalar, StructType};
 
 fn tagged(name: &str, tag: i32) -> Field {
     let mut field = DataType::utf8().nullable_field(name);
@@ -173,7 +173,7 @@ fn a_group_keeps_resolved_members_and_unknown_children_under_the_stated_counter(
     counter.as_fix_mut().set_tag(90_001).unwrap();
     registry.insert(counter).unwrap();
     let mut group = DataType::list(
-        StructureType::from_fields([tagged("scopedvalue", 90_002)])
+        StructType::from_fields([tagged("scopedvalue", 90_002)])
             .map(DataType::from)
             .unwrap()
             .required_field("row"),
@@ -330,12 +330,13 @@ fn a_header_tag_is_the_headers_fact_and_stays_out_of_the_content_code() {
     };
     // The session layer is the envelope around what a message says, so the
     // sequence number is the header's own fact: it is no entry of the
-    // content row, it goes back on the wire from the header, and it is part
-    // of what the message states, so two messages differing in it alone
-    // settle different identities.
+    // content row, it goes back on the wire from the header, and it is the
+    // frame's and not the content's - a capture logs one message at every
+    // hop it passes, each hop framing it in a session of its own - so two
+    // messages differing in it alone digest to one content code.
     assert_eq!(read("7").header().msgseqnum(), Some(7));
     assert_eq!(read("8").header().msgseqnum(), Some(8));
     assert!(!read("7").entries().iter().any(|entry| entry.tag() == 34));
     assert_eq!(read("7").into_bytes(b'|'), b"8=FIX.4.4|34=7|11=A|");
-    assert_ne!(read("7").get_currhashcode(), read("8").get_currhashcode());
+    assert_eq!(read("7").get_currhashcode(), read("8").get_currhashcode());
 }

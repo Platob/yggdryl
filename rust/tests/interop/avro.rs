@@ -65,7 +65,7 @@ fn expected_rows() -> Vec<Scalar> {
                cost: i128,
                tags: &[&str],
                flag: bool| {
-        Scalar::from_record([
+        Scalar::from_struct([
             ("symbol", Scalar::from(symbol)),
             ("quantity", Scalar::from(quantity)),
             ("price", price),
@@ -81,7 +81,7 @@ fn expected_rows() -> Vec<Scalar> {
             ),
             (
                 "extra",
-                Scalar::from_record([("flag", Scalar::from(flag))]).expect("unique field names"),
+                Scalar::from_struct([("flag", Scalar::from(flag))]).expect("unique field names"),
             ),
         ])
         .expect("unique field names")

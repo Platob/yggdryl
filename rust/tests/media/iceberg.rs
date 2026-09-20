@@ -8,9 +8,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use arrow_array::{
-    Array, BinaryArray, Int64Array, NullArray, RecordBatch, StringArray, StructArray,
-};
+use arrow_array::{Array, BinaryArray, Int64Array, NullArray, RecordBatch, StringArray};
 use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Holder;
 use yggdryl::iceberg::{
@@ -19,7 +17,7 @@ use yggdryl::iceberg::{
 };
 use yggdryl::local::Folder;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{DataType, Field, IOBase, IOMedia, Scalar, Selector, StructureType};
+use yggdryl::{DataType, Field, IOBase, IOMedia, Scalar, Selector, StructType};
 
 /// A table folder that records every relative path resolved through it.
 ///
@@ -86,7 +84,7 @@ fn root(label: &str) -> std::path::PathBuf {
 }
 
 fn schema() -> Field {
-    let mut schema = StructureType::from_fields([
+    let mut schema = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
         DataType::utf8().nullable_field("venue"),
@@ -657,18 +655,15 @@ fn unknown_is_the_null_column_and_variant_is_the_semi_structured_one() {
     )
     .unwrap();
     let arrow = schema.into_arrow_schema().unwrap();
-    let arrow_schema::DataType::Struct(children) = arrow.field(2).data_type() else {
-        panic!("a variant lays out as a struct");
-    };
-    let payload = StructArray::try_new(
-        children.clone(),
-        vec![
-            Arc::new(BinaryArray::from_iter_values([[0x01_u8, 0x00, 0x00]; 2])),
-            Arc::new(BinaryArray::from_iter_values([[0x00_u8], [0x0c]])),
-        ],
-        None,
-    )
-    .unwrap();
+    assert_eq!(
+        arrow.field(2).data_type(),
+        &arrow_schema::DataType::Binary,
+        "a variant lays out as the binary of its encoding"
+    );
+    let payload = BinaryArray::from_iter_values([
+        Scalar::from(12_i64).into_variant_bytes(),
+        Scalar::from("twelve").into_variant_bytes(),
+    ]);
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow),
         vec![

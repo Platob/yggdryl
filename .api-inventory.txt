@@ -231,12 +231,18 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
   pub const fn handle(&self) -> &H
   pub fn into_handle(self) -> crate::Result<H>
 
+### yggdryl::variant  [rust/src/variant.rs]  (the variant encoding: any Scalar as one byte stream and back)
+pub const VARIANT_VERSION: u8 = 0;  (the first byte of every stream)
+pub const COMPRESS_FROM: usize = 4 * 1024;  (a payload of no fixed width past this many bytes is a zstd frame)
+pub struct VariantStream  (Iterator<Item = Vec<u8>> + FusedIterator: one chunk per leaf, the children of a nested value after its header, holding what it has yet to write and nothing it wrote)
+
 ### yggdryl::root::datatype_id  [rust/src/datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 84] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8, Self::UInt16, Self::UInt32, Self::UInt64, Self::Int128, Self::UInt128, Self::Float16, Self::Float32, Self::Float64, Self::DateTime64, Self::Date32, Self::Date64, Self::Time32, Self::Time64, Self::Duration32, Self::Duration64, Self::Interval, Self::Binary, Self::FixedBinary, Self::LargeBinary, Self::BinaryView, Self::Utf8String, Self::FixedUtf8String, Self::Utf8StringView, Self::LargeUtf8String, Self::LargeUtf8StringView, Self::Country, Self::Currency, Self::Mic, Self::Cfi, Self::Uuid, Self::List, Self::ListView, Self::FixedSizeList, Self::LargeList, Self::LargeListView, Self::Struct, Self::Union, Self::Dictionary, Self::Decimal32, Self::Decimal64, Self::Decimal128, Self::Decimal256, Self::Map, Self::RunEndEncoded, Self::Variant, Self::Geometry, Self::Geography, Self::Version, Self::Side, Self::State, Self::TimeInForce, Self::Url, Self::Isin, Self::Timezone, Self::MimeType, Self::MediaType, Self::Cusip, Self::Sedol, Self::Bloomberg, Self::SortedMap, Self::Struct2, Self::LargeBinaryView, Self::SizedBinary, Self::SizedUtf8String, Self::AsciiString, Self::LargeAsciiString, Self::AsciiStringView, Self::LargeAsciiStringView, Self::FixedAsciiString, Self::SizedAsciiString, Self::Cp1252String, Self::LargeCp1252String, Self::Cp1252StringView, Self::LargeCp1252StringView, Self::FixedCp1252String, Self::SizedCp1252String, Self::Urn, ];  (every discriminant explicit; 58 was msgdirection, retired; Cusip = 64, Sedol = 65 and Bloomberg = 66 appended, then SortedMap = 67, Struct2 = 68, 69..71 were the three versioned uuid leaves, retired when uuid became one datatype again and never reused, LargeBinaryView = 72, SizedBinary = 73; the five UTF-8 string leaves keep 27..31 under their leaf names - utf8, fixed_utf8, utf8_view, large_utf8, large_utf8_view - and the thirteen other string leaves are appended 74..86 in ALL order, sized_utf8 first and sized_cp1252 last; Urn = 87 appended after them, the second leaf of the uri family beside Url = 59)
+  pub const ALL: [Self; 83] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8, Self::UInt16, Self::UInt32, Self::UInt64, Self::Int128, Self::UInt128, Self::Float16, Self::Float32, Self::Float64, Self::DateTime64, Self::Date32, Self::Date64, Self::Time32, Self::Time64, Self::Duration32, Self::Duration64, Self::Interval, Self::Binary, Self::FixedBinary, Self::LargeBinary, Self::BinaryView, Self::Utf8String, Self::FixedUtf8String, Self::Utf8StringView, Self::LargeUtf8String, Self::LargeUtf8StringView, Self::Country, Self::Currency, Self::Mic, Self::Cfi, Self::Uuid, Self::List, Self::ListView, Self::FixedSizeList, Self::LargeList, Self::LargeListView, Self::Struct, Self::Union, Self::Dictionary, Self::Decimal32, Self::Decimal64, Self::Decimal128, Self::Decimal256, Self::Map, Self::RunEndEncoded, Self::Variant, Self::Geometry, Self::Geography, Self::Version, Self::Side, Self::State, Self::TimeInForce, Self::Url, Self::Isin, Self::Timezone, Self::MimeType, Self::MediaType, Self::Cusip, Self::Sedol, Self::Bloomberg, Self::SortedMap, Self::LargeBinaryView, Self::SizedBinary, Self::SizedUtf8String, Self::AsciiString, Self::LargeAsciiString, Self::AsciiStringView, Self::LargeAsciiStringView, Self::FixedAsciiString, Self::SizedAsciiString, Self::Cp1252String, Self::LargeCp1252String, Self::Cp1252StringView, Self::LargeCp1252StringView, Self::FixedCp1252String, Self::SizedCp1252String, Self::Urn, ];  (every discriminant explicit; 58 was msgdirection, retired; Cusip = 64, Sedol = 65 and Bloomberg = 66 appended, then SortedMap = 67, Struct2 = 68, 69..71 were the three versioned uuid leaves, retired when uuid became one datatype again and never reused, LargeBinaryView = 72, SizedBinary = 73; the five UTF-8 string leaves keep 27..31 under their leaf names - utf8, fixed_utf8, utf8_view, large_utf8, large_utf8_view - and the thirteen other string leaves are appended 74..86 in ALL order, sized_utf8 first and sized_cp1252 last; Urn = 87 appended after them, the second leaf of the uri family beside Url = 59)
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
-  pub const fn as_u8(self) -> u8
+  pub const fn as_u8(self) -> u8  (one byte laid out by family: the family's own number first, `DataTypeKind::id`, then its leaves in the family's range; the tag the digest feed and the variant encoding write)
+  pub const fn from_u8(byte: u8) -> Option<Self>  (the leaf one byte names; none for a family's own number, a placeholder in a family's range, or a byte past every family)
   pub const fn kind(self) -> DataTypeKind
   pub const fn is_parameterized(self) -> bool
   pub const fn is_integer(self) -> bool
@@ -255,6 +261,8 @@ pub enum DataTypeKind
   pub const ALL: [Self; 12] = [ Self::Null, Self::Boolean, Self::Integer, Self::Floating, Self::Decimal, Self::Temporal, Self::Text, Self::Code, Self::Bytes, Self::Nested, Self::Geospatial, Self::Uuid, ];
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
+  pub const fn id(self) -> u8  (the family's own number, the start of the range its leaves take and a placeholder no leaf takes - but the null family's, whose one leaf is the null itself)
+  pub const fn of_u8(byte: u8) -> Option<Self>  (the family whose range a byte is in, or none past every family)
   pub const fn is_nested(self) -> bool
   pub const fn is_wrapper(self) -> bool
   pub const fn is_numeric(self) -> bool
@@ -679,6 +687,10 @@ pub struct FixCodec
   pub const fn with_batch_byte_size(mut self, bytes: u64) -> Self
   pub const fn with_batch_row_size(mut self, rows: usize) -> Self  (zero leaves the bytes to decide)
   pub const fn batch_row_size(&self) -> usize
+  pub const fn with_threads(mut self, threads: usize) -> Self  (the threads the line and row doors read on: one, the default, reads a stream where it stands; more read it PARALLEL_CHUNK lines per thread ahead, each line parsed on some thread and every message answered in the lines' order, so parse_lines, parse_text_lines, parse_arrow_messages and messages answer what one thread answers, sooner, and arrow_reader fills its rows the same way; a lifecycle is one walk and reads on the thread that pulls it; zero reads as one)
+  pub const fn set_threads(&mut self, threads: usize)
+  pub const fn threads(&self) -> usize
+  pub const PARALLEL_CHUNK: usize = 64  (the lines each thread reads ahead where the doors read on several)
   pub fn with_include_msgtypes<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>  (only these types are read; naming any clears the default refusals, since a caller saying what it wants has said what it does not; any spelling the dictionary resolves, a code it does not know kept as written, `unknown` naming a row that states no type)
   pub fn with_exclude_msgtypes<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>  (replaces DEFAULT_REFUSED_MSGTYPES; empty reads everything; a type named here is refused whether or not it is included)
   pub fn include_msgtypes(&self) -> &[SmolStr]
@@ -693,21 +705,22 @@ pub struct FixCodec
   pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg>  (one bridge row; likewise refused, at the frame opening behind the row, target `ullink`)
   pub fn parse_fixml_line(&self, body: &[u8]) -> Result<FixMsg>  (one document; likewise refused, at a second root element, target `fixml`)
   pub fn parse_pairs<'a, I>(&self, pairs: I) -> Result<FixMsg> where I: IntoIterator<Item = (&'a [u8], &'a [u8])>  (one frame; likewise refused, at the second frame's key in the page the pairs were copied into)
-  pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages>  (takes the page the line already holds; copies nothing; none, one or many as `parse_line` answers, so a row opening no frame, stating no bridge pair and carrying no document yields nothing, and an empty payload nothing; malformed syntax may recover as one `unknown` message; mandatory clock/layout/content failures remain error items)
+  pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages>  (takes the page the line already holds; copies nothing; states the line's `curruuid` as each message's one source - `srcuuids` - before it settles; none, one or many as `parse_line` answers, so a row opening no frame, stating no bridge pair and carrying no document yields nothing, and an empty payload nothing; malformed syntax may recover as one `unknown` message; mandatory clock/layout/content failures remain error items)
   pub fn parse_text_lines<I, L>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I, L> where I: IntoIterator, I::Item: Into<Result<L>>, L: Borrow<TextLine>  (owned or borrowed lines and either Result; borrows without cloning, moves errors unchanged, fuses source exhaustion)
-  pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (the one walk, `graph::EventIterator`, over the messages: collected and stably sorted by instant - a capture's lines are not in their messages' order - then each stated as the one after the live message of its chain by `FixMsg::with_previous`, the chain keyed on the cross identity every incarnation shares with a fallback on a shared identifier; a message arriving under the identity the live one arrived under - the same message logged at another hop - restates it instead; errors move through in source order and never advance the walk; fused)
+  pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (the one walk, `graph::EventIterator`, over the messages: collected and stably sorted by instant - a capture's lines are not in their messages' order - then each stated as the one after the live message of its chain by `FixMsg::with_previous`, the chain keyed on the cross identity every incarnation shares with a fallback on a shared identifier; a message arriving under the identity the live one arrived under - the same message logged at another hop - restates it instead; errors move through in source order and never advance the walk; fused; a message whose sending clock the parse supplied is dated by its TransactTime(60) before the walk, `FixMsg::dated_by_transaction`)
   impl Clone for FixCodec
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 pub const DEFAULT_REFUSED_MSGTYPES: [&str; 3] = ["0", "1", "unknown"];  (the types a codec refuses until a caller says otherwise: Heartbeat, TestRequest, and a row stating no type)
 
 ### yggdryl::fix::batch  [rust/src/fix/batch.rs]  (arrow feature)
 impl FixCodec
-  pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, one FIX row per message out - a line carrying two frames is two rows and one carrying none is no row; the capture's columns lead and repeat over every message of a row, and a `sourceurl` column is read off the source row and written straight into its own FIX column rather than filling a message fact; batches close on the payload column's raw bytes read once per input batch)
-  pub fn lifecycle_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, chained FIX rows out under the same schema: each row through `FixMsg::from_row`, the walk `lifecycle` runs, each back into a row; no re-parse. Each row's capture cells are read off the source row and carried beside its message through the walk's own ordering, then stated again at their own columns - the message holds none of them, so the pairing is by message and never by position)
-  pub fn messages(&self, source: BatchReader) -> impl Iterator<Item = Result<FixMsg>> + Send + use<>  (each row through `FixMsg::from_row` under the source's schema; the capture's own columns are read past and not carried, so a `messages` -> `arrow_reader` round trip over a carrying schema answers null at them)
-  pub fn arrow_reader<I>(&self, schema: Field, messages: I) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (owned messages or results, each through `FixMsg::into_row`; batches close on the arrival record's raw bytes; completed prefix then error and fusion)
+  pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, one FIX row per message out - a line carrying two frames is two rows and one carrying none is no row; the capture's columns lead and repeat over every message of a row, and the capture's own cells are read off the source row and carried by every message parsed out of it, stated again at their columns when the messages are written back; a carrier's sixteen event columns are the line each row is: its `curruuid` is every message's one source, `srcuuids`, and the other fifteen fill nothing and are dropped as the row's own twins take their names; batches close as `arrow_reader` closes them, on the bytes each row lands as)
+  pub fn lifecycle_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, chained FIX rows out under the same schema: each row through `FixMsg::from_row`, the walk `lifecycle` runs, each back into a row; no re-parse. Each row's capture cells are read into the message it makes and travel with it through the walk's own ordering, then are stated again at their own columns, so the pairing is by message and never by position)
+  pub fn parse_arrow_messages(&self, source: BatchReader) -> Result<impl Iterator<Item = Result<FixMsg>> + Send + use<>>  (capture rows in, the messages the rows carry out: each row read cell by cell and parsed through the line funnel - the payload, the beginstring and msgdirection columns, the mtime column dating the row's line, the carrier's `curruuid` column read as each message's one source where the carrier states one - else the identity the same bytes at the same instant derive - the other fifteen event columns filling nothing, every other column named after a dictionary field filling it - and the capture's own cells carried by every message parsed out of the row, under their columns; where each column sits is decided once from the schema; refuses a source with no payload column or one holding neither text nor bytes)
+  pub fn messages(&self, source: BatchReader) -> impl Iterator<Item = Result<FixMsg>> + Send + use<>  (each row through `FixMsg::from_row` under the source's schema, the capture's own cells read into the message with it, so a `messages` -> `arrow_reader` round trip over a carrying schema states them again at their columns; a batch is read a chunk of rows at a time on the codec's threads)
+  pub fn arrow_reader<I>(&self, schema: Field, messages: I) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (owned messages or results, each through `FixMsg::into_row` on the codec's threads; batches close on the bytes each row lands as - the leaves of every column it fills and a per-row width; completed prefix then error and fusion)
   pub fn format_messages<'codec, 'field, I>(&'codec self, messages: I, field: &'field Field) -> impl Iterator<Item = Result<Scalar>> + use<'codec, 'field, I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (each message through `FixMsg::into_row` under one message field of the registry; a column the message does not carry is lifted off its arrival record; a packed occurrence, a composed key and a row-header capture are the codec's readings and are not in the record to lift)
-  pub fn format_arrow_reader(&self, source: BatchReader, field: &Field) -> Result<BatchReader>  (the Arrow twin; the capture's own columns still lead the row, restated from the source batch rather than asked of the message, which holds none of them; a source carrying no arrival record is cast through `arrow::cast_reader` instead of read back as messages)
+  pub fn format_arrow_reader(&self, source: BatchReader, field: &Field) -> Result<BatchReader>  (the Arrow twin; the capture's own columns still lead the row, stated from the cells each message carries; a source carrying no arrival record is cast through `arrow::cast_reader` instead of read back as messages)
   pub fn write_arrow_reader(&self, source: BatchReader, sink: impl std::io::Write) -> Result<u64>  (the wire from the arrival record, the codec's separator else `SOH`; refuses a batch without `fixentries`)
 
 ### yggdryl::fix::digest  [rust/src/fix/digest.rs]
@@ -725,17 +738,17 @@ pub struct FixMessages
 ### yggdryl::fix::crated  [rust/src/fix/crated.rs]
 pub const CRATE_TAG_MIN: i32 = 65_000;
 pub const CRATE_TAG_MAX: i32 = 65_100;  (one past the last; the retired slots below 65050 are never reused)
-pub const CURRUNIX_TAG_NAME: (i32, &str) = (65_003, "currunix");  (non-null nanosecond UTC clock: when the message happened - a stated `currunix`, else `TransactTime(60)` stating a clock, else `SendingTime(52)`)
+pub const CURRUNIX_TAG_NAME: (i32, &str) = (65_003, "currunix");  (non-null nanosecond UTC clock: when the message happened - a stated `currunix`, else `SendingTime(52)`)
 pub const MSGCTXID_TAG_NAME: (i32, &str) = (65_008, "msgctxid");  (the message context a bridge handled the line in; a capture fact, held by `FixCapture`)
 pub const MSGPLUGINID_TAG_NAME: (i32, &str) = (65_009, "msgpluginid");  (display `MsgPluginId`: the plugin that logged the line, stated by a row's own `msgpluginid` capture or column and never derived; selects nothing)
-pub const CURRHASHCODE_TAG_NAME: (i32, &str) = (65_017, "currhashcode");  (non-null uint64: the XXH3-64 of what the event states, the text, the metadata, the header and the named content of the row)
+pub const CURRHASHCODE_TAG_NAME: (i32, &str) = (65_017, "currhashcode");  (non-null uint64: the XXH3-64 of what the event states, the text, the metadata, the lifted FIX fields and the named content of the row - every field but the standard header and trailer)
 pub const CROSSHASHCODE_TAG_NAME: (i32, &str) = (65_018, "crosshashcode");  (non-null uint64: the XXH3-64 of the cross code, zero where the message names none)
 pub const IDENTIFIERS_TAG_NAME: (i32, &str) = (65_020, "identifiers");  (nullable sorted `map<utf8, utf8>` group, self-countered: the names the message goes by, each under the canonical field that stated it - the message component's FIX:identifiers)
 pub const PREVUNIX_TAG_NAME: (i32, &str) = (65_021, "prevunix");  (nullable clock: when the message this one follows happened)
 pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");  (nullable uuid: the identity of the message this one follows)
-pub const CREAUNIX_TAG_NAME: (i32, &str) = (65_023, "creaunix");  (non-null clock: a stated creation, else OrigSendingTime(122), else `currunix`; the earliest a chain knows once walked)
+pub const CREAUNIX_TAG_NAME: (i32, &str) = (65_023, "creaunix");  (non-null clock: a stated creation, else `currunix`; the earliest a chain knows once walked)
 pub const SNAPUNIX_TAG_NAME: (i32, &str) = (65_025, "snapunix");  (nullable clock: the opening instant of the grid step a walk read the message as the snapshot of)
-pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");  (the object a line was read from, typed url; the capture's own column: stated on the row by whoever read the line and restated by whoever writes the row back, held by no message, so outside the currhashcode, the entries and the wire)
+pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");  (the object a line was read from, typed url; the capture's own column: stated on the row by whoever read the line and carried by every message read out of that row, stated again at its column by `into_row`; held as no fact, so outside the currhashcode, the entries and the wire)
 pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");  (the arrival record group's counter, closing the fixed row; outside the currhashcode)
 pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_032, "msgsessionid");  (display `MsgSessionId`: the session instance a bridge handled a line on, as its own row header brackets it and never what the message states; a capture fact)
 pub const CURRUUID_TAG_NAME: (i32, &str) = (65_039, "curruuid");  (non-null uuid: the message's identity, the UUIDv7 its `currunix` and `currhashcode` derive)
@@ -745,10 +758,13 @@ pub const SEQNUM_TAG_NAME: (i32, &str) = (65_042, "seqnum");  (nullable uint64: 
 pub const CROSSCODE_TAG_NAME: (i32, &str) = (65_048, "crosscode");  (utf8: the identifier every message of one lifecycle shares, as the message spells it - the first stated of OrderID(37), ClOrdID(11), OrigClOrdID(41), QuoteID(117), QuoteReqID(131), MDReqID(262) - and what `crosshashcode` and `crossuuid` derive from)
 pub const METADATA_TAG_NAME: (i32, &str) = (65_049, "metadata");  (nullable sorted `map<utf8, utf8>` group, self-countered: what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.*`, `ullink.*` - each under the key as the bridge spelled it, folded)
 pub const FIXMSG_TAG_NAME: (i32, &str) = (65_050, "fixmsg");  (the fixed row `fix_schema` builds as a store dumps it: `components/fixmsg.json`, every column a reference to the field or group that types it; written by `write_into`, passed over on read)
+pub const SRCUUIDS_TAG_NAME: (i32, &str) = (65_051, "srcuuids");  (nullable `list<uuid>` of required `srcuuid` items, display `SrcUuids`: the identities of the elements the message was read from - the text line it was parsed out of, stated by the line doors as the line's `curruuid` before the message settles, none for raw bytes; provenance, never lineage - no walk moves it - outside the currhashcode and never on the wire; a column of the fixed row, listed by `fix_crate_fields` and registered by no registry)
+pub const STATE_TAG_NAME: (i32, &str) = (65_052, "state");  (nullable `state` code, written on every row a message writes, display `State`: the state the message reached - `OrdStatus(39)`, else `ExecType(150)`, `00UNKNOWN` where neither states one - the furthest its chain knows once the lifecycle followed it; a row stating one is the row's word, which the derivation leaves)
+pub const EXPIRUNIX_TAG_NAME: (i32, &str) = (65_053, "expirunix");  (nullable clock, display `ExpirUnix`: when the message stops being good - `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or `MaturityDate(541)` - the latest its chain knows once followed; a row stating one is the row's word)
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");  (FIX's own tag and name, never a second tag)
 pub const MSGTYPE_TAG_NAME: (i32, &str) = (35, "MsgType");
 pub const fn is_crate_tag(tag: i32) -> bool
-pub fn fix_crate_fields() -> Result<&'static [Field]>  (re-exported at the crate root; the 19 definitions in tag order - 17 scalar fields, with `parentuuids` among them, and the `identifiers` and `metadata` Map groups; every registry holds all of them from construction, so an empty one lists 17 crate scalars beside the two seeded clocks and the two groups, 21 in all; a store writes them and reads a stored copy past)
+pub fn fix_crate_fields() -> Result<&'static [Field]>  (re-exported at the crate root; the 22 definitions in tag order - 20 scalar fields, with the `parentuuids` and `srcuuids` lists among them, and the `identifiers` and `metadata` Map groups, the sixteen event facts each at its `EventColumn`'s datatype; every registry holds all of them from construction, so an empty one lists 20 crate scalars beside the two seeded clocks and the two groups, 24 in all; a store writes them and reads a stored copy past)
 impl FixRegistry
   pub fn register_msgtype(&mut self, spelling: &str, name: Option<&str>, description: Option<&str>) -> Result<&MsgType>
 
@@ -768,7 +784,7 @@ pub struct FixHeader  (the standard header and trailer facts a message holds typ
   pub fn signature(&self) -> Option<&[u8]>  (`Signature(89)`)
   pub fn checksum(&self) -> Option<&str>  (`CheckSum(10)` exactly as the line spelled it, three digits and all: a re-emission states what was read rather than a sum of bytes nobody sent)
   impl Clone, Debug, PartialEq, Eq for FixHeader
-pub struct FixCapture  (what a bridge's own row header stated about the line it wrote, typed and read off the line's own bytes - the plugin, the message context, the session instance: facts about the capture and not the message, outside the currhashcode; what a reader said about the line is held nowhere on a message, being the capture's own columns; no public constructor)
+pub struct FixCapture  (what a bridge's own row header stated about the line it wrote, typed and read off the line's own bytes - the plugin, the message context, the session instance: facts about the capture and not the message, outside the entries and the wire; the session instance and the message context name the chain where the row header brackets both, through the cross code, which the currhashcode leaves out; what a reader said about the line is the capture's own columns, which a message carries rather than states; no public constructor)
   pub fn msgpluginid(&self) -> Option<&str>
   pub fn msgctxid(&self) -> Option<&str>
   pub fn msgsessionid(&self) -> Option<&str>
@@ -808,7 +824,7 @@ pub struct FixMsg  (a market event with a FIX body around it: the `MarketEventDa
   pub fn entries(&self) -> &[FixEntry]  (the content row read as a tree, derived on the first ask and dropped by every write: one entry per non-null child, a group as one entry under its counter valued the count with one valueless entry per occurrence heading the members, a component as a valueless entry heading its members; the counter scalar beside a group is no entry of its own at any level, so a nested group states its count once; the typed facts are not entries)
   pub fn into_bytes(&self, separator: u8) -> Vec<u8>  (the message as it now stands: header tags 8, 35, 49, 56, 34, 43 and 52 where stated, then the lifted facts in tag order - 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 198, 262, 1003 - then the entries pre-order, then the trailer 93, 89, 10, which closes the frame whatever the body says. A coded fact spells as its wire code - `54=1`. A fact the message derived rather than stated is emitted nowhere)
   pub fn into_text(&self, separator: char) -> Result<String>  (InvalidRecord when a value holds a control byte)
-  pub fn digest(&self) -> u128  (the XXH3-128 of what `into_bytes` emits, pre-order, whatever separator either message was read with; what `FixDedup` keys on. The identity's own code, `Element::get_currhashcode`, is the other digest: over what the message states - the event's facts, the text, the metadata, the header fields it stated, then the entry tree - and never over the columns a row lays them out in)
+  pub fn digest(&self) -> u128  (the XXH3-128 of what `into_bytes` emits, pre-order, whatever separator either message was read with; what `FixDedup` keys on. The identity's own code, `Element::get_currhashcode`, is the other digest: over what the message states but the standard header and trailer - the event's facts, the text, the metadata, the lifted FIX fields, then the entry tree - and never over the frame a hop carried it in nor the columns a row lays them out in)
   pub const fn registry(&self) -> &Arc<FixRegistry>
   pub const fn as_field(&self) -> &Field  (the content row's root Struct: no typed fact in it)
   pub const fn as_value(&self) -> &Scalar  (the content row)
@@ -826,9 +842,12 @@ pub struct FixMsg  (a market event with a FIX body around it: the `MarketEventDa
   pub fn set_many<'key, I, K>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = (K, Scalar)>, K: Into<FixKey<'key>>  (several `set`s with one rebuild; the later of two writes to one child lands; one refusal refuses them all)
   pub fn with_value<'key>(self, key: impl Into<FixKey<'key>>, value: Scalar) -> Result<Self>  (the consuming twin of `set`)
   pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Result<Option<Scalar>>  (a typed fact cleared on its holder, a row child taken out, either answered; None for a key reaching nothing, a capture column among them - which `set` refuses rather than answering None)
-  pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (in schema.rs; the inverse of `into_row`: the typed facts read off their columns, the content rebuilt from `fixentries` - every level materialized, the folded leaf decoded - each entry typed as the builder types a pair, a group no dictionary declares rebuilt as the list it is; every capture column is read past - the one the crate tags, sourceurl, and every column no tag and no counter names - so nothing on the message holds one and none reaches an entry, a digest or a `body=` on the wire; a column whose name holds a `.` is a bridge's own statement and lands in the metadata; the columns stay the row's, and whoever writes rows back restates them; a row without that column has typed facts and no content; exact but for a repeating group whose occurrences nest a second group only some of them state - 83 of the 94 bundled bridge messages rebuild exactly, the 11 that do not being parties nesting PtysSubGrp; refuses a row the schema does not hold or an entries column that is not an arrival entry)
-  pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (in schema.rs; each column filled by its tag or its group's counter, a column carrying neither by the child of its name; the capture's own columns answer null, the two tagged ones included, because no message holds a fact for them, a value a nullable column will not hold as that column's null; tag 52 only where the message stated it; the entries close the row under `fixentries`)
-  impl Element, Event, MarketElement for FixMsg  (so MarketEvent; through the held `MarketEventData`: `is_after` is the instant, `finalize` settles the identity again, `with_previous` is `Event::following` with the predecessor adopted as a parent, `merge_with` is `MarketEvent::merging_market_event`)
+  pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (in schema.rs; the inverse of `into_row`: the typed facts read off their columns, the content rebuilt from `fixentries` - every level materialized, the folded leaf decoded - each entry typed as the builder types a pair, a group no dictionary declares rebuilt as the list it is; every capture column is carried - the one the crate tags, sourceurl, and every column no tag and no counter names, each non-null cell under its column's name - and none reaches an entry, a digest or a `body=` on the wire; a column whose name holds a `.` is a bridge's own statement and lands in the metadata; `into_row` states each carried cell again at its column; a row without that column has typed facts and no content; exact but for a repeating group whose occurrences nest a second group only some of them state - 83 of the 94 bundled bridge messages rebuild exactly, the 11 that do not being parties nesting PtysSubGrp; refuses a row the schema does not hold or an entries column that is not an arrival entry)
+  pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (in schema.rs; each column filled by its tag or its group's counter, a column carrying neither by the child of its name; the capture's own columns answer the cell the message carries under the column's name, null where it carries none, because no message holds a fact for them, a value a nullable column will not hold as that column's null; tag 52 only where the message stated it; the entries close the row under `fixentries`)
+  pub fn dated_by_transaction(self) -> Result<Self>  (the message dated by the TransactTime(60) it states with a clock where the parse supplied its sending clock - a carrier's, the default, the intake's - created at an earlier OrigSendingTime(122), its stand-in sending clock moved with it, and enriched again under the rules its date selects; a stated SendingTime stands, a day-only TransactTime dates nothing; what `lifecycle` reads before it walks)
+  pub fn carried(&self) -> &[(SmolStr, Scalar)]  (the capture's own cells the message carries, each under the column it was read from: where the line was read from, its place in the object, the body it was cut from, when it was recorded; provenance and never content - none is an entry, none reaches the wire or the currhashcode - and `into_row` states each again at its column; empty for a message parsed from bytes, a row's for one parsed out of or read back from a row)
+  pub fn set_carried(&mut self, cells: Vec<(SmolStr, Scalar)>)  (states the capture's own cells, replaced whole)
+  impl Element, Event, MarketElement for FixMsg  (so MarketEvent; through the held `MarketEventData`: `is_after` is the instant, `finalize` settles the identity again, `with_previous` is `MarketEvent::following_market`, descending from the predecessor's whole lineage while the sources stay its own, `merge_with` is `MarketEvent::merging_market_event`)
   impl Clone, Debug, PartialEq, Eq, Hash for FixMsg  (equal over the holders, the row and the registry - the same Arc or equal registries; hashed over the currhashcode, the row's schema and its value)
 
 ### yggdryl::fix::entry  [rust/src/fix/entry.rs]
@@ -932,8 +951,8 @@ pub const TRAILER_TAGS: [i32; 3]
 pub const BODY_TAGS: [i32; 50]
 pub const GROUP_TAGS: [i32; 3]
 pub const FIXENTRIES_COLUMN: &str = "fixentries";  (the arrival record group, counted by NOFIXENTRIES_TAG_NAME (65027); the one group the registry does not define, because a fixentry contains fixentries; one occurrence is tag/name/value/fixentries, three levels materialized and the rest folded into a JSON utf8 leaf)
-pub fn fix_schema_tags() -> Vec<i32>  (the row in nine bands - when it happened, which event it is, which message and session carried it, which instrument and what the market says about trading it, which order, what values it states as one ladder of prices and one of quantities before the two lanes, how it went, the three groups kept whole, then every standard header, body and trailer tag no band claimed, the metadata and the arrival record's counter: 110 tags. Price(44), OrderQty(38) and Quantity(53) are among them, each exact and stated once; what a message is about is what `MarketElement::get_px` and `get_qty` read off them, and no column of this crate's restates either)
-pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>  (the fixed row in `fix_schema_tags`'s band order: one column per tag the registry holds, named by the field's folded name, a List group beside its counter and a Map group on its own; 114 columns with the shipped dictionary; `beginstring`, `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and `crossuuid` required, every other column nullable; `cargo run --example fix_schema --features arrow` prints it as the Arrow batch schema, one column a line)
+pub fn fix_schema_tags() -> Vec<i32>  (the row in nine bands - when it happened, which event it is, which message and session carried it, which instrument and what the market says about trading it, which order, what values it states as one ladder of prices and one of quantities before the two lanes, how it went, the three groups kept whole, then every standard header, body and trailer tag no band claimed, the metadata and the arrival record's counter: 113 tags. Price(44), OrderQty(38) and Quantity(53) are among them, each exact and stated once; what a message is about is what `MarketElement::get_px` and `get_qty` read off them, and no column of this crate's restates either)
+pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>  (the fixed row in `fix_schema_tags`'s band order: one column per tag the registry holds, named by the field's folded name, a List group beside its counter and a Map group on its own; 117 columns with the shipped dictionary; `beginstring`, `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and `crossuuid` required, every other column nullable; `cargo run --example fix_schema --features arrow` prints it as the Arrow batch schema, one column a line)
 pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>  (a capture's own columns in front of the fixed ones, less any whose folded name a FIX column takes; each carried column is made nullable whatever the capture declared, because only a pass holding the source row can state one)
 pub fn fix_column_of(schema: &Field, tag: i32) -> Option<usize>  (where the column carrying one tag sits, by the column's own FIX:tag else the tag its name spells)
 pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>>  (each column's tag, read once for a whole schema)
@@ -953,12 +972,13 @@ pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of 
 pub mod element;
 pub mod event;
 pub mod iterator;
+  pub use column::EventColumn;
   pub use element::{Element, Event, MarketElement, MarketEvent};
   pub use event::{MarketElementData, MarketEventData};
   pub use iterator::EventIterator;
 
 ### yggdryl::graph::element  [rust/src/graph/element.rs]
-pub trait Element  (one element of a graph: its own identity, the identity it has in another graph and the code that names it there, the codes it digests to, the names it goes by, its parents' identities and the order it stands in, all read and written; object-safe but for the order and the by-value readings)
+pub trait Element  (one element of a graph: its own identity, the identity it has in another graph and the code that names it there, the codes it digests to, the names it goes by, its parents' identities, its sources' identities and the order it stands in, all read and written; object-safe but for the order and the by-value readings)
   fn get_curruuid(&self) -> Uuid
   fn set_curruuid(&mut self, uuid: Uuid)
   fn get_crossuuid(&self) -> Uuid  (the cross element: what this element is in another graph; never absent - its own identity where it states no cross code, so every element stands in exactly one chain)
@@ -973,14 +993,17 @@ pub trait Element  (one element of a graph: its own identity, the identity it ha
   fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>)  (replaces the map whole)
   fn get_parentuuids(&self) -> &[Uuid]  (the element's own ordered list; empty for a root)
   fn set_parentuuids(&mut self, parents: Vec<Uuid>)  (replaces the list whole; an empty one makes a root)
+  fn get_srcuuids(&self) -> &[Uuid]  (the identities of the elements this one was read from - a message's text line; empty where it was read from no element; provenance, never lineage: no provided reading carries it along a chain)
+  fn set_srcuuids(&mut self, sources: Vec<Uuid>)  (replaces the list whole)
+  fn lineage(&self) -> Vec<Uuid>  (provided: its parents then itself, oldest first, each once - what an element following it descends from)
   fn is_after(&self, other: &Self) -> bool where Self: Sized  (the order the implementor states - an event's instant, a node's lineage; with `is_before` one strict weak order: never after itself, and neither-nor is equal)
   fn is_before(&self, other: &Self) -> bool where Self: Sized  (provided: `other.is_after(self)`)
   fn finalize(&mut self)  (the implementor's: brings the cross codes in step with `sync_cross`, digests its content from `digest` or the continuation its traits provide, and hands the code to `set_currhashcode` - or, for an event, to `Event::finalized`; an assigned identity keeps it; every provided reading calls it once it changed the element)
   fn sync_cross(&mut self) -> bool  (provided: the cross hash code set to the cross code's XXH3-64, zero where none, and the cross element to `cross_uuid`; whether either moved)
   fn cross_uuid(&self) -> Uuid  (provided: RFC 9562 UUIDv8 over the cross hash code where it is not zero, else the element's own identity)
-  fn digest(&self) -> Xxh3  (provided: an XXH3-64 state fed the cross code, the names it goes by and its parents, each under its own name, and never an identity or an instant; an implementor feeds its own content behind and reads `as_u64`)
+  fn digest(&self) -> Xxh3  (provided: an XXH3-64 state fed the cross code, the names it goes by and its parents, each under its own name, and never an identity, an instant or its sources; an implementor feeds its own content behind and reads `as_u64`)
   fn with_previous(self, previous: &Self) -> Option<Self> where Self: Sized  (this element stated as the one after `previous`, or nothing where it cannot follow it or following changes nothing; the implementor's, and an event delegates to `Event::following`)
-  fn merge_with(self, other: &Self) -> Option<Self> where Self: Sized  (provided: another statement of the same element folded in - the cross code where this one states none, the cross codes brought in step, the identifiers this one lacks, the parents' union in this element's order then the other's - and finalized; nothing for another element or a fold that changes nothing; an event delegates to `Event::merging`, a market element to `MarketElement::merging_market`, a market event to `MarketEvent::merging_market_event`)
+  fn merge_with(self, other: &Self) -> Option<Self> where Self: Sized  (provided: another statement of the same element folded in - the cross code where this one states none, the cross codes brought in step, the identifiers this one lacks, the parents' union and the sources' union, each in this element's order then the other's - and finalized; nothing for another element or a fold that changes nothing; an event delegates to `Event::merging`, a market element to `MarketElement::merging_market`, a market event to `MarketEvent::merging_market_event`)
 pub trait Event: Element  (an element that happened at one instant, stands in one state and sits at one place in its chain)
   fn get_currunix(&self) -> i64  (nanoseconds since the Unix epoch, UTC)
   fn set_currunix(&mut self, unix: i64)
@@ -998,8 +1021,8 @@ pub trait Event: Element  (an element that happened at one instant, stands in on
   fn set_prevuuid(&mut self, uuid: Option<Uuid>)
   fn get_snapunix(&self) -> Option<i64>  (the opening instant of the grid step a walk read the element as the snapshot of, where one did)
   fn set_snapunix(&mut self, unix: Option<i64>)
-  fn following(self, previous: &Self) -> Option<Self> where Self: Sized  (provided: records the predecessor's identity and instant, the place after the predecessor's (saturating), forces the predecessor's cross code where this one's differs with the cross codes brought in step, takes the names the predecessor went by that this element lacks, and folds the lifecycle; nothing for its own predecessor, one that happened after it, or where nothing moves; finalized)
-  fn restating(self, live: &Self) -> Self where Self: Sized  (provided, and overridden by every market event - `FixMsg` and `MarketEventData` - to take the market's place in the chain too: the step before it, `prevpx` and `prevqty`, and what the chain is about where this reading said nothing of it. This event as another statement of `live` - the same instant and content read a second time, one message logged at every hop - taking the place `live` holds in its chain: its predecessor, position and snapshot, the chain's cross code, the names and parents it knows, the lifecycle folded, then finalized, so both statements finalize to one identity and the chain grows by nothing; the caller establishes the twin by the identity `live` arrived under, which `EventIterator` records)
+  fn following(self, previous: &Self) -> Option<Self> where Self: Sized  (provided: records the predecessor's identity and instant, the place after the predecessor's (saturating), forces the predecessor's cross code where this one's differs with the cross codes brought in step, takes the names the predecessor went by that this element lacks, descends from the predecessor's `lineage` - its parents then the predecessor, oldest first, each once - and folds the lifecycle, the sources staying its own; nothing for its own predecessor, one that happened after it, or where nothing moves; finalized)
+  fn restating(self, live: &Self) -> Self where Self: Sized  (provided, and overridden by every market event - `FixMsg` and `MarketEventData` - to take the market's place in the chain too: the step before it, `prevpx` and `prevqty`, and what the chain is about where this reading said nothing of it. This event as another statement of `live` - the same instant and content read a second time, one message logged at every hop - taking the place `live` holds in its chain: its predecessor, position and snapshot, the chain's cross code, the names and parents it knows - never its sources - the lifecycle folded, then finalized, so both statements finalize to one identity and the chain grows by nothing; the caller establishes the twin by the identity `live` arrived under, which `EventIterator` records)
   fn merging(self, other: &Self) -> Option<Self> where Self: Sized  (provided: the element-level merge, then the later statement's instant and code, the further place in the chain, the folded lifecycle, and this element's predecessor and snapshot instant else the other's; nothing for another element or a fold that changes nothing; finalized)
   fn fold_lifecycle(&mut self, other: &Self) -> bool where Self: Sized  (provided: the earliest creation, the latest expiration, the furthest state as `CodeValue::merge_with` reads two states; whether any moved)
   fn finalized(&mut self, hashcode: u64)  (provided: records the code, resets the current identity to `time_uuid` - kept where the instant has no UUIDv7 - and the cross element to `cross_uuid` over it; what an implementor's `Element::finalize` hands its content's digest to)
@@ -1046,8 +1069,23 @@ pub trait MarketEvent: Event + MarketElement  (blanket over every type that is b
   fn merging_market_event(self, other: &Self) -> Option<Self> where Self: Sized  (provided: `Event::merging`, then the later statement's price, quantity, unit and lane facts, and the currency, the side and each instrument code the better of the two, the later statement leading and the earlier filling what it leaves unknown; an equal instant keeps this event leading; nothing where the fold changes nothing; finalized)
   impl<E: Event + MarketElement + ?Sized> MarketEvent for E
 
+### yggdryl::graph::column  [rust/src/graph/column.rs]
+pub enum EventColumn { CurrUnix, CreaUnix, ExpirUnix, PrevUnix, SnapUnix, CurrUuid, CrossUuid, CrossCode, CurrHashCode, CrossHashCode, PrevUuid, SeqNum, ParentUuids, SrcUuids, Identifiers, State }  (the sixteen columns every generated schema of an event opens with, one per fact `Element` and `Event` answer - a text line's batch, a FIX row through the crate's own fields, the lifecycle's rows - one name and one datatype each, so the three join without a mapping)
+  impl Clone, Copy, Debug, Eq, Hash, PartialEq for EventColumn
+  pub const ALL: [Self; 16]  (the order a schema opens with: when it happened, which event it is, the state it reached)
+  pub const fn name(self) -> &'static str  (the fact's, as the traits spell it: `currunix` .. `state`)
+  pub const fn display(self) -> &'static str
+  pub const fn description(self) -> &'static str
+  pub fn datatype(self) -> Result<DataType>  (nanosecond UTC clocks; `Uuid`; `utf8` for the cross code; `UInt64` for the codes and the place; `list<uuid>` with the item named `parentuuid` / `srcuuid`; a sorted `map<utf8, utf8>`; `State`)
+  pub const fn nullable(self) -> bool  (false for the instant, the two identities and the two codes; true for every fact the traits answer as an option or as nothing, and for the state, always answered but with no neutral member for an empty cell)
+  pub fn field(self) -> Result<Field>  (name, datatype, nullability, display and description)
+  pub fn fields() -> Result<Vec<Field>>  (every column in `ALL`'s order)
+  pub fn of_name(name: &str) -> Option<Self>  (by name, whatever the case)
+  pub fn fact<E: Event + ?Sized>(self, event: &E) -> Option<Scalar>  (what the event states under the column, none where it states no fact: an empty code, list or map, a place of zero, an absent instant)
+  pub fn record<E: Event + ?Sized>(self, event: &mut E, value: &Scalar)  (states a cell back through the traits; a null clears the fact, a value the fact's type refuses is silence)
+
 ### yggdryl::graph::event  [rust/src/graph/event.rs]
-pub struct MarketElementData  (every fact `Element` and `MarketElement` name held as one field each, no instant; `finalize` is `sync_cross`, then `digest_market` for the code, then the identity UUIDv8 over the code, so two elements stating the same things are one identity; its order is lineage - after the elements it descends from - and it follows another by descending from it; a new one states nothing: a price and a quantity of nothing in no currency (`XXX`), no unit, a side of `UNKNOWN`, no instrument, no lane)
+pub struct MarketElementData  (every fact `Element` and `MarketElement` name held as one field each, no instant; `finalize` is `sync_cross`, then `digest_market` for the code, then the identity UUIDv8 over the code, so two elements stating the same things are one identity; its order is lineage - after the elements it descends from - and it follows another by descending from its whole `lineage`; a new one states nothing: a price and a quantity of nothing in no currency (`XXX`), no unit, a side of `UNKNOWN`, no instrument, no lane)
   impl Default, Clone, Debug, PartialEq for MarketElementData
   impl Element, MarketElement for MarketElementData
   impl<E: MarketElement + ?Sized> From<&E> for MarketElementData  (the facts any market element states, through the shared signatures; whatever else it states is left behind)
@@ -1208,6 +1246,10 @@ pub const SECRET_MINIMUM_LENGTH: usize = 136;
 pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>>
   pub fn stable_hash(&self) -> u64  (on Scalar and FieldRecord<'_>)
   pub fn write_bytes(&self, sink: &mut impl Hasher)
+  pub fn encode_variant_stream_bytes(&self) -> VariantStream  (the variant encoding one chunk per leaf: the version and the id, then the payload, then a nested value's children; on Scalar; DataType and every DataTypeValue answer `encode_variant_stream_bytes(&self, value: &Scalar) -> Result<VariantStream>`, the value cast first)
+  pub fn into_variant_bytes(&self) -> Vec<u8>  (the same bytes whole; DataType and every DataTypeValue answer `encode_variant_bytes(&self, value: &Scalar) -> Result<Vec<u8>>`)
+  pub fn decode_variant_bytes(bytes: &[u8]) -> Result<Self>  (the value one encoding holds, refused at the byte: another version, a byte naming no datatype or a family's placeholder, a payload cut short, bytes left over; DataType and every DataTypeValue answer `decode_variant_bytes(&self, bytes: &[u8]) -> Result<Scalar>`, cast to the datatype)
+  pub fn decode_variant_stream_bytes<I>(chunks: I) -> Result<Self> where I: IntoIterator, I::Item: AsRef<[u8]>  (the chunks gathered and read as one; DataType and every DataTypeValue answer the same over `&self`)
   pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest  (on Scalar, FieldScalar<'_>, and FieldRecord<'_>)
   pub struct ValueBytes<'a>
 
@@ -2226,38 +2268,49 @@ pub struct TextEntries
   pub fn remove_entry_by_path(&mut self, path: &FieldPath) -> Option<TextEntry>
 
 ### yggdryl::text::line  [rust/src/text/line.rs]
-pub struct TextLine
-  pub fn from_bytes(index: u64, body: TextBytes) -> Result<Self>
+pub struct TextLine  (one text row and the `Event` of the graph it is: what the reader cut - the index, the object, the handle's modification time, the whole body with the row header included, the edges stripped and the byte limit applied - and the shared `Arc<TextOptions>` it reads itself by; every other fact is a reading of the body under the options, resolved on its first ask, once, into a slot of its own, so a caller reading the body and the row number resolves nothing else; a `set_` states a fact over the line's own reading, and `set_body` drops every resolved slot; equality, order and hash read the stated facts alone)
+  pub fn from_bytes(index: u64, body: TextBytes, options: Arc<TextOptions>) -> Result<Self>  (where the bytes become text: what is not UTF-8 is decoded once, each byte as its Windows-1252 character, and counted)
   pub const fn index(&self) -> u64
-  pub const fn set_index(&mut self, index: u64)
+  pub fn set_index(&mut self, index: u64)
+  pub fn options(&self) -> &TextOptions
   pub fn sourceurl(&self) -> Option<&Url>
+  pub const fn shared_url(&self) -> Option<&Arc<Url>>
   pub fn set_sourceurl(&mut self, url: Option<Arc<Url>>)
   pub fn with_sourceurl(mut self, url: Arc<Url>) -> Self
-  pub const fn timestamp(&self) -> Option<i128>
-  pub const fn set_timestamp(&mut self, timestamp: Option<i128>)
-  pub const fn with_timestamp(mut self, timestamp: i128) -> Self
-  pub const fn bodytype(&self) -> Option<&MimeType>
-  pub fn set_bodytype(&mut self, bodytype: Option<MimeType>)
+  pub const fn handle_mtime(&self) -> Option<i64>  (the modification time of the handle the line was read from, nanoseconds UTC: what `mtime` falls back to)
+  pub fn set_handle_mtime(&mut self, mtime: Option<i64>)
+  pub fn with_handle_mtime(mut self, mtime: i64) -> Self
+  pub fn bodytype(&self) -> &MimeType  (the stated classification, else the payload's, read on the first ask)
+  pub fn set_bodytype(&mut self, bodytype: Option<MimeType>)  (unsaid, it resolves afresh)
   pub fn with_bodytype(mut self, bodytype: MimeType) -> Self
-  pub fn body(&self) -> &str
+  pub fn body(&self) -> &str  (the whole line, row header included)
   pub const fn body_bytes(&self) -> &TextBytes
-  pub fn set_body(&mut self, body: TextBytes) -> Result<()>
+  pub fn set_body(&mut self, body: TextBytes) -> Result<()>  (drops every resolved reading and the header the cut matched; captures a caller stated stand, the payload then the whole new body, and so does every other stated fact)
   pub const fn decoded_byte_size(&self) -> u64
   pub const fn dropped_byte_size(&self) -> Option<u64>
   pub const fn set_dropped_byte_size(&mut self, size: Option<u64>)
-  pub fn captures(&self) -> &[Option<TextBytes>]
+  pub fn captures(&self) -> &[Option<TextBytes>]  (the row header matched over the body on the first ask, one slot per declared capture in the order the expression declares them, each a range of the body's page; every slot empty where the header did not match, none under no header)
   pub fn capture(&self, index: usize) -> Option<&str>
-  pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>) -> Result<()>
+  pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>) -> Result<()>  (the line's word over its header, decoded as a body is)
   pub fn with_captures(mut self, captures: Vec<Option<TextBytes>>) -> Result<Self>
-  pub const fn entries(&self) -> Option<&TextEntries>
-  pub const fn entries_mut(&mut self) -> Option<&mut TextEntries>
-  pub fn set_entries(&mut self, entries: Option<TextEntries>)
+  pub fn payload_bytes(&self) -> TextBytes  (the body past the header match, as a range of the same page; the body where the header declares nothing or did not match)
+  pub fn entries(&self) -> Option<&TextEntries>  (the stated tree, else the payload's own by `TextEntries::from_bytes` on the first ask; `None` where it states no pair)
+  pub fn entries_mut(&mut self) -> Option<&mut TextEntries>  (the tree moves from the resolved slot to the stated fact on the first mutation, so it stands over a body set later)
+  pub fn set_entries(&mut self, entries: Option<TextEntries>)  (stated, a tree or its absence stands over the payload's own)
   pub fn with_entries(mut self, entries: TextEntries) -> Self
   pub fn get_entry_by_path(&self, path: &FieldPath) -> Option<&TextEntry>
   pub fn entry_by_path(&self, path: &FieldPath) -> Result<&TextEntry>
   pub fn get_entry_by_path_mut(&mut self, path: &FieldPath) -> Option<&mut TextEntry>
   pub fn set_entry_by_path(&mut self, path: &FieldPath, value: TextBytes) -> Result<()>
   pub fn remove_entry_by_path(&mut self, path: &FieldPath) -> Option<TextEntry>
+  pub fn mtime(&self) -> Result<Option<i64>>  (the header's `mtime` capture as an instant at the column's clock where it declares one and the line matched, else the handle's modification time, else none; a capture that is not an instant is a refusal naming the row, the object and the column)
+  pub fn seqnum(&self) -> Result<u64>  (a `seqnum` capture, else the row number under `start_rownum`, else the index)
+  pub fn state(&self) -> Result<&State>  (a `state` capture, else `00UNKNOWN`)
+  pub fn creaunix(&self) -> Result<Option<i64>>  // and expirunix, prevunix, snapunix: the capture of that exact name as an instant, else none
+  pub fn prevuuid(&self) -> Result<Option<Uuid>>  (a `prevuuid` capture, else none)
+  pub fn event_fact(&self, column: EventColumn) -> Result<Option<Scalar>>  (what the line states under one of the sixteen event columns, as the column's cell: the capture-fed facts through the refusing readings above, so a capture the fact cannot read refuses by name; the rest through the trait doors)
+  impl Element, Event for TextLine  (the readings above through the trait doors, a refusal read as the fact's default: `get_currunix` is `mtime`, the handle's time over a refused capture, the epoch where the line has none; `get_currhashcode` the XXH3-64 of the body's bytes; `get_curruuid` `time_uuid` over the two, nil where the instant has no UUIDv7; `get_crosscode` a `crosscode` capture, else empty, with `crosshashcode` and `crossuuid` derived; `get_identifiers` the named captures the line matched, each under the capture's name; `get_parentuuids` and `get_srcuuids` what was stated, none otherwise; `is_after` by instant, then index; `finalize` lets the identity quartet derive again; `with_previous` is `Event::following`, `merge_with` is `Event::merging`)
+  impl Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash for TextLine  (over the stated facts alone, never a resolved slot)
 
 ### yggdryl::text::arrow  [rust/src/text/arrow.rs]
 pub struct TextLines
@@ -2268,7 +2321,7 @@ pub struct TextLines
   pub fn into_arrow_batch<I>(lines: I, options: &TextOptions) -> Result<arrow_array::RecordBatch> where I: IntoIterator, I::Item: Into<Result<TextLine>>
   pub fn into_arrow_reader<I>(lines: I, options: &TextOptions) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<TextLine>>, I::IntoIter: Send + 'static
   pub fn from_arrow_batch(batch: &arrow_array::RecordBatch, options: &TextOptions) -> Result<Vec<TextLine>>
-  pub fn from_arrow_reader(batches: BatchReader, options: &TextOptions) -> Result<impl FusedIterator<Item = Result<TextLine>> + Send + 'static>  (one resolved intake, one batch and row cursor; schema/row/source error fuses; rownum subtracts configured start, absent rownum uses continuous stream ordinal; typed captures render canonically and retain index holes)
+  pub fn from_arrow_reader(batches: BatchReader, options: &TextOptions) -> Result<impl FusedIterator<Item = Result<TextLine>> + Send + 'static>  (one resolved intake, one batch and row cursor; schema/row/source error fuses; the sixteen event columns restated on the line where the batch carries them, so the identity a message named as its source survives the round trip; rownum subtracts configured start, absent rownum uses continuous stream ordinal; typed captures render canonically and retain index holes)
 
 ### yggdryl::text::handle  [rust/src/text/handle.rs]
 pub struct Text<H: IOBase>
@@ -2291,7 +2344,9 @@ pub enum LeadingFragment
   pub const fn as_str(self) -> &'static str
 
 ### yggdryl::text::options  [rust/src/text/options.rs]
-pub struct TextOptions
+pub const DEFAULT_TEXT_BATCH_ROW_SIZE: usize = 35 * 1024;  (re-exported at `yggdryl::text`: the rows one batch of a text read targets where the options state none)
+pub const DEFAULT_TEXT_BATCH_BYTE_SIZE: u64 = 64 * 1024 * 1024;  (the same for bytes, 64 MiB; a batch closes on whichever of the two it reaches first)
+pub struct TextOptions  (`new()` states the two batch targets above)
   pub start_rownum: Option<i64>
   pub parse_mtime: bool
   pub fn new() -> Self
@@ -3025,7 +3080,7 @@ pub enum DataType
 
 ### yggdryl::field  [rust/src/field.rs]
   pub struct FieldOf<D: DataTypeValue>  (one field carrying its family's own datatype, so the payload is the proof and no marker carries it)
-  pub type Int8Field = FieldOf<Int8Type>;  (one alias per family: Int8Field .. Float64Field, DateTimeField, DateField, TimeField, DurationField, IntervalField, BytesField, StringField, the nine code fields CountryField .. TimeInForceField, UuidField, VersionField, UriField, SequenceField, StructureField, UnionField, EnumField, DecimalField, MappingField, RunEndEncodedField, VariantField, GeometryField, GeographyField, TimezoneField, MimeTypeField, MediaTypeField, CusipField, SedolField, BloombergField)
+  pub type Int8Field = FieldOf<Int8Type>;  (one alias per family: Int8Field .. Float64Field, DateTimeField, DateField, TimeField, DurationField, IntervalField, BytesField, StringField, the nine code fields CountryField .. TimeInForceField, UuidField, VersionField, UriField, SequenceField, StructField, UnionField, EnumField, DecimalField, MappingField, RunEndEncodedField, VariantField, GeometryField, GeographyField, TimezoneField, MimeTypeField, MediaTypeField, CusipField, SedolField, BloombergField)
   pub type FieldRef = Arc<ArrowField>;
   pub enum Field  (the enum over those leaves; every arm names the family that answers, and a variant is a datatype nobody can disagree with)
   pub fn new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Self
@@ -3229,6 +3284,7 @@ pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/H
   pub const fn from_v8(payload: u128) -> Self  (replace version/variant bits only; preserve 122 payload bits; no allocation)
   pub fn from_bytes(value: &[u8]) -> Result<Self>
   pub const fn get(self) -> u128
+  pub const fn is_nil(self) -> bool  (RFC 9562's all-zero identifier, `Default`: the identity no element has, and what an instant no UUIDv7 holds derives)
   pub const fn into_bytes(self) -> [u8; 16]
 pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/Hash, Display, serde; Value)
   pub const TEXT_LEN: usize = 36;
@@ -3237,6 +3293,7 @@ pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/H
   pub const fn from_v8(payload: u128) -> Self  (replace version/variant bits only; preserve 122 payload bits; no allocation)
   pub fn from_bytes(value: &[u8]) -> Result<Self>
   pub const fn get(self) -> u128
+  pub const fn is_nil(self) -> bool  (RFC 9562's all-zero identifier, `Default`: the identity no element has, and what an instant no UUIDv7 holds derives)
   pub const fn into_bytes(self) -> [u8; 16]
   pub fn render(self, slot: &mut [u8; Self::TEXT_LEN]) -> &str  (the canonical spelling into the caller's slot; allocates nothing)
 
@@ -3315,9 +3372,9 @@ pub enum DataType
   pub fn unnest_fields(&self) -> Vec<Field>
   pub fn explode_fields(&self) -> Vec<Field>
   pub enum FieldKey<'a>
-  pub struct StructType(pub(crate) Option<Arc<[Field]>>);  (the named children of a struct in declaration order - the one collection of fields the crate has: ordered, immutable and held in one shared allocation, so a clone shares the children and an empty one holds nothing; the payload `StructureType::Struct` carries; Default = empty)
+  pub struct StructType(pub(crate) Option<Arc<[Field]>>);  (the named children of a struct in declaration order - the one collection of fields the crate has: ordered, immutable and held in one shared allocation, so a clone shares the children and an empty one holds nothing; the payload `DataType::Struct` carries; Default = empty)
   pub const fn new() -> Self  (empty, without allocating)
-  pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,  (the one validating constructor: refuses two children of one name, the refusal labelled "StructType"; a struct datatype is `DataType::from(StructureType::from_fields(fields)?)`)
+  pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,  (the one validating constructor: refuses two children of one name, the refusal labelled "StructType"; a struct datatype is `DataType::from(StructType::from_fields(fields)?)`)
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
   pub fn as_fields(&self) -> &[Field]
@@ -3329,7 +3386,8 @@ pub enum DataType
   impl IntoIterator for StructType, for &StructType  (owned fields, borrowed fields)
   impl Clone, Default, Eq, PartialEq, Hash, PartialOrd, Ord, Debug for StructType  (Debug as the slice; Ord with a pointer-equal shortcut before the field-by-field comparison)
   impl Serialize, Deserialize for StructType  (the slice on the way out; `from_fields` on the way in, so a document naming one child twice is refused)
-  impl From<StructType> for StructureType, From<StructType> for DataType  (the struct leaf, and the struct datatype around it)
+  impl From<StructType> for DataType  (the struct datatype around it)
+  impl DataTypeValue for StructType  (FAMILY = "struct", id Struct, kind Nested, Sidecar = (); Display = "struct")
   pub fn as_fields(&self) -> Option<&[Field]>
   pub fn with_fields<I>(&self, fields: I) -> Result<Self>
   pub fn is_struct(&self) -> bool
@@ -3377,21 +3435,8 @@ pub enum DataType
   pub fn union<I>(fields: I, mode: UnionMode) -> Result<Self>
   pub fn dense_union<I>(fields: I) -> Result<Self>
 
-### yggdryl::structure  [rust/src/structure.rs]  (the structure family, and the field collections the nested datatypes hold)
-pub enum StructureType  (#[non_exhaustive]; Struct(StructType), Struct2(Arc<Struct2Type>) - the two-child shape a mapping's entries have)
-  pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,  (the named-children leaf, `Struct(StructType::from_fields(fields)?)`, so the same refusal of a duplicate name; what a caller building a struct datatype writes: `DataType::from(StructureType::from_fields(fields)?)`)
-  pub fn as_fields(&self) -> &[Field]
-  pub fn len(&self) -> usize
-  pub fn is_empty(&self) -> bool
-  pub fn get_field(&self, index: usize) -> Option<&Field>
-  pub fn iter(&self) -> std::slice::Iter<'_, Field>
-  pub fn into_fields(self) -> StructType  (the children as the collection: the struct leaf hands its own over, the two-child leaf materializes one)
-  pub const fn as_struct(&self) -> Option<&StructType>
-  pub fn as_struct2(&self) -> Option<&Struct2Type>
-  impl From<StructType> for StructureType
-  impl From<StructType> for DataType
-  pub fn struct2(first: Field, second: Field) -> Self  (on DataType)
-  pub struct StructType(pub(crate) Option<Arc<[Field]>>);  (the named children a struct leaf holds: the one collection of fields, ordered, immutable, one shared allocation; Deref<Target=[Field]>, AsRef<[Field]>, Index<usize>, IntoIterator owned and borrowed, Serialize as the slice and Deserialize through `from_fields`)
+### yggdryl::structure  [rust/src/structure.rs]  (the struct datatype's children, and the field collections the nested datatypes hold)
+  pub struct StructType(pub(crate) Option<Arc<[Field]>>);  (the named children a struct holds - a row, a group occurrence, a mapping's key and value: the one collection of fields, ordered, immutable, one shared allocation; Deref<Target=[Field]>, AsRef<[Field]>, Index<usize>, IntoIterator owned and borrowed, Serialize as the slice and Deserialize through `from_fields`)
   pub const fn new() -> Self
   pub fn from_fields<I>(fields: I) -> Result<Self> where I: IntoIterator<Item = Field>,  (the one validating constructor; refuses two children of one name)
   pub fn len(&self) -> usize
@@ -3656,13 +3701,13 @@ pub struct ProtocolField<'field>
   pub fn as_protocol(&self) -> PythonField<'_>
 
 ### yggdryl::scalar  [rust/src/scalar.rs]  (the Value and FamilyValue contracts a scalar's leaves answer are under yggdryl::value)
-  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Country, Currency, Mic, Cfi, Side, State, TimeInForce, Isin, Cusip, Sedol, Bloomberg, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Bytes, Geometry, Geography, Sequence, Mapping, Record, Arrow (feature arrow: Arc<ArrowScalar>, a columnar payload crossing as the scalar it is; into_native reads it as rows, as_arrow borrows it); 48 bytes; every variant holds its leaf directly, the eleven registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Country, Currency, Mic, Cfi, Side, State, TimeInForce, Isin, Cusip, Sedol, Bloomberg, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Bytes, Geometry, Geography, Sequence, Mapping, Struct, Arrow (feature arrow: Arc<ArrowScalar>, a columnar payload crossing as the scalar it is; into_native reads it as rows, as_arrow borrows it); 48 bytes; every variant holds its leaf directly, the eleven registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub fn id(&self) -> DataTypeId
   pub fn family(&self) -> DataTypeKind
   pub const fn kind(&self) -> &'static str
   pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self
   pub fn from_mapping(entries: impl IntoIterator<Item = (Self, Self)>) -> Result<Self>
-  pub fn from_record<K, I>(entries: I) -> Result<Self> where
+  pub fn from_struct<K, I>(entries: I) -> Result<Self> where
   pub const fn as_bool(&self) -> Option<bool>
   pub fn as_str(&self) -> Option<&str>
   pub const fn code_storage(&self) -> Option<&SmolStr>  (the eleven registered codes written out once; `id` is the other half - the identity leads, the text follows)
@@ -3673,7 +3718,7 @@ pub struct ProtocolField<'field>
   pub fn as_wkb(&self) -> Option<&[u8]>
   pub fn as_sequence(&self) -> Option<&[Self]>
   pub fn as_mapping(&self) -> Option<&[(Self, Self)]>
-  pub fn as_record(&self) -> Option<&BTreeMap<SmolStr, Self>>
+  pub fn as_struct(&self) -> Option<&BTreeMap<SmolStr, Self>>
   pub fn as_integer(&self) -> Option<Integer>  (the family accessors, by value through FamilyValue::from_scalar: the scalar holds the leaf and not the family, and every leaf is Copy or one shared pointer; None for another kind. The decimal family narrows through Decimal::from_scalar, `as_decimal` being the coefficient-and-scale reader)
   pub fn as_floating(&self) -> Option<Floating>
   pub fn as_temporal(&self) -> Option<Temporal>
@@ -3745,13 +3790,13 @@ pub trait CodeValue: Value  (implemented by the eleven registered codes)
   fn as_str(&self) -> &str
   fn storage(&self) -> &SmolStr
   fn merge_with(self, other: &Self) -> Self  (provided as this code; the better statement of two codes of one kind: Cfi fills every `X` from the other where the two describe one instrument, State that reached none takes the other and otherwise the further along stands, Side `UNKNOWN`, Currency `XXX` and Mic `XXXX` take the other, every identifier stands as it is)
-pub trait NestedValue: Value  (implemented by Sequence, Mapping and Record)
+pub trait NestedValue: Value  (implemented by Sequence, Mapping and Struct)
   fn len(&self) -> usize
   fn is_empty(&self) -> bool  (provided: len() == 0)
   fn children(&self) -> Children<'_>
-pub enum Nested  (Sequence(Sequence), Mapping(Mapping), Record(Record); the nested family as one value, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)
+pub enum Nested  (Sequence(Sequence), Mapping(Mapping), Struct(Struct); the nested family as one value, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)
   impl FamilyValue for Nested  (KIND = DataTypeKind::Nested)
-  impl From<Sequence>, From<Mapping>, From<Record> for Nested
+  impl From<Sequence>, From<Mapping>, From<Struct> for Nested
   impl From<Nested> for Scalar
 pub trait FieldSidecar: Clone + fmt::Debug + Default + Eq + Ord + Hash + Send + Sync + Sized + 'static  (the per-column facts only one datatype has; `()` for every datatype but the dictionary-encoded one)
   fn dictionary_id(&self) -> Option<i64>  (provided: None)
@@ -3768,6 +3813,7 @@ pub trait DataTypeValue: Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + S
   fn into_dtype(self) -> DataType
   fn from_dtype(dtype: &DataType) -> Option<Self>  (owned: a payload is Copy or one shared pointer)
   fn cast_scalar(&self, value: &crate::Scalar) -> Result<crate::Scalar>  (provided, as are the four below: the datatype is the target, and every family answers the doors through the root's one recursive walk)
+  fn encode_variant_stream_bytes(&self, value: &crate::Scalar) -> Result<crate::VariantStream>  (provided: the value cast to this datatype and encoded one chunk per leaf; encode_variant_bytes, decode_variant_bytes and decode_variant_stream_bytes beside it, each through the datatype the leaf widens to)
   fn cast_arrow_array(&self, array: arrow_array::ArrayRef, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::ArrayRef>
   fn cast_arrow_scalar(&self, array: arrow_array::ArrayRef, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::Scalar<arrow_array::ArrayRef>>
   fn cast_arrow_batch(&self, batch: arrow_array::RecordBatch, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::RecordBatch>
@@ -3786,7 +3832,7 @@ pub trait FieldValue<D: DataTypeValue>: Clone + fmt::Debug + fmt::Display + Size
   fn cast_arrow_scalar(&self, array: arrow_array::ArrayRef, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::Scalar<arrow_array::ArrayRef>>
   fn cast_arrow_batch(&self, batch: arrow_array::RecordBatch, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::RecordBatch>
   fn cast_arrow_reader(&self, reader: crate::arrow::BatchReader, options: crate::ArrowCastOptions) -> crate::arrow::Result<crate::arrow::BatchReader>
-pub enum Children<'a>  (Sequence(slice::Iter<'a, Scalar>), Mapping(slice::Iter<'a, (Scalar, Scalar)>), Record(btree_map::Values<'a, SmolStr, Scalar>); Iterator<Item = &'a Scalar> over sequence values, mapping keys or record values; DoubleEndedIterator, ExactSizeIterator, FusedIterator)
+pub enum Children<'a>  (Sequence(slice::Iter<'a, Scalar>), Mapping(slice::Iter<'a, (Scalar, Scalar)>), Struct(btree_map::Values<'a, SmolStr, Scalar>); Iterator<Item = &'a Scalar> over sequence values, mapping keys or struct values; DoubleEndedIterator, ExactSizeIterator, FusedIterator)
 pub struct UnionType  (the datatype of a DataType::Union field: `fields: UnionFields`, `mode: UnionMode`; Clone, Eq/Ord/Hash, Display = the datatype's; DataTypeValue with FAMILY = "union", kind Nested, Sidecar = ())
   pub const fn new(fields: crate::UnionFields, mode: crate::UnionMode) -> Self
   pub const fn fields(&self) -> &crate::UnionFields
@@ -4317,7 +4363,7 @@ pub struct FieldScalar<'a>
   pub fn name(&self) -> &'a str
   pub const fn value(&self) -> &Scalar
   pub const fn is_null(&self) -> bool
-  pub fn as_str(&self) -> Option<&str>  // and as_bytes, as_bool, as_i64, as_u64, as_i128, as_f64, as_decimal, as_sequence, as_record, get, get_key_str: the Scalar accessors, delegated
+  pub fn as_str(&self) -> Option<&str>  // and as_bytes, as_bool, as_i64, as_u64, as_i128, as_f64, as_decimal, as_sequence, as_struct, get, get_key_str: the Scalar accessors, delegated
   pub fn stable_hash(&self) -> u64
   pub fn into_value(self) -> Scalar
   pub fn into_parts(self) -> (&'a Field, Scalar)

@@ -118,7 +118,7 @@ pub(crate) fn object_metadata(name: &str, headers: &[(String, String)]) -> Resul
     let metadata = if user.is_empty() {
         None
     } else {
-        Some(Scalar::from_record(
+        Some(Scalar::from_struct(
             user.iter()
                 .map(|(name, value)| (name.as_str(), value.clone())),
         )?)
@@ -126,7 +126,7 @@ pub(crate) fn object_metadata(name: &str, headers: &[(String, String)]) -> Resul
     if let Some(metadata) = &metadata {
         entries.push(("metadata", metadata.clone()));
     }
-    crate::json::into_utf8(&Scalar::from_record(entries)?)
+    crate::json::into_utf8(&Scalar::from_struct(entries)?)
 }
 
 /// Read a JSON body, naming what it was not.

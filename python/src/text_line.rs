@@ -5,15 +5,20 @@
 //! lookup is the core lookup.
 
 use std::borrow::Cow;
+use std::sync::Arc;
 
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyStopIteration, PyTypeError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyString, PyTuple, PyType};
 
-use yggdryl::text::{TextBytes, TextEntries, TextEntry, TextLine, TextLines};
+use yggdryl::graph::{Element as _, Event as _};
+use yggdryl::text::{TextBytes, TextEntries, TextEntry, TextLine, TextLines, TextOptions};
 use yggdryl::{FieldPath, FieldSegment};
 
+use crate::fix::uuid_scalar;
+use crate::iomedia::PyTextOptions;
+use crate::types::scalar::PyScalar;
 use crate::value_error;
 
 /// Resolve whatever spelling of a path the caller used, exactly once.
@@ -354,27 +359,35 @@ impl PyTextLine {
 impl PyTextLine {
     /// One line a caller holds itself, rather than one a text read answered.
     ///
-    /// A capture is what a row header stated about the line, in the order the
-    /// header declares them, and `None` is a capture it declared and this line
-    /// did not match. The codec reads them by position, so the order is the
-    /// contract and `FixCodec(capture_names=...)` is what names it.
+    /// The body is the whole line, its row header included: the options are
+    /// what the line reads itself by - the header expression, the entry
+    /// separators, the framing - and a line built under none reads itself
+    /// under `TextOptions()`. Every reading resolves on its first ask, once.
+    ///
+    /// A capture states what a row header matched about the line, in the
+    /// order the header declares them, and `None` is a capture it declared
+    /// and this line did not match; stated, the captures are the line's word
+    /// over its own header. The codec reads them by position, so the order
+    /// is the contract and `FixCodec(capture_names=...)` is what names it.
     ///
     /// The body is copied into a page this line owns, once: every key and
     /// value a message read from it records is a range of that page. A `str`
     /// body is its UTF-8; bytes that are not UTF-8 are decoded here, as the
     /// core decodes every line it reads, and `decoded_byte_size` counts them.
     #[new]
-    #[pyo3(signature = (index, body, captures=None))]
+    #[pyo3(signature = (index, body, captures=None, options=None))]
     fn new(
         index: u64,
         body: &Bound<'_, PyAny>,
         captures: Option<Vec<Option<String>>>,
+        options: Option<PyRef<'_, PyTextOptions>>,
     ) -> PyResult<Self> {
         let page = page_from_value(
             body,
             "a line body must be str, bytes, bytearray, or memoryview",
         )?;
-        let mut line = TextLine::from_bytes(index, page).map_err(value_error)?;
+        let options = Arc::new(options.map_or_else(TextOptions::new, |held| held.inner.clone()));
+        let mut line = TextLine::from_bytes(index, page, options).map_err(value_error)?;
         if let Some(held) = captures {
             let mut read = Vec::with_capacity(held.len());
             for capture in held {
@@ -405,22 +418,23 @@ impl PyTextLine {
             .map(crate::uri::PyUrl::from_core)
     }
 
-    /// When the record was written, in nanoseconds UTC.
+    /// When the record was written, in nanoseconds UTC: the row header's
+    /// own captured instant, else the modification time of the handle it
+    /// was read from, else `None`. Raises `ValueError` for a capture that
+    /// is not an instant.
     #[getter]
-    fn timestamp(&self) -> Option<i128> {
-        self.inner.timestamp()
+    fn mtime(&self) -> PyResult<Option<i64>> {
+        self.inner.mtime().map_err(value_error)
     }
 
-    /// What the line was classified as.
+    /// What the line is classified as: the stated classification, else the
+    /// payload's, read on the first ask.
     #[getter]
-    fn bodytype(&self) -> Option<crate::enums::PyMimeType> {
-        self.inner
-            .bodytype()
-            .cloned()
-            .map(crate::enums::PyMimeType::from_core)
+    fn bodytype(&self) -> crate::enums::PyMimeType {
+        crate::enums::PyMimeType::from_core(self.inner.bodytype().clone())
     }
 
-    /// The line, with whatever was read off its front removed, as text.
+    /// The line itself, as text: the row header included.
     #[getter]
     fn body(&self) -> &str {
         self.inner.body()
@@ -439,8 +453,50 @@ impl PyTextLine {
         self.inner.dropped_byte_size()
     }
 
+    /// The line's identity: the uuid its instant and its hash code derive.
+    ///
+    /// A line is an event of the graph, and a message parsed out of it
+    /// states this among its `srcuuids`.
+    #[getter]
+    fn curruuid(&self) -> PyScalar {
+        uuid_scalar(self.inner.get_curruuid())
+    }
+
+    /// The identity every event of one lifecycle shares: derived from the
+    /// cross code, and the line's own where it names none.
+    #[getter]
+    fn crossuuid(&self) -> PyScalar {
+        uuid_scalar(self.inner.get_crossuuid())
+    }
+
+    /// The code the chain is named by: a `crosscode` capture where the row
+    /// header has one, and empty where it names none.
+    #[getter]
+    fn crosscode(&self) -> &str {
+        self.inner.get_crosscode()
+    }
+
+    /// The XXH3-64 of the line's bytes.
+    #[getter]
+    fn currhashcode(&self) -> u64 {
+        self.inner.get_currhashcode()
+    }
+
+    /// The XXH3-64 of the cross code, `0` where there is none.
+    #[getter]
+    fn crosshashcode(&self) -> u64 {
+        self.inner.get_crosshashcode()
+    }
+
+    /// When the line happened, nanoseconds since the Unix epoch, UTC: the
+    /// stated instant, else `mtime`, else zero.
+    #[getter]
+    fn currunix(&self) -> i64 {
+        self.inner.get_currunix()
+    }
+
     /// The row header's named captures, in the order the expression declares
-    /// them.
+    /// them; resolved on the first ask where none were stated.
     #[getter]
     fn captures<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
         let count = self.inner.captures().len();
@@ -454,7 +510,9 @@ impl PyTextLine {
         PyTuple::new(py, captures)
     }
 
-    /// The key/value tree this line carries.
+    /// The key/value tree this line carries: what was stated, else the
+    /// payload's own entries, read on the first ask; `None` where it parses
+    /// as none.
     #[getter]
     fn entries(&self) -> Option<PyTextEntries> {
         self.inner.entries().cloned().map(PyTextEntries::from_core)

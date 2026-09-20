@@ -27,12 +27,12 @@ sits beside it in the table.
 
 | shape | number | UTF-8 | US-ASCII | windows-1252 | Arrow storage (text / binary) |
 | --- | --- | --- | --- | --- | --- |
-| 32-bit offsets | none | `utf8` (27) | `ascii` (75) | `cp1252` (81) | `Utf8` / `Binary` |
-| 64-bit offsets | none | `large_utf8` (30) | `large_ascii` (76) | `large_cp1252` (82) | `LargeUtf8` / `LargeBinary` |
-| view | none | `utf8_view` (29) | `ascii_view` (77) | `cp1252_view` (83) | `Utf8View` / `BinaryView` |
-| view, 64-bit offsets | none | `large_utf8_view` (31) | `large_ascii_view` (78) | `large_cp1252_view` (84) | `Utf8View` / `BinaryView` |
-| fixed width | the exact width, required | `fixed_utf8(n)` (28) | `fixed_ascii(n)` (79) | `fixed_cp1252(n)` (85) | `FixedSizeBinary(n)` |
-| bounded | the maximum, required | `sized_utf8(n)` (74) | `sized_ascii(n)` (80) | `sized_cp1252(n)` (86) | `Utf8` / `Binary` |
+| 32-bit offsets | none | `utf8` (`0x51`) | `ascii` (`0x57`) | `cp1252` (`0x5d`) | `Utf8` / `Binary` |
+| 64-bit offsets | none | `large_utf8` (`0x52`) | `large_ascii` (`0x58`) | `large_cp1252` (`0x5e`) | `LargeUtf8` / `LargeBinary` |
+| view | none | `utf8_view` (`0x53`) | `ascii_view` (`0x59`) | `cp1252_view` (`0x5f`) | `Utf8View` / `BinaryView` |
+| view, 64-bit offsets | none | `large_utf8_view` (`0x54`) | `large_ascii_view` (`0x5a`) | `large_cp1252_view` (`0x60`) | `Utf8View` / `BinaryView` |
+| fixed width | the exact width, required | `fixed_utf8(n)` (`0x55`) | `fixed_ascii(n)` (`0x5b`) | `fixed_cp1252(n)` (`0x61`) | `FixedSizeBinary(n)` |
+| bounded | the maximum, required | `sized_utf8(n)` (`0x56`) | `sized_ascii(n)` (`0x5c`) | `sized_cp1252(n)` (`0x62`) | `Utf8` / `Binary` |
 
 `utf8(32)` is `sized_utf8(32)` written short and `ascii(4)` is
 `sized_ascii(4)`, because plain storage is exactly what a bounded column
@@ -608,7 +608,7 @@ read back under `utf8` trims.
 
     use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
     use yggdryl::FieldValue as _;
-use yggdryl::{ArrowCastOptions, DataType, Field, StructureType};
+use yggdryl::{ArrowCastOptions, DataType, Field, StructType};
 
     let strict = ArrowCastOptions::new().with_safe(false);
     let ccy = Field::new("ccy", DataType::fixed_ascii(4)?, true);
@@ -625,7 +625,7 @@ use yggdryl::{ArrowCastOptions, DataType, Field, StructureType};
         Arc::new(arrow_schema::Schema::new(vec![stored])),
         vec![padded],
     )?;
-    let text = DataType::from(StructureType::from_fields([DataType::utf8().required_field("ccy")])?).required_field("row");
+    let text = DataType::from(StructType::from_fields([DataType::utf8().required_field("ccy")])?).required_field("row");
     let trimmed = text.cast_arrow_batch(batch, strict)?;
     let trimmed = trimmed.column(0).as_any().downcast_ref::<StringArray>().unwrap();
     assert_eq!(trimmed.value(1), "EU");

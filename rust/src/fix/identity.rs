@@ -1,21 +1,16 @@
 //! The typed facts a message holds beside its row, and how they are read
 //! from and written to the columns that state them.
 
-use std::collections::BTreeMap;
-
 use smol_str::SmolStr;
 
 use crate::Decimal18;
-use crate::graph::{Element, Event, MarketEventData};
+use crate::graph::MarketEventData;
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone};
 
 use super::schema::CLOCK_DATATYPE;
 use super::{
-    CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME,
-    CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME, CURRUUID_TAG_NAME, FixRegistry, IDENTIFIERS_TAG_NAME,
-    MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSIONID_TAG_NAME,
-    PARENTUUIDS_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME,
-    SOURCEURL_TAG_NAME,
+    FixRegistry, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME,
+    MSGSESSIONID_TAG_NAME, SOURCEURL_TAG_NAME,
 };
 
 /// The standard header and trailer facts every message holds typed, beside
@@ -214,16 +209,19 @@ impl FixHeader {
 /// What a bridge's own row header states about the line it wrote - the
 /// plugin, the message context and the session instance - read off the
 /// line's own bytes like every other fact a message holds. None of it is
-/// FIX and none of it is content, so nothing here reaches the code the
-/// message digests to or the wire it re-emits.
+/// FIX and none of it is content, so none of it is an entry or a byte on
+/// the wire, and none of it reaches the code the message's content digests
+/// to; where the row header brackets both a session instance and a message
+/// context, the two name the chain through
+/// the cross code the [message](super::FixMsg) settles, which is the chain's identity
+/// and not the message's.
 ///
-/// What the *reader* says about the line is not here and is held nowhere on
-/// a message: the object the line was read from, the body it was cut from,
-/// its place in that object. Those are
-/// [the capture's own columns](super::FixMsg::from_row), stated by whoever
-/// read the line and restated by whoever writes the row back, because the
-/// same message read out of a second copy of one day's log is the same
-/// message.
+/// What the *reader* says about the line is not here: the object the line
+/// was read from, the body it was cut from, its place in that object are
+/// [the cells the message carries](super::FixMsg::carried), stated by
+/// whoever read the line and stated again at their columns by `into_row`,
+/// because the same message read out of a second copy of one day's log is
+/// the same message.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FixCapture {
     msgpluginid: Option<SmolStr>,
@@ -680,131 +678,24 @@ pub(super) fn record(
     record_event(event, tag, value)
 }
 
-/// Records what one event column states on the event, typed through the
-/// traits; a value the fact's type refuses is silence and a null clears
-/// the fact. Whether the tag is one the event holds.
+/// Records what one event column states on the event, through the column
+/// it is: a value the fact's type refuses is silence and a null clears the
+/// fact. Whether the tag is one the event holds.
 pub(super) fn record_event(event: &mut MarketEventData, tag: i32, value: &Scalar) -> bool {
-    let instant = || value.temporal_count_at(TimeUnit::Nanosecond);
-    let text = || value.as_str().filter(|held| !held.is_empty());
-    let is = |held: (i32, &str)| held.0 == tag;
-    if is(CURRUNIX_TAG_NAME) {
-        if let Some(unix) = instant() {
-            event.set_currunix(unix);
+    match super::crated::event_column_of(tag) {
+        Some(column) => {
+            column.record(event, value);
+            true
         }
-    } else if is(CREAUNIX_TAG_NAME) {
-        event.set_creaunix(instant());
-    } else if is(PREVUNIX_TAG_NAME) {
-        event.set_prevunix(instant());
-    } else if is(SNAPUNIX_TAG_NAME) {
-        event.set_snapunix(instant());
-    } else if is(PREVUUID_TAG_NAME) {
-        event.set_prevuuid(match value {
-            Scalar::Uuid(uuid) => Some(*uuid),
-            _ => None,
-        });
-    } else if is(CURRUUID_TAG_NAME) {
-        if let Scalar::Uuid(uuid) = value {
-            event.set_curruuid(*uuid);
-        }
-    } else if is(CROSSUUID_TAG_NAME) {
-        if let Scalar::Uuid(uuid) = value {
-            event.set_crossuuid(*uuid);
-        }
-    } else if is(CURRHASHCODE_TAG_NAME) {
-        if let Some(code) = value.as_u64() {
-            event.set_currhashcode(code);
-        }
-    } else if is(CROSSHASHCODE_TAG_NAME) {
-        if let Some(code) = value.as_u64() {
-            event.set_crosshashcode(code);
-        }
-    } else if is(CROSSCODE_TAG_NAME) {
-        event.set_crosscode(text().map(str::to_owned).unwrap_or_default());
-    } else if is(SEQNUM_TAG_NAME) {
-        event.set_seqnum(value.as_u64().unwrap_or(0));
-    } else if is(IDENTIFIERS_TAG_NAME) {
-        let identifiers: BTreeMap<String, String> = value
-            .as_mapping()
-            .map(|entries| {
-                entries
-                    .iter()
-                    .filter_map(|(scheme, identifier)| {
-                        Some((scheme.as_str()?.to_owned(), identifier.as_str()?.to_owned()))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        event.set_identifiers(identifiers);
-    } else if is(PARENTUUIDS_TAG_NAME) {
-        event.set_parentuuids(
-            value
-                .as_sequence()
-                .map(|parents| {
-                    parents
-                        .iter()
-                        .filter_map(|parent| match parent {
-                            Scalar::Uuid(uuid) => Some(*uuid),
-                            _ => None,
-                        })
-                        .collect()
-                })
-                .unwrap_or_default(),
-        );
-    } else {
-        return false;
+        None => false,
     }
-    true
 }
 
 /// What the event states for one event column, as the raw value the
-/// column's field types, or nothing where it states no fact: an unknown
-/// state or side, a `XXX` currency, a price or a quantity of nothing, an
-/// empty name, an absent instant, identity or code.
+/// column's field types, or nothing where it states no fact: an empty name,
+/// an absent instant, identity or code.
 pub(super) fn event_fact(event: &MarketEventData, tag: i32) -> Option<Scalar> {
-    let instant = |unix: i64| Scalar::datetime64(unix, TimeUnit::Nanosecond, Timezone::UTC).ok();
-    let stated = |unix: Option<i64>| unix.and_then(instant);
-    let text = |held: &str| (!held.is_empty()).then(|| Scalar::from(held));
-    let is = |held: (i32, &str)| held.0 == tag;
-    if is(CURRUNIX_TAG_NAME) {
-        instant(event.get_currunix())
-    } else if is(CREAUNIX_TAG_NAME) {
-        stated(event.get_creaunix())
-    } else if is(PREVUNIX_TAG_NAME) {
-        stated(event.get_prevunix())
-    } else if is(SNAPUNIX_TAG_NAME) {
-        stated(event.get_snapunix())
-    } else if is(PREVUUID_TAG_NAME) {
-        event.get_prevuuid().map(Scalar::Uuid)
-    } else if is(CURRUUID_TAG_NAME) {
-        Some(Scalar::Uuid(event.get_curruuid()))
-    } else if is(CROSSUUID_TAG_NAME) {
-        Some(Scalar::Uuid(event.get_crossuuid()))
-    } else if is(CURRHASHCODE_TAG_NAME) {
-        Some(Scalar::from(event.get_currhashcode()))
-    } else if is(CROSSHASHCODE_TAG_NAME) {
-        Some(Scalar::from(event.get_crosshashcode()))
-    } else if is(CROSSCODE_TAG_NAME) {
-        text(event.get_crosscode())
-    } else if is(SEQNUM_TAG_NAME) {
-        (event.get_seqnum() != 0).then(|| Scalar::from(event.get_seqnum()))
-    } else if is(IDENTIFIERS_TAG_NAME) {
-        let identifiers = event.get_identifiers();
-        (!identifiers.is_empty()).then(|| {
-            Scalar::from_mapping(identifiers.iter().map(|(scheme, identifier)| {
-                (
-                    Scalar::from(scheme.as_str()),
-                    Scalar::from(identifier.as_str()),
-                )
-            }))
-            .ok()
-        })?
-    } else if is(PARENTUUIDS_TAG_NAME) {
-        let parents = event.get_parentuuids();
-        (!parents.is_empty())
-            .then(|| Scalar::from_sequence(parents.iter().copied().map(Scalar::Uuid)))
-    } else {
-        None
-    }
+    super::crated::event_column_of(tag).and_then(|column| column.fact(event))
 }
 
 /// The exact clock the two FIX clocks a row types are held under.
@@ -834,13 +725,25 @@ pub(super) fn validate_field(field: &Field, tag: i32) -> Result<()> {
 
 /// Resolve once; an explicit tag never falls through to an unrelated name.
 pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Option<i32>> {
-    let explicit = field.as_fix().tag()?;
-    let named = super::field::parse_tag(field.name()).or_else(|| {
+    // The tag the field carries is the answer where it carries one, and
+    // the name is read only where it does not: a column of a built message
+    // carries its tag, so the dictionary is not asked a question the field
+    // already answered - and a column stated under the dictionary's own
+    // field is answered off the dictionary's index rather than the
+    // column's metadata.
+    if !field.as_metadata().is_empty() {
+        if let Some(explicit) = registry.facts_of(field).and_then(|facts| facts.tag) {
+            return Ok(Some(explicit));
+        }
+        if let Some(explicit) = field.as_fix().tag()? {
+            return Ok(Some(explicit));
+        }
+    }
+    Ok(super::field::parse_tag(field.name()).or_else(|| {
         registry
             .get_message_field_by_name(field.name())
             .and_then(|known| registry.identity_of(known).map(|(tag, _)| tag))
-    });
-    Ok(explicit.or(named))
+    }))
 }
 
 pub(super) fn validate_value(name: &str, dtype: &DataType, value: &Scalar) -> Result<()> {

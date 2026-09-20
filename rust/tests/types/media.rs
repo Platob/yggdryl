@@ -13,7 +13,7 @@ use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
     ArrowCastOptions, Charset, DataTypeId, DataTypeKind, Field, FieldScalar, MediaType,
-    MediaTypeField, MimeType, MimeTypeField, Scalar, StructureType,
+    MediaTypeField, MimeType, MimeTypeField, Scalar, StructType,
 };
 
 fn mime(text: &str) -> Scalar {
@@ -25,7 +25,7 @@ fn media(text: &str) -> Scalar {
 }
 
 fn root(field: Field) -> Field {
-    StructureType::from_fields([field])
+    StructType::from_fields([field])
         .map(DataType::from)
         .unwrap()
         .required_field("row")
@@ -52,14 +52,14 @@ fn datatype_identity_naming_and_serde_are_total() {
             DataType::MimeType,
             DataTypeId::MimeType,
             "mimetype",
-            62_u8,
+            0x67_u8,
             "mime",
         ),
         (
             DataType::MediaType,
             DataTypeId::MediaType,
             "mediatype",
-            63,
+            0x68,
             "content_type",
         ),
     ] {
@@ -70,7 +70,8 @@ fn datatype_identity_naming_and_serde_are_total() {
         assert_eq!(name.to_uppercase().parse::<DataType>().unwrap(), dtype);
         assert_eq!(alias.parse::<DataType>().unwrap(), dtype);
         assert_eq!(id.as_str(), name);
-        // Appended, because `as_u8` is a wire contract.
+        // In the text family's range, because `as_u8` is a wire contract
+        // laid out by family.
         assert_eq!(id.as_u8(), byte);
         assert!(!id.is_parameterized());
         assert!(!dtype.is_nested());

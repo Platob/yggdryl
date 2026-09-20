@@ -1078,8 +1078,8 @@ mod values {
             Scalar::from_sequence([Scalar::from("a"), Scalar::from("b")]),
             Scalar::from_sequence([Scalar::from("ab")]),
             Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i64))]).unwrap(),
-            Scalar::from_record([("a", Scalar::from(1_i64))]).unwrap(),
-            Scalar::from_record([("a", Scalar::from(1_i64)), ("b", Scalar::Null)]).unwrap(),
+            Scalar::from_struct([("a", Scalar::from(1_i64))]).unwrap(),
+            Scalar::from_struct([("a", Scalar::from(1_i64)), ("b", Scalar::Null)]).unwrap(),
         ]
     }
 
@@ -1237,7 +1237,7 @@ mod values {
             ),
             (Scalar::from_sequence([]), DataTypeId::List),
             (
-                Scalar::from_record([] as [(&str, Scalar); 0]).unwrap(),
+                Scalar::from_struct([] as [(&str, Scalar); 0]).unwrap(),
                 DataTypeId::Struct,
             ),
         ];
@@ -1326,7 +1326,7 @@ mod values {
 
     #[test]
     fn a_field_record_digests_as_the_sequence_it_canonicalizes_to() {
-        let row = yggdryl::StructureType::from_fields([
+        let row = yggdryl::StructType::from_fields([
             yggdryl::Field::new("id", yggdryl::DataType::Int64, false),
             yggdryl::Field::new("symbol", yggdryl::DataType::utf8(), true),
             yggdryl::Field::new(
@@ -1355,7 +1355,7 @@ mod values {
             record.stable_hash()
         );
         // The empty row frames as the empty sequence, exactly as a row digest does.
-        let empty = yggdryl::StructureType::from_fields([])
+        let empty = yggdryl::StructType::from_fields([])
             .map(yggdryl::DataType::from)
             .unwrap()
             .required_field("row");
@@ -1437,7 +1437,7 @@ mod values {
         assert!(Scalar::from_sequence([]).as_value_bytes().is_none());
         assert!(Scalar::from_mapping([]).unwrap().as_value_bytes().is_none());
         assert!(
-            Scalar::from_record([] as [(&str, Scalar); 0])
+            Scalar::from_struct([] as [(&str, Scalar); 0])
                 .unwrap()
                 .as_value_bytes()
                 .is_none()
@@ -1475,9 +1475,9 @@ mod values {
         // The stored map is sorted, so two records built in different orders
         // are one value and feed one way.
         let left =
-            Scalar::from_record([("b", Scalar::from(2_i64)), ("a", Scalar::from(1_i64))]).unwrap();
+            Scalar::from_struct([("b", Scalar::from(2_i64)), ("a", Scalar::from(1_i64))]).unwrap();
         let right =
-            Scalar::from_record([("a", Scalar::from(1_i64)), ("b", Scalar::from(2_i64))]).unwrap();
+            Scalar::from_struct([("a", Scalar::from(1_i64)), ("b", Scalar::from(2_i64))]).unwrap();
         assert_eq!(feed(&left), feed(&right));
 
         // A mapping is insertion-ordered, so its order is part of the value.
@@ -1499,8 +1499,8 @@ mod values {
     fn a_record_name_cannot_be_confused_with_its_value() {
         // Names are length-prefixed, so a field named "ab" with value "" and a
         // field named "a" with value "b" are different feeds.
-        let left = Scalar::from_record([("ab", Scalar::from(""))]).unwrap();
-        let right = Scalar::from_record([("a", Scalar::from("b"))]).unwrap();
+        let left = Scalar::from_struct([("ab", Scalar::from(""))]).unwrap();
+        let right = Scalar::from_struct([("a", Scalar::from("b"))]).unwrap();
         assert_ne!(feed(&left), feed(&right));
     }
 }

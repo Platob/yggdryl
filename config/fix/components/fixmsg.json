@@ -48,6 +48,17 @@
         }
       },
       {
+        "name": "expirunix",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "expirunix",
+          "FIX:tag": "65053"
+        }
+      },
+      {
         "name": "sendingtime",
         "dtype": {
           "type": "null"
@@ -221,6 +232,17 @@
         "metadata": {
           "FIX:field": "parentuuids",
           "FIX:tag": "65041"
+        }
+      },
+      {
+        "name": "srcuuids",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "srcuuids",
+          "FIX:tag": "65051"
         }
       },
       {
@@ -858,6 +880,17 @@
         "metadata": {
           "FIX:field": "offersize",
           "FIX:tag": "135"
+        }
+      },
+      {
+        "name": "state",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "state",
+          "FIX:tag": "65052"
         }
       },
       {
