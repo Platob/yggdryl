@@ -42,6 +42,7 @@ def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
     for itself.
     """
     pins.setdefault("exclude_msgtypes", [])
+    pins.setdefault("threads", 1)
     return FixCodec(registry, default_sending_time=CLOCK, **pins)
 
 
@@ -197,8 +198,10 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
 def test_threads_read_what_one_thread_reads_and_a_message_carries_its_rows_cells(
     seed: FixRegistry,
 ) -> None:
+    plain = FixCodec(seed)
     one = _fixed(seed)
     four = _fixed(seed, threads=4)
+    assert plain.threads >= 1
     assert one.threads == 1
     assert four.threads == 4
     assert _fixed(seed, threads=0).threads == 1
@@ -218,6 +221,40 @@ def test_threads_read_what_one_thread_reads_and_a_message_carries_its_rows_cells
     held = next(iter(one.messages(parsed)))
     assert dict(held.carried)["body"].as_py() == CAPTURE[0]
     assert next(one.parse_line(CAPTURE[0])).carried == []
+
+
+def test_arrow_pool_pulls_one_input_batch_per_worker_ahead(seed: FixRegistry) -> None:
+    schema = pa.schema([pa.field("body", pa.binary(), nullable=False)])
+    pulled = 0
+    # The first row expands to two messages and the second to one. A worker
+    # therefore keeps its input batch until its third output row is pulled.
+    first = b"8=FIX.4.4|35=D|11=POOL-1|52=20240102-10:15:30|10=0|"
+    second = b"8=FIX.4.4|35=D|11=POOL-2|52=20240102-10:15:30|10=0|"
+    third = b"8=FIX.4.4|35=D|11=POOL-3|52=20240102-10:15:30|10=0|"
+
+    def batches() -> Iterator[pa.RecordBatch]:
+        nonlocal pulled
+        for _ in range(12):
+            pulled += 1
+            yield pa.record_batch(
+                [pa.array([first + second, third], pa.binary())], schema=schema
+            )
+
+    reader = FixCodec(
+        seed,
+        default_sending_time=CLOCK,
+        exclude_msgtypes=[],
+        threads=3,
+        batch_row_size=1,
+    ).parse_text_arrow_reader(pa.RecordBatchReader.from_batches(schema, batches()))
+    for clordid in ("POOL-1", "POOL-2", "POOL-3"):
+        batch = next(reader)
+        assert batch.column(batch.schema.get_field_index("msgtype"))[0].as_py() == "D"
+        assert batch.column(batch.schema.get_field_index("clordid"))[0].as_py() == clordid
+        assert pulled == 3
+    fourth = next(reader)
+    assert fourth.column(fourth.schema.get_field_index("msgtype"))[0].as_py() == "D"
+    assert pulled == 4
 
 
 def test_the_schema_is_decided_before_the_first_row_is_read(seed: FixRegistry) -> None:

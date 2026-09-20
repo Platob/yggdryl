@@ -36,12 +36,13 @@ a dictionary and the message roots its grammar bindings describe.
 live in three holders and two extras - :meth:`FixMsg.event`, the facts the
 core's graph vocabulary answers (``curruuid``, ``crossuuid``, ``crosscode``,
 ``currhashcode``, ``crosshashcode``, ``identifiers``, ``parentuuids``, ``currunix``,
-``state``, ``seqnum``, the lifecycle's ``creaunix``, ``expirunix``,
+``state``, ``seqnum``, the lifecycle's ``creaunix``, ``exprtime``,
 ``prevunix``, ``prevuuid`` and ``snapunix``, the market's ``px``, ``qty``,
 ``currency``, ``unit``, ``side``, its ISIN, CUSIP, SEDOL, Bloomberg, CFI and
 MIC codes and the bid and ask lanes); :meth:`FixMsg.header`, the standard
 header (``beginstring``, ``msgtype``, ``sendercompid``, ``targetcompid``,
-``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``);
+``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``); the
+message type's fixed four-byte ``msgcat``;
 :meth:`FixMsg.capture`, what the line's own bridge row header said about
 the capture it was written for (``msgpluginid``, ``msgctxid``,
 ``msgsessionid``) - never what a *reader* said about the line, which is
@@ -105,8 +106,10 @@ every row's wire. :meth:`FixCodec.format_messages` and
 field a consumer reads by - a venue's own message type, :func:`fix_schema`
 itself, which keeps every column a capture lands in, or any Struct root a
 caller built. A pin - ``default_sending_time``, ``separator``,
-``payload_column``, ``null_values``, ``direction``, ``batch_byte_size`` - is on
-the codec; a stage is a call, and no pin decides a version: a row states one in
+``payload_column``, ``null_values``, ``direction``, ``batch_byte_size`` and
+``snapshot_ns`` - is on the codec; a positive ``snapshot_ns`` emits independent
+living views on its epoch-aligned grid and zero, a negative width or ``None``
+disables them. A stage is a call, and no pin decides a version: a row states one in
 its ``beginstring`` capture, else the line implies it.
 :func:`fix_schema` is the one fixed row a whole capture lands in - the
 crate's own columns first, its clocks then its identities, then the standard

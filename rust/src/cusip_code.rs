@@ -23,9 +23,9 @@ use crate::{DataType, Result, Scalar, Value};
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Cusip(SmolStr);
+pub struct CusipCode(SmolStr);
 
-impl Cusip {
+impl CusipCode {
     /// Validate and construct a CUSIP.
     ///
     /// Lower case is read as the upper case it spells, because the
@@ -33,17 +33,17 @@ impl Cusip {
     /// reads a letter by its position, which case does not change.
     ///
     /// ```
-    /// use yggdryl::Cusip;
+    /// use yggdryl::CusipCode;
     ///
-    /// let apple = Cusip::new("037833100").unwrap();
+    /// let apple = CusipCode::new("037833100").unwrap();
     /// assert_eq!(apple.as_str(), "037833100");
     /// assert_eq!(apple.issuer(), "037833");
     /// assert_eq!(apple.issue(), "10");
     /// assert_eq!(apple.check_digit(), 0);
-    /// assert_eq!(Cusip::new("38259p508").unwrap().as_str(), "38259P508");
+    /// assert_eq!(CusipCode::new("38259p508").unwrap().as_str(), "38259P508");
     /// // One digit off is a typo, not a security.
-    /// assert!(Cusip::new("037833101").is_err());
-    /// assert!(Cusip::new("03783310").is_err());
+    /// assert!(CusipCode::new("037833101").is_err());
+    /// assert!(CusipCode::new("03783310").is_err());
     /// ```
     ///
     /// # Errors
@@ -52,8 +52,12 @@ impl Cusip {
     /// identifier's shape, or when its check digit does not close it.
     pub fn new(value: impl AsRef<str>) -> Result<Self> {
         let value = crate::ascii_text(CUSIP_WIDTH, value.as_ref().as_bytes())?;
-        let folded = value.to_ascii_uppercase();
-        if let Some(reason) = Self::refusal(&folded) {
+        let mut bytes = [0_u8; CUSIP_WIDTH];
+        for (target, byte) in bytes.iter_mut().zip(value.bytes()) {
+            *target = byte.to_ascii_uppercase();
+        }
+        let folded = std::str::from_utf8(&bytes[..value.len()]).expect("validated ASCII");
+        if let Some(reason) = Self::refusal(folded) {
             return Err(crate::Error::InvalidDataType {
                 kind: "cusip",
                 reason: smol_str::format_smolstr!("{reason}, got {value:?}"),
@@ -158,13 +162,13 @@ impl Cusip {
     }
 }
 
-impl fmt::Display for Cusip {
+impl fmt::Display for CusipCode {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
 }
 
-code_value!(Cusip, Cusip, CUSIP_WIDTH);
+code_value!(CusipCode, CusipCode, CUSIP_WIDTH);
 
 /// The Arrow extension name of the CUSIP securities identifier.
 pub(crate) const CUSIP_EXTENSION_NAME: &str = "yggdryl.cusip";
@@ -181,15 +185,15 @@ impl DataType {
     /// ```
     /// use yggdryl::DataType;
     ///
-    /// assert_eq!(DataType::cusip(), DataType::Cusip);
+    /// assert_eq!(DataType::cusip(), DataType::CusipCode);
     /// assert_eq!(DataType::cusip().to_string(), "cusip");
     /// assert_eq!(DataType::cusip().code_width(), Some(9));
     /// ```
     #[must_use]
     pub const fn cusip() -> Self {
-        Self::Cusip
+        Self::CusipCode
     }
 }
 
 // /// A CUSIP-typed field: the nine-character North American securities identifier.
-define_field_types!(CusipType, Cusip);
+define_field_types!(CusipCodeType, CusipCode);

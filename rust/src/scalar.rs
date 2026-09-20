@@ -64,7 +64,8 @@ use crate::uuid::Uuid;
 use crate::value::Children;
 use crate::version::Version;
 use crate::{
-    Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce, decimal,
+    BloombergCode, CfiCode, Country, Currency, CusipCode, IsinCode, MicCode, SedolCode, Side,
+    State, TimeInForce, decimal,
 };
 use crate::{
     DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256,
@@ -174,9 +175,9 @@ pub enum Scalar {
     /// ISO 4217 currency code.
     Currency(Currency),
     /// ISO 10383 market identifier code.
-    Mic(Mic),
+    MicCode(MicCode),
     /// ISO 10962 classification code.
-    Cfi(Cfi),
+    CfiCode(CfiCode),
     /// FIX's side of a trade.
     Side(Side),
     /// What state one thing is in, ranked so the bytes sort by lifecycle.
@@ -184,13 +185,13 @@ pub enum Scalar {
     /// How long an order stands.
     TimeInForce(TimeInForce),
     /// ISO 6166 securities identification number.
-    Isin(Isin),
+    IsinCode(IsinCode),
     /// CUSIP securities identifier.
-    Cusip(Cusip),
+    CusipCode(CusipCode),
     /// SEDOL securities identifier.
-    Sedol(Sedol),
-    /// Bloomberg securities identifier.
-    Bloomberg(Bloomberg),
+    SedolCode(SedolCode),
+    /// BloombergCode securities identifier.
+    BloombergCode(BloombergCode),
     /// An RFC 9562 identifier.
     Uuid(Uuid),
     /// A canonical, numerically ordered version.
@@ -560,12 +561,18 @@ impl<'de> Deserialize<'de> for Scalar {
             String(Str),
             Country(SmolStr),
             Currency(SmolStr),
-            Mic(SmolStr),
-            Cfi(SmolStr),
-            Isin(SmolStr),
-            Cusip(SmolStr),
-            Sedol(SmolStr),
-            Bloomberg(SmolStr),
+            #[serde(rename = "mic")]
+            MicCode(SmolStr),
+            #[serde(rename = "cfi")]
+            CfiCode(SmolStr),
+            #[serde(rename = "isin")]
+            IsinCode(SmolStr),
+            #[serde(rename = "cusip")]
+            CusipCode(SmolStr),
+            #[serde(rename = "sedol")]
+            SedolCode(SmolStr),
+            #[serde(rename = "bloomberg")]
+            BloombergCode(SmolStr),
             Side(SmolStr),
             State(SmolStr),
             #[serde(rename = "timeinforce")]
@@ -628,23 +635,23 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::Currency(value) => crate::Currency::new(value)
                 .map(Self::Currency)
                 .map_err(D::Error::custom),
-            StructuralWire::Mic(value) => crate::Mic::new(value)
-                .map(Self::Mic)
+            StructuralWire::MicCode(value) => crate::MicCode::new(value)
+                .map(Self::MicCode)
                 .map_err(D::Error::custom),
-            StructuralWire::Cfi(value) => crate::Cfi::new(value)
-                .map(Self::Cfi)
+            StructuralWire::CfiCode(value) => crate::CfiCode::new(value)
+                .map(Self::CfiCode)
                 .map_err(D::Error::custom),
-            StructuralWire::Isin(value) => crate::Isin::new(value)
-                .map(Self::Isin)
+            StructuralWire::IsinCode(value) => crate::IsinCode::new(value)
+                .map(Self::IsinCode)
                 .map_err(D::Error::custom),
-            StructuralWire::Cusip(value) => crate::Cusip::new(value)
-                .map(Self::Cusip)
+            StructuralWire::CusipCode(value) => crate::CusipCode::new(value)
+                .map(Self::CusipCode)
                 .map_err(D::Error::custom),
-            StructuralWire::Bloomberg(value) => crate::Bloomberg::new(value)
-                .map(Self::Bloomberg)
+            StructuralWire::BloombergCode(value) => crate::BloombergCode::new(value)
+                .map(Self::BloombergCode)
                 .map_err(serde::de::Error::custom),
-            StructuralWire::Sedol(value) => crate::Sedol::new(value)
-                .map(Self::Sedol)
+            StructuralWire::SedolCode(value) => crate::SedolCode::new(value)
+                .map(Self::SedolCode)
                 .map_err(D::Error::custom),
             // A side and a state are read by their spelling, exactly as a
             // column reads them.
@@ -874,15 +881,15 @@ impl Ord for Scalar {
             Self::String(left) => same_kind!(Self::String(right) => left.cmp(right)),
             Self::Country(_)
             | Self::Currency(_)
-            | Self::Mic(_)
-            | Self::Cfi(_)
+            | Self::MicCode(_)
+            | Self::CfiCode(_)
             | Self::Side(_)
             | Self::State(_)
             | Self::TimeInForce(_)
-            | Self::Isin(_)
-            | Self::Cusip(_)
-            | Self::Sedol(_)
-            | Self::Bloomberg(_) => code_key(self).cmp(&code_key(other)),
+            | Self::IsinCode(_)
+            | Self::CusipCode(_)
+            | Self::SedolCode(_)
+            | Self::BloombergCode(_) => code_key(self).cmp(&code_key(other)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
             Self::Timezone(left) => same_kind!(Self::Timezone(right) => left.cmp(right)),
@@ -965,15 +972,15 @@ impl Hash for Scalar {
             Self::String(value) => value.hash(state),
             Self::Country(_)
             | Self::Currency(_)
-            | Self::Mic(_)
-            | Self::Cfi(_)
+            | Self::MicCode(_)
+            | Self::CfiCode(_)
             | Self::Side(_)
             | Self::State(_)
             | Self::TimeInForce(_)
-            | Self::Isin(_)
-            | Self::Cusip(_)
-            | Self::Sedol(_)
-            | Self::Bloomberg(_) => code_key(self).hash(state),
+            | Self::IsinCode(_)
+            | Self::CusipCode(_)
+            | Self::SedolCode(_)
+            | Self::BloombergCode(_) => code_key(self).hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
             Self::Timezone(value) => value.hash(state),
@@ -1046,15 +1053,15 @@ macro_rules! code_scalars {
     () => {
         $crate::Scalar::Country(_)
             | $crate::Scalar::Currency(_)
-            | $crate::Scalar::Mic(_)
-            | $crate::Scalar::Cfi(_)
+            | $crate::Scalar::MicCode(_)
+            | $crate::Scalar::CfiCode(_)
             | $crate::Scalar::Side(_)
             | $crate::Scalar::State(_)
             | $crate::Scalar::TimeInForce(_)
-            | $crate::Scalar::Isin(_)
-            | $crate::Scalar::Cusip(_)
-            | $crate::Scalar::Sedol(_)
-            | $crate::Scalar::Bloomberg(_)
+            | $crate::Scalar::IsinCode(_)
+            | $crate::Scalar::CusipCode(_)
+            | $crate::Scalar::SedolCode(_)
+            | $crate::Scalar::BloombergCode(_)
     };
 }
 
@@ -1116,15 +1123,15 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Uuid(_) => 17,
         Scalar::Country(_)
         | Scalar::Currency(_)
-        | Scalar::Mic(_)
-        | Scalar::Cfi(_)
+        | Scalar::MicCode(_)
+        | Scalar::CfiCode(_)
         | Scalar::Side(_)
         | Scalar::State(_)
         | Scalar::TimeInForce(_)
-        | Scalar::Isin(_)
-        | Scalar::Cusip(_)
-        | Scalar::Sedol(_)
-        | Scalar::Bloomberg(_) => 18,
+        | Scalar::IsinCode(_)
+        | Scalar::CusipCode(_)
+        | Scalar::SedolCode(_)
+        | Scalar::BloombergCode(_) => 18,
         Scalar::Version(_) => 19,
         Scalar::Url(_) => 20,
         Scalar::Timezone(_) => 21,
@@ -1188,15 +1195,15 @@ impl Scalar {
             Self::String(text) => text.parameters().id(),
             Self::Country(_) => DataTypeId::Country,
             Self::Currency(_) => DataTypeId::Currency,
-            Self::Mic(_) => DataTypeId::Mic,
-            Self::Cfi(_) => DataTypeId::Cfi,
+            Self::MicCode(_) => DataTypeId::MicCode,
+            Self::CfiCode(_) => DataTypeId::CfiCode,
             Self::Side(_) => DataTypeId::Side,
             Self::State(_) => DataTypeId::State,
             Self::TimeInForce(_) => DataTypeId::TimeInForce,
-            Self::Isin(_) => DataTypeId::Isin,
-            Self::Cusip(_) => DataTypeId::Cusip,
-            Self::Sedol(_) => DataTypeId::Sedol,
-            Self::Bloomberg(_) => DataTypeId::Bloomberg,
+            Self::IsinCode(_) => DataTypeId::IsinCode,
+            Self::CusipCode(_) => DataTypeId::CusipCode,
+            Self::SedolCode(_) => DataTypeId::SedolCode,
+            Self::BloombergCode(_) => DataTypeId::BloombergCode,
             Self::Uuid(_) => DataTypeId::Uuid,
             Self::Version(_) => DataTypeId::Version,
             Self::Timezone(_) => DataTypeId::Timezone,
@@ -1252,15 +1259,15 @@ impl Scalar {
             },
             Self::Country(_) => DataTypeId::Country.as_str(),
             Self::Currency(_) => DataTypeId::Currency.as_str(),
-            Self::Mic(_) => DataTypeId::Mic.as_str(),
-            Self::Cfi(_) => DataTypeId::Cfi.as_str(),
+            Self::MicCode(_) => DataTypeId::MicCode.as_str(),
+            Self::CfiCode(_) => DataTypeId::CfiCode.as_str(),
             Self::Side(_) => DataTypeId::Side.as_str(),
             Self::State(_) => DataTypeId::State.as_str(),
             Self::TimeInForce(_) => DataTypeId::TimeInForce.as_str(),
-            Self::Isin(_) => DataTypeId::Isin.as_str(),
-            Self::Cusip(_) => DataTypeId::Cusip.as_str(),
-            Self::Sedol(_) => DataTypeId::Sedol.as_str(),
-            Self::Bloomberg(_) => DataTypeId::Bloomberg.as_str(),
+            Self::IsinCode(_) => DataTypeId::IsinCode.as_str(),
+            Self::CusipCode(_) => DataTypeId::CusipCode.as_str(),
+            Self::SedolCode(_) => DataTypeId::SedolCode.as_str(),
+            Self::BloombergCode(_) => DataTypeId::BloombergCode.as_str(),
             Self::Uuid(_) => "uuid",
             Self::Version(_) => "version",
             Self::Timezone(_) => "timezone",
@@ -1496,15 +1503,15 @@ impl Scalar {
         match self {
             Self::Country(value) => Some(value.storage()),
             Self::Currency(value) => Some(value.storage()),
-            Self::Mic(value) => Some(value.storage()),
-            Self::Cfi(value) => Some(value.storage()),
+            Self::MicCode(value) => Some(value.storage()),
+            Self::CfiCode(value) => Some(value.storage()),
             Self::Side(value) => Some(value.storage()),
             Self::State(value) => Some(value.storage()),
             Self::TimeInForce(value) => Some(value.storage()),
-            Self::Isin(value) => Some(value.storage()),
-            Self::Cusip(value) => Some(value.storage()),
-            Self::Sedol(value) => Some(value.storage()),
-            Self::Bloomberg(value) => Some(value.storage()),
+            Self::IsinCode(value) => Some(value.storage()),
+            Self::CusipCode(value) => Some(value.storage()),
+            Self::SedolCode(value) => Some(value.storage()),
+            Self::BloombergCode(value) => Some(value.storage()),
             _ => None,
         }
     }
@@ -1744,15 +1751,15 @@ impl Scalar {
             | Self::String(_)
             | Self::Country(_)
             | Self::Currency(_)
-            | Self::Mic(_)
-            | Self::Cfi(_)
+            | Self::MicCode(_)
+            | Self::CfiCode(_)
             | Self::Side(_)
             | Self::State(_)
             | Self::TimeInForce(_)
-            | Self::Isin(_)
-            | Self::Cusip(_)
-            | Self::Sedol(_)
-            | Self::Bloomberg(_)
+            | Self::IsinCode(_)
+            | Self::CusipCode(_)
+            | Self::SedolCode(_)
+            | Self::BloombergCode(_)
             | Self::Uuid(_)
             | Self::Version(_)
             | Self::Url(_)

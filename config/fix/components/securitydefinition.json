@@ -455,6 +455,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SECU",
     "FIX:msgtype": "d",
     "FIX:tag": "800165",
     "description": "MsgType = d (lowercase D)",

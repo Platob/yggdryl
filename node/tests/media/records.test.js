@@ -64,7 +64,7 @@ function wkbPoint(x, y) {
 // The sixteen event columns every line batch opens with: the line as the
 // event it is, the same sixteen a FIX row parsed out of it opens with.
 const EVENT_COLUMNS = [
-  'currunix', 'creaunix', 'expirunix', 'prevunix', 'snapunix',
+  'currunix', 'creaunix', 'exprtime', 'prevunix', 'snapunix',
   'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
   'prevuuid', 'seqnum', 'parentuuids', 'srcuuids', 'identifiers', 'state',
 ]

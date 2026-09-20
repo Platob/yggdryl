@@ -245,6 +245,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "securitylistid",
+    "FIX:msgcat": "SECU",
     "FIX:msgtype": "CO",
     "FIX:tag": "835895",
     "description": "MsgType = CO",

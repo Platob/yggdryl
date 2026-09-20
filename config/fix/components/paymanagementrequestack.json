@@ -49,6 +49,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "PAYM",
     "FIX:msgtype": "DZ",
     "FIX:tag": "763407",
     "description": "MsgType = DZ",

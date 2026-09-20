@@ -149,7 +149,7 @@ The source field is complete before any source bytes are read. It opens with the
 | --- | --- | --- |
 | `currunix` | `datetime64(ns, UTC)` | required; when the line happened: a stated instant, else `mtime`, else the epoch |
 | `creaunix` | `datetime64(ns, UTC)` | nullable; a `creaunix` capture as an instant, else what a walk folded, else null |
-| `expirunix` | `datetime64(ns, UTC)` | nullable; an `expirunix` capture as an instant, else what a walk folded, else null |
+| `exprtime` | `datetime64(ns, UTC)` | nullable; an `exprtime` capture as an instant, else what a walk folded, else null |
 | `prevunix` | `datetime64(ns, UTC)` | nullable; a `prevunix` capture, else what a walk stamped, else null |
 | `snapunix` | `datetime64(ns, UTC)` | nullable; a `snapunix` capture, else what a grid stamped, else null |
 | `curruuid` | `uuid` | required; the line's identity, the UUIDv7 of `currunix` and `currhashcode`; the nil identity where the instant has no UUIDv7 |
@@ -179,7 +179,7 @@ back into lines is refused where a required cell is null.
 Named `rowheader` captures follow these columns and stay nullable in both modes,
 and the columns `lift_names` [lifts](#lifting-an-entry-into-a-column) follow
 the captures. A capture named for an event fact the line reads off a capture -
-`seqnum`, `state`, `crosscode`, `prevuuid`, `creaunix`, `expirunix`, `prevunix`,
+`seqnum`, `state`, `crosscode`, `prevuuid`, `creaunix`, `exprtime`, `prevunix`,
 `snapunix` - feeds that column and appears beside nothing, as an `mtime`
 capture feeds `mtime`; one named for a fact the line derives - `currunix`,
 `curruuid`, `crossuuid`, `currhashcode`, `crosshashcode`, `parentuuids`,

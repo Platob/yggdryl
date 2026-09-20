@@ -69,7 +69,7 @@ fn a_field_declares_the_enum_its_string_values_name() {
             .to_string();
         assert!(refused.contains(&dtype.to_string()), "{refused}");
     }
-    Field::new("venue", DataType::Cfi, false)
+    Field::new("venue", DataType::CfiCode, false)
         .set_string_enum(&wide)
         .unwrap();
 

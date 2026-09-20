@@ -33,8 +33,8 @@ function reading(registry, options) {
 // The crate's own definitions, which every registry holds from construction
 // beside the seeded SendingTime (52) and TransactTime (60) clocks. A
 // definition is filed by the shape it has: the columns are scalar fields,
-// the `identifiers` and `metadata` Maps are groups, and the `parentuuids`
-// and `srcuuids` lists are columns of the fixed row alone, held by no registry.
+// the `identifiers` and `metadata` Maps are groups, and the parent/source
+// UUID lists are registered scalar columns.
 const CRATE = fix.crateFields()
 // Which category a definition lands in is the core's answer, not a shape a
 // test guesses: a snapshot states the three, so the fields it lists are the
@@ -97,22 +97,32 @@ test('the protocol view carries the typed fix vocabulary', () => {
   field.fix.tag = 38
   field.fix.tags = [1088]
   field.fix.names = ['Qty', 'Quantity']
+  field.fix.msgcat = 'ORDR'
   field.fix.description = 'Quantity ordered.'
 
   assert.equal(field.fix.tag, 38)
   assert.deepEqual(field.fix.tags, [1088])
   assert.deepEqual(field.fix.names, ['Qty', 'Quantity'])
+  assert.equal(field.fix.msgcat, 'ORDR')
   assert.equal(field.fix.description, 'Quantity ordered.')
   // Ordinary namespaced text, in the one metadata map: a list is the
   // compact JSON array it is.
   assert.equal(field.get('FIX:names'), '["Qty","Quantity"]')
   assert.equal(field.get('FIX:tags'), '[1088]')
   assert.equal(field.fix.get('tag'), '38')
-  // Three, not four: a description is a fact about the column rather than a
+  // Four: a description is a fact about the column rather than a
   // FIX fact, so it lives on the generic key every catalog reads.
   assert.equal(field.get('description'), 'Quantity ordered.')
   assert.equal(field.has('FIX:description'), false)
-  assert.equal(field.fix.size, 3)
+  assert.equal(field.fix.size, 4)
+
+  const before = field.toJSON()
+  assert.throws(() => {
+    field.fix.msgcat = 'order'
+  })
+  assert.deepEqual(field.toJSON(), before, 'a refused category is atomic')
+  field.fix.msgcat = null
+  assert.equal(field.fix.msgcat, null)
 
   // An empty array removes a list property; `delete` removes any of them.
   field.fix.tags = []
@@ -148,11 +158,15 @@ test('the typed vocabulary answers only on the fix view', () => {
     assert.throws(() => view.hasBranch('cme'), { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.id, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.directions, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => view.msgcat, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
       view.tag = 55
     }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
       view.directions = [{ code: 'S', patterns: ['^TX '] }]
+    }, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => {
+      view.msgcat = 'ORDR'
     }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.derivation, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
@@ -1312,7 +1326,7 @@ test('the identity is settled on every message and follows what it says', () => 
     assert.equal(event[code], null, code)
   }
   assert.equal(event.unit, '')
-  assert.equal(event.expirunix, null)
+  assert.equal(event.exprtime, null)
   assert.equal(event.prevunix, null)
   assert.equal(event.snapunix, null)
   // No cross code names no chain: the chain identity is the message's own.
@@ -1659,6 +1673,70 @@ test('a parse derives what the dictionary derives and states it on the wire', ()
   assert.equal(opaque.event().isincode, null)
 })
 
+test('the lifecycle redirects categories snapshots dedup and normalized rows', () => {
+  const registry = seed()
+  assert.equal(new fix.FixCodec(registry).snapshotNs, null)
+  assert.equal(new fix.FixCodec(registry, { snapshotNs: undefined }).snapshotNs, null)
+  assert.equal(new fix.FixCodec(registry, { snapshotNs: null }).snapshotNs, null)
+  assert.equal(new fix.FixCodec(registry, { snapshotNs: 0n }).snapshotNs, null)
+  assert.equal(new fix.FixCodec(registry, { snapshotNs: -1n }).snapshotNs, null)
+  assert.throws(() => new fix.FixCodec(registry, { snapshotNs: 1 }), /bigint/i)
+  assert.throws(() => new fix.FixCodec(registry, { snapshotNs: 9_223_372_036_854_775_808n }), /signed 64-bit/i)
+  const codec = fixedCodec(registry)
+  const snapshots = fixedCodec(registry, { snapshotNs: 1_000_000_000n })
+  assert.equal(snapshots.snapshotNs, 1_000_000_000n)
+  assert.equal(registry.msgtype('D').msgcat, 'ORDR')
+
+  const original = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|'))
+  const replay = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=7|43=Y|52=20260102-10:15:31|122=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|'))
+  const distinct = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=8|52=20260102-10:15:32|11=REPLAY-1|55=AAPL|10=0|'))
+  assert.equal(original.msgcat, 'ORDR')
+  const deduplicated = [...codec.lifecycle([original, original.clone(), replay, distinct])]
+  assert.deepEqual(deduplicated.map((message) => message.header().msgseqnum), [7, 8])
+  assert.deepEqual(deduplicated.map((message) => message.seqnum), [0, 1])
+
+  const later = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=2|52=20260102-10:15:31|11=LATER|isincode=US0378331005|10=0|'))
+  const earlier = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|11=EARLIER|isincode=US0378331005|bloombergcode=AAPL US Equity|10=0|'))
+  const learned = [...codec.lifecycle([later, earlier])]
+  assert.equal(learned[1].bloombergcode, 'AAPL US Equity')
+  assert.equal(later.bloombergcode, null, 'the input is never enriched in place')
+  const schema = fix.schema(registry)
+  const rebuilt = fix.FixMsg.fromRow(schema, learned[1].intoRow(schema), registry)
+  assert.equal(rebuilt.bloombergcode, 'AAPL US Equity')
+
+  const expiring = snapshots.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|126=20260102-10:15:32|11=EXP-1|55=AAPL|10=0|'))
+  const entries = expiring.entries()
+  const deadline = expiring.event().exprtime
+  const walked = [...snapshots.lifecycle([expiring])]
+  assert.deepEqual(expiring.entries(), entries)
+  assert.equal(expiring.event().snapunix, null)
+  assert.ok(walked.some((message) => message.currunix === deadline && message.state === '95EXPIRED'))
+  const emittedSnapshots = walked.filter((message) => message.event().snapunix !== null)
+  assert.ok(emittedSnapshots.length > 0)
+  assert.ok(emittedSnapshots.every((message) => message.currunix <= message.event().snapunix && message.event().snapunix < deadline))
+})
+
+test('the fixed schema places category beside message type and normalized codes once', () => {
+  const registry = seed()
+  const schema = fix.schema(registry)
+  assert.equal(CRATE.length, 28)
+  assert.equal(CRATE_SCALARS.length, 26)
+  assert.equal(new fix.FixRegistry().size, 30)
+  assert.equal(scalars(new fix.FixRegistry()).length, 28)
+  assert.equal(schema.fieldLen, 122)
+  assert.equal(fix.schemaTags().length, 118)
+  const at = schema.indexOf('msgtype')
+  assert.deepEqual(
+    [schema.fieldAt(at - 1).name, schema.fieldAt(at).name, schema.fieldAt(at + 1).name, schema.fieldAt(at + 2).name],
+    ['beginstring', 'msgtype', 'msgcat', 'msgseqnum'],
+  )
+  for (const [name, tag] of [['isincode', 65055], ['cusipcode', 65057], ['sedolcode', 65058], ['bloombergcode', 65059], ['miccode', 65060]]) {
+    assert.equal(schema.fieldAt(schema.indexOf(name)).fix.tag, tag, name)
+  }
+  assert.equal(schema.fieldAt(schema.indexOf('cficode')).fix.tag, 461)
+  assert.equal(fix.schemaTags().includes(65056), false)
+})
+
 test('a parse restates deprecated fields to their latest aliases', () => {
   // A FIX 4.2 execution report: a transaction type, a partial fill, a Rule80A
   // capacity and two identities the specification later moved into `Parties`.
@@ -1979,4 +2057,3 @@ test('unresolved counters keep their members in arrival order under tag 0', () =
   assert.equal(rows.byPath('rows[0].ownthing').asJs(), 'named')
   assert.equal(rows.intoText('|'), '8=FIX.4.4|90001=1|90002=known|999999=numeric|ownthing=named|')
 })
-

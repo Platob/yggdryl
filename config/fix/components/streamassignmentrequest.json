@@ -70,6 +70,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "STRM",
     "FIX:msgtype": "CC",
     "FIX:tag": "1083748",
     "description": "MsgType = CC",

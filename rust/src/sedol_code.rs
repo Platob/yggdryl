@@ -21,9 +21,9 @@ use crate::{DataType, Result, Scalar, Value};
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Sedol(SmolStr);
+pub struct SedolCode(SmolStr);
 
-impl Sedol {
+impl SedolCode {
     /// The weight each of the six leading characters carries.
     const WEIGHTS: [u32; SEDOL_WIDTH - 1] = [1, 3, 1, 7, 3, 9];
 
@@ -34,15 +34,15 @@ impl Sedol {
     /// reads a letter by its position, which case does not change.
     ///
     /// ```
-    /// use yggdryl::Sedol;
+    /// use yggdryl::SedolCode;
     ///
-    /// let shell = Sedol::new("B0YBKJ7").unwrap();
+    /// let shell = SedolCode::new("B0YBKJ7").unwrap();
     /// assert_eq!(shell.as_str(), "B0YBKJ7");
     /// assert_eq!(shell.check_digit(), 7);
-    /// assert_eq!(Sedol::new("b0ybkj7").unwrap(), shell);
+    /// assert_eq!(SedolCode::new("b0ybkj7").unwrap(), shell);
     /// // One digit off is a typo, not a security.
-    /// assert!(Sedol::new("B0YBKJ8").is_err());
-    /// assert!(Sedol::new("B0YBKJ").is_err());
+    /// assert!(SedolCode::new("B0YBKJ8").is_err());
+    /// assert!(SedolCode::new("B0YBKJ").is_err());
     /// ```
     ///
     /// # Errors
@@ -51,8 +51,12 @@ impl Sedol {
     /// identifier's shape, or when its check digit does not close it.
     pub fn new(value: impl AsRef<str>) -> Result<Self> {
         let value = crate::ascii_text(SEDOL_WIDTH, value.as_ref().as_bytes())?;
-        let folded = value.to_ascii_uppercase();
-        if let Some(reason) = Self::refusal(&folded) {
+        let mut bytes = [0_u8; SEDOL_WIDTH];
+        for (target, byte) in bytes.iter_mut().zip(value.bytes()) {
+            *target = byte.to_ascii_uppercase();
+        }
+        let folded = std::str::from_utf8(&bytes[..value.len()]).expect("validated ASCII");
+        if let Some(reason) = Self::refusal(folded) {
             return Err(crate::Error::InvalidDataType {
                 kind: "sedol",
                 reason: smol_str::format_smolstr!("{reason}, got {value:?}"),
@@ -140,13 +144,13 @@ impl Sedol {
     }
 }
 
-impl fmt::Display for Sedol {
+impl fmt::Display for SedolCode {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
 }
 
-code_value!(Sedol, Sedol, SEDOL_WIDTH);
+code_value!(SedolCode, SedolCode, SEDOL_WIDTH);
 
 /// The Arrow extension name of the SEDOL securities identifier.
 pub(crate) const SEDOL_EXTENSION_NAME: &str = "yggdryl.sedol";
@@ -163,15 +167,15 @@ impl DataType {
     /// ```
     /// use yggdryl::DataType;
     ///
-    /// assert_eq!(DataType::sedol(), DataType::Sedol);
+    /// assert_eq!(DataType::sedol(), DataType::SedolCode);
     /// assert_eq!(DataType::sedol().to_string(), "sedol");
     /// assert_eq!(DataType::sedol().code_width(), Some(7));
     /// ```
     #[must_use]
     pub const fn sedol() -> Self {
-        Self::Sedol
+        Self::SedolCode
     }
 }
 
 // /// A SEDOL-typed field: the seven-character London Stock Exchange securities identifier.
-define_field_types!(SedolType, Sedol);
+define_field_types!(SedolCodeType, SedolCode);

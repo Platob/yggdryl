@@ -25,7 +25,8 @@ use yggdryl::geospatial::{Geography, Geometry};
 use yggdryl::interval::Interval;
 use yggdryl::string::{Str, StringType};
 use yggdryl::{
-    Bloomberg, Cfi, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce,
+    BloombergCode, CfiCode, Country, Currency, CusipCode, IsinCode, MicCode, SedolCode, Side,
+    State, TimeInForce,
 };
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, Float16, Float32, Float64,
@@ -622,23 +623,23 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
         "currency" => Currency::new(payload()?.extract::<String>()?)
             .map(Scalar::Currency)
             .map_err(value_error),
-        "mic" => Mic::new(payload()?.extract::<String>()?)
-            .map(Scalar::Mic)
+        "mic" => MicCode::new(payload()?.extract::<String>()?)
+            .map(Scalar::MicCode)
             .map_err(value_error),
-        "cfi" => Cfi::new(payload()?.extract::<String>()?)
-            .map(Scalar::Cfi)
+        "cfi" => CfiCode::new(payload()?.extract::<String>()?)
+            .map(Scalar::CfiCode)
             .map_err(value_error),
-        "isin" => Isin::new(payload()?.extract::<String>()?)
-            .map(Scalar::Isin)
+        "isin" => IsinCode::new(payload()?.extract::<String>()?)
+            .map(Scalar::IsinCode)
             .map_err(value_error),
-        "cusip" => Cusip::new(payload()?.extract::<String>()?)
-            .map(Scalar::Cusip)
+        "cusip" => CusipCode::new(payload()?.extract::<String>()?)
+            .map(Scalar::CusipCode)
             .map_err(value_error),
-        "sedol" => Sedol::new(payload()?.extract::<String>()?)
-            .map(Scalar::Sedol)
+        "sedol" => SedolCode::new(payload()?.extract::<String>()?)
+            .map(Scalar::SedolCode)
             .map_err(value_error),
-        "bloomberg" => Bloomberg::new(payload()?.extract::<String>()?)
-            .map(Scalar::Bloomberg)
+        "bloomberg" => BloombergCode::new(payload()?.extract::<String>()?)
+            .map(Scalar::BloombergCode)
             .map_err(value_error),
         "side" => Side::new(payload()?.extract::<String>()?)
             .map(Scalar::Side)

@@ -1225,6 +1225,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "tradereportid,tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid,origtradeid,origsecondarytradeid,tradereportrefid,secondarytradereportrefid,secondarytradereportid,execid,secondaryexecid",
+    "FIX:msgcat": "TRAD",
     "FIX:msgtype": "AR",
     "FIX:tag": "988102",
     "description": "MsgType = AR",

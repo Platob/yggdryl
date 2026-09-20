@@ -375,6 +375,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "POSN",
     "FIX:msgtype": "AO",
     "FIX:tag": "430229",
     "description": "MsgType = AO",

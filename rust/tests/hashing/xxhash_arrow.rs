@@ -276,27 +276,27 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([Scalar::from("USD"), Scalar::from("EUR"), Scalar::Null]),
         ),
         (
-            Field::new("mic", DataType::Mic, true),
+            Field::new("mic", DataType::MicCode, true),
             Scalar::from_sequence([Scalar::from("XNYS"), Scalar::Null]),
         ),
         (
-            Field::new("cfi", DataType::Cfi, true),
+            Field::new("cfi", DataType::CfiCode, true),
             Scalar::from_sequence([Scalar::from("ESVUFR"), Scalar::Null]),
         ),
         (
-            Field::new("isin", DataType::Isin, true),
+            Field::new("isin", DataType::IsinCode, true),
             Scalar::from_sequence([Scalar::from("US0378331005"), Scalar::Null]),
         ),
         (
-            Field::new("cusip", DataType::Cusip, true),
+            Field::new("cusip", DataType::CusipCode, true),
             Scalar::from_sequence([Scalar::from("037833100"), Scalar::Null]),
         ),
         (
-            Field::new("sedol", DataType::Sedol, true),
+            Field::new("sedol", DataType::SedolCode, true),
             Scalar::from_sequence([Scalar::from("B0YBKJ7"), Scalar::Null]),
         ),
         (
-            Field::new("bloomberg", DataType::Bloomberg, true),
+            Field::new("bloomberg", DataType::BloombergCode, true),
             Scalar::from_sequence([Scalar::from("BBG000B9XRY4"), Scalar::Null]),
         ),
         (

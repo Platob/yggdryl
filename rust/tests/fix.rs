@@ -6,6 +6,8 @@ mod allocations;
 mod batch;
 #[path = "fix/capture.rs"]
 mod capture;
+#[path = "fix/categories.rs"]
+mod categories;
 #[path = "fix/cfb.rs"]
 mod cfb;
 /// The instrument's classification, at the seam between its value and FIX.
@@ -153,6 +155,9 @@ fn committed_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
 /// Undated test bytes have one explicit intake clock; replay never consults now.
 fn fixed_codec(registry: std::sync::Arc<yggdryl::FixRegistry>) -> yggdryl::FixCodec {
     yggdryl::FixCodec::new(registry)
+        // Allocation and warning pins observe this thread. Pool behavior has
+        // its own explicit multi-worker fixtures in `parallel`.
+        .with_threads(1)
         .try_with_default_sending_time(Some(
             yggdryl::Scalar::datetime64(
                 1_704_190_530_000_000_000,

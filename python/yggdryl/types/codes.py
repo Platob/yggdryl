@@ -25,19 +25,19 @@ from ._typing import TypedField
 if TYPE_CHECKING:
     CountryField: TypeAlias = TypedField[Literal["country"], str]
     CurrencyField: TypeAlias = TypedField[Literal["currency"], str]
-    MicField: TypeAlias = TypedField[Literal["mic"], str]
-    CfiField: TypeAlias = TypedField[Literal["cfi"], str]
-    IsinField: TypeAlias = TypedField[Literal["isin"], str]
-    CusipField: TypeAlias = TypedField[Literal["cusip"], str]
-    SedolField: TypeAlias = TypedField[Literal["sedol"], str]
-    BloombergField: TypeAlias = TypedField[Literal["bloomberg"], str]
+    MicCodeField: TypeAlias = TypedField[Literal["mic"], str]
+    CfiCodeField: TypeAlias = TypedField[Literal["cfi"], str]
+    IsinCodeField: TypeAlias = TypedField[Literal["isin"], str]
+    CusipCodeField: TypeAlias = TypedField[Literal["cusip"], str]
+    SedolCodeField: TypeAlias = TypedField[Literal["sedol"], str]
+    BloombergCodeField: TypeAlias = TypedField[Literal["bloomberg"], str]
     SideField: TypeAlias = TypedField[Literal["side"], str]
     StateField: TypeAlias = TypedField[Literal["state"], str]
     TimeInForceField: TypeAlias = TypedField[Literal["timeinforce"], str]
 else:
-    CountryField = CurrencyField = MicField = CfiField = IsinField = CusipField = (
-        SedolField
-    ) = BloombergField = SideField = StateField = TimeInForceField = Field
+    CountryField = CurrencyField = MicCodeField = CfiCodeField = IsinCodeField = CusipCodeField = (
+        SedolCodeField
+    ) = BloombergCodeField = SideField = StateField = TimeInForceField = Field
 
 _COUNTRY = simple_dtype("country")
 _CURRENCY = simple_dtype("currency")
@@ -64,34 +64,34 @@ def currency(name: str, *, nullable: bool = True, metadata: MetadataInput = None
     return new_field(CurrencyField, name, _CURRENCY, nullable, metadata)
 
 
-def mic(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> MicField:
+def mic(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> MicCodeField:
     """ISO 10383, the four-character market identifier code."""
 
-    return new_field(MicField, name, _MIC, nullable, metadata)
+    return new_field(MicCodeField, name, _MIC, nullable, metadata)
 
 
-def cfi(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> CfiField:
+def cfi(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> CfiCodeField:
     """ISO 10962, the six-character instrument classification."""
 
-    return new_field(CfiField, name, _CFI, nullable, metadata)
+    return new_field(CfiCodeField, name, _CFI, nullable, metadata)
 
 
-def isin(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> IsinField:
+def isin(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> IsinCodeField:
     """ISO 6166, the twelve-character securities identifier closed by its check digit."""
 
-    return new_field(IsinField, name, _ISIN, nullable, metadata)
+    return new_field(IsinCodeField, name, _ISIN, nullable, metadata)
 
 
-def cusip(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> CusipField:
+def cusip(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> CusipCodeField:
     """CUSIP, the nine-character securities identifier closed by its check digit."""
 
-    return new_field(CusipField, name, _CUSIP, nullable, metadata)
+    return new_field(CusipCodeField, name, _CUSIP, nullable, metadata)
 
 
-def sedol(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> SedolField:
+def sedol(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> SedolCodeField:
     """SEDOL, the seven-character securities identifier closed by its check digit."""
 
-    return new_field(SedolField, name, _SEDOL, nullable, metadata)
+    return new_field(SedolCodeField, name, _SEDOL, nullable, metadata)
 
 
 def bloomberg(
@@ -99,14 +99,14 @@ def bloomberg(
     *,
     nullable: bool = True,
     metadata: MetadataInput = None,
-) -> BloombergField:
+) -> BloombergCodeField:
     """A Bloomberg identifier: a ticker, a market and a yellow key, or a FIGI.
 
     The one code here whose width is only a bound - thirty-two bytes - because
     no standard fixes a length between those parts.
     """
 
-    return new_field(BloombergField, name, _BLOOMBERG, nullable, metadata)
+    return new_field(BloombergCodeField, name, _BLOOMBERG, nullable, metadata)
 
 
 def side(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> SideField:
@@ -133,14 +133,14 @@ def timeinforce(
 
 
 __all__ = [
-    "BloombergField",
-    "CfiField",
+    "BloombergCodeField",
+    "CfiCodeField",
     "CountryField",
     "CurrencyField",
-    "CusipField",
-    "IsinField",
-    "MicField",
-    "SedolField",
+    "CusipCodeField",
+    "IsinCodeField",
+    "MicCodeField",
+    "SedolCodeField",
     "SideField",
     "StateField",
     "TimeInForceField",

@@ -386,6 +386,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "DK",
     "FIX:tag": "288135",
     "description": "MsgType = DK",

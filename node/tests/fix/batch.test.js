@@ -136,7 +136,7 @@ function stated(message) {
 }
 
 test('parseLines pulls one line at a time and continues past a refused one', () => {
-  const codec = reading(seed())
+  const codec = reading(seed(), { threads: 1 })
   let pulled = 0
   function* lines() {
     for (const line of [TWO_FRAMES, '']) {
@@ -181,7 +181,7 @@ test('an item that is not bytes is refused where it is met', () => {
 })
 
 test('parseTextLines pulls one line at a time', () => {
-  const codec = reading(seed(), { captureNames: ['beginstring'] })
+  const codec = reading(seed(), { captureNames: ['beginstring'], threads: 1 })
   let pulled = 0
   function* lines() {
     for (const body of ['8=FIX.4.4|35=D|11=A|10=0|', '8=FIX.4.4|35=D|11=B|10=0|']) {
@@ -290,27 +290,40 @@ test('the codec answers the pins it was given', () => {
   assert.equal(read.byTag(11).asJs(), 'A')
 })
 
-test("threads read what one thread reads and a message carries its row's cells", () => {
-  const one = reading(seed())
-  const four = reading(seed(), { threads: 4 })
+test("threads preserve ordered multi-batch rows and a message carries its row's cells", () => {
+  const defaultCodec = reading(seed())
+  const one = reading(seed(), { threads: 1, batchRowSize: 1 })
+  const four = reading(seed(), { threads: 4, batchRowSize: 1 })
+  assert.ok(defaultCodec.threads >= 1)
   assert.equal(one.threads, 1)
   assert.equal(four.threads, 4)
   assert.equal(reading(seed(), { threads: 0 }).threads, 1)
-  // The line doors answer on four threads what they answer on one: the
-  // same messages, in the same order.
+  // The line doors answer on four threads what an explicit one answers:
+  // the same messages in the same order. One physical line holds two
+  // frames and each source batch holds one line, so the pool receives more
+  // batches than its four workers and the output closes one row at a time.
   // By content code and wire: the lines state no clock, so each parse dates
   // them by its own now, and the identity the instant derives differs.
   const stated = (messages) => [...messages].map((held) => [held.currhashcode, held.intoText('|')])
-  const lines = CAPTURE.map((line) => Buffer.from(line))
-  assert.deepEqual(stated(four.parseLines(lines)), stated(one.parseLines(lines)))
-  const parsed = four.parseTextArrowReader(capture(CAPTURE, 3)).intoTable()
-  assert.deepEqual(stated(four.messages(parsed)), stated(one.messages(parsed)))
+  const lines = [TWO_FRAMES, ...CAPTURE]
+  const bytes = lines.map((line) => Buffer.from(line))
+  assert.deepEqual(stated(four.parseLines(bytes)), stated(one.parseLines(bytes)))
+  const source = () => capture(lines, 1)
+  const parsed = four.parseTextArrowReader(source()).intoTable()
+  assert.deepEqual(
+    rowCounts(four.parseTextArrowReader(source())),
+    Array(CARRYING.length + 2).fill(1),
+  )
+  assert.deepEqual(
+    stated(four.messages(parsed)),
+    stated(one.messages(one.parseTextArrowReader(source()).intoTable())),
+  )
   // A message read back out of a row carries the row's own cells - the
   // body its line was cut from - and one parsed from bytes carries none.
   const [held] = one.messages(parsed)
   assert.deepEqual(Object.keys(held.carried), ['body'])
-  assert.equal(Buffer.from(held.carried.body.asJs()).toString(), CAPTURE[0])
-  assert.deepEqual(one.parseLine(lines[0]).next().value.carried, {})
+  assert.equal(Buffer.from(held.carried.body.asJs()).toString(), TWO_FRAMES)
+  assert.deepEqual(one.parseLine(bytes[0]).next().value.carried, {})
 })
 
 test('the schema is decided before the first row is read', () => {

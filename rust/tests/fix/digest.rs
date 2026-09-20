@@ -225,12 +225,9 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Twenty-two definitions, and every one a fact no dictionary publishes:
-    // the instants, the identities and the codes, the chain, the state
-    // reached and the expiry a walk folds forward, what a bridge's own log
-    // said, and what the reader said about the line. Nothing about the
-    // *market* is here - the price, the quantity, the instrument's codes and
-    // the lanes are FIX's own fields, and the traits answer them off those.
+    // Twenty-eight definitions: the event and capture facts, MsgCat, and five
+    // normalized identifiers whose standard FIX representation is contextual.
+    // CFI already has its own standard tag, so it adds no crate definition.
     assert_eq!(
         names,
         [
@@ -255,7 +252,13 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "metadata",
             "srcuuids",
             "state",
-            "expirunix",
+            "exprtime",
+            "msgcat",
+            "isincode",
+            "cusipcode",
+            "sedolcode",
+            "bloombergcode",
+            "miccode",
         ]
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -283,7 +286,13 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("Metadata"),
             Some("SrcUuids"),
             Some("State"),
-            Some("ExpirUnix"),
+            Some("ExprTime"),
+            Some("MsgCat"),
+            Some("IsinCode"),
+            Some("CusipCode"),
+            Some("SedolCode"),
+            Some("BloombergCode"),
+            Some("MicCode"),
         ],
     );
     // The columns a message answers from what it said are typed as the thing
@@ -322,7 +331,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     }
     // The clocks only a walk fills - the predecessor's instant and the grid
     // instant a snapshot was read as - are null on every row that is not one.
-    for name in ["prevunix", "snapunix", "expirunix"] {
+    for name in ["prevunix", "snapunix", "exprtime"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(field(name).is_nullable(), "{name}");
     }
@@ -408,7 +417,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             yggdryl::FIXMSG_TAG_NAME,
             yggdryl::SRCUUIDS_TAG_NAME,
             yggdryl::STATE_TAG_NAME,
-            yggdryl::EXPIRUNIX_TAG_NAME
+            yggdryl::EXPRTIME_TAG_NAME
         ],
         [
             (65_048, "crosscode"),
@@ -416,7 +425,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             (65_050, "fixmsg"),
             (65_051, "srcuuids"),
             (65_052, "state"),
-            (65_053, "expirunix")
+            (65_053, "exprtime")
         ]
     );
     // The fixed row's own name is a tag of the block and not a field of it:

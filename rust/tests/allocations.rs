@@ -1561,12 +1561,12 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Utf8StringView, Scalar::from("AAPL")),
         (DataTypeId::Country, Scalar::from("US")),
         (DataTypeId::Currency, Scalar::from("USD")),
-        (DataTypeId::Mic, Scalar::from("XNAS")),
-        (DataTypeId::Cfi, Scalar::from("ESVUFR")),
-        (DataTypeId::Isin, Scalar::from("US0378331005")),
-        (DataTypeId::Cusip, Scalar::from("037833100")),
-        (DataTypeId::Sedol, Scalar::from("B0YBKJ7")),
-        (DataTypeId::Bloomberg, Scalar::from("AAPL US EQUITY")),
+        (DataTypeId::MicCode, Scalar::from("XNAS")),
+        (DataTypeId::CfiCode, Scalar::from("ESVUFR")),
+        (DataTypeId::IsinCode, Scalar::from("US0378331005")),
+        (DataTypeId::CusipCode, Scalar::from("037833100")),
+        (DataTypeId::SedolCode, Scalar::from("B0YBKJ7")),
+        (DataTypeId::BloombergCode, Scalar::from("AAPL US EQUITY")),
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("20NEW")),
         (DataTypeId::TimeInForce, Scalar::from("0")),
@@ -2535,4 +2535,34 @@ fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
          {cold} cold, {warm} warm"
     );
     assert_eq!(warm, again, "the refusal is kept, not recompiled");
+}
+#[test]
+fn instrument_codes_construct_and_classify_without_allocating() {
+    use yggdryl::{BloombergCode, CfiCode, CusipCode, IsinCode, SedolCode};
+    free("long Bloomberg validation", || {
+        assert!(BloombergCode::is_canonical(
+            "AAPL US Equity Long Identifier"
+        ));
+    });
+    free("ISIN construction", || {
+        std::hint::black_box(IsinCode::new("us0378331005").unwrap());
+    });
+    free("CUSIP construction", || {
+        std::hint::black_box(CusipCode::new("037833100").unwrap());
+    });
+    free("SEDOL construction", || {
+        std::hint::black_box(SedolCode::new("b0swjx3").unwrap());
+    });
+    free("CFI validation", || {
+        assert!(CfiCode::is_classified("ESVUFR"));
+    });
+    free("CFI merging", || {
+        assert_eq!(
+            CfiCode::merged("ESXXXX", "ESVUFR").as_deref(),
+            Some("ESVUFR")
+        );
+    });
+    free("CFI inference", || {
+        assert_eq!(CfiCode::coarse('E', Some('S')).as_deref(), Some("ESXXXX"));
+    });
 }

@@ -319,6 +319,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "COLL",
     "FIX:msgtype": "CJ",
     "FIX:tag": "545047",
     "description": "MsgType = CJ",

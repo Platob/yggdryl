@@ -93,6 +93,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "PAYM",
     "FIX:msgtype": "EB",
     "FIX:tag": "417537",
     "description": "MsgType = EB",

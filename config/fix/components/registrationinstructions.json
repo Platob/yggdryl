@@ -201,6 +201,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "clordid",
+    "FIX:msgcat": "REGI",
     "FIX:msgtype": "o",
     "FIX:tag": "619440",
     "description": "MsgType = o (lowercase O)",

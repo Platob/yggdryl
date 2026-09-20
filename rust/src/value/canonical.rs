@@ -20,7 +20,9 @@ use crate::sequence::SequenceType;
 use crate::string::str_from_value;
 use crate::structure::StructType;
 use crate::temporal::{validate_date64, validate_time};
-use crate::{DataType, Error, Field, Result, Scalar, TemporalKind, TimeUnit, Timezone};
+use crate::{
+    DataType, Error, Field, FieldSegment, Result, Scalar, TemporalKind, TimeUnit, Timezone,
+};
 use crate::{DateTimeType, DateType, DecimalType, DurationType, TimeType, UriType};
 use crate::{
     Decimal32, Decimal64, Decimal128, Interval, Str, StringType, ascii_bytes, ascii_text_sized,
@@ -30,17 +32,8 @@ use crate::{
 /// One failing value, with the path walked to reach it.
 #[derive(Debug)]
 pub(crate) struct ValidationFailure {
-    path: Vec<PathSegment>,
+    path: Vec<FieldSegment>,
     reason: SmolStr,
-}
-
-#[derive(Debug)]
-pub(crate) enum PathSegment {
-    Field(SmolStr),
-    Index(usize),
-    MapKey(usize),
-    MapValue(usize),
-    Union(i8),
 }
 
 impl ValidationFailure {
@@ -51,8 +44,16 @@ impl ValidationFailure {
         }
     }
 
-    pub(crate) fn prepend(mut self, segment: PathSegment) -> Self {
+    pub(crate) fn prepend(mut self, segment: FieldSegment) -> Self {
         self.path.insert(0, segment);
+        self
+    }
+
+    pub(crate) fn prepend_segments(
+        mut self,
+        segments: impl IntoIterator<Item = FieldSegment>,
+    ) -> Self {
+        self.path.splice(0..0, segments);
         self
     }
 }
@@ -329,7 +330,7 @@ fn validate_dtype_value_for(dtype: &DataType, value: &Scalar) -> Result<()> {
     validate_dtype_value(dtype, value, 0).map_err(|failure| {
         let mut path = String::from("$");
         for segment in failure.path {
-            push_path_segment(&mut path, segment);
+            segment.append_diagnostic(&mut path);
         }
         Error::InvalidRecord {
             path: SmolStr::from(path),
@@ -394,9 +395,7 @@ pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
         return Scalar::try_sequence(root.field_len(), |index| {
             cells.canonical(&root.fields()[index], index)
         })
-        .map_err(|error| {
-            prepend_canonical_error(error, PathSegment::Field(SmolStr::new(root.name())))
-        });
+        .map_err(|error| prepend_canonical_error(error, [FieldSegment::field(root.name())]));
     }
     let Some(values) = value.as_sequence() else {
         return Err(Error::InvalidRecord {
@@ -411,9 +410,7 @@ pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
     let canonical = canonicalize_slice(values, |index, value| {
         canonicalize_field_value(&fields[index], value)
     })
-    .map_err(|error| {
-        prepend_canonical_error(error, PathSegment::Field(SmolStr::new(root.name())))
-    })?;
+    .map_err(|error| prepend_canonical_error(error, [FieldSegment::field(root.name())]))?;
     Ok(canonical.unwrap_or(value))
 }
 
@@ -432,9 +429,9 @@ pub(crate) fn canonicalize_row_cells<'a>(
         });
     };
     for (index, field) in root.fields().iter().enumerate() {
-        let canonical = cells.canonical(field, index).map_err(|error| {
-            prepend_canonical_error(error, PathSegment::Field(SmolStr::new(root.name())))
-        })?;
+        let canonical = cells
+            .canonical(field, index)
+            .map_err(|error| prepend_canonical_error(error, [FieldSegment::field(root.name())]))?;
         visit(field, canonical);
     }
     Ok(())
@@ -473,7 +470,7 @@ impl<'a> RowCells<'a> {
 
 /// Re-root one value refusal at the field that refused it.
 fn rooted_at_field(error: Error, name: &str) -> Error {
-    prepend_canonical_error(error, PathSegment::Field(SmolStr::new(name)))
+    prepend_canonical_error(error, [FieldSegment::field(name)])
 }
 
 /// Render the `$`-rooted path of a schema root.
@@ -484,9 +481,8 @@ pub(crate) fn root_path(name: &str) -> String {
 }
 
 fn canonicalize_field_value(field: &Field, value: &Scalar) -> Result<(Scalar, bool)> {
-    canonicalize_field_payload(field, value).map_err(|error| {
-        prepend_canonical_error(error, PathSegment::Field(SmolStr::new(field.name())))
-    })
+    canonicalize_field_payload(field, value)
+        .map_err(|error| prepend_canonical_error(error, [FieldSegment::field(field.name())]))
 }
 
 fn canonicalize_field_payload(field: &Field, value: &Scalar) -> Result<(Scalar, bool)> {
@@ -833,12 +829,12 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         // that trimmed text, so it is returned without re-walking its bytes.
         D::Country
         | D::Currency
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bloomberg
+        | D::MicCode
+        | D::CfiCode
+        | D::IsinCode
+        | D::CusipCode
+        | D::SedolCode
+        | D::BloombergCode
         | D::Side
         | D::State
         | D::TimeInForce => {
@@ -859,12 +855,12 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let canonical = match dtype {
                 D::Country => Scalar::Country(crate::Country::new(text)?),
                 D::Currency => Scalar::Currency(crate::Currency::new(text)?),
-                D::Mic => Scalar::Mic(crate::Mic::new(text)?),
-                D::Cfi => Scalar::Cfi(crate::Cfi::new(text)?),
-                D::Isin => Scalar::Isin(crate::Isin::new(text)?),
-                D::Cusip => Scalar::Cusip(crate::Cusip::new(text)?),
-                D::Sedol => Scalar::Sedol(crate::Sedol::new(text)?),
-                D::Bloomberg => Scalar::Bloomberg(crate::Bloomberg::new(text)?),
+                D::MicCode => Scalar::MicCode(crate::MicCode::new(text)?),
+                D::CfiCode => Scalar::CfiCode(crate::CfiCode::new(text)?),
+                D::IsinCode => Scalar::IsinCode(crate::IsinCode::new(text)?),
+                D::CusipCode => Scalar::CusipCode(crate::CusipCode::new(text)?),
+                D::SedolCode => Scalar::SedolCode(crate::SedolCode::new(text)?),
+                D::BloombergCode => Scalar::BloombergCode(crate::BloombergCode::new(text)?),
                 // A side and a state are read by their spelling: the wire
                 // code, the specification's name or a stored value all reach
                 // the one explicit value, and a spelling that names none is
@@ -1152,8 +1148,14 @@ fn canonical_sequence(
         });
     };
     if let Some(canonical) = canonicalize_slice(values, |index, value| {
-        canonicalize(value)
-            .map_err(|error| prepend_canonical_error(error, PathSegment::Index(index)))
+        canonicalize(value).map_err(|error| {
+            prepend_canonical_error(
+                error,
+                [FieldSegment::index(
+                    i64::try_from(index).expect("allocated index fits i64"),
+                )],
+            )
+        })
     })? {
         Ok((canonical, true))
     } else {
@@ -1202,8 +1204,15 @@ fn canonical_union(fields: &crate::UnionFields, value: &Scalar) -> Result<(Scala
             reason: SmolStr::new_static("validated union branch could not be canonicalized"),
         });
     };
-    let (payload, payload_changed) = canonicalize_field_value(field, payload)
-        .map_err(|error| prepend_canonical_error(error, PathSegment::Union(type_id_number)))?;
+    let (payload, payload_changed) = canonicalize_field_value(field, payload).map_err(|error| {
+        prepend_canonical_error(
+            error,
+            [
+                FieldSegment::field("union"),
+                FieldSegment::index(i64::from(type_id_number)),
+            ],
+        )
+    })?;
     // The type id has one canonical representation - the `Int64` a union row
     // reads back as - so a narrower spelling of the same number is a change,
     // and the canonical value no longer depends on whether the payload needed
@@ -1227,10 +1236,30 @@ fn canonical_map(map: &crate::MappingType, value: &Scalar) -> Result<(Scalar, bo
         return canonicalization_failure(&DataType::Mapping(map.clone()));
     };
     for (index, (key, entry_value)) in entries.iter().enumerate() {
-        let (canonical_key, key_changed) = canonicalize_field_payload(key_field, key)
-            .map_err(|error| prepend_canonical_error(error, PathSegment::MapKey(index)))?;
+        let (canonical_key, key_changed) =
+            canonicalize_field_payload(key_field, key).map_err(|error| {
+                prepend_canonical_error(
+                    error,
+                    [
+                        FieldSegment::index(
+                            i64::try_from(index).expect("allocated index fits i64"),
+                        ),
+                        FieldSegment::field("key"),
+                    ],
+                )
+            })?;
         let (canonical_value, value_changed) = canonicalize_field_payload(value_field, entry_value)
-            .map_err(|error| prepend_canonical_error(error, PathSegment::MapValue(index)))?;
+            .map_err(|error| {
+                prepend_canonical_error(
+                    error,
+                    [
+                        FieldSegment::index(
+                            i64::try_from(index).expect("allocated index fits i64"),
+                        ),
+                        FieldSegment::field("value"),
+                    ],
+                )
+            })?;
         if key_changed || value_changed {
             let mut canonical = Vec::with_capacity(entries.len());
             canonical.extend_from_slice(&entries[..index]);
@@ -1240,12 +1269,30 @@ fn canonical_map(map: &crate::MappingType, value: &Scalar) -> Result<(Scalar, bo
                 canonical.push((
                     canonicalize_field_payload(key_field, key)
                         .map_err(|error| {
-                            prepend_canonical_error(error, PathSegment::MapKey(entry_index))
+                            prepend_canonical_error(
+                                error,
+                                [
+                                    FieldSegment::index(
+                                        i64::try_from(entry_index)
+                                            .expect("allocated index fits i64"),
+                                    ),
+                                    FieldSegment::field("key"),
+                                ],
+                            )
                         })?
                         .0,
                     canonicalize_field_payload(value_field, entry_value)
                         .map_err(|error| {
-                            prepend_canonical_error(error, PathSegment::MapValue(entry_index))
+                            prepend_canonical_error(
+                                error,
+                                [
+                                    FieldSegment::index(
+                                        i64::try_from(entry_index)
+                                            .expect("allocated index fits i64"),
+                                    ),
+                                    FieldSegment::field("value"),
+                                ],
+                            )
                         })?
                         .0,
                 ));
@@ -1255,7 +1302,18 @@ fn canonical_map(map: &crate::MappingType, value: &Scalar) -> Result<(Scalar, bo
                 broken_map_invariant(map, canonical.as_mapping().unwrap_or_default())
             {
                 return Err(Error::InvalidRecord {
-                    path: format_smolstr!("$[{index}].key"),
+                    path: {
+                        let mut path = String::from("$");
+                        for segment in [
+                            FieldSegment::index(
+                                i64::try_from(index).expect("allocated index fits i64"),
+                            ),
+                            FieldSegment::field("key"),
+                        ] {
+                            segment.append_diagnostic(&mut path);
+                        }
+                        SmolStr::from(path)
+                    },
                     reason: format_smolstr!(
                         "{reason} after schema-directed physical normalization"
                     ),
@@ -1377,12 +1435,17 @@ fn canonicalization_failure<T>(dtype: &DataType) -> Result<T> {
     })
 }
 
-fn prepend_canonical_error(error: Error, segment: PathSegment) -> Error {
+fn prepend_canonical_error(
+    error: Error,
+    segments: impl IntoIterator<Item = FieldSegment>,
+) -> Error {
     let Error::InvalidRecord { path, reason } = error else {
         return error;
     };
     let mut prefixed = String::from("$");
-    push_path_segment(&mut prefixed, segment);
+    for segment in segments {
+        segment.append_diagnostic(&mut prefixed);
+    }
     prefixed.push_str(path.strip_prefix('$').unwrap_or(path.as_str()));
     Error::InvalidRecord {
         path: SmolStr::from(prefixed),
@@ -1393,24 +1456,11 @@ fn prepend_canonical_error(error: Error, segment: PathSegment) -> Error {
 fn validation_error(root: &str, failure: ValidationFailure) -> Error {
     let mut path = root_path(root);
     for segment in failure.path {
-        push_path_segment(&mut path, segment);
+        segment.append_diagnostic(&mut path);
     }
     Error::InvalidRecord {
         path: SmolStr::from(path),
         reason: failure.reason,
-    }
-}
-
-fn push_path_segment(path: &mut String, segment: PathSegment) {
-    // Owned segments are accumulated while a validation failure unwinds, so
-    // this cannot borrow `crate::path::Path`; it shares the spelling instead.
-    use crate::path::{Segment, push_segment};
-    match segment {
-        PathSegment::Field(name) => push_segment(path, Segment::Field(&name)),
-        PathSegment::Index(index) => push_segment(path, Segment::Index(index)),
-        PathSegment::MapKey(index) => push_segment(path, Segment::MapKey(index)),
-        PathSegment::MapValue(index) => push_segment(path, Segment::MapValue(index)),
-        PathSegment::Union(type_id) => push_segment(path, Segment::UnionType(type_id)),
     }
 }
 
@@ -1427,7 +1477,7 @@ fn validate_field_value_at_depth(
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
     validate_field_payload_at_depth(field, value, depth)
-        .map_err(|failure| failure.prepend(PathSegment::Field(SmolStr::new(field.name()))))
+        .map_err(|failure| failure.prepend(FieldSegment::field(field.name())))
 }
 
 fn validate_field_payload_at_depth(
@@ -1558,12 +1608,12 @@ fn validate_dtype_value(
         },
         D::Country
         | D::Currency
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bloomberg
+        | D::MicCode
+        | D::CfiCode
+        | D::IsinCode
+        | D::CusipCode
+        | D::SedolCode
+        | D::BloombergCode
         | D::Side
         | D::State
         | D::TimeInForce => match ascii_bytes(value) {
@@ -1697,8 +1747,11 @@ fn validate_sequence(
         }
     }
     for (index, value) in values.iter().enumerate() {
-        validate_field_value_at_depth(field, value, depth)
-            .map_err(|failure| failure.prepend(PathSegment::Index(index)))?;
+        validate_field_value_at_depth(field, value, depth).map_err(|failure| {
+            failure.prepend(FieldSegment::index(
+                i64::try_from(index).expect("allocated index fits i64"),
+            ))
+        })?;
     }
     Ok(())
 }
@@ -1776,8 +1829,12 @@ fn validate_union(
         .ok_or_else(|| {
             ValidationFailure::new(format_smolstr!("unknown union type id {type_id}"))
         })?;
-    validate_field_value_at_depth(field, payload, depth)
-        .map_err(|failure| failure.prepend(PathSegment::Union(type_id)))
+    validate_field_value_at_depth(field, payload, depth).map_err(|failure| {
+        failure.prepend_segments([
+            FieldSegment::field("union"),
+            FieldSegment::index(i64::from(type_id)),
+        ])
+    })
 }
 
 /// The reason an ASCII refusal carries; the walk re-roots its path.
@@ -1836,15 +1893,24 @@ fn validate_map(
         ));
     };
     for (index, (key, entry_value)) in entries.iter().enumerate() {
-        validate_field_value_at_depth(key_field, key, depth)
-            .map_err(|failure| failure.prepend(PathSegment::MapKey(index)))?;
-        validate_field_value_at_depth(value_field, entry_value, depth)
-            .map_err(|failure| failure.prepend(PathSegment::MapValue(index)))?;
+        validate_field_value_at_depth(key_field, key, depth).map_err(|failure| {
+            failure.prepend_segments([
+                FieldSegment::index(i64::try_from(index).expect("allocated index fits i64")),
+                FieldSegment::field("key"),
+            ])
+        })?;
+        validate_field_value_at_depth(value_field, entry_value, depth).map_err(|failure| {
+            failure.prepend_segments([
+                FieldSegment::index(i64::try_from(index).expect("allocated index fits i64")),
+                FieldSegment::field("value"),
+            ])
+        })?;
     }
     match broken_map_invariant(map, entries) {
-        Some((index, reason)) => {
-            Err(ValidationFailure::new(reason).prepend(PathSegment::MapKey(index)))
-        }
+        Some((index, reason)) => Err(ValidationFailure::new(reason).prepend_segments([
+            FieldSegment::index(i64::try_from(index).expect("allocated index fits i64")),
+            FieldSegment::field("key"),
+        ])),
         None => Ok(()),
     }
 }

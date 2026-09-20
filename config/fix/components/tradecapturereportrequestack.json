@@ -277,6 +277,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid",
+    "FIX:msgcat": "TRAD",
     "FIX:msgtype": "AQ",
     "FIX:tag": "977882",
     "description": "MsgType = AQ",

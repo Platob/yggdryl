@@ -353,6 +353,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "origclordid,orderid,clordid,secondaryclordid,listid",
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "F",
     "FIX:tag": "803010",
     "description": "MsgType = F",

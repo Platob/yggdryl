@@ -23,6 +23,7 @@
 pub mod column;
 pub mod element;
 pub mod event;
+pub(crate) mod instrument;
 pub mod iterator;
 
 pub use column::EventColumn;

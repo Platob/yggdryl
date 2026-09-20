@@ -4,7 +4,10 @@
 use std::collections::BTreeMap;
 
 use super::{Element, Event, MarketElement, MarketEvent};
-use crate::{Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol, Side, State, Uuid};
+use crate::{
+    BloombergCode, CfiCode, Currency, CusipCode, Decimal18, IsinCode, MicCode, SedolCode, Side,
+    State, Uuid,
+};
 
 /// The concrete market element: every fact [`Element`] and
 /// [`MarketElement`] name, held as one field each, with no instant of its
@@ -73,12 +76,12 @@ pub struct MarketElementData {
     qty: Decimal18,
     unit: String,
     side: Side,
-    isincode: Option<Isin>,
-    cusipcode: Option<Cusip>,
-    sedolcode: Option<Sedol>,
-    bloombergcode: Option<Bloomberg>,
-    cficode: Option<Cfi>,
-    miccode: Option<Mic>,
+    isincode: Option<IsinCode>,
+    cusipcode: Option<CusipCode>,
+    sedolcode: Option<SedolCode>,
+    bloombergcode: Option<BloombergCode>,
+    cficode: Option<CfiCode>,
+    miccode: Option<MicCode>,
     lastpx: Option<Decimal18>,
     lastqty: Option<Decimal18>,
     avgpx: Option<Decimal18>,
@@ -281,51 +284,57 @@ impl MarketElement for MarketElementData {
         self.side = side;
     }
 
-    fn get_isincode(&self) -> Option<&Isin> {
+    fn get_isincode(&self) -> Option<&IsinCode> {
         self.isincode.as_ref()
     }
 
-    fn set_isincode(&mut self, isincode: Option<Isin>) {
+    fn set_isincode(&mut self, isincode: Option<IsinCode>) {
         self.isincode = isincode;
+        if self.cusipcode.is_none() {
+            self.cusipcode = self
+                .isincode
+                .as_ref()
+                .and_then(super::instrument::embedded_cusip);
+        }
     }
 
-    fn get_cusipcode(&self) -> Option<&Cusip> {
+    fn get_cusipcode(&self) -> Option<&CusipCode> {
         self.cusipcode.as_ref()
     }
 
-    fn set_cusipcode(&mut self, cusipcode: Option<Cusip>) {
+    fn set_cusipcode(&mut self, cusipcode: Option<CusipCode>) {
         self.cusipcode = cusipcode;
     }
 
-    fn get_sedolcode(&self) -> Option<&Sedol> {
+    fn get_sedolcode(&self) -> Option<&SedolCode> {
         self.sedolcode.as_ref()
     }
 
-    fn set_sedolcode(&mut self, sedolcode: Option<Sedol>) {
+    fn set_sedolcode(&mut self, sedolcode: Option<SedolCode>) {
         self.sedolcode = sedolcode;
     }
 
-    fn get_bloombergcode(&self) -> Option<&Bloomberg> {
+    fn get_bloombergcode(&self) -> Option<&BloombergCode> {
         self.bloombergcode.as_ref()
     }
 
-    fn set_bloombergcode(&mut self, bloombergcode: Option<Bloomberg>) {
+    fn set_bloombergcode(&mut self, bloombergcode: Option<BloombergCode>) {
         self.bloombergcode = bloombergcode;
     }
 
-    fn get_cficode(&self) -> Option<&Cfi> {
+    fn get_cficode(&self) -> Option<&CfiCode> {
         self.cficode.as_ref()
     }
 
-    fn set_cficode(&mut self, cficode: Option<Cfi>) {
+    fn set_cficode(&mut self, cficode: Option<CfiCode>) {
         self.cficode = cficode;
     }
 
-    fn get_miccode(&self) -> Option<&Mic> {
+    fn get_miccode(&self) -> Option<&MicCode> {
         self.miccode.as_ref()
     }
 
-    fn set_miccode(&mut self, miccode: Option<Mic>) {
+    fn set_miccode(&mut self, miccode: Option<MicCode>) {
         self.miccode = miccode;
     }
 
@@ -536,7 +545,7 @@ pub struct MarketEventData {
     state: State,
     seqnum: u64,
     creaunix: Option<i64>,
-    expirunix: Option<i64>,
+    exprtime: Option<i64>,
     prevunix: Option<i64>,
     prevuuid: Option<Uuid>,
     snapunix: Option<i64>,
@@ -554,7 +563,7 @@ impl MarketEventData {
             state: State::unknown(),
             seqnum: 0,
             creaunix: None,
-            expirunix: None,
+            exprtime: None,
             prevunix: None,
             prevuuid: None,
             snapunix: None,
@@ -695,12 +704,12 @@ impl Event for MarketEventData {
         self.creaunix = unix;
     }
 
-    fn get_expirunix(&self) -> Option<i64> {
-        self.expirunix
+    fn get_exprtime(&self) -> Option<i64> {
+        self.exprtime
     }
 
-    fn set_expirunix(&mut self, unix: Option<i64>) {
-        self.expirunix = unix;
+    fn set_exprtime(&mut self, unix: Option<i64>) {
+        self.exprtime = unix;
     }
 
     fn get_prevunix(&self) -> Option<i64> {
@@ -769,52 +778,52 @@ impl MarketElement for MarketEventData {
         self.element.side = side;
     }
 
-    fn get_isincode(&self) -> Option<&Isin> {
+    fn get_isincode(&self) -> Option<&IsinCode> {
         self.element.isincode.as_ref()
     }
 
-    fn set_isincode(&mut self, isincode: Option<Isin>) {
-        self.element.isincode = isincode;
+    fn set_isincode(&mut self, isincode: Option<IsinCode>) {
+        self.element.set_isincode(isincode);
     }
 
-    fn get_cusipcode(&self) -> Option<&Cusip> {
+    fn get_cusipcode(&self) -> Option<&CusipCode> {
         self.element.cusipcode.as_ref()
     }
 
-    fn set_cusipcode(&mut self, cusipcode: Option<Cusip>) {
-        self.element.cusipcode = cusipcode;
+    fn set_cusipcode(&mut self, cusipcode: Option<CusipCode>) {
+        self.element.set_cusipcode(cusipcode);
     }
 
-    fn get_sedolcode(&self) -> Option<&Sedol> {
+    fn get_sedolcode(&self) -> Option<&SedolCode> {
         self.element.sedolcode.as_ref()
     }
 
-    fn set_sedolcode(&mut self, sedolcode: Option<Sedol>) {
-        self.element.sedolcode = sedolcode;
+    fn set_sedolcode(&mut self, sedolcode: Option<SedolCode>) {
+        self.element.set_sedolcode(sedolcode);
     }
 
-    fn get_bloombergcode(&self) -> Option<&Bloomberg> {
+    fn get_bloombergcode(&self) -> Option<&BloombergCode> {
         self.element.bloombergcode.as_ref()
     }
 
-    fn set_bloombergcode(&mut self, bloombergcode: Option<Bloomberg>) {
-        self.element.bloombergcode = bloombergcode;
+    fn set_bloombergcode(&mut self, bloombergcode: Option<BloombergCode>) {
+        self.element.set_bloombergcode(bloombergcode);
     }
 
-    fn get_cficode(&self) -> Option<&Cfi> {
+    fn get_cficode(&self) -> Option<&CfiCode> {
         self.element.cficode.as_ref()
     }
 
-    fn set_cficode(&mut self, cficode: Option<Cfi>) {
-        self.element.cficode = cficode;
+    fn set_cficode(&mut self, cficode: Option<CfiCode>) {
+        self.element.set_cficode(cficode);
     }
 
-    fn get_miccode(&self) -> Option<&Mic> {
+    fn get_miccode(&self) -> Option<&MicCode> {
         self.element.miccode.as_ref()
     }
 
-    fn set_miccode(&mut self, miccode: Option<Mic>) {
-        self.element.miccode = miccode;
+    fn set_miccode(&mut self, miccode: Option<MicCode>) {
+        self.element.set_miccode(miccode);
     }
 
     fn get_lastpx(&self) -> Option<Decimal18> {
@@ -981,7 +990,7 @@ fn copy_event<T: Event + ?Sized, E: Event + ?Sized>(this: &mut T, other: &E) {
     this.set_state(other.get_state().clone());
     this.set_seqnum(other.get_seqnum());
     this.set_creaunix(other.get_creaunix());
-    this.set_expirunix(other.get_expirunix());
+    this.set_exprtime(other.get_exprtime());
     this.set_prevunix(other.get_prevunix());
     this.set_prevuuid(other.get_prevuuid());
     this.set_snapunix(other.get_snapunix());

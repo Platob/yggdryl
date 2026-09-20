@@ -2,10 +2,10 @@
 //!
 //! What a CFI code *is* - its six positions, which letters each accepts, how
 //! two statements merge - belongs to the value and lives beside it in
-//! [`crate::Cfi`]. This module is the other half: which
+//! [`crate::CfiCode`]. This module is the other half: which
 //! FIX tags say something about a classification, and what each of them says.
 //!
-//! That split is the point. `Cfi::merged` is the same fold whether the two
+//! That split is the point. `CfiCode::merged` is the same fold whether the two
 //! codes came off a FIX wire, an ISIN registry or two columns of a table, so
 //! a FIX-shaped copy of it would be a second answer to one question. What is
 //! genuinely FIX's is the chain below: that `SecurityType(167)` is the only
@@ -15,7 +15,7 @@
 
 use smol_str::SmolStr;
 
-use crate::Cfi;
+use crate::CfiCode;
 
 /// The tag FIX publishes the ISO 10962 classification under, since FIX 4.3.
 ///
@@ -105,7 +105,7 @@ fn option_group(put_or_call: i64) -> Option<char> {
 /// An identifier scheme is evidence about the instrument: a message whose
 /// `SecurityID` is an ISO 4217 currency code is describing a currency, and
 /// one whose identifier is a settlement-entity code is not describing an
-/// equity. Most schemes - ISIN, CUSIP, SEDOL, RIC, Bloomberg - are issued
+/// equity. Most schemes - ISIN, CUSIP, SEDOL, RIC, BloombergCode - are issued
 /// across every category and license nothing, which is the honest answer for
 /// them.
 fn category_of_id_source(source: &str) -> Option<char> {
@@ -122,7 +122,7 @@ impl super::FixMsg {
     /// The instrument's classification, filled to the maximum the message
     /// licenses.
     ///
-    /// The chain, each step merged into the last through [`Cfi::merged`](crate::Cfi::merged)
+    /// The chain, each step merged into the last through [`CfiCode::merged`](crate::CfiCode::merged)
     /// so a later step can only *fill* what an earlier one left unknown:
     ///
     /// 1. a stated `CFICode(461)`, which is the instrument's classification
@@ -139,7 +139,7 @@ impl super::FixMsg {
     ///
     /// A step that names a different instrument than the one established -
     /// a different category or group - does not overwrite it and does not
-    /// merge: [`Cfi::merged`](crate::Cfi::merged) answers `None` and the step is dropped,
+    /// merge: [`CfiCode::merged`](crate::CfiCode::merged) answers `None` and the step is dropped,
     /// because a message stating `CFICode=ESXXXX` and `SecurityType=FUT` has
     /// disagreed with itself and the stated classification is the one of
     /// record.
@@ -211,7 +211,7 @@ impl super::FixMsg {
                 // A step describing a different instrument is dropped rather
                 // than merged: the classification of record stands.
                 Some(current) => {
-                    Some(Cfi::merged(current, &candidate).unwrap_or_else(|| current.clone()))
+                    Some(CfiCode::merged(current, &candidate).unwrap_or_else(|| current.clone()))
                 }
             };
         };
@@ -221,7 +221,7 @@ impl super::FixMsg {
         fold(
             text(461)
                 .map(SmolStr::new)
-                .filter(|held| Cfi::is_classified(held)),
+                .filter(|held| CfiCode::is_classified(held)),
         );
         fold(
             text(167)
@@ -232,19 +232,19 @@ impl super::FixMsg {
                         'O' => listed_option_group,
                         _ => None,
                     });
-                    Cfi::coarse(category, group)
+                    CfiCode::coarse(category, group)
                 }),
         );
         fold(
             number(460)
                 .and_then(category_of_product)
-                .and_then(|category| Cfi::coarse(category, None)),
+                .and_then(|category| CfiCode::coarse(category, None)),
         );
         fold(
             text(22)
                 .as_deref()
                 .and_then(category_of_id_source)
-                .and_then(|category| Cfi::coarse(category, None)),
+                .and_then(|category| CfiCode::coarse(category, None)),
         );
         // `PutOrCall` also refines a listed option this chain only reached
         // coarsely: `OM` is the Others group `coarse` falls back to, so a
@@ -256,7 +256,7 @@ impl super::FixMsg {
             if spelled.first() == Some(&'O') && spelled.get(1) == Some(&'M') && group != 'M' {
                 spelled[1] = group;
                 let candidate: String = spelled.into_iter().collect();
-                if Cfi::is_classified(&candidate) {
+                if CfiCode::is_classified(&candidate) {
                     held = Some(SmolStr::new(candidate));
                 }
             }

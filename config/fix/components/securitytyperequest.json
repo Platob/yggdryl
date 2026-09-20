@@ -148,6 +148,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SECU",
     "FIX:msgtype": "v",
     "FIX:tag": "929203",
     "description": "MsgType = v (lowercase V)",

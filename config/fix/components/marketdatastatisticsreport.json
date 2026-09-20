@@ -371,6 +371,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "securitylistid",
+    "FIX:msgcat": "BOOK",
     "FIX:msgtype": "DP",
     "FIX:tag": "480519",
     "description": "MsgType = DP",

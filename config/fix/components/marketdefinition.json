@@ -476,6 +476,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "BOOK",
     "FIX:msgtype": "BU",
     "FIX:tag": "1089468",
     "description": "MsgType = BU",

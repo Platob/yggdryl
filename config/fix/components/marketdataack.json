@@ -135,6 +135,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "BOOK",
     "FIX:msgtype": "EQ",
     "FIX:tag": "626627",
     "description": "MsgType = EQ",

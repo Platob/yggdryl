@@ -848,6 +848,12 @@ impl PyMsgType {
         self.inner().as_str()
     }
 
+    /// The definition's fixed four-byte business category, or `None`.
+    #[getter]
+    fn msgcat(&self) -> Option<&str> {
+        self.inner().msgcat()
+    }
+
     /// The definition's own Struct field, read-only.
     #[getter]
     fn field(&self) -> PyField {
@@ -1655,6 +1661,12 @@ impl PyFixMsg {
         }
     }
 
+    /// The fixed four-byte business category lifted from the message type.
+    #[getter]
+    fn msgcat(&self) -> Option<&str> {
+        self.inner.lifted().msgcat()
+    }
+
     /// What the line said about the capture it was written for, typed and
     /// held still: the plugin a bridge logged it under, the message context
     /// and the session instance.
@@ -2083,16 +2095,19 @@ impl PyFixCodec {
     /// empty; `batch_byte_size` and `batch_row_size` are the raw bytes and
     /// the row count one Arrow batch targets, the core's 128 MiB and 32,768
     /// rows when unstated, whichever the batch reaches first;
-    /// `threads` is how many threads the line and row doors read on, one
-    /// when unstated - more read a stream a chunk ahead, each line on some
-    /// thread, and answer in the lines' order, so the doors answer what one
-    /// thread answers, sooner; `include_msgtypes` and `exclude_msgtypes`
+    /// `threads` is how many threads the line and row doors read on, the
+    /// available CPUs when unstated; `threads=1` pulls a stream lazily,
+    /// while more read a stream ahead and answer in its order. Arrow parse
+    /// doors give whole input batches to at most this many jobs and keep
+    /// their batch order; `include_msgtypes` and `exclude_msgtypes`
     /// are the message types a parse keeps and refuses, each read before a
     /// frame is built, spelled
     /// as codes or as names - `"0"`, `"Heartbeat"` - with `"unknown"`
     /// standing for a line stating no type at all. Unstated, the core
     /// refuses `Heartbeat`, `TestRequest` and the untyped line; passing an
-    /// empty `exclude_msgtypes` keeps every type.
+    /// empty `exclude_msgtypes` keeps every type. `snapshot_ns` is an
+    /// epoch-aligned lifecycle snapshot width in nanoseconds; `None`, zero
+    /// and a negative width disable snapshots.
     #[new]
     #[pyo3(signature = (
         registry=None,
@@ -2108,6 +2123,7 @@ impl PyFixCodec {
         include_msgtypes=None,
         exclude_msgtypes=None,
         threads=None,
+        snapshot_ns=None,
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -2123,6 +2139,7 @@ impl PyFixCodec {
         include_msgtypes: Option<Vec<String>>,
         exclude_msgtypes: Option<Vec<String>>,
         threads: Option<usize>,
+        snapshot_ns: Option<i64>,
     ) -> PyResult<Self> {
         let registry = registry_or_global(registry)?;
         let mut inner =
@@ -2158,6 +2175,9 @@ impl PyFixCodec {
         }
         if let Some(held) = threads {
             inner = inner.with_threads(held);
+        }
+        if let Some(held) = snapshot_ns {
+            inner = inner.with_snapshot_ns(held);
         }
         Ok(Self { inner, registry })
     }
@@ -2215,11 +2235,18 @@ impl PyFixCodec {
         self.inner.batch_row_size()
     }
 
-    /// The threads the line and row doors read on; one reads a stream
-    /// where it stands.
+    /// The threads the line and row doors read on: the available CPUs by
+    /// default, and one where a stream is pulled lazily.
     #[getter]
     fn threads(&self) -> usize {
         self.inner.threads()
+    }
+
+    /// The epoch-aligned lifecycle snapshot width in nanoseconds, or `None`
+    /// where snapshots are disabled.
+    #[getter]
+    fn snapshot_ns(&self) -> Option<i64> {
+        self.inner.snapshot_ns()
     }
 
     /// The message types a parse keeps, empty where it keeps every type
@@ -2367,7 +2394,9 @@ impl PyFixCodec {
     /// decided before the first row: the capture's own columns lead and the
     /// fixed FIX columns follow. Every row is parsed as the line door
     /// parses one, and batches close on the bytes each row lands as
-    /// against `batch_byte_size`.
+    /// against `batch_byte_size`. With more than one `threads`, at most that
+    /// many whole input batches are jobs at once and their answers stay in
+    /// input-batch order.
     ///
     /// The capture's own columns fill nothing: the carried ones, and the one
     /// the crate tags - a `sourceurl` column - are read off the source row
@@ -2654,7 +2683,7 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// The definitions this crate lists, in tag order from 65003.
 ///
 /// The event's clocks - `currunix`, `creaunix`, `prevunix`, `snapunix`,
-/// `expirunix` - its identities - `currhashcode`, `crosshashcode`,
+/// `exprtime` - its identities - `currhashcode`, `crosshashcode`,
 /// `curruuid`, `crossuuid`, `prevuuid`, `parentuuids`, the `crosscode` they
 /// derive from, its `seqnum` - the `state` it reached - the `srcuuids` of
 /// the lines it was read from - what a bridge's own log states about a line
@@ -3098,8 +3127,8 @@ impl PyMarketEventData {
 
     /// When the event stops being good, or `None`.
     #[getter]
-    fn expirunix(&self) -> Option<i64> {
-        self.inner.get_expirunix()
+    fn exprtime(&self) -> Option<i64> {
+        self.inner.get_exprtime()
     }
 
     /// When the event this one follows happened, or `None`.

@@ -125,7 +125,7 @@ impl JsScalar {
 
 #[napi]
 impl JsScalar {
-    /// Convert a JavaScript value, applying its declared core Field or DataType.
+    /// Convert a JavaScript value, applying its declared core `Field` or `DataType`.
     #[napi(factory, js_name = "_fromJsNative", skip_typescript)]
     pub fn from_js_native(
         env: Env,

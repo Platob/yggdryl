@@ -2,6 +2,7 @@
 //! what: every door answers on four threads exactly what it answers on one.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use arrow_array::RecordBatch;
 use yggdryl::arrow::BatchReader;
@@ -84,9 +85,12 @@ fn same_batches(one: &[Result<RecordBatch, String>], four: &[Result<RecordBatch,
 
 /// Zero threads read as one, and the count is the codec's to state.
 #[test]
-fn the_threads_are_one_unless_stated_and_never_zero() {
+fn the_threads_default_to_available_cpus_and_never_zero() {
     let codec = FixCodec::new(super::committed_registry());
-    assert_eq!(codec.threads(), 1);
+    assert_eq!(
+        codec.threads(),
+        std::thread::available_parallelism().map_or(1, usize::from)
+    );
     assert_eq!(codec.clone().with_threads(0).threads(), 1);
     assert_eq!(codec.clone().with_threads(4).threads(), 4);
     let mut codec = codec;
@@ -184,4 +188,175 @@ fn every_door_answers_on_four_threads_what_it_answers_on_one() {
         )
     };
     same_batches(&written(&one), &written(&four));
+}
+
+fn batch_source(rows: &[&str]) -> RecordBatch {
+    let field = yggdryl::DataType::from(
+        yggdryl::StructType::from_fields([yggdryl::DataType::utf8().required_field("body")])
+            .unwrap(),
+    )
+    .required_field("capture");
+    let values = yggdryl::Scalar::from_sequence(
+        rows.iter()
+            .map(|row| yggdryl::Scalar::from_sequence([yggdryl::Scalar::from(*row)])),
+    );
+    yggdryl::arrow::batch_from_value(&field, &values).unwrap()
+}
+
+const TWO_FRAMES: &str = "8=FIX.4.4|35=D|11=FIRST|10=0| 8=FIX.4.4|35=D|11=SECOND|10=0|";
+
+fn counted_batches(pulls: &Arc<AtomicUsize>) -> BatchReader {
+    let batch = batch_source(&[TWO_FRAMES, "8=FIX.4.4|35=D|11=THIRD|10=0|"]);
+    let schema = batch.schema();
+    let pulls = Arc::clone(pulls);
+    let source = std::iter::repeat_n(batch, 12).inspect(move |_| {
+        pulls.fetch_add(1, Ordering::Relaxed);
+    });
+    yggdryl::arrow::batch_reader(schema, source)
+}
+
+#[test]
+fn arrow_parse_pool_refills_only_after_the_next_batch_is_consumed() {
+    for threads in [1, 3] {
+        let codec = super::fixed_codec(super::committed_registry())
+            .with_threads(threads)
+            .with_batch_row_size(1);
+        let pulls = Arc::new(AtomicUsize::new(0));
+        let mut messages = codec.parse_arrow_messages(counted_batches(&pulls)).unwrap();
+        assert_eq!(pulls.load(Ordering::Relaxed), 0, "construction is lazy");
+        for id in ["FIRST", "SECOND", "THIRD"] {
+            let message = messages.next().unwrap().unwrap();
+            assert_eq!(message.get_by_tag(11).unwrap().as_str(), Some(id));
+            assert_eq!(pulls.load(Ordering::Relaxed), threads);
+        }
+        assert!(messages.next().unwrap().is_ok());
+        assert_eq!(pulls.load(Ordering::Relaxed), threads + 1);
+        drop(messages);
+        assert_eq!(
+            pulls.load(Ordering::Relaxed),
+            threads + 1,
+            "drop reads no more input"
+        );
+
+        pulls.store(0, Ordering::Relaxed);
+        let mut output = codec
+            .parse_text_arrow_reader(counted_batches(&pulls))
+            .unwrap();
+        assert_eq!(pulls.load(Ordering::Relaxed), 0);
+        for _ in 0..3 {
+            assert_eq!(output.next().unwrap().unwrap().num_rows(), 1);
+            assert_eq!(pulls.load(Ordering::Relaxed), threads);
+        }
+        assert_eq!(output.next().unwrap().unwrap().num_rows(), 1);
+        assert_eq!(pulls.load(Ordering::Relaxed), threads + 1);
+        drop(output);
+    }
+}
+
+#[test]
+fn arrow_parse_pool_preserves_uneven_batches_and_output_boundaries() {
+    let one = super::fixed_codec(super::committed_registry())
+        .with_batch_row_size(3)
+        .with_batch_byte_size(8_000);
+    let four = one.clone().with_threads(4);
+    let inputs = vec![
+        batch_source(&[TWO_FRAMES]),
+        batch_source(&[]),
+        batch_source(&["unclassified prose", TWO_FRAMES, TWO_FRAMES]),
+        batch_source(&["8=FIX.4.4|35=D|11=LAST|10=0|"]),
+    ];
+    let source = || yggdryl::arrow::batch_reader(inputs[0].schema(), inputs.clone());
+    same_messages(
+        &messages(one.parse_arrow_messages(source()).unwrap()),
+        &messages(four.parse_arrow_messages(source()).unwrap()),
+    );
+    let expected = batches(one.parse_text_arrow_reader(source()).unwrap());
+    assert_eq!(
+        expected
+            .iter()
+            .map(|batch| batch.as_ref().unwrap().num_rows())
+            .sum::<usize>(),
+        7
+    );
+    same_batches(
+        &expected,
+        &batches(four.parse_text_arrow_reader(source()).unwrap()),
+    );
+}
+
+#[test]
+fn arrow_parse_pool_keeps_source_errors_at_their_input_position() {
+    let codec = super::fixed_codec(super::committed_registry()).with_threads(3);
+    let batch = batch_source(&["8=FIX.4.4|35=D|11=BEFORE|10=0|"]);
+    let source = || -> BatchReader {
+        Box::new(arrow_array::RecordBatchIterator::new(
+            [
+                Ok(batch.clone()),
+                Err(arrow_schema::ArrowError::ParseError(
+                    "ordered source failure".into(),
+                )),
+                Ok(batch_source(&["8=FIX.4.4|35=D|11=AFTER|10=0|"])),
+                Ok(RecordBatch::new_empty(Arc::new(
+                    arrow_schema::Schema::empty(),
+                ))),
+                Ok(batch.clone()),
+            ],
+            batch.schema(),
+        ))
+    };
+    let mut read = codec.parse_arrow_messages(source()).unwrap();
+    assert_eq!(
+        read.next()
+            .unwrap()
+            .unwrap()
+            .get_by_tag(11)
+            .unwrap()
+            .as_str(),
+        Some("BEFORE")
+    );
+    assert!(
+        read.next()
+            .unwrap()
+            .unwrap_err()
+            .to_string()
+            .contains("ordered source failure")
+    );
+    assert_eq!(
+        read.next()
+            .unwrap()
+            .unwrap()
+            .get_by_tag(11)
+            .unwrap()
+            .as_str(),
+        Some("AFTER")
+    );
+    assert!(
+        read.next()
+            .unwrap()
+            .unwrap_err()
+            .to_string()
+            .contains("different batch schema")
+    );
+    assert!(read.next().unwrap().is_ok());
+    assert!(read.next().is_none());
+    assert!(read.next().is_none());
+
+    let mut output = codec.parse_text_arrow_reader(source()).unwrap();
+    assert_eq!(
+        output.next().unwrap().unwrap().num_rows(),
+        1,
+        "completed prefix"
+    );
+    assert!(
+        output
+            .next()
+            .unwrap()
+            .unwrap_err()
+            .to_string()
+            .contains("ordered source failure")
+    );
+    assert!(
+        output.next().is_none(),
+        "Arrow output fuses at the first error"
+    );
 }

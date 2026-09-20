@@ -24,10 +24,11 @@
 //! takes it through a column - so a schema, a row, and a batch cannot disagree
 //! about what `legs[0].ccy` reaches.
 //!
-//! This is a *selector*: it says which child a caller wants. It is not the
-//! crate-private `Path` cons-list a recursive walk carries to report where a
-//! failure happened. The two never merge - one is caller input resolved once,
-//! the other is walker state rendered only on error.
+//! This is a *selector*: it says which child a caller wants. A successful
+//! recursive walk still carries the crate-private borrowed `Path` cons-list. A
+//! validation failure may retain owned `FieldSegment` values and render them with
+//! the same path spelling, sharing the segment vocabulary without sharing a
+//! parser or walker state.
 
 use std::borrow::Cow;
 use std::fmt::{self, Write as _};
@@ -96,6 +97,25 @@ impl FieldSegment {
     #[must_use]
     pub const fn index(position: i64) -> Self {
         Self::Index(position)
+    }
+
+    /// Append this segment to an owned diagnostic path.
+    ///
+    /// Field names and non-negative indexes use the bounded shared renderer;
+    /// other selector segments retain their expression spelling.
+    pub(crate) fn append_diagnostic(&self, path: &mut String) {
+        match self {
+            Self::Field(name) => crate::path::push_field_name(path, name),
+            Self::Index(index) => match usize::try_from(*index) {
+                Ok(index) => crate::path::push_segment(path, crate::path::Segment::Index(index)),
+                Err(_) => {
+                    let _ = write!(path, "{self}");
+                }
+            },
+            Self::Key(_) | Self::Range { .. } | Self::Where(_) => {
+                let _ = write!(path, "{self}");
+            }
+        }
     }
 
     /// Name a run of list elements, half-open.

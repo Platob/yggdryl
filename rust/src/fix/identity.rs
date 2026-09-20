@@ -4,8 +4,11 @@
 use smol_str::SmolStr;
 
 use crate::Decimal18;
-use crate::graph::MarketEventData;
-use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone};
+use crate::graph::{MarketElement, MarketEventData};
+use crate::{
+    BloombergCode, CusipCode, DataType, Error, Field, IsinCode, MicCode, Result, Scalar, SedolCode,
+    TimeUnit, Timezone, Value,
+};
 
 use super::schema::CLOCK_DATATYPE;
 use super::{
@@ -342,6 +345,7 @@ pub(super) const TIMEINFORCE_TAG: i32 = 59;
 /// needs, because nothing writes here but a tag.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FixLifted {
+    msgcat: Option<SmolStr>,
     price: Option<Decimal18>,
     orderqty: Option<Decimal18>,
     quantity: Option<Decimal18>,
@@ -362,6 +366,16 @@ pub struct FixLifted {
 }
 
 impl FixLifted {
+    /// The message type's fixed business category.
+    #[must_use]
+    pub fn msgcat(&self) -> Option<&str> {
+        self.msgcat.as_deref()
+    }
+
+    pub(super) fn set_msgcat(&mut self, value: Option<&str>) {
+        self.msgcat = value.map(SmolStr::new);
+    }
+
     /// `Price(44)`, where the message stated one.
     #[must_use]
     pub const fn price(&self) -> Option<Decimal18> {
@@ -471,6 +485,7 @@ impl FixLifted {
     pub(super) fn fact(&self, tag: i32) -> Option<Scalar> {
         let text = |held: &Option<SmolStr>| held.as_deref().map(Scalar::from);
         match tag {
+            tag if tag == super::MSGCAT_TAG_NAME.0 => text(&self.msgcat),
             PRICE_TAG => self.price.map(Scalar::from),
             ORDERQTY_TAG => self.orderqty.map(Scalar::from),
             QUANTITY_TAG => self.quantity.map(Scalar::from),
@@ -503,6 +518,7 @@ impl FixLifted {
                 .filter(|held| !held.is_empty())
         };
         match tag {
+            tag if tag == super::MSGCAT_TAG_NAME.0 => self.msgcat = text(),
             PRICE_TAG => self.price = number(),
             ORDERQTY_TAG => self.orderqty = number(),
             QUANTITY_TAG => self.quantity = number(),
@@ -648,7 +664,9 @@ impl Typed<'_> {
     /// tag's column types, or nothing where it states no fact.
     pub(super) fn fact(&self, tag: i32) -> Option<Scalar> {
         if super::is_crate_tag(tag) {
-            event_fact(self.event, tag).or_else(|| self.capture.fact(tag))
+            event_fact(self.event, tag)
+                .or_else(|| self.lifted.fact(tag))
+                .or_else(|| self.capture.fact(tag))
         } else if HEADER_TAGS.contains(&tag) {
             self.header.fact(tag)
         } else {
@@ -683,20 +701,71 @@ pub(super) fn record(
 /// it is: a value the fact's type refuses is silence and a null clears the
 /// fact. Whether the tag is one the event holds.
 pub(super) fn record_event(event: &mut MarketEventData, tag: i32, value: &Scalar) -> bool {
-    match super::crated::event_column_of(tag) {
-        Some(column) => {
-            column.record(event, value);
-            true
+    match tag {
+        tag if tag == super::ISINCODE_TAG_NAME.0 => event.set_isincode(
+            IsinCode::from_scalar(value)
+                .cloned()
+                .or_else(|| value.as_str().and_then(|value| IsinCode::new(value).ok())),
+        ),
+        tag if tag == super::CUSIPCODE_TAG_NAME.0 => event.set_cusipcode(
+            CusipCode::from_scalar(value)
+                .cloned()
+                .or_else(|| value.as_str().and_then(|value| CusipCode::new(value).ok())),
+        ),
+        tag if tag == super::SEDOLCODE_TAG_NAME.0 => event.set_sedolcode(
+            SedolCode::from_scalar(value)
+                .cloned()
+                .or_else(|| value.as_str().and_then(|value| SedolCode::new(value).ok())),
+        ),
+        tag if tag == super::BLOOMBERGCODE_TAG_NAME.0 => {
+            event.set_bloombergcode(BloombergCode::from_scalar(value).cloned().or_else(|| {
+                value
+                    .as_str()
+                    .and_then(|value| BloombergCode::new(value).ok())
+            }))
         }
-        None => false,
+        tag if tag == super::MICCODE_TAG_NAME.0 => event.set_miccode(
+            MicCode::from_scalar(value)
+                .cloned()
+                .or_else(|| value.as_str().and_then(|value| MicCode::new(value).ok())),
+        ),
+        _ => match super::crated::event_column_of(tag) {
+            Some(column) => {
+                column.record(event, value);
+                return true;
+            }
+            None => return false,
+        },
     }
+    true
 }
 
 /// What the event states for one event column, as the raw value the
 /// column's field types, or nothing where it states no fact: an empty name,
 /// an absent instant, identity or code.
 pub(super) fn event_fact(event: &MarketEventData, tag: i32) -> Option<Scalar> {
-    super::crated::event_column_of(tag).and_then(|column| column.fact(event))
+    match super::crated::event_column_of(tag) {
+        Some(column) => column.fact(event),
+        None => match tag {
+            tag if tag == super::ISINCODE_TAG_NAME.0 => {
+                event.get_isincode().cloned().map(Scalar::IsinCode)
+            }
+            tag if tag == super::CUSIPCODE_TAG_NAME.0 => {
+                event.get_cusipcode().cloned().map(Scalar::CusipCode)
+            }
+            tag if tag == super::SEDOLCODE_TAG_NAME.0 => {
+                event.get_sedolcode().cloned().map(Scalar::SedolCode)
+            }
+            tag if tag == super::BLOOMBERGCODE_TAG_NAME.0 => event
+                .get_bloombergcode()
+                .cloned()
+                .map(Scalar::BloombergCode),
+            tag if tag == super::MICCODE_TAG_NAME.0 => {
+                event.get_miccode().cloned().map(Scalar::MicCode)
+            }
+            _ => None,
+        },
+    }
 }
 
 /// The exact clock the two FIX clocks a row types are held under.

@@ -1740,6 +1740,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "clordid,secondaryclordid,allocid,quoteid,reforderid,refclordid",
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "D",
     "FIX:tag": "244936",
     "description": "MsgType = D",

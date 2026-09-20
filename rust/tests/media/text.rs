@@ -39,7 +39,7 @@ fn framed(rowheader: &str) -> TextOptions {
 const EVENT_COLUMNS: [&str; 16] = [
     "currunix",
     "creaunix",
-    "expirunix",
+    "exprtime",
     "prevunix",
     "snapunix",
     "curruuid",
@@ -2292,7 +2292,7 @@ mod event {
         assert_eq!(line.get_crosshashcode(), yggdryl::xxhash::xxh3(b"O-100"));
         assert_eq!(line.get_crossuuid(), line.cross_uuid());
         assert_ne!(line.get_crossuuid(), line.get_curruuid());
-        assert_eq!((line.get_creaunix(), line.get_expirunix()), (None, None));
+        assert_eq!((line.get_creaunix(), line.get_exprtime()), (None, None));
         assert_eq!((line.get_prevunix(), line.get_snapunix()), (None, None));
         // The identity: the body's own digest, coupled with the instant.
         assert_eq!(

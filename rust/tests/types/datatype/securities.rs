@@ -14,7 +14,7 @@ use yggdryl::FieldValue as _;
 use yggdryl::{
     ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, StructType, Term,
 };
-use yggdryl::{Cusip, CusipField, Sedol, SedolField};
+use yggdryl::{CusipCode, CusipCodeField, SedolCode, SedolCodeField};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new(
@@ -41,7 +41,7 @@ fn cells(array: &ArrayRef) -> Vec<Option<&str>> {
 const IDENTIFIERS: [(&str, DataType, usize, &str, &str, &str, &str); 2] = [
     (
         "cusip",
-        DataType::Cusip,
+        DataType::CusipCode,
         9,
         "38259P508",
         "38259p508",
@@ -50,7 +50,7 @@ const IDENTIFIERS: [(&str, DataType, usize, &str, &str, &str, &str); 2] = [
     ),
     (
         "sedol",
-        DataType::Sedol,
+        DataType::SedolCode,
         7,
         "B0YBKJ7",
         "b0ybkj7",
@@ -63,100 +63,100 @@ const IDENTIFIERS: [(&str, DataType, usize, &str, &str, &str, &str); 2] = [
 fn a_cusip_is_nine_characters_closed_by_its_check_digit() {
     // Six of issuer, two of issue, one check digit: the modulus-10
     // double-add-double digit of the eight before it.
-    let apple = Cusip::new("037833100").unwrap();
+    let apple = CusipCode::new("037833100").unwrap();
     assert_eq!(apple.as_str(), "037833100");
     assert_eq!(apple.issuer(), "037833");
     assert_eq!(apple.issue(), "10");
     assert_eq!(apple.check_digit(), 0);
     assert_eq!(apple.to_string(), "037833100");
     // A letter reads as ten plus its alphabet position.
-    assert_eq!(Cusip::new("38259P508").unwrap().check_digit(), 8);
-    assert_eq!(Cusip::new("594918104").unwrap().check_digit(), 4);
-    assert_eq!(Cusip::closing_digit("03783310"), Some(0));
-    assert_eq!(Cusip::closing_digit("38259P50"), Some(8));
-    assert_eq!(Cusip::closing_digit("59491810"), Some(4));
+    assert_eq!(CusipCode::new("38259P508").unwrap().check_digit(), 8);
+    assert_eq!(CusipCode::new("594918104").unwrap().check_digit(), 4);
+    assert_eq!(CusipCode::closing_digit("03783310"), Some(0));
+    assert_eq!(CusipCode::closing_digit("38259P50"), Some(8));
+    assert_eq!(CusipCode::closing_digit("59491810"), Some(4));
     // The rule answers without building a value, in either case.
-    assert!(Cusip::is_valid("037833100"));
-    assert!(Cusip::is_valid("38259p508"));
-    assert!(Cusip::is_canonical("38259P508"));
-    assert!(!Cusip::is_canonical("38259p508"));
+    assert!(CusipCode::is_valid("037833100"));
+    assert!(CusipCode::is_valid("38259p508"));
+    assert!(CusipCode::is_canonical("38259P508"));
+    assert!(!CusipCode::is_canonical("38259p508"));
 
     // Lower case is the upper case it spells, and stores as that.
     assert_eq!(
-        Cusip::new("38259p508").unwrap(),
-        Cusip::new("38259P508").unwrap()
+        CusipCode::new("38259p508").unwrap(),
+        CusipCode::new("38259P508").unwrap()
     );
-    assert_eq!(Cusip::new("38259p508").unwrap().as_str(), "38259P508");
+    assert_eq!(CusipCode::new("38259p508").unwrap().as_str(), "38259P508");
 
     // One digit off is a typo, and the refusal names the identifier.
-    let refused = Cusip::new("037833101").unwrap_err().to_string();
+    let refused = CusipCode::new("037833101").unwrap_err().to_string();
     assert!(refused.contains("cusip"), "{refused}");
     assert!(
         refused.contains("check digit does not close the identifier"),
         "{refused}"
     );
-    assert!(!Cusip::is_valid("037833101"));
+    assert!(!CusipCode::is_valid("037833101"));
     // The wrong length, in both directions.
-    let short = Cusip::new("03783310").unwrap_err().to_string();
+    let short = CusipCode::new("03783310").unwrap_err().to_string();
     assert!(short.contains("expected nine characters"), "{short}");
-    let long = Cusip::new("0378331000").unwrap_err().to_string();
+    let long = CusipCode::new("0378331000").unwrap_err().to_string();
     assert!(long.contains("at most 9 bytes"), "{long}");
     // A character outside the alphanumerics, a closing letter, and a body
     // the rule cannot close.
-    let punctuated = Cusip::new("03783*100").unwrap_err().to_string();
+    let punctuated = CusipCode::new("03783*100").unwrap_err().to_string();
     assert!(punctuated.contains("eight alphanumerics"), "{punctuated}");
-    let letter = Cusip::new("03783310A").unwrap_err().to_string();
+    let letter = CusipCode::new("03783310A").unwrap_err().to_string();
     assert!(letter.contains("closing check digit"), "{letter}");
-    assert_eq!(Cusip::closing_digit("03783*10"), None);
-    assert_eq!(Cusip::closing_digit("0378331"), None);
-    assert_eq!(Cusip::closing_digit("38259p50"), None);
+    assert_eq!(CusipCode::closing_digit("03783*10"), None);
+    assert_eq!(CusipCode::closing_digit("0378331"), None);
+    assert_eq!(CusipCode::closing_digit("38259p50"), None);
 }
 
 #[test]
 fn a_sedol_is_seven_characters_closed_by_its_check_digit() {
     // Six alphanumerics weighted 1, 3, 1, 7, 3, 9 and the modulus-10 digit
     // that closes the weighted sum.
-    let held = Sedol::new("B0YBKJ7").unwrap();
+    let held = SedolCode::new("B0YBKJ7").unwrap();
     assert_eq!(held.as_str(), "B0YBKJ7");
     assert_eq!(held.check_digit(), 7);
     assert_eq!(held.to_string(), "B0YBKJ7");
-    assert_eq!(Sedol::new("0263494").unwrap().check_digit(), 4);
-    assert_eq!(Sedol::new("B1F3M59").unwrap().check_digit(), 9);
-    assert_eq!(Sedol::new("2046251").unwrap().check_digit(), 1);
-    assert_eq!(Sedol::closing_digit("B0YBKJ"), Some(7));
-    assert_eq!(Sedol::closing_digit("026349"), Some(4));
-    assert_eq!(Sedol::closing_digit("B1F3M5"), Some(9));
-    assert!(Sedol::is_valid("B0YBKJ7"));
-    assert!(Sedol::is_valid("b0ybkj7"));
-    assert!(Sedol::is_canonical("B0YBKJ7"));
-    assert!(!Sedol::is_canonical("b0ybkj7"));
+    assert_eq!(SedolCode::new("0263494").unwrap().check_digit(), 4);
+    assert_eq!(SedolCode::new("B1F3M59").unwrap().check_digit(), 9);
+    assert_eq!(SedolCode::new("2046251").unwrap().check_digit(), 1);
+    assert_eq!(SedolCode::closing_digit("B0YBKJ"), Some(7));
+    assert_eq!(SedolCode::closing_digit("026349"), Some(4));
+    assert_eq!(SedolCode::closing_digit("B1F3M5"), Some(9));
+    assert!(SedolCode::is_valid("B0YBKJ7"));
+    assert!(SedolCode::is_valid("b0ybkj7"));
+    assert!(SedolCode::is_canonical("B0YBKJ7"));
+    assert!(!SedolCode::is_canonical("b0ybkj7"));
 
     // Lower case is the upper case it spells, and stores as that.
-    assert_eq!(Sedol::new("b0ybkj7").unwrap(), held);
-    assert_eq!(Sedol::new("b0ybkj7").unwrap().as_str(), "B0YBKJ7");
+    assert_eq!(SedolCode::new("b0ybkj7").unwrap(), held);
+    assert_eq!(SedolCode::new("b0ybkj7").unwrap().as_str(), "B0YBKJ7");
 
     // One digit off is a typo, and the refusal names the identifier.
-    let refused = Sedol::new("B0YBKJ8").unwrap_err().to_string();
+    let refused = SedolCode::new("B0YBKJ8").unwrap_err().to_string();
     assert!(refused.contains("sedol"), "{refused}");
     assert!(
         refused.contains("check digit does not close the identifier"),
         "{refused}"
     );
-    assert!(!Sedol::is_valid("B0YBKJ8"));
+    assert!(!SedolCode::is_valid("B0YBKJ8"));
     // The wrong length, in both directions.
-    let short = Sedol::new("B0YBKJ").unwrap_err().to_string();
+    let short = SedolCode::new("B0YBKJ").unwrap_err().to_string();
     assert!(short.contains("expected seven characters"), "{short}");
-    let long = Sedol::new("B0YBKJ70").unwrap_err().to_string();
+    let long = SedolCode::new("B0YBKJ70").unwrap_err().to_string();
     assert!(long.contains("at most 7 bytes"), "{long}");
     // A character outside the alphanumerics, a closing letter, and a body
     // the rule cannot close.
-    let punctuated = Sedol::new("B0Y-KJ7").unwrap_err().to_string();
+    let punctuated = SedolCode::new("B0Y-KJ7").unwrap_err().to_string();
     assert!(punctuated.contains("six alphanumerics"), "{punctuated}");
-    let letter = Sedol::new("B0YBKJZ").unwrap_err().to_string();
+    let letter = SedolCode::new("B0YBKJZ").unwrap_err().to_string();
     assert!(letter.contains("closing check digit"), "{letter}");
-    assert_eq!(Sedol::closing_digit("B0Y-KJ"), None);
-    assert_eq!(Sedol::closing_digit("B0YBK"), None);
-    assert_eq!(Sedol::closing_digit("b0ybkj"), None);
+    assert_eq!(SedolCode::closing_digit("B0Y-KJ"), None);
+    assert_eq!(SedolCode::closing_digit("B0YBK"), None);
+    assert_eq!(SedolCode::closing_digit("b0ybkj"), None);
 }
 
 #[test]
@@ -376,14 +376,14 @@ fn the_identifiers_sit_in_the_code_family() {
     // The discriminant is a wire contract laid out by family: every code
     // is in the code family's range, beside the codes stated before it.
     assert_eq!(DataTypeKind::Code.id(), 0x70);
-    assert_eq!(DataTypeId::Cusip.as_u8(), 0x79);
-    assert_eq!(DataTypeId::Sedol.as_u8(), 0x7a);
-    assert_eq!(DataTypeId::Bloomberg.as_u8(), 0x7b);
+    assert_eq!(DataTypeId::CusipCode.as_u8(), 0x79);
+    assert_eq!(DataTypeId::SedolCode.as_u8(), 0x7a);
+    assert_eq!(DataTypeId::BloombergCode.as_u8(), 0x7b);
     for id in [
-        DataTypeId::Isin,
-        DataTypeId::Cusip,
-        DataTypeId::Sedol,
-        DataTypeId::Bloomberg,
+        DataTypeId::IsinCode,
+        DataTypeId::CusipCode,
+        DataTypeId::SedolCode,
+        DataTypeId::BloombergCode,
     ] {
         assert_eq!(
             DataTypeKind::of_u8(id.as_u8()),
@@ -394,14 +394,14 @@ fn the_identifiers_sit_in_the_code_family() {
     // The datatype order is total and appends too, so no earlier pair
     // moved: every code stated before them sorts before them, and the
     // last datatype before them sorts before them as well.
-    assert!(DataType::Isin < DataType::Cusip);
-    assert!(DataType::Cusip < DataType::Sedol);
-    assert!(DataType::MediaType < DataType::Cusip);
-    assert!(DataType::TimeInForce < DataType::Cusip);
+    assert!(DataType::IsinCode < DataType::CusipCode);
+    assert!(DataType::CusipCode < DataType::SedolCode);
+    assert!(DataType::MediaType < DataType::CusipCode);
+    assert!(DataType::TimeInForce < DataType::CusipCode);
     let mut shuffled = [
-        DataType::Sedol,
-        DataType::Isin,
-        DataType::Cusip,
+        DataType::SedolCode,
+        DataType::IsinCode,
+        DataType::CusipCode,
         DataType::Country,
         DataType::MediaType,
     ];
@@ -410,38 +410,44 @@ fn the_identifiers_sit_in_the_code_family() {
         shuffled,
         [
             DataType::Country,
-            DataType::Isin,
+            DataType::IsinCode,
             DataType::MediaType,
-            DataType::Cusip,
-            DataType::Sedol,
+            DataType::CusipCode,
+            DataType::SedolCode,
         ]
     );
 
     // A value carries its identity first: a CUSIP and a SEDOL never
     // compare equal, and neither is the string of its characters.
-    let cusip = DataType::Cusip.scalar(Scalar::from("037833100")).unwrap();
-    let sedol = DataType::Sedol.scalar(Scalar::from("B0YBKJ7")).unwrap();
+    let cusip = DataType::CusipCode
+        .scalar(Scalar::from("037833100"))
+        .unwrap();
+    let sedol = DataType::SedolCode.scalar(Scalar::from("B0YBKJ7")).unwrap();
     assert_ne!(cusip, sedol);
     assert_ne!(cusip.cmp(&sedol), std::cmp::Ordering::Equal);
     assert_ne!(cusip, Scalar::from("037833100"));
-    assert_eq!(cusip.id(), DataTypeId::Cusip);
-    assert_eq!(sedol.id(), DataTypeId::Sedol);
+    assert_eq!(cusip.id(), DataTypeId::CusipCode);
+    assert_eq!(sedol.id(), DataTypeId::SedolCode);
     // Values of one identifier order by their text.
     assert!(
-        DataType::Cusip.scalar(Scalar::from("037833100")).unwrap()
-            < DataType::Cusip.scalar(Scalar::from("38259P508")).unwrap()
+        DataType::CusipCode
+            .scalar(Scalar::from("037833100"))
+            .unwrap()
+            < DataType::CusipCode
+                .scalar(Scalar::from("38259P508"))
+                .unwrap()
     );
 }
 
 #[test]
 fn the_typed_fields_name_their_identifier() {
-    let cusip: CusipField = CusipField::unit("cusip", true);
-    assert_eq!(cusip.to_field().dtype(), &DataType::Cusip);
-    let sedol: SedolField = SedolField::unit("sedol", false);
-    assert_eq!(sedol.to_field().dtype(), &DataType::Sedol);
+    let cusip: CusipCodeField = CusipCodeField::unit("cusip", true);
+    assert_eq!(cusip.to_field().dtype(), &DataType::CusipCode);
+    let sedol: SedolCodeField = SedolCodeField::unit("sedol", false);
+    assert_eq!(sedol.to_field().dtype(), &DataType::SedolCode);
     assert!(!&sedol.to_field().is_nullable());
     // A shared field is kept for each, as for every parameter-free leaf.
-    for dtype in [DataType::Cusip, DataType::Sedol] {
+    for dtype in [DataType::CusipCode, DataType::SedolCode] {
         let shared = dtype.shared_field().unwrap();
         assert_eq!(shared.dtype(), &dtype);
         assert!(std::ptr::eq(shared, dtype.shared_field().unwrap()));

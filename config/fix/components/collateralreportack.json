@@ -158,6 +158,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "COLL",
     "FIX:msgtype": "DQ",
     "FIX:tag": "544404",
     "description": "MsgType = DQ",

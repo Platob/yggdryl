@@ -168,12 +168,12 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::String(parameters) => string_array(*parameters, values)?,
         DataType::Country => code_array::<COUNTRY_WIDTH>(dtype, values)?,
         DataType::Currency => code_array::<CURRENCY_WIDTH>(dtype, values)?,
-        DataType::Mic => code_array::<MIC_WIDTH>(dtype, values)?,
-        DataType::Cfi => code_array::<CFI_WIDTH>(dtype, values)?,
-        DataType::Isin => code_array::<ISIN_WIDTH>(dtype, values)?,
-        DataType::Cusip => code_array::<CUSIP_WIDTH>(dtype, values)?,
-        DataType::Sedol => code_array::<SEDOL_WIDTH>(dtype, values)?,
-        DataType::Bloomberg => code_array::<BLOOMBERG_WIDTH>(dtype, values)?,
+        DataType::MicCode => code_array::<MIC_WIDTH>(dtype, values)?,
+        DataType::CfiCode => code_array::<CFI_WIDTH>(dtype, values)?,
+        DataType::IsinCode => code_array::<ISIN_WIDTH>(dtype, values)?,
+        DataType::CusipCode => code_array::<CUSIP_WIDTH>(dtype, values)?,
+        DataType::SedolCode => code_array::<SEDOL_WIDTH>(dtype, values)?,
+        DataType::BloombergCode => code_array::<BLOOMBERG_WIDTH>(dtype, values)?,
         DataType::Side => code_array::<SIDE_WIDTH>(dtype, values)?,
         DataType::State => code_array::<STATE_WIDTH>(dtype, values)?,
         DataType::TimeInForce => code_array::<TIMEINFORCE_WIDTH>(dtype, values)?,
@@ -541,44 +541,44 @@ pub(crate) fn value_from_array(
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Mic => {
+        DataType::MicCode => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Mic(crate::Mic::new(code_cell_text(
+            Scalar::MicCode(crate::MicCode::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Cfi => {
+        DataType::CfiCode => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Cfi(crate::Cfi::new(code_cell_text(
+            Scalar::CfiCode(crate::CfiCode::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Isin => {
+        DataType::IsinCode => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Isin(crate::Isin::new(code_cell_text(
+            Scalar::IsinCode(crate::IsinCode::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Cusip => {
+        DataType::CusipCode => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Cusip(crate::Cusip::new(code_cell_text(
+            Scalar::CusipCode(crate::CusipCode::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Sedol => {
+        DataType::SedolCode => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Sedol(crate::Sedol::new(code_cell_text(
+            Scalar::SedolCode(crate::SedolCode::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Bloomberg => {
+        DataType::BloombergCode => {
             let text = downcast::<StringArray>(array)?;
-            Scalar::Bloomberg(crate::Bloomberg::new(code_cell_text(
+            Scalar::BloombergCode(crate::BloombergCode::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?)

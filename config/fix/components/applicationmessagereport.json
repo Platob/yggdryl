@@ -114,6 +114,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SESS",
     "FIX:msgtype": "BY",
     "FIX:tag": "554038",
     "description": "MsgType = BY",

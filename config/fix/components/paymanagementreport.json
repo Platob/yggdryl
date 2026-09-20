@@ -297,6 +297,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "PAYM",
     "FIX:msgtype": "EA",
     "FIX:tag": "673100",
     "description": "MsgType = EA",

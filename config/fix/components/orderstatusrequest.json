@@ -189,6 +189,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "orderid,clordid,secondaryclordid",
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "H",
     "FIX:tag": "426679",
     "description": "MsgType = H",

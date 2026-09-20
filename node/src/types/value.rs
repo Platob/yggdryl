@@ -90,12 +90,12 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         D::String(_)
         | D::Country
         | D::Currency
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bloomberg
+        | D::MicCode
+        | D::CfiCode
+        | D::IsinCode
+        | D::CusipCode
+        | D::SedolCode
+        | D::BloombergCode
         | D::Side
         | D::State
         | D::TimeInForce
@@ -303,12 +303,12 @@ fn text_or_binary_to_js<'env>(
         D::String(_)
         | D::Country
         | D::Currency
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bloomberg
+        | D::MicCode
+        | D::CfiCode
+        | D::IsinCode
+        | D::CusipCode
+        | D::SedolCode
+        | D::BloombergCode
         | D::Side
         | D::State
         | D::TimeInForce => value

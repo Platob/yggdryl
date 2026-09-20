@@ -24,7 +24,7 @@ pub(crate) const EVENT_CAPTURES: [&str; 8] = [
     "state",
     "crosscode",
     "creaunix",
-    "expirunix",
+    "exprtime",
     "prevunix",
     "snapunix",
     "prevuuid",

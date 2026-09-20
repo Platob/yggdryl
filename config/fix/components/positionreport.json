@@ -1013,6 +1013,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "POSN",
     "FIX:msgtype": "AP",
     "FIX:tag": "313256",
     "description": "MsgType = AP",

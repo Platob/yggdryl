@@ -13,6 +13,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::FixId;
 use super::codes::{FixCode, FixCodeValue, FixCodes};
+use super::constants::MSGCATEGORIES;
 use super::directions::{FixDirection, FixDirections};
 use super::document::{Cursor, Numbers, Words, Writer, is_word, repeated_number, repeated_word};
 use super::replacements::{FixReplacement, FixReplacements};
@@ -61,6 +62,10 @@ const COMPONENT: &str = "component";
 const FIELD_REF: &str = "field";
 const GROUP: &str = "group";
 const MSGTYPE: &str = "msgtype";
+const MSGCAT: &str = "msgcat";
+pub(super) fn is_msgcat(value: &str) -> bool {
+    MSGCATEGORIES.contains(&value)
+}
 /// What separates the elements of a comma-separated property: the
 /// memberships, the identifiers and the null spellings, whose elements can
 /// hold no comma. The names and the tags are JSON arrays instead.
@@ -108,6 +113,11 @@ impl<'field> FixField<'field> {
     /// The wire message type declared by a message definition.
     pub fn msgtype(&self) -> Option<&'field str> {
         self.get(MSGTYPE)
+    }
+
+    /// The four-byte business category declared by a message definition.
+    pub fn msgcat(&self) -> Option<&'field str> {
+        self.get(MSGCAT)
     }
 
     /// The positive tag of a group's count field or intrinsic Map counter.
@@ -593,6 +603,17 @@ impl FixFieldMut<'_> {
         self.store(MSGTYPE, value.to_owned())
     }
 
+    /// Declares one fixed FIX message category.
+    pub fn set_msgcat(&mut self, value: &str) -> Result<()> {
+        if !is_msgcat(value) {
+            return Err(self.rejected(
+                MSGCAT,
+                format_smolstr!("expected one fixed FIX message category, got {value:?}"),
+            ));
+        }
+        self.store(MSGCAT, value.to_owned())
+    }
+
     /// Declares the positive tag of the group's count field or Map counter.
     pub fn set_counter(&mut self, tag: i32) -> Result<()> {
         if tag <= 0 {
@@ -637,6 +658,11 @@ impl FixFieldMut<'_> {
     /// Removes the declared message type.
     pub fn remove_msgtype(&mut self) -> Option<String> {
         self.remove(MSGTYPE)
+    }
+
+    /// Removes the declared message category.
+    pub fn remove_msgcat(&mut self) -> Option<String> {
+        self.remove(MSGCAT)
     }
 
     /// Removes the counter reference after validating it.
@@ -1418,7 +1444,7 @@ impl FusedIterator for FixSpellings<'_> {}
 /// A merge walks this rather than collecting the keys a field holds, because
 /// the held names are owned `String`s behind a generic snapshot and building
 /// a vector of them to scan `O(n*m)` is what this replaced.
-const MERGED_KEYS: [&str; 11] = [
+const MERGED_KEYS: [&str; 12] = [
     TAG,
     BRANCHES,
     TAGS,
@@ -1429,6 +1455,7 @@ const MERGED_KEYS: [&str; 11] = [
     DIRECTIONS,
     DERIVATION,
     IDENTIFIERS,
+    MSGCAT,
     DEPRECATED,
 ];
 

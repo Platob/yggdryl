@@ -260,6 +260,10 @@ assert PARSED_BATCH.num_rows == len(LINES)
 assert len(list(CODEC.parse_lines(LINES))) == len(LINES)
 ORDER_TYPE = SEED_REGISTRY.msgtype("D")
 ORDER_DECLARATION = ORDER_TYPE.field
+SNAPSHOT_CODEC = FixCodec(SEED_REGISTRY, snapshot_ns=1_000_000_000)
+assert ORDER_TYPE.msgcat == "ORDR"
+assert PARSED.msgcat == "ORDR"
+assert SNAPSHOT_CODEC.snapshot_ns == 1_000_000_000
 # A parse fills what the line implied, so the identifiers are on the message
 # the parse answered rather than behind a pass of its own.
 assert PARSED.identifiers == {"clordid": "ORDER-000000"}
@@ -297,6 +301,22 @@ def _parse_text_arrow_reader() -> int:
 
 def _field_identifiers() -> object:
     return ORDER_DECLARATION.fix.identifiers
+
+
+def _field_msgcat() -> object:
+    return ORDER_DECLARATION.fix.msgcat
+
+
+def _msgtype_msgcat() -> object:
+    return ORDER_TYPE.msgcat
+
+
+def _message_msgcat() -> object:
+    return PARSED.msgcat
+
+
+def _codec_snapshot_ns() -> object:
+    return SNAPSHOT_CODEC.snapshot_ns
 
 
 def _identifier_values() -> object:
@@ -461,6 +481,10 @@ def main() -> None:
         _measure("message remove", _message_remove, args.iterations)
         _measure("message from_row", _message_from_row, args.iterations)
         _measure("field.fix.identifiers", _field_identifiers, args.iterations)
+        _measure("field.fix.msgcat", _field_msgcat, args.iterations)
+        _measure("MsgType.msgcat", _msgtype_msgcat, args.iterations)
+        _measure("FixMsg.msgcat", _message_msgcat, args.iterations)
+        _measure("FixCodec.snapshot_ns", _codec_snapshot_ns, args.iterations)
         _measure("MsgType.identifier_values", _identifier_values, args.iterations)
         _measure("identifiers native map crossing", _identifiers_map, args.iterations)
         _measure("message event holder", _event_facts, args.iterations)

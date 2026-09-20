@@ -448,6 +448,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "POSN",
     "FIX:msgtype": "AL",
     "FIX:tag": "340518",
     "description": "MsgType = AL",

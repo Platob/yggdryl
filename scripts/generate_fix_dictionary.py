@@ -54,6 +54,37 @@ from typing import Any, Iterable, NamedTuple
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_OUT = ROOT / "config" / "fix"
 
+# One classification for every current FIX message type. The source formats
+# do not retain a business-area property, so coverage is held against their
+# exact wire-code set below rather than inferred from a generated name.
+MSGCAT_BY_TYPE = {
+    code: category
+    for category, codes in (
+        ("SESS", "0 1 2 3 4 5 A j n BC BD BE BF CB BW BX BY EL EM EN EO EP"),
+        ("ORDR", "D E F G H 9 q r s t u AB AC AF CA BZ DJ DK K L M N DS DT"),
+        ("QUOT", "6 7 R S Z a b i AG AH AI AJ CW k l m"),
+        ("EXEC", "8 BN Q BO"),
+        ("TRAD", "AD AE AQ AR DC DD DW DX AW"),
+        ("BOOK", "V W X Y DO DP DR EQ BT BU BV"),
+        ("SECU", "c d e f v w x y z AA BK BP BR CN CO EG ER"),
+        ("MKST", "g h BI BJ BS ES"),
+        ("ALLO", "J P AS AT BM DU DV"),
+        ("POSN", "AL AM AN AO AP BL DL DM DN"),
+        ("SETL", "T AV BQ EC ED EE EF"),
+        ("COLL", "AX AY AZ BA BB BG DQ CH CI CJ"),
+        ("PRTY", "CF CG CK CX CY DH DI CU CV CZ DA DB"),
+        ("RISK", "CL CM CR CS CT DE DF DG"),
+        ("PAYM", "DY DZ EA EB"),
+        ("CONF", "AK AU BH"),
+        ("REGI", "o p"),
+        ("STRM", "CC CD CE"),
+        ("ACCT", "CQ"),
+        ("COMM", "B C"),
+        ("CERT", "EH EI EJ EK"),
+    )
+    for code in codes.split()
+}
+
 # Pinned commits. A branch would make the output unreproducible.
 ORCHESTRA_COMMIT = "099914dd0edd49a699326f0441776d6e21cfaf93"
 QUICKFIX_COMMIT = "3536699e830e65f875df4a50b647a6d3bad3b884"
@@ -910,7 +941,7 @@ def expression_columns(text: str) -> list[str]:
 
 
 def attach_derivations(
-    catalog: dict[str, list[dict[str, Any]]], code_records: dict[int, list[dict[str, Any]]]
+    catalog: dict[str, list[dict[str, Any]]]
 ) -> dict[int, str]:
     """Write each derivation onto the field it fills, refusing one that does
     not resolve against the dictionary it is written into.
@@ -924,7 +955,7 @@ def attach_derivations(
     names = {field["name"] for field in catalog["fields"]}
     names.update(field["name"] for field in catalog["groups"])
     rules = list(DERIVATION_RULES)
-    rules.append((460, product_case(code_records[167])))
+    rules.append((460, product_case(by_tag[167]["metadata"]["FIX:codes"])))
     written: dict[int, str] = {}
     for tag, text in rules:
         if tag in written:
@@ -1015,14 +1046,11 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                 continue
             entries.append(entry)
 
-    code_records: dict[int, list[dict[str, Any]]] = {}
-
-    def coded(tag: int, fix_type: str, codes: list[dict[str, Any]]) -> str | None:
+    def coded(tag: int, fix_type: str, codes: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
         """The field's `FIX:codes`, legacy values folded in, or nothing."""
         folded_codes = fold_legacy_codes(tag, codes, listings.get(tag, []), latest["version"])
         if not folded_codes:
             return None
-        code_records[tag] = folded_codes
         return codes_document(folded_codes)
 
     fields: list[dict[str, Any]] = []
@@ -1127,9 +1155,7 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
                 "metadata": dict(sorted(metadata.items())),
             }
         )
-    catalog = build_catalog(latest, fields)
-    attach_derivations(catalog, code_records)
-    return catalog
+    return build_catalog(latest, fields)
 
 
 def build_catalog(
@@ -1285,9 +1311,11 @@ def build_catalog(
             if identifiers:
                 metadata["FIX:identifiers"] = identifiers
         if category == "messages":
-            metadata["FIX:msgtype"] = next(
+            wire = next(
                 wire for wire, held in latest["messages"].items() if held["id"] == identifier
             )
+            metadata["FIX:msgtype"] = wire
+            metadata["FIX:msgcat"] = MSGCAT_BY_TYPE[wire]
         result[category].append(
             {"name": names[key], "dtype": dtype, "nullable": False, "metadata": dict(sorted(metadata.items()))}
         )
@@ -1634,10 +1662,29 @@ def write_constants(latest: dict[str, Any], parsed: dict[str, dict[str, Any]]) -
             [
                 f"/// The tags every version's standard {what} declares, in wire",
                 "/// order.",
+                "#[rustfmt::skip]",
                 f"pub const {name}: [i32; {len(tags)}] = [{rendered}];",
                 "",
             ]
         )
+    categories = sorted({*MSGCAT_BY_TYPE.values(), "UNKN"})
+    rendered = ", ".join(f'"{category}"' for category in categories)
+    lines.extend(
+        [
+            "/// The fixed categories a FIX message can answer.",
+            "#[rustfmt::skip]",
+            f"pub const MSGCATEGORIES: [&str; {len(categories)}] = [{rendered}];",
+            "",
+            "/// The generated category of one standard FIX message type.",
+            "pub(super) fn msgcat_of(msgtype: &str) -> Option<&'static str> {",
+            "    match msgtype {",
+        ]
+    )
+    lines.extend(
+        f'        "{msgtype}" => Some("{category}"),'
+        for msgtype, category in sorted(MSGCAT_BY_TYPE.items())
+    )
+    lines.extend(["        _ => None,", "    }", "}", ""])
     (ROOT / "rust" / "src" / "fix" / "constants.rs").write_text(
         "\n".join(lines), encoding="utf-8", newline="\n"
     )
@@ -1679,7 +1726,15 @@ def main() -> int:
     if unmapped:
         raise SystemExit(f"unmapped FIX datatypes: {', '.join(unmapped)}")
 
+    # Exhaustiveness belongs to the complete upstream repository; the graph
+    # builder also reads deliberately partial fixture repositories.
+    message_types = set(latest["messages"])
+    if message_types != set(MSGCAT_BY_TYPE):
+        missing = ", ".join(sorted(message_types - set(MSGCAT_BY_TYPE)))
+        extra = ", ".join(sorted(set(MSGCAT_BY_TYPE) - message_types))
+        raise ValueError(f"message category coverage differs: missing={missing}; extra={extra}")
     catalog = build(parsed)
+    attach_derivations(catalog)
     assign_definition_tags(catalog)
     documents = render_tree(catalog)
     written = {name: hashlib.sha256(text.encode()).hexdigest() for name, text in documents.items()}

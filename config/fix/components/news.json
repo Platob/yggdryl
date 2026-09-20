@@ -306,6 +306,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "COMM",
     "FIX:msgtype": "B",
     "FIX:tag": "718303",
     "description": "MsgType = B",

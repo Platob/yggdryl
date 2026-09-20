@@ -298,6 +298,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "CERT",
     "FIX:msgtype": "EJ",
     "FIX:tag": "955976",
     "description": "MsgType = EJ",

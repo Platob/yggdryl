@@ -494,7 +494,7 @@ pub const CFI_CATEGORIES: [CfiCategory; 14] = [
     },
 ];
 
-impl Cfi {
+impl CfiCode {
     /// How many characters a CFI code has, in every edition of the standard.
     pub const LENGTH: usize = 6;
 
@@ -509,12 +509,12 @@ impl Cfi {
     /// as it is where they do not.
     ///
     /// ```
-    /// use yggdryl::{Cfi, CodeValue};
+    /// use yggdryl::{CfiCode, CodeValue};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// assert_eq!(Cfi::new("ESVXXX")?.merge_with(&Cfi::new("ESXUFR")?).as_str(), "ESVUFR");
+    /// assert_eq!(CfiCode::new("ESVXXX")?.merge_with(&CfiCode::new("ESXUFR")?).as_str(), "ESVUFR");
     /// // Two different instruments are not one: this code stands.
-    /// assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("DBFNFB")?).as_str(), "ESVUFR");
+    /// assert_eq!(CfiCode::new("ESVUFR")?.merge_with(&CfiCode::new("DBFNFB")?).as_str(), "ESVUFR");
     /// # Ok(())
     /// # }
     /// ```
@@ -538,17 +538,17 @@ impl Cfi {
     /// meaning, which is the part a caller filling a classification needs.
     ///
     /// ```
-    /// # use yggdryl::Cfi;
-    /// assert!(Cfi::is_classified("ESVUFR"));
-    /// assert!(Cfi::is_classified("ESXXXX"));
+    /// # use yggdryl::CfiCode;
+    /// assert!(CfiCode::is_classified("ESVUFR"));
+    /// assert!(CfiCode::is_classified("ESXXXX"));
     /// // `X` is not a category and not a group.
-    /// assert!(!Cfi::is_classified("XXXXXX"));
-    /// assert!(!Cfi::is_classified("EXXXXX"));
+    /// assert!(!CfiCode::is_classified("XXXXXX"));
+    /// assert!(!CfiCode::is_classified("EXXXXX"));
     /// // `Z` is no voting right a common share has.
-    /// assert!(!Cfi::is_classified("ESZUFR"));
+    /// assert!(!CfiCode::is_classified("ESZUFR"));
     /// // Position 5 is not applicable to a hedge fund, so only `X` reads there.
-    /// assert!(Cfi::is_classified("CHAXXX"));
-    /// assert!(!Cfi::is_classified("CHAAXX"));
+    /// assert!(CfiCode::is_classified("CHAXXX"));
+    /// assert!(!CfiCode::is_classified("CHAAXX"));
     /// ```
     #[must_use]
     pub fn is_classified(code: &str) -> bool {
@@ -557,13 +557,12 @@ impl Cfi {
 
     /// The category and group a well-formed code names, with its attributes.
     fn parsed(code: &str) -> Option<(&'static CfiCategory, &'static CfiGroup, [char; 4])> {
-        let held: Vec<char> = code.chars().collect();
-        let [category, group, rest @ ..] = held.as_slice() else {
+        let [category, group, a, b, c, d] = *code.as_bytes() else {
             return None;
         };
-        let attributes: [char; 4] = rest.try_into().ok()?;
-        let category = Self::category_of(*category)?;
-        let group = category.group(*group)?;
+        let attributes = [a, b, c, d].map(char::from);
+        let category = Self::category_of(char::from(category))?;
+        let group = category.group(char::from(group))?;
         for (at, held) in attributes.iter().enumerate() {
             if *held != Self::UNKNOWN && !group.attributes(at).contains(*held) {
                 return None;
@@ -584,17 +583,17 @@ impl Cfi {
     /// nothing.
     ///
     /// ```
-    /// # use yggdryl::Cfi;
+    /// # use yggdryl::CfiCode;
     /// // What one statement left unsaid, the other says.
-    /// assert_eq!(Cfi::merged("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
-    /// assert_eq!(Cfi::merged("ESVUFR", "ESXXXX").as_deref(), Some("ESVUFR"));
+    /// assert_eq!(CfiCode::merged("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
+    /// assert_eq!(CfiCode::merged("ESVUFR", "ESXXXX").as_deref(), Some("ESVUFR"));
     /// // Each fills the other's gaps.
-    /// assert_eq!(Cfi::merged("ESVXXX", "ESXUFR").as_deref(), Some("ESVUFR"));
+    /// assert_eq!(CfiCode::merged("ESVXXX", "ESXUFR").as_deref(), Some("ESVUFR"));
     /// // A disagreement inside one instrument is unknown, not a winner.
-    /// assert_eq!(Cfi::merged("ESVUFR", "ESNUFR").as_deref(), Some("ESXUFR"));
+    /// assert_eq!(CfiCode::merged("ESVUFR", "ESNUFR").as_deref(), Some("ESXUFR"));
     /// // Two different instruments are not one.
-    /// assert_eq!(Cfi::merged("ESVUFR", "DBFNFB"), None);
-    /// assert_eq!(Cfi::merged("ESVUFR", "EPVNFR"), None);
+    /// assert_eq!(CfiCode::merged("ESVUFR", "DBFNFB"), None);
+    /// assert_eq!(CfiCode::merged("ESVUFR", "EPVNFR"), None);
     /// ```
     #[must_use]
     pub fn merged(left: &str, right: &str) -> Option<SmolStr> {
@@ -603,18 +602,21 @@ impl Cfi {
         if category.letter != other_category.letter || group.letter != other_group.letter {
             return None;
         }
-        let mut held = String::with_capacity(Self::LENGTH);
-        held.push(category.letter);
-        held.push(group.letter);
-        for (mine, theirs) in mine.into_iter().zip(theirs) {
-            held.push(match (mine, theirs) {
+        let mut held = [b'X'; Self::LENGTH];
+        held[0] = u8::try_from(category.letter).expect("CFI is ASCII");
+        held[1] = u8::try_from(group.letter).expect("CFI is ASCII");
+        for (target, (mine, theirs)) in held[2..].iter_mut().zip(mine.into_iter().zip(theirs)) {
+            *target = u8::try_from(match (mine, theirs) {
                 (Self::UNKNOWN, held) | (held, Self::UNKNOWN) => held,
                 (mine, theirs) if mine == theirs => mine,
                 // Two voices, two answers, and picking one is a guess.
                 _ => Self::UNKNOWN,
-            });
+            })
+            .expect("CFI is ASCII");
         }
-        Some(SmolStr::new(held))
+        Some(SmolStr::new(
+            std::str::from_utf8(&held).expect("CFI is ASCII"),
+        ))
     }
 
     /// One code from a category and a group a caller inferred, with every
@@ -625,12 +627,12 @@ impl Cfi {
     /// category, kind unspecified" is that category's Others group.
     ///
     /// ```
-    /// # use yggdryl::Cfi;
-    /// assert_eq!(Cfi::coarse('E', Some('S')).as_deref(), Some("ESXXXX"));
-    /// assert_eq!(Cfi::coarse('E', None).as_deref(), Some("EMXXXX"));
+    /// # use yggdryl::CfiCode;
+    /// assert_eq!(CfiCode::coarse('E', Some('S')).as_deref(), Some("ESXXXX"));
+    /// assert_eq!(CfiCode::coarse('E', None).as_deref(), Some("EMXXXX"));
     /// // A group the category does not have is not invented.
-    /// assert_eq!(Cfi::coarse('E', Some('Q')).as_deref(), Some("EMXXXX"));
-    /// assert_eq!(Cfi::coarse('X', None), None);
+    /// assert_eq!(CfiCode::coarse('E', Some('Q')).as_deref(), Some("EMXXXX"));
+    /// assert_eq!(CfiCode::coarse('X', None), None);
     /// ```
     #[must_use]
     pub fn coarse(category: char, group: Option<char>) -> Option<SmolStr> {
@@ -638,19 +640,23 @@ impl Cfi {
         let group = group
             .and_then(|letter| category.group(letter))
             .or_else(|| category.group('M'))?;
-        let mut held = String::with_capacity(Self::LENGTH);
-        held.push(category.letter);
-        held.push(group.letter);
-        for _ in 0..4 {
-            held.push(Self::UNKNOWN);
-        }
-        Some(SmolStr::new(held))
+        let held = [
+            u8::try_from(category.letter).expect("CFI is ASCII"),
+            u8::try_from(group.letter).expect("CFI is ASCII"),
+            b'X',
+            b'X',
+            b'X',
+            b'X',
+        ];
+        Some(SmolStr::new(
+            std::str::from_utf8(&held).expect("CFI is ASCII"),
+        ))
     }
 }
 
-code_leaf!(Cfi, CFI_WIDTH);
+code_leaf!(CfiCode, CFI_WIDTH);
 
-code_value!(Cfi, Cfi, CFI_WIDTH, merge = Cfi::filled);
+code_value!(CfiCode, CfiCode, CFI_WIDTH, merge = CfiCode::filled);
 
 /// The Arrow extension name of the classification code.
 pub(crate) const CFI_EXTENSION_NAME: &str = "yggdryl.cfi";
@@ -664,18 +670,18 @@ impl DataType {
     /// ```
     /// use yggdryl::DataType;
     ///
-    /// assert_eq!(DataType::cfi(), DataType::Cfi);
+    /// assert_eq!(DataType::cfi(), DataType::CfiCode);
     /// assert_eq!(DataType::cfi().to_string(), "cfi");
     /// assert_eq!(DataType::cfi().code_width(), Some(6));
     /// ```
     #[must_use]
     pub const fn cfi() -> Self {
-        Self::Cfi
+        Self::CfiCode
     }
 }
 
 // /// A CFI-typed field: ISO 10962's instrument classification.
-define_field_types!(CfiType, Cfi);
+define_field_types!(CfiCodeType, CfiCode);
 
 /// One ISO 10962 category and the groups it contains.
 pub struct CfiCategory {
@@ -689,7 +695,7 @@ pub struct CfiGroup {
     letter: char,
     name: &'static str,
     /// Positions 3, 4, 5 and 6, each the letters that position accepts
-    /// besides [`Cfi::UNKNOWN`]. An empty string means only `X` reads there.
+    /// besides [`CfiCode::UNKNOWN`]. An empty string means only `X` reads there.
     attributes: [&'static str; 4],
 }
 
@@ -733,7 +739,7 @@ impl CfiGroup {
     }
 
     /// The letters position `at` (0 for position 3 through 3 for position 6)
-    /// accepts besides [`Cfi::UNKNOWN`]; empty where the position does not
+    /// accepts besides [`CfiCode::UNKNOWN`]; empty where the position does not
     /// apply to this group.
     #[must_use]
     pub fn attributes(&self, at: usize) -> &'static str {

@@ -39,7 +39,9 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 use yggdryl::graph::{Element, Event, MarketElement, MarketEventData};
-use yggdryl::{Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol};
+use yggdryl::{
+    BloombergCode, CfiCode, Currency, CusipCode, Decimal18, IsinCode, MicCode, SedolCode,
+};
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture,
     FixCodec as CoreFixCodec, FixEntry, FixHeader, FixId as CoreFixId, FixKey,
@@ -775,7 +777,7 @@ pub struct FixEventView {
     pub creaunix: Either<BigInt, Null>,
     /// When the chain expires, where stated.
     #[napi(ts_type = "bigint | null")]
-    pub expirunix: Either<BigInt, Null>,
+    pub exprtime: Either<BigInt, Null>,
     /// The instant of the message this one follows, where a lifecycle
     /// stated it.
     #[napi(ts_type = "bigint | null")]
@@ -871,7 +873,7 @@ fn event_view(event: &MarketEventData) -> Result<FixEventView> {
         state: event.get_state().as_str().to_owned(),
         seqnum: exact_f64(event.get_seqnum(), "seqnum")?,
         creaunix: or_null(event.get_creaunix().map(instant)),
-        expirunix: or_null(event.get_expirunix().map(instant)),
+        exprtime: or_null(event.get_exprtime().map(instant)),
         prevunix: or_null(event.get_prevunix().map(instant)),
         prevuuid: or_null(event.get_prevuuid().map(|uuid| uuid.to_string())),
         snapunix: or_null(event.get_snapunix().map(instant)),
@@ -880,12 +882,12 @@ fn event_view(event: &MarketEventData) -> Result<FixEventView> {
         currency: event.get_currency().as_str().to_owned(),
         unit: event.get_unit().to_owned(),
         side: event.get_side().as_str().to_owned(),
-        isincode: text(event.get_isincode().map(Isin::as_str)),
-        cusipcode: text(event.get_cusipcode().map(Cusip::as_str)),
-        sedolcode: text(event.get_sedolcode().map(Sedol::as_str)),
-        bloombergcode: text(event.get_bloombergcode().map(Bloomberg::as_str)),
-        cficode: text(event.get_cficode().map(Cfi::as_str)),
-        miccode: text(event.get_miccode().map(Mic::as_str)),
+        isincode: text(event.get_isincode().map(IsinCode::as_str)),
+        cusipcode: text(event.get_cusipcode().map(CusipCode::as_str)),
+        sedolcode: text(event.get_sedolcode().map(SedolCode::as_str)),
+        bloombergcode: text(event.get_bloombergcode().map(BloombergCode::as_str)),
+        cficode: text(event.get_cficode().map(CfiCode::as_str)),
+        miccode: text(event.get_miccode().map(MicCode::as_str)),
         bidpx: decimal(event.get_bidpx()),
         bidqty: decimal(event.get_bidqty()),
         bidcurrency: text(event.get_bidcurrency().map(Currency::as_str)),
@@ -1189,6 +1191,12 @@ impl JsFixMsg {
             .iter()
             .map(|(key, value)| (key.to_string(), value.to_string()))
             .collect()
+    }
+
+    /// The fixed four-byte business category lifted from this message type.
+    #[napi(getter)]
+    pub fn msgcat(&self) -> Option<String> {
+        self.inner.lifted().msgcat().map(ToOwned::to_owned)
     }
 
     /// This message's own identity, as its hyphenated text.
@@ -1965,9 +1973,11 @@ impl JsFixCodec {
     /// empty; `batchByteSize` and `batchRowSize` are the raw bytes and the
     /// rows one Arrow batch targets, the core's 128 MiB and 32,768 rows when
     /// unstated, whichever the batch reaches first; `threads` is how many
-    /// threads the line and row doors read on, one when unstated - more
-    /// read a stream a chunk ahead, each line on some thread, and answer in
-    /// the lines' order; `includeMsgtypes` and
+    /// workers parsing and row conversion use, the available CPUs when
+    /// unstated. Arrow capture parsing keeps at most one input batch per
+    /// worker and yields in order; line doors use bounded row chunks.
+    /// One thread reads lazily without a pool; zero reads as one;
+    /// `includeMsgtypes` and
     /// `excludeMsgtypes` are the message types a parse keeps and refuses,
     /// each read before a frame is built and spelled as a code or a name -
     /// `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type - the
@@ -1978,6 +1988,8 @@ impl JsFixCodec {
     /// states one - a `Scalar` crosses as it is and must already be
     /// `DateTime64(ns, UTC)`, a `Date` is its UTC millisecond instant restated
     /// in nanoseconds, and `null` or absence reads UTC now per new message.
+    /// `snapshotNs` is an epoch-aligned lifecycle snapshot width in exact
+    /// nanoseconds; `null`, zero and a negative width disable snapshots.
     #[napi(constructor)]
     pub fn new(
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
@@ -2018,6 +2030,12 @@ impl JsFixCodec {
             let threads =
                 usize::try_from(threads).map_err(|_| napi_error("threads must not be negative"))?;
             inner = inner.with_threads(threads);
+        }
+        if let Some(Either::A(held)) = options.snapshot_ns {
+            let snapshot_ns = crate::exact_i128(&held, "snapshotNs")?;
+            let snapshot_ns = i64::try_from(snapshot_ns)
+                .map_err(|_| napi_error("snapshotNs must be a signed 64-bit integer"))?;
+            inner = inner.with_snapshot_ns(snapshot_ns);
         }
         if let Some(held) = options.include_msgtypes {
             inner = inner.with_include_msgtypes(held);
@@ -2087,12 +2105,18 @@ impl JsFixCodec {
         self.inner.batch_row_size() as f64
     }
 
-    /// The threads the line and row doors read on; one reads a stream
-    /// where it stands.
+    /// The workers parsing and row conversion use; available CPUs by default.
     #[allow(clippy::cast_precision_loss)]
     #[napi(getter)]
     pub fn threads(&self) -> f64 {
         self.inner.threads() as f64
+    }
+
+    /// The epoch-aligned lifecycle snapshot width in nanoseconds, or `null`
+    /// where snapshots are disabled.
+    #[napi(getter)]
+    pub fn snapshot_ns(&self) -> Option<BigInt> {
+        self.inner.snapshot_ns().map(BigInt::from)
     }
 
     /// The message types a parse keeps, empty where it keeps every type the
@@ -2484,11 +2508,15 @@ pub struct FixCodecOptions<'env> {
     /// The rows one Arrow batch targets; the core's 32,768 when unstated.
     /// A batch closes on whichever bound it reaches first.
     pub batch_row_size: Option<f64>,
-    /// The threads the line and row doors read on; one when unstated. More
-    /// read a stream a chunk ahead, each line on some thread, and answer in
-    /// the lines' order, so the doors answer what one thread answers,
-    /// sooner. Zero reads as one.
+    /// The workers parsing and row conversion use; available CPUs when unstated.
+    /// Arrow capture parsing holds at most one input batch per worker and
+    /// yields in order; line doors use bounded row chunks. One reads lazily
+    /// without a pool, and zero reads as one.
     pub threads: Option<f64>,
+    /// The epoch-aligned lifecycle snapshot width in exact nanoseconds.
+    /// `null`, zero and a negative width disable snapshots.
+    #[napi(ts_type = "bigint | null")]
+    pub snapshot_ns: Option<Either<BigInt, Null>>,
     /// The message types a parse keeps, spelled as codes or as names -
     /// `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type. Empty
     /// or unstated keeps every type the refusals leave.
@@ -2586,7 +2614,7 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// venue publishes.
 ///
 /// The event's instant `currunix` and the chain's `creaunix`, `prevunix`,
-/// `snapunix` and `expirunix`; the identities `currhashcode`,
+/// `snapunix` and `exprtime`; the identities `currhashcode`,
 /// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid` and the
 /// `parentuuids` list; the `srcuuids` list of the lines it was read from;
 /// the `crosscode`, the `seqnum` and the `state` reached; the `identifiers`

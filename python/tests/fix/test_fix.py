@@ -46,16 +46,16 @@ from yggdryl.fix import (
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
 
-# What the crate itself adds beside the specification: its own columns in tag
-# order from 65003 and the two Map groups. Nothing about the market is here -
-# every market fact is FIX's own field, and the graph traits answer it off
-# those.
-CRATED = 22
-# What ``FixRegistry()`` holds: the crate's own scalar fields, the two seeded
-# standard clocks SendingTime (52) and TransactTime (60), and the two Map
-# groups. ``len`` counts the groups; iteration walks the scalars alone.
-SEEDED = 24
-SEEDED_SCALARS = 22
+# What the crate itself adds beside the specification: 28 definitions in tag
+# order from 65003, 26 scalar graph/category/identifier facts and two Map
+# groups. The five normalized identifiers are crate columns; CFI remains FIX's
+# standard tag 461, as do prices, quantities and lanes.
+CRATED = 28
+# What ``FixRegistry()`` holds: those 26 scalar crate fields, SendingTime (52)
+# and TransactTime (60), and the two Map groups. ``len`` counts groups;
+# iteration walks the 28 scalars alone.
+SEEDED = 30
+SEEDED_SCALARS = 28
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
@@ -80,7 +80,6 @@ CROSSCODE_TAG = 65048
 METADATA_TAG = 65049
 SRCUUIDS_TAG = 65051
 STATE_TAG = 65052
-EXPIRUNIX_TAG = 65053
 
 
 def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
@@ -409,10 +408,9 @@ def test_a_new_registry_holds_the_crate_and_the_two_seeded_clocks() -> None:
         assert registry.field_by_counter(tag).name == name, name
         assert registry.get_field_by_tag(tag) is None, name
 
-    # The retired spellings reach nothing.
-    # `px`, `qty` and the instrument codes went the same way: what a message
-    # says about its market is FIX's own field, and the traits read it there.
-    # `state` came back as the event's own column, the one a walk folds.
+    # Retired crate spellings reach nothing. Prices and quantities remain
+    # standard FIX fields; state, categories and normalized identifiers have
+    # their one current crate column.
     for retired in (
         "updatedat",
         "createdat",
@@ -423,8 +421,6 @@ def test_a_new_registry_holds_the_crate_and_the_two_seeded_clocks() -> None:
         "version",
         "px",
         "qty",
-        "isincode",
-        "miccode",
         "tradable",
         "symbolticker",
     ):
@@ -435,12 +431,10 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     """Each column says what it derives from and what it holds, on the field."""
     fields = {field.name: field for field in fix_crate_fields()}
     assert len(fields) == CRATED
-    # In tag order, one block from 65003, above every tag FIX or a venue
-    # publishes: the event's clocks, its identities, the chain, what a
-    # capture stated, the state reached and the expiry a walk folds, and
-    # the two Maps. Nothing about the market is here - the price, the
-    # quantity, the instrument's codes and the lanes are FIX's own fields,
-    # and the graph traits answer them off those.
+    # In tag order, one block from 65003: 26 scalar event, category and
+    # normalized-identifier facts plus the two Maps. ISIN, CUSIP, SEDOL,
+    # Bloomberg and MIC are crate columns; CFI keeps FIX's standard tag 461.
+    # Price, quantity and lanes remain their standard FIX fields.
     assert list(fields) == [
         "currunix",
         "msgctxid",
@@ -463,11 +457,17 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "metadata",
         "srcuuids",
         "state",
-        "expirunix",
+        "exprtime",
+        "msgcat",
+        "isincode",
+        "cusipcode",
+        "sedolcode",
+        "bloombergcode",
+        "miccode",
     ]
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
-    assert tags[0] == UNIX_TAG and tags[-1] == EXPIRUNIX_TAG
+    assert tags[0] == UNIX_TAG and tags[-1] == 65060
     assert all(field.fix.branches == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
@@ -485,9 +485,18 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # The clocks are instants in UTC, to the nanosecond; the identities are
     # what a lake reads as a UUID and a 64-bit integer; the facts a row
     # derives are typed as the thing they hold.
-    for name in ("currunix", "prevunix", "creaunix", "snapunix", "expirunix"):
+    for name in ("currunix", "prevunix", "creaunix", "snapunix", "exprtime"):
         assert fields[name].dtype == DataType('datetime64(ns,"UTC")'), name
     assert fields["state"].dtype == DataType("state")
+    assert fields["msgcat"].dtype == DataType.fixed_ascii(4)
+    for name, dtype in (
+        ("isincode", "isin"),
+        ("cusipcode", "cusip"),
+        ("sedolcode", "sedol"),
+        ("bloombergcode", "bloomberg"),
+        ("miccode", "mic"),
+    ):
+        assert fields[name].dtype == DataType(dtype), name
     for name in ("curruuid", "crossuuid", "prevuuid"):
         assert fields[name].dtype == DataType("uuid"), name
     for name in ("currhashcode", "crosshashcode", "seqnum"):
@@ -1461,6 +1470,72 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     assert next(mixed, None) is None
 
 
+def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed: FixRegistry) -> None:
+    """Python forwards the settled lifecycle contract without changing sources."""
+    assert FixCodec(seed).snapshot_ns is None
+    assert FixCodec(seed, snapshot_ns=None).snapshot_ns is None
+    assert FixCodec(seed, snapshot_ns=0).snapshot_ns is None
+    assert FixCodec(seed, snapshot_ns=-1).snapshot_ns is None
+
+    codec = _fixed(seed)
+    snapshot_codec = _fixed(seed, snapshot_ns=1_000_000_000)
+    assert snapshot_codec.snapshot_ns == 1_000_000_000
+    assert seed.msgtype("D").msgcat == "ORDR"
+
+    original = codec.parse_fix_line(
+        b"8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|"
+    )
+    replay = codec.parse_fix_line(
+        b"8=FIX.4.4|35=D|49=S|56=T|34=7|43=Y|52=20260102-10:15:31|122=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|"
+    )
+    distinct = codec.parse_fix_line(
+        b"8=FIX.4.4|35=D|49=S|56=T|34=8|52=20260102-10:15:32|11=REPLAY-1|55=AAPL|10=0|"
+    )
+    assert original.msgcat == "ORDR"
+    deduplicated = list(codec.lifecycle([original, copy.copy(original), replay, distinct]))
+    assert [held.header().msgseqnum for held in deduplicated] == [7, 8]
+    assert [held.seqnum for held in deduplicated] == [0, 1]
+
+    later = codec.parse_fix_line(
+        b"8=FIX.4.4|35=D|49=S|56=T|34=2|52=20260102-10:15:31|11=LATER|isincode=US0378331005|10=0|"
+    )
+    earlier = codec.parse_fix_line(
+        b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|11=EARLIER|isincode=US0378331005|bloombergcode=AAPL US Equity|10=0|"
+    )
+    assert later.bloombergcode is None
+    learned = list(codec.lifecycle([later, earlier]))
+    assert learned[1].bloombergcode is not None
+    assert learned[1].bloombergcode.as_py() == "AAPL US Equity"
+    assert later.bloombergcode is None
+    schema = fix_schema(seed)
+    rebuilt = FixMsg.from_row(schema, learned[1].into_row(schema), seed)
+    assert rebuilt.bloombergcode is not None
+    assert rebuilt.bloombergcode.as_py() == "AAPL US Equity"
+
+    expiring = snapshot_codec.parse_fix_line(
+        b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|126=20260102-10:15:32|11=EXP-1|55=AAPL|10=0|"
+    )
+    entries = expiring.entries()
+    deadline = expiring.event().exprtime
+    assert deadline is not None
+    walked = list(snapshot_codec.lifecycle([expiring]))
+    assert expiring.entries() == entries
+    assert expiring.event().snapunix is None
+    expired = next(
+        held
+        for held in walked
+        if held.event().snapunix is None and held.currunix == deadline
+    )
+    assert expired.entries() == entries
+    snapshots = [held for held in walked if held.event().snapunix is not None]
+    assert snapshots
+    assert expired.state.as_py() == "95EXPIRED"
+    for held in snapshots:
+        snapunix = held.event().snapunix
+        assert snapunix is not None
+        assert held.currunix <= snapunix < deadline
+
+
 def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> None:
     """The one shape a whole capture lands in."""
     schema = fix_schema(seed, "FixMessage")
@@ -1485,6 +1560,8 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert schema.index_of("35") is None
     # The tag stays the identity: each column carries its field's.
     at = schema.index_of("msgtype")
+    assert at is not None
+    assert columns[at - 1 : at + 3] == ["beginstring", "msgtype", "msgcat", "msgseqnum"]
     assert fix_schema_tags()[at] == 35
     assert schema[at].fix.tag == 35
 
@@ -1516,6 +1593,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert len(row) == len(columns)
     assert row[schema.index_of("beginstring")] == "FIX.4.4"
     assert row[schema.index_of("msgtype")] == "D"
+    assert row[schema.index_of("msgcat")] == "ORDR"
     assert row[schema.index_of("clordid")] == "A"
     assert row[schema.index_of("currunix")] == CLOCK_INSTANT
     assert row[schema.index_of("creaunix")] == CLOCK_INSTANT

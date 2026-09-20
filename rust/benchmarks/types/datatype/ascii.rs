@@ -137,7 +137,7 @@ pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
         let declared = StringEnum::from_logical_name("mic").expect("mic is registered");
         bencher.iter(|| {
             declared
-                .into_members(black_box(&DataType::Mic))
+                .into_members(black_box(&DataType::MicCode))
                 .expect("every prebuilt code fits its width")
         });
     });

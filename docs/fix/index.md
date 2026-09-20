@@ -20,12 +20,25 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Lifecycle](lifecycle.md) | `FixCodec::lifecycle` and the [graph](../graph.md)'s one walk: chains named by the cross code, their creation and history, twins folded, and grid snapshots across a stream |
 | [CLI](cli.md) | `ygg`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
 
+`MsgType(35)` has a fixed four-byte `MsgCat(65054)` companion in the fixed
+row. Each committed message component carries its exhaustive `FIX:msgcat`
+metadata. The normalized instrument columns are `isincode(65055)`,
+`cusipcode(65057)`, `sedolcode(65058)`, `bloombergcode(65059)` and
+`miccode(65060)`; CFI remains standard `CFICode(461)`, with no tag 65056.
+
+The protocol view exposes the category beside the message type: Rust
+`field.as_fix().msgcat()`, Python `field.fix.msgcat`, and JavaScript
+`field.fix.msgcat`. Set it with Rust `field.as_fix_mut().set_msgcat("ORDR")?`
+or the corresponding Python/JavaScript property. The closed category set
+includes `ORDR`, `QUOT`, `EXEC`, `TRAD` and `BOOK`; `MsgType.msgcat` and
+`FixMsg.msgcat` expose the resolved category in both bindings.
+
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
 | Owns | `FixField` / `FixFieldMut` (`as_fix()` / `as_fix_mut()`), `FixId`; no second field class |
-| Keys | `FIX:tag`, `FIX:tags`, `FIX:names`, `FIX:branches`, `FIX:identifiers`; name, datatype, `display` and `description` stay the field's own |
+| Keys | `FIX:tag`, `FIX:tags`, `FIX:names`, `FIX:branches`, `FIX:identifiers`, `FIX:msgtype`, `FIX:msgcat`; name, datatype, `display` and `description` stay the field's own |
 | Identity | A field is its tag and its name, and nothing else. `FixId` is one `i32`: the signed XXH32 of the tag's four little-endian bytes followed by the folded name; `FixId::of(tag, name)` builds it and refuses a tag that is not positive; `Copy`, four bytes, its own hash key |
 | Spelling | Rendered as its decimal digest wherever it crosses a boundary - `FixKey::Id`, `FixMsg::get_by_id`, Python `int`, JavaScript `number`, a row column; `FixId::from_digest` reads that integer back; a bare integer anywhere else (`FixKey::from(i32)`, `registry.field(55)`, `msg.get(55)`) is a tag |
 | Fold | ASCII case, `_`, `-` and space are not part of the name, so `Msg_Type`, `msgtype` and `MsgType` under tag 35 are one id, the one every name lookup already answers |
@@ -191,6 +204,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `field_ref` / `fieldRef` | `FIX:field` | name | scalar field reference in a definition |
 | `group` | `FIX:group` | name | group reference in a definition |
 | `msgtype` | `FIX:msgtype` | text | complete case-sensitive wire code on a message Struct |
+| `msgcat` | `FIX:msgcat` | fixed ASCII(4) | business category; Rust `field.as_fix().msgcat()`, Python `field.fix.msgcat`, JavaScript `field.fix.msgcat` |
 | `replacements` | `FIX:replacements` | canonical JSON, in order | a registry's own rule for how a value of this field is restated: the fields it fills and the values they take, winning whole over the [specification's own retirements](registry.md#what-the-specification-retired) of the tag; see [Registry](registry.md#a-field-carries-what-replaced-it) |
 | `directions` | `FIX:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults; see [Registry](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) |
 

@@ -166,6 +166,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SECU",
     "FIX:msgtype": "BR",
     "FIX:tag": "892323",
     "description": "MsgType = BR",

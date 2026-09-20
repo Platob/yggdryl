@@ -484,8 +484,11 @@ pub struct FixCodec {
     /// The rows one Arrow batch of messages targets, whichever bound the
     /// batch reaches first.
     batch_row_size: usize,
-    /// The threads the line and row doors read on.
+    /// The threads the line and row doors read on. A new codec uses the
+    /// available CPU count, falling back to one where it is unavailable.
     threads: usize,
+    /// The lifecycle snapshot grid in nanoseconds; nonpositive disables it.
+    snapshot_ns: i64,
     /// The `BeginString` child every built message carries, resolved once:
     /// a bridge row states no version, so every one of them would otherwise
     /// look the field up per line.
@@ -513,7 +516,7 @@ fn paged(row: &[u8]) -> Result<TextBytes> {
 }
 
 /// One stream of messages, read where it stands or spread over threads.
-enum Spread<S, T> {
+pub(super) enum Spread<S, T> {
     Sequential(S),
     Threaded(T),
 }
@@ -601,7 +604,8 @@ impl FixCodec {
             exclude_stated: false,
             batch_byte_size: Self::DEFAULT_BATCH_BYTE_SIZE,
             batch_row_size: Self::DEFAULT_BATCH_ROW_SIZE,
-            threads: 1,
+            threads: std::thread::available_parallelism().map_or(1, usize::from),
+            snapshot_ns: 0,
             beginstring,
         }
     }
@@ -821,10 +825,13 @@ impl FixCodec {
 
     /// Sets the threads the line and row doors read on.
     ///
-    /// One, the default, reads a stream where it stands, a line at a time.
-    /// More read it ahead in chunks of [`Self::PARALLEL_CHUNK`] lines, two
-    /// chunks per thread, each chunk parsed on the thread it was handed to
-    /// and every message answered in the lines' order, so
+    /// One reads a stream where it stands, a line at a time. A new codec uses
+    /// the available CPU count, falling back to one. More threads read line,
+    /// message-row and write doors ahead in chunks of [`Self::PARALLEL_CHUNK`]
+    /// lines, two chunks per thread; the Arrow capture doors instead hand one
+    /// whole input batch to each worker, at most one batch per worker ahead.
+    /// Each job is parsed on the thread it was handed to and every message is
+    /// answered in the lines' order, so
     /// [`Self::parse_lines`], [`Self::parse_text_lines`],
     /// [`Self::parse_arrow_messages`] and [`Self::messages`] answer exactly
     /// what one thread answers, sooner, and [`Self::arrow_reader`] and
@@ -849,6 +856,24 @@ impl FixCodec {
     #[must_use]
     pub const fn threads(&self) -> usize {
         self.threads
+    }
+
+    /// Sets the epoch-aligned lifecycle snapshot grid in nanoseconds. A
+    /// nonpositive width disables snapshots, which is the default.
+    #[must_use]
+    pub const fn with_snapshot_ns(mut self, snapshot_ns: i64) -> Self {
+        self.snapshot_ns = snapshot_ns;
+        self
+    }
+
+    /// The lifecycle snapshot grid in nanoseconds, where enabled.
+    #[must_use]
+    pub const fn snapshot_ns(&self) -> Option<i64> {
+        if self.snapshot_ns > 0 {
+            Some(self.snapshot_ns)
+        } else {
+            None
+        }
     }
 
     /// The lines one chunk holds where the doors read on several threads:
@@ -2030,10 +2055,10 @@ impl FixCodec {
         self.build(&pairs, stated.as_deref(), message, &[], extras)
     }
 
-    /// Chains a stream of messages, lazily: the lifecycle.
+    /// Chains a finite capture of messages: the lifecycle.
     ///
-    /// Nothing is collected: the iterator is the stream, so a capture of ten
-    /// million messages costs one at a time. The one walk,
+    /// The capture is collected and stably sorted by event time before the
+    /// one walk,
     /// [`EventIterator`](crate::graph::EventIterator), states each message
     /// as the one after the live message it follows - the last message of
     /// its chain, under the cross identity its cross code derives, still
@@ -2041,11 +2066,20 @@ impl FixCodec {
     /// instant, its place in the chain, the predecessor as a parent and the
     /// lifecycle carried forward, and is settled again around them.
     /// [`Self::lifecycle_arrow_reader`] is the same walk over batches of
-    /// rows. The stream is read in its own order: a message that arrives
-    /// before the live one it would follow is yielded as it came. Owned
-    /// messages and their fallible counterparts compose directly. Errors
-    /// move through in the order the source had them, and never advance the
-    /// walk; exhaustion is fused.
+    /// rows. Intake errors are retained in source order and yielded before
+    /// the sorted messages; they never advance the walk, and exhaustion is
+    /// fused.
+    ///
+    /// Exact republications and flagged FIX retransmissions are removed by a
+    /// delivery set over session, sequence, original time and wire content,
+    /// bounded by the number of distinct deliveries in the finite capture.
+    /// Distinct deliveries with equal business content
+    /// remain distinct. Missing instrument codes may be learned from earlier
+    /// messages of this lifecycle only, after sorting, and never overwrite a
+    /// stated fact. Finite expirations emit at their exact deadline. Where
+    /// [`Self::snapshot_ns`] is set, separate owned views of every living
+    /// identity are emitted on that epoch-aligned grid without advancing its
+    /// chain.
     ///
     /// The walk reads the structured message before it walks: a message
     /// whose sending clock the parse supplied rather than read is dated by
@@ -2079,7 +2113,7 @@ impl FixCodec {
                 // The walk reads the structured message: a frame the parse
                 // dated by a stand-in clock is dated by its transaction.
                 .map(|held: Result<FixMsg>| held.and_then(FixMsg::dated_by_transaction));
-        super::enrich::Walked::new(walked)
+        super::enrich::Walked::new(walked, self.snapshot_ns)
     }
 
     /// Builds one message from pairs the caller already split.

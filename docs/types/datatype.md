@@ -6,7 +6,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 56 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text.md), the ten [codes](codes.md) |
+| Owns | 56 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text.md), the eleven [codes](codes.md) |
 | Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly |
 | Identity | `id()`, `kind()`: 86 ids, 12 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |
@@ -82,7 +82,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     )?;
     assert_eq!(
         row.get_field_by_path("venue").map(|field| field.dtype().clone()),
-        Some(DataType::Mic)
+        Some(DataType::MicCode)
     );
     assert_eq!(
         row.get_field_by_path("at").map(|field| field.dtype().clone()),

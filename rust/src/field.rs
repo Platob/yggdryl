@@ -15,11 +15,11 @@ use crate::metadata::{
     parse_field_id, parse_reserved_bool, property_key, write_json_string as write_quoted,
 };
 use crate::{
-    BloombergType, BooleanType, BytesType, CfiType, CountryType, CurrencyType, CusipType,
-    DateTimeType, DateType, DecimalType, DurationType, EnumType, Float16Type, Float32Type,
-    Float64Type, GeographyType, GeometryType, Int8Type, Int16Type, Int32Type, Int64Type,
-    IntervalType, IsinType, MappingType, MediaTypeType, MicType, MimeTypeType, NullType,
-    RunEndType, SedolType, SequenceType, SideType, StateType, StringType, StructType,
+    BloombergCodeType, BooleanType, BytesType, CfiCodeType, CountryType, CurrencyType,
+    CusipCodeType, DateTimeType, DateType, DecimalType, DurationType, EnumType, Float16Type,
+    Float32Type, Float64Type, GeographyType, GeometryType, Int8Type, Int16Type, Int32Type,
+    Int64Type, IntervalType, IsinCodeType, MappingType, MediaTypeType, MicCodeType, MimeTypeType,
+    NullType, RunEndType, SedolCodeType, SequenceType, SideType, StateType, StringType, StructType,
     TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
     UnionType, UriType, UuidType, VariantType, VersionType,
 };
@@ -1601,9 +1601,9 @@ field_leaves! {
     String => StringField / StringType,
     Country => CountryField / CountryType,
     Currency => CurrencyField / CurrencyType,
-    Mic => MicField / MicType,
-    Cfi => CfiField / CfiType,
-    Isin => IsinField / IsinType,
+    MicCode => MicCodeField / MicCodeType,
+    CfiCode => CfiCodeField / CfiCodeType,
+    IsinCode => IsinCodeField / IsinCodeType,
     Side => SideField / SideType,
     State => StateField / StateType,
     TimeInForce => TimeInForceField / TimeInForceType,
@@ -1623,9 +1623,9 @@ field_leaves! {
     Timezone => TimezoneField / TimezoneType,
     MimeType => MimeTypeField / MimeTypeType,
     MediaType => MediaTypeField / MediaTypeType,
-    Cusip => CusipField / CusipType,
-    Sedol => SedolField / SedolType,
-    Bloomberg => BloombergField / BloombergType,
+    CusipCode => CusipCodeField / CusipCodeType,
+    SedolCode => SedolCodeField / SedolCodeType,
+    BloombergCode => BloombergCodeField / BloombergCodeType,
 }
 
 // A field compares and hashes as the leaf it holds. Two fields of different

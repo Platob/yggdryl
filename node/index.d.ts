@@ -1323,9 +1323,11 @@ export declare class FixCodec {
    * empty; `batchByteSize` and `batchRowSize` are the raw bytes and the
    * rows one Arrow batch targets, the core's 128 MiB and 32,768 rows when
    * unstated, whichever the batch reaches first; `threads` is how many
-   * threads the line and row doors read on, one when unstated - more
-   * read a stream a chunk ahead, each line on some thread, and answer in
-   * the lines' order; `includeMsgtypes` and
+   * workers parsing and row conversion use, the available CPUs when
+   * unstated. Arrow capture parsing keeps at most one input batch per
+   * worker and yields in order; line doors use bounded row chunks.
+   * One thread reads lazily without a pool; zero reads as one;
+   * `includeMsgtypes` and
    * `excludeMsgtypes` are the message types a parse keeps and refuses,
    * each read before a frame is built and spelled as a code or a name -
    * `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type - the
@@ -1336,6 +1338,8 @@ export declare class FixCodec {
    * states one - a `Scalar` crosses as it is and must already be
    * `DateTime64(ns, UTC)`, a `Date` is its UTC millisecond instant restated
    * in nanoseconds, and `null` or absence reads UTC now per new message.
+   * `snapshotNs` is an epoch-aligned lifecycle snapshot width in exact
+   * nanoseconds; `null`, zero and a negative width disable snapshots.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /** The dictionary this codec resolves against, sharing it. */
@@ -1360,11 +1364,13 @@ export declare class FixCodec {
   get batchByteSize(): number
   /** The rows one Arrow batch targets. */
   get batchRowSize(): number
-  /**
-   * The threads the line and row doors read on; one reads a stream
-   * where it stands.
-   */
+  /** The workers parsing and row conversion use; available CPUs by default. */
   get threads(): number
+  /**
+   * The epoch-aligned lifecycle snapshot width in nanoseconds, or `null`
+   * where snapshots are disabled.
+   */
+  get snapshotNs(): bigint | null
   /**
    * The message types a parse keeps, empty where it keeps every type the
    * refusals leave.
@@ -1634,6 +1640,8 @@ export declare class FixMsg {
    * in sorted order; empty where it stated none.
    */
   get metadata(): Record<string, string>
+  /** The fixed four-byte business category lifted from this message type. */
+  get msgcat(): string | null
   /** This message's own identity, as its hyphenated text. */
   get curruuid(): string
   /**
@@ -3034,6 +3042,11 @@ export type JsMimeType = MimeType
  * later mutation of the dictionary leaves it as it was answered.
  */
 export declare class MsgType {
+  /**
+   * The fixed four-byte business category, or `null` for an unclassified
+   * custom definition.
+   */
+  get msgcat(): string | null
   /** The native canonical name. */
   get name(): string
   /** The complete wire message code. */
@@ -3458,6 +3471,10 @@ export declare class ProtocolField {
   get msgtype(): string | null
   /** Set this occurrence's complete wire message code. */
   set msgtype(value: string)
+  /** The fixed four-byte business category this FIX field declares. */
+  get msgcat(): string | null
+  /** Set the FIX business category, or clear it with `null`. */
+  set msgcat(value: string | undefined | null)
   /** The symbolic name of a wire value in this field's inline enumeration. */
   codeName(value: string): string | null
   /** The wire value of a symbolic name or value in this field's inline enumeration. */
@@ -5937,12 +5954,17 @@ export interface FixCodecOptions {
    */
   batchRowSize?: number
   /**
-   * The threads the line and row doors read on; one when unstated. More
-   * read a stream a chunk ahead, each line on some thread, and answer in
-   * the lines' order, so the doors answer what one thread answers,
-   * sooner. Zero reads as one.
+   * The workers parsing and row conversion use; available CPUs when unstated.
+   * Arrow capture parsing holds at most one input batch per worker and
+   * yields in order; line doors use bounded row chunks. One reads lazily
+   * without a pool, and zero reads as one.
    */
   threads?: number
+  /**
+   * The epoch-aligned lifecycle snapshot width in exact nanoseconds.
+   * `null`, zero and a negative width disable snapshots.
+   */
+  snapshotNs?: bigint | null
   /**
    * The message types a parse keeps, spelled as codes or as names -
    * `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type. Empty
@@ -5969,7 +5991,7 @@ export interface FixCodecOptions {
  * venue publishes.
  *
  * The event's instant `currunix` and the chain's `creaunix`, `prevunix`,
- * `snapunix` and `expirunix`; the identities `currhashcode`,
+ * `snapunix` and `exprtime`; the identities `currhashcode`,
  * `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid` and the
  * `parentuuids` list; the `srcuuids` list of the lines it was read from;
  * the `crosscode`, the `seqnum` and the `state` reached; the `identifiers`
@@ -6084,7 +6106,7 @@ export interface FixEventView {
   /** When the chain was created, where stated. */
   creaunix: bigint | null
   /** When the chain expires, where stated. */
-  expirunix: bigint | null
+  exprtime: bigint | null
   /**
    * The instant of the message this one follows, where a lifecycle
    * stated it.

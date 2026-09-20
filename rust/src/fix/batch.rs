@@ -66,7 +66,7 @@ use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar};
 
 use super::build::{BEGINSTRING_COLUMN, DIRECTION_COLUMN, version_of};
 use super::build::{Fill, RowExtras};
-use super::codec::{FixCodec, SOH};
+use super::codec::{FixCodec, SOH, Spread};
 use super::msg::FixMsg;
 use super::{FIXENTRIES_COLUMN, FixMessages};
 use crate::enums::EnumType;
@@ -94,6 +94,10 @@ impl FixCodec {
     /// `arrow_reader` closes them, on the bytes each row lands as against
     /// [`Self::with_batch_byte_size`].
     ///
+    /// One thread reads rows where they stand. Several threads hand one owned
+    /// input batch to each worker, at most one batch per worker ahead, then
+    /// flatten its rows in source order before this reader closes output.
+    ///
     /// # Errors
     ///
     /// Returns [`Self::parse_arrow_messages`]'s refusals, and the Arrow
@@ -109,17 +113,46 @@ impl FixCodec {
         // message crosses a thread between the two halves; the rows come
         // back in row order and the batches close on the thread that pulls
         // them.
-        let rows = crate::parallel::ordered(
-            BatchRows::over(source),
-            self.threads(),
-            self.chunk(),
-            move |held: Result<(Arc<RecordBatch>, usize)>| -> Vec<Result<Charged>> {
-                carried_messages(held.and_then(|(batch, row)| reader.row(&batch, row)))
-                    .map(|message| charged(message, &schema))
-                    .collect()
-            },
-        )
-        .flatten();
+        let rows = if self.threads() == 1 {
+            Spread::Sequential(
+                crate::parallel::ordered(
+                    BatchRows::over(source),
+                    1,
+                    self.chunk(),
+                    move |held: Result<(Arc<RecordBatch>, usize)>| -> Vec<Result<Charged>> {
+                        carried_messages(held.and_then(|(batch, row)| reader.row(&batch, row)))
+                            .map(|message| charged(message, &schema))
+                            .collect()
+                    },
+                )
+                .flatten(),
+            )
+        } else {
+            Spread::Threaded(
+                crate::parallel::ordered(
+                    CaptureBatches::over(source),
+                    self.threads(),
+                    1,
+                    move |held| -> Vec<Result<Charged>> {
+                        match held {
+                            Err(error) => vec![Err(error)],
+                            Ok(batch) => {
+                                let mut rows = Vec::with_capacity(batch.num_rows());
+                                for row in 0..batch.num_rows() {
+                                    rows.extend(
+                                        carried_messages(reader.row(&batch, row))
+                                            .map(|message| charged(message, &schema)),
+                                    );
+                                }
+                                rows
+                            }
+                        }
+                    },
+                )
+                .with_lane_depth(1)
+                .flatten(),
+            )
+        };
         self.closing_reader(field, rows)
     }
 
@@ -168,6 +201,10 @@ impl FixCodec {
     /// or its column holds neither text nor bytes - a source that would
     /// parse nothing is refused before a row is read rather than answered
     /// as empty messages.
+    ///
+    /// One thread reads rows where they stand. Several threads hand one owned
+    /// input batch to each worker, at most one batch per worker ahead, and
+    /// flatten each worker's rows in source order.
     pub fn parse_arrow_messages(
         &self,
         source: BatchReader,
@@ -176,25 +213,33 @@ impl FixCodec {
         let carrier = Self::row_field(source.schema().as_ref())?;
         let reader = self.row_reader(&carrier, &read)?;
         let threads = self.threads();
+        if threads == 1 {
+            return Ok(Spread::Sequential(BatchRows::over(source).flat_map(
+                move |held| carried_messages(held.and_then(|(batch, row)| reader.row(&batch, row))),
+            )));
+        }
         let rows = crate::parallel::ordered(
-            BatchRows::over(source),
+            CaptureBatches::over(source),
             threads,
-            self.chunk(),
-            move |held: Result<(Arc<RecordBatch>, usize)>| {
-                let (messages, carried) = held.and_then(|(batch, row)| reader.row(&batch, row))?;
-                // Read where the row was handed over, so a row's messages
-                // come back read rather than as a source the puller reads.
-                let messages = if threads > 1 {
-                    messages.collected()
-                } else {
-                    messages
-                };
-                Ok((messages, carried))
+            1,
+            move |held| -> Vec<Result<FixMsg>> {
+                match held {
+                    Err(error) => vec![Err(error)],
+                    Ok(batch) => {
+                        let mut messages = Vec::with_capacity(batch.num_rows());
+                        for row in 0..batch.num_rows() {
+                            messages.extend(carried_messages(reader.row(&batch, row)));
+                        }
+                        messages
+                    }
+                }
             },
-        );
+        )
+        .with_lane_depth(1)
+        .flatten();
         // A bulk configuration document expands into one message per
         // configuration, each carrying its source row's own cells.
-        Ok(rows.flat_map(carried_messages))
+        Ok(Spread::Threaded(rows))
     }
 
     /// What every row of `carrier` is read through: where each column sits
@@ -883,8 +928,39 @@ impl RowReader {
     }
 }
 
-/// The rows of a stream of batches of capture rows, each beside the batch
-/// it is a row of, in row order: what the threads are handed one at a time.
+/// The capture batches one source declares, validated once before either its
+/// row-at-a-time sequential reader or its whole-batch worker jobs consume it.
+struct CaptureBatches {
+    source: BatchReader,
+}
+
+impl CaptureBatches {
+    const fn over(source: BatchReader) -> Self {
+        Self { source }
+    }
+}
+
+impl Iterator for CaptureBatches {
+    type Item = Result<RecordBatch>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.source.next() {
+            Some(Ok(batch)) if batch.schema() != self.source.schema() => {
+                Some(Err(Error::conflict(
+                    "the capture reader's declared Arrow schema",
+                    "a different batch schema",
+                    "FIX capture",
+                )))
+            }
+            Some(Ok(batch)) => Some(Ok(batch)),
+            Some(Err(error)) => Some(Err(crate::arrow::from_reader_error(error).into())),
+            None => None,
+        }
+    }
+}
+
+/// The rows of a stream of validated capture batches, each beside the batch
+/// it is a row of, in row order.
 ///
 /// Every cell is read by the position the declared schema gave it, so a
 /// batch of another schema than the first is a conflict item; the source
@@ -892,14 +968,17 @@ impl RowReader {
 /// to the next batch. The puller holds one batch, and a row keeps its own
 /// alive until it is read.
 struct BatchRows {
-    source: BatchReader,
+    source: CaptureBatches,
     /// The batch being read, and the row the next pull reads.
     held: Option<(Arc<RecordBatch>, usize)>,
 }
 
 impl BatchRows {
     const fn over(source: BatchReader) -> Self {
-        Self { source, held: None }
+        Self {
+            source: CaptureBatches::over(source),
+            held: None,
+        }
     }
 }
 
@@ -915,21 +994,13 @@ impl Iterator for BatchRows {
                     return Some(Ok((Arc::clone(batch), row)));
                 }
             }
-            // The batch is spent, or none is held yet: the next one is pulled
-            // and the spent one dropped.
+            // The batch is spent, or none is held yet: the next validated one
+            // is pulled and the spent one dropped.
             match self.source.next() {
-                Some(Ok(batch)) if batch.schema() != self.source.schema() => {
-                    self.held = None;
-                    return Some(Err(Error::conflict(
-                        "the capture reader's declared Arrow schema",
-                        "a different batch schema",
-                        "FIX capture",
-                    )));
-                }
                 Some(Ok(batch)) => self.held = Some((Arc::new(batch), 0)),
                 Some(Err(error)) => {
                     self.held = None;
-                    return Some(Err(crate::arrow::from_reader_error(error).into()));
+                    return Some(Err(error));
                 }
                 None => return None,
             }

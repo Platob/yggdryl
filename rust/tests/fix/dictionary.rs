@@ -420,7 +420,7 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
     // Sixty-eight shipped fields, plus the crate's five clocks: `currunix`,
-    // `creaunix`, `prevunix`, `snapunix` and `expirunix`.
+    // `creaunix`, `prevunix`, `snapunix` and `exprtime`.
     let crated = registry
         .iter()
         .filter(|field| {
@@ -590,7 +590,7 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// every datatype tag in the hash is the family-laid byte, and `identifiers`
 /// and `metadata` hash their entries as a struct rather than a leaf of their
 /// own. It last moved when the crate's own block gained `state` and
-/// `expirunix`: the two lifecycle facts a walk folds forward hash as a
+/// `exprtime`: the two lifecycle facts a walk folds forward hash as a
 /// twenty-first and a twenty-second definition, each at its event column's
 /// datatype - a ranked state and a nanosecond clock - and as members of the
 /// fixed row, the state ahead of `OrdStatus` and the expiry beside the clocks.
@@ -606,10 +606,14 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// met in this merge: the thirty-seven retired `FIX:replacements` entries are
 /// absent and `sourceurl` remains a crate field while leaving the fixed row,
 /// so their combined dictionary is the value pinned here.
+/// It last moved when expiry became `exprtime`, the 181 message components
+/// gained `FIX:msgcat`, and MsgCat plus five normalized identifier definitions
+/// joined the fixed row. CFI keeps standard tag 461; the expiry description
+/// now states that a newer explicit deadline replaces the preceding one.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 6_416_724_377_555_862_807);
+    assert_eq!(registry.stable_hash(), 11_628_073_478_537_720_188);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

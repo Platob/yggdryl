@@ -211,6 +211,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "COLL",
     "FIX:msgtype": "CH",
     "FIX:tag": "505789",
     "description": "MsgType = CH",

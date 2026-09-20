@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use yggdryl::arrow::BatchReader;
-use yggdryl::graph::{Element, Event};
+use yggdryl::graph::{Element, Event, MarketElement};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{DataType, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
 
@@ -739,6 +739,159 @@ fn a_walked_message_descends_from_the_whole_chain_and_keeps_its_own_source() {
         assert_eq!(after.get_prevuuid(), before.get_prevuuid());
         assert_eq!(after.get_curruuid(), before.get_curruuid());
     }
+}
+
+#[test]
+fn lifecycle_drops_republications_and_true_retransmissions_but_keeps_distinct_deliveries() {
+    let codec = codec();
+    let original = b"8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|";
+    let replay = b"8=FIX.4.4|35=D|49=S|56=T|34=7|43=Y|52=20260102-10:15:31|122=20260102-10:15:30|11=REPLAY-1|55=AAPL|10=0|";
+    let distinct = b"8=FIX.4.4|35=D|49=S|56=T|34=8|52=20260102-10:15:32|11=REPLAY-1|55=AAPL|10=0|";
+    let messages = [
+        original.as_slice(),
+        original.as_slice(),
+        replay.as_slice(),
+        distinct.as_slice(),
+    ]
+    .into_iter()
+    .map(|line| codec.parse_fix_line(line));
+
+    let walked: Vec<_> = codec
+        .lifecycle(messages)
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(walked.len(), 2);
+    assert_eq!(walked[0].header().msgseqnum(), Some(7));
+    assert_eq!(walked[1].header().msgseqnum(), Some(8));
+    assert_eq!(walked[1].get_seqnum(), 1, "replays take no chain place");
+    assert_eq!(walked[1].get_prevuuid(), Some(walked[0].get_curruuid()));
+}
+
+#[test]
+fn lifecycle_remembers_deliveries_across_the_whole_finite_capture() {
+    let codec = codec();
+    let first = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|11=LONG-CAPTURE|10=0|")
+        .unwrap();
+    let mut messages = vec![first.clone()];
+    for sequence in 2_u64..=4_097 {
+        let mut message = first.clone();
+        message.set(34, Scalar::from(sequence)).unwrap();
+        messages.push(message);
+    }
+    messages.push(first);
+    assert_eq!(
+        codec.lifecycle(messages).map(Result::unwrap).count(),
+        4_097,
+        "a repeated delivery remains a repeat after many distinct deliveries"
+    );
+}
+
+#[test]
+fn lifecycle_deduplicates_headerless_repeats_within_one_capture_context_only() {
+    let codec = codec().with_capture_names(["msgsessionid"]);
+    let captured = |session: &[u8]| {
+        let line = TextLine::from_bytes(
+            0,
+            TextBytes::from_bytes(
+                b"8=FIX.4.4|35=D|52=20260102-10:15:30|11=HEADERLESS|55=AAPL|10=0|",
+            )
+            .unwrap(),
+            Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_captures(vec![Some(TextBytes::from_bytes(session).unwrap())])
+        .unwrap();
+        codec.parse_text_line(&line).unwrap().next().unwrap()
+    };
+    let first = captured(b"SESSION-A");
+    let repeated = captured(b"SESSION-A");
+    let other_session = captured(b"SESSION-B");
+    let walked: Vec<_> = codec
+        .lifecycle([first, repeated, other_session])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(walked.len(), 2);
+    assert_eq!(walked[0].capture().msgsessionid(), Some("SESSION-A"));
+    assert_eq!(walked[1].capture().msgsessionid(), Some("SESSION-B"));
+
+    let sequenced = [
+        codec.parse_fix_line(
+            b"8=FIX.4.4|35=D|34=1|52=20260102-10:15:30|11=HEADERLESS|55=AAPL|10=0|",
+        ),
+        codec.parse_fix_line(
+            b"8=FIX.4.4|35=D|34=2|52=20260102-10:15:30|11=HEADERLESS|55=AAPL|10=0|",
+        ),
+    ];
+    let walked: Vec<_> = codec
+        .lifecycle(sequenced)
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(
+        walked
+            .iter()
+            .map(|message| message.header().msgseqnum())
+            .collect::<Vec<_>>(),
+        [Some(1), Some(2)],
+        "different delivery sequence numbers remain distinct"
+    );
+}
+
+#[test]
+fn lifecycle_learns_in_event_order_and_fills_only_later_missing_instrument_codes() {
+    let codec = codec();
+    let later =
+        b"8=FIX.4.4|35=D|49=S|56=T|34=2|52=20260102-10:15:31|11=LATER|isincode=US0378331005|10=0|";
+    let earlier = b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|11=EARLIER|isincode=US0378331005|bloombergcode=AAPL US Equity|10=0|";
+
+    let walked: Vec<_> = codec
+        .lifecycle([codec.parse_fix_line(later), codec.parse_fix_line(earlier)])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(walked.len(), 2);
+    assert_eq!(walked[0].header().msgseqnum(), Some(1));
+    assert_eq!(
+        walked[1].get_bloombergcode().map(|code| code.as_str()),
+        Some("AAPL US Equity")
+    );
+    assert_eq!(
+        codec.clone().with_snapshot_ns(1_000_000).snapshot_ns(),
+        Some(1_000_000)
+    );
+    assert_eq!(codec.snapshot_ns(), None);
+}
+
+#[test]
+fn lifecycle_expiry_keeps_fix_content_and_retires_at_the_exact_deadline() {
+    let codec = codec();
+    let original = codec
+        .parse_fix_line(
+            b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|126=20260102-10:15:32|11=EXP-1|55=AAPL|10=0|",
+        )
+        .unwrap();
+    let walked: Vec<_> = codec
+        .lifecycle([original.clone()])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+
+    assert_eq!(walked.len(), 2);
+    let (source, expired) = (&walked[0], &walked[1]);
+    assert_eq!(source.get_curruuid(), original.get_curruuid());
+    assert_eq!(
+        source.entries(),
+        original.entries(),
+        "the yielded source is immutable"
+    );
+    assert_eq!(expired.get_currunix(), source.get_exprtime().unwrap());
+    assert!(expired.get_state().is_failed());
+    assert_eq!(expired.get_prevuuid(), Some(source.get_curruuid()));
+    assert_eq!(expired.get_seqnum(), source.get_seqnum() + 1);
+    assert!(Arc::ptr_eq(expired.registry(), source.registry()));
+    assert_eq!(
+        expired.entries(),
+        source.entries(),
+        "expiry changes no FIX content"
+    );
 }
 
 /// A source that answers `item`, then `None` once, then resumes a bounded

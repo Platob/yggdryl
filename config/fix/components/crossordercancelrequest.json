@@ -221,6 +221,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "orderid",
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "u",
     "FIX:tag": "109341",
     "description": "MsgType = u (lowercase U)",

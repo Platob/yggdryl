@@ -1493,6 +1493,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "clordid,secondaryclordid,allocid,quoteid,reforderid,refclordid",
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "AB",
     "FIX:tag": "790509",
     "description": "MsgType = AB",

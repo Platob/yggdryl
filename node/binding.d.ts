@@ -841,17 +841,17 @@ export type CountryField = FieldOf<'country', string>
 /** ISO 4217, the three-letter currency code, stored as its text. */
 export type CurrencyField = FieldOf<'currency', string>
 /** ISO 10383, the four-character market identifier code. */
-export type MicField = FieldOf<'mic', string>
+export type MicCodeField = FieldOf<'mic', string>
 /** ISO 10962, the six-character instrument classification. */
-export type CfiField = FieldOf<'cfi', string>
+export type CfiCodeField = FieldOf<'cfi', string>
 /** ISO 6166, the twelve-character securities identifier closed by its check digit. */
-export type IsinField = FieldOf<'isin', string>
+export type IsinCodeField = FieldOf<'isin', string>
 /** CUSIP, the nine-character securities identifier closed by its check digit. */
-export type CusipField = FieldOf<'cusip', string>
+export type CusipCodeField = FieldOf<'cusip', string>
 /** SEDOL, the seven-character securities identifier closed by its check digit. */
-export type SedolField = FieldOf<'sedol', string>
+export type SedolCodeField = FieldOf<'sedol', string>
 /** A Bloomberg identifier - a ticker, a market and a yellow key, or a FIGI - bounded at thirty-two bytes. */
-export type BloombergField = FieldOf<'bloomberg', string>
+export type BloombergCodeField = FieldOf<'bloomberg', string>
 /** FIX Side(54), the one-character order side, held to four bytes. */
 export type SideField = FieldOf<'side', string>
 /** An order state ranked from the first to the terminal ones, held to ten bytes. */
@@ -1140,12 +1140,12 @@ export interface FieldsNamespace {
   mediatype(name: string, options?: FieldOptions): MediaTypeField
   country(name: string, options?: FieldOptions): CountryField
   currency(name: string, options?: FieldOptions): CurrencyField
-  mic(name: string, options?: FieldOptions): MicField
-  cfi(name: string, options?: FieldOptions): CfiField
-  isin(name: string, options?: FieldOptions): IsinField
-  cusip(name: string, options?: FieldOptions): CusipField
-  sedol(name: string, options?: FieldOptions): SedolField
-  bloomberg(name: string, options?: FieldOptions): BloombergField
+  mic(name: string, options?: FieldOptions): MicCodeField
+  cfi(name: string, options?: FieldOptions): CfiCodeField
+  isin(name: string, options?: FieldOptions): IsinCodeField
+  cusip(name: string, options?: FieldOptions): CusipCodeField
+  sedol(name: string, options?: FieldOptions): SedolCodeField
+  bloomberg(name: string, options?: FieldOptions): BloombergCodeField
   side(name: string, options?: FieldOptions): SideField
   state(name: string, options?: FieldOptions): StateField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField

@@ -15,7 +15,8 @@ use crate::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
 use crate::sequence::SequenceType;
 use crate::xxhash;
 use crate::{
-    Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol, Side, State, StructType, Uuid,
+    BloombergCode, CfiCode, Currency, CusipCode, Decimal18, IsinCode, MicCode, SedolCode, Side,
+    State, StructType, Uuid,
 };
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 
@@ -28,7 +29,36 @@ const NANOS_PER_DAY: i64 = 86_400 * 1_000_000_000;
 const ROW_STATED_STATE: u8 = 1;
 
 /// The row stated when the message expires: the derivation leaves it.
-const ROW_STATED_EXPIRY: u8 = 2;
+const ROW_STATED_EXPIRY: u8 = 1 << 1;
+
+/// The row stated this normalized market code, rather than a raw FIX pair
+/// from which market derivation could replace it.
+const ROW_STATED_ISIN: u8 = 1 << 2;
+const ROW_STATED_CUSIP: u8 = 1 << 3;
+const ROW_STATED_SEDOL: u8 = 1 << 4;
+const ROW_STATED_BLOOMBERG: u8 = 1 << 5;
+const ROW_STATED_MIC: u8 = 1 << 6;
+
+/// The row-owned facts whose non-null value must survive market derivation.
+fn row_stated_bit(tag: i32) -> Option<u8> {
+    if tag == super::STATE_TAG_NAME.0 {
+        Some(ROW_STATED_STATE)
+    } else if tag == super::EXPRTIME_TAG_NAME.0 {
+        Some(ROW_STATED_EXPIRY)
+    } else if tag == super::ISINCODE_TAG_NAME.0 {
+        Some(ROW_STATED_ISIN)
+    } else if tag == super::CUSIPCODE_TAG_NAME.0 {
+        Some(ROW_STATED_CUSIP)
+    } else if tag == super::SEDOLCODE_TAG_NAME.0 {
+        Some(ROW_STATED_SEDOL)
+    } else if tag == super::BLOOMBERGCODE_TAG_NAME.0 {
+        Some(ROW_STATED_BLOOMBERG)
+    } else if tag == super::MICCODE_TAG_NAME.0 {
+        Some(ROW_STATED_MIC)
+    } else {
+        None
+    }
+}
 
 /// A FIX message: a market event with a FIX body around it.
 ///
@@ -138,11 +168,9 @@ pub struct FixMsg {
     /// else's answer - the state a walk folded forward, the price it says
     /// this message moved from - and re-deriving would throw it away.
     forced: bool,
-    /// Which of the two lifecycle facts the row stated - the state it
-    /// reached, when it expires - as [`ROW_STATED_STATE`] and
-    /// [`ROW_STATED_EXPIRY`]: the derivation leaves those as the row's
-    /// word, so a chained message read back keeps what the walk folded
-    /// forward rather than what its own fields say.
+    /// The lifecycle and normalized market facts the row stated. Derivation
+    /// leaves them as the row's word, so reconstruction keeps an explicit
+    /// value rather than replacing it from a raw FIX field.
     row_stated: u8,
     /// `Text(58)`, where the message carries one.
     text: Option<SmolStr>,
@@ -462,11 +490,8 @@ impl FixMsg {
                     stated_sending |= tag == 52;
                     stated_unix |= tag == super::CURRUNIX_TAG_NAME.0;
                     stated_creation |= tag == super::CREAUNIX_TAG_NAME.0;
-                    if tag == super::STATE_TAG_NAME.0 {
-                        row_stated |= ROW_STATED_STATE;
-                    }
-                    if tag == super::EXPIRUNIX_TAG_NAME.0 {
-                        row_stated |= ROW_STATED_EXPIRY;
+                    if let Some(bit) = row_stated_bit(tag) {
+                        row_stated |= bit;
                     }
                 }
                 // A key spelled under a namespace - `TECH.CLIENTID` - is a
@@ -510,6 +535,14 @@ impl FixMsg {
         }
         if !stated_creation {
             event.set_creaunix(Some(event.get_currunix()));
+        }
+        if lifted.msgcat().is_none() {
+            let category = registry
+                .get_msgtype(header.msgtype())
+                .and_then(super::MsgType::msgcat)
+                .or_else(|| super::constants::msgcat_of(header.msgtype()))
+                .unwrap_or("UNKN");
+            lifted.set_msgcat(Some(category));
         }
         // The members are the planned root's children less the lifted
         // ones, named once as that root named them.
@@ -596,8 +629,8 @@ impl FixMsg {
     }
 
     /// Records one typed fact on the holder that owns it; a null clears it.
-    /// A state or an expiry recorded is the row's word from then on, and a
-    /// null recorded hands the fact back to the derivation.
+    /// A row-owned fact recorded is the row's word from then on, and a null
+    /// recorded hands it back to derivation.
     fn record(&mut self, tag: i32, value: &Scalar) -> bool {
         if tag == identity::TEXT_TAG {
             self.text = value.as_str().map(SmolStr::new);
@@ -616,16 +649,11 @@ impl FixMsg {
             value,
         );
         if recorded {
-            for (held, bit) in [
-                (super::STATE_TAG_NAME.0, ROW_STATED_STATE),
-                (super::EXPIRUNIX_TAG_NAME.0, ROW_STATED_EXPIRY),
-            ] {
-                if tag == held {
-                    if value.is_null() {
-                        self.row_stated &= !bit;
-                    } else {
-                        self.row_stated |= bit;
-                    }
+            if let Some(bit) = row_stated_bit(tag) {
+                if value.is_null() {
+                    self.row_stated &= !bit;
+                } else {
+                    self.row_stated |= bit;
                 }
             }
         }
@@ -764,18 +792,18 @@ impl FixMsg {
         // its identifiers under the sources that name them.
         let cficode = self
             .classification()
-            .and_then(|held| Cfi::new(&held).ok())
-            .or_else(|| word(super::cfi::CFICODE_TAG).and_then(|held| Cfi::new(&held).ok()));
+            .and_then(|held| CfiCode::new(&held).ok())
+            .or_else(|| word(super::cfi::CFICODE_TAG).and_then(|held| CfiCode::new(&held).ok()));
         let symbolticker = word(55).filter(|held| held != "[N/A]" && held != "[N/A");
-        let isincode = self.identifier(&["4"], |held| Isin::new(held).ok());
-        let cusipcode = self.identifier(&["1"], |held| Cusip::new(held).ok());
-        let sedolcode = self.identifier(&["2"], |held| Sedol::new(held).ok());
-        let bloombergcode = self.identifier(&["A", "S"], |held| Bloomberg::new(held).ok());
+        let isincode = self.identifier(&["4"], |held| IsinCode::new(held).ok());
+        let cusipcode = self.identifier(&["1"], |held| CusipCode::new(held).ok());
+        let sedolcode = self.identifier(&["2"], |held| SedolCode::new(held).ok());
+        let bloombergcode = self.identifier(&["A", "S"], |held| BloombergCode::new(held).ok());
         // The market it is listed on, routed to, or last traded on.
         let miccode = word(207)
             .or_else(|| word(100))
             .or_else(|| word(30))
-            .and_then(|held| Mic::new(&held).ok());
+            .and_then(|held| MicCode::new(&held).ok());
         // Whether it could trade, from whichever status says so, in the
         // codes FIX's own enumerations state. A status that is about
         // something else - a code neither list names - says nothing either
@@ -801,7 +829,7 @@ impl FixMsg {
         let state = word(39)
             .or_else(|| word(150))
             .and_then(|held| State::read(&held).ok());
-        let expirunix = [126, 62, 432, 541].into_iter().find_map(|tag| {
+        let exprtime = [126, 62, 432, 541].into_iter().find_map(|tag| {
             by_tag(tag).and_then(|held| held.temporal_count_at(crate::TimeUnit::Nanosecond))
         });
         // What a price moved from, and the two lanes a quote states.
@@ -826,7 +854,7 @@ impl FixMsg {
         event.set_askpx(askpx);
         event.set_askqty(askqty);
         if row_stated & ROW_STATED_EXPIRY == 0 {
-            event.set_expirunix(expirunix);
+            event.set_exprtime(exprtime);
         }
         event.set_tradable(tradable);
         event.set_side(side.unwrap_or_else(Side::unknown));
@@ -835,11 +863,21 @@ impl FixMsg {
         event.set_tif(tif);
         event.set_symbolticker(symbolticker);
         event.set_cficode(cficode);
-        event.set_isincode(isincode);
-        event.set_cusipcode(cusipcode);
-        event.set_sedolcode(sedolcode);
-        event.set_bloombergcode(bloombergcode);
-        event.set_miccode(miccode);
+        if row_stated & ROW_STATED_ISIN == 0 {
+            event.set_isincode(isincode);
+        }
+        if row_stated & ROW_STATED_CUSIP == 0 {
+            event.set_cusipcode(cusipcode);
+        }
+        if row_stated & ROW_STATED_SEDOL == 0 {
+            event.set_sedolcode(sedolcode);
+        }
+        if row_stated & ROW_STATED_BLOOMBERG == 0 {
+            event.set_bloombergcode(bloombergcode);
+        }
+        if row_stated & ROW_STATED_MIC == 0 {
+            event.set_miccode(miccode);
+        }
         if row_stated & ROW_STATED_STATE == 0 {
             event.set_state(state.unwrap_or_else(State::unknown));
         }
@@ -2461,13 +2499,13 @@ impl Event for FixMsg {
         self.event.set_creaunix(unix);
     }
 
-    fn get_expirunix(&self) -> Option<i64> {
-        self.event.get_expirunix()
+    fn get_exprtime(&self) -> Option<i64> {
+        self.event.get_exprtime()
     }
 
-    fn set_expirunix(&mut self, unix: Option<i64>) {
+    fn set_exprtime(&mut self, unix: Option<i64>) {
         self.forced = true;
-        self.event.set_expirunix(unix);
+        self.event.set_exprtime(unix);
     }
 
     fn get_prevunix(&self) -> Option<i64> {
@@ -2541,56 +2579,56 @@ impl MarketElement for FixMsg {
         self.event.set_side(side);
     }
 
-    fn get_isincode(&self) -> Option<&Isin> {
+    fn get_isincode(&self) -> Option<&IsinCode> {
         self.event.get_isincode()
     }
 
-    fn set_isincode(&mut self, isincode: Option<Isin>) {
+    fn set_isincode(&mut self, isincode: Option<IsinCode>) {
         self.forced = true;
         self.event.set_isincode(isincode);
     }
 
-    fn get_cusipcode(&self) -> Option<&Cusip> {
+    fn get_cusipcode(&self) -> Option<&CusipCode> {
         self.event.get_cusipcode()
     }
 
-    fn set_cusipcode(&mut self, cusipcode: Option<Cusip>) {
+    fn set_cusipcode(&mut self, cusipcode: Option<CusipCode>) {
         self.forced = true;
         self.event.set_cusipcode(cusipcode);
     }
 
-    fn get_sedolcode(&self) -> Option<&Sedol> {
+    fn get_sedolcode(&self) -> Option<&SedolCode> {
         self.event.get_sedolcode()
     }
 
-    fn set_sedolcode(&mut self, sedolcode: Option<Sedol>) {
+    fn set_sedolcode(&mut self, sedolcode: Option<SedolCode>) {
         self.forced = true;
         self.event.set_sedolcode(sedolcode);
     }
 
-    fn get_bloombergcode(&self) -> Option<&Bloomberg> {
+    fn get_bloombergcode(&self) -> Option<&BloombergCode> {
         self.event.get_bloombergcode()
     }
 
-    fn set_bloombergcode(&mut self, bloombergcode: Option<Bloomberg>) {
+    fn set_bloombergcode(&mut self, bloombergcode: Option<BloombergCode>) {
         self.forced = true;
         self.event.set_bloombergcode(bloombergcode);
     }
 
-    fn get_cficode(&self) -> Option<&Cfi> {
+    fn get_cficode(&self) -> Option<&CfiCode> {
         self.event.get_cficode()
     }
 
-    fn set_cficode(&mut self, cficode: Option<Cfi>) {
+    fn set_cficode(&mut self, cficode: Option<CfiCode>) {
         self.forced = true;
         self.event.set_cficode(cficode);
     }
 
-    fn get_miccode(&self) -> Option<&Mic> {
+    fn get_miccode(&self) -> Option<&MicCode> {
         self.event.get_miccode()
     }
 
-    fn set_miccode(&mut self, miccode: Option<Mic>) {
+    fn set_miccode(&mut self, miccode: Option<MicCode>) {
         self.forced = true;
         self.event.set_miccode(miccode);
     }

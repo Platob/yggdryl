@@ -1200,12 +1200,12 @@ fn feed_cell(
         | DataType::Interval(_)
         | DataType::Country
         | DataType::Currency
-        | DataType::Mic
-        | DataType::Cfi
-        | DataType::Isin
-        | DataType::Cusip
-        | DataType::Sedol
-        | DataType::Bloomberg
+        | DataType::MicCode
+        | DataType::CfiCode
+        | DataType::IsinCode
+        | DataType::CusipCode
+        | DataType::SedolCode
+        | DataType::BloombergCode
         | DataType::Side
         | DataType::State
         | DataType::TimeInForce

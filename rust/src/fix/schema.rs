@@ -48,6 +48,8 @@ use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
+use crate::graph::MarketElement;
+
 use smol_str::SmolStr;
 
 use crate::{DataType, Field, Result};
@@ -165,7 +167,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
         CREAUNIX_TAG_NAME as CREAUNIX, CROSSCODE_TAG_NAME as CROSSCODE,
         CROSSHASHCODE_TAG_NAME as CROSSHASHCODE, CROSSUUID_TAG_NAME as CROSSUUID,
         CURRHASHCODE_TAG_NAME as HASHCODE, CURRUNIX_TAG_NAME as UNIX,
-        CURRUUID_TAG_NAME as CURRUUID, EXPIRUNIX_TAG_NAME as EXPIRUNIX,
+        CURRUUID_TAG_NAME as CURRUUID, EXPRTIME_TAG_NAME as EXPRTIME,
         IDENTIFIERS_TAG_NAME as IDENTIFIERS, METADATA_TAG_NAME as METADATA,
         MSGCTXID_TAG_NAME as MSGCTXID, MSGDIRECTION_TAG_NAME as MSGDIRECTION,
         MSGPLUGINID_TAG_NAME as MSGPLUGINID, MSGSESSIONID_TAG_NAME as MSGSESSIONID,
@@ -191,18 +193,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
     band(
         &mut tags,
         &[
-            UNIX.0,
-            CREAUNIX.0,
-            PREVUNIX.0,
-            SNAPUNIX.0,
-            EXPIRUNIX.0,
-            52,
-            122,
-            60,
-            64,
-            75,
-            126,
-            62,
+            UNIX.0, CREAUNIX.0, PREVUNIX.0, SNAPUNIX.0, EXPRTIME.0, 52, 122, 60, 64, 75, 126, 62,
             432,
         ],
     );
@@ -235,6 +226,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
         &[
             8,
             35,
+            super::MSGCAT_TAG_NAME.0,
             34,
             49,
             56,
@@ -251,7 +243,25 @@ pub fn fix_schema_tags() -> Vec<i32> {
     band(
         &mut tags,
         &[
-            55, 48, 22, 167, 762, 207, 100, 30, 461, 541, 460, 326, 340, 965,
+            55,
+            48,
+            22,
+            super::ISINCODE_TAG_NAME.0,
+            super::CUSIPCODE_TAG_NAME.0,
+            super::SEDOLCODE_TAG_NAME.0,
+            super::BLOOMBERGCODE_TAG_NAME.0,
+            super::MICCODE_TAG_NAME.0,
+            167,
+            762,
+            207,
+            100,
+            30,
+            461,
+            541,
+            460,
+            326,
+            340,
+            965,
         ],
     );
     // Which order: the chain of identifiers a message and its answers share.
@@ -1771,8 +1781,11 @@ impl super::FixMsg {
             // overwritten. `classification` merges a partial stated code with
             // what the rest of the message says; this is the other half of it,
             // where there was nothing stated to merge with.
-            self.classification()
-                .map_or(crate::Scalar::Null, crate::Scalar::from)
+            self.get_cficode()
+                .cloned()
+                .map(crate::Scalar::CfiCode)
+                .or_else(|| self.classification().map(crate::Scalar::from))
+                .unwrap_or(crate::Scalar::Null)
         } else if super::is_crate_tag(tag) {
             // The registry compiles every derivation once, and a refused
             // compile refuses the row as it refuses the pass; a derivation

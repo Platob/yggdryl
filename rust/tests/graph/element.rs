@@ -15,7 +15,10 @@ use yggdryl::graph::{
     Element, Event, MarketElement, MarketElementData, MarketEvent, MarketEventData,
 };
 use yggdryl::xxhash::Xxh3;
-use yggdryl::{Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol, Side, State, Uuid};
+use yggdryl::{
+    BloombergCode, CfiCode, Currency, CusipCode, Decimal18, IsinCode, MicCode, SedolCode, Side,
+    State, Uuid,
+};
 
 /// One report as a foreign caller would hold it: every fact the two traits
 /// name, an identity assigned rather than derived, and nothing the graph
@@ -34,7 +37,7 @@ struct Report {
     state: State,
     seqnum: u64,
     creaunix: Option<i64>,
-    expirunix: Option<i64>,
+    exprtime: Option<i64>,
     prevunix: Option<i64>,
     prevuuid: Option<Uuid>,
     snapunix: Option<i64>,
@@ -58,7 +61,7 @@ impl Report {
             state: State::from_spelling("New").expect("a shipped state"),
             seqnum: 0,
             creaunix: None,
-            expirunix: None,
+            exprtime: None,
             prevunix: None,
             prevuuid: None,
             snapunix: None,
@@ -189,12 +192,12 @@ impl Event for Report {
         self.creaunix = unix;
     }
 
-    fn get_expirunix(&self) -> Option<i64> {
-        self.expirunix
+    fn get_exprtime(&self) -> Option<i64> {
+        self.exprtime
     }
 
-    fn set_expirunix(&mut self, unix: Option<i64>) {
-        self.expirunix = unix;
+    fn set_exprtime(&mut self, unix: Option<i64>) {
+        self.exprtime = unix;
     }
 
     fn get_prevunix(&self) -> Option<i64> {
@@ -484,25 +487,25 @@ fn an_event_answers_its_instant_state_and_place_and_is_still_an_element() {
 fn the_optional_lifecycle_facts_are_stated_only_where_known() {
     let mut event = MarketEventData::at(40);
     assert_eq!(event.get_creaunix(), None);
-    assert_eq!(event.get_expirunix(), None);
+    assert_eq!(event.get_exprtime(), None);
     assert_eq!(event.get_prevunix(), None);
     assert_eq!(event.get_prevuuid(), None);
     assert_eq!(event.get_snapunix(), None);
 
     event.set_creaunix(Some(35));
-    event.set_expirunix(Some(100));
+    event.set_exprtime(Some(100));
     event.set_prevunix(Some(30));
     event.set_prevuuid(Some(Uuid::from_v8(3)));
     event.set_snapunix(Some(40));
     assert_eq!(event.get_snapunix(), Some(40));
     assert_eq!(event.get_creaunix(), Some(35));
-    assert_eq!(event.get_expirunix(), Some(100));
+    assert_eq!(event.get_exprtime(), Some(100));
     assert_eq!(event.get_prevunix(), Some(30));
     assert_eq!(event.get_prevuuid(), Some(Uuid::from_v8(3)));
 
     // Each fact is unsaid on its own.
-    event.set_expirunix(None);
-    assert_eq!(event.get_expirunix(), None);
+    event.set_exprtime(None);
+    assert_eq!(event.get_exprtime(), None);
     assert_eq!(event.get_creaunix(), Some(35));
 }
 
@@ -560,20 +563,20 @@ fn following_records_the_predecessor_and_refuses_what_cannot_follow() {
 
 #[test]
 fn following_carries_the_lifecycle_forward() {
-    // The earliest creation, the latest expiration, the furthest state; and
-    // each where only one side states it is that side's.
+    // Earliest creation and furthest state carry forward; a newer stated
+    // expiry replaces the prior deadline, including when it shortens it.
     let mut previous = Report::at(1, 10);
     previous.set_creaunix(Some(5));
-    previous.set_expirunix(Some(200));
+    previous.set_exprtime(Some(200));
     previous.set_state(filled());
     let mut next = Report::at(2, 20);
     next.set_creaunix(Some(8));
-    next.set_expirunix(Some(100));
+    next.set_exprtime(Some(100));
     let next = next
         .with_previous(&previous)
         .expect("the later one follows");
     assert_eq!(next.get_creaunix(), Some(5));
-    assert_eq!(next.get_expirunix(), Some(200));
+    assert_eq!(next.get_exprtime(), Some(100));
     assert!(
         next.get_state().is_done(),
         "the furthest state carries forward"
@@ -582,11 +585,11 @@ fn following_carries_the_lifecycle_forward() {
     // A previous that knows less leaves what the next one knows alone.
     let mut next = Report::at(3, 30);
     next.set_creaunix(Some(25));
-    next.set_expirunix(Some(300));
+    next.set_exprtime(Some(300));
     let bare = Report::at(4, 20);
     let next = next.with_previous(&bare).expect("follows");
     assert_eq!(next.get_creaunix(), Some(25));
-    assert_eq!(next.get_expirunix(), Some(300));
+    assert_eq!(next.get_exprtime(), Some(300));
     assert!(
         next.get_state().is_live(),
         "a lesser state does not move the next one back"
@@ -595,7 +598,7 @@ fn following_carries_the_lifecycle_forward() {
     // And one that knows more fills what the next one did not state.
     let next = Report::at(5, 40).with_previous(&previous).expect("follows");
     assert_eq!(next.get_creaunix(), Some(5));
-    assert_eq!(next.get_expirunix(), Some(200));
+    assert_eq!(next.get_exprtime(), Some(200));
 
     // What the next element itself says moves nowhere: its instant, its
     // code, its sources, and the cross code it states where the
@@ -715,7 +718,7 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
     twin.set_parentuuids(vec![Uuid::from_v8(8), Uuid::from_v8(9)]);
     twin.set_srcuuids(vec![Uuid::from_v8(71)]);
     twin.set_creaunix(Some(8));
-    twin.set_expirunix(Some(99));
+    twin.set_exprtime(Some(99));
     let twin = twin.restating(&live);
     // The place the live one holds is the twin's: the chain grows by nothing.
     assert_eq!(twin.get_prevuuid(), Some(Uuid::from_v8(1)));
@@ -741,7 +744,7 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
     // The lifecycle folds: the earliest creation, the latest expiration,
     // the furthest state. What it says of itself - its instant - is its own.
     assert_eq!(twin.get_creaunix(), Some(5));
-    assert_eq!(twin.get_expirunix(), Some(99));
+    assert_eq!(twin.get_exprtime(), Some(99));
     assert!(twin.get_state().is_done());
     assert_eq!(twin.get_currunix(), 20);
 
@@ -778,7 +781,7 @@ fn merging_folds_another_statement_of_the_same_element() {
     later.set_parentuuids(vec![Uuid::from_v8(8), Uuid::from_v8(7)]);
     later.set_srcuuids(vec![Uuid::from_v8(71), Uuid::from_v8(70)]);
     later.set_creaunix(Some(4));
-    later.set_expirunix(Some(99));
+    later.set_exprtime(Some(99));
     later.set_state(filled());
     later.set_prevuuid(Some(Uuid::from_v8(5)));
     later.set_prevunix(Some(6));
@@ -812,7 +815,7 @@ fn merging_folds_another_statement_of_the_same_element() {
     );
     // The lifecycle folds as following folds it.
     assert_eq!(merged.get_creaunix(), Some(4));
-    assert_eq!(merged.get_expirunix(), Some(99));
+    assert_eq!(merged.get_exprtime(), Some(99));
     assert!(merged.get_state().is_done());
     // The predecessor is this element's where it names one.
     assert_eq!(merged.get_prevuuid(), Some(Uuid::from_v8(0)));
@@ -944,23 +947,29 @@ fn a_market_element_names_its_instrument_the_way_the_market_does() {
             "an instrument is named only where the market names it"
         );
     }
-    held.set_isincode(Some(Isin::new("US0378331005").expect("an ISIN")));
-    held.set_cusipcode(Some(Cusip::new("037833100").expect("a CUSIP")));
-    held.set_sedolcode(Some(Sedol::new("B0YBKJ7").expect("a SEDOL")));
+    held.set_isincode(Some(IsinCode::new("US0378331005").expect("an ISIN")));
+    held.set_cusipcode(Some(CusipCode::new("037833100").expect("a CUSIP")));
+    held.set_sedolcode(Some(SedolCode::new("B0YBKJ7").expect("a SEDOL")));
     held.set_bloombergcode(Some(
-        Bloomberg::new("AAPL US EQUITY").expect("a Bloomberg identifier"),
+        BloombergCode::new("AAPL US EQUITY").expect("a BloombergCode identifier"),
     ));
-    held.set_cficode(Some(Cfi::new("ESVUFR").expect("a CFI")));
-    held.set_miccode(Some(Mic::new("XPAR").expect("a MIC")));
-    assert_eq!(held.get_isincode().map(Isin::as_str), Some("US0378331005"));
-    assert_eq!(held.get_cusipcode().map(Cusip::as_str), Some("037833100"));
-    assert_eq!(held.get_sedolcode().map(Sedol::as_str), Some("B0YBKJ7"));
+    held.set_cficode(Some(CfiCode::new("ESVUFR").expect("a CFI")));
+    held.set_miccode(Some(MicCode::new("XPAR").expect("a MIC")));
     assert_eq!(
-        held.get_bloombergcode().map(Bloomberg::as_str),
+        held.get_isincode().map(IsinCode::as_str),
+        Some("US0378331005")
+    );
+    assert_eq!(
+        held.get_cusipcode().map(CusipCode::as_str),
+        Some("037833100")
+    );
+    assert_eq!(held.get_sedolcode().map(SedolCode::as_str), Some("B0YBKJ7"));
+    assert_eq!(
+        held.get_bloombergcode().map(BloombergCode::as_str),
         Some("AAPL US EQUITY")
     );
-    assert_eq!(held.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
-    assert_eq!(held.get_miccode().map(Mic::as_str), Some("XPAR"));
+    assert_eq!(held.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
+    assert_eq!(held.get_miccode().map(MicCode::as_str), Some("XPAR"));
     // Each is unsaid on its own.
     held.set_cusipcode(None);
     assert!(held.get_cusipcode().is_none());
@@ -968,7 +977,7 @@ fn a_market_element_names_its_instrument_the_way_the_market_does() {
     // The codes are the crate's own: a spelling that is no identifier never
     // reaches the element.
     assert!(
-        Isin::new("US0378331006").is_err(),
+        IsinCode::new("US0378331006").is_err(),
         "a wrong check digit is no ISIN"
     );
 }
@@ -1028,8 +1037,8 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     let mut first = trade(10);
     first.set_currency(Currency::none());
     first.set_side(Side::unknown());
-    first.set_cficode(Some(Cfi::new("ESXXXR").expect("a CFI")));
-    first.set_isincode(Some(Isin::new("US0378331005").expect("an ISIN")));
+    first.set_cficode(Some(CfiCode::new("ESXXXR").expect("a CFI")));
+    first.set_isincode(Some(IsinCode::new("US0378331005").expect("an ISIN")));
     first.finalize();
     // A later statement of the same trade: the identity kept, the instant
     // and the facts restated.
@@ -1040,8 +1049,8 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     later.set_unit("MWh".to_owned());
     later.set_currency(Currency::new("EUR").expect("a currency"));
     later.set_side(Side::read("2").expect("a side"));
-    later.set_cficode(Some(Cfi::new("ESVUFX").expect("a CFI")));
-    later.set_miccode(Some(Mic::new("XPAR").expect("a MIC")));
+    later.set_cficode(Some(CfiCode::new("ESVUFX").expect("a CFI")));
+    later.set_miccode(Some(MicCode::new("XPAR").expect("a MIC")));
 
     // The later statement has the last word on the market's facts, and each
     // code is the better of the two: the earlier fills what the later left
@@ -1054,12 +1063,12 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     );
     assert_eq!(merged.get_currency().as_str(), "EUR");
     assert_eq!(merged.get_side().as_str(), "SELL");
-    assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
+    assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
     assert_eq!(
-        merged.get_isincode().map(Isin::as_str),
+        merged.get_isincode().map(IsinCode::as_str),
         Some("US0378331005")
     );
-    assert_eq!(merged.get_miccode().map(Mic::as_str), Some("XPAR"));
+    assert_eq!(merged.get_miccode().map(MicCode::as_str), Some("XPAR"));
     // Merged, the event is finalized: its identity is what it now says.
     assert_eq!(
         merged.get_curruuid(),
@@ -1074,9 +1083,9 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
         (merged.get_px(), merged.get_currency().as_str()),
         (Decimal18::from_int(83), "EUR")
     );
-    assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
+    assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
     assert_eq!(
-        merged.get_isincode().map(Isin::as_str),
+        merged.get_isincode().map(IsinCode::as_str),
         Some("US0378331005")
     );
 
@@ -1102,14 +1111,14 @@ fn merging_a_market_element_lets_this_statement_lead() {
     this.set_crosscode("T-1".to_owned());
     this.set_px(Decimal18::parse("82.5").expect("a decimal"));
     this.set_qty(Decimal18::from_int(1_000));
-    this.set_cficode(Some(Cfi::new("ESXXXR").expect("a CFI")));
+    this.set_cficode(Some(CfiCode::new("ESXXXR").expect("a CFI")));
     this.finalize();
     let mut other = this.clone();
     other.set_px(Decimal18::from_int(83));
     other.set_unit("bbl".to_owned());
     other.set_currency(Currency::new("USD").expect("a currency"));
     other.set_side(Side::read("1").expect("a side"));
-    other.set_cficode(Some(Cfi::new("ESVUFR").expect("a CFI")));
+    other.set_cficode(Some(CfiCode::new("ESVUFR").expect("a CFI")));
     other.set_identifiers(identifiers([("ClOrdID", "C-1")]));
     let merged = this.clone().merge_with(&other).expect("the same element");
     assert_eq!(merged.get_px().to_string(), "82.5");
@@ -1124,7 +1133,7 @@ fn merging_a_market_element_lets_this_statement_lead() {
         "unknown takes the other"
     );
     assert_eq!(merged.get_side().as_str(), "BUY");
-    assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
+    assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
     assert_eq!(merged.get_identifiers()["ClOrdID"], "C-1");
     // Finalized: the identity is what the merged element states.
     assert_eq!(
@@ -1272,7 +1281,7 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
     moved.set_crossuuid(Uuid::from_v8(77));
     moved.set_srcuuids(vec![Uuid::from_v8(70)]);
     moved.set_creaunix(Some(1));
-    moved.set_expirunix(Some(200));
+    moved.set_exprtime(Some(200));
     moved.set_snapunix(Some(10));
     assert_eq!(code(&event), code(&moved));
     // What an element states moves the code: a cross code, a name, a
@@ -1465,11 +1474,11 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     event.set_state(filled());
     event.set_seqnum(3);
     event.set_creaunix(Some(at(5)));
-    event.set_expirunix(Some(at(99)));
+    event.set_exprtime(Some(at(99)));
     event.set_prevuuid(Some(Uuid::from_v8(8)));
     event.set_prevunix(Some(at(8)));
     event.set_snapunix(Some(at(10)));
-    event.set_isincode(Some(Isin::new("US0378331005").expect("an ISIN")));
+    event.set_isincode(Some(IsinCode::new("US0378331005").expect("an ISIN")));
     event.fill_lanes();
     event.finalize();
 
@@ -1503,7 +1512,7 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     assert_eq!(back.get_currunix(), 0);
     assert_eq!(back.get_state(), &State::unknown());
     assert_eq!(back.get_seqnum(), 0);
-    assert_eq!((back.get_creaunix(), back.get_expirunix()), (None, None));
+    assert_eq!((back.get_creaunix(), back.get_exprtime()), (None, None));
     assert_eq!((back.get_prevuuid(), back.get_prevunix()), (None, None));
     assert_eq!(back.get_snapunix(), None);
     assert_eq!(back.get_curruuid(), element.get_curruuid());
@@ -1597,8 +1606,8 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     order.set_tif(Some("GoodTillCancel".to_owned()));
     order.set_tradable(Some(true));
     order.set_symbolticker(Some("BRN".to_owned()));
-    order.set_isincode(Some(Isin::new("US0378331005").expect("an ISIN")));
-    order.set_miccode(Some(Mic::new("XLON").expect("a MIC")));
+    order.set_isincode(Some(IsinCode::new("US0378331005").expect("an ISIN")));
+    order.set_miccode(Some(MicCode::new("XLON").expect("a MIC")));
     order.finalize();
 
     // The report that answers it names none of that, and states a price and
@@ -1625,10 +1634,10 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     assert_eq!(followed.get_unit(), "bbl");
     assert_eq!(followed.get_side().as_str(), "BUY");
     assert_eq!(
-        followed.get_isincode().map(Isin::as_str),
+        followed.get_isincode().map(IsinCode::as_str),
         Some("US0378331005")
     );
-    assert_eq!(followed.get_miccode().map(Mic::as_str), Some("XLON"));
+    assert_eq!(followed.get_miccode().map(MicCode::as_str), Some("XLON"));
     // What this report does say is its own: the price it states is not the
     // one it followed.
     assert_eq!(followed.get_px(), Decimal18::from_int(83));
@@ -1692,4 +1701,32 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     named.set_symbolticker(Some("BRN".to_owned()));
     named.finalize();
     assert_ne!(named.get_currhashcode(), trade(50).get_currhashcode());
+}
+#[test]
+fn isin_setters_fill_only_deterministic_missing_identifiers() {
+    use yggdryl::graph::{MarketElement, MarketElementData, MarketEventData};
+    use yggdryl::{CusipCode, IsinCode};
+
+    let mut element = MarketElementData::default();
+    element.set_isincode(Some(IsinCode::new("US0378331005").unwrap()));
+    assert_eq!(
+        element.get_cusipcode().map(CusipCode::as_str),
+        Some("037833100")
+    );
+    assert!(element.get_cficode().is_none());
+    assert!(element.get_bloombergcode().is_none());
+    let stated = CusipCode::new("594918104").unwrap();
+    element.set_cusipcode(Some(stated.clone()));
+    element.set_isincode(Some(IsinCode::new("US0378331005").unwrap()));
+    assert_eq!(element.get_cusipcode(), Some(&stated));
+
+    let mut event = MarketEventData::at(0);
+    event.set_isincode(Some(IsinCode::new("US0378331005").unwrap()));
+    assert_eq!(
+        event.get_cusipcode().map(CusipCode::as_str),
+        Some("037833100")
+    );
+    let mut unknown = MarketElementData::default();
+    unknown.set_isincode(Some(IsinCode::default()));
+    assert!(unknown.get_cusipcode().is_none());
 }

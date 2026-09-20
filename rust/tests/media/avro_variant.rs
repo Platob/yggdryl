@@ -23,9 +23,11 @@ fn variant() -> Variant {
 }
 
 fn variant_record(annotation: bool) -> String {
-    let annotation = annotation
-        .then_some(",\"logicalType\":\"variant\"")
-        .unwrap_or("");
+    let annotation = if annotation {
+        ",\"logicalType\":\"variant\""
+    } else {
+        ""
+    };
     format!(
         r#"{{"type":"record","name":"variant_value"{annotation},"fields":[{{"name":"metadata","type":"bytes"}},{{"name":"value","type":"bytes"}}]}}"#
     )

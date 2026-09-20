@@ -2038,6 +2038,29 @@ impl JsProtocolField {
             .map_err(napi_error)
     }
 
+    /// The fixed four-byte business category this FIX field declares.
+    #[napi(getter)]
+    pub fn msgcat(&self, env: Env) -> Result<Option<String>> {
+        self.require_fix(env, "msgcat")?;
+        Ok(self.field.inner.as_fix().msgcat().map(ToOwned::to_owned))
+    }
+
+    /// Set the FIX business category, or clear it with `null`.
+    #[napi(setter)]
+    pub fn set_msgcat(&mut self, env: Env, value: Option<String>) -> Result<()> {
+        self.require_fix(env, "msgcat")?;
+        if let Some(value) = value {
+            self.field
+                .inner
+                .as_fix_mut()
+                .set_msgcat(&value)
+                .map_err(napi_error)
+        } else {
+            self.field.inner.as_fix_mut().remove_msgcat();
+            Ok(())
+        }
+    }
+
     /// The symbolic name of a wire value in this field's inline enumeration.
     #[napi]
     pub fn code_name(&self, env: Env, value: String) -> Result<Option<String>> {

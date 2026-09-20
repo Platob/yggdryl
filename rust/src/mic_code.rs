@@ -10,9 +10,9 @@ use crate::typed::define_field_types;
 use crate::value::CodeValue;
 use crate::{DataType, Result, Scalar, Value};
 
-code_leaf!(Mic, MIC_WIDTH);
+code_leaf!(MicCode, MIC_WIDTH);
 
-impl Mic {
+impl MicCode {
     /// ISO 10383's code for no market.
     const NONE: &str = "XXXX";
 
@@ -33,7 +33,7 @@ impl Mic {
     }
 }
 
-code_value!(Mic, Mic, MIC_WIDTH, merge = Mic::merged);
+code_value!(MicCode, MicCode, MIC_WIDTH, merge = MicCode::merged);
 
 /// The Arrow extension name of the market identifier code.
 pub(crate) const MIC_EXTENSION_NAME: &str = "yggdryl.mic";
@@ -47,15 +47,15 @@ impl DataType {
     /// ```
     /// use yggdryl::DataType;
     ///
-    /// assert_eq!(DataType::mic(), DataType::Mic);
+    /// assert_eq!(DataType::mic(), DataType::MicCode);
     /// assert_eq!(DataType::mic().to_string(), "mic");
     /// assert_eq!(DataType::mic().code_width(), Some(4));
     /// ```
     #[must_use]
     pub const fn mic() -> Self {
-        Self::Mic
+        Self::MicCode
     }
 }
 
 // /// A MIC-typed field: ISO 10383's market identifier.
-define_field_types!(MicType, Mic);
+define_field_types!(MicCodeType, MicCode);

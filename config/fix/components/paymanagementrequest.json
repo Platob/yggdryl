@@ -231,6 +231,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "PAYM",
     "FIX:msgtype": "DY",
     "FIX:tag": "275781",
     "description": "MsgType = DY",

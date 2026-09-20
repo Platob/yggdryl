@@ -68,16 +68,17 @@ from yggdryl._native import (
 from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
 from yggdryl.types import temporal
 from yggdryl.types import (
+    BloombergCodeField,
     BytesField,
     StringField,
     UuidField,
-    CfiField,
+    CfiCodeField,
     CountryField,
     CurrencyField,
-    CusipField,
-    IsinField,
-    MicField,
-    SedolField,
+    CusipCodeField,
+    IsinCodeField,
+    MicCodeField,
+    SedolCodeField,
     DenseUnionField,
     FixedSizeListField,
     GeographyField,
@@ -465,16 +466,18 @@ typed_country: CountryField = types.country("iso", nullable=False)
 typed_country_kind: Literal["country"] = typed_country.dtype.id
 typed_currency: CurrencyField = types.currency("ccy", nullable=False)
 typed_currency_kind: Literal["currency"] = typed_currency.dtype.id
-typed_mic: MicField = types.mic("venue")
+typed_mic: MicCodeField = types.mic("venue")
 typed_mic_kind: Literal["mic"] = typed_mic.dtype.id
-typed_cfi: CfiField = types.cfi("classification")
+typed_cfi: CfiCodeField = types.cfi("classification")
 typed_cfi_kind: Literal["cfi"] = typed_cfi.dtype.id
-typed_isin: IsinField = types.isin("instrument")
+typed_isin: IsinCodeField = types.isin("instrument")
 typed_isin_kind: Literal["isin"] = typed_isin.dtype.id
-typed_cusip: CusipField = types.cusip("cusip")
+typed_cusip: CusipCodeField = types.cusip("cusip")
 typed_cusip_kind: Literal["cusip"] = typed_cusip.dtype.id
-typed_sedol: SedolField = types.sedol("sedol")
+typed_sedol: SedolCodeField = types.sedol("sedol")
 typed_sedol_kind: Literal["sedol"] = typed_sedol.dtype.id
+typed_bloomberg: BloombergCodeField = types.bloomberg("bloomberg")
+typed_bloomberg_kind: Literal["bloomberg"] = typed_bloomberg.dtype.id
 typed_uuid: UuidField = types.uuid("id", nullable=False)
 typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
 typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()
@@ -1429,6 +1432,7 @@ fix_message_event: fix.MarketEventData = fix_message.event()
 fix_message_header: fix.FixHeader = fix_message.header()
 fix_message_capture: fix.FixCapture = fix_message.capture()
 fix_message_text: str | None = fix_message.text
+fix_message_msgcat: str | None = fix_message.msgcat
 fix_message_metadata: dict[str, str] = fix_message.metadata
 fix_message_curruuid: Scalar = fix_message.curruuid
 fix_message_crossuuid: Scalar = fix_message.crossuuid
@@ -1483,7 +1487,7 @@ fix_event_currunix: int = fix_message_event.currunix
 fix_event_state: Scalar = fix_message_event.state
 fix_event_seqnum: int = fix_message_event.seqnum
 fix_event_creaunix: int | None = fix_message_event.creaunix
-fix_event_expirunix: int | None = fix_message_event.expirunix
+fix_event_exprtime: int | None = fix_message_event.exprtime
 fix_event_prevunix: int | None = fix_message_event.prevunix
 fix_event_prevuuid: Scalar | None = fix_message_event.prevuuid
 fix_event_snapunix: int | None = fix_message_event.snapunix
@@ -1516,6 +1520,7 @@ fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     null_values=["<none>"],
     direction="R",
     batch_byte_size=1 << 20,
+    snapshot_ns=1_000_000_000,
 )
 fix_reader_registry: fix.FixRegistry = fix_reader.registry
 fix_reader_separator: int | None = fix_reader_pinned.separator
@@ -1523,6 +1528,7 @@ fix_reader_payload_column: str = fix_reader_pinned.payload_column
 fix_reader_null_values: list[str] = fix_reader_pinned.null_values
 fix_reader_direction: str | None = fix_reader_pinned.direction
 fix_reader_batch_byte_size: int = fix_reader_pinned.batch_byte_size
+fix_reader_snapshot_ns: int | None = fix_reader_pinned.snapshot_ns
 fix_reader_default_sending_time: Scalar | None = fix_reader_pinned.default_sending_time
 fix_reader_native_clock: fix.FixCodec = fix.FixCodec(
     fix_registry_from_fields,
@@ -1588,6 +1594,9 @@ fix_field_reference: str | None = fix_reference.fix.field_ref
 fix_group_reference: str | None = fix_reference.fix.group
 fix_root.fix.msgtype = "D"
 fix_message_code: str | None = fix_root.fix.msgtype
+fix_root.fix.msgcat = "ORDR"
+fix_message_category: str | None = fix_root.fix.msgcat
+fix_root.fix.msgcat = None
 fix_root.fix.identifiers = ("38",)
 fix_root.fix.identifiers = (name for name in ["OrderQty"])
 fix_identifiers: list[str] = fix_root.fix.identifiers
@@ -1624,6 +1633,7 @@ fix_msgtype: fix.MsgType = fix_registry_loaded.msgtype("D")
 fix_optional_msgtype: fix.MsgType | None = fix_registry_loaded.get_msgtype("D")
 fix_msgtype_name: str = fix_msgtype.name
 fix_msgtype_value: str = fix_msgtype.value
+fix_msgtype_category: str | None = fix_msgtype.msgcat
 fix_msgtype_field: Field = fix_msgtype.field
 fix_msgtype_group: Field | None = fix_msgtype.get_group_by_tag(453)
 fix_identifier_values: list[tuple[Field, Scalar]] = fix_msgtype.identifier_values(fix_message)
@@ -1722,7 +1732,7 @@ assert isinstance(fix_event_currunix, int) and isinstance(fix_event_crosscode, s
 assert isinstance(fix_event_currhashcode, int) and isinstance(fix_event_crosshashcode, int)
 assert isinstance(fix_event_seqnum, int) and isinstance(fix_event_unit, str)
 assert fix_event_creaunix is None or fix_event_creaunix
-assert fix_event_expirunix is None or fix_event_expirunix
+assert fix_event_exprtime is None or fix_event_exprtime
 assert fix_event_prevunix is None or fix_event_prevunix
 assert fix_event_snapunix is None or fix_event_snapunix
 assert fix_event_prevuuid is None or fix_event_prevuuid

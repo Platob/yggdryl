@@ -164,9 +164,9 @@ pub enum DataTypeId {
     /// ISO 4217: a currency code, three ASCII bytes.
     Currency = 0x72,
     /// ISO 10383: a market identifier code, four ASCII bytes.
-    Mic = 0x73,
+    MicCode = 0x73,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
-    Cfi = 0x74,
+    CfiCode = 0x74,
     /// FIX's side of a trade, four ASCII bytes.
     Side = 0x75,
     /// What state one thing is in.
@@ -174,15 +174,15 @@ pub enum DataTypeId {
     /// How long an order stands.
     TimeInForce = 0x77,
     /// ISO 6166: a securities identification number, twelve ASCII bytes.
-    Isin = 0x78,
+    IsinCode = 0x78,
     /// CUSIP: a North American securities identifier, nine ASCII bytes.
-    Cusip = 0x79,
+    CusipCode = 0x79,
     /// SEDOL: a London Stock Exchange securities identifier, seven ASCII
     /// bytes.
-    Sedol = 0x7a,
+    SedolCode = 0x7a,
     /// A Bloomberg identifier: ticker, market and yellow key, up to thirty-two
     /// ASCII bytes.
-    Bloomberg = 0x7b,
+    BloombergCode = 0x7b,
     // Uuid: 0x80..0x8f
     /// One 128-bit universally unique identifier.
     Uuid = 0x81,
@@ -280,15 +280,15 @@ impl DataTypeId {
         Self::MediaType,
         Self::Country,
         Self::Currency,
-        Self::Mic,
-        Self::Cfi,
+        Self::MicCode,
+        Self::CfiCode,
         Self::Side,
         Self::State,
         Self::TimeInForce,
-        Self::Isin,
-        Self::Cusip,
-        Self::Sedol,
-        Self::Bloomberg,
+        Self::IsinCode,
+        Self::CusipCode,
+        Self::SedolCode,
+        Self::BloombergCode,
         Self::Uuid,
         Self::List,
         Self::LargeList,
@@ -352,12 +352,12 @@ impl DataTypeId {
             Self::BinaryView => "binary_view",
             Self::Country => "country",
             Self::Currency => "currency",
-            Self::Mic => "mic",
-            Self::Cfi => "cfi",
-            Self::Isin => "isin",
-            Self::Cusip => "cusip",
-            Self::Sedol => "sedol",
-            Self::Bloomberg => "bloomberg",
+            Self::MicCode => "mic",
+            Self::CfiCode => "cfi",
+            Self::IsinCode => "isin",
+            Self::CusipCode => "cusip",
+            Self::SedolCode => "sedol",
+            Self::BloombergCode => "bloomberg",
             Self::Side => "side",
             Self::State => "state",
             Self::TimeInForce => "timeinforce",
@@ -503,12 +503,12 @@ impl DataTypeId {
             // casting to a variable layout, merging - is uniform over it too.
             Self::Country
             | Self::Currency
-            | Self::Mic
-            | Self::Cfi
-            | Self::Isin
-            | Self::Cusip
-            | Self::Sedol
-            | Self::Bloomberg
+            | Self::MicCode
+            | Self::CfiCode
+            | Self::IsinCode
+            | Self::CusipCode
+            | Self::SedolCode
+            | Self::BloombergCode
             | Self::Side
             | Self::State
             | Self::TimeInForce => DataTypeKind::Code,
@@ -701,14 +701,14 @@ impl DataTypeId {
         match self {
             Self::Country => Some(2),
             Self::Currency => Some(3),
-            Self::Mic => Some(4),
-            Self::Cfi => Some(6),
-            Self::Sedol => Some(7),
+            Self::MicCode => Some(4),
+            Self::CfiCode => Some(6),
+            Self::SedolCode => Some(7),
             Self::Side | Self::TimeInForce => Some(8),
-            Self::Cusip => Some(9),
+            Self::CusipCode => Some(9),
             Self::State => Some(10),
-            Self::Isin => Some(12),
-            Self::Bloomberg => Some(32),
+            Self::IsinCode => Some(12),
+            Self::BloombergCode => Some(32),
             _ => None,
         }
     }

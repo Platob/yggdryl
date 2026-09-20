@@ -2843,6 +2843,34 @@ impl PyProtocolField {
         }
     }
 
+    #[getter]
+    fn msgcat(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("msgcat")?;
+        Ok(self
+            .borrow_field(py)?
+            .inner
+            .as_fix()
+            .msgcat()
+            .map(str::to_owned))
+    }
+
+    #[setter]
+    fn set_msgcat(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("msgcat")?;
+        let text = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        if let Some(text) = text {
+            field
+                .inner
+                .as_fix_mut()
+                .set_msgcat(&text)
+                .map_err(value_error)
+        } else {
+            field.inner.as_fix_mut().remove_msgcat();
+            Ok(())
+        }
+    }
+
     /// The alternate tags, highest priority first.
     ///
     /// An absent property is an empty list, and assigning an empty iterable

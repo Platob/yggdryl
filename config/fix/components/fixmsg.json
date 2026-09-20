@@ -48,13 +48,13 @@
         }
       },
       {
-        "name": "expirunix",
+        "name": "exprtime",
         "dtype": {
           "type": "null"
         },
         "nullable": true,
         "metadata": {
-          "FIX:field": "expirunix",
+          "FIX:field": "exprtime",
           "FIX:tag": "65053"
         }
       },
@@ -278,6 +278,17 @@
         }
       },
       {
+        "name": "msgcat",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "msgcat",
+          "FIX:tag": "65054"
+        }
+      },
+      {
         "name": "msgseqnum",
         "dtype": {
           "type": "null"
@@ -396,6 +407,61 @@
         "metadata": {
           "FIX:field": "securityidsource",
           "FIX:tag": "22"
+        }
+      },
+      {
+        "name": "isincode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "isincode",
+          "FIX:tag": "65055"
+        }
+      },
+      {
+        "name": "cusipcode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "cusipcode",
+          "FIX:tag": "65057"
+        }
+      },
+      {
+        "name": "sedolcode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "sedolcode",
+          "FIX:tag": "65058"
+        }
+      },
+      {
+        "name": "bloombergcode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "bloombergcode",
+          "FIX:tag": "65059"
+        }
+      },
+      {
+        "name": "miccode",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "miccode",
+          "FIX:tag": "65060"
         }
       },
       {

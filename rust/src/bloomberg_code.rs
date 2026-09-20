@@ -1,4 +1,4 @@
-//! Bloomberg securities identifiers.
+//! BloombergCode securities identifiers.
 
 use std::fmt;
 
@@ -10,13 +10,13 @@ use crate::typed::define_field_types;
 use crate::value::CodeValue;
 use crate::{DataType, Result, Scalar, Value};
 
-/// One validated Bloomberg identifier.
+/// One validated BloombergCode identifier.
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Bloomberg(SmolStr);
+pub struct BloombergCode(SmolStr);
 
-impl Bloomberg {
+impl BloombergCode {
     /// Validate and construct an identifier.
     ///
     /// An identifier has no neutral member: the empty text names no
@@ -55,37 +55,36 @@ impl Bloomberg {
     /// The one code here with no shape to check: a Bloomberg identifier is a
     /// ticker, a market and a yellow key with spaces between them, or a
     /// FIGI, and the standard that would say which is a terminal's rather
-    /// than a registry's. So canonical is what it is for every code - ASCII
-    /// that fits the width, in upper case - and no more, because refusing a
-    /// spelling nobody published would be a guess.
+    /// than a registry's. Canonical means nonempty ASCII that fits the width,
+    /// with no trailing padding. Case is preserved, as by [`Self::new`], so a
+    /// terminal spelling such as `AAPL US Equity` remains the same identifier.
     #[must_use]
     pub fn is_canonical(text: &str) -> bool {
         !text.is_empty()
-            && text.len() <= BLOOMBERG_WIDTH
-            && text.is_ascii()
-            && !text.bytes().any(|byte| byte.is_ascii_lowercase())
+            && crate::ascii_text(BLOOMBERG_WIDTH, text.as_bytes())
+                .is_ok_and(|canonical| canonical == text)
     }
 }
 
-impl fmt::Display for Bloomberg {
+impl fmt::Display for BloombergCode {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
 }
 
-code_value!(Bloomberg, Bloomberg, BLOOMBERG_WIDTH);
+code_value!(BloombergCode, BloombergCode, BLOOMBERG_WIDTH);
 
-/// The extension name a Bloomberg identifier rides.
+/// The extension name a BloombergCode identifier rides.
 pub(crate) const BLOOMBERG_EXTENSION_NAME: &str = "yggdryl.bloomberg";
 
-/// The most bytes a Bloomberg identifier may be.
+/// The most bytes a BloombergCode identifier may be.
 ///
 /// The one code here whose width is a bound rather than a shape. An ISIN is
-/// twelve characters because the standard says twelve; a Bloomberg
+/// twelve characters because the standard says twelve; a BloombergCode
 /// identifier is a ticker, a market and a yellow key with spaces between
 /// them - `AAPL US Equity`, `EURUSD Curncy`, `SPX Index` - or a twelve-byte
 /// FIGI, and no two are the same length. Thirty-two holds every spelling a
 /// terminal writes and still fits one `SmolStr` allocation.
 pub(crate) const BLOOMBERG_WIDTH: usize = 32;
 
-define_field_types!(BloombergType, Bloomberg);
+define_field_types!(BloombergCodeType, BloombergCode);

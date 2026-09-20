@@ -34,9 +34,9 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread::JoinHandle;
 
-/// How many chunks one lane holds: the chunk its worker is working, and
-/// the one waiting behind it, so the worker never idles while the puller
-/// reads the next.
+/// How many line chunks one lane holds: the chunk its worker is working,
+/// and the one waiting behind it, so the worker never idles while the puller
+/// reads the next. Whole-batch jobs override this with one.
 pub(crate) const LANE_DEPTH: usize = 2;
 
 /// `work` over every item of `source`, on `threads` threads, in order.
@@ -62,6 +62,7 @@ where
         source: source.into_iter().fuse(),
         threads: threads.max(1),
         chunk: chunk.max(1),
+        lane_depth: LANE_DEPTH,
         work: Arc::new(work),
         answered: VecDeque::new(),
         lanes: None,
@@ -74,6 +75,7 @@ pub(crate) struct Ordered<I: Iterator, R, F> {
     source: Fuse<I>,
     threads: usize,
     chunk: usize,
+    lane_depth: usize,
     work: Arc<F>,
     /// The chunk drained last, its answers still to be yielded, in order.
     answered: VecDeque<R>,
@@ -81,6 +83,17 @@ pub(crate) struct Ordered<I: Iterator, R, F> {
     lanes: Option<Lanes<I::Item, R>>,
     /// Whether the source answered its last item.
     exhausted: bool,
+}
+
+impl<I: Iterator, R, F> Ordered<I, R, F> {
+    /// Limits the chunks each worker may hold. Batch jobs use one: each job
+    /// already owns a whole input batch, while line chunks retain the normal
+    /// read-ahead depth.
+    #[must_use]
+    pub(crate) fn with_lane_depth(mut self, lane_depth: usize) -> Self {
+        self.lane_depth = lane_depth.max(1);
+        self
+    }
 }
 
 impl<I, R, F> Iterator for Ordered<I, R, F>
@@ -107,7 +120,7 @@ where
                 .get_or_insert_with(|| Lanes::spawn(threads, work));
             // Every lane full, while the source lasts: the puller reads
             // ahead exactly what the workers can hold, and no further.
-            while !self.exhausted && lanes.in_flight() < threads * LANE_DEPTH {
+            while !self.exhausted && lanes.in_flight() < threads.saturating_mul(self.lane_depth) {
                 let items: Vec<I::Item> = self.source.by_ref().take(chunk).collect();
                 if items.is_empty() {
                     self.exhausted = true;
@@ -231,6 +244,9 @@ impl<T, R> Drop for Lane<T, R> {
 #[cfg(test)]
 mod tests {
     use super::ordered;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Condvar, Mutex};
+    use std::time::Duration;
 
     #[test]
     fn answers_come_out_in_the_order_they_were_asked_whatever_the_threads() {
@@ -301,6 +317,53 @@ mod tests {
     }
 
     #[test]
+    fn a_shallow_pool_completes_out_of_order_and_yields_in_order() {
+        let gate = Arc::new((Mutex::new(0_usize), Condvar::new()));
+        let trace = Arc::new(Mutex::new(Vec::new()));
+        let waited = Arc::clone(&gate);
+        let completed = Arc::clone(&gate);
+        let traced = Arc::clone(&trace);
+        let output: Vec<_> = ordered(0..3, 3, 1, move |item| {
+            if item == 0 {
+                let (later, wake) = &*waited;
+                let (later, _) = wake
+                    .wait_timeout_while(
+                        later.lock().expect("the gate is live"),
+                        Duration::from_secs(10),
+                        |later| *later < 2,
+                    )
+                    .expect("the gate is live");
+                assert_eq!(*later, 2, "later jobs must complete before the first");
+                traced.lock().expect("the trace is live").push(item);
+            } else {
+                traced.lock().expect("the trace is live").push(item);
+                let (later, wake) = &*completed;
+                *later.lock().expect("the gate is live") += 1;
+                wake.notify_all();
+            }
+            item
+        })
+        .with_lane_depth(1)
+        .collect();
+        assert_eq!(output, vec![0, 1, 2]);
+        let trace = trace.lock().expect("the trace is live");
+        assert_eq!(trace.last(), Some(&0));
+        assert!(trace[..2].contains(&1) && trace[..2].contains(&2));
+    }
+
+    #[test]
+    fn a_shallow_pool_reads_at_most_one_batch_per_worker_ahead() {
+        let pulled = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&pulled);
+        let source = (0..100).inspect(move |_| {
+            counted.fetch_add(1, Ordering::Relaxed);
+        });
+        let mut answers = ordered(source, 3, 1, |item| item).with_lane_depth(1);
+        assert_eq!(answers.next(), Some(0));
+        assert_eq!(pulled.load(Ordering::Relaxed), 3);
+    }
+
+    #[test]
     fn a_worker_that_panics_panics_the_pull_with_its_own_panic() {
         let caught = std::panic::catch_unwind(|| {
             ordered(0..100_u64, 3, 4, |held| {
@@ -323,5 +386,19 @@ mod tests {
         let mut answers = ordered(0..1_000_u64, 3, 8, |held| held);
         assert_eq!(answers.next(), Some(0));
         drop(answers);
+    }
+
+    #[test]
+    fn dropping_a_shallow_pool_joins_its_dispatched_workers() {
+        let joined = Arc::new(AtomicUsize::new(0));
+        let completed = Arc::clone(&joined);
+        let mut answers = ordered(0..1_000_u64, 2, 1, move |held| {
+            completed.fetch_add(1, Ordering::Relaxed);
+            held
+        })
+        .with_lane_depth(1);
+        assert_eq!(answers.next(), Some(0));
+        drop(answers);
+        assert_eq!(joined.load(Ordering::Relaxed), 2);
     }
 }

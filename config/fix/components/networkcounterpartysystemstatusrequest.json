@@ -70,6 +70,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SESS",
     "FIX:msgtype": "BC",
     "FIX:tag": "955202",
     "description": "MsgType = BC",

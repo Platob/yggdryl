@@ -117,13 +117,13 @@ impl DataType {
         // ISO 10383 calls `mic`.
         ("currency", DataType::Currency),
         ("country", DataType::Country),
-        ("mic", DataType::Mic),
-        ("exchange", DataType::Mic),
-        ("cfi", DataType::Cfi),
-        ("isin", DataType::Isin),
-        ("cusip", DataType::Cusip),
-        ("sedol", DataType::Sedol),
-        ("bloomberg", DataType::Bloomberg),
+        ("mic", DataType::MicCode),
+        ("exchange", DataType::MicCode),
+        ("cfi", DataType::CfiCode),
+        ("isin", DataType::IsinCode),
+        ("cusip", DataType::CusipCode),
+        ("sedol", DataType::SedolCode),
+        ("bloomberg", DataType::BloombergCode),
         // The remaining codes resolve to themselves. `side` is a FIX code
         // set the standard itself declares, addressed constantly enough to
         // earn a packed datatype.
@@ -272,7 +272,7 @@ impl DataType {
     /// // The same lookup backs the grammar, so a name types a column. Four
     /// // of the names answer a datatype of their own rather than a width.
     /// let row: DataType = "struct<ccy: Currency, venue: MIC, px: Price, at: UTCTimestamp>".parse()?;
-    /// assert_eq!(row.get_field_by_path("venue").map(|field| field.dtype().clone()), Some(DataType::Mic));
+    /// assert_eq!(row.get_field_by_path("venue").map(|field| field.dtype().clone()), Some(DataType::MicCode));
     /// assert_eq!(row.get_field_by_path("ccy").map(|field| field.dtype().clone()), Some(DataType::Currency));
     /// assert_eq!(
     ///     row.get_field_by_path("at").map(|field| field.dtype().clone()),

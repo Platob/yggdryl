@@ -210,6 +210,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "TRAD",
     "FIX:msgtype": "DW",
     "FIX:tag": "474335",
     "description": "MsgType = DW",

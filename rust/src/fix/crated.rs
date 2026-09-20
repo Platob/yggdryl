@@ -13,16 +13,14 @@
 //! Each belongs in a column: a scalar registers as a field, and the
 //! identifiers Map as a group of entries.
 //!
-//! What a message says about its *market* is not here and never was this
-//! crate's to name: the price, the quantity, the instrument's codes, the
-//! market and the lanes are FIX's own fields, lifted or read off the row,
-//! and the [`MarketElement`](crate::graph::MarketElement) getters answer
-//! them from those. A column restating one would have been a second owner
-//! of a fact the dictionary already types. The state the event reached and
-//! when it stops being good are the event's own - ranked, and folded
-//! forward by a walk to the furthest and the latest its chain knows - so
-//! they have columns beside the other event facts, read off `OrdStatus`,
-//! `ExecType` and the expiry clocks where no row states them.
+//! The standard owns prices, quantities and classification. Five normalized
+//! instrument identifiers have crate columns because their FIX sources depend
+//! on an identifier source or exchange context. Those columns read the existing
+//! market event holder; they add no second value. `CFICode(461)` already names
+//! its classification, so it keeps its standard tag. `MsgCat` reads the message
+//! component's `FIX:msgcat` metadata. State and expiry are event facts derived
+//! from the standard's status and expiry fields, then carried by lifecycle;
+//! a newer explicit expiry replaces the previous deadline.
 //!
 //! The sixteen event facts are the sixteen columns every graph event is
 //! stated in, [`EventColumn`]: each crate field here takes that column's
@@ -70,7 +68,7 @@
 //! read past for the same reason: the crate's own definition is the one that
 //! types a row. Folding another dictionary in never counts them either.
 //!
-//! Twenty scalar fields and two Map groups, each registered by its shape.
+//! Twenty-six scalar fields and two Map groups, each registered by its shape.
 
 use std::sync::LazyLock;
 
@@ -218,9 +216,22 @@ pub const STATE_TAG_NAME: (i32, &str) = (65_052, "state");
 ///
 /// `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or
 /// `MaturityDate(541)`, the first stated, as a message is built; the
-/// latest its chain knows once the lifecycle followed it, and a row
-/// stating one is the row's word.
-pub const EXPIRUNIX_TAG_NAME: (i32, &str) = (65_053, "expirunix");
+/// previous deadline when the next event states none; a newer explicit
+/// deadline replaces it, including when it shortens the lifetime.
+pub const EXPRTIME_TAG_NAME: (i32, &str) = (65_053, "exprtime");
+
+/// The tag and name carrying the fixed business category of the message type.
+pub const MSGCAT_TAG_NAME: (i32, &str) = (65_054, "msgcat");
+/// The tag and name carrying the normalized ISIN the message identifies.
+pub const ISINCODE_TAG_NAME: (i32, &str) = (65_055, "isincode");
+/// The tag and name carrying the normalized CUSIP the message identifies.
+pub const CUSIPCODE_TAG_NAME: (i32, &str) = (65_057, "cusipcode");
+/// The tag and name carrying the normalized SEDOL the message identifies.
+pub const SEDOLCODE_TAG_NAME: (i32, &str) = (65_058, "sedolcode");
+/// The tag and name carrying the normalized Bloomberg identifier the message identifies.
+pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_059, "bloombergcode");
+/// The tag and name carrying the normalized market MIC the message identifies.
+pub const MICCODE_TAG_NAME: (i32, &str) = (65_060, "miccode");
 
 /// The graph event column one crate tag is, for the sixteen that are one.
 ///
@@ -240,7 +251,7 @@ pub const fn crate_tag_of(column: EventColumn) -> (i32, &'static str) {
     match column {
         EventColumn::CurrUnix => CURRUNIX_TAG_NAME,
         EventColumn::CreaUnix => CREAUNIX_TAG_NAME,
-        EventColumn::ExpirUnix => EXPIRUNIX_TAG_NAME,
+        EventColumn::ExprTime => EXPRTIME_TAG_NAME,
         EventColumn::PrevUnix => PREVUNIX_TAG_NAME,
         EventColumn::SnapUnix => SNAPUNIX_TAG_NAME,
         EventColumn::CurrUuid => CURRUUID_TAG_NAME,
@@ -296,7 +307,7 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 17] = [
     CREAUNIX_TAG_NAME.0,
     SNAPUNIX_TAG_NAME.0,
     PREVUNIX_TAG_NAME.0,
-    EXPIRUNIX_TAG_NAME.0,
+    EXPRTIME_TAG_NAME.0,
     STATE_TAG_NAME.0,
     PREVUUID_TAG_NAME.0,
     CURRHASHCODE_TAG_NAME.0,
@@ -357,6 +368,22 @@ fn event(column: EventColumn, display: &str, description: &str) -> Result<Field>
         column.datatype()?,
         description,
     )
+}
+
+fn msgcat() -> Result<Field> {
+    let mut field = crated(
+        MSGCAT_TAG_NAME,
+        "MsgCat",
+        DataType::fixed_ascii(4)?,
+        "The four-byte business category of the message type.",
+    )?;
+    let codes = super::constants::MSGCATEGORIES
+        .iter()
+        .copied()
+        .map(|value| super::FixCode::new(value, value))
+        .collect::<Vec<_>>();
+    field.as_fix_mut().set_codes(&codes)?;
+    Ok(field)
 }
 
 /// Builds every field this crate defines, in tag order.
@@ -549,11 +576,42 @@ fn build() -> Result<Vec<Field>> {
              states one; the furthest its chain knows once followed.",
         )?,
         event(
-            EventColumn::ExpirUnix,
-            "ExpirUnix",
+            EventColumn::ExprTime,
+            "ExprTime",
             "When the message stops being good: ExpireTime, else \
-             ValidUntilTime, ExpireDate or MaturityDate; the latest its chain \
-             knows once followed.",
+             ValidUntilTime, ExpireDate or MaturityDate; a newer explicit \
+             deadline replaces the one its chain carried.",
+        )?,
+        msgcat()?,
+        crated(
+            ISINCODE_TAG_NAME,
+            "IsinCode",
+            DataType::isin(),
+            "The normalized ISIN the message identifies.",
+        )?,
+        crated(
+            CUSIPCODE_TAG_NAME,
+            "CusipCode",
+            DataType::cusip(),
+            "The normalized CUSIP the message identifies.",
+        )?,
+        crated(
+            SEDOLCODE_TAG_NAME,
+            "SedolCode",
+            DataType::sedol(),
+            "The normalized SEDOL the message identifies.",
+        )?,
+        crated(
+            BLOOMBERGCODE_TAG_NAME,
+            "BloombergCode",
+            DataType::BloombergCode,
+            "The normalized Bloomberg identifier the message identifies.",
+        )?,
+        crated(
+            MICCODE_TAG_NAME,
+            "MicCode",
+            DataType::mic(),
+            "The normalized market MIC the message identifies.",
         )?,
     ])
 }

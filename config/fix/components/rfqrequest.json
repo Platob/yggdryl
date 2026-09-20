@@ -102,6 +102,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "QUOT",
     "FIX:msgtype": "AH",
     "FIX:tag": "265036",
     "description": "MsgType = AH",

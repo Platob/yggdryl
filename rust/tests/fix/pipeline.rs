@@ -271,8 +271,8 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         .position(|held| *held == "beginstring")
         .expect("the header opens");
     assert_eq!(
-        &names[header..header + 3],
-        ["beginstring", "msgtype", "msgseqnum"],
+        &names[header..header + 4],
+        ["beginstring", "msgtype", "msgcat", "msgseqnum"],
         "{names:?}"
     );
     for once in [

@@ -1236,12 +1236,12 @@ mod typed {
     // A registered code stores as the text it is, exactly as a version does.
     typed_array!(crate::CountryType, arrow_array::StringArray);
     typed_array!(crate::CurrencyType, arrow_array::StringArray);
-    typed_array!(crate::MicType, arrow_array::StringArray);
-    typed_array!(crate::CfiType, arrow_array::StringArray);
-    typed_array!(crate::IsinType, arrow_array::StringArray);
-    typed_array!(crate::CusipType, arrow_array::StringArray);
-    typed_array!(crate::SedolType, arrow_array::StringArray);
-    typed_array!(crate::BloombergType, arrow_array::StringArray);
+    typed_array!(crate::MicCodeType, arrow_array::StringArray);
+    typed_array!(crate::CfiCodeType, arrow_array::StringArray);
+    typed_array!(crate::IsinCodeType, arrow_array::StringArray);
+    typed_array!(crate::CusipCodeType, arrow_array::StringArray);
+    typed_array!(crate::SedolCodeType, arrow_array::StringArray);
+    typed_array!(crate::BloombergCodeType, arrow_array::StringArray);
     typed_array!(crate::SideType, arrow_array::StringArray);
     typed_array!(crate::StateType, arrow_array::StringArray);
     typed_array!(crate::TimeInForceType, arrow_array::StringArray);
@@ -2528,42 +2528,42 @@ impl ArrayCastPlan {
                     exposure,
                     budget,
                 )?,
-                DataType::Mic => ingest_code_array::<MIC_WIDTH>(
+                DataType::MicCode => ingest_code_array::<MIC_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::Cfi => ingest_code_array::<CFI_WIDTH>(
+                DataType::CfiCode => ingest_code_array::<CFI_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::Isin => ingest_code_array::<ISIN_WIDTH>(
+                DataType::IsinCode => ingest_code_array::<ISIN_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::Cusip => ingest_code_array::<CUSIP_WIDTH>(
+                DataType::CusipCode => ingest_code_array::<CUSIP_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::Sedol => ingest_code_array::<SEDOL_WIDTH>(
+                DataType::SedolCode => ingest_code_array::<SEDOL_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::Bloomberg => ingest_code_array::<BLOOMBERG_WIDTH>(
+                DataType::BloombergCode => ingest_code_array::<BLOOMBERG_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,

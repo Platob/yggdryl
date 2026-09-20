@@ -233,12 +233,12 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::String(_)
             | DataType::Country
             | DataType::Currency
-            | DataType::Mic
-            | DataType::Cfi
-            | DataType::Isin
-            | DataType::Cusip
-            | DataType::Sedol
-            | DataType::Bloomberg
+            | DataType::MicCode
+            | DataType::CfiCode
+            | DataType::IsinCode
+            | DataType::CusipCode
+            | DataType::SedolCode
+            | DataType::BloombergCode
             | DataType::Side
             | DataType::State
             | DataType::TimeInForce
@@ -345,12 +345,12 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         D::String(_)
         | D::Country
         | D::Currency
-        | D::Mic
-        | D::Cfi
-        | D::Isin
-        | D::Cusip
-        | D::Sedol
-        | D::Bloomberg
+        | D::MicCode
+        | D::CfiCode
+        | D::IsinCode
+        | D::CusipCode
+        | D::SedolCode
+        | D::BloombergCode
         | D::Side
         | D::State
         | D::TimeInForce => scalar(DefaultPlan::String, false),

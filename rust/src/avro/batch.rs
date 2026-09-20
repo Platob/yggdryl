@@ -638,18 +638,7 @@ enum ColumnReader {
     },
     /// A schema-validated Parquet Variant record, with canonical Arrow
     /// children retained independently from Avro's wire field order.
-    Variant {
-        /// The canonical `metadata`, `value` Arrow fields.
-        fields: arrow_schema::Fields,
-        /// Whether Avro places metadata before value on the wire.
-        metadata_first: bool,
-        /// The metadata bytes per row.
-        metadata: BinaryBuilder,
-        /// The value bytes per row.
-        value: BinaryBuilder,
-        /// Validity per row.
-        nulls: NullBufferBuilder,
-    },
+    Variant(Box<VariantReader>),
     /// Fields back to back.
     Struct {
         /// The arrow shape of the children.
@@ -700,6 +689,38 @@ enum ColumnReader {
         /// The value decoder; a null-only union decodes as a null column.
         inner: Box<ColumnReader>,
     },
+}
+
+/// The uncommon multi-builder payload of a Variant column.
+///
+/// Keeping this behind one pointer prevents its two byte builders from making
+/// every primitive column and skipped root field carry their combined size.
+struct VariantReader {
+    /// The canonical `metadata`, `value` Arrow fields.
+    fields: arrow_schema::Fields,
+    /// Whether Avro places metadata before value on the wire.
+    metadata_first: bool,
+    /// The metadata bytes per row.
+    metadata: BinaryBuilder,
+    /// The value bytes per row.
+    value: BinaryBuilder,
+    /// Validity per row.
+    nulls: NullBufferBuilder,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ColumnReader, RootStep};
+
+    #[test]
+    fn variant_payload_does_not_widen_other_column_readers() {
+        let column = std::mem::size_of::<ColumnReader>();
+        let root = std::mem::size_of::<RootStep>();
+        assert!(
+            column <= 240 && root <= 240,
+            "ColumnReader is {column} bytes and RootStep is {root} bytes"
+        );
+    }
 }
 
 /// The Arrow decimal builder selected by the Avro precision.
@@ -836,13 +857,13 @@ impl ColumnReader {
                 if !crate::is_variant_storage(arrow) {
                     return Err(shape_error(node, arrow));
                 }
-                Self::Variant {
+                Self::Variant(Box::new(VariantReader {
                     fields: fields.clone(),
                     metadata_first: record.fields[0].name == crate::VARIANT_METADATA_FIELD,
                     metadata: BinaryBuilder::new(),
                     value: BinaryBuilder::new(),
                     nulls: NullBufferBuilder::new(1024),
-                }
+                }))
             }
             Node::Record(record) => {
                 let ArrowDataType::Struct(fields) = arrow else {
@@ -1001,25 +1022,19 @@ impl ColumnReader {
                     })?;
                 builder.append_value(symbol);
             }
-            Self::Variant {
-                metadata_first,
-                metadata,
-                value,
-                nulls,
-                ..
-            } => {
+            Self::Variant(reader) => {
                 datum.spend(budget)?;
                 let first = cursor.bytes()?;
                 datum.spend(budget)?;
                 let second = cursor.bytes()?;
-                if *metadata_first {
-                    metadata.append_value(first);
-                    value.append_value(second);
+                if reader.metadata_first {
+                    reader.metadata.append_value(first);
+                    reader.value.append_value(second);
                 } else {
-                    value.append_value(first);
-                    metadata.append_value(second);
+                    reader.value.append_value(first);
+                    reader.metadata.append_value(second);
                 }
-                nulls.append_non_null();
+                reader.nulls.append_non_null();
             }
             Self::Struct {
                 children,
@@ -1123,15 +1138,10 @@ impl ColumnReader {
             Self::Decimal { builder, .. } => builder.append_null(),
             Self::Fixed { builder, .. } => builder.append_null(),
             Self::Enum { builder, .. } => builder.append_null(),
-            Self::Variant {
-                metadata,
-                value,
-                nulls,
-                ..
-            } => {
-                metadata.append_null();
-                value.append_null();
-                nulls.append_null();
+            Self::Variant(reader) => {
+                reader.metadata.append_null();
+                reader.value.append_null();
+                reader.nulls.append_null();
             }
             Self::Struct {
                 children,
@@ -1220,17 +1230,14 @@ impl ColumnReader {
             } => builder.finish(*precision, *scale)?,
             Self::Fixed { builder, .. } => Arc::new(builder.finish()),
             Self::Enum { builder, .. } => Arc::new(builder.finish()),
-            Self::Variant {
-                fields,
-                metadata,
-                value,
-                nulls,
-                ..
-            } => {
+            Self::Variant(reader) => {
                 let array = StructArray::try_new(
-                    fields.clone(),
-                    vec![Arc::new(metadata.finish()), Arc::new(value.finish())],
-                    nulls.finish(),
+                    reader.fields.clone(),
+                    vec![
+                        Arc::new(reader.metadata.finish()),
+                        Arc::new(reader.value.finish()),
+                    ],
+                    reader.nulls.finish(),
                 )
                 .map_err(|error| invalid(format_smolstr!("{error}")))?;
                 Arc::new(array)

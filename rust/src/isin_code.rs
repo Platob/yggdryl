@@ -21,9 +21,9 @@ use crate::{DataType, Result, Scalar, Value};
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Isin(SmolStr);
+pub struct IsinCode(SmolStr);
 
-impl Isin {
+impl IsinCode {
     /// Validate and construct a securities identification number.
     ///
     /// Lower case is read as the upper case it spells, because the number
@@ -31,17 +31,17 @@ impl Isin {
     /// by its position, which case does not change.
     ///
     /// ```
-    /// use yggdryl::Isin;
+    /// use yggdryl::IsinCode;
     ///
-    /// let apple = Isin::new("US0378331005").unwrap();
+    /// let apple = IsinCode::new("US0378331005").unwrap();
     /// assert_eq!(apple.as_str(), "US0378331005");
     /// assert_eq!(apple.prefix(), "US");
     /// assert_eq!(apple.nsin(), "037833100");
     /// assert_eq!(apple.check_digit(), 5);
-    /// assert_eq!(Isin::new("us0378331005").unwrap(), apple);
+    /// assert_eq!(IsinCode::new("us0378331005").unwrap(), apple);
     /// // One digit off is a typo, not a security.
-    /// assert!(Isin::new("US0378331006").is_err());
-    /// assert!(Isin::new("US037833100").is_err());
+    /// assert!(IsinCode::new("US0378331006").is_err());
+    /// assert!(IsinCode::new("US037833100").is_err());
     /// ```
     ///
     /// # Errors
@@ -50,8 +50,12 @@ impl Isin {
     /// number's shape, or when its check digit does not close it.
     pub fn new(value: impl AsRef<str>) -> Result<Self> {
         let value = crate::ascii_text(ISIN_WIDTH, value.as_ref().as_bytes())?;
-        let folded = value.to_ascii_uppercase();
-        if let Some(reason) = Self::refusal(&folded) {
+        let mut bytes = [0_u8; ISIN_WIDTH];
+        for (target, byte) in bytes.iter_mut().zip(value.bytes()) {
+            *target = byte.to_ascii_uppercase();
+        }
+        let folded = std::str::from_utf8(&bytes[..value.len()]).expect("validated ASCII");
+        if let Some(reason) = Self::refusal(folded) {
             return Err(crate::Error::InvalidDataType {
                 kind: "isin",
                 reason: smol_str::format_smolstr!("{reason}, got {value:?}"),
@@ -181,13 +185,13 @@ impl Isin {
     }
 }
 
-impl fmt::Display for Isin {
+impl fmt::Display for IsinCode {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
 }
 
-code_value!(Isin, Isin, ISIN_WIDTH);
+code_value!(IsinCode, IsinCode, ISIN_WIDTH);
 
 /// The Arrow extension name of the securities identification number.
 pub(crate) const ISIN_EXTENSION_NAME: &str = "yggdryl.isin";
@@ -204,15 +208,15 @@ impl DataType {
     /// ```
     /// use yggdryl::DataType;
     ///
-    /// assert_eq!(DataType::isin(), DataType::Isin);
+    /// assert_eq!(DataType::isin(), DataType::IsinCode);
     /// assert_eq!(DataType::isin().to_string(), "isin");
     /// assert_eq!(DataType::isin().code_width(), Some(12));
     /// ```
     #[must_use]
     pub const fn isin() -> Self {
-        Self::Isin
+        Self::IsinCode
     }
 }
 
 // /// An ISIN-typed field: ISO 6166's securities identification number.
-define_field_types!(IsinType, Isin);
+define_field_types!(IsinCodeType, IsinCode);

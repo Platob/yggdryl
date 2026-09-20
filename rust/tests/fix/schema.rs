@@ -46,7 +46,8 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 112);
+    // MsgCat and five normalized identifiers join the existing standard CFI column.
+    assert_eq!(tags.len(), 118);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
@@ -58,7 +59,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             yggdryl::CREAUNIX_TAG_NAME.0,
             yggdryl::PREVUNIX_TAG_NAME.0,
             yggdryl::SNAPUNIX_TAG_NAME.0,
-            yggdryl::EXPIRUNIX_TAG_NAME.0,
+            yggdryl::EXPRTIME_TAG_NAME.0,
             52,
             122,
             60,
@@ -87,8 +88,17 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "which event"
     );
     assert_eq!(
-        &tags[23..30],
-        [8, 35, 34, 49, 56, 43, yggdryl::MSGDIRECTION_TAG_NAME.0],
+        &tags[23..31],
+        [
+            8,
+            35,
+            yggdryl::MSGCAT_TAG_NAME.0,
+            34,
+            49,
+            56,
+            43,
+            yggdryl::MSGDIRECTION_TAG_NAME.0
+        ],
         "which message"
     );
     // And not where the capture read it: the object a line came out of is
@@ -181,8 +191,8 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     );
     let header = schema.index_of("beginstring").expect("the header opens");
     assert_eq!(
-        &names[header..header + 3],
-        ["beginstring", "msgtype", "msgseqnum"]
+        &names[header..header + 4],
+        ["beginstring", "msgtype", "msgcat", "msgseqnum"]
     );
     assert_eq!(schema.index_of("msgtype"), Some(header + 1));
     assert_eq!(column_of(&schema, 35), header + 1);
@@ -225,7 +235,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         (yggdryl::PREVUNIX_TAG_NAME.0, "PrevUnix"),
         (yggdryl::PREVUUID_TAG_NAME.0, "PrevUuid"),
         (yggdryl::STATE_TAG_NAME.0, "State"),
-        (yggdryl::EXPIRUNIX_TAG_NAME.0, "ExpirUnix"),
+        (yggdryl::EXPRTIME_TAG_NAME.0, "ExprTime"),
     ] {
         let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");

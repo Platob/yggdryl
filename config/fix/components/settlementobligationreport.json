@@ -146,6 +146,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "SETL",
     "FIX:msgtype": "BQ",
     "FIX:tag": "156588",
     "description": "MsgType = BQ",

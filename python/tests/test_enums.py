@@ -94,7 +94,7 @@ def test_the_widths_pack_into_the_integer_they_name() -> None:
     class Venue(fixed_ascii(8)):
         XNAS = "XNAS"
 
-    class Isin(fixed_ascii(12)):
+    class IsinCode(fixed_ascii(12)):
         SAMPLE = "US0378331005"
 
     class Wide(fixed_ascii(16)):
@@ -111,9 +111,9 @@ def test_the_widths_pack_into_the_integer_they_name() -> None:
 
     # Twelve bytes need 96 bits and sixteen the whole 128, both of which Python
     # holds natively.
-    assert int(Isin.SAMPLE) == 0x555330333738333331303035
-    assert int(Isin.SAMPLE).bit_length() > 64
-    assert Isin.SAMPLE.into_str() == "US0378331005"
+    assert int(IsinCode.SAMPLE) == 0x555330333738333331303035
+    assert int(IsinCode.SAMPLE).bit_length() > 64
+    assert IsinCode.SAMPLE.into_str() == "US0378331005"
     assert int(Wide.SAMPLE).bit_length() > 96
 
     # One width is one base, built once and cached, so two declarations of the

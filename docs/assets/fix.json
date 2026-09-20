@@ -96,18 +96,18 @@
     ]
   },
   "kpi": {
-    "fields": 6261,
+    "fields": 6267,
     "groups": 582,
-    "enumFields": 2026,
-    "codes": 27209,
+    "enumFields": 2027,
+    "codes": 27231,
     "aliases": 42,
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 116,
+    "columns": 122,
     "memberships": 0,
     "dialects": 0,
-    "datatypes": 23,
+    "datatypes": 28,
     "dtypes": [
       [
         "int32",
@@ -150,11 +150,11 @@
         57
       ],
       [
-        "fixed_ascii(8)",
-        19
+        "mic",
+        20
       ],
       [
-        "mic",
+        "fixed_ascii(8)",
         19
       ],
       [
@@ -178,7 +178,23 @@
         2
       ],
       [
+        "bloomberg",
+        1
+      ],
+      [
+        "cusip",
+        1
+      ],
+      [
         "fixed_ascii(2)",
+        1
+      ],
+      [
+        "fixed_ascii(4)",
+        1
+      ],
+      [
+        "isin",
         1
       ],
       [
@@ -187,6 +203,10 @@
       ],
       [
         "list(field(\"srcuuid\",uuid,nullable=false,metadata={}))",
+        1
+      ],
+      [
+        "sedol",
         1
       ],
       [
@@ -457,6 +477,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "ACCT",
           "FIX:msgtype": "CQ",
           "FIX:tag": "339355",
           "description": "MsgType = CQ",
@@ -899,6 +920,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "POSN",
           "FIX:msgtype": "BL",
           "FIX:tag": "231397",
           "description": "MsgType = BL",
@@ -1246,6 +1268,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "7",
           "FIX:tag": "544641",
           "description": "MsgType = 7",
@@ -1623,6 +1646,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "CERT",
           "FIX:msgtype": "EJ",
           "FIX:tag": "955976",
           "description": "MsgType = EJ",
@@ -1724,6 +1748,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "CERT",
           "FIX:msgtype": "EK",
           "FIX:tag": "1011229",
           "description": "MsgType = EK",
@@ -1976,6 +2001,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "CERT",
           "FIX:msgtype": "EH",
           "FIX:tag": "130290",
           "description": "MsgType = EH",
@@ -2077,6 +2103,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "CERT",
           "FIX:msgtype": "EI",
           "FIX:tag": "428962",
           "description": "MsgType = EI",
@@ -4435,6 +4462,7 @@
         },
         "metadata": {
           "FIX:identifiers": "allocid,secondaryallocid,refallocid",
+          "FIX:msgcat": "ALLO",
           "FIX:msgtype": "J",
           "FIX:tag": "424150",
           "description": "MsgType = J",
@@ -4753,6 +4781,7 @@
         },
         "metadata": {
           "FIX:identifiers": "allocid,secondaryallocid",
+          "FIX:msgcat": "ALLO",
           "FIX:msgtype": "P",
           "FIX:tag": "550194",
           "description": "MsgType = P",
@@ -5885,6 +5914,7 @@
         },
         "metadata": {
           "FIX:identifiers": "allocid,secondaryallocid,refallocid",
+          "FIX:msgcat": "ALLO",
           "FIX:msgtype": "BM",
           "FIX:tag": "454673",
           "description": "MsgType = BM",
@@ -5985,6 +6015,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "ALLO",
           "FIX:msgtype": "DU",
           "FIX:tag": "986383",
           "description": "MsgType = DU",
@@ -6075,6 +6106,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "ALLO",
           "FIX:msgtype": "DV",
           "FIX:tag": "1043086",
           "description": "MsgType = DV",
@@ -7414,6 +7446,7 @@
         },
         "metadata": {
           "FIX:identifiers": "allocid,secondaryallocid,refallocid",
+          "FIX:msgcat": "ALLO",
           "FIX:msgtype": "AS",
           "FIX:tag": "591464",
           "description": "MsgType = AS",
@@ -7809,6 +7842,7 @@
         },
         "metadata": {
           "FIX:identifiers": "allocid,secondaryallocid",
+          "FIX:msgcat": "ALLO",
           "FIX:msgtype": "AT",
           "FIX:tag": "971168",
           "description": "MsgType = AT",
@@ -8359,6 +8393,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "BY",
           "FIX:tag": "554038",
           "description": "MsgType = BY",
@@ -8491,6 +8526,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "BW",
           "FIX:tag": "992453",
           "description": "MsgType = BW",
@@ -8656,6 +8692,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "BX",
           "FIX:tag": "980290",
           "description": "MsgType = BX",
@@ -9419,6 +9456,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "TRAD",
           "FIX:msgtype": "AW",
           "FIX:tag": "228230",
           "description": "MsgType = AW",
@@ -10754,6 +10792,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "k",
           "FIX:tag": "253071",
           "description": "MsgType = k (lowercase K)",
@@ -10832,6 +10871,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "l",
           "FIX:tag": "1009512",
           "description": "MsgType = l (lowercase L)",
@@ -11001,6 +11041,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "j",
           "FIX:tag": "345093",
           "description": "MsgType = j (lowercase J)",
@@ -12589,6 +12630,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
+          "FIX:msgcat": "COLL",
           "FIX:msgtype": "AY",
           "FIX:tag": "720980",
           "description": "MsgType = AY",
@@ -13196,6 +13238,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
+          "FIX:msgcat": "COLL",
           "FIX:msgtype": "BB",
           "FIX:tag": "1078953",
           "description": "MsgType = BB",
@@ -13653,6 +13696,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
+          "FIX:msgcat": "COLL",
           "FIX:msgtype": "BG",
           "FIX:tag": "656331",
           "description": "MsgType = BG",
@@ -14533,6 +14577,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
+          "FIX:msgcat": "COLL",
           "FIX:msgtype": "BA",
           "FIX:tag": "482029",
           "description": "MsgType = BA",
@@ -14699,6 +14744,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "COLL",
           "FIX:msgtype": "DQ",
           "FIX:tag": "544404",
           "description": "MsgType = DQ",
@@ -15296,6 +15342,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
+          "FIX:msgcat": "COLL",
           "FIX:msgtype": "AX",
           "FIX:tag": "844452",
           "description": "MsgType = AX",
@@ -16090,6 +16137,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
+          "FIX:msgcat": "COLL",
           "FIX:msgtype": "AZ",
           "FIX:tag": "480403",
           "description": "MsgType = AZ",
@@ -18881,6 +18929,7 @@
         },
         "metadata": {
           "FIX:identifiers": "allocid,secondaryallocid,individualallocid",
+          "FIX:msgcat": "CONF",
           "FIX:msgtype": "AK",
           "FIX:tag": "489272",
           "description": "MsgType = AK",
@@ -19089,6 +19138,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "CONF",
           "FIX:msgtype": "AU",
           "FIX:tag": "241565",
           "description": "MsgType = AU",
@@ -19278,6 +19328,7 @@
         },
         "metadata": {
           "FIX:identifiers": "allocid,secondaryallocid,individualallocid",
+          "FIX:msgcat": "CONF",
           "FIX:msgtype": "BH",
           "FIX:tag": "162059",
           "description": "MsgType = BH",
@@ -19598,6 +19649,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "EXEC",
           "FIX:msgtype": "BO",
           "FIX:tag": "968560",
           "description": "MsgType = BO",
@@ -20458,6 +20510,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid,quoteid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "t",
           "FIX:tag": "393258",
           "description": "MsgType = t (lowercase T)",
@@ -20687,6 +20740,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "u",
           "FIX:tag": "109341",
           "description": "MsgType = u (lowercase U)",
@@ -20798,6 +20852,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "DS",
           "FIX:tag": "704180",
           "description": "MsgType = DS",
@@ -20909,6 +20964,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "DT",
           "FIX:tag": "906013",
           "description": "MsgType = DT",
@@ -23015,6 +23071,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "AA",
           "FIX:tag": "623843",
           "description": "MsgType = AA",
@@ -23213,6 +23270,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "z",
           "FIX:tag": "261914",
           "description": "MsgType = z (lowercase Z)",
@@ -23387,6 +23445,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "BR",
           "FIX:tag": "892323",
           "description": "MsgType = BR",
@@ -24984,6 +25043,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid,secondaryorderid,execid",
+          "FIX:msgcat": "EXEC",
           "FIX:msgtype": "Q",
           "FIX:tag": "579859",
           "description": "MsgType = Q",
@@ -25256,6 +25316,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid,clordid",
+          "FIX:msgcat": "COMM",
           "FIX:msgtype": "C",
           "FIX:tag": "688909",
           "description": "MsgType = C",
@@ -26177,6 +26238,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid,secondaryorderid,clordid,execid",
+          "FIX:msgcat": "EXEC",
           "FIX:msgtype": "BN",
           "FIX:tag": "380966",
           "description": "MsgType = BN",
@@ -29607,6 +29669,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid,secondaryorderid,secondaryclordid,secondaryexecid,clordid,origclordid,quoterespid,listid,execid,execrefid,allocid,reforderid,refclordid",
+          "FIX:msgcat": "EXEC",
           "FIX:msgtype": "8",
           "FIX:tag": "684272",
           "description": "MsgType = 8",
@@ -30453,6 +30516,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "0",
           "FIX:tag": "334633",
           "description": "MsgType = 0",
@@ -36922,6 +36986,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "6",
           "FIX:tag": "405524",
           "description": "MsgType = 6",
@@ -53923,6 +53988,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "K",
           "FIX:tag": "1096950",
           "description": "MsgType = K",
@@ -54036,6 +54102,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "L",
           "FIX:tag": "185663",
           "description": "MsgType = L",
@@ -55388,6 +55455,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "N",
           "FIX:tag": "881014",
           "description": "MsgType = N",
@@ -55468,6 +55536,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "M",
           "FIX:tag": "743358",
           "description": "MsgType = M",
@@ -55558,6 +55627,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "m",
           "FIX:tag": "869150",
           "description": "MsgType = m (lowercase M)",
@@ -55867,6 +55937,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "A",
           "FIX:tag": "936186",
           "description": "MsgType = A",
@@ -55946,6 +56017,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "5",
           "FIX:tag": "769988",
           "description": "MsgType = 5",
@@ -56349,6 +56421,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "COLL",
           "FIX:msgtype": "CH",
           "FIX:tag": "505789",
           "description": "MsgType = CH",
@@ -56601,6 +56674,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "COLL",
           "FIX:msgtype": "CI",
           "FIX:tag": "338113",
           "description": "MsgType = CI",
@@ -56928,6 +57002,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "COLL",
           "FIX:msgtype": "CJ",
           "FIX:tag": "545047",
           "description": "MsgType = CJ",
@@ -57071,6 +57146,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "BOOK",
           "FIX:msgtype": "EQ",
           "FIX:tag": "626627",
           "description": "MsgType = EQ",
@@ -57402,6 +57478,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "BOOK",
           "FIX:msgtype": "X",
           "FIX:tag": "893535",
           "description": "MsgType = X",
@@ -57557,6 +57634,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "BOOK",
           "FIX:msgtype": "DR",
           "FIX:tag": "460809",
           "description": "MsgType = DR",
@@ -57829,6 +57907,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "BOOK",
           "FIX:msgtype": "V",
           "FIX:tag": "108215",
           "description": "MsgType = V",
@@ -57961,6 +58040,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "BOOK",
           "FIX:msgtype": "Y",
           "FIX:tag": "173600",
           "description": "MsgType = Y",
@@ -58405,6 +58485,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "BOOK",
           "FIX:msgtype": "W",
           "FIX:tag": "222197",
           "description": "MsgType = W",
@@ -58784,6 +58865,7 @@
         },
         "metadata": {
           "FIX:identifiers": "securitylistid",
+          "FIX:msgcat": "BOOK",
           "FIX:msgtype": "DP",
           "FIX:tag": "480519",
           "description": "MsgType = DP",
@@ -59098,6 +59180,7 @@
         },
         "metadata": {
           "FIX:identifiers": "securitylistid",
+          "FIX:msgcat": "BOOK",
           "FIX:msgtype": "DO",
           "FIX:tag": "419692",
           "description": "MsgType = DO",
@@ -59582,6 +59665,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "BOOK",
           "FIX:msgtype": "BU",
           "FIX:tag": "1089468",
           "description": "MsgType = BU",
@@ -59672,6 +59756,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "BOOK",
           "FIX:msgtype": "BT",
           "FIX:tag": "664422",
           "description": "MsgType = BT",
@@ -60146,6 +60231,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "BOOK",
           "FIX:msgtype": "BV",
           "FIX:tag": "192483",
           "description": "MsgType = BV",
@@ -60869,6 +60955,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "DJ",
           "FIX:tag": "732130",
           "description": "MsgType = DJ",
@@ -61263,6 +61350,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "DK",
           "FIX:tag": "288135",
           "description": "MsgType = DK",
@@ -61528,6 +61616,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quotereqid,quoteid",
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "i",
           "FIX:tag": "720778",
           "description": "MsgType = i (lowercase I)",
@@ -61824,6 +61913,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quotereqid,quoteid",
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "b",
           "FIX:tag": "185574",
           "description": "MsgType = b (lowercase B)",
@@ -67425,6 +67515,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid,origclordid,clordid,secondaryclordid,allocid,quoteid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "AC",
           "FIX:tag": "968044",
           "description": "MsgType = AC",
@@ -67850,6 +67941,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "BC",
           "FIX:tag": "955202",
           "description": "MsgType = BC",
@@ -67950,6 +68042,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "BD",
           "FIX:tag": "1031705",
           "description": "MsgType = BD",
@@ -68731,6 +68824,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quoteid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "s",
           "FIX:tag": "898316",
           "description": "MsgType = s (lowercase S)",
@@ -69040,6 +69134,7 @@
         },
         "metadata": {
           "FIX:identifiers": "listid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "E",
           "FIX:tag": "962450",
           "description": "MsgType = E",
@@ -70541,6 +70636,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid,allocid,quoteid,reforderid,refclordid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "AB",
           "FIX:tag": "790509",
           "description": "MsgType = AB",
@@ -72289,6 +72385,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid,allocid,quoteid,reforderid,refclordid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "D",
           "FIX:tag": "244936",
           "description": "MsgType = D",
@@ -72603,6 +72700,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "COMM",
           "FIX:msgtype": "B",
           "FIX:tag": "718303",
           "description": "MsgType = B",
@@ -74256,6 +74354,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid,secondaryorderid,secondaryclordid,clordid,origclordid,listid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "9",
           "FIX:tag": "458702",
           "description": "MsgType = 9",
@@ -75906,6 +76005,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid,origclordid,clordid,secondaryclordid,listid,allocid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "G",
           "FIX:tag": "777699",
           "description": "MsgType = G",
@@ -76267,6 +76367,7 @@
         },
         "metadata": {
           "FIX:identifiers": "origclordid,orderid,clordid,secondaryclordid,listid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "F",
           "FIX:tag": "803010",
           "description": "MsgType = F",
@@ -77179,6 +77280,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "BZ",
           "FIX:tag": "182726",
           "description": "MsgType = BZ",
@@ -77507,6 +77609,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "CA",
           "FIX:tag": "806153",
           "description": "MsgType = CA",
@@ -77845,6 +77948,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid,orderid,secondaryorderid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "r",
           "FIX:tag": "203677",
           "description": "MsgType = r (lowercase R)",
@@ -78075,6 +78179,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid,secondaryclordid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "q",
           "FIX:tag": "495019",
           "description": "MsgType = q (lowercase Q)",
@@ -78249,6 +78354,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "AF",
           "FIX:tag": "1085293",
           "description": "MsgType = AF",
@@ -78515,6 +78621,7 @@
         },
         "metadata": {
           "FIX:identifiers": "orderid,clordid,secondaryclordid",
+          "FIX:msgcat": "ORDR",
           "FIX:msgtype": "H",
           "FIX:tag": "426679",
           "description": "MsgType = H",
@@ -79069,6 +79176,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PRTY",
           "FIX:msgtype": "DI",
           "FIX:tag": "1008757",
           "description": "MsgType = DI",
@@ -79276,6 +79384,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PRTY",
           "FIX:msgtype": "DH",
           "FIX:tag": "817448",
           "description": "MsgType = DH",
@@ -79719,6 +79828,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PRTY",
           "FIX:msgtype": "CX",
           "FIX:tag": "1073655",
           "description": "MsgType = CX",
@@ -79862,6 +79972,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PRTY",
           "FIX:msgtype": "CY",
           "FIX:tag": "810627",
           "description": "MsgType = CY",
@@ -80060,6 +80171,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PRTY",
           "FIX:msgtype": "CG",
           "FIX:tag": "812300",
           "description": "MsgType = CG",
@@ -80234,6 +80346,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PRTY",
           "FIX:msgtype": "CF",
           "FIX:tag": "270673",
           "description": "MsgType = CF",
@@ -80409,6 +80522,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PRTY",
           "FIX:msgtype": "CK",
           "FIX:tag": "120288",
           "description": "MsgType = CK",
@@ -80808,6 +80922,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PRTY",
           "FIX:msgtype": "DA",
           "FIX:tag": "509202",
           "description": "MsgType = DA",
@@ -80951,6 +81066,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PRTY",
           "FIX:msgtype": "DB",
           "FIX:tag": "468361",
           "description": "MsgType = DB",
@@ -81149,6 +81265,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PRTY",
           "FIX:msgtype": "CV",
           "FIX:tag": "1084522",
           "description": "MsgType = CV",
@@ -81387,6 +81504,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PRTY",
           "FIX:msgtype": "CU",
           "FIX:tag": "1016002",
           "description": "MsgType = CU",
@@ -81562,6 +81680,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PRTY",
           "FIX:msgtype": "CZ",
           "FIX:tag": "648532",
           "description": "MsgType = CZ",
@@ -82100,6 +82219,7 @@
         },
         "metadata": {
           "FIX:identifiers": "reforderid",
+          "FIX:msgcat": "RISK",
           "FIX:msgtype": "DF",
           "FIX:tag": "516801",
           "description": "MsgType = DF",
@@ -82504,6 +82624,7 @@
         },
         "metadata": {
           "FIX:identifiers": "reforderid",
+          "FIX:msgcat": "RISK",
           "FIX:msgtype": "DG",
           "FIX:tag": "424918",
           "description": "MsgType = DG",
@@ -82779,6 +82900,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "RISK",
           "FIX:msgtype": "CS",
           "FIX:tag": "832009",
           "description": "MsgType = CS",
@@ -82922,6 +83044,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "RISK",
           "FIX:msgtype": "CT",
           "FIX:tag": "485987",
           "description": "MsgType = CT",
@@ -83142,6 +83265,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "RISK",
           "FIX:msgtype": "CM",
           "FIX:tag": "627070",
           "description": "MsgType = CM",
@@ -83319,6 +83443,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "RISK",
           "FIX:msgtype": "DE",
           "FIX:tag": "432749",
           "description": "MsgType = DE",
@@ -83536,6 +83661,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "RISK",
           "FIX:msgtype": "CL",
           "FIX:tag": "352800",
           "description": "MsgType = CL",
@@ -83821,6 +83947,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "RISK",
           "FIX:msgtype": "CR",
           "FIX:tag": "1053028",
           "description": "MsgType = CR",
@@ -84238,6 +84365,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PAYM",
           "FIX:msgtype": "EA",
           "FIX:tag": "673100",
           "description": "MsgType = EA",
@@ -84339,6 +84467,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PAYM",
           "FIX:msgtype": "EB",
           "FIX:tag": "417537",
           "description": "MsgType = EB",
@@ -84578,6 +84707,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PAYM",
           "FIX:msgtype": "DY",
           "FIX:tag": "275781",
           "description": "MsgType = DY",
@@ -84635,6 +84765,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "PAYM",
           "FIX:msgtype": "DZ",
           "FIX:tag": "763407",
           "description": "MsgType = DZ",
@@ -91195,6 +91326,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "POSN",
           "FIX:msgtype": "AM",
           "FIX:tag": "169627",
           "description": "MsgType = AM",
@@ -91651,6 +91783,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "POSN",
           "FIX:msgtype": "AL",
           "FIX:tag": "340518",
           "description": "MsgType = AL",
@@ -92805,6 +92938,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "POSN",
           "FIX:msgtype": "AP",
           "FIX:tag": "313256",
           "description": "MsgType = AP",
@@ -93120,6 +93254,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "POSN",
           "FIX:msgtype": "DL",
           "FIX:tag": "351138",
           "description": "MsgType = DL",
@@ -93351,6 +93486,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "POSN",
           "FIX:msgtype": "DM",
           "FIX:tag": "541024",
           "description": "MsgType = DM",
@@ -93732,6 +93868,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "POSN",
           "FIX:msgtype": "DN",
           "FIX:tag": "327302",
           "description": "MsgType = DN",
@@ -98002,6 +98139,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quotereqid,quoteid,secondaryquoteid,quoterespid,reforderid",
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "S",
           "FIX:tag": "449484",
           "description": "MsgType = S",
@@ -98234,6 +98372,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quoteid,quotereqid,secondaryquoteid",
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "CW",
           "FIX:tag": "898973",
           "description": "MsgType = CW",
@@ -98500,6 +98639,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quotereqid,quoteid,secondaryquoteid",
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "Z",
           "FIX:tag": "416241",
           "description": "MsgType = Z",
@@ -99504,6 +99644,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quotereqid,clordid",
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "R",
           "FIX:tag": "231968",
           "description": "MsgType = R",
@@ -99681,6 +99822,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quotereqid",
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "AG",
           "FIX:tag": "1016263",
           "description": "MsgType = AG",
@@ -100672,6 +100814,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quoterespid,quoteid,quotereqid,clordid",
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "AJ",
           "FIX:tag": "576238",
           "description": "MsgType = AJ",
@@ -101882,6 +102025,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quotereqid,quoteid,secondaryquoteid,quoterespid,bidquoteid,offerquoteid",
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "AI",
           "FIX:tag": "729973",
           "description": "MsgType = AI",
@@ -102110,6 +102254,7 @@
         },
         "metadata": {
           "FIX:identifiers": "quoteid",
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "a",
           "FIX:tag": "765769",
           "description": "MsgType = a (lowercase A)",
@@ -104129,6 +104274,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid",
+          "FIX:msgcat": "REGI",
           "FIX:msgtype": "o",
           "FIX:tag": "619440",
           "description": "MsgType = o (lowercase O)",
@@ -104285,6 +104431,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid",
+          "FIX:msgcat": "REGI",
           "FIX:msgtype": "p",
           "FIX:tag": "849606",
           "description": "MsgType = p (lowercase P)",
@@ -104510,6 +104657,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "3",
           "FIX:tag": "251740",
           "description": "MsgType = 3",
@@ -105900,6 +106048,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "POSN",
           "FIX:msgtype": "AN",
           "FIX:tag": "635355",
           "description": "MsgType = AN",
@@ -106283,6 +106432,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "POSN",
           "FIX:msgtype": "AO",
           "FIX:tag": "430229",
           "description": "MsgType = AO",
@@ -106453,6 +106603,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "2",
           "FIX:tag": "438212",
           "description": "MsgType = 2",
@@ -107549,6 +107700,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "QUOT",
           "FIX:msgtype": "AH",
           "FIX:tag": "265036",
           "description": "MsgType = AH",
@@ -109804,6 +109956,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "d",
           "FIX:tag": "800165",
           "description": "MsgType = d (lowercase D)",
@@ -110160,6 +110313,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "c",
           "FIX:tag": "235157",
           "description": "MsgType = c (lowercase C)",
@@ -110580,6 +110734,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "BP",
           "FIX:tag": "290192",
           "description": "MsgType = BP",
@@ -110845,6 +111000,7 @@
         },
         "metadata": {
           "FIX:identifiers": "securitylistid",
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "y",
           "FIX:tag": "164224",
           "description": "MsgType = y (lowercase Y)",
@@ -111139,6 +111295,7 @@
         },
         "metadata": {
           "FIX:identifiers": "securitylistid",
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "x",
           "FIX:tag": "858799",
           "description": "MsgType = x (lowercase X)",
@@ -111415,6 +111572,7 @@
         },
         "metadata": {
           "FIX:identifiers": "securitylistid",
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "BK",
           "FIX:tag": "664955",
           "description": "MsgType = BK",
@@ -111668,6 +111826,7 @@
         },
         "metadata": {
           "FIX:identifiers": "securitylistid",
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "CO",
           "FIX:tag": "835895",
           "description": "MsgType = CO",
@@ -111791,6 +111950,7 @@
         },
         "metadata": {
           "FIX:identifiers": "securitylistid",
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "CN",
           "FIX:tag": "995544",
           "description": "MsgType = CN",
@@ -112154,6 +112314,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "EG",
           "FIX:tag": "201842",
           "description": "MsgType = EG",
@@ -112255,6 +112416,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "ER",
           "FIX:tag": "528708",
           "description": "MsgType = ER",
@@ -112972,6 +113134,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "f",
           "FIX:tag": "856823",
           "description": "MsgType = f (lowercase F)",
@@ -113221,6 +113384,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "e",
           "FIX:tag": "929186",
           "description": "MsgType = e (lowercase E)",
@@ -113443,6 +113607,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "v",
           "FIX:tag": "929203",
           "description": "MsgType = v (lowercase V)",
@@ -113652,6 +113817,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SECU",
           "FIX:msgtype": "w",
           "FIX:tag": "223603",
           "description": "MsgType = w (lowercase W)",
@@ -113756,6 +113922,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "4",
           "FIX:tag": "356569",
           "description": "MsgType = 4",
@@ -114123,6 +114290,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SETL",
           "FIX:msgtype": "AV",
           "FIX:tag": "723222",
           "description": "MsgType = AV",
@@ -114279,6 +114447,7 @@
         },
         "metadata": {
           "FIX:identifiers": "clordid",
+          "FIX:msgcat": "SETL",
           "FIX:msgtype": "T",
           "FIX:tag": "936330",
           "description": "MsgType = T",
@@ -114433,6 +114602,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SETL",
           "FIX:msgtype": "BQ",
           "FIX:tag": "156588",
           "description": "MsgType = BQ",
@@ -114641,6 +114811,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SETL",
           "FIX:msgtype": "EE",
           "FIX:tag": "107348",
           "description": "MsgType = EE",
@@ -114731,6 +114902,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SETL",
           "FIX:msgtype": "EF",
           "FIX:tag": "606492",
           "description": "MsgType = EF",
@@ -114884,6 +115056,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SETL",
           "FIX:msgtype": "EC",
           "FIX:tag": "936216",
           "description": "MsgType = EC",
@@ -114974,6 +115147,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SETL",
           "FIX:msgtype": "ED",
           "FIX:tag": "490132",
           "description": "MsgType = ED",
@@ -118721,6 +118895,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "STRM",
           "FIX:msgtype": "CD",
           "FIX:tag": "917016",
           "description": "MsgType = CD",
@@ -118822,6 +118997,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "STRM",
           "FIX:msgtype": "CE",
           "FIX:tag": "654808",
           "description": "MsgType = CE",
@@ -118900,6 +119076,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "STRM",
           "FIX:msgtype": "CC",
           "FIX:tag": "1083748",
           "description": "MsgType = CC",
@@ -120942,6 +121119,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "EP",
           "FIX:tag": "948265",
           "description": "MsgType = EP",
@@ -121096,6 +121274,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "EN",
           "FIX:tag": "137078",
           "description": "MsgType = EN",
@@ -121208,6 +121387,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "EO",
           "FIX:tag": "569008",
           "description": "MsgType = EO",
@@ -121536,6 +121716,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "1",
           "FIX:tag": "411962",
           "description": "MsgType = 1",
@@ -122226,6 +122407,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "EL",
           "FIX:tag": "371736",
           "description": "MsgType = EL",
@@ -122337,6 +122519,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "EM",
           "FIX:tag": "1056207",
           "description": "MsgType = EM",
@@ -122902,6 +123085,7 @@
         },
         "metadata": {
           "FIX:identifiers": "tradeid",
+          "FIX:msgcat": "TRAD",
           "FIX:msgtype": "DX",
           "FIX:tag": "978335",
           "description": "MsgType = DX",
@@ -123120,6 +123304,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "TRAD",
           "FIX:msgtype": "DW",
           "FIX:tag": "474335",
           "description": "MsgType = DW",
@@ -125420,6 +125605,7 @@
         },
         "metadata": {
           "FIX:identifiers": "tradereportid,tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid,origtradeid,origsecondarytradeid,tradereportrefid,secondarytradereportrefid,secondarytradereportid,execid,execrefid,secondaryexecid",
+          "FIX:msgcat": "TRAD",
           "FIX:msgtype": "AE",
           "FIX:tag": "162094",
           "description": "MsgType = AE",
@@ -126653,6 +126839,7 @@
         },
         "metadata": {
           "FIX:identifiers": "tradereportid,tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid,origtradeid,origsecondarytradeid,tradereportrefid,secondarytradereportrefid,secondarytradereportid,execid,secondaryexecid",
+          "FIX:msgcat": "TRAD",
           "FIX:msgtype": "AR",
           "FIX:tag": "988102",
           "description": "MsgType = AR",
@@ -127210,6 +127397,7 @@
         },
         "metadata": {
           "FIX:identifiers": "tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid,tradereportid,secondarytradereportid,secondaryexecid,execid,orderid,clordid",
+          "FIX:msgcat": "TRAD",
           "FIX:msgtype": "AD",
           "FIX:tag": "395821",
           "description": "MsgType = AD",
@@ -127495,6 +127683,7 @@
         },
         "metadata": {
           "FIX:identifiers": "tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid",
+          "FIX:msgcat": "TRAD",
           "FIX:msgtype": "AQ",
           "FIX:tag": "977882",
           "description": "MsgType = AQ",
@@ -127726,6 +127915,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "TRAD",
           "FIX:msgtype": "DC",
           "FIX:tag": "800305",
           "description": "MsgType = DC",
@@ -127870,6 +128060,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "TRAD",
           "FIX:msgtype": "DD",
           "FIX:tag": "756028",
           "description": "MsgType = DD",
@@ -128616,6 +128807,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "MKST",
           "FIX:msgtype": "BJ",
           "FIX:tag": "205003",
           "description": "MsgType = BJ",
@@ -128750,6 +128942,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "MKST",
           "FIX:msgtype": "BI",
           "FIX:tag": "352836",
           "description": "MsgType = BI",
@@ -128827,6 +129020,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "MKST",
           "FIX:msgtype": "BS",
           "FIX:tag": "323972",
           "description": "MsgType = BS",
@@ -129471,6 +129665,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "MKST",
           "FIX:msgtype": "h",
           "FIX:tag": "932324",
           "description": "MsgType = h (lowercase H)",
@@ -129572,6 +129767,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "MKST",
           "FIX:msgtype": "ES",
           "FIX:tag": "144031",
           "description": "MsgType = ES",
@@ -129749,6 +129945,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "MKST",
           "FIX:msgtype": "g",
           "FIX:tag": "1065670",
           "description": "MsgType = g (lowercase G)",
@@ -153024,6 +153221,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "CB",
           "FIX:tag": "339296",
           "description": "MsgType = CB",
@@ -153191,6 +153389,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "BE",
           "FIX:tag": "291769",
           "description": "MsgType = BE",
@@ -153291,6 +153490,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "BF",
           "FIX:tag": "987389",
           "description": "MsgType = BF",
@@ -153382,6 +153582,7 @@
           "type": "struct"
         },
         "metadata": {
+          "FIX:msgcat": "SESS",
           "FIX:msgtype": "n",
           "FIX:tag": "360641",
           "description": "MsgType = n (lowercase N)",
@@ -378811,10 +379012,174 @@
         "metadata": {
           "FIX:tag": "65053",
           "FIX:transient": "false",
-          "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; the latest its chain knows once followed.",
-          "display": "ExpirUnix"
+          "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried.",
+          "display": "ExprTime"
         },
-        "name": "expirunix",
+        "name": "exprtime",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "fixed": 4,
+          "layout": "fixed_ascii",
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:codes": [
+            {
+              "name": "ACCT",
+              "value": "ACCT"
+            },
+            {
+              "name": "ALLO",
+              "value": "ALLO"
+            },
+            {
+              "name": "BOOK",
+              "value": "BOOK"
+            },
+            {
+              "name": "CERT",
+              "value": "CERT"
+            },
+            {
+              "name": "COLL",
+              "value": "COLL"
+            },
+            {
+              "name": "COMM",
+              "value": "COMM"
+            },
+            {
+              "name": "CONF",
+              "value": "CONF"
+            },
+            {
+              "name": "EXEC",
+              "value": "EXEC"
+            },
+            {
+              "name": "MKST",
+              "value": "MKST"
+            },
+            {
+              "name": "ORDR",
+              "value": "ORDR"
+            },
+            {
+              "name": "PAYM",
+              "value": "PAYM"
+            },
+            {
+              "name": "POSN",
+              "value": "POSN"
+            },
+            {
+              "name": "PRTY",
+              "value": "PRTY"
+            },
+            {
+              "name": "QUOT",
+              "value": "QUOT"
+            },
+            {
+              "name": "REGI",
+              "value": "REGI"
+            },
+            {
+              "name": "RISK",
+              "value": "RISK"
+            },
+            {
+              "name": "SECU",
+              "value": "SECU"
+            },
+            {
+              "name": "SESS",
+              "value": "SESS"
+            },
+            {
+              "name": "SETL",
+              "value": "SETL"
+            },
+            {
+              "name": "STRM",
+              "value": "STRM"
+            },
+            {
+              "name": "TRAD",
+              "value": "TRAD"
+            },
+            {
+              "name": "UNKN",
+              "value": "UNKN"
+            }
+          ],
+          "FIX:tag": "65054",
+          "description": "The four-byte business category of the message type.",
+          "display": "MsgCat"
+        },
+        "name": "msgcat",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "isin"
+        },
+        "metadata": {
+          "FIX:tag": "65055",
+          "description": "The normalized ISIN the message identifies.",
+          "display": "IsinCode"
+        },
+        "name": "isincode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "cusip"
+        },
+        "metadata": {
+          "FIX:tag": "65057",
+          "description": "The normalized CUSIP the message identifies.",
+          "display": "CusipCode"
+        },
+        "name": "cusipcode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "sedol"
+        },
+        "metadata": {
+          "FIX:tag": "65058",
+          "description": "The normalized SEDOL the message identifies.",
+          "display": "SedolCode"
+        },
+        "name": "sedolcode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "bloomberg"
+        },
+        "metadata": {
+          "FIX:tag": "65059",
+          "description": "The normalized Bloomberg identifier the message identifies.",
+          "display": "BloombergCode"
+        },
+        "name": "bloombergcode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "mic"
+        },
+        "metadata": {
+          "FIX:tag": "65060",
+          "description": "The normalized market MIC the message identifies.",
+          "display": "MicCode"
+        },
+        "name": "miccode",
         "nullable": true
       }
     ],
@@ -392831,11 +393196,11 @@
         "x": "The grid instant a walk read this message as the snapshot of; empty on every row no snapshot was taken of."
       },
       {
-        "c": "expirunix",
+        "c": "exprtime",
         "t": 65053,
-        "n": "ExpirUnix",
+        "n": "ExprTime",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; the latest its chain knows once followed."
+        "x": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried."
       },
       {
         "c": "sendingtime",
@@ -392978,6 +393343,13 @@
         "x": "Defines message type ALWAYS THIRD FIELD IN MESSAGE. (Always unencrypted)"
       },
       {
+        "c": "msgcat",
+        "t": 65054,
+        "n": "MsgCat",
+        "y": "fixed_ascii(4)",
+        "x": "The four-byte business category of the message type."
+      },
+      {
         "c": "msgseqnum",
         "t": 34,
         "n": "MsgSeqNum",
@@ -393053,6 +393425,41 @@
         "n": "SecurityIDSource",
         "y": "utf8",
         "x": "Identifies class or source of the SecurityID(48) value."
+      },
+      {
+        "c": "isincode",
+        "t": 65055,
+        "n": "IsinCode",
+        "y": "isin",
+        "x": "The normalized ISIN the message identifies."
+      },
+      {
+        "c": "cusipcode",
+        "t": 65057,
+        "n": "CusipCode",
+        "y": "cusip",
+        "x": "The normalized CUSIP the message identifies."
+      },
+      {
+        "c": "sedolcode",
+        "t": 65058,
+        "n": "SedolCode",
+        "y": "sedol",
+        "x": "The normalized SEDOL the message identifies."
+      },
+      {
+        "c": "bloombergcode",
+        "t": 65059,
+        "n": "BloombergCode",
+        "y": "bloomberg",
+        "x": "The normalized Bloomberg identifier the message identifies."
+      },
+      {
+        "c": "miccode",
+        "t": 65060,
+        "n": "MicCode",
+        "y": "mic",
+        "x": "The normalized market MIC the message identifies."
       },
       {
         "c": "securitytype",
@@ -393814,7 +394221,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1706790896000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -394133,7 +394540,7 @@
         "state": "80FILLED",
         "seqnum": 0,
         "creaunix": "1706790897880000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -394559,7 +394966,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1704190530000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -397646,7 +398053,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1704190530000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -397935,7 +398342,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1704190530000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -398155,7 +398562,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1706788800000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -398308,7 +398715,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1706790901000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -398491,7 +398898,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1704190530000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -398744,7 +399151,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1704190530000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -399050,7 +399457,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1704190530000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -399060,7 +399467,7 @@
         "unit": "",
         "side": "BUY",
         "isincode": "US0378331005",
-        "cusipcode": null,
+        "cusipcode": "037833100",
         "sedolcode": null,
         "bloombergcode": null,
         "cficode": null,
@@ -399449,7 +399856,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1704190530000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -399759,7 +400166,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1704190530000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -399971,7 +400378,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1704190530000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -400170,7 +400577,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1704190530000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -400360,7 +400767,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1704190530000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -400571,7 +400978,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1704190530000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
@@ -400787,7 +401194,7 @@
         "state": "00UNKNOWN",
         "seqnum": 0,
         "creaunix": "1704190530000000000",
-        "expirunix": null,
+        "exprtime": null,
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,

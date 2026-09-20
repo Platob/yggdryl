@@ -200,6 +200,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "CONF",
     "FIX:msgtype": "AU",
     "FIX:tag": "241565",
     "description": "MsgType = AU",

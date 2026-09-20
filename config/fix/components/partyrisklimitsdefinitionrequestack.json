@@ -135,6 +135,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "RISK",
     "FIX:msgtype": "CT",
     "FIX:tag": "485987",
     "description": "MsgType = CT",

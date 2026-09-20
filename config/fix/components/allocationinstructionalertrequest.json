@@ -92,6 +92,7 @@
   },
   "nullable": false,
   "metadata": {
+    "FIX:msgcat": "ALLO",
     "FIX:msgtype": "DU",
     "FIX:tag": "986383",
     "description": "MsgType = DU",

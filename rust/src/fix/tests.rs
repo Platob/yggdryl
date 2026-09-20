@@ -4585,7 +4585,7 @@ fn a_registry_of_the_crates_own_fields_compiles_no_derivation_at_all() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        crate::graph::MarketElement::get_isincode(&held).map(crate::Isin::as_str),
+        crate::graph::MarketElement::get_isincode(&held).map(crate::IsinCode::as_str),
         Some("US0378331005")
     );
 }

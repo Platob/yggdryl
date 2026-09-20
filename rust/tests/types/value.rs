@@ -1,6 +1,6 @@
 //! The value a datatype accepts: canonicalization, readings, and absence.
 
-use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
+use yggdryl::{DataType, Field, Map, Mapping, Scalar, StructType, TimeUnit, Timezone, UnionMode};
 use yggdryl::{DateTimeType, DurationType, TimeType};
 
 #[test]
@@ -110,6 +110,49 @@ fn a_record_refuses_unknown_names() {
     let canonical = schema.canonicalize_value(record).unwrap_err().to_string();
     assert!(validation.contains("unknown field"), "{validation}");
     assert!(canonical.contains("unknown field"), "{canonical}");
+}
+
+#[test]
+fn canonicalization_diagnostics_keep_field_entry_and_union_locations() {
+    let map = DataType::map_of(DataType::Int32, DataType::Int32, false).unwrap();
+    let map_root = root([map.required_field("lookup")]);
+    for (value, path) in [
+        (
+            Scalar::Mapping(Mapping::Map(Map::new(vec![(
+                Scalar::from("not an integer"),
+                Scalar::from(1_i32),
+            )]))),
+            "$.row.lookup[0].key",
+        ),
+        (
+            Scalar::Mapping(Mapping::Map(Map::new(vec![(
+                Scalar::from(1_i32),
+                Scalar::from("not an integer"),
+            )]))),
+            "$.row.lookup[0].value",
+        ),
+    ] {
+        let refused = map_root
+            .canonicalize_value(Scalar::from_sequence([value]))
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains(path), "{refused}");
+    }
+
+    let union = DataType::union(
+        [(1, DataType::Int32.required_field("integer"))],
+        UnionMode::Dense,
+    )
+    .unwrap();
+    let union_root = root([union.required_field("choice")]);
+    let refused = union_root
+        .canonicalize_value(Scalar::from_sequence([Scalar::from_sequence([
+            Scalar::from(1_i64),
+            Scalar::from("not an integer"),
+        ])]))
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("$.row.choice.union[1]"), "{refused}");
 }
 
 #[test]

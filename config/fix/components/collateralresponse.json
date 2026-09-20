@@ -786,6 +786,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
+    "FIX:msgcat": "COLL",
     "FIX:msgtype": "AZ",
     "FIX:tag": "480403",
     "description": "MsgType = AZ",

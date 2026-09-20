@@ -1482,6 +1482,7 @@
   "nullable": false,
   "metadata": {
     "FIX:identifiers": "orderid,origclordid,clordid,secondaryclordid,allocid,quoteid",
+    "FIX:msgcat": "ORDR",
     "FIX:msgtype": "AC",
     "FIX:tag": "968044",
     "description": "MsgType = AC",
