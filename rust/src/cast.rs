@@ -2702,14 +2702,18 @@ impl ArrayCastPlan {
                 self.expected
             )));
         }
-        let remaining_nulls =
-            if matches!(self.null_policy, NullPolicy::Field | NullPolicy::DataType)
-                && (matches!(self.null_policy, NullPolicy::DataType) || !self.field.is_nullable())
-            {
-                exposed_logical_null_count(cast.as_ref(), self.field.dtype(), exposure)?
-            } else {
-                0
-            };
+        // Only a repaired column can still hold a hole, and only the arms
+        // above repair one. A column that arrived with no absence at all was
+        // handed on untouched, so recounting it would re-answer the count
+        // taken a few lines up.
+        let remaining_nulls = if null_count != 0
+            && matches!(self.null_policy, NullPolicy::Field | NullPolicy::DataType)
+            && (matches!(self.null_policy, NullPolicy::DataType) || !self.field.is_nullable())
+        {
+            exposed_logical_null_count(cast.as_ref(), self.field.dtype(), exposure)?
+        } else {
+            0
+        };
         if remaining_nulls != 0 {
             let default = if matches!(self.null_policy, NullPolicy::DataType) {
                 self.field.dtype().default_arrow_array()?
@@ -4211,9 +4215,7 @@ pub(crate) mod columns {
             }
             let phase = budget.mark();
             let logical = logical_validity_buffer(array.as_ref(), field.dtype(), budget)?;
-            let default_count = (0..array.len())
-                .filter(|index| is_exposed(exposure, *index) && logical.is_null(*index))
-                .count();
+            let default_count = exposed_null_count(&logical, exposure);
             if default_count == 0 {
                 budget.restore(phase);
                 return Ok(array);
@@ -4357,9 +4359,7 @@ pub(crate) mod columns {
             let source = downcast::<DictionaryArray<K>>(&array)?;
             let phase = budget.mark();
             let logical = logical_validity_buffer(source, field.dtype(), budget)?;
-            let repair_count = (0..source.len())
-                .filter(|index| is_exposed(exposure, *index) && logical.is_null(*index))
-                .count();
+            let repair_count = exposed_null_count(&logical, exposure);
             if repair_count == 0 {
                 budget.restore(phase);
                 return Ok(array);
@@ -5928,6 +5928,16 @@ pub(crate) mod columns {
                 )),
             };
         }
+        // A datatype that does not derive absence from a child reads its nulls
+        // straight off the Arrow validity buffer, which already carries the
+        // count. Rediscovering it a row at a time is the one step whose cost is
+        // the batch height on a cast that is otherwise pointer work, and every
+        // node of every batch was paying it.
+        if !has_derived_logical_nulls(dtype) {
+            return Ok(array
+                .nulls()
+                .map_or(0, |nulls| exposed_null_count(nulls, exposure)));
+        }
         let mut null_count = 0usize;
         for index in 0..array.len() {
             if is_exposed(exposure, index) && logical_null_at(array, dtype, index)? {
@@ -5937,12 +5947,57 @@ pub(crate) mod columns {
         Ok(null_count)
     }
 
+    /// How many exposed rows a validity bitmap marks absent.
+    ///
+    /// The bitmap already carries its own count, so an unexposed read is a
+    /// field read; an exposed one is two bitmaps intersected a machine word at
+    /// a time. A mask of the wrong length is left to the row walk, which is
+    /// what reports it.
+    pub(crate) fn exposed_null_count(
+        logical: &arrow_buffer::NullBuffer,
+        exposure: Option<&BooleanBuffer>,
+    ) -> usize {
+        if logical.null_count() == 0 {
+            return 0;
+        }
+        match exposure {
+            None => logical.null_count(),
+            Some(exposure) if exposure.len() == logical.len() => {
+                exposure.count_set_bits() - both_set_bits(exposure, logical.inner())
+            }
+            Some(exposure) => (0..logical.len())
+                .filter(|index| exposure.value(*index) && logical.is_null(*index))
+                .count(),
+        }
+    }
+
+    /// The number of positions set in both buffers.
+    ///
+    /// Both carry the same bit length, so `iter_padded` yields the same number
+    /// of chunks for each and the padding is zero on both sides.
+    fn both_set_bits(left: &BooleanBuffer, right: &BooleanBuffer) -> usize {
+        left.bit_chunks()
+            .iter_padded()
+            .zip(right.bit_chunks().iter_padded())
+            .map(|(left, right)| (left & right).count_ones() as usize)
+            .sum()
+    }
+
     pub(crate) fn logical_validity_buffer(
         array: &dyn Array,
         dtype: &DataType,
         budget: &mut MaterializationBudget,
     ) -> Result<arrow_buffer::NullBuffer> {
         budget.add_bitmap(array.len())?;
+        // The same rule as the null count above: unless absence is derived
+        // from a child, the array's own validity *is* the logical validity, so
+        // it is shared rather than rebuilt one bit at a time.
+        if !has_derived_logical_nulls(dtype) {
+            return Ok(match array.nulls() {
+                Some(nulls) => nulls.clone(),
+                None => arrow_buffer::NullBuffer::new_valid(array.len()),
+            });
+        }
         let mut builder = BooleanBufferBuilder::new(array.len());
         for index in 0..array.len() {
             builder.append(!logical_null_at(array, dtype, index)?);
