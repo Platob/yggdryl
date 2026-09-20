@@ -50,13 +50,14 @@ A layout that is both a string leaf and a byte leaf - `Binary` under a windows-1
 
 | Ask | Cost |
 | --- | --- |
-| `len`, `null_count`, `is_null`, `is_empty` | constant, off the array |
+| `len`, `is_null`, `is_empty` | constant, for either leaf |
+| `null_count` | constant for a column, off its validity bitmap; a walk for a run, which keeps none |
 | `values`, `offsets`, `payload`, `views`, `nulls`, `array` | constant, and nothing is copied - these are the buffers themselves |
 | `value(i)` on a leaf | a bounds check and a buffer read; no value is built |
 | `scalar(i)` | one value built, through the crate's one schema-directed decode |
 | `push_value`, `set_value` | one buffer write when nothing else holds the buffers, one copy of the rows when something does |
 | the same on a variable-length, viewed, fixed-width or boolean leaf | one rewrite: an offset moves every later run, a view word names which buffer holds it, a fixed payload has no builder to hand back, and a bitmap has none either. That is what those layouts cost a write; their reads stay one load |
-| `push`, `set` | the field's value contract, then the write above |
+| `push`, `set` | on a column, the field's value contract then the write above. On a run, a copy of every value it holds — a run is one shared slice, so building one `push` at a time is quadratic and `Scalar::from_sequence` is what builds it in one go |
 | `child`, `child_at`, `children` | constant: a child is already a column |
 | `with_child`, `without_child` | one field edit and one `Vec` of pointers, never a row |
 | `into_arrow_array` | the array itself, shared |

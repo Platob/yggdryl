@@ -710,6 +710,10 @@ impl Serie {
     }
 
     /// Return how many rows hold no value.
+    ///
+    /// Constant for a column, which keeps the count on its validity bitmap.
+    /// A run keeps no such bitmap, so it walks its values - the one ask
+    /// where the two leaves differ in cost rather than in answer.
     pub fn null_count(&self) -> usize {
         column!(
             self,
@@ -748,7 +752,8 @@ impl Serie {
     ///
     /// A column's buffers are written in place when nothing else holds them
     /// and copied once when something does, which is what sharing a column
-    /// between two values costs the first write.
+    /// between two values costs the first write. A run is one shared slice,
+    /// so a write copies every value it holds.
     ///
     /// # Errors
     ///
@@ -775,6 +780,12 @@ impl Serie {
     }
 
     /// Append one row, through the field's contract where there is one.
+    ///
+    /// A column writes its buffers, amortized. A run is one shared slice, so
+    /// appending to it copies every value it holds - building a run one
+    /// [`Self::push`] at a time is quadratic, and
+    /// [`Scalar::from_sequence`] is what builds one from values already in
+    /// hand.
     ///
     /// # Errors
     ///

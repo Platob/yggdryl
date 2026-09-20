@@ -999,3 +999,44 @@ fn the_offset_width_is_the_leaf_and_not_a_branch_inside_one() {
         arrow_schema::DataType::LargeList(_)
     ));
 }
+
+#[test]
+fn the_two_leaves_answer_the_same_but_do_not_cost_the_same() {
+    let field = Field::new("price", DataType::Int64, true);
+    let rows = [Scalar::from(1_i64), Scalar::Null, Scalar::from(3_i64)];
+    let column = Serie::from_scalars(field, rows.clone()).expect("a nullable column");
+    let run = Serie::new(rows.to_vec());
+
+    // Every count answers the same on both leaves, whatever it costs.
+    assert_eq!(column.len(), run.len());
+    assert_eq!(column.null_count(), run.null_count());
+    assert_eq!(column.null_count(), 1);
+    for index in 0..4 {
+        assert_eq!(
+            column.is_null(index),
+            run.is_null(index),
+            "row {index} reads the same on both leaves"
+        );
+        assert_eq!(column.scalar(index).unwrap(), run.scalar(index).unwrap());
+    }
+
+    // Writing answers the same too, even though a run copies to do it.
+    let mut grown_column = column.clone();
+    let mut grown_run = run.clone();
+    grown_column.push(Scalar::from(4_i64)).expect("one row");
+    grown_run.push(Scalar::from(4_i64)).expect("one row");
+    assert_eq!(grown_column.len(), 4);
+    assert_eq!(
+        grown_column.scalars().unwrap(),
+        grown_run.scalars().unwrap()
+    );
+
+    // And a run refuses a row past the end by name, as a column does.
+    let mut short = Serie::new(vec![Scalar::from(1_i64)]);
+    assert!(short.set(0, Scalar::from(2_i64)).is_ok());
+    assert_eq!(short.scalar(0).unwrap(), Scalar::from(2_i64));
+    assert!(short.set(9, Scalar::from(3_i64)).is_err());
+
+    // The run was not changed by the refusal.
+    assert_eq!(short.len(), 1);
+}
