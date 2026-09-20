@@ -1217,16 +1217,62 @@ impl std::fmt::Write for CountingWriter {
     }
 }
 
+/// The bytes a text cell renders as, without rendering it.
+///
+/// A text column's characters *are* its rendering, and every text layout
+/// already stores each cell's length - in its offsets, or in the view header.
+/// Reading that is the same number the formatter would spell out one value at
+/// a time, so a text source is measured rather than formatted.
+fn text_cell_len(array: &dyn Array, index: usize) -> Option<usize> {
+    match array.data_type() {
+        ArrowDataType::Utf8 => downcast::<GenericByteArray<Utf8Type>>(array)
+            .ok()
+            .map(|array| array.value_length(index).as_usize()),
+        ArrowDataType::LargeUtf8 => downcast::<GenericByteArray<LargeUtf8Type>>(array)
+            .ok()
+            .map(|array| array.value_length(index).as_usize()),
+        ArrowDataType::Utf8View => downcast::<StringViewArray>(array)
+            .ok()
+            .map(|array| array.value(index).len()),
+        _ => None,
+    }
+}
+
 fn reserve_formatted_payload(
     array: &dyn Array,
     selection: SourceSelection<'_>,
     target_is_view: bool,
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
-    let options = FormatOptions::default();
-    let formatter = ArrayFormatter::try_new(array, &options)?;
     let mut total = 0usize;
     let mut maximum = 0usize;
+    if matches!(
+        array.data_type(),
+        ArrowDataType::Utf8 | ArrowDataType::LargeUtf8 | ArrowDataType::Utf8View
+    ) {
+        selection.try_for_each(array.len(), |index| {
+            if array.is_null(index) {
+                return Ok(());
+            }
+            let bytes = text_cell_len(array, index).ok_or_else(|| {
+                Error::IncompatibleSchema(
+                    "Arrow text layout does not match its declared datatype".to_owned(),
+                )
+            })?;
+            total = total.checked_add(bytes).ok_or_else(|| {
+                Error::IncompatibleSchema("Arrow formatted payload exceeds usize".to_owned())
+            })?;
+            maximum = maximum.max(bytes);
+            Ok(())
+        })?;
+        budget.add_bytes(total)?;
+        if target_is_view {
+            budget.add_bytes(maximum)?;
+        }
+        return Ok(());
+    }
+    let options = FormatOptions::default();
+    let formatter = ArrayFormatter::try_new(array, &options)?;
     selection.try_for_each(array.len(), |index| {
         if array.is_null(index) {
             return Ok(());
