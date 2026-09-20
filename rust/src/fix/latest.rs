@@ -33,6 +33,7 @@
 //! anything else is a value the message stated, and what the message stated
 //! stands.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -42,7 +43,6 @@ use super::build::{stated as stated_field, typed_spelling};
 use super::entry::wire_text;
 use super::msg::FixMsg;
 use super::registry::FixMap;
-use super::replacements::FixReplacementEntry;
 use super::schema::{item_fields, same_shape, shape_digest, tag_and_counter};
 use super::{FixRegistry, occurrence_name};
 use crate::expression::{Bound, Term};
@@ -411,14 +411,15 @@ fn restated_tokens(held: &Scalar, named: &[SmolStr], text: &str) -> SmolStr {
 /// named.
 fn named_literals(term: &Term) -> Vec<SmolStr> {
     let mut held = Vec::new();
-    // The walk is the point; the term it rebuilds is dropped.
-    let _ = term.map(&mut |node| {
+    // Pre-order, each literal once, in the order the condition names them:
+    // the first named the held value spells is the one a restatement
+    // replaces.
+    term.walk(&mut |node| {
         if let Term::Literal(literal) = node {
             if let Some(text) = literal.value().as_str() {
                 held.push(SmolStr::new(text));
             }
         }
-        Ok(None)
     });
     held
 }
@@ -554,12 +555,8 @@ impl<'msg> Restater<'msg> {
         let row = self.msg.as_value();
         let parameters = self.parameters(None);
         for field in ruled {
-            let mut rules = field.as_fix().replacements();
-            while let Some(rule) = rules.next_ok() {
-                let Some(plan) = plan_of(rule) else {
-                    continue;
-                };
-                if Self::applies(&plan, root, row, shape, &parameters) {
+            for plan in plans_of(self.registry, field).iter().flatten() {
+                if Self::applies(plan, root, row, shape, &parameters) {
                     return Shape::Ruled;
                 }
             }
@@ -620,6 +617,12 @@ impl<'msg> Restater<'msg> {
             };
             if reached.iter().any(|held| std::ptr::eq(*held, known)) {
                 return false;
+            }
+            // Sized once, on the first field reached, for every child the
+            // level has: a level reaching nothing allocates nothing here,
+            // and one reaching a hundred grows the list once.
+            if reached.capacity() == 0 {
+                reached.reserve_exact(fields.len());
             }
             reached.push(known);
             let nullable = if member {
@@ -810,18 +813,17 @@ impl<'msg> Restater<'msg> {
                     if value.is_null() {
                         break;
                     }
-                    let mut rules = field.as_fix().replacements();
-                    let mut count = 0;
+                    let plans = plans_of(self.registry, field);
+                    let count = plans.len();
                     // The level's view is built on the first rule that has
                     // to be read against it and never before, so a field
                     // with no rule costs no clone at all.
                     let mut view = None;
-                    while let Some(rule) = rules.next_ok() {
-                        count += 1;
+                    for plan in plans.iter() {
                         if planned.is_some() {
                             continue;
                         }
-                        let Some(plan) = plan_of(rule) else {
+                        let Some(plan) = plan else {
                             continue;
                         };
                         if view.is_none() {
@@ -835,7 +837,7 @@ impl<'msg> Restater<'msg> {
                         let Some((root, row, shape)) = view.as_ref() else {
                             break;
                         };
-                        if !Self::applies(&plan, root, row, *shape, &parameters) {
+                        if !Self::applies(plan, root, row, *shape, &parameters) {
                             continue;
                         }
                         let source = Source { value, tag };
@@ -846,7 +848,7 @@ impl<'msg> Restater<'msg> {
                             row,
                             *shape,
                             &source,
-                            &plan,
+                            plan,
                             &parameters,
                             group.is_none(),
                         ));
@@ -1173,29 +1175,10 @@ fn retyped(known: &Field, held: &Field, value: &Scalar) -> Scalar {
     converted(known, value)
 }
 
-/// The replacement plans one thread has read, by the text each is read from.
-pub(super) type ReplacementPlans = FixMap<SmolStr, Option<Arc<Plan>>>;
-
-thread_local! {
-    /// Every replacement plan this thread has read, by the text it is read
-    /// from: a rule is data the dictionary states once, and a capture of a
-    /// million messages reads the same forty rules a million times.
-    static REPLACEMENT_PLANS: RefCell<ReplacementPlans> = RefCell::new(ReplacementPlans::default());
-}
-
-/// This thread's replacement plans exchanged with `with`.
-pub(super) fn swap_replacement_plans(with: &mut ReplacementPlans) {
-    REPLACEMENT_PLANS.with(|held| std::mem::swap(&mut *held.borrow_mut(), with));
-}
-
-/// How many plans one thread remembers; past it a plan is still read and
-/// simply not kept, and a dictionary states far fewer.
-const REMEMBERED_PLANS: usize = 4_096;
-
 /// One term of one plan bound against one shape of root under one pair of
 /// parameters: what names a binding this thread may read again.
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub(super) struct BoundKey {
+struct BoundKey {
     /// The plan, by address: kept alive beside the binding, so the address
     /// names it for as long as the binding is remembered.
     plan: usize,
@@ -1213,7 +1196,7 @@ pub(super) struct BoundKey {
 type Remembered = (Arc<Plan>, Field, Option<Arc<Bound>>);
 
 /// The bindings one thread has read, by what names each.
-pub(super) type BoundTerms = FixMap<BoundKey, Remembered>;
+type BoundTerms = FixMap<BoundKey, Remembered>;
 
 thread_local! {
     /// Every rule term this thread has bound, by the shape of the root it
@@ -1221,11 +1204,6 @@ thread_local! {
     /// binding read against one root answers every root of that shape, and
     /// a capture states a few shapes a hundred thousand times each.
     static BOUND_TERMS: RefCell<BoundTerms> = RefCell::new(BoundTerms::default());
-}
-
-/// This thread's bindings exchanged with `with`.
-pub(super) fn swap_bound_terms(with: &mut BoundTerms) {
-    BOUND_TERMS.with(|held| std::mem::swap(&mut *held.borrow_mut(), with));
 }
 
 /// How many bindings one thread remembers; past it a term is still bound
@@ -1286,21 +1264,31 @@ fn bound_term(
     bound
 }
 
-/// The plan one rule is, read once per thread and shared after; nothing
-/// for a rule whose text is not a plan, exactly as the restatement skips
-/// one.
-fn plan_of(rule: FixReplacementEntry<'_>) -> Option<Arc<Plan>> {
-    REPLACEMENT_PLANS.with(|held| {
-        if let Some(known) = held.borrow().get(rule.plan()) {
-            return known.clone();
-        }
-        let plan = rule.parse_plan().ok().map(Arc::new);
-        let mut held = held.borrow_mut();
-        if held.len() < REMEMBERED_PLANS {
-            held.insert(SmolStr::new(rule.plan()), plan.clone());
-        }
-        plan
-    })
+/// The rules `field` carries, compiled: read off the registry, which
+/// compiled them once when it indexed the field, or off the field's own
+/// document for a field the registry does not hold. `None` stands for a
+/// rule whose text is not a plan, kept in its place so the count and the
+/// order of the rules are the document's.
+fn plans_of<'registry>(
+    registry: &'registry FixRegistry,
+    field: &Field,
+) -> Cow<'registry, [Option<Arc<Plan>>]> {
+    match registry.plans_of(field) {
+        Some(plans) => Cow::Borrowed(plans),
+        None => Cow::Owned(compiled_plans(field)),
+    }
+}
+
+/// Every rule `field` carries, in the document's order, each the plan it
+/// is or `None` where its text is not a plan; the walk stops where the
+/// document itself refuses an entry, exactly as reading the rules does.
+pub(super) fn compiled_plans(field: &Field) -> Vec<Option<Arc<Plan>>> {
+    let mut rules = field.as_fix().replacements();
+    let mut plans = Vec::new();
+    while let Some(rule) = rules.next_ok() {
+        plans.push(rule.parse_plan().ok().map(Arc::new));
+    }
+    plans
 }
 
 /// The message restated under the dictionary its registry holds.

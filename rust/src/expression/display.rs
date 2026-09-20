@@ -22,7 +22,7 @@
 
 use std::fmt::{self, Write as _};
 
-use smol_str::SmolStr;
+use smol_str::{SmolStr, format_smolstr};
 
 use super::path::write_segments;
 use super::selector::{Projection, Selector};
@@ -374,12 +374,16 @@ pub(crate) fn write_identifier(formatter: &mut fmt::Formatter<'_>, name: &str) -
 /// Write one text value as a single-quoted literal.
 pub(crate) fn write_text_literal(formatter: &mut fmt::Formatter<'_>, text: &str) -> fmt::Result {
     formatter.write_char('\'')?;
-    for character in text.chars() {
-        if character == '\'' {
-            formatter.write_char('\'')?;
-        }
-        formatter.write_char(character)?;
+    // Each run up to and including a quote, then the quote once more to
+    // double it; a text carrying no quote, which is nearly every text, is
+    // one write.
+    let mut rest = text;
+    while let Some(at) = rest.find('\'') {
+        formatter.write_str(&rest[..=at])?;
+        formatter.write_char('\'')?;
+        rest = &rest[at + 1..];
     }
+    formatter.write_str(rest)?;
     formatter.write_char('\'')
 }
 
@@ -410,8 +414,9 @@ pub(crate) fn is_reserved(name: &str) -> bool {
         "glob", "escape", "case", "when", "then", "else", "end", "cast", "try_cast", "as",
         "distinct", "from", "select", "where",
     ];
-    let lowered = name.to_ascii_lowercase();
-    RESERVED.contains(&lowered.as_str())
+    RESERVED
+        .iter()
+        .any(|reserved| reserved.eq_ignore_ascii_case(name))
 }
 
 /// Write one literal in the spelling that re-parses to it.
@@ -452,7 +457,7 @@ fn bare_literal(dtype: &DataType, value: &Scalar) -> Option<SmolStr> {
         } else {
             SmolStr::new_static("false")
         }),
-        (DataType::Int64, Scalar::Int64(held)) => Some(SmolStr::new(held.to_string())),
+        (DataType::Int64, Scalar::Int64(held)) => Some(format_smolstr!("{}", held.get())),
         // A non-finite float has no bare spelling, because `nan` and `inf`
         // are column names as often as they are numbers. It falls through to
         // the typed form, where the text is unambiguous.

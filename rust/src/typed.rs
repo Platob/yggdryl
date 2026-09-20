@@ -17,6 +17,7 @@ use std::hash::{Hash, Hasher};
 pub use record::FieldRecord;
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
+pub(crate) use shared::prebuilt_dtype;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::Field;
@@ -444,6 +445,15 @@ mod shared {
         }
         table
     });
+
+    /// The parameter-free datatype one identifier names, held once for the
+    /// process; `None` for an identifier naming none.
+    pub(crate) fn prebuilt_dtype(id: DataTypeId) -> Option<&'static DataType> {
+        PREBUILT
+            .get(usize::from(id.as_u8()))?
+            .as_ref()
+            .map(Field::dtype)
+    }
 
     /// One nullable field per plain unbounded UTF-8 leaf.
     ///

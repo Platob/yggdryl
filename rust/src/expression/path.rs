@@ -893,12 +893,15 @@ pub(crate) fn write_identifier(formatter: &mut fmt::Formatter<'_>, name: &str) -
         return formatter.write_str(name);
     }
     formatter.write_char('"')?;
-    for character in name.chars() {
-        if character == '"' {
-            formatter.write_char('"')?;
-        }
-        formatter.write_char(character)?;
+    // Each run up to and including a quote, then the quote once more to
+    // double it; a name carrying none is one write.
+    let mut rest = name;
+    while let Some(at) = rest.find('"') {
+        formatter.write_str(&rest[..=at])?;
+        formatter.write_char('"')?;
+        rest = &rest[at + 1..];
     }
+    formatter.write_str(rest)?;
     formatter.write_char('"')
 }
 

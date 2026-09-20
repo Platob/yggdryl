@@ -183,8 +183,9 @@ name = "media"
 path = "benchmarks/media.rs"
 harness = false
 
-# Hashing: byte and value digests, bounded handle reads, time coupling, and
-# holder fills. Values need no Arrow; column groups follow that feature.
+# Hashing: byte and value digests, bounded handle reads, time coupling,
+# holder fills, and the variant encoding a value is stored as. Values need no
+# Arrow; column groups follow that feature.
 [[bench]]
 name = "hashing"
 path = "benchmarks/hashing.rs"

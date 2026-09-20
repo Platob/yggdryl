@@ -321,6 +321,61 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
+
+    // The same doors on several threads, against the one-thread rows above:
+    // what the machine's cores buy each door, and what each door leaves on
+    // the thread that pulls it - the text reader in front of the line
+    // doors, the batches closing behind the Arrow ones.
+    for threads in [2, 4] {
+        let spread = codec.clone().with_threads(threads);
+        let composed = composed.clone().with_threads(threads);
+        group.bench_function(format!("parse_lines/threads={threads}"), |bencher| {
+            bencher.iter(|| {
+                black_box(&spread)
+                    .parse_lines(black_box(&held))
+                    .filter(Result::is_ok)
+                    .count()
+            });
+        });
+        group.bench_function(format!("decoded_lines/threads={threads}"), |bencher| {
+            bencher.iter(|| {
+                composed
+                    .parse_text_lines(
+                        read_text_lines(&source, &options).expect("a decoded line stream"),
+                    )
+                    .filter(Result::is_ok)
+                    .count()
+            });
+        });
+        group.bench_function(
+            format!("parse_text_arrow_reader/threads={threads}"),
+            |bencher| {
+                bencher.iter(|| {
+                    let read = black_box(&source)
+                        .read_arrow_reader(&text())
+                        .expect("a reader");
+                    spread
+                        .parse_text_arrow_reader(read)
+                        .expect("a reader")
+                        .map(|batch| batch.expect("a batch").num_rows())
+                        .sum::<usize>()
+                });
+            },
+        );
+        group.bench_function(format!("arrow_reader/threads={threads}"), |bencher| {
+            bencher.iter_batched(
+                || messages.clone(),
+                |held| {
+                    spread
+                        .arrow_reader(schema.clone(), held)
+                        .expect("a reader")
+                        .map(|batch| batch.expect("a batch").num_rows())
+                        .sum::<usize>()
+                },
+                BatchSize::LargeInput,
+            );
+        });
+    }
     group.finish();
 }
 

@@ -17,7 +17,7 @@ use std::hash::{BuildHasherDefault, Hash, Hasher};
 use std::iter::FusedIterator;
 use std::sync::{Arc, OnceLock};
 
-use smol_str::format_smolstr;
+use smol_str::{SmolStr, format_smolstr};
 
 use super::{FixId, FixKey};
 use crate::folds_equal;
@@ -183,6 +183,10 @@ type Index<K> = HashMap<K, usize, BuildHasherDefault<Mix>>;
 /// name-keyed maps keep the default, which is what an unspread key needs.
 pub(super) type FixMap<K, V> = HashMap<K, V, BuildHasherDefault<Mix>>;
 
+/// One field's replacement rules compiled, in the order the field states
+/// them, a rule that did not parse holding its place as `None`.
+type FieldPlans = Arc<[Option<Arc<crate::Plan>>]>;
+
 /// Fold a name directly into a seeded streaming state.
 ///
 /// The crate's one fold: ASCII case folded, and `_`, `-` and space dropped.
@@ -333,6 +337,11 @@ pub struct FixRegistry {
     /// metadata storage, which a message's child stated under the field
     /// shares. Kept in step by [`Self::index`] and [`Self::unindex`].
     facts: Vec<Option<FieldFacts>>,
+    /// The replacement rules each field carries, compiled once when the
+    /// field is indexed, by position: a rule is data the dictionary states
+    /// once, and a capture of a million messages reads the same forty rules
+    /// a million times. `None` for a field carrying none.
+    plans: Vec<Option<FieldPlans>>,
     by_metadata: FixMap<usize, usize>,
     /// What this dictionary has answered about itself - a key's field, a
     /// field's null spellings, a code's translation - shared by every codec
@@ -347,6 +356,18 @@ pub struct FixRegistry {
     /// so an edited derivation is the one the next reader evaluates.
     derivations:
         OnceLock<std::result::Result<Arc<super::enrich::Derivations>, super::enrich::Refused>>,
+    /// The names a message digests its lifted facts under, read off the
+    /// fields once on the first digest and forgotten with the derivations.
+    lifted_names: OnceLock<LiftedNames>,
+}
+
+/// The names [`FixMsg`](super::FixMsg) feeds its typed facts under when it
+/// digests itself: the dictionary's name for each lifted tag, the tag's
+/// decimal spelling where the dictionary lacks it, and the `MsgType` name.
+pub(super) struct LiftedNames {
+    pub(super) msgtype: SmolStr,
+    /// One per tag of [`identity::LIFTED_TAGS`](super::identity::LIFTED_TAGS), in its order.
+    pub(super) lifted: Vec<SmolStr>,
 }
 
 impl Default for FixRegistry {
@@ -396,9 +417,11 @@ impl FixRegistry {
             positions_by_id: Vec::new(),
             identities: Vec::new(),
             facts: Vec::new(),
+            plans: Vec::new(),
             by_metadata: FixMap::default(),
             memo: super::memo::Memo::new(),
             derivations: OnceLock::new(),
+            lifted_names: OnceLock::new(),
         };
         match super::fix_crate_fields() {
             Ok(fields) => {
@@ -1368,12 +1391,14 @@ impl FixRegistry {
         }
         self.unindex(position, position);
         self.derivations.take();
+        self.lifted_names.take();
         // The field departing may be the last, which `index` never touches
         // again: the memo forgets what it answered for it here.
         self.memo.clear();
         let removed = self.fields.swap_remove(position);
         let departed = self.identities.swap_remove(position);
         self.facts.swap_remove(position);
+        self.plans.swap_remove(position);
         if position != last {
             self.index(position);
         }
@@ -1566,6 +1591,34 @@ impl FixRegistry {
             .map(|_| at)
     }
 
+    /// The position of `field` in this registry: its own, or the one whose
+    /// metadata it shares - a message's child stated under the
+    /// dictionary's field.
+    fn position_sharing(&self, field: &Field) -> Option<usize> {
+        if let Some(at) = self.position_of_own(field) {
+            return Some(at);
+        }
+        let storage = field.as_metadata().storage_address();
+        let position = self.by_metadata.get(&storage).copied()?;
+        self.fields
+            .get(position)
+            .filter(|held| held.as_metadata().shares_storage_with(field.as_metadata()))
+            .map(|_| position)
+    }
+
+    /// The replacement rules `field` carries, compiled when the field was
+    /// indexed: `None` for a field this registry does not hold and shares
+    /// no metadata with, an empty slice for one carrying no rule.
+    pub(super) fn plans_of(&self, field: &Field) -> Option<&[Option<Arc<crate::Plan>>]> {
+        let position = self.position_sharing(field)?;
+        Some(
+            self.plans
+                .get(position)
+                .and_then(|held| held.as_deref())
+                .unwrap_or(&[]),
+        )
+    }
+
     /// What `field`'s metadata states, read off the index: for one of this
     /// registry's own fields, and for a field sharing its metadata with
     /// one - a message's child stated under the dictionary's field - so a
@@ -1658,6 +1711,7 @@ impl FixRegistry {
         // Every change to the fields lands here, so what was compiled off
         // them, and what was answered off them, is forgotten here too.
         self.derivations.take();
+        self.lifted_names.take();
         self.memo.clear();
         let Some(field) = self.fields.get(position) else {
             return;
@@ -1675,6 +1729,11 @@ impl FixRegistry {
             self.facts.resize(position + 1, None);
         }
         self.facts[position] = facts;
+        let plans = super::latest::compiled_plans(field);
+        if position >= self.plans.len() {
+            self.plans.resize(position + 1, None);
+        }
+        self.plans[position] = (!plans.is_empty()).then(|| Arc::from(plans));
         self.by_metadata
             .insert(field.as_metadata().storage_address(), position);
         let Some((tag, id)) = identity else {
@@ -1814,12 +1873,34 @@ impl FixRegistry {
     /// catalog change that lands without staging a clone calls this.
     pub(super) fn forget_derivations(&mut self) {
         self.derivations.take();
+        self.lifted_names.take();
         self.memo.clear();
     }
 
     /// What this dictionary has answered about itself.
     pub(super) fn memo(&self) -> &super::memo::Memo {
         &self.memo
+    }
+
+    /// The names a message digests its lifted facts under, read once.
+    pub(super) fn lifted_names(&self) -> &LiftedNames {
+        self.lifted_names.get_or_init(|| LiftedNames {
+            msgtype: self
+                .get_field_by_tag(super::MSGTYPE_TAG_NAME.0)
+                .map_or_else(
+                    || SmolStr::new_static(super::MSGTYPE_TAG_NAME.1),
+                    |field| SmolStr::new(field.name()),
+                ),
+            lifted: super::identity::LIFTED_TAGS
+                .into_iter()
+                .map(|tag| {
+                    self.get_field_by_tag(tag).map_or_else(
+                        || format_smolstr!("{tag}"),
+                        |field| SmolStr::new(field.name()),
+                    )
+                })
+                .collect(),
+        })
     }
 }
 
@@ -1841,9 +1922,11 @@ impl Clone for FixRegistry {
             positions_by_id: self.positions_by_id.clone(),
             identities: self.identities.clone(),
             facts: self.facts.clone(),
+            plans: self.plans.clone(),
             by_metadata: self.by_metadata.clone(),
             memo: super::memo::Memo::new(),
             derivations: OnceLock::new(),
+            lifted_names: OnceLock::new(),
         }
     }
 }

@@ -927,38 +927,54 @@ fn kleene(operands: &[Node], context: &Context<'_>, conjunction: bool) -> Result
 /// an `and` however unknown the other is, and a `true` operand settles an `or`.
 fn kleene_pair(left: &BooleanArray, right: &BooleanArray, conjunction: bool) -> BooleanArray {
     let length = left.len().min(right.len());
-    let left_valid = validity(left, length);
-    let right_valid = validity(right, length);
     let left_values = left.values().slice(0, length);
     let right_values = right.values().slice(0, length);
-    let (values, left_settles, right_settles) = if conjunction {
+    let values = if conjunction {
+        &left_values & &right_values
+    } else {
+        &left_values | &right_values
+    };
+    // Where neither operand is ever unknown the three-valued answer is the
+    // two-valued one, and where one side is known everywhere the validity
+    // absorbs: an `and` is known where the unknown side is, or the known
+    // side is false; an `or` where the unknown side is, or the known side
+    // is true. Only two unknown sides need the whole algebra.
+    let (left_valid, right_valid) = match (left.nulls(), right.nulls()) {
+        (None, None) => return BooleanArray::new(values, None),
+        (None, Some(right_nulls)) => {
+            let right_valid = right_nulls.inner().slice(0, length);
+            let valid = if conjunction {
+                &right_valid | &!&left_values
+            } else {
+                &right_valid | &left_values
+            };
+            return BooleanArray::new(values, Some(NullBuffer::new(valid)));
+        }
+        (Some(left_nulls), None) => {
+            let left_valid = left_nulls.inner().slice(0, length);
+            let valid = if conjunction {
+                &left_valid | &!&right_values
+            } else {
+                &left_valid | &right_values
+            };
+            return BooleanArray::new(values, Some(NullBuffer::new(valid)));
+        }
+        (Some(left_nulls), Some(right_nulls)) => (
+            left_nulls.inner().slice(0, length),
+            right_nulls.inner().slice(0, length),
+        ),
+    };
+    let (left_settles, right_settles) = if conjunction {
         // A `false` operand settles an `and` however unknown the other is.
-        let (not_left, not_right) = (!&left_values, !&right_values);
-        (
-            &left_values & &right_values,
-            &left_valid & &not_left,
-            &right_valid & &not_right,
-        )
+        (&left_valid & &!&left_values, &right_valid & &!&right_values)
     } else {
         // A `true` operand settles an `or` the same way.
-        (
-            &left_values | &right_values,
-            &left_valid & &left_values,
-            &right_valid & &right_values,
-        )
+        (&left_valid & &left_values, &right_valid & &right_values)
     };
     let both_known = &left_valid & &right_valid;
     let settled = &left_settles | &right_settles;
     let valid = &both_known | &settled;
     BooleanArray::new(values, Some(NullBuffer::new(valid)))
-}
-
-/// One mask's validity, as a buffer that is set wherever it is known.
-fn validity(array: &BooleanArray, length: usize) -> BooleanBuffer {
-    array.nulls().map_or_else(
-        || BooleanBuffer::new_set(length),
-        |nulls| nulls.inner().slice(0, length),
-    )
 }
 
 /// Evaluate one node row by row and gather the answers into an array.

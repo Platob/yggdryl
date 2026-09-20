@@ -1912,10 +1912,17 @@ impl Built {
 /// bridge sometimes leaves a control byte inside a value; neither is part of
 /// what the value says. The common case - clean text - borrows.
 fn cleaned(text: &str) -> std::borrow::Cow<'_, str> {
-    if text
-        .chars()
-        .all(|held| held != '\u{FFFD}' && (!held.is_control() || held == '\t'))
-    {
+    // Nearly every value is ASCII, and an ASCII byte is a control exactly
+    // where it is below the space or is the delete, so the common case is
+    // one byte scan and no decode; U+FFFD is no ASCII byte.
+    let clean = if text.is_ascii() {
+        text.bytes()
+            .all(|held| held == b'\t' || (held >= 0x20 && held != 0x7f))
+    } else {
+        text.chars()
+            .all(|held| held != '\u{FFFD}' && (!held.is_control() || held == '\t'))
+    };
+    if clean {
         return std::borrow::Cow::Borrowed(text);
     }
     std::borrow::Cow::Owned(

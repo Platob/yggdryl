@@ -109,6 +109,11 @@ struct Derivation {
     reads: Vec<usize>,
     /// The target's column in the working schema.
     slot: usize,
+    /// What the term answers over a row stating nothing it reads, probed
+    /// once at compile: a term is a function of the columns it reads, so a
+    /// message stating none of them answers exactly this - which for most
+    /// derivations over most messages is nothing - without an evaluation.
+    unread_answer: Option<Scalar>,
 }
 
 impl Derivation {
@@ -323,13 +328,19 @@ impl Derivations {
                     &"the working schema lacks the derived column",
                 ));
             };
-            list.push(Derivation {
+            let mut derivation = Derivation {
                 tag,
                 field,
                 bound,
                 reads,
                 slot,
-            });
+                unread_answer: None,
+            };
+            // Through the one door every answer takes, so the decimal
+            // restatement and the field's refusal are part of the probe.
+            let unread = vec![Scalar::Null; inputs.len()];
+            derivation.unread_answer = derivation.answer(&unread);
+            list.push(derivation);
         }
         // The registry iterates tag-major already; stated here so the sweep
         // order is this list's contract rather than the iteration's.
@@ -394,12 +405,16 @@ impl Derivations {
         // last sweep wrote answers what it answered then: a later sweep
         // evaluates only the derivations reading a column that moved, and
         // the first evaluates every one.
-        let mut moved: Vec<bool> = Vec::new();
+        // Two buffers for every sweep of the message rather than one per
+        // sweep: the last sweep's writes are read while this sweep's are
+        // marked, and the two swap places at its end.
+        let mut moved: Vec<bool> = vec![false; self.inputs.len()];
+        let mut wrote: Vec<bool> = vec![false; self.inputs.len()];
         // A productive sweep fills at least one target and a filled target
         // is never revisited, so the derivation count bounds the sweeps; the
         // one past it is the sweep that writes nothing.
         for sweep in 0..=self.list.len() {
-            let mut wrote: Vec<bool> = vec![false; self.inputs.len()];
+            wrote.fill(false);
             let mut any = false;
             for derivation in &self.list {
                 // A stated value is never overwritten, which is what makes
@@ -411,7 +426,15 @@ impl Derivations {
                 if sweep > 0 && !derivation.reads.iter().any(|at| moved[*at]) {
                     continue;
                 }
-                let Some(value) = derivation.answer(&row) else {
+                // A term is a function of the columns it reads: over a row
+                // stating none of them it answers what the probe answered,
+                // and the evaluation is skipped.
+                let answer = if derivation.reads.iter().all(|at| row[*at].is_null()) {
+                    derivation.unread_answer.clone()
+                } else {
+                    derivation.answer(&row)
+                };
+                let Some(value) = answer else {
                     continue;
                 };
                 row[derivation.slot] = value.clone();
@@ -428,7 +451,7 @@ impl Derivations {
             if !any {
                 break;
             }
-            moved = wrote;
+            std::mem::swap(&mut moved, &mut wrote);
         }
         if landed.is_empty() {
             return Ok(());

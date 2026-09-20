@@ -166,7 +166,6 @@ mod store;
 #[cfg(test)]
 mod tests;
 mod ulbridge;
-mod warmth;
 
 pub use codec::DEFAULT_PAYLOAD_COLUMN;
 pub use codec::{DEFAULT_NULL_VALUES, DEFAULT_REFUSED_MSGTYPES, FixCodec, SOH};

@@ -47,14 +47,20 @@ pub(super) struct Memo {
     /// What one of the registry's own fields states about the values it
     /// takes, by the field's address in the registry.
     facts: Mutex<FixMap<usize, Arc<Facts>>>,
-    /// The wire value a text spells for a field at a version.
-    translations: Mutex<TextMap<Question, Option<SmolStr>>>,
+    /// The wire value a text spells for a field: by the field's address,
+    /// then by the text, so a question is asked with the text borrowed and
+    /// owns it only where the answer is first remembered.
+    translations: Mutex<Translations>,
     /// What the dictionary holds under one key.
     names: Mutex<TextMap<SmolStr, Lookup>>,
 }
 
-/// One translation asked: the field's address and the text.
-type Question = (usize, SmolStr);
+/// Every translation a field has answered, by the field's address.
+///
+/// Bounded per field at [`Memo::CAPACITY`] texts: a code set is a handful
+/// of spellings, and a field asked more distinct texts than that is being
+/// asked about values that are not codes.
+type Translations = FixMap<usize, TextMap<SmolStr, Option<SmolStr>>>;
 
 /// What one field states about the values it takes, read off its metadata
 /// once: the spellings it declares as an absence, and its code set.
@@ -97,11 +103,19 @@ fn address(field: &Field) -> usize {
 /// How many memos have been numbered, which numbers the next.
 static MEMOS: AtomicU64 = AtomicU64::new(1);
 
+/// Remembers one translation under its text, while the field's table has
+/// room.
+fn remember(table: &mut TextMap<SmolStr, Option<SmolStr>>, text: &str, answer: &Option<SmolStr>) {
+    if table.len() < Memo::CAPACITY {
+        table.insert(SmolStr::new(text), answer.clone());
+    }
+}
+
 /// One thread's own copy of the answers it has read, by memo.
 #[derive(Default)]
-pub(super) struct Mirror {
+struct Mirror {
     facts: FixMap<u64, FixMap<usize, Arc<Facts>>>,
-    translations: FixMap<u64, TextMap<Question, Option<SmolStr>>>,
+    translations: FixMap<u64, Translations>,
     names: FixMap<u64, TextMap<SmolStr, Lookup>>,
 }
 
@@ -125,12 +139,6 @@ thread_local! {
     static MIRROR: RefCell<Mirror> = RefCell::new(Mirror::default());
 }
 
-/// This thread's mirror exchanged with `with`: how a thread that dies with
-/// its chunk hands what it has read to the one spawned for the next.
-pub(super) fn swap_mirror(with: &mut Mirror) {
-    MIRROR.with(|held| std::mem::swap(&mut *held.borrow_mut(), with));
-}
-
 impl Memo {
     /// How many answers each table remembers before it stops growing.
     pub(super) const CAPACITY: usize = 1 << 16;
@@ -140,7 +148,7 @@ impl Memo {
         Self {
             id: AtomicU64::new(MEMOS.fetch_add(1, Ordering::Relaxed)),
             facts: Mutex::new(FixMap::default()),
-            translations: Mutex::new(HashMap::with_hasher(Xxh64::new())),
+            translations: Mutex::new(Translations::default()),
             names: Mutex::new(HashMap::with_hasher(Xxh64::new())),
         }
     }
@@ -211,39 +219,39 @@ impl Memo {
     /// `None` without touching the table.
     pub(super) fn translation(&self, source: &Field, facts: &Facts, text: &str) -> Option<SmolStr> {
         let stored = facts.codes.as_deref()?;
-        let key = (address(source), SmolStr::new(text));
+        let key = address(source);
         let id = self.id();
+        // Asked with the text borrowed: a hit on the mirror, which is what
+        // every value after the first of its spelling is, owns nothing.
         let mirrored = MIRROR.with(|mirror| {
             mirror
                 .borrow()
                 .translations
                 .get(&id)
                 .and_then(|table| table.get(&key))
+                .and_then(|table| table.get(text))
                 .cloned()
         });
         if let Some(answer) = mirrored {
             return answer;
         }
-        let known = held(&self.translations).get(&key).cloned();
+        let known = held(&self.translations)
+            .get(&key)
+            .and_then(|table| table.get(text))
+            .cloned();
         let answer = match known {
             Some(answer) => answer,
             None => {
                 let answer = super::field::translate(stored, text).map(SmolStr::new);
                 let mut table = held(&self.translations);
-                if table.len() < Self::CAPACITY {
-                    table.insert(key.clone(), answer.clone());
-                }
+                remember(table.entry(key).or_default(), text, &answer);
                 answer
             }
         };
         MIRROR.with(|mirror| {
             let mut mirror = mirror.borrow_mut();
-            let table = table_of(&mut mirror.translations, id, || {
-                HashMap::with_hasher(Xxh64::new())
-            });
-            if table.len() < Self::CAPACITY {
-                table.insert(key, answer.clone());
-            }
+            let table = table_of(&mut mirror.translations, id, Translations::default);
+            remember(table.entry(key).or_default(), text, &answer);
         });
         answer
     }

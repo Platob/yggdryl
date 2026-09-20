@@ -432,9 +432,11 @@ fn a_fix_registry_lookup_borrows_whatever_the_catalog_walks_past() {
         });
     }
     // A name nothing declares is the one probe that is not free: the fold
-    // renders the spelling it looks up before it can say there is no field
-    // under it.
-    costs("a name nothing declares", 4, || {
+    // parses the spelling it looks up as a path - the tokens, the segments
+    // and the path they make - before it can say there is no field under
+    // it. It last moved down by one when the reserved-word check began to
+    // compare a word case-insensitively rather than render it lower-cased.
+    costs("a name nothing declares", 3, || {
         let _ = black_box(registry.get_field(black_box(yggdryl::FixKey::Name("absent"))));
     });
     free("the counter door", || {
@@ -1595,13 +1597,18 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// takes it: the page's own vector saved at each, and the one source the
 /// message states - the line it was read from - paid instead.
 ///
-/// The constant last moved down by two when the enriching pass began to
-/// settle a message once, after everything it writes: one arrival record
-/// derived and one digest fed per message, rather than one per write.
-/// It last moved up by one when the content code took `MsgType` as a
-/// cell of its own: the header's one tag that says what a message is is
-/// fed beside the lifted fields, and its text is one allocation.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 40), (16, 60), (64, 115)];
+/// The constant last moved down by four: the stated `MsgType` is read as
+/// a small string that fits inline rather than rendered into an owned one,
+/// the content code feeds its lifted cells where they stand rather than
+/// through a borrowed copy of them and starts its digest state over the
+/// algorithm's static secret rather than a heap copy of it, and the row's
+/// plan is one counted slice made in one allocation rather than a boxed
+/// slice shrunk to fit inside a counted pointer. The slope moved with it:
+/// the arrival record and the restater's list of the fields a level
+/// reached are each sized to the row's children once rather than grown,
+/// one allocation apiece however wide the row where each had been one,
+/// three and five at these widths.
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 36), (16, 52), (64, 103)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -1651,7 +1658,7 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 /// from one that does not. The narrow column of this table is
 /// [`FIX_LINE_COSTS`] at the same widths, and moves with it.
 const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
-    [(4, (40, 46)), (16, (60, 90)), (64, (115, 241))];
+    [(4, (36, 42)), (16, (52, 82)), (64, (103, 229))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -1745,7 +1752,19 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// packed value would have been scanned into is not among these.
 /// Two member counts, because the number that matters is the slope and not
 /// the constant a message pays whatever it carries.
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 85), (16, 147)];
+///
+/// The constant last moved down by five: the stated `MsgType` is read as a
+/// small string that fits inline rather than rendered into an owned one,
+/// once when the bridge row's pairs are read and once when the message is
+/// built; the content code feeds its lifted cells where they stand rather
+/// than through a borrowed copy of them and starts its digest state over
+/// the algorithm's static secret rather than a heap copy of it; and the
+/// row's plan is one counted slice made in one allocation rather than a
+/// boxed slice shrunk to fit inside a counted pointer. The slope moved with
+/// it: the occurrence's arrival record is sized to its members once rather
+/// than grown, one allocation however many members where sixteen had been
+/// three.
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 80), (16, 140)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -1768,28 +1787,39 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 
 /// What the same three lines cost through the door that takes a decoded line.
 ///
-/// The same count as [`FIX_LINE_COSTS`] at every width, and two things move
-/// inside it. One allocation is saved: the page's own buffer. A caller
-/// holding a [`TextLine`] already owns the bytes as a range of a page it
-/// read them into, so the codec is handed that page instead of making a
-/// second one - which is what the byte door must do, because a bare slice
-/// is not a page and a message keeps ranges of one. One allocation is paid:
-/// the source. A message read from a line states that line's identity as
-/// the one element it was read from, and the list holding it is the
-/// message's own; the byte door reads from no element and states none.
+/// One less than [`FIX_LINE_COSTS`] at every width, and three things move
+/// inside it. Two allocations are saved: the page's own buffer and the
+/// handle that counts it. A caller holding a [`TextLine`] already owns the
+/// bytes as a range of a page it read them into, so the codec is handed
+/// that page instead of making a second one - which is what the byte door
+/// must do, because a bare slice is not a page and a message keeps ranges
+/// of one. One allocation is paid: the source. A message read from a line
+/// states that line's identity as the one element it was read from, and
+/// the list holding it is the message's own; the byte door reads from no
+/// element and states none.
 ///
-/// Both are per message and not per pair, which is exactly right: a page is
-/// one page and a source one source however many pairs the line carries, so
-/// the slope is unchanged and only the constant moves. Three widths again, so
-/// that the claim is the constant and not a number that happens to be equal.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 40), (16, 60), (64, 115)];
+/// All three are per message and not per pair, which is exactly right: a
+/// page is one page and a source one source however many pairs the line
+/// carries, so the slope is unchanged and only the constant moves. Three
+/// widths again, so that the claim is the constant and not a number that
+/// happens to be equal.
+///
+/// The two doors last cost the same when this one still read the stated
+/// `MsgType` once before building, to ask whether the codec reads it, and
+/// rendered it into an owned string to do so; a codec reading every type
+/// no longer asks, and the read fits inline where one does.
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 35), (16, 51), (64, 102)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
     let codec = FixCodec::new(Arc::new(fix_registry(64)));
     for ((pairs, each), (widest, bytes)) in FIX_TEXT_LINE_COSTS.iter().zip(FIX_LINE_COSTS) {
         assert_eq!(*pairs, widest, "the two pins measure the same widths");
-        assert_eq!(*each, bytes, "the page saved is the source paid");
+        assert_eq!(
+            *each + 1,
+            bytes,
+            "the page and its handle saved are the source paid and one more"
+        );
         let held = fix_pairs_line(*pairs);
         // The page is made outside the counted closure because that is what a
         // caller reading text actually has: the decode already happened, and

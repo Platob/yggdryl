@@ -74,12 +74,11 @@ use crate::text::{TextBytes, TextEntries, TextEntry, TextLine, TextOptions};
 use crate::{Error, Field, Result, Scalar, Version};
 
 use super::build::{BEGINSTRING_COLUMN, Builder, Fill, FixPair, RowExtras, root_name, version_of};
-use super::warmth::Warmth;
 use super::{FixMessages, FixMsg, FixRegistry};
 
 /// One bridge row read into the pairs a build folds in, beside the message
 /// type it declared.
-type BridgeRow<'registry> = (Option<&'registry super::MsgType>, Vec<FixPair>);
+type BridgeRow<'registry> = (Option<SmolStr>, Declared<'registry>, Vec<FixPair>);
 
 /// One pair a reader outside this module hands the build: the key as it
 /// arrived, the value, and the dictionary's name for the field it fills
@@ -465,7 +464,10 @@ pub struct FixCodec {
     /// Empty until a caller names them, because a codec that was told
     /// nothing reads a line's typed fields and no captures at all.
     captures: Arc<[CaptureRole]>,
-    null_values: Vec<String>,
+    /// The spellings a value states an absence with, shared: a codec is
+    /// cloned into every stream and every row of several messages, and a
+    /// clone is reference counts and nothing else.
+    null_values: Arc<[String]>,
     /// The code a line with no verb in front of its payload takes on the
     /// batch door: a code of tag 385's set, or none.
     direction: Option<SmolStr>,
@@ -496,6 +498,40 @@ pub struct FixCodec {
 /// identity, and nil names no element.
 fn source_of(line: &TextLine) -> Option<crate::Uuid> {
     Some(line.get_curruuid()).filter(|uuid| !uuid.is_nil())
+}
+
+/// One line's bytes as the page its messages are ranges of, or the refusal
+/// a row of no bytes at all earns.
+fn paged(row: &[u8]) -> Result<TextBytes> {
+    if row.is_empty() {
+        return Err(Error::Parse {
+            target: "fix",
+            position: 0,
+            reason: "expected a captured row, got no bytes".into(),
+        });
+    }
+    TextBytes::from_bytes(row)
+}
+
+/// One stream of messages, read where it stands or spread over threads.
+enum Spread<S, T> {
+    Sequential(S),
+    Threaded(T),
+}
+
+impl<S, T, M> Iterator for Spread<S, T>
+where
+    S: Iterator<Item = M>,
+    T: Iterator<Item = M>,
+{
+    type Item = M;
+
+    fn next(&mut self) -> Option<M> {
+        match self {
+            Self::Sequential(held) => held.next(),
+            Self::Threaded(held) => held.next(),
+        }
+    }
 }
 
 impl FixCodec {
@@ -787,14 +823,18 @@ impl FixCodec {
     /// Sets the threads the line and row doors read on.
     ///
     /// One, the default, reads a stream where it stands, a line at a time.
-    /// More read it [`Self::PARALLEL_CHUNK`] lines per thread ahead, each
-    /// line parsed on some thread and every message answered in the lines'
-    /// order, so [`Self::parse_lines`], [`Self::parse_text_lines`],
+    /// More read it ahead in chunks of [`Self::PARALLEL_CHUNK`] lines, two
+    /// chunks per thread, each chunk parsed on the thread it was handed to
+    /// and every message answered in the lines' order, so
+    /// [`Self::parse_lines`], [`Self::parse_text_lines`],
     /// [`Self::parse_arrow_messages`] and [`Self::messages`] answer exactly
-    /// what one thread answers, sooner, and [`Self::arrow_reader`] fills
-    /// its rows the same way. A [`lifecycle`](Self::lifecycle) is one walk
-    /// and reads on the thread that pulls it whatever this says. Zero reads
-    /// as one.
+    /// what one thread answers, sooner, and [`Self::arrow_reader`] and
+    /// [`Self::parse_text_arrow_reader`] fill their rows the same way. The
+    /// threads live for the stream, so what a thread learns of the
+    /// dictionary it keeps, and the thread that pulls reads the next chunk
+    /// while they work the ones before it. A [`lifecycle`](Self::lifecycle)
+    /// is one walk and reads on the thread that pulls it whatever this
+    /// says. Zero reads as one.
     #[must_use]
     pub const fn with_threads(mut self, threads: usize) -> Self {
         self.set_threads(threads);
@@ -812,16 +852,17 @@ impl FixCodec {
         self.threads
     }
 
-    /// The lines each thread reads ahead where the doors read on several:
-    /// what bounds the read-ahead, and what one spawn is amortized over.
+    /// The lines one chunk holds where the doors read on several threads:
+    /// what one hand-over to a thread carries, and with the two chunks a
+    /// thread holds, what bounds the read-ahead.
     pub const PARALLEL_CHUNK: usize = 64;
 
-    /// The lines the doors read ahead: one thread reads none ahead.
+    /// The lines one chunk holds: one thread reads none ahead.
     pub(super) const fn chunk(&self) -> usize {
         if self.threads == 1 {
             1
         } else {
-            self.threads * Self::PARALLEL_CHUNK
+            Self::PARALLEL_CHUNK
         }
     }
 
@@ -963,20 +1004,31 @@ impl FixCodec {
         self.include_msgtypes.is_empty() || self.include_msgtypes.contains(code)
     }
 
+    /// Whether this codec reads every type: nothing included and nothing
+    /// refused, which is the common configuration and worth not paying a
+    /// read of the type for.
+    fn reads_all(&self) -> bool {
+        self.include_msgtypes.is_empty() && self.exclude_msgtypes.is_empty()
+    }
+
     /// Whether a row stating `stated` is read, the type taken off the pairs
     /// before anything is built; a row stating none asks about `unknown`.
     fn reads_stated(&self, stated: Option<&str>) -> bool {
-        // Nothing to ask where the codec reads every type, which is the
-        // common configuration and worth not paying a resolution for.
-        if self.include_msgtypes.is_empty() && self.exclude_msgtypes.is_empty() {
+        if self.reads_all() {
             return true;
         }
         self.reads_msgtype(stated.unwrap_or_default())
     }
 
+    /// Whether a run of pairs stating its type among them is read: the type
+    /// is taken off the run only where a refusal could name it.
+    fn reads_run(&self, run: &[TextEntry]) -> bool {
+        self.reads_all() || self.reads_stated(stated_type(run).as_deref())
+    }
+
     /// Whether a document stating these pairs is read.
     fn reads_pairs(&self, pairs: &[(Vec<u8>, Vec<u8>)]) -> bool {
-        if self.include_msgtypes.is_empty() && self.exclude_msgtypes.is_empty() {
+        if self.reads_all() {
             return true;
         }
         let stated = msgtype_of(
@@ -1022,7 +1074,7 @@ impl FixCodec {
             .any(|spelling| spelling.as_bytes().eq_ignore_ascii_case(trimmed))
     }
 
-    fn entries(&self, page: &TextBytes) -> (Option<TextEntries>, Option<usize>) {
+    fn entries(&self, page: &TextBytes) -> (Option<TextEntries>, line::Located) {
         TextEntries::from_bytes_direct_located(page)
     }
 
@@ -1135,18 +1187,30 @@ impl FixCodec {
     pub fn parse_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
         I: IntoIterator,
-        I::Item: AsRef<[u8]> + Send,
+        I::Item: AsRef<[u8]>,
     {
         let codec = self.clone();
         let threads = self.threads();
-        crate::parallel::ordered::<Warmth, _, _, _>(lines, threads, self.chunk(), move |line| {
-            let messages = FixMessages::from_result(codec.parse_line(line.as_ref()));
-            if threads > 1 {
-                messages.collected()
-            } else {
-                messages
-            }
-        })
+        // Each line's bytes are made a page on the thread that pulls,
+        // exactly as [`Self::parse_line`] makes them one: the page is what
+        // crosses to a thread, and every key and value the messages record
+        // is a range of it.
+        let pages = lines.into_iter().map(|line| paged(line.as_ref()));
+        crate::parallel::ordered(
+            pages,
+            threads,
+            self.chunk(),
+            move |page: Result<TextBytes>| {
+                let messages = FixMessages::from_result(
+                    page.and_then(|page| codec.parse_page_with(&page, RowExtras::NONE)),
+                );
+                if threads > 1 {
+                    messages.collected()
+                } else {
+                    messages
+                }
+            },
+        )
         .flatten()
     }
 
@@ -1249,26 +1313,34 @@ impl FixCodec {
     where
         I: IntoIterator,
         I::Item: Into<Result<L>>,
-        L: Borrow<TextLine> + Send,
+        L: Borrow<TextLine>,
     {
         let codec = self.clone();
-        let threads = self.threads();
-        crate::parallel::ordered::<Warmth, _, _, _>(
-            lines.into_iter().map(Into::into),
-            threads,
-            self.chunk(),
-            move |line: Result<L>| {
-                let messages = FixMessages::from_result(
+        let lines = lines.into_iter().map(Into::<Result<L>>::into);
+        if self.threads() == 1 {
+            // Where it stands: a borrowed line is read borrowed.
+            return Spread::Sequential(lines.flat_map(move |line| {
+                FixMessages::from_result(
                     line.and_then(|line: L| codec.parse_text_line(line.borrow())),
-                );
-                if threads > 1 {
-                    messages.collected()
-                } else {
-                    messages
-                }
-            },
+                )
+            }));
+        }
+        // A line crosses to a thread owned: a borrowed one is made the
+        // door's own first - a reference count per page it is a range of,
+        // never a byte - and read where it lands.
+        let owned = lines.map(|line| line.map(|line: L| line.borrow().clone()));
+        Spread::Threaded(
+            crate::parallel::ordered(
+                owned,
+                self.threads(),
+                self.chunk(),
+                move |line: Result<TextLine>| {
+                    FixMessages::from_result(line.and_then(|line| codec.parse_text_line(&line)))
+                        .collected()
+                },
+            )
+            .flatten(),
         )
-        .flatten()
     }
 
     /// One row's payload read under what the row stated, a row of nothing
@@ -1341,14 +1413,7 @@ impl FixCodec {
 
     /// [`Self::parse_line`], with what the row stated beside its line.
     pub(super) fn parse_line_with(&self, row: &[u8], extras: RowExtras<'_>) -> Result<FixMessages> {
-        if row.is_empty() {
-            return Err(Error::Parse {
-                target: "fix",
-                position: 0,
-                reason: "expected a captured row, got no bytes".into(),
-            });
-        }
-        self.parse_page_with(&TextBytes::from_bytes(row)?, extras)
+        self.parse_page_with(&paged(row)?, extras)
     }
 
     /// One line already held as a range of a page, read into its messages.
@@ -1361,8 +1426,9 @@ impl FixCodec {
         // One scan answers the pairs and where the frame opens; a row that
         // carries no payload at all opens past its own end, so the frame
         // reading gets nothing and the document readers below answer.
-        let (entries, frame_at) = self.entries(page);
+        let (entries, located) = self.entries(page);
         let entries = entries.unwrap_or_default();
+        let frame_at = located.frame_at;
         // A row that located no frame may carry a JSON document instead, and
         // the scan that finds one is run here and nowhere else: the span is
         // kept whole, so where the payload opens is the one answer.
@@ -1397,7 +1463,7 @@ impl FixCodec {
                 // One frame and nothing in front of it: the row is read
                 // where it stands, which is what a row of one message costs.
                 let run = &entries.as_slice()[payload..end];
-                if !self.reads_stated(stated_type(run).as_deref()) {
+                if !self.reads_run(run) {
                     return Ok(FixMessages::none());
                 }
                 return Ok(FixMessages::from_result(
@@ -1455,13 +1521,14 @@ impl FixCodec {
         // The row is the whole run of pairs the line held: a key the bridge
         // marked is the bridge's own spelling, so a `#8=` the scanner read
         // as a tag relocated the payload past pairs that are the row's.
+        // Whether the line named a separator is what the one scan above
+        // already answered; the marks are read off the entries it cut.
         let held = entries.as_slice();
-        if framed.is_empty() || !(line::names_separator(row) || held.iter().any(TextEntry::marked))
-        {
+        if framed.is_empty() || !(held.iter().any(TextEntry::marked) || located.separated) {
             return Ok(FixMessages::none());
         }
         if next_frame(held, 0).is_none() {
-            if !self.reads_stated(stated_type(held).as_deref()) {
+            if !self.reads_run(held) {
                 return Ok(FixMessages::none());
             }
             return Ok(FixMessages::from_result(
@@ -1507,7 +1574,7 @@ impl FixCodec {
             // refuses costs one look rather than a build, an enrichment and a
             // settling, and a row of several frames still answers the ones it
             // does read.
-            if !self.reads_stated(stated_type(&held[at..end]).as_deref()) {
+            if !self.reads_run(&held[at..end]) {
                 at = next;
                 continue;
             }
@@ -1574,7 +1641,8 @@ impl FixCodec {
                 .map(|held| FixPair::own(held.key.clone(), held.value.as_ref().clone()))
                 .collect()
         };
-        self.build(&pairs, &nested, extras)
+        let (stated, message) = self.declared_of(&pairs);
+        self.build(&pairs, stated.as_deref(), message, &nested, extras)
     }
 
     /// Parses one bridge row of `NAME=VALUE` pairs.
@@ -1624,8 +1692,9 @@ impl FixCodec {
     /// [`Self::parse_ullink_line`], with what the row stated beside its row.
     fn bridge_with(&self, entries: &[TextEntry], extras: RowExtras<'_>) -> Result<FixMsg> {
         let arrived = arrivals(entries);
-        let (_, pairs) = self.bridge_pairs(&arrived);
-        self.build(&pairs, &[], extras)
+        // The row's type was read while its groups were split under it.
+        let (stated, message, pairs) = self.bridge_pairs(&arrived);
+        self.build(&pairs, stated.as_deref(), message, &[], extras)
     }
 
     /// One bridge row as the pairs the builder takes: `#` twins judged, and
@@ -1694,7 +1763,7 @@ impl FixCodec {
                 _ => resolved.push(key.pair(held.value.as_ref().clone())),
             }
         }
-        (message, resolved)
+        (msgtype, message, resolved)
     }
 
     /// Every arriving key with its `#` judged: the key to build under, or
@@ -1958,7 +2027,8 @@ impl FixCodec {
                 .iter()
                 .map(|(key, value)| (key.as_slice(), value.as_slice())),
         )?;
-        self.build(&pairs, &[], extras)
+        let (stated, message) = self.declared_of(&pairs);
+        self.build(&pairs, stated.as_deref(), message, &[], extras)
     }
 
     /// Chains a stream of messages, lazily: the lifecycle.
@@ -2033,7 +2103,8 @@ impl FixCodec {
         if let Some(at) = second_pair_frame(&pairs) {
             return Err(second_frame("fix", at));
         }
-        self.build(&pairs, &[], RowExtras::NONE)
+        let (stated, message) = self.declared_of(&pairs);
+        self.build(&pairs, stated.as_deref(), message, &[], RowExtras::NONE)
     }
 
     /// The build a reader outside this module funnels into.
@@ -2054,7 +2125,9 @@ impl FixCodec {
         pairs: &[SpelledPair<'_>],
         extras: RowExtras<'_>,
     ) -> Result<FixMsg> {
-        self.build(&spelled_pairs(pairs.iter().copied())?, &[], extras)
+        let pairs = spelled_pairs(pairs.iter().copied())?;
+        let (stated, message) = self.declared_of(&pairs);
+        self.build(&pairs, stated.as_deref(), message, &[], extras)
     }
 
     /// The one build every reader funnels into.
@@ -2067,6 +2140,8 @@ impl FixCodec {
     fn build(
         &self,
         pairs: &[FixPair],
+        stated: Option<&str>,
+        message: Declared<'_>,
         nested: &[TextBytes],
         extras: RowExtras<'_>,
     ) -> Result<FixMsg> {
@@ -2075,12 +2150,6 @@ impl FixCodec {
         // is what a bridge log carries in its `beginstring` capture.
         let stated_version = extras.version;
         let version = stated_version.or_else(|| self.infer_version(pairs));
-        // What the payload spelled: the code decides the message and names
-        // the root, and a payload spelling none is named `unknown`.
-        let stated = msgtype_of(pairs.iter().map(|pair| (pair.key(), pair.value())));
-        let message = stated
-            .as_deref()
-            .and_then(|code| self.declared_message(code));
         let mut builder = Builder::new(
             &self.registry,
             message,
@@ -2116,7 +2185,7 @@ impl FixCodec {
         // field is named for that message.
         let name = builder
             .stated_msgtype()
-            .or_else(|| stated.as_deref().map(SmolStr::new));
+            .or_else(|| stated.map(SmolStr::new));
         self.finish(builder.finish(root_name(name.as_deref()).as_str())?, extras)
     }
 
@@ -2199,7 +2268,7 @@ impl FixCodec {
         // and not against the frame's.
         let entries = self.entries(row).0.unwrap_or_default();
         let arrived = arrivals(entries.as_slice());
-        let (declared, held) = self.bridge_pairs(&arrived);
+        let (_, declared, held) = self.bridge_pairs(&arrived);
         self.nest(builder, declared, &held, pinned);
     }
 
@@ -2224,6 +2293,17 @@ impl FixCodec {
 
     /// The message definition a row's type names, which is what says which
     /// group a shared counter - `NoLegs`, `NoSides` - heads in it.
+    /// What the payload spelled, read off its pairs once: the code decides
+    /// the message and names the root, and a payload spelling none is named
+    /// `unknown`.
+    fn declared_of(&self, pairs: &[FixPair]) -> (Option<SmolStr>, Declared<'_>) {
+        let stated = msgtype_of(pairs.iter().map(|pair| (pair.key(), pair.value())));
+        let message = stated
+            .as_deref()
+            .and_then(|code| self.declared_message(code));
+        (stated, message)
+    }
+
     fn declared_message(&self, code: &str) -> Option<&super::MsgType> {
         self.registry.get_msgtype(code)
     }
@@ -2330,13 +2410,13 @@ fn value_of<'a>(pairs: &'a [FixPair], key: &[u8]) -> Option<&'a [u8]> {
 }
 
 /// The message type a row declares, by `35=` or by `MSGTYPE=`.
-fn msgtype_of<'a>(pairs: impl IntoIterator<Item = (&'a [u8], &'a [u8])>) -> Option<String> {
+fn msgtype_of<'a>(pairs: impl IntoIterator<Item = (&'a [u8], &'a [u8])>) -> Option<SmolStr> {
     for (key, value) in pairs {
         // The key folds the way every other key folds, so `MSG_TYPE` and
         // `Msg Type` name the type too.
         let folded = std::str::from_utf8(key).is_ok_and(|key| crate::folds_equal(key, "MsgType"));
         if folded || key == b"35" {
-            return Some(String::from_utf8_lossy(value).into_owned());
+            return Some(SmolStr::new(String::from_utf8_lossy(value)));
         }
     }
     None
@@ -2489,7 +2569,7 @@ fn next_frame(entries: &[TextEntry], from: usize) -> Option<usize> {
 /// The message type one run of pairs states, read off the pairs rather than
 /// off a message: `35` in a FIX frame, a key folding to `MsgType` in a bridge
 /// row. `None` where the run states none, which is the row read as `unknown`.
-fn stated_type(run: &[TextEntry]) -> Option<String> {
+fn stated_type(run: &[TextEntry]) -> Option<SmolStr> {
     msgtype_of(
         run.iter()
             .map(|entry| (entry.key_bytes().as_bytes(), entry.value_bytes().as_bytes())),

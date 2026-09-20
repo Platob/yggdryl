@@ -14,6 +14,7 @@ criterion_group!(
     benchmarks::xxhash::handles::handle_benchmarks,
     benchmarks::xxhash::values::value_benchmarks,
     benchmarks::xxhash::values::stable_hash_benchmarks,
+    benchmarks::variant::variant_benchmarks,
     benchmarks::xxhash::arrow::row_digest_benchmarks,
     benchmarks::xxhash::arrow::holder_fill_benchmarks,
     benchmarks::txhash::values::coupling_benchmarks,

@@ -319,7 +319,7 @@ impl Indexed {
 }
 
 /// Each child's resolved tag beside its position, sorted for a binary search.
-fn tag_positions(columns: &super::schema::Columns) -> Vec<(i32, usize)> {
+fn tag_positions(columns: &[super::schema::Column]) -> Vec<(i32, usize)> {
     let mut held = Vec::with_capacity(columns.len());
     held.extend(
         columns
@@ -439,16 +439,9 @@ impl FixMsg {
         // where it stands rather than collapsed into one slot. Two children
         // under `ClOrdID(11)`, a venue's own beside the client's, are two
         // facts and a reader addressing them by name must still find both.
-        let shared = |wanted: i32| {
-            plan.iter()
-                .filter(|column| column.tag == Some(wanted))
-                .take(2)
-                .count()
-                > 1
-        };
         for ((child, column), value) in field.fields().iter().zip(plan.iter()).zip(held) {
             match column.tag {
-                Some(tag) if identity::is_typed_tag(tag) && !shared(tag) => {
+                Some(tag) if identity::is_typed_tag(tag) && !column.shared => {
                     if value.is_null() {
                         continue;
                     }
@@ -528,7 +521,7 @@ impl FixMsg {
         );
         // The row keeps the planned root's children less the lifted ones,
         // so its plan is those children's, read once above.
-        let plan = super::schema::Columns::over(kept);
+        let plan: super::schema::ColumnPlan = Arc::from(kept);
         let tags = tag_positions(&plan);
         let groups = group_positions(&field, &registry);
         let mut message = Self {
@@ -933,37 +926,29 @@ impl FixMsg {
         if let Some(text) = self.text.as_deref() {
             cells.push((SmolStr::new_static("text"), Scalar::from(text)));
         }
+        // The names are the dictionary's, read off it once per registry
+        // rather than once per message.
+        let names = self.registry.lifted_names();
         if !self.header.msgtype().is_empty() {
-            let name = self
-                .registry
-                .get_field_by_tag(super::MSGTYPE_TAG_NAME.0)
-                .map_or_else(
-                    || SmolStr::new_static(super::MSGTYPE_TAG_NAME.1),
-                    |field| SmolStr::new(field.name()),
-                );
-            cells.push((name, Scalar::from(self.header.msgtype())));
+            cells.push((names.msgtype.clone(), Scalar::from(self.header.msgtype())));
         }
         for (key, value) in &self.metadata {
             cells.push((key.clone(), Scalar::from(value.as_str())));
         }
         // The fields the message lifted out of its row, under the names the
         // row's children are digested by.
-        for tag in identity::LIFTED_TAGS {
+        for (tag, name) in identity::LIFTED_TAGS.into_iter().zip(&names.lifted) {
             let Some(fact) = self.typed_fact(tag) else {
                 continue;
             };
-            let name = self.registry.get_field_by_tag(tag).map_or_else(
-                || format_smolstr!("{tag}"),
-                |field| SmolStr::new(field.name()),
-            );
-            cells.push((name, fact));
+            cells.push((name.clone(), fact));
         }
         cells.sort_by(|left, right| left.0.cmp(&right.0));
-        let borrowed: Vec<(&str, &Scalar)> = cells
-            .iter()
-            .map(|(name, value)| (name.as_str(), value))
-            .collect();
-        xxhash::write_named_bytes(&mut state, borrowed.into_iter(), 0);
+        xxhash::write_named_bytes(
+            &mut state,
+            cells.iter().map(|(name, value)| (name.as_str(), value)),
+            0,
+        );
         // Then the content, as the entries state it rather than as the row
         // stores it. Two readings of one message lay its children out
         // differently - a group one reading declares whole and another
@@ -1152,9 +1137,12 @@ impl FixMsg {
         entries_of(&self.registry, self.field.fields(), values)
     }
 
-    /// Every entry the wire carries, in wire order: the standard header,
-    /// then the FIX fields the message lifted, then the row, then the
-    /// standard trailer.
+    /// The entries the wire carries around the row, in wire order: the
+    /// standard header and then the FIX fields the message lifted in front
+    /// of it, the standard trailer behind it. The row's own entries stand
+    /// between the two exactly as [`Self::entries`] holds them, so a digest
+    /// and a re-emission read them where they are rather than through a
+    /// copy of the whole tree.
     ///
     /// The frame's own bands are the two the wire moves out of tag order,
     /// which is why the header leads and the trailer closes whatever the
@@ -1162,8 +1150,7 @@ impl FixMsg {
     /// a fact the event derived - the price it is about, the state it
     /// reached, a lane it never quoted - is answered by the traits and
     /// emitted nowhere, because a re-emission says what was read.
-    fn wire_entries(&self) -> Vec<FixEntry> {
-        let mut entries = Vec::with_capacity(self.field.fields().len() + 22);
+    fn wire_bands(&self) -> (Vec<FixEntry>, usize) {
         let name_of = |tag: i32| {
             self.registry.get_field_by_tag(tag).map_or_else(
                 || format_smolstr!("{tag}"),
@@ -1185,17 +1172,24 @@ impl FixMsg {
                 entries.push(FixEntry::new(tag, name_of(tag), Some(text)));
             }
         };
+        // One vector holds both bands, the head first; the split is where
+        // the row's own entries stand between them.
+        let mut bands = Vec::with_capacity(
+            identity::WIRE_HEADER_TAGS.len()
+                + identity::LIFTED_TAGS.len()
+                + identity::WIRE_TRAILER_TAGS.len(),
+        );
         for tag in identity::WIRE_HEADER_TAGS
             .into_iter()
             .chain(identity::LIFTED_TAGS)
         {
-            emit(&mut entries, tag);
+            emit(&mut bands, tag);
         }
-        entries.extend_from_slice(self.entries());
+        let split = bands.len();
         for tag in identity::WIRE_TRAILER_TAGS {
-            emit(&mut entries, tag);
+            emit(&mut bands, tag);
         }
-        entries
+        (bands, split)
     }
 
     /// Writes one value into the message, typed by the field the key reaches.
@@ -1683,7 +1677,11 @@ impl FixMsg {
     #[must_use]
     pub fn into_bytes(&self, separator: u8) -> Vec<u8> {
         let mut bytes = Vec::new();
-        emit_bytes(&self.wire_entries(), separator, &mut bytes);
+        let (bands, split) = self.wire_bands();
+        let (head, tail) = bands.split_at(split);
+        emit_bytes(head, separator, &mut bytes);
+        emit_bytes(self.entries(), separator, &mut bytes);
+        emit_bytes(tail, separator, &mut bytes);
         bytes
     }
 
@@ -1694,7 +1692,11 @@ impl FixMsg {
     /// Returns [`Error::InvalidRecord`] when a value holds a control byte.
     pub fn into_text(&self, separator: char) -> Result<String> {
         let mut text = String::new();
-        emit_text(&self.wire_entries(), separator, &mut text)?;
+        let (bands, split) = self.wire_bands();
+        let (head, tail) = bands.split_at(split);
+        emit_text(head, separator, &mut text)?;
+        emit_text(self.entries(), separator, &mut text)?;
+        emit_text(tail, separator, &mut text)?;
         Ok(text)
     }
 
@@ -1703,7 +1705,9 @@ impl FixMsg {
     /// digest alike whatever separator either was read with.
     #[must_use]
     pub fn digest(&self) -> u128 {
-        super::digest::digest_of(&self.wire_entries())
+        let (bands, split) = self.wire_bands();
+        let (head, tail) = bands.split_at(split);
+        super::digest::digest_of(&[head, self.entries(), tail])
     }
 
     /// Returns the registry this message resolves against.
@@ -2085,12 +2089,22 @@ fn entries_of(registry: &FixRegistry, fields: &[Field], values: &[Scalar]) -> Ve
                 .0
                 .is_some_and(|tag| counters.contains(&tag))
     };
-    fields
+    let mut entries = Vec::new();
+    for entry in fields
         .iter()
         .zip(values)
         .filter(|(child, _)| !counted(child))
         .filter_map(|(child, value)| entry_of(registry, child, value))
-        .collect()
+    {
+        // Sized once, on the first entry, for every child there is: a level
+        // stating nothing allocates nothing here, and one stating a hundred
+        // grows the list once.
+        if entries.capacity() == 0 {
+            entries.reserve_exact(fields.len());
+        }
+        entries.push(entry);
+    }
+    entries
 }
 
 /// One row child as the entry it is: a scalar as one stated entry, a
@@ -2107,15 +2121,16 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
         DataType::Sequence(SequenceType::List(item))
         | DataType::Sequence(SequenceType::LargeList(item)) => {
             let occurrences = value.as_sequence()?;
+            // The item is one field for every occurrence, so its facts are
+            // read once for all of them.
+            let item_facts = super::schema::tag_and_counter(registry, item);
             let nested: Vec<FixEntry> = occurrences
                 .iter()
                 .filter_map(|occurrence| match item.dtype() {
                     DataType::Struct(_) => {
                         let members =
                             entries_of(registry, item.fields(), occurrence.as_sequence()?);
-                        let own = super::schema::tag_and_counter(registry, item)
-                            .0
-                            .unwrap_or(0);
+                        let own = item_facts.0.unwrap_or(0);
                         Some(FixEntry::new(own, item.name(), None).with_entries(members))
                     }
                     _ => entry_of(registry, item, occurrence),

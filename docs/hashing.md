@@ -1475,7 +1475,7 @@ All three columns hash the same bytes with the same implementation; the differen
 | 4 KiB | 148.7 ns | 147.2 ns | 162.7 ns |
 | 64 KiB | 2.38 µs | 2.33 µs | 2.43 µs |
 
-From 4 KiB up the columns sit inside each other's run-to-run spread; below it the coupling is the eight-byte copy it is. A `TxHasher` clones its configured state per answer, and XXH3 keeps its secret on the heap, which is the algorithm's cost rather than the coupling's:
+From 4 KiB up the columns sit inside each other's run-to-run spread; below it the coupling is the eight-byte copy it is. A `TxHasher` clones its configured state per answer - a few hundred bytes of accumulator, and a heap copy of the secret only where it was given one of its own - which is the coupling's own cost:
 
 | case | `TxHasher` | the one-shot beside it |
 | --- | ---: | ---: |

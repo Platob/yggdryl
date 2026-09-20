@@ -71,6 +71,17 @@ impl FixEntry {
         self.value.as_deref()
     }
 
+    /// The name as the entry holds it, for a row that keeps it: a reference
+    /// count where the name is long, never a copy.
+    pub(super) const fn held_name(&self) -> &SmolStr {
+        &self.name
+    }
+
+    /// The value as the entry holds it, for a row that keeps it.
+    pub(super) const fn held_value(&self) -> Option<&SmolStr> {
+        self.value.as_ref()
+    }
+
     /// The entries nested under this one, in their order: a group's
     /// occurrences, an occurrence's or a component's members.
     #[must_use]

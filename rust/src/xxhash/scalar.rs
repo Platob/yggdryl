@@ -15,7 +15,6 @@
 
 use std::hash::Hasher;
 
-use super::Xxh3;
 use crate::code_scalars;
 use crate::decimal;
 use crate::integer::integer_parts;
@@ -216,9 +215,9 @@ impl Scalar {
     /// assert_eq!(digest.algorithm(), DigestAlgorithm::Xxh3);
     /// ```
     pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest {
-        let mut digester = algorithm.digester();
-        digester.write_scalar(self);
-        digester.as_digest()
+        let mut feed = Feed::new(algorithm);
+        self.write_bytes(&mut feed);
+        feed.as_digest()
     }
 
     /// Return the deterministic 64-bit hash used by every binding.
@@ -239,9 +238,9 @@ impl Scalar {
     /// );
     /// ```
     pub fn stable_hash(&self) -> u64 {
-        let mut state = Xxh3::new();
-        self.write_bytes(&mut state);
-        state.as_u64()
+        let mut feed = Feed::new(DigestAlgorithm::Xxh3);
+        self.write_bytes(&mut feed);
+        feed.as_u64()
     }
 
     /// Feed this value at `depth`, refusing to descend past the shared limit.
@@ -250,43 +249,73 @@ impl Scalar {
             sink.write(&[TOO_DEEP]);
             return;
         }
-        // Every integer width is one value, so the sign picks the tag and the
-        // magnitude is the payload: `I8(1)`, `U8(1)`, and `I64(1)` are equal
-        // and must feed identically.
-        if let Some((negative, magnitude)) = integer_parts(self) {
-            write_integer(sink, negative, magnitude);
-            return;
-        }
-        // All float widths widen exactly into binary64, which is the reading
-        // their equality and ordering already share.
-        if let Some(float) = self.as_f64() {
-            write_float(sink, float);
-            return;
-        }
-        // Decimals compare by the number they name, so the feed is the
-        // normalized coefficient and scale rather than the stored pair.
-        if let Some((unscaled, scale)) = self.as_decimal() {
-            write_decimal(sink, unscaled, scale);
-            return;
-        }
-        // Temporals compare by family, normalized count, and zone; the stored
-        // width and unit are how the count is spelled, not what it is.
-        if let Self::Interval(value) = self {
-            write_tag(sink, DataTypeId::Interval);
-            sink.write(&value.months().to_le_bytes());
-            sink.write(&value.days().to_le_bytes());
-            sink.write(&value.nanoseconds().to_le_bytes());
-            sink.write(&[value.unit() as u8]);
-            return;
-        }
-        if let (Some(family), Some(count), Some(unit), Some(zone)) = (
-            self.temporal_kind(),
-            self.temporal_count(),
-            self.temporal_unit(),
-            self.temporal_timezone(),
-        ) {
-            write_temporal(sink, family, count, unit, &zone);
-            return;
+        // Each family's cross-width reading is asked of that family alone:
+        // a text or a nested value reaches its own arm below with no
+        // number's probe in the way.
+        match self {
+            // Every integer width is one value, so the sign picks the tag and
+            // the magnitude is the payload: `I8(1)`, `U8(1)`, and `I64(1)`
+            // are equal and must feed identically.
+            Self::Int8(_)
+            | Self::Int16(_)
+            | Self::Int32(_)
+            | Self::Int64(_)
+            | Self::Int128(_)
+            | Self::UInt8(_)
+            | Self::UInt16(_)
+            | Self::UInt32(_)
+            | Self::UInt64(_)
+            | Self::UInt128(_) => {
+                if let Some((negative, magnitude)) = integer_parts(self) {
+                    write_integer(sink, negative, magnitude);
+                    return;
+                }
+            }
+            // All float widths widen exactly into binary64, which is the
+            // reading their equality and ordering already share.
+            Self::Float16(_) | Self::Float32(_) | Self::Float64(_) => {
+                if let Some(float) = self.as_f64() {
+                    write_float(sink, float);
+                    return;
+                }
+            }
+            // Decimals compare by the number they name, so the feed is the
+            // normalized coefficient and scale rather than the stored pair.
+            Self::Decimal32(_) | Self::Decimal64(_) | Self::Decimal128(_) | Self::Decimal256(_) => {
+                if let Some((unscaled, scale)) = self.as_decimal() {
+                    write_decimal(sink, unscaled, scale);
+                    return;
+                }
+            }
+            // Temporals compare by family, normalized count, and zone; the
+            // stored width and unit are how the count is spelled, not what
+            // it is.
+            Self::Interval(value) => {
+                write_tag(sink, DataTypeId::Interval);
+                sink.write(&value.months().to_le_bytes());
+                sink.write(&value.days().to_le_bytes());
+                sink.write(&value.nanoseconds().to_le_bytes());
+                sink.write(&[value.unit() as u8]);
+                return;
+            }
+            Self::Date32(_)
+            | Self::Date64(_)
+            | Self::Time32(_)
+            | Self::Time64(_)
+            | Self::DateTime64(_)
+            | Self::Duration32(_)
+            | Self::Duration64(_) => {
+                if let (Some(family), Some(count), Some(unit), Some(zone)) = (
+                    self.temporal_kind(),
+                    self.temporal_count(),
+                    self.temporal_unit(),
+                    self.temporal_timezone(),
+                ) {
+                    write_temporal(sink, family, count, unit, &zone);
+                    return;
+                }
+            }
+            _ => {}
         }
         match self {
             // An Arrow payload hashes as the native value it holds, so the
@@ -437,9 +466,9 @@ impl crate::FieldRecord<'_> {
     /// answers what [`crate::FieldRecord::into_scalar`] followed by
     /// [`Scalar::digest`] answers, without building the sequence.
     pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest {
-        let mut digester = algorithm.digester();
-        write_row_bytes(&mut digester, self.iter().map(crate::FieldScalar::value));
-        digester.as_digest()
+        let mut feed = Feed::new(algorithm);
+        write_row_bytes(&mut feed, self.iter().map(crate::FieldScalar::value));
+        feed.as_digest()
     }
 
     /// Return a deterministic hash of the row.
@@ -448,9 +477,81 @@ impl crate::FieldRecord<'_> {
     /// answers what [`Self::into_scalar`] followed by [`Scalar::stable_hash`]
     /// answers, without building the sequence.
     pub fn stable_hash(&self) -> u64 {
-        let mut state = Xxh3::new();
-        write_row_bytes(&mut state, self.iter().map(crate::FieldScalar::value));
-        state.as_u64()
+        let mut feed = Feed::new(DigestAlgorithm::Xxh3);
+        write_row_bytes(&mut feed, self.iter().map(crate::FieldScalar::value));
+        feed.as_u64()
+    }
+}
+
+/// How many bytes of a feed are staged before the feed streams: a leaf, a
+/// row of a few columns and a short record fit, so their digest is the
+/// one-shot over the staged bytes and the state a stream needs is never
+/// built for them.
+const STAGED: usize = 256;
+
+/// The sink a digest door feeds: the bytes staged on the stack while they
+/// fit, hashed in one shot at the end, and streamed into the algorithm's
+/// state from the first write past the stage. One-shot and streaming XXH3
+/// answer one value over one sequence of bytes, so a value digests the
+/// same whichever way its bytes went.
+pub(crate) struct Feed {
+    algorithm: DigestAlgorithm,
+    staged: [u8; STAGED],
+    filled: usize,
+    /// The stream, once the feed outgrew the stage; it holds every byte
+    /// staged before it.
+    streamed: Option<crate::digest::Digester>,
+}
+
+impl Feed {
+    pub(crate) const fn new(algorithm: DigestAlgorithm) -> Self {
+        Self {
+            algorithm,
+            staged: [0; STAGED],
+            filled: 0,
+            streamed: None,
+        }
+    }
+
+    /// The digest of everything fed so far.
+    pub(crate) fn as_digest(&self) -> Digest {
+        match &self.streamed {
+            Some(streamed) => streamed.as_digest(),
+            None => self.algorithm.digest(&self.staged[..self.filled]),
+        }
+    }
+
+    /// The 64-bit value of everything fed so far, for a 64-bit algorithm.
+    pub(crate) fn as_u64(&self) -> u64 {
+        match &self.streamed {
+            Some(streamed) => streamed.as_digest(),
+            None => return crate::xxhash::xxh3(&self.staged[..self.filled]),
+        }
+        .as_u64()
+        .expect("a 64-bit algorithm answers 64 bits")
+    }
+}
+
+impl Hasher for Feed {
+    fn finish(&self) -> u64 {
+        self.as_u64()
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        if let Some(streamed) = &mut self.streamed {
+            streamed.write_bytes(bytes);
+            return;
+        }
+        let end = self.filled + bytes.len();
+        if end <= STAGED {
+            self.staged[self.filled..end].copy_from_slice(bytes);
+            self.filled = end;
+            return;
+        }
+        let mut streamed = self.algorithm.digester();
+        streamed.write_bytes(&self.staged[..self.filled]);
+        streamed.write_bytes(bytes);
+        self.streamed = Some(streamed);
     }
 }
 

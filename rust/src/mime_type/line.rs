@@ -963,12 +963,13 @@ pub(crate) fn entry_spans(line: &[u8]) -> impl Iterator<Item = PairSpan> + '_ {
 /// bridge row that walk is every pair the row holds. `None` where the line
 /// holds no frame at all, which is where [`payload_at`] goes on to ask
 /// whether a document opens instead.
-pub(crate) fn located_entry_spans(
-    line: &[u8],
-) -> (Option<usize>, impl Iterator<Item = PairSpan> + '_) {
+pub(crate) fn located_entry_spans(line: &[u8]) -> (Located, impl Iterator<Item = PairSpan> + '_) {
     let located = locate_frame(line);
-    let frame_at = located.map(|frame| frame.start);
     let frame = located.filter(|frame| frame.separator.stated());
+    let located = Located {
+        frame_at: located.map(|frame| frame.start),
+        separated: frame.is_some(),
+    };
     let opens = frame.map_or(line.len(), |frame| frame.start);
     // Pairs arrive in line order, so the loose walk stops where the frame
     // opens rather than filtering the frame's own `=` signs back out of it.
@@ -998,7 +999,29 @@ pub(crate) fn located_entry_spans(
         });
         stated.into_iter().chain(loose.into_iter().flatten())
     });
-    (frame_at, outside.chain(inside))
+    (located, outside.chain(inside))
+}
+
+/// What one scan located: where the frame opens, and whether the line
+/// named a separator for it.
+///
+/// The two facts one [`locate_frame`] answers, carried out of the scan
+/// that computed them so a reader that bounds a message to its frame and
+/// then asks whether the run of pairs was a frame or prose asks the same
+/// walk once. A frame is a run of pairs the line named a separator for - a
+/// `SOH` raw or escaped, or a pipe - and whitespace names none: a run of
+/// *named* keys is a bridge row where the line separated it and prose
+/// carrying an `=` where it did not, which is what tells
+/// `heartbeat emitted seq=7` from `ACCOUNT=A1|SIDE=1`. A numeric frame is
+/// FIX whatever separated it, so the codec asks this only of a run it did
+/// not already read as tags.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Located {
+    /// Where the message starts inside the line, when one is there.
+    pub(crate) frame_at: Option<usize>,
+    /// Whether the line named a separator for the run of pairs its payload
+    /// opens with: a `SOH` raw or escaped, or a pipe, and never whitespace.
+    pub(crate) separated: bool,
 }
 
 /// Whether the line holds any pair at all, marked or not.
@@ -1080,20 +1103,6 @@ pub(crate) fn payload_at(line: &[u8]) -> Option<usize> {
     locate_frame(line)
         .map(|frame| frame.start)
         .or_else(|| json_at(line))
-}
-
-/// Whether the line named a separator for the run of pairs its payload
-/// opens with.
-///
-/// A frame is a run of pairs the line named a
-/// separator for - a `SOH` raw or escaped, or a pipe - and whitespace names
-/// none. A run of *named* keys is a bridge row where the line separated it
-/// and prose carrying an `=` where it did not, which is what tells
-/// `heartbeat emitted seq=7` from `ACCOUNT=A1|SIDE=1`. A
-/// numeric frame is FIX whatever separated it, so the codec asks this only
-/// of a run it did not already read as tags.
-pub(crate) fn names_separator(line: &[u8]) -> bool {
-    locate_frame(line).is_some_and(|frame| frame.separator.stated())
 }
 
 /// Where the JSON document one line carries opens, if it carries one.

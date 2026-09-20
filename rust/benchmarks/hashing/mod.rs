@@ -1,4 +1,5 @@
 pub(crate) mod txhash;
+pub(crate) mod variant;
 pub(crate) mod xxhash;
 
 /// A deterministic payload built outside each measured loop.

@@ -601,31 +601,27 @@ pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>> {
 pub(super) struct Column {
     pub(super) tag: Option<i32>,
     pub(super) counter: Option<i32>,
+    /// Whether the column is the crate's own arrival record, declared
+    /// exactly as [`entries_field`] declares it: [`entry_scalar`] writes
+    /// what [`entry_item`] declares, leaf for leaf, so the value it builds
+    /// is canonical under the column as built and is not walked twice
+    /// more to prove it. A caller's own `fixentries` column of another
+    /// shape is fitted as every column is.
+    pub(super) entries: bool,
+    /// Whether another column of the plan carries the same tag. A holder
+    /// keeps one fact per tag, so a row stating one tag twice is left where
+    /// it stands rather than lifted, and which columns those are is a fact
+    /// of the shape, read once per shape rather than once per typed tag
+    /// per message. A root rebuilt out of a planned root's children keeps
+    /// every column of a shared tag, so the flag carries over with the
+    /// column.
+    pub(super) shared: bool,
 }
 
-/// One schema's resolved projections.
-pub(super) struct Columns {
-    columns: Box<[Column]>,
-}
-
-impl Columns {
-    /// The plan over columns already resolved: what a root rebuilt out of
-    /// a planned root's children keeps of that root's plan.
-    pub(super) fn over(columns: Vec<Column>) -> ColumnPlan {
-        Arc::new(Self {
-            columns: columns.into_boxed_slice(),
-        })
-    }
-}
-
-pub(super) type ColumnPlan = Arc<Columns>;
-
-impl std::ops::Deref for Columns {
-    type Target = [Column];
-    fn deref(&self) -> &[Column] {
-        &self.columns
-    }
-}
+/// One schema's resolved projections: one allocation holding the columns
+/// and their count, which a root rebuilt out of a planned root's children
+/// makes of the columns it keeps with [`Arc::from`].
+pub(super) type ColumnPlan = Arc<[Column]>;
 
 pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<ColumnPlan> {
     let DataType::Struct(fields) = schema.dtype() else {
@@ -646,11 +642,24 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
             None if column.as_metadata().is_empty() => None,
             None => column.as_fix().counter()?,
         };
-        columns.push(Column { tag, counter });
+        let entries = column.name() == FIXENTRIES_COLUMN
+            && entries_field().is_ok_and(|declared| declared.dtype() == column.dtype());
+        columns.push(Column {
+            tag,
+            counter,
+            entries,
+            shared: false,
+        });
     }
-    Ok(Arc::new(Columns {
-        columns: columns.into_boxed_slice(),
-    }))
+    let mut tags: Vec<i32> = columns.iter().filter_map(|column| column.tag).collect();
+    tags.sort_unstable();
+    for column in &mut columns {
+        column.shared = column.tag.is_some_and(|tag| {
+            let at = tags.partition_point(|held| *held < tag);
+            tags.get(at + 1) == Some(&tag)
+        });
+    }
+    Ok(Arc::from(columns))
 }
 
 /// One schema's plan as this thread read it, beside the schema and the
@@ -658,7 +667,7 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
 type PlannedSchema = (StructType, Arc<FixRegistry>, ColumnPlan);
 
 /// The plans one thread has read, by the shape of the schema each is for.
-pub(super) type ColumnPlans = super::registry::FixMap<u64, Vec<PlannedSchema>>;
+type ColumnPlans = super::registry::FixMap<u64, Vec<PlannedSchema>>;
 
 thread_local! {
     /// Every schema this thread has planned, by its shape: a capture
@@ -677,22 +686,54 @@ const REMEMBERED_COLUMN_PLANS: usize = 4_096;
 /// keeps this many registries alive and no more.
 const REMEMBERED_SCHEMAS_PER_SHAPE: usize = 4;
 
-/// This thread's plans exchanged with `with`: how a thread that dies with
-/// its chunk hands what it read to the one spawned for the next.
-pub(super) fn swap_column_plans(with: &mut ColumnPlans) {
-    COLUMN_PLANS.with(|held| std::mem::swap(&mut *held.borrow_mut(), with));
+/// The schemas this thread planned last, by the address of each one's
+/// children and of the registry it was planned against: a door filling a
+/// million rows under one schema holds the one `Field` for all of them, so
+/// the plan is found by the address before the shape is digested at all.
+/// Each entry keeps the schema and the registry alive, so neither address
+/// is given to another while it is remembered.
+type PlannedByAddress = Vec<((usize, usize), PlannedSchema)>;
+
+thread_local! {
+    static PLANNED_BY_ADDRESS: RefCell<PlannedByAddress> = const { RefCell::new(Vec::new()) };
 }
+
+/// How many schemas one thread remembers by address; a builder makes a
+/// fresh root per message, and this many are what a stream reads under.
+const REMEMBERED_BY_ADDRESS: usize = 16;
 
 /// The plan one schema has, read once per shape per thread.
 ///
-/// The shape digest names a bucket; pointer identity, else a structural
-/// comparison, says which remembered schema is this one.
+/// The schema's own address answers first, for the schema a door holds
+/// across every row; else the shape digest names a bucket, and pointer
+/// identity, else a structural comparison, says which remembered schema is
+/// this one.
 pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Result<ColumnPlan> {
     let DataType::Struct(columns) = schema.dtype() else {
         return column_plan(schema, registry);
     };
+    let address = (
+        columns.storage_address(),
+        Arc::as_ptr(registry).cast::<()>() as usize,
+    );
+    let planned = PLANNED_BY_ADDRESS.with(|held| {
+        let mut held = held.borrow_mut();
+        let at = held.iter().position(|(held, _)| *held == address)?;
+        let (_, (known, resolver, plan)) = &held[at];
+        if !(Arc::ptr_eq(resolver, registry) && known.shares_storage_with(columns)) {
+            return None;
+        }
+        let plan = Arc::clone(plan);
+        // The schema a door holds across its rows stays in front of the
+        // roots a builder makes once each.
+        held.swap(0, at);
+        Some(plan)
+    });
+    if let Some(plan) = planned {
+        return Ok(plan);
+    }
     let shape = shape_digest(schema, true);
-    COLUMN_PLANS.with(|held| {
+    let plan = COLUMN_PLANS.with(|held| -> Result<ColumnPlan> {
         if let Some(planned) = held.borrow().get(&shape) {
             for (known, resolver, plan) in planned {
                 if Arc::ptr_eq(resolver, registry)
@@ -712,7 +753,24 @@ pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Res
             planned.push((columns.clone(), Arc::clone(registry), Arc::clone(&plan)));
         }
         Ok(plan)
-    })
+    })?;
+    PLANNED_BY_ADDRESS.with(|held| {
+        let mut held = held.borrow_mut();
+        if held.capacity() == 0 {
+            held.reserve_exact(REMEMBERED_BY_ADDRESS);
+        }
+        if held.len() >= REMEMBERED_BY_ADDRESS {
+            held.pop();
+        }
+        held.insert(
+            0,
+            (
+                address,
+                (columns.clone(), Arc::clone(registry), Arc::clone(&plan)),
+            ),
+        );
+    });
+    Ok(plan)
 }
 
 /// The tag one field carries and the group it counts: off the registry's
@@ -882,9 +940,10 @@ fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> 
     };
     Ok(crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
-        crate::Scalar::from(entry.name()),
+        crate::Scalar::from(entry.held_name().clone()),
         entry
-            .value()
+            .held_value()
+            .cloned()
             .map_or(crate::Scalar::Null, crate::Scalar::from),
         tail,
     ]))
@@ -900,9 +959,10 @@ fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> 
 fn folded_scalar(entry: &super::FixEntry) -> crate::Scalar {
     crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
-        crate::Scalar::from(entry.name()),
+        crate::Scalar::from(entry.held_name().clone()),
         entry
-            .value()
+            .held_value()
+            .cloned()
             .map_or(crate::Scalar::Null, crate::Scalar::from),
         crate::Scalar::from_sequence(
             entry
@@ -1456,9 +1516,13 @@ impl super::FixMsg {
                 values.push(value);
             }
         }
+        // The columns are the schema's, validated when it was built, and
+        // the content is the dictionary's fields, each kept only where no
+        // column folds to its name: named once by construction, so the
+        // root is built as it stands rather than validated once per row.
         let root = Field::new_with_metadata(
             schema.name(),
-            DataType::from(StructType::from_fields(members)?),
+            DataType::from(StructType::from_unique_fields(members)),
             schema.is_nullable(),
             schema.as_metadata().clone(),
         );
@@ -1534,7 +1598,7 @@ impl super::FixMsg {
     /// What [`Self::into_row`] answers, still open, so a door writing rows
     /// wraps each once. `plan` is [`column_plan`] over the same schema, read
     /// once by the caller rather than once per row.
-    pub(super) fn row_values(&self, schema: &Field, plan: &Columns) -> Result<Vec<crate::Scalar>> {
+    pub(super) fn row_values(&self, schema: &Field, plan: &[Column]) -> Result<Vec<crate::Scalar>> {
         let columns = schema.fields();
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(columns.len());
         // The crate columns' derivations and the working row they read,
@@ -1543,12 +1607,22 @@ impl super::FixMsg {
         let mut derived: Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)> = None;
         for (column, planned) in columns.iter().zip(plan.iter()) {
             let value = match column.name() {
-                FIXENTRIES_COLUMN => crate::Scalar::from_sequence(
-                    self.entries()
-                        .iter()
-                        .map(|entry| entry_scalar(entry, 1))
-                        .collect::<Result<Vec<_>>>()?,
-                ),
+                FIXENTRIES_COLUMN => {
+                    let record = crate::Scalar::from_sequence(
+                        self.entries()
+                            .iter()
+                            .map(|entry| entry_scalar(entry, 1))
+                            .collect::<Result<Vec<_>>>()?,
+                    );
+                    // Built as the column declares it, so the two walks a
+                    // fit pays to prove that are skipped for the largest
+                    // value of the row.
+                    if planned.entries {
+                        values.push(record);
+                        continue;
+                    }
+                    record
+                }
                 // The group's counter counts the occurrences beside it, as
                 // every counter does: read off the record rather than derived,
                 // so a reader prunes on it without opening the list.
@@ -1627,19 +1701,26 @@ impl super::FixMsg {
             .and_then(item_fields)
             .map(|fields| fields.iter().map(Field::name).collect())
             .unwrap_or_default();
+        // Where each declared member stands among the message's own, a fact
+        // of the two schemas alone and so read once for every occurrence.
+        let placed: Vec<Option<usize>> = members
+            .iter()
+            .map(|member| {
+                spelled
+                    .iter()
+                    .position(|name| crate::folds_equal(name, member.name()))
+            })
+            .collect();
         let rows: Vec<crate::Scalar> = occurrences
             .iter()
             .map(|occurrence| {
                 let Some(stated) = occurrence.as_sequence() else {
                     return occurrence.clone();
                 };
-                let row: Vec<crate::Scalar> = members
+                let row: Vec<crate::Scalar> = placed
                     .iter()
-                    .map(|member| {
-                        spelled
-                            .iter()
-                            .position(|name| crate::folds_equal(name, member.name()))
-                            .and_then(|at| stated.get(at))
+                    .map(|at| {
+                        at.and_then(|at| stated.get(at))
                             .cloned()
                             .unwrap_or(crate::Scalar::Null)
                     })

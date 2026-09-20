@@ -1354,6 +1354,14 @@ impl StructType {
         }
     }
 
+    /// The address of the children's storage, which names it for as long as
+    /// a clone of this collection is held; zero for no children.
+    pub(crate) fn storage_address(&self) -> usize {
+        self.0
+            .as_ref()
+            .map_or(0, |held| Arc::as_ptr(held).cast::<()>() as usize)
+    }
+
     /// Consumes the collection and returns owned fields.
     pub fn into_fields(self) -> Vec<Field> {
         self.as_ref().to_vec()

@@ -13,7 +13,7 @@
 //! once when it takes its registry, so no row builds a regex and no row asks
 //! the dictionary a question the row before it asked.
 
-use regex::bytes::Regex;
+use regex::bytes::RegexSet;
 use smol_str::SmolStr;
 
 use super::FixRegistry;
@@ -90,11 +90,11 @@ pub struct MsgDirection {
     /// The rules in force, each code resolved to the set's value and every
     /// pattern one the regex crate compiled.
     directions: Vec<FixDirection>,
-    /// Every pattern of every rule, compiled once; applying one to a prefix
-    /// allocates nothing, which is what a per-row reading has to cost.
-    rules: Vec<Regex>,
-    /// Which rule the pattern at each index of `rules` belongs to.
-    owners: Vec<usize>,
+    /// Each rule's patterns, compiled once into one set per rule, in the
+    /// order of `directions`: a prefix is walked once per rule for all of
+    /// its patterns, and the walk allocates nothing, which is what a
+    /// per-row reading has to cost.
+    rules: Vec<RegexSet>,
 }
 
 impl MsgDirection {
@@ -145,7 +145,6 @@ impl MsgDirection {
             recv,
             directions: Vec::new(),
             rules: Vec::new(),
-            owners: Vec::new(),
         };
         let stated: Vec<FixDirection> = {
             let walk = reading.field.as_fix().directions();
@@ -181,8 +180,7 @@ impl MsgDirection {
     /// one thing.
     fn compile(&mut self, rules: Vec<FixDirection>) {
         let mut directions: Vec<FixDirection> = Vec::with_capacity(rules.len());
-        let mut compiled = Vec::new();
-        let mut owners = Vec::new();
+        let mut compiled: Vec<RegexSet> = Vec::with_capacity(rules.len());
         for rule in rules {
             let Some(code) = self.code(rule.code()).map(SmolStr::new) else {
                 warned(&outside_set(rule.code(), self.codes()));
@@ -194,22 +192,27 @@ impl MsgDirection {
             }
             let mut kept: Vec<&str> = Vec::with_capacity(rule.patterns().len());
             for pattern in rule.patterns() {
+                // Each pattern is proven on its own, so the one the crate
+                // refuses is the one warned about; the rule's set is then
+                // built over the accepted ones.
                 match compile(pattern) {
-                    Ok(regex) => {
-                        kept.push(pattern);
-                        compiled.push(regex);
-                        owners.push(directions.len());
-                    }
+                    Ok(_) => kept.push(pattern),
                     Err(error) => warned(&error),
                 }
             }
             if kept.is_empty() {
                 continue;
             }
+            // Every pattern compiled alone, so the set compiles too; a set
+            // the crate's size limit refuses reads nothing, and says so once.
+            let set = RegexSet::new(&kept).unwrap_or_else(|error| {
+                log::warn!("compiling the FIX direction patterns of {code} as one set: {error}");
+                RegexSet::empty()
+            });
+            compiled.push(set);
             directions.push(FixDirection::new(code, kept));
         }
         self.rules = compiled;
-        self.owners = owners;
         self.directions = directions;
     }
 
@@ -289,21 +292,20 @@ impl MsgDirection {
     /// The reading, over a prefix the caller has already bounded.
     ///
     /// A reader that located the frame to parse it hands the prose in front
-    /// of it here, so the frame is located once. Every compiled pattern is
-    /// applied to it, allocating nothing, and the rules the matches belong
-    /// to decide: one names its code, two stop the reading.
+    /// of it here, so the frame is located once. The prefix is walked once
+    /// per rule for all of the rule's patterns, allocating nothing, and the
+    /// rules that match decide: one names its code, two stop the reading.
     #[must_use]
     pub(super) fn read_prefix(&self, prefix: &[u8]) -> Option<&str> {
         let mut named: Option<usize> = None;
-        for (index, rule) in self.rules.iter().enumerate() {
+        for (owner, rule) in self.rules.iter().enumerate() {
             if !rule.is_match(prefix) {
                 continue;
             }
-            let owner = self.owners[index];
-            match named {
-                Some(held) if held != owner => return None,
-                _ => named = Some(owner),
+            if named.is_some() {
+                return None;
             }
+            named = Some(owner);
         }
         named.map(|owner| self.directions[owner].code())
     }

@@ -49,7 +49,6 @@
 //! least one row.
 
 use std::borrow::Cow;
-use std::collections::VecDeque;
 use std::sync::Arc;
 
 use arrow_array::types::{GenericBinaryType, GenericStringType};
@@ -69,8 +68,7 @@ use super::build::{BEGINSTRING_COLUMN, DIRECTION_COLUMN, version_of};
 use super::build::{Fill, RowExtras};
 use super::codec::{FixCodec, SOH};
 use super::msg::FixMsg;
-use super::warmth::Warmth;
-use super::{FIXENTRIES_COLUMN, FixMessages, FixRegistry};
+use super::{FIXENTRIES_COLUMN, FixMessages};
 use crate::enums::EnumType;
 use crate::text::MTIME_COLUMN;
 
@@ -104,8 +102,25 @@ impl FixCodec {
         let read = super::fix_schema(self.registry(), ROOT_NAME)?;
         let carrier = Self::row_field(source.schema().as_ref())?;
         let field = super::fix_schema_carrying(&carrier, &read)?;
-        let messages = self.parse_arrow_messages(source)?;
-        self.arrow_reader(field, messages)
+        let reader = self.row_reader(&carrier, &read)?;
+        let schema = field.clone();
+        // A row is parsed and every message it carries filled into its
+        // fixed row on the one thread that was handed the row, so no
+        // message crosses a thread between the two halves; the rows come
+        // back in row order and the batches close on the thread that pulls
+        // them.
+        let rows = crate::parallel::ordered(
+            BatchRows::over(source),
+            self.threads(),
+            self.chunk(),
+            move |held: Result<(Arc<RecordBatch>, usize)>| -> Vec<Result<Charged>> {
+                carried_messages(held.and_then(|(batch, row)| reader.row(&batch, row)))
+                    .map(|message| charged(message, &schema))
+                    .collect()
+            },
+        )
+        .flatten();
+        self.closing_reader(field, rows)
     }
 
     /// Parses a stream of Arrow batches of capture rows into the stream of
@@ -159,33 +174,48 @@ impl FixCodec {
     ) -> Result<impl Iterator<Item = Result<FixMsg>> + Send + use<>> {
         let read = super::fix_schema(self.registry(), ROOT_NAME)?;
         let carrier = Self::row_field(source.schema().as_ref())?;
+        let reader = self.row_reader(&carrier, &read)?;
+        let threads = self.threads();
+        let rows = crate::parallel::ordered(
+            BatchRows::over(source),
+            threads,
+            self.chunk(),
+            move |held: Result<(Arc<RecordBatch>, usize)>| {
+                let (messages, carried) = held.and_then(|(batch, row)| reader.row(&batch, row))?;
+                // Read where the row was handed over, so a row's messages
+                // come back read rather than as a source the puller reads.
+                let messages = if threads > 1 {
+                    messages.collected()
+                } else {
+                    messages
+                };
+                Ok((messages, carried))
+            },
+        );
+        // A bulk configuration document expands into one message per
+        // configuration, each carrying its source row's own cells.
+        Ok(rows.flat_map(carried_messages))
+    }
+
+    /// What every row of `carrier` is read through: where each column sits
+    /// and which field it fills, decided once from the schema rather than
+    /// per row.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] naming the payload column when
+    /// `carrier` has no column of that name or its column holds neither
+    /// text nor bytes.
+    fn row_reader(&self, carrier: &Field, read: &Field) -> Result<Arc<RowReader>> {
         // Which of the capture's own columns survive the FIX columns' claim on
         // a name, and where every column a row is read from sits, are decided
         // once here, from the schema, rather than per row.
-        let kept = super::schema::carried(&carrier, &read);
-        let columns = Columns::resolve(&carrier, self.payload_column(), &kept, self)?;
-        let rows = Rows {
-            source,
+        let kept = super::schema::carried(carrier, read);
+        let columns = Columns::resolve(carrier, self.payload_column(), &kept, self)?;
+        Ok(Arc::new(RowReader {
             columns,
             codec: self.clone(),
             options: Arc::new(TextOptions::new()),
-            held: None,
-            parsed: VecDeque::new(),
-            slots: crate::parallel::slots(self.threads()),
-        };
-        // A bulk configuration document expands into one message per
-        // configuration, each carrying its source row's own cells.
-        Ok(rows.flat_map(|held| {
-            let (messages, carried) = match held {
-                Ok(held) => held,
-                Err(error) => (FixMessages::from_result(Err(error)), Vec::new()),
-            };
-            messages.map(move |message| {
-                message.map(|mut message| {
-                    message.set_carried(carried.clone());
-                    message
-                })
-            })
         }))
     }
 
@@ -239,12 +269,27 @@ impl FixCodec {
         &self,
         source: BatchReader,
     ) -> impl Iterator<Item = Result<FixMsg>> + Send + use<> {
-        Messages::over(
-            Arc::clone(self.registry()),
-            source,
+        // The schema is read once, off the source; a schema that does not
+        // make a root is the one item the stream yields.
+        let (schema, refused) = match Self::row_field(source.schema().as_ref()) {
+            Ok(schema) => (schema, None),
+            Err(error) => (DataType::Null.required_field(ROOT_NAME), Some(error)),
+        };
+        let registry = Arc::clone(self.registry());
+        let read = crate::parallel::ordered(
+            StructRows::over(source, refused),
             self.threads(),
             self.chunk(),
-        )
+            move |held: Result<(Arc<StructArray>, usize)>| {
+                let (batch, row) = held?;
+                value_from_array(schema.dtype(), batch.as_ref(), row)
+                    .map_err(Error::from)
+                    .and_then(|row| FixMsg::from_arrow_row(Arc::clone(&registry), &schema, &row))
+            },
+        );
+        // An error among the rows ends the stream where it stands, as it
+        // does read one at a time.
+        Fused::over(read)
     }
 
     /// A stream of messages as a stream of batches of FIX rows under `schema`.
@@ -272,26 +317,34 @@ impl FixCodec {
         I::IntoIter: Send + 'static,
     {
         let root = schema.clone();
-        let target = self.batch_byte_size();
-        let row_target = self.batch_row_size();
-        let mut carried = Carried::default();
         // Each message fills its row on some thread where the codec reads
-        // on several, in the messages' order; the batches then close on
-        // the rows as they come, on the one thread that pulls them.
-        let rows = crate::parallel::ordered::<Warmth, _, _, _>(
+        // on several, in the messages' order, and is charged there what the
+        // row lands as; the batches then close on the rows as they come, on
+        // the one thread that pulls them.
+        let rows = crate::parallel::ordered(
             messages.into_iter().map(|held| held.into()),
             self.threads(),
             self.chunk(),
-            move |held: Result<FixMsg>| held.and_then(|message| message.into_row(&schema)),
-        )
-        .map(move |row| match row {
+            move |held: Result<FixMsg>| charged(held, &schema),
+        );
+        self.closing_reader(root, rows)
+    }
+
+    /// The batches a stream of charged rows under `root` closes into: on
+    /// the bytes each row lands as against [`Self::with_batch_byte_size`],
+    /// whichever of it and [`Self::with_batch_row_size`] binds first. An
+    /// error item yields the completed prefix, then the error, and fuses
+    /// the reader.
+    fn closing_reader<I>(&self, root: Field, rows: I) -> Result<BatchReader>
+    where
+        I: Iterator<Item = Result<Charged>> + Send + 'static,
+    {
+        let target = self.batch_byte_size();
+        let row_target = self.batch_row_size();
+        let mut carried = Carried::default();
+        let rows = rows.map(move |row| match row {
             Err(error) => Closing(Err(error), false),
-            Ok(row) => {
-                // Charged the row it fills: the leaves of every column and
-                // a per-row width, which is what the row lands as - a typed
-                // fact and an entry alike, a lifted-only row and one
-                // carrying its record alike.
-                let charge = appended_bytes(&row);
+            Ok((charge, row)) => {
                 let closes = closes(&mut carried, charge, target, row_target);
                 Closing(Ok(row), closes)
             }
@@ -705,44 +758,60 @@ impl Columns {
     }
 }
 
-/// The capture's rows, the messages each carries, read a batch at a time.
-///
-/// One batch is held and read cell by cell, straight out of its arrays: the
-/// payload as the bytes it is, a parameter column as the text it holds, a
-/// carried column as the value it becomes. Nothing converts a batch whole
-/// and nothing is copied that the message does not keep, so a row costs its
-/// parse and the few cells the row actually reads.
-struct Rows {
-    source: BatchReader,
-    columns: Columns,
-    codec: FixCodec,
-    /// The options every row's line is read under, shared once: a row
-    /// states its captures as columns, so the line reads no header of its own.
-    options: Arc<TextOptions>,
-    /// The batch being read, and the row the next pull reads.
-    held: Option<(RecordBatch, usize)>,
-    /// The rows read ahead on the codec's threads, in row order.
-    parsed: VecDeque<Result<(FixMessages, Cells)>>,
-    /// What each of the codec's threads read, kept warm between runs.
-    slots: crate::parallel::Slots<Warmth>,
+/// One row's fixed row, charged what it lands as: the leaves of every
+/// column and a per-row width, which is what the row costs the batch it
+/// lands in, a typed fact and an entry alike, a lifted-only row and one
+/// carrying its record alike.
+type Charged = (u64, Scalar);
+
+/// `message` filled into its row under `schema`, and charged.
+fn charged(message: Result<FixMsg>, schema: &Field) -> Result<Charged> {
+    let row = message?.into_row(schema)?;
+    Ok((appended_bytes(&row), row))
 }
 
 /// The capture's own cells one row states, each under the column's name.
 type Cells = Vec<(SmolStr, Scalar)>;
 
-impl Rows {
+/// The messages one row answered, each carrying the row's own cells; a
+/// row that refused is its refusal, once.
+fn carried_messages(held: Result<(FixMessages, Cells)>) -> impl Iterator<Item = Result<FixMsg>> {
+    let (messages, carried) = match held {
+        Ok(held) => held,
+        Err(error) => (FixMessages::from_result(Err(error)), Vec::new()),
+    };
+    messages.map(move |message| {
+        message.map(|mut message| {
+            message.set_carried(carried.clone());
+            message
+        })
+    })
+}
+
+/// What every row of one carrier is read through, shared by every thread
+/// the codec reads on.
+///
+/// A row is read cell by cell, straight out of its arrays: the payload as
+/// the bytes it is, a parameter column as the text it holds, a carried
+/// column as the value it becomes. Nothing converts a batch whole and
+/// nothing is copied that the message does not keep, so a row costs its
+/// parse and the few cells the row actually reads.
+struct RowReader {
+    columns: Columns,
+    codec: FixCodec,
+    /// The options every row's line is read under, shared once: a row
+    /// states its captures as columns, so the line reads no header of its own.
+    options: Arc<TextOptions>,
+}
+
+impl RowReader {
     /// One row of one batch as the messages it carries and the capture's
     /// own cells, each under the column it was read from.
     ///
     /// An ordinary line is one message; a bulk configuration document is one
     /// per configuration, and the row's own cells are carried by each.
-    fn row(
-        columns: &Columns,
-        codec: &FixCodec,
-        options: &Arc<TextOptions>,
-        batch: &RecordBatch,
-        row: usize,
-    ) -> Result<(FixMessages, Cells)> {
+    fn row(&self, batch: &RecordBatch, row: usize) -> Result<(FixMessages, Cells)> {
+        let (columns, codec, options) = (&self.columns, &self.codec, &self.options);
         let cell = |at: usize| {
             value_from_array(&columns.dtypes[at], batch.column(at).as_ref(), row)
                 .map_err(Error::from)
@@ -814,51 +883,42 @@ impl Rows {
     }
 }
 
-impl Iterator for Rows {
-    type Item = Result<(FixMessages, Cells)>;
+/// The rows of a stream of batches of capture rows, each beside the batch
+/// it is a row of, in row order: what the threads are handed one at a time.
+///
+/// Every cell is read by the position the declared schema gave it, so a
+/// batch of another schema than the first is a conflict item; the source
+/// reader's own failure is an error item; the stream goes on past either
+/// to the next batch. The puller holds one batch, and a row keeps its own
+/// alive until it is read.
+struct BatchRows {
+    source: BatchReader,
+    /// The batch being read, and the row the next pull reads.
+    held: Option<(Arc<RecordBatch>, usize)>,
+}
+
+impl BatchRows {
+    const fn over(source: BatchReader) -> Self {
+        Self { source, held: None }
+    }
+}
+
+impl Iterator for BatchRows {
+    type Item = Result<(Arc<RecordBatch>, usize)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if let Some(read) = self.parsed.pop_front() {
-                return Some(read);
-            }
-            let threads = self.codec.threads();
-            let next = match &mut self.held {
-                Some((batch, at)) if *at < batch.num_rows() => {
+            if let Some((batch, at)) = &mut self.held {
+                if *at < batch.num_rows() {
                     let row = *at;
-                    if threads == 1 {
-                        *at += 1;
-                        Some((row, row + 1))
-                    } else {
-                        let end = (row + self.codec.chunk()).min(batch.num_rows());
-                        *at = end;
-                        Some((row, end))
-                    }
+                    *at += 1;
+                    return Some(Ok((Arc::clone(batch), row)));
                 }
-                _ => None,
-            };
-            if let Some((row, end)) = next {
-                let (batch, _) = self.held.as_ref()?;
-                let (columns, codec, options) = (&self.columns, &self.codec, &self.options);
-                if threads == 1 {
-                    return Some(Self::row(columns, codec, options, batch, row));
-                }
-                // A run of rows, each read on some thread and its messages
-                // read there and then, answered in row order.
-                let read = crate::parallel::mapped(end - row, threads, &mut self.slots, |offset| {
-                    Self::row(columns, codec, options, batch, row + offset)
-                        .map(|(messages, carried)| (messages.collected(), carried))
-                });
-                self.parsed.extend(read);
-                continue;
             }
             // The batch is spent, or none is held yet: the next one is pulled
-            // and the spent one dropped, so one batch is ever in hand.
+            // and the spent one dropped.
             match self.source.next() {
                 Some(Ok(batch)) if batch.schema() != self.source.schema() => {
-                    // Every column is read by the position the declared schema
-                    // gave it, so a batch of another schema is a conflict
-                    // rather than a row read from the wrong column.
                     self.held = None;
                     return Some(Err(Error::conflict(
                         "the capture reader's declared Arrow schema",
@@ -866,7 +926,7 @@ impl Iterator for Rows {
                         "FIX capture",
                     )));
                 }
-                Some(Ok(batch)) => self.held = Some((batch, 0)),
+                Some(Ok(batch)) => self.held = Some((Arc::new(batch), 0)),
                 Some(Err(error)) => {
                     self.held = None;
                     return Some(Err(crate::arrow::from_reader_error(error).into()));
@@ -877,115 +937,47 @@ impl Iterator for Rows {
     }
 }
 
-/// The messages a stream of batches of FIX rows holds, read a batch at a
-/// time.
-///
-/// One batch is held as the Struct array it is and read row by row into the
-/// row value the schema declares, which [`FixMsg::from_row`] makes a message
-/// of - the capture's own cells the row states read into the message with
-/// it. The schema is read once, off the source; a schema that does not make
-/// a root is the one item the stream yields.
-struct Messages {
-    registry: Arc<FixRegistry>,
+/// The rows of a stream of batches of FIX rows, each beside the Struct its
+/// batch is, in row order, ended by the first refusal: the schema's own, a
+/// batch of another schema than the first, or the source reader's failure.
+struct StructRows {
     source: BatchReader,
-    schema: Field,
-    /// The refusal the source's schema earned, yielded once.
-    pending: Option<Error>,
+    /// The refusal the source's schema earned, yielded once and first.
+    refused: Option<Error>,
     /// The batch being read, beside the row the next pull reads.
-    held: Option<(StructArray, usize)>,
-    /// The messages read ahead on the codec's threads, in row order.
-    read: VecDeque<Result<FixMsg>>,
-    threads: usize,
-    chunk: usize,
+    held: Option<(Arc<StructArray>, usize)>,
     done: bool,
-    /// What each of the codec's threads read, kept warm between runs.
-    slots: crate::parallel::Slots<Warmth>,
 }
 
-impl Messages {
-    fn over(registry: Arc<FixRegistry>, source: BatchReader, threads: usize, chunk: usize) -> Self {
-        let (schema, pending) = match FixCodec::row_field(source.schema().as_ref()) {
-            Ok(schema) => (schema, None),
-            Err(error) => (DataType::Null.required_field(ROOT_NAME), Some(error)),
-        };
+impl StructRows {
+    const fn over(source: BatchReader, refused: Option<Error>) -> Self {
         Self {
-            registry,
             source,
-            schema,
-            pending,
+            refused,
             held: None,
-            read: VecDeque::new(),
-            threads,
-            chunk,
             done: false,
-            slots: crate::parallel::slots(threads),
         }
     }
-
-    /// One row of one batch as the message it holds.
-    fn message(
-        registry: &Arc<FixRegistry>,
-        schema: &Field,
-        batch: &StructArray,
-        row: usize,
-    ) -> Result<FixMsg> {
-        value_from_array(schema.dtype(), batch, row)
-            .map_err(Error::from)
-            .and_then(|row| FixMsg::from_arrow_row(Arc::clone(registry), schema, &row))
-    }
 }
 
-impl Iterator for Messages {
-    type Item = Result<FixMsg>;
+impl Iterator for StructRows {
+    type Item = Result<(Arc<StructArray>, usize)>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(error) = self.pending.take() {
-            self.done = true;
-            return Some(Err(error));
-        }
         if self.done {
             return None;
         }
+        if let Some(error) = self.refused.take() {
+            self.done = true;
+            return Some(Err(error));
+        }
         loop {
-            if let Some(read) = self.read.pop_front() {
-                if read.is_err() {
-                    self.done = true;
-                    self.read.clear();
-                }
-                return Some(read);
-            }
-            let run = match &mut self.held {
-                Some((batch, at)) if *at < batch.len() => {
+            if let Some((batch, at)) = &mut self.held {
+                if *at < batch.len() {
                     let row = *at;
-                    let end = if self.threads == 1 {
-                        row + 1
-                    } else {
-                        (row + self.chunk).min(batch.len())
-                    };
-                    *at = end;
-                    Some((row, end))
+                    *at += 1;
+                    return Some(Ok((Arc::clone(batch), row)));
                 }
-                _ => None,
-            };
-            if let Some((row, end)) = run {
-                let (batch, _) = self.held.as_ref()?;
-                let (registry, schema) = (&self.registry, &self.schema);
-                if self.threads == 1 {
-                    let read = Self::message(registry, schema, batch, row);
-                    if read.is_err() {
-                        self.done = true;
-                    }
-                    return Some(read);
-                }
-                // A run of rows, each made a message on some thread,
-                // answered in row order; an error among them ends the
-                // stream where it stands, as it does read one at a time.
-                let read =
-                    crate::parallel::mapped(end - row, self.threads, &mut self.slots, |offset| {
-                        Self::message(registry, schema, batch, row + offset)
-                    });
-                self.read.extend(read);
-                continue;
             }
             match self.source.next() {
                 Some(Ok(batch)) if batch.schema() != self.source.schema() => {
@@ -996,7 +988,7 @@ impl Iterator for Messages {
                         "FIX rows",
                     )));
                 }
-                Some(Ok(batch)) => self.held = Some((StructArray::from(batch), 0)),
+                Some(Ok(batch)) => self.held = Some((Arc::new(StructArray::from(batch)), 0)),
                 Some(Err(error)) => {
                     self.done = true;
                     return Some(Err(crate::arrow::from_reader_error(error).into()));
@@ -1010,4 +1002,31 @@ impl Iterator for Messages {
     }
 }
 
-impl std::iter::FusedIterator for Messages {}
+/// A stream ended by its first error: the error is yielded, and nothing
+/// after it - the stream underneath is dropped there, its threads with it.
+struct Fused<I> {
+    inner: Option<I>,
+}
+
+impl<I> Fused<I> {
+    const fn over(inner: I) -> Self {
+        Self { inner: Some(inner) }
+    }
+}
+
+impl<I, T> Iterator for Fused<I>
+where
+    I: Iterator<Item = Result<T>>,
+{
+    type Item = Result<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = self.inner.as_mut()?.next();
+        if next.as_ref().is_none_or(Result::is_err) {
+            self.inner = None;
+        }
+        next
+    }
+}
+
+impl<I, T> std::iter::FusedIterator for Fused<I> where I: Iterator<Item = Result<T>> {}

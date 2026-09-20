@@ -25,7 +25,9 @@
 //! the same bytes [`Scalar::write_bytes`] feeds a digest, laid out by
 //! [family](crate::DataTypeKind::id).
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
@@ -104,14 +106,79 @@ impl Iterator for VariantStream {
             self.started = true;
         }
         match frame {
-            Frame::Name(name) => {
-                write_size(&mut chunk, name.len());
-                chunk.extend_from_slice(name.as_bytes());
-            }
-            Frame::Value(value) => encode(&value, &mut chunk, &mut self.pending),
+            Frame::Name(name) => write_name(&mut chunk, &name),
+            // An Arrow-held value is the native value it holds, made here
+            // so its children are the stream's own frames.
+            Frame::Value(Scalar::Arrow(_)) => match frame_value(&frame).into_native() {
+                Ok(native) => self.push_children(&native, &mut chunk),
+                Err(_) => chunk.push(DataTypeId::Null.as_u8()),
+            },
+            Frame::Value(value) => self.push_children(&value, &mut chunk),
         }
         Some(chunk)
     }
+}
+
+/// The value one frame holds.
+fn frame_value(frame: &Frame) -> &Scalar {
+    match frame {
+        Frame::Value(value) => value,
+        Frame::Name(_) => unreachable!("a name frame holds no value"),
+    }
+}
+
+impl VariantStream {
+    /// Writes `value`'s own bytes into `chunk` and holds its children to
+    /// write after it, last first, so they come out in order.
+    fn push_children(&mut self, value: &Scalar, chunk: &mut Vec<u8>) {
+        let mut children = Vec::new();
+        encode(value, chunk, &mut children);
+        self.pending
+            .extend(children.into_iter().rev().map(|child| match child {
+                Child::Value(value) => Frame::Value(value.clone()),
+                Child::Name(name) => Frame::Name(name.clone()),
+            }));
+    }
+}
+
+/// One child of a nested value, as the value holds it.
+enum Child<'value> {
+    Value(&'value Scalar),
+    Name(&'value SmolStr),
+}
+
+/// Appends the whole encoding of `root` - its own bytes, then every child
+/// in order, each the same way - to `out`, borrowing every child from the
+/// root and allocating nothing but the output.
+///
+/// The same pre-order the stream writes one chunk at a time, so the bytes
+/// are the stream's concatenated; iterative, so a value nested deeper than
+/// a stack holds still encodes.
+fn encode_whole(root: &Scalar, out: &mut Vec<u8>) {
+    let mut pending: Vec<Child<'_>> = vec![Child::Value(root)];
+    let mut children: Vec<Child<'_>> = Vec::new();
+    while let Some(frame) = pending.pop() {
+        match frame {
+            Child::Name(name) => write_name(out, name),
+            // An Arrow-held value is the native value it holds: made here,
+            // and encoded whole while it is in hand.
+            Child::Value(value @ Scalar::Arrow(_)) => match value.into_native() {
+                Ok(native) => encode_whole(&native, out),
+                Err(_) => out.push(DataTypeId::Null.as_u8()),
+            },
+            Child::Value(value) => {
+                children.clear();
+                encode(value, out, &mut children);
+                pending.extend(children.drain(..).rev());
+            }
+        }
+    }
+}
+
+/// Appends a struct member's name: its size, then its bytes.
+fn write_name(chunk: &mut Vec<u8>, name: &str) {
+    write_size(chunk, name.len());
+    chunk.extend_from_slice(name.as_bytes());
 }
 
 impl std::iter::FusedIterator for VariantStream {}
@@ -162,14 +229,13 @@ fn write_clock(chunk: &mut Vec<u8>, id: DataTypeId, unit: TimeUnit, zone: Option
     }
 }
 
-/// Appends one value's own bytes to `chunk`, and the children a nested
-/// value has to `pending`, last first, so they are written in order.
-fn encode(value: &Scalar, chunk: &mut Vec<u8>, pending: &mut Vec<Frame>) {
+/// Appends one value's own bytes to `chunk`, and answers the children a
+/// nested value has in order - a list's values, a map's key then value per
+/// entry, a struct's name then value per entry - for the caller to write
+/// after it. An Arrow-held value is the caller's to make native first.
+fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec<Child<'value>>) {
     match value {
-        Scalar::Arrow(_) => match value.into_native() {
-            Ok(native) => encode(&native, chunk, pending),
-            Err(_) => chunk.push(DataTypeId::Null.as_u8()),
-        },
+        Scalar::Arrow(_) => chunk.push(DataTypeId::Null.as_u8()),
         Scalar::Null => chunk.push(DataTypeId::Null.as_u8()),
         Scalar::Boolean(held) => {
             chunk.push(DataTypeId::Boolean.as_u8());
@@ -297,22 +363,22 @@ fn encode(value: &Scalar, chunk: &mut Vec<u8>, pending: &mut Vec<Frame>) {
         Scalar::Sequence(held) => {
             chunk.push(DataTypeId::List.as_u8());
             write_size(chunk, held.as_slice().len());
-            pending.extend(held.as_slice().iter().rev().cloned().map(Frame::Value));
+            children.extend(held.as_slice().iter().map(Child::Value));
         }
         Scalar::Mapping(held) => {
             chunk.push(DataTypeId::Map.as_u8());
             write_size(chunk, held.as_slice().len());
-            for (key, value) in held.as_slice().iter().rev() {
-                pending.push(Frame::Value(value.clone()));
-                pending.push(Frame::Value(key.clone()));
+            for (key, value) in held.as_slice() {
+                children.push(Child::Value(key));
+                children.push(Child::Value(value));
             }
         }
         Scalar::Struct(held) => {
             chunk.push(DataTypeId::Struct.as_u8());
             write_size(chunk, held.as_map().len());
-            for (name, value) in held.as_map().iter().rev() {
-                pending.push(Frame::Value(value.clone()));
-                pending.push(Frame::Name(name.clone()));
+            for (name, value) in held.as_map() {
+                children.push(Child::Name(name));
+                children.push(Child::Value(value));
             }
         }
         // A registered code is its text under its own identifier.
@@ -387,19 +453,28 @@ impl<'a> Reader<'a> {
         Err(self.refuse("a size of more than ten bytes"))
     }
 
-    fn variable(&mut self) -> Result<Vec<u8>> {
+    /// One payload of no fixed width: the bytes as the stream holds them,
+    /// borrowed, or a zstd frame's contents, owned.
+    fn variable(&mut self) -> Result<Cow<'a, [u8]>> {
         let compression = self.byte()?;
         let size = self.size()?;
         let held = self.take(size)?;
         match compression {
-            UNCOMPRESSED => Ok(held.to_vec()),
-            ZSTD => crate::zstd::load(held),
+            UNCOMPRESSED => Ok(Cow::Borrowed(held)),
+            ZSTD => crate::zstd::load(held).map(Cow::Owned),
             other => Err(self.refuse(format_smolstr!("compression {other} is not one this reads"))),
         }
     }
 
-    fn text(&mut self) -> Result<String> {
-        String::from_utf8(self.variable()?).map_err(|_| self.refuse("text that is not UTF-8"))
+    fn text(&mut self) -> Result<Cow<'a, str>> {
+        match self.variable()? {
+            Cow::Borrowed(held) => std::str::from_utf8(held)
+                .map(Cow::Borrowed)
+                .map_err(|_| self.refuse("text that is not UTF-8")),
+            Cow::Owned(held) => String::from_utf8(held)
+                .map(Cow::Owned)
+                .map_err(|_| self.refuse("text that is not UTF-8")),
+        }
     }
 
     fn unit(&mut self) -> Result<TimeUnit> {
@@ -517,11 +592,11 @@ impl<'a> Reader<'a> {
             }
             DataTypeId::Uuid => Scalar::Uuid(crate::Uuid::from_bytes(&self.array::<16>()?)?),
             DataTypeId::Geometry => {
-                Scalar::Geometry(crate::Geometry::new(Arc::<[u8]>::from(self.variable()?))?)
+                Scalar::Geometry(crate::Geometry::new(Arc::<[u8]>::from(&*self.variable()?))?)
             }
-            DataTypeId::Geography => {
-                Scalar::Geography(crate::Geography::new(Arc::<[u8]>::from(self.variable()?))?)
-            }
+            DataTypeId::Geography => Scalar::Geography(crate::Geography::new(Arc::<[u8]>::from(
+                &*self.variable()?,
+            ))?),
             DataTypeId::List => {
                 let count = self.size()?;
                 let mut values = Vec::with_capacity(count.min(1 << 16));
@@ -546,8 +621,14 @@ impl<'a> Reader<'a> {
                 for _ in 0..count {
                     let name = self.name()?;
                     let value = self.value(depth + 1)?;
-                    if entries.insert(name.clone(), value).is_some() {
-                        return Err(self.refuse(format_smolstr!("a struct naming {name} twice")));
+                    match entries.entry(name) {
+                        Entry::Vacant(slot) => {
+                            slot.insert(value);
+                        }
+                        Entry::Occupied(held) => {
+                            return Err(self
+                                .refuse(format_smolstr!("a struct naming {} twice", held.key())));
+                        }
                     }
                 }
                 Scalar::Struct(Struct::new(Arc::new(entries)))
@@ -582,8 +663,12 @@ impl<'a> Reader<'a> {
             // under the identifier, read through the datatype's own door.
             other if matches!(other.kind(), DataTypeKind::Code | DataTypeKind::Text) => {
                 let text = self.text()?;
-                let dtype = DataType::from_str(other.as_str())?;
-                crate::value::dtype_scalar(&dtype, Scalar::from(text))?
+                // The identifier's own datatype, the process's one rather
+                // than one parsed from the identifier's name per value.
+                let dtype = crate::typed::prebuilt_dtype(other).ok_or_else(|| {
+                    self.refuse(format_smolstr!("{other} holds no value of its own"))
+                })?;
+                crate::value::dtype_scalar(dtype, Scalar::from(&*text))?
             }
             other => {
                 return Err(self.refuse(format_smolstr!("{other} holds no value of its own")));
@@ -607,13 +692,13 @@ impl Scalar {
         VariantStream::over(self.clone())
     }
 
-    /// This value as the variant encoding, whole.
+    /// This value as the variant encoding, whole: the stream's chunks in
+    /// one buffer, written into it directly.
     #[must_use]
     pub fn into_variant_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(16);
-        for chunk in self.encode_variant_stream_bytes() {
-            bytes.extend_from_slice(&chunk);
-        }
+        bytes.push(VARIANT_VERSION);
+        encode_whole(self, &mut bytes);
         bytes
     }
 
