@@ -1,0 +1,191 @@
+{
+  "name": "partyidsourcecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "KoreanInvestorID",
+      "group": "For PartyRole = \"InvestorID\" and for Equities",
+      "doc": "Korean Investor ID"
+    },
+    {
+      "value": "6",
+      "name": "UKNationalInsuranceOrPensionNumber",
+      "group": "For PartyRole = \"InvestorID\" and for CIV",
+      "doc": "UK National Insurance or Pension Number"
+    },
+    {
+      "value": "B",
+      "name": "BIC",
+      "group": "For all PartyRoles",
+      "doc": "BIC (Bank Identification Code - SWIFT managed) code (ISO9362 - See \"Appendix 6-B\")"
+    },
+    {
+      "value": "I",
+      "name": "ISITCAcronym",
+      "group": "For PartyRole=\"Broker of Credit\"",
+      "doc": "Directed broker three character acronym as defined in ISITC \"ETC Best Practice\" guidelines document"
+    },
+    {
+      "value": "2",
+      "name": "TaiwaneseForeignInvestorID",
+      "group": "For PartyRole = \"InvestorID\" and for Equities",
+      "doc": "Taiwanese Qualified Foreign Investor ID QFII/FID"
+    },
+    {
+      "value": "7",
+      "name": "USSocialSecurityNumber",
+      "group": "For PartyRole = \"InvestorID\" and for CIV",
+      "doc": "US Social Security Number"
+    },
+    {
+      "value": "C",
+      "name": "GeneralIdentifier",
+      "group": "For all PartyRoles",
+      "doc": "Generally accepted market participant identifier (e.g. NASD mnemonic)"
+    },
+    {
+      "value": "3",
+      "name": "TaiwaneseTradingAcct",
+      "group": "For PartyRole = \"InvestorID\" and for Equities",
+      "doc": "Taiwanese Trading Acct"
+    },
+    {
+      "value": "8",
+      "name": "USEmployerOrTaxIDNumber",
+      "group": "For PartyRole = \"InvestorID\" and for CIV",
+      "doc": "US Employer or Tax ID Number"
+    },
+    {
+      "value": "D",
+      "name": "Proprietary",
+      "group": "For all PartyRoles",
+      "doc": "Proprietary / Custom code"
+    },
+    {
+      "value": "4",
+      "name": "MalaysianCentralDepository",
+      "group": "For PartyRole = \"InvestorID\" and for Equities",
+      "doc": "Malaysian Central Depository (MCD) number"
+    },
+    {
+      "value": "9",
+      "name": "AustralianBusinessNumber",
+      "group": "For PartyRole = \"InvestorID\" and for CIV",
+      "doc": "Australian Business Number"
+    },
+    {
+      "value": "E",
+      "name": "ISOCountryCode",
+      "group": "For all PartyRoles",
+      "doc": "ISO Country Code"
+    },
+    {
+      "value": "5",
+      "name": "ChineseInvestorID",
+      "group": "For PartyRole = \"InvestorID\" and for Equities",
+      "doc": "Chinese Investor ID"
+    },
+    {
+      "value": "A",
+      "name": "AustralianTaxFileNumber",
+      "group": "For PartyRole = \"InvestorID\" and for CIV",
+      "doc": "Australian Tax File Number"
+    },
+    {
+      "value": "F",
+      "name": "SettlementEntityLocation",
+      "group": "For all PartyRoles",
+      "doc": "Settlement Entity Location (note if Local Market Settlement use \"E=ISO Country Code\") (see \"Appendix 6-G\" for valid values)"
+    },
+    {
+      "value": "G",
+      "name": "MIC",
+      "group": "For all PartyRoles",
+      "doc": "Market Identifier Code (ISO 10383) MIC"
+    },
+    {
+      "value": "J",
+      "name": "TaxID",
+      "group": "For PartyRole = \"InvestorID\" and for CIV",
+      "doc": "Tax ID"
+    },
+    {
+      "value": "H",
+      "name": "CSDParticipant",
+      "group": "For all PartyRoles",
+      "doc": "CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number"
+    },
+    {
+      "value": "K",
+      "name": "AustralianCompanyNumber",
+      "group": "For all PartyRoles",
+      "doc": "Australian Company Number"
+    },
+    {
+      "value": "L",
+      "name": "AustralianRegisteredBodyNumber",
+      "group": "For all PartyRoles",
+      "doc": "Australian Registered Body Number"
+    },
+    {
+      "value": "M",
+      "name": "CFTCReportingFirmIdentifier",
+      "group": "For all PartyRoles",
+      "doc": "CFTC reporting firm identifier"
+    },
+    {
+      "value": "N",
+      "name": "LegalEntityIdentifier",
+      "group": "For all PartyRoles",
+      "doc": "Legal Entity Identifier (ISO 17442) LEI"
+    },
+    {
+      "value": "O",
+      "name": "InterimIdentifier",
+      "group": "For all PartyRoles",
+      "doc": "Interim identifier"
+    },
+    {
+      "value": "P",
+      "name": "ShortCodeIdentifier",
+      "group": "For all PartyRoles",
+      "doc": "Short code identifier"
+    },
+    {
+      "value": "Q",
+      "name": "NationalIDNaturalPerson",
+      "group": "For all PartyRoles",
+      "doc": "National ID of natural person"
+    },
+    {
+      "value": "R",
+      "name": "IndiaPermanentAccountNumber",
+      "group": "For all PartyRoles",
+      "doc": "India Permanent Account Number"
+    },
+    {
+      "value": "S",
+      "name": "FDID",
+      "group": "For all PartyRoles",
+      "doc": "Firm designated identifier"
+    },
+    {
+      "value": "T",
+      "name": "SPSAID",
+      "group": "For all PartyRoles",
+      "doc": "Special Segregated Account ID"
+    },
+    {
+      "value": "U",
+      "name": "MasterSPSAID",
+      "group": "For all PartyRoles",
+      "doc": "Master Special Segregated Account ID"
+    },
+    {
+      "value": "V",
+      "name": "KoreaShortSellingRegistrationNumber",
+      "group": "For all PartyRoles",
+      "doc": "Korea Short Selling Registration Number"
+    }
+  ]
+}

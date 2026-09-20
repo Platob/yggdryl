@@ -1,0 +1,17 @@
+{
+  "name": "symbolsfxcodeset",
+  "codes": [
+    {
+      "value": "CD",
+      "name": "EUCPWithLumpSumInterest",
+      "group": "For Fixed Income",
+      "doc": "EUCP with lump-sum interest rather than discount price"
+    },
+    {
+      "value": "WI",
+      "name": "WhenIssued",
+      "group": "For Fixed Income",
+      "doc": "\"When Issued\" for a security to be reissued under an old CUSIP or ISIN"
+    }
+  ]
+}

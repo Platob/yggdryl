@@ -1,0 +1,305 @@
+{
+  "name": "quoteconditioncodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "Open",
+      "doc": "Open/Active"
+    },
+    {
+      "value": "B",
+      "name": "Closed",
+      "doc": "Closed/Inactive"
+    },
+    {
+      "value": "C",
+      "name": "ExchangeBest",
+      "doc": "Exchange Best"
+    },
+    {
+      "value": "D",
+      "name": "ConsolidatedBest",
+      "doc": "Consolidated Best"
+    },
+    {
+      "value": "E",
+      "name": "Locked",
+      "doc": "Locked"
+    },
+    {
+      "value": "F",
+      "name": "Crossed",
+      "doc": "Crossed"
+    },
+    {
+      "value": "G",
+      "name": "Depth",
+      "doc": "Depth"
+    },
+    {
+      "value": "H",
+      "name": "FastTrading",
+      "doc": "Fast Trading"
+    },
+    {
+      "value": "I",
+      "name": "NonFirm",
+      "doc": "Non-Firm"
+    },
+    {
+      "value": "L",
+      "name": "Manual",
+      "doc": "Manual/Slow Quote"
+    },
+    {
+      "value": "J",
+      "name": "OutrightPrice",
+      "doc": "Outright Price"
+    },
+    {
+      "value": "K",
+      "name": "ImpliedPrice",
+      "doc": "Implied Price"
+    },
+    {
+      "value": "M",
+      "name": "DepthOnOffer",
+      "doc": "Depth on Offer"
+    },
+    {
+      "value": "N",
+      "name": "DepthOnBid",
+      "doc": "Depth on Bid"
+    },
+    {
+      "value": "O",
+      "name": "Closing",
+      "doc": "Closing"
+    },
+    {
+      "value": "P",
+      "name": "NewsDissemination",
+      "doc": "News Dissemination"
+    },
+    {
+      "value": "Q",
+      "name": "TradingRange",
+      "doc": "Trading Range"
+    },
+    {
+      "value": "R",
+      "name": "OrderInflux",
+      "doc": "Order Influx"
+    },
+    {
+      "value": "S",
+      "name": "DueToRelated",
+      "doc": "Due to Related"
+    },
+    {
+      "value": "T",
+      "name": "NewsPending",
+      "doc": "News Pending"
+    },
+    {
+      "value": "U",
+      "name": "AdditionalInfo",
+      "doc": "Additional Info"
+    },
+    {
+      "value": "V",
+      "name": "AdditionalInfoDueToRelated",
+      "doc": "Additional Info due to related"
+    },
+    {
+      "value": "W",
+      "name": "Resume",
+      "doc": "Resume"
+    },
+    {
+      "value": "X",
+      "name": "ViewOfCommon",
+      "doc": "View of Common"
+    },
+    {
+      "value": "Y",
+      "name": "VolumeAlert",
+      "doc": "Volume Alert"
+    },
+    {
+      "value": "Z",
+      "name": "OrderImbalance",
+      "doc": "Order Imbalance"
+    },
+    {
+      "value": "a",
+      "name": "EquipmentChangeover",
+      "doc": "Equipment Changeover"
+    },
+    {
+      "value": "b",
+      "name": "NoOpen",
+      "doc": "No Open / No Resume"
+    },
+    {
+      "value": "c",
+      "name": "RegularETH",
+      "doc": "Regular ETH"
+    },
+    {
+      "value": "d",
+      "name": "AutomaticExecution",
+      "doc": "Automatic Execution"
+    },
+    {
+      "value": "e",
+      "name": "AutomaticExecutionETH",
+      "doc": "Automatic Execution ETH"
+    },
+    {
+      "value": "f",
+      "name": "FastMarketETH",
+      "doc": "Fast Market ETH"
+    },
+    {
+      "value": "g",
+      "name": "InactiveETH",
+      "doc": "Inactive ETH"
+    },
+    {
+      "value": "h",
+      "name": "Rotation",
+      "doc": "Rotation"
+    },
+    {
+      "value": "i",
+      "name": "RotationETH",
+      "doc": "Rotation ETH"
+    },
+    {
+      "value": "j",
+      "name": "Halt",
+      "doc": "Halt"
+    },
+    {
+      "value": "k",
+      "name": "HaltETH",
+      "doc": "Halt ETH"
+    },
+    {
+      "value": "l",
+      "name": "DueToNewsDissemination",
+      "doc": "Due to News Dissemination"
+    },
+    {
+      "value": "m",
+      "name": "DueToNewsPending",
+      "doc": "Due to News Pending"
+    },
+    {
+      "value": "n",
+      "name": "TradingResume",
+      "doc": "Trading Resume"
+    },
+    {
+      "value": "o",
+      "name": "OutOfSequence",
+      "doc": "Out of Sequence"
+    },
+    {
+      "value": "p",
+      "name": "BidSpecialist",
+      "doc": "Bid Specialist"
+    },
+    {
+      "value": "q",
+      "name": "OfferSpecialist",
+      "doc": "Offer Specialist"
+    },
+    {
+      "value": "r",
+      "name": "BidOfferSpecialist",
+      "doc": "Bid Offer Specialist"
+    },
+    {
+      "value": "s",
+      "name": "EndOfDaySAM",
+      "doc": "End of Day SAM"
+    },
+    {
+      "value": "t",
+      "name": "ForbiddenSAM",
+      "doc": "Forbidden SAM"
+    },
+    {
+      "value": "u",
+      "name": "FrozenSAM",
+      "doc": "Frozen SAM"
+    },
+    {
+      "value": "v",
+      "name": "PreOpeningSAM",
+      "doc": "PreOpening SAM"
+    },
+    {
+      "value": "w",
+      "name": "OpeningSAM",
+      "doc": "Opening SAM"
+    },
+    {
+      "value": "x",
+      "name": "OpenSAM",
+      "doc": "Open SAM"
+    },
+    {
+      "value": "y",
+      "name": "SurveillanceSAM",
+      "doc": "Surveillance SAM"
+    },
+    {
+      "value": "z",
+      "name": "SuspendedSAM",
+      "doc": "Suspended SAM"
+    },
+    {
+      "value": "0",
+      "name": "ReservedSAM",
+      "doc": "Reserved SAM"
+    },
+    {
+      "value": "1",
+      "name": "NoActiveSAM",
+      "doc": "No Active SAM"
+    },
+    {
+      "value": "2",
+      "name": "Restricted",
+      "doc": "Restricted"
+    },
+    {
+      "value": "3",
+      "name": "RestOfBookVWAP",
+      "doc": "Rest of Book VWAP"
+    },
+    {
+      "value": "4",
+      "name": "BetterPricesInConditionalOrders",
+      "doc": "Better Prices in Conditional Orders"
+    },
+    {
+      "value": "5",
+      "name": "MedianPrice",
+      "doc": "Median Price"
+    },
+    {
+      "value": "6",
+      "name": "FullCurve",
+      "doc": "Full Curve"
+    },
+    {
+      "value": "7",
+      "name": "FlatCurve",
+      "doc": "Flat Curve"
+    }
+  ]
+}

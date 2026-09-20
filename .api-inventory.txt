@@ -525,11 +525,7 @@ impl<'field> FixField<'field>
   pub fn group(&self) -> Option<&'field str>
   pub fn msgtype(&self) -> Option<&'field str>
   pub fn counter(&self) -> Result<Option<i32>>  (positive decimal digits only)
-  pub fn codes(&self) -> FixCodes<'field>  (the FIX:codes set in the specification's rank, walked lazily; nothing where absent)
-  pub fn code(&self, value: &str) -> Option<FixCodeValue<'field>>  (the code one wire value stands for; stops at the match)
-  pub fn code_by_name(&self, name: &str) -> Option<FixCodeValue<'field>>  (one symbolic name or alias, folded; two codes folding to one spelling answer nothing)
-  pub fn code_value(&self, text: &str) -> Option<&'field str>  (any spelling to its wire value; an unresolved spelling is None and the caller keeps its text)
-  pub fn code_name(&self, value: &str) -> Option<&'field str>
+  pub fn codeset(&self) -> Option<&'field str>  (the name of the FIX:codes set this field's values are drawn from; the dictionary holds the members, and FixRegistry::codeset_of answers them)
   pub fn replacements(&self) -> FixReplacements<'field>
   pub fn directions(&self) -> FixDirections<'field>  (tag 385's FIX:directions rules in document order; nothing where absent, which reads by the defaults)
   pub fn is_transient(&self) -> Result<bool>  (the FIX:transient flag, true where absent: whether this column travels from one message of a chain to the next, so a column settled to one message says false)
@@ -554,11 +550,11 @@ impl<'field> FixField<'field>
   pub fn remove_msgtype(&mut self) -> Option<String>
   pub fn set_counter(&mut self, tag: i32) -> Result<()>  (positive tag)
   pub fn remove_counter(&mut self) -> Result<Option<i32>>
-  pub fn set_codes(&mut self, codes: &[FixCode]) -> Result<()>  (rendered into the one canonical document in the caller's order; two codes sharing a name, or an empty value or name, is Error::Parse; empty removes)
-  pub fn remove_codes(&mut self) -> Result<Option<Vec<FixCode>>>  (answers what it held; a stored document the reader refuses is Error::Parse, already removed)
+  pub fn set_codeset(&mut self, name: &str) -> Result<()>  (names the set this field reads its values by; a name no store can file is InvalidRecord; empty removes; the members are stated with FixRegistry::set_codeset)
+  pub fn remove_codeset(&mut self) -> Option<String>  (answers the name it held)
   pub fn set_replacements(&mut self, entries: &[FixReplacement]) -> Result<()>
   pub fn remove_replacements(&mut self) -> Result<Option<Vec<FixReplacement>>>
-  pub fn set_directions(&mut self, directions: &[FixDirection]) -> Result<()>  (empty removes; resolves each code as the reading does and refuses one outside the set, a code named twice under any spelling, an empty code, no pattern, an empty pattern, or a pattern regex::bytes refuses; the field is unchanged)
+  pub fn set_directions(&mut self, directions: &[FixDirection]) -> Result<()>  (empty removes; refuses a code named twice under a folded spelling, an empty code, no pattern, an empty pattern, or a pattern regex::bytes refuses; the field is unchanged. Whether a code is one of the set is the dictionary's question: MsgDirection::from_registry resolves each against the set in force and drops one outside it with this setter's own refusal as the warning)
   pub fn remove_directions(&mut self) -> Result<Option<Vec<FixDirection>>>
   pub fn set_transient(&mut self, transient: bool) -> Result<()>  (writes FIX:transient; true is the default and is stored as stated)
   pub fn set_derivation(&mut self, term: &Term) -> Result<()>  (stores the term's canonical text; a term past the depth or node budget is Error::Parse and leaves the field unchanged; a registry validates it again at insert, update and load)
@@ -568,7 +564,7 @@ impl<'field> FixField<'field>
   impl<'field> Iterator for FixSpellings<'field>  (Item = &'field str; also DoubleEndedIterator and FusedIterator)
 
 ### yggdryl::fix::codes  [rust/src/fix/codes.rs]
-pub struct FixCode  (one member of a code set as a caller states it, what `FixFieldMut::set_codes` takes; re-exported at the crate root beside FixCodeValue and FixCodes)
+pub struct FixCode  (one member of a code set as a caller states it, what `FixRegistry::set_codeset` takes; re-exported at the crate root beside FixCodeSet, FixCodeValue and FixCodes)
   pub fn new(name: impl Into<SmolStr>, value: impl Into<SmolStr>) -> Self
   pub fn with_description(mut self, description: impl Into<SmolStr>) -> Self
   pub fn with_aliases<I, S>(mut self, aliases: I) -> Self where I: IntoIterator<Item = S>, S: Into<SmolStr>
@@ -591,12 +587,22 @@ pub struct FixCodeValue<'field>  (one member borrowed from the stored document; 
   pub fn parse_doc(self) -> Result<Option<String>>
   pub fn parse_group(self) -> Result<Option<String>>
   impl Clone, Copy, Debug, PartialEq, Eq for FixCodeValue<'_>
-pub struct FixCodes<'field>  (the walk `FixField::codes` answers, in the specification's rank; an absent property yields nothing)
+pub struct FixCodes<'field>  (the walk `FixCodeSet::codes` answers, in the specification's rank; an absent property yields nothing)
+  pub fn parse(document: &'field str) -> Result<Vec<FixCode>>  (the one text-to-typed-codes boundary: what a CLI flag, a binding argument or a hand-edited file carries, resolved once; Error::Parse naming the byte position otherwise)
   impl<'field> Iterator for FixCodes<'field>  (Item = Result<FixCodeValue<'field>>; also FusedIterator)
   impl Clone, Debug for FixCodes<'_>
+pub struct FixCodeSet<'registry>  (one named code set borrowed from the dictionary that holds it, answered by FixRegistry::codeset and codeset_of; every read is a slice of the stored document and allocates nothing)
+  pub const fn name(self) -> &'registry str  (the name the dictionary files this set under, and what a field's FIX:codes states)
+  pub const fn document(self) -> &'registry str  (the stored document, as the store writes it)
+  pub fn codes(self) -> FixCodes<'registry>  (the members, ordered by wire value)
+  pub fn code(self, value: &str) -> Option<FixCodeValue<'registry>>  (the code one wire value stands for; stops at the match)
+  pub fn code_by_name(self, name: &str) -> Option<FixCodeValue<'registry>>  (one symbolic name or alias, folded; two codes folding to one spelling answer nothing)
+  pub fn code_value(self, text: &str) -> Option<&'registry str>  (any spelling to its wire value through the three tiers; an unresolved spelling is None and the caller keeps its text)
+  pub fn code_name(self, value: &str) -> Option<&'registry str>
+  impl Clone, Copy, Debug, PartialEq, Eq for FixCodeSet<'_>
 
 ### yggdryl::fix::document  [rust/src/fix/document.rs]
-pub fn into_fix_document(field: Field) -> Result<Scalar>  (re-exported at the crate root; the native Field document a FIX store writes, with FIX:codes/FIX:replacements/FIX:directions and the FIX:names/fix:tags arrays as the JSON they are)
+pub fn into_fix_document(field: Field) -> Result<Scalar>  (re-exported at the crate root; the native Field document a FIX store writes, with FIX:replacements/FIX:directions and the FIX:names/fix:tags arrays as the JSON they are. FIX:codes is not one of them: it names the set the field reads by, and the members are the store's own codesets/<name>.json)
 pub fn from_fix_document(document: Scalar) -> Result<Field>  (re-exported at the crate root; the inverse, restating each document as its canonical text)
 pub struct Words<'doc>  (re-exported at the crate root; a code's aliases and a field's names alike)
   impl<'doc> Iterator for Words<'doc>  (Item = &'doc str; also FusedIterator)
@@ -896,6 +902,14 @@ pub struct MsgType  (registry-owned non-null Struct Field with a compiled group 
 impl FixRegistry
   pub fn get_msgtype(&self, spelling: &str) -> Option<&MsgType>  (one code namespace: the code's first holder answers a bare code; a name reaches the message of that name)
   pub fn msgtype(&self, spelling: &str) -> Result<&MsgType>
+  pub fn get_codeset(&self, name: &str) -> Option<FixCodeSet<'_>>  (the code set held under the folded name; the lenient door beside codeset)
+  pub fn codeset(&self, name: &str) -> Result<FixCodeSet<'_>>  (Error::Absent over "codesets" where none is held)
+  pub fn codeset_of(&self, field: &Field) -> Option<FixCodeSet<'_>>  (the set a field's FIX:codes names; the one door between a field and its vocabulary)
+  pub fn codesets(&self) -> impl ExactSizeIterator<Item = FixCodeSet<'_>>  (every set held, in name order)
+  pub fn set_codeset(&mut self, name: &str, codes: &[FixCode]) -> Result<()>  (states the members, replacing what the name held; rendered canonically in the caller's order; two codes sharing a name, or an empty value or name, is Error::Parse; a name no store can file is InvalidRecord; an empty slice removes the set and is a Conflict while a held field names it)
+  pub fn merge_codeset(&mut self, name: &str, codes: &[FixCode]) -> Result<()>  (folds by wire value, keeping what the set already held: a placeholder name yields to a real one and every surviving spelling stays an alias)
+  pub fn remove_codeset(&mut self, name: &str) -> Result<Option<Vec<FixCode>>>  (answers the members it held; a Conflict naming the first field that reads by it, because a field may not be left naming a vocabulary nothing states)
+  pub fn derived_codeset_name(field: &Field) -> SmolStr  (the name a field's own set is filed under where the specification names none: the folded field name and "codeset")
   pub fn get_definition(&self, category: FixCategory, name: &str) -> Option<&Field>  (one category's folded name; Fields answers the scalar of that name)
   pub fn definition(&self, category: FixCategory, name: &str) -> Result<&Field>  (absence reported with its category)
   pub fn definitions(&self, category: FixCategory) -> impl Iterator<Item = &Field>  (one category in the registry's own order, nothing collected; the field doors above reach a definition whatever category it is filed under, and these are the same definitions scoped to one)
@@ -931,7 +945,7 @@ pub struct FixRegistry  (one namespace of scalar fields, components and groups, 
   pub fn update(&mut self, field: Field) -> Result<()>  (merges metadata for the existing identity under the per-key rules; a definition is replaced whole)
   pub fn add_field(&mut self, field: Field) -> Result<bool>  (true = arrived; a stored identity or a folded stored name/alias merges, a held tag under another name adds beside the holder, a nested field folds into the component or group of its name)
   pub fn add_fields<I>(&mut self, fields: I) -> Result<(usize, usize)> where I: IntoIterator<Item = Field>,  (added, merged) under add_field's rules, one staged mutation
-  pub fn merge_with(&mut self, other: &Self) -> Result<(usize, usize)>  (scalars and definitions folded under add_field's rules, memberships unioned, one staged mutation; the counts are the scalars')
+  pub fn merge_with(&mut self, other: &Self) -> Result<(usize, usize)>  (code sets folded first, then scalars and definitions under add_field's rules, memberships unioned, one staged mutation; the counts are the scalars'. A name both dictionaries hold merges by wire value, and a field keeps the set it already reads by with the incoming set folded into it, so a merge widens a vocabulary and never narrows one)
   pub fn add_cfb_file(&mut self, handle: &dyn IOBase, dialect: Option<&str>) -> Result<(usize, usize)>  (the dialect or the handle's URL stem, merged under add_field's rules)
   pub fn add_cfb_files(&mut self, root: &dyn IOBase, pattern: &str, dialect: Option<&str>) -> Result<(usize, usize, usize)>  (files, added, merged) over IOBase::glob, private entries never matched, files folded in ascending URL order, the dialect or each file's own stem, one staged mutation for the whole call
   pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Field>  (a scalar, a component or a group; None when absent or still referenced)
@@ -959,11 +973,11 @@ pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>>  (each column's tag, 
 
 ### yggdryl::fix::store  [rust/src/fix/store.rs]
 impl FixRegistry
-  pub fn from_json(input: &str) -> Result<Self>  (`{fields, components, groups}` and no other key)
+  pub fn from_json(input: &str) -> Result<Self>  (`{codesets, fields, components, groups}` and no other key; the code sets are read first, because a field naming one the dictionary does not hold is refused)
   pub fn into_json(&self) -> Result<String>
   pub fn add_json_file(&mut self, handle: &dyn IOBase) -> Result<(usize, usize)>  (added, merged) under merge_with's rules; no dialect - a snapshot states its own FIX:branches
-  pub fn from_handle(handle: &dyn IOBase) -> Result<Self>  (`fields/<shard>.json` arrays under nine-digit shard names - tag 55 in `fields/000000000.json`, tag 5001 in `fields/000000050.json` - and one native Field document per component or group; a crate-tagged document and `components/fixmsg.json` are passed over, the crate's own definition being the one that types a row; references resolve once, missing names and cycles refused)
-  pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()>  (the three category directories, and nothing else; writes the crate's own beside the dictionary's - `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json` - then removes every `.json` it did not write and every empty category directory)
+  pub fn from_handle(handle: &dyn IOBase) -> Result<Self>  (`codesets/<name>.json` first - one document per named code set, stating its name and its members, refused when the name and the filename stem disagree - then `fields/<shard>.json` arrays under nine-digit shard names - tag 55 in `fields/000000000.json`, tag 5001 in `fields/000000050.json` - and one native Field document per component or group; a crate-tagged document and `components/fixmsg.json` are passed over, the crate's own definition being the one that types a row; references resolve once, missing names and cycles refused)
+  pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()>  (the three category directories and `codesets/`, and nothing else; writes the crate's own beside the dictionary's - `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json` - then removes every `.json` it did not write and every empty category directory)
 
 ### yggdryl::fix::ulbridge  [rust/src/fix/ulbridge.rs]
 pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: `timestamp`, `msgthreadid`, `msgsessionid`, `msgctxid`, `msgseqnum`, `msgpluginid`, `level`, each capture named for the field it fills; kept ULBridge's because the line shape is the product's)

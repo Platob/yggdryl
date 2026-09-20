@@ -2137,7 +2137,9 @@ impl FixCodec {
                 .fills
                 .iter()
                 .find(|fill| fill.tag == 52 && !fill.value.is_null())
-                .map(|fill| super::build::typed_fill(fill.field, fill.tag, fill.value))
+                .map(|fill| {
+                    super::build::typed_fill(&self.registry, fill.field, fill.tag, fill.value)
+                })
                 .transpose()?
         };
         let message = FixMsg::from_built(

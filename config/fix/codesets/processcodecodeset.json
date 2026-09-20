@@ -1,0 +1,40 @@
+{
+  "name": "processcodecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Regular",
+      "doc": "Regular"
+    },
+    {
+      "value": "1",
+      "name": "SoftDollar",
+      "doc": "Soft Dollar"
+    },
+    {
+      "value": "2",
+      "name": "StepIn",
+      "doc": "Step-In"
+    },
+    {
+      "value": "3",
+      "name": "StepOut",
+      "doc": "Step-Out"
+    },
+    {
+      "value": "4",
+      "name": "SoftDollarStepIn",
+      "doc": "Soft-dollar Step-In"
+    },
+    {
+      "value": "5",
+      "name": "SoftDollarStepOut",
+      "doc": "Soft-dollar Step-Out"
+    },
+    {
+      "value": "6",
+      "name": "PlanSponsor",
+      "doc": "Plan Sponsor"
+    }
+  ]
+}

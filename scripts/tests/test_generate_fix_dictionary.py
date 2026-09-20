@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "generate_fix_dictionary.py"
@@ -35,6 +37,20 @@ def definition_tags(catalog: dict) -> dict:
         for category in ("components", "groups", "messages")
         for field in catalog[category]
     }
+
+
+def built(document: bytes) -> tuple[dict, dict]:
+    """`build` over one hand-written Latest document, and what it answers.
+
+    The replacement and derivation tables name tags of the real specification
+    - tag 20 leads the first, and the second reads the `SecurityType` code
+    set - so neither resolves against a fixture of two fields, and neither is
+    what the code set tests pin.
+    """
+    parsed = {source.source_id: {"fields": {}} for source in GENERATOR.SOURCES}
+    parsed["orchestra-latest"] = GENERATOR.parse_orchestra(document)
+    with mock.patch.object(GENERATOR, "attach_replacements"), mock.patch.object(GENERATOR, "attach_derivations"):
+        return GENERATOR.build(parsed)
 
 
 class FixCatalogGeneration(unittest.TestCase):
@@ -68,7 +84,7 @@ class FixCatalogGeneration(unittest.TestCase):
         self.assertEqual({"FIX:component": "party"}, item["metadata"])
         children = components["party"]["dtype"]["fields"]
         self.assertEqual(["partyid", "nopartysubids", "ptyssubgrp"], [field["name"] for field in children])
-        self.assertEqual({"FIX:field": "nopartysubids"}, children[1]["metadata"])
+        self.assertEqual({"FIX:field": "nopartysubids", "FIX:tag": "802"}, children[1]["metadata"])
         self.assertEqual({"FIX:group": "ptyssubgrp"}, children[2]["metadata"])
         message = catalog["messages"][0]
         self.assertEqual("D", message["metadata"]["FIX:msgtype"])
@@ -129,32 +145,29 @@ class FixCatalogGeneration(unittest.TestCase):
             with self.assertRaises(ValueError, msg=value):
                 GENERATOR.version_key(value)
 
-    def test_field_enums_are_inline_even_when_the_source_reuses_a_code_set(self) -> None:
-        latest = GENERATOR.parse_orchestra(b'''<repository xmlns="http://fixprotocol.io/2020/orchestra/repository" version="FIX.5.0SP2">
+    def test_two_fields_reading_one_code_set_name_it_and_hold_it_once(self) -> None:
+        catalog, code_sets = built(b'''<repository xmlns="http://fixprotocol.io/2020/orchestra/repository" version="FIX.5.0SP2">
           <codeSets><codeSet name="SourceCodeSet" type="String"><code name="CUSIP" value="1"/></codeSet></codeSets>
           <fields><field id="22" name="SecurityIDSource" type="SourceCodeSet"/>
           <field id="456" name="SecurityAltIDSource" type="String" codeSet="SourceCodeSet"/></fields>
         </repository>''')
-        parsed = {source.source_id: {"fields": {}} for source in GENERATOR.SOURCES}
-        parsed["orchestra-latest"] = latest
-        catalog = GENERATOR.build(parsed)
         self.assertEqual({"fields", "messages", "components", "groups"}, set(catalog))
         self.assertEqual(2, len(catalog["fields"]))
-        enums = [field["metadata"]["FIX:codes"] for field in catalog["fields"]]
-        self.assertEqual(enums[0], enums[1])
-        self.assertIn('"name":"CUSIP"', enums[0])
-        self.assertTrue(all("FIX:codeset" not in field["metadata"] for field in catalog["fields"]))
+        # Both fields read by the set the specification names, and the members
+        # are stated once, under that name and nowhere else.
+        named = [field["metadata"]["FIX:codes"] for field in catalog["fields"]]
+        self.assertEqual(["sourcecodeset", "sourcecodeset"], named)
+        self.assertEqual({"sourcecodeset": [{"value": "1", "name": "CUSIP"}]}, code_sets)
 
-    def test_message_type_is_text_with_its_inline_enum(self) -> None:
-        latest = GENERATOR.parse_orchestra(b'''<repository xmlns="http://fixprotocol.io/2020/orchestra/repository" version="FIX.5.0SP2">
+    def test_message_type_is_text_reading_by_its_code_set(self) -> None:
+        catalog, code_sets = built(b'''<repository xmlns="http://fixprotocol.io/2020/orchestra/repository" version="FIX.5.0SP2">
           <codeSets><codeSet name="MsgTypeCodeSet" type="String"><code name="NewOrderSingle" value="D"/></codeSet></codeSets>
           <fields><field id="35" name="MsgType" type="MsgTypeCodeSet"/></fields>
         </repository>''')
-        parsed = {source.source_id: {"fields": {}} for source in GENERATOR.SOURCES}
-        parsed["orchestra-latest"] = latest
-        field = GENERATOR.build(parsed)["fields"][0]
+        field = catalog["fields"][0]
         self.assertEqual({"type": "string"}, field["dtype"])
-        self.assertIn('"name":"NewOrderSingle"', field["metadata"]["FIX:codes"])
+        self.assertEqual("msgtypecodeset", field["metadata"]["FIX:codes"])
+        self.assertEqual([{"value": "D", "name": "NewOrderSingle"}], code_sets["msgtypecodeset"])
 
     def test_datatypes_are_stored_as_the_crate_writes_them(self) -> None:
         # One `string` tag for every string, stating only what it declares;
@@ -166,15 +179,6 @@ class FixCatalogGeneration(unittest.TestCase):
             GENERATOR.dtype_document("MonthYear"),
         )
         self.assertEqual({"type": "binary"}, GENERATOR.dtype_document("data"))
-
-    def test_a_string_yields_backward_to_a_later_temporal_type(self) -> None:
-        entries = [
-            {"since": "4.0", "type": {"type": "string"}},
-            {"since": "4.2", "type": GENERATOR.dtype_document("MonthYear")},
-            {"since": "4.4", "type": {"type": "datetime64", "unit": "nanosecond"}},
-        ]
-        GENERATOR.back_type(entries)
-        self.assertEqual([entries[2]["type"]] * 3, [entry["type"] for entry in entries])
 
     def test_invalid_graphs_fail_with_location(self) -> None:
         invalid = copy.deepcopy(self.latest)
@@ -255,19 +259,32 @@ class FixCatalogGeneration(unittest.TestCase):
 
     def test_native_documents_replace_retired_trees(self) -> None:
         catalog = GENERATOR.build_catalog(self.latest, self.fields)
-        documents = GENERATOR.render_tree(catalog)
-        self.assertIn("fields/4.json", documents)
+        codes = [{"value": "1", "name": "Buy"}]
+        documents = GENERATOR.render_tree(catalog, {"sidecodeset": codes})
+        self.assertIn("fields/000000004.json", documents)
         self.assertIn("groups/parties.json", documents)
         self.assertIn("components/party.json", documents)
+        # A code set is a document of its own, stating the name it is filed
+        # under, so a field reading by that name reaches it.
+        self.assertEqual(
+            {"name": "sidecodeset", "codes": codes},
+            json.loads(documents["codesets/sidecodeset.json"]),
+        )
         self.assertNotIn("layouts.json", documents)
         with tempfile.TemporaryDirectory() as directory:
             out = pathlib.Path(directory)
             (out / "primitive").mkdir()
             (out / "primitive" / "4.json").write_text("[]", encoding="utf-8")
+            (out / "codesets").mkdir()
+            (out / "codesets" / "quotecodeset.json").write_text("{}", encoding="utf-8")
             (out / "layouts.json").write_text("{}", encoding="utf-8")
             hashes = GENERATOR.write_tree(out, documents)
             self.assertFalse((out / "primitive").exists())
             self.assertFalse((out / "layouts.json").exists())
+            # A set this regeneration no longer states is swept like any other
+            # stale document; the folder itself stays.
+            self.assertFalse((out / "codesets" / "quotecodeset.json").exists())
+            self.assertTrue((out / "codesets" / "sidecodeset.json").exists())
             self.assertEqual(set(documents), set(hashes))
 
 

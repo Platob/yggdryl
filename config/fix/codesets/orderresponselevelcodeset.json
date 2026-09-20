@@ -1,0 +1,25 @@
+{
+  "name": "orderresponselevelcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoAck",
+      "doc": "No acknowledgement"
+    },
+    {
+      "value": "1",
+      "name": "MinimumAck",
+      "doc": "Minimum acknowledgement"
+    },
+    {
+      "value": "2",
+      "name": "AckEach",
+      "doc": "Acknowledge each order"
+    },
+    {
+      "value": "3",
+      "name": "SummaryAck",
+      "doc": "Summary acknowledgement"
+    }
+  ]
+}

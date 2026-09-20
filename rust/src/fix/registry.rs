@@ -11,13 +11,13 @@
 //! held it. The registry is built rarely and resolved constantly, so that
 //! `O(n)` insertion trade is deliberate.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{BuildHasherDefault, Hash, Hasher};
 use std::iter::FusedIterator;
 use std::sync::{Arc, OnceLock};
 
-use smol_str::format_smolstr;
+use smol_str::{SmolStr, format_smolstr};
 
 use super::{FixId, FixKey};
 use crate::folds_equal;
@@ -314,6 +314,17 @@ impl FieldFacts {
 pub struct FixRegistry {
     fields: Vec<Field>,
     pub(super) catalog: super::catalog::Catalog,
+    /// The [code sets](super::codes) this dictionary holds, by folded name.
+    ///
+    /// One owner per vocabulary: a field's `FIX:codes` names the set it
+    /// draws on and the document lives here once, however many fields read
+    /// by it - 103 of them for one offset-unit set in the shipped dictionary,
+    /// and 2,026 fields over 735 sets in all. Held
+    /// behind an `Arc` because every clone of a registry, and every staged
+    /// copy a mutation makes, shares the documents rather than copying
+    /// them; ordered because the store, the snapshot and the hash all read
+    /// them in one order.
+    pub(super) codesets: BTreeMap<SmolStr, Arc<str>>,
     ids: Index<FixId>,
     /// A canonical tag, and the first field that held it: a bare wire tag
     /// answers that field, and a later field on the same tag under another
@@ -388,6 +399,7 @@ impl FixRegistry {
         let mut registry = Self {
             fields: Vec::new(),
             catalog: super::catalog::Catalog::default(),
+            codesets: BTreeMap::new(),
             ids: Index::default(),
             tags: Index::default(),
             alternate_tags: Index::default(),
@@ -798,6 +810,7 @@ impl FixRegistry {
         let Some(position) = self.position_of_identity(&field)? else {
             return Err(absent(FixKey::Id(id)));
         };
+        self.unify_named_codeset(position, &field)?;
         let stored = &self.fields[position];
         if stored.dtype() != field.dtype() {
             return Err(datatype_disagreement(stored, id, &field));
@@ -820,6 +833,15 @@ impl FixRegistry {
         Ok(())
     }
 
+    /// Folds the set `field` reads by into the one the stored field at
+    /// `position` reads by, so the fold that keeps the stored name keeps
+    /// every member too.
+    fn unify_named_codeset(&mut self, position: usize, field: &Field) -> Result<()> {
+        let stored = self.fields[position].as_fix().codeset().map(SmolStr::new);
+        let incoming = field.as_fix().codeset().map(SmolStr::new);
+        self.unify_codeset(stored.as_deref(), incoming.as_deref())
+    }
+
     /// Folds `field` into the stored field at `position`, which its name
     /// reaches.
     ///
@@ -839,6 +861,10 @@ impl FixRegistry {
     fn merge_named(&mut self, position: usize, field: Field) -> Result<()> {
         self.validate_definition(crate::FixCategory::Fields, &field)?;
         let (incoming, _) = canonical_identity(&field)?;
+        // Before the fold, because the fold keeps the stored field's set
+        // name: what the incoming field's set declares has to be in that set
+        // by the time the name is settled.
+        self.unify_named_codeset(position, &field)?;
         let stored = &self.fields[position];
         let (tag, id) = canonical_identity(stored)?;
         if stored.dtype() != field.dtype() {
@@ -1134,6 +1160,11 @@ impl FixRegistry {
         // removal swaps the last field into the hole, and a store round trip
         // writes in `iter` order and loads in file order, so two dictionaries
         // that compare equal could merge to two different answers.
+        // The vocabularies first, and this is why: a field keeps the set it
+        // already reads by, so the members the other dictionary states have
+        // to be in that set by the time the field is folded. Fold them after
+        // and a merge would narrow a vocabulary instead of widening one.
+        self.merge_codesets(other)?;
         // The scalars alone: the definitions fold through the catalog merge
         // below, under their own rules, and counting them here would count
         // one fold twice.
@@ -1759,7 +1790,10 @@ impl fmt::Debug for FixRegistry {
 
 impl PartialEq for FixRegistry {
     fn eq(&self, other: &Self) -> bool {
-        self.len() == other.len() && self.iter().eq(other.iter()) && self.catalog == other.catalog
+        self.len() == other.len()
+            && self.iter().eq(other.iter())
+            && self.catalog == other.catalog
+            && self.codesets == other.codesets
     }
 }
 
@@ -1833,6 +1867,7 @@ impl Clone for FixRegistry {
         Self {
             fields: self.fields.clone(),
             catalog: self.catalog.clone(),
+            codesets: self.codesets.clone(),
             ids: self.ids.clone(),
             tags: self.tags.clone(),
             alternate_tags: self.alternate_tags.clone(),
@@ -1853,6 +1888,14 @@ impl Hash for FixRegistry {
         self.len().hash(state);
         for field in self {
             field.hash(state);
+        }
+        // The vocabularies the fields read by: two dictionaries whose fields
+        // agree but whose sets do not are two dictionaries, and a name a
+        // field states means whatever the set under it says.
+        self.codesets.len().hash(state);
+        for (name, document) in &self.codesets {
+            name.hash(state);
+            document.hash(state);
         }
         for category in [crate::FixCategory::Components, crate::FixCategory::Groups] {
             category.hash(state);

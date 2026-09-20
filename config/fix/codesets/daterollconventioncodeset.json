@@ -1,0 +1,235 @@
+{
+  "name": "daterollconventioncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "FirstDay",
+      "doc": "1st day of the month"
+    },
+    {
+      "value": "2",
+      "name": "SecondDay",
+      "doc": "2nd day of the month"
+    },
+    {
+      "value": "3",
+      "name": "ThirdDay",
+      "doc": "3rd day of the month"
+    },
+    {
+      "value": "4",
+      "name": "FourthDay",
+      "doc": "4th day of the month"
+    },
+    {
+      "value": "5",
+      "name": "FifthDay",
+      "doc": "5th day of the month"
+    },
+    {
+      "value": "6",
+      "name": "SixthDay",
+      "doc": "6thd day of the month"
+    },
+    {
+      "value": "7",
+      "name": "SeventhDay",
+      "doc": "7th day of the month"
+    },
+    {
+      "value": "8",
+      "name": "EighthDay",
+      "doc": "8th day of the month"
+    },
+    {
+      "value": "9",
+      "name": "NinthDay",
+      "doc": "9th day of the month"
+    },
+    {
+      "value": "10",
+      "name": "TenthDay",
+      "doc": "10th day of the month"
+    },
+    {
+      "value": "11",
+      "name": "EleventhDay",
+      "doc": "11th day of the month"
+    },
+    {
+      "value": "12",
+      "name": "TwelvthDay",
+      "doc": "12th day of the month"
+    },
+    {
+      "value": "13",
+      "name": "ThirteenthDay",
+      "doc": "13th day of the month"
+    },
+    {
+      "value": "14",
+      "name": "ForteenthDay",
+      "doc": "14th day of the month"
+    },
+    {
+      "value": "15",
+      "name": "FifteenthDay",
+      "doc": "15th day of the month"
+    },
+    {
+      "value": "16",
+      "name": "SixteenthDay",
+      "doc": "16th day of the month"
+    },
+    {
+      "value": "17",
+      "name": "SeventeenthDay",
+      "doc": "17th day of the month"
+    },
+    {
+      "value": "18",
+      "name": "EighteenthDay",
+      "doc": "18th day of the month"
+    },
+    {
+      "value": "19",
+      "name": "NineteenthDay",
+      "doc": "19th day of the month"
+    },
+    {
+      "value": "20",
+      "name": "TwentiethDay",
+      "doc": "20th day of the month"
+    },
+    {
+      "value": "21",
+      "name": "TwentyFirstDay",
+      "doc": "21st day of the month"
+    },
+    {
+      "value": "22",
+      "name": "TwentySecondDay",
+      "doc": "22nd day of the month"
+    },
+    {
+      "value": "23",
+      "name": "TwentyThirdDay",
+      "doc": "23rd day of the month"
+    },
+    {
+      "value": "24",
+      "name": "TwentyFourthDay",
+      "doc": "24th day of the month"
+    },
+    {
+      "value": "25",
+      "name": "TwentyFifthDay",
+      "doc": "25th day of the month"
+    },
+    {
+      "value": "26",
+      "name": "TwentySixthDay",
+      "doc": "26th day of the month"
+    },
+    {
+      "value": "27",
+      "name": "TwentySeventhDay",
+      "doc": "27th day of the month"
+    },
+    {
+      "value": "28",
+      "name": "TwentyEigthDa28y",
+      "doc": "28th day of the month"
+    },
+    {
+      "value": "29",
+      "name": "TwentyNinthDay",
+      "doc": "29th day of the month"
+    },
+    {
+      "value": "30",
+      "name": "ThirtiethDay",
+      "doc": "30th day of the month"
+    },
+    {
+      "value": "EOM",
+      "name": "EOM",
+      "doc": "The end of the month."
+    },
+    {
+      "value": "FRN",
+      "name": "FRN",
+      "doc": "The floating rate note convention or Eurodollar convention."
+    },
+    {
+      "value": "IMM",
+      "name": "IMM",
+      "doc": "The International Money Market settlement date, i.e. the 3rd Wednesday of the month."
+    },
+    {
+      "value": "IMMCAD",
+      "name": "IMMCAD",
+      "doc": "The last trading day/expiration day of the Canadian Derivatives Exchange."
+    },
+    {
+      "value": "IMMAUD",
+      "name": "IMMAUD",
+      "doc": "The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract."
+    },
+    {
+      "value": "IMMNZD",
+      "name": "IMMNZD",
+      "doc": "The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract."
+    },
+    {
+      "value": "SFE",
+      "name": "SFE",
+      "doc": "The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates."
+    },
+    {
+      "value": "NONE",
+      "name": "NONE",
+      "doc": "No adjustment"
+    },
+    {
+      "value": "TBILL",
+      "name": "TBILL",
+      "doc": "The 13-week and 26-week U.S. Treasury Bill auction dates."
+    },
+    {
+      "value": "MON",
+      "name": "MON",
+      "doc": "Monday"
+    },
+    {
+      "value": "TUE",
+      "name": "TUE",
+      "doc": "Tuesday"
+    },
+    {
+      "value": "WED",
+      "name": "WED",
+      "doc": "Wednesday"
+    },
+    {
+      "value": "THU",
+      "name": "THU",
+      "doc": "Thursday"
+    },
+    {
+      "value": "FRI",
+      "name": "FRI",
+      "doc": "Friday"
+    },
+    {
+      "value": "SAT",
+      "name": "SAT",
+      "doc": "Saturday"
+    },
+    {
+      "value": "SUN",
+      "name": "SUN",
+      "doc": "Sunday"
+    }
+  ]
+}

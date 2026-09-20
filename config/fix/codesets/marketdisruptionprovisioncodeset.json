@@ -1,0 +1,25 @@
+{
+  "name": "marketdisruptionprovisioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NotApplicable",
+      "doc": "Not applicable"
+    },
+    {
+      "value": "1",
+      "name": "Applicable",
+      "doc": "Applicable"
+    },
+    {
+      "value": "2",
+      "name": "AsInMasterAgreement",
+      "doc": "As specified in master agreement"
+    },
+    {
+      "value": "3",
+      "name": "AsInConfirmation",
+      "doc": "As specified in confirmation"
+    }
+  ]
+}

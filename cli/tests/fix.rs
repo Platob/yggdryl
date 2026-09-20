@@ -5,7 +5,7 @@ use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use yggdryl::local::Folder;
-use yggdryl::{DataType, Field, FixCode, FixDirection, FixId, FixRegistry};
+use yggdryl::{DataType, Field, FixDirection, FixId, FixRegistry};
 
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -123,10 +123,15 @@ fn categories_expose_all_crud_operations_and_examples() {
         assert!(create_help.contains("Examples:"));
     }
     // A message is a component carrying a message type: the
-    // tree that named a fourth category is gone with it.
-    for retired in ["list", "show", "set", "rm", "codesets", "messages"] {
+    // tree that named a fourth category is gone with it. `codesets` is a
+    // store of its own rather than a category, and has its own verbs.
+    for retired in ["list", "show", "set", "rm", "messages"] {
         workspace.failure(&[retired]);
     }
+    workspace.failure(&["codesets"]);
+    let codesets_help = output_text(&workspace.success(&["codesets", "write", "--help"]));
+    assert!(codesets_help.contains("--merge"));
+    assert!(codesets_help.contains("Examples:"));
 }
 
 #[test]
@@ -203,11 +208,16 @@ fn component_identifier_flags_reach_the_core_setter_and_replace_on_update() {
 #[test]
 fn all_categories_roundtrip_update_and_delete_in_dependency_order() {
     let workspace = Workspace::new();
+    workspace.success(&[
+        "codesets",
+        "write",
+        "sidecodeset",
+        "--codes",
+        r#"[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]"#,
+    ]);
     let mut side = DataType::Int32.nullable_field("Side");
     side.as_fix_mut().set_tag(54).unwrap();
-    side.as_fix_mut()
-        .set_codes(&[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")])
-        .unwrap();
+    side.as_fix_mut().set_codeset("sidecodeset").unwrap();
     workspace.input("fields", "create", &workspace.document(&side));
     workspace.success(&["fields", "create", "NoPartyIDs", "int32", "--tag", "453"]);
     workspace.success(&[
@@ -264,7 +274,12 @@ fn all_categories_roundtrip_update_and_delete_in_dependency_order() {
     let count = workspace.read("fields", "453");
     assert_eq!(count.name(), "NoPartyIDs");
     assert_eq!(count.dtype(), &DataType::Int32);
-    let codes = output_text(&workspace.success(&["fields", "read", "54"]));
+    // A field read names the vocabulary it reads by; the members are one
+    // document, printed where they live.
+    let named = output_text(&workspace.success(&["fields", "read", "54"]));
+    assert!(named.contains("sidecodeset"), "{named}");
+    assert!(!named.contains("Buy"), "{named}");
+    let codes = output_text(&workspace.success(&["codesets", "read", "sidecodeset"]));
     assert!(codes.contains("Buy") && codes.contains("Sell"), "{codes}");
     workspace.failure(&["fields", "delete", "453"]);
     workspace.failure(&["components", "delete", "Party"]);
@@ -493,8 +508,27 @@ fn a_field_identity_is_its_tag_and_name_as_one_int() {
 }
 
 #[test]
-fn field_codes_are_canonical_inline_metadata_and_invalid_updates_are_atomic() {
+fn a_code_set_is_named_once_and_every_field_reading_by_it_says_so() {
     let workspace = Workspace::new();
+    // The set first: a field may not name a vocabulary the dictionary does
+    // not hold, which is what `fields create --codes` is refused on below.
+    workspace.failure(&[
+        "fields",
+        "create",
+        "Side",
+        "int32",
+        "--tag",
+        "54",
+        "--codes",
+        "sidecodeset",
+    ]);
+    workspace.success(&[
+        "codesets",
+        "write",
+        "sidecodeset",
+        "--codes",
+        r#"[{"value":"2","name":"Sell"},{"value":"1","name":"Buy"}]"#,
+    ]);
     workspace.success(&[
         "fields",
         "create",
@@ -503,41 +537,82 @@ fn field_codes_are_canonical_inline_metadata_and_invalid_updates_are_atomic() {
         "--tag",
         "54",
         "--codes",
-        r#"[{"value":"2","name":"Sell"},{"value":"1","name":"Buy"}]"#,
+        "sidecodeset",
+    ]);
+    // One vocabulary, named by as many fields as read by it.
+    workspace.success(&[
+        "fields",
+        "create",
+        "LegSide",
+        "int32",
+        "--tag",
+        "624",
+        "--codes",
+        "sidecodeset",
     ]);
     let field = workspace.read("fields", "54");
-    assert_eq!(field.as_fix().code_value("buy"), Some("1"));
-    assert_eq!(field.as_fix().codes().next().unwrap().unwrap().value(), "1");
+    assert_eq!(field.as_fix().codeset(), Some("sidecodeset"));
+    assert_eq!(
+        workspace.read("fields", "624").as_fix().codeset(),
+        Some("sidecodeset")
+    );
+
+    let listed = output_text(&workspace.success(&["codesets", "list"]));
+    assert!(listed.contains("sidecodeset"), "{listed}");
+    let read = output_text(&workspace.success(&["codesets", "read", "sidecodeset"]));
+    for spelling in ["Buy", "Sell"] {
+        assert!(read.contains(spelling), "{read}");
+    }
+
+    // A document that is not one, and one naming two codes alike, leave the
+    // set exactly as it was.
+    let held = workspace.success(&["codesets", "read", "sidecodeset", "--json"]);
     for document in [
         "not json",
         r"[]junk",
         r#"[{"value":"1","name":"Buy"},{"value":"2","name":"Buy"}]"#,
     ] {
-        workspace.failure(&[
-            "fields", "update", "Side", "int32", "--tag", "54", "--codes", document,
-        ]);
-        assert_eq!(workspace.read("fields", "54"), field);
+        workspace.failure(&["codesets", "write", "sidecodeset", "--codes", document]);
+        assert_eq!(
+            output_text(&workspace.success(&["codesets", "read", "sidecodeset", "--json"])),
+            output_text(&held)
+        );
     }
-    workspace.failure(&[
-        "fields",
-        "create",
-        "Other",
-        "int32",
-        "--tag",
-        "55",
-        "--codeset",
-        "Side",
-    ]);
+
+    // A merge adds what only the incoming side states and keeps the rest.
     workspace.success(&[
-        "fields", "update", "Side", "int32", "--tag", "54", "--codes", r"[]",
+        "codesets",
+        "write",
+        "sidecodeset",
+        "--merge",
+        "--codes",
+        r#"[{"value":"7","name":"Undisclosed"}]"#,
     ]);
-    assert_eq!(workspace.read("fields", "54").as_fix().codes().count(), 0);
+    let merged = output_text(&workspace.success(&["codesets", "read", "sidecodeset"]));
+    for spelling in ["Buy", "Sell", "Undisclosed"] {
+        assert!(merged.contains(spelling), "{merged}");
+    }
+
+    // A set two fields still read by is not one a delete may take away.
+    workspace.failure(&["codesets", "delete", "sidecodeset"]);
+    workspace.success(&["fields", "delete", "624"]);
+    workspace.success(&["fields", "update", "Side", "int32", "--tag", "54"]);
+    assert_eq!(workspace.read("fields", "54").as_fix().codeset(), None);
+    workspace.success(&["codesets", "delete", "sidecodeset"]);
+    workspace.failure(&["codesets", "read", "sidecodeset"]);
 }
 
 #[test]
 fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic() {
     let workspace = Workspace::new();
-    let codes = r#"[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]"#;
+    workspace.success(&[
+        "codesets",
+        "write",
+        "msgdirectioncodeset",
+        "--codes",
+        r#"[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]"#,
+    ]);
+    let codes = "msgdirectioncodeset";
     workspace.success(&[
         "fields",
         "create",
@@ -551,9 +626,9 @@ fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic(
         r#"[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]"#,
     ]);
     let field = workspace.read("fields", "385");
-    // Each raw document was re-rendered through its typed setter, and neither
-    // wiped the other: the set and its rules are one definition.
-    assert_eq!(field.as_fix().code_value("send"), Some("S"));
+    // The set it names and the rules it carries are one definition, and
+    // neither write wiped the other.
+    assert_eq!(field.as_fix().codeset(), Some("msgdirectioncodeset"));
     let rules = field
         .as_fix()
         .directions()
@@ -604,5 +679,5 @@ fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic(
     let cleared = workspace.read("fields", "385");
     assert_eq!(cleared.as_fix().directions().count(), 0);
     assert_eq!(cleared.get_metadata("FIX:directions"), None);
-    assert_eq!(cleared.as_fix().code_value("send"), Some("S"));
+    assert_eq!(cleared.as_fix().codeset(), Some("msgdirectioncodeset"));
 }

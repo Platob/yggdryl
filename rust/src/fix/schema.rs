@@ -1071,7 +1071,7 @@ fn push_child(
         if let Some(scalar) = registry.get_scalar_by_tag(counter) {
             if !taken(fields, scalar.name()) {
                 let count = value.as_sequence().map_or(0, <[crate::Scalar]>::len);
-                let count = super::build::typed_spelling(scalar, &count.to_string());
+                let count = super::build::typed_spelling(registry, scalar, &count.to_string());
                 let mut scalar = scalar.clone();
                 scalar.set_nullable(count.is_null());
                 fields.push(scalar);
@@ -1269,7 +1269,7 @@ fn child_from_entry(
         }
         _ => {
             let value = entry.value().map_or(crate::Scalar::Null, |text| {
-                super::build::typed_spelling_remembered(registry.memo(), known, text)
+                super::build::typed_spelling_remembered(registry, known, text)
             });
             let mut field = known.clone();
             field.set_nullable(value.is_null());

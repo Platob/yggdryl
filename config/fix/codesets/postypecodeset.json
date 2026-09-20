@@ -1,0 +1,190 @@
+{
+  "name": "postypecodeset",
+  "codes": [
+    {
+      "value": "ALC",
+      "name": "AllocationTradeQty",
+      "doc": "Allocation Trade Qty"
+    },
+    {
+      "value": "AS",
+      "name": "OptionAssignment",
+      "doc": "Option Assignment"
+    },
+    {
+      "value": "ASF",
+      "name": "AsOfTradeQty",
+      "doc": "As-of Trade Qty"
+    },
+    {
+      "value": "DLV",
+      "name": "DeliveryQty",
+      "doc": "Delivery Qty"
+    },
+    {
+      "value": "ETR",
+      "name": "ElectronicTradeQty",
+      "doc": "Electronic Trade Qty"
+    },
+    {
+      "value": "EX",
+      "name": "OptionExerciseQty",
+      "doc": "Option Exercise Qty"
+    },
+    {
+      "value": "FIN",
+      "name": "EndOfDayQty",
+      "doc": "End-of-Day Qty"
+    },
+    {
+      "value": "IAS",
+      "name": "IntraSpreadQty",
+      "doc": "Intra-spread Qty"
+    },
+    {
+      "value": "IES",
+      "name": "InterSpreadQty",
+      "doc": "Inter-spread Qty"
+    },
+    {
+      "value": "PA",
+      "name": "AdjustmentQty",
+      "doc": "Adjustment Qty"
+    },
+    {
+      "value": "PIT",
+      "name": "PitTradeQty",
+      "doc": "Pit Trade Qty"
+    },
+    {
+      "value": "SOD",
+      "name": "StartOfDayQty",
+      "doc": "Start-of-Day Qty"
+    },
+    {
+      "value": "SPL",
+      "name": "IntegralSplit",
+      "doc": "Integral Split"
+    },
+    {
+      "value": "TA",
+      "name": "TransactionFromAssignment",
+      "doc": "Transaction from Assignment"
+    },
+    {
+      "value": "TOT",
+      "name": "TotalTransactionQty",
+      "doc": "Total Transaction Qty"
+    },
+    {
+      "value": "TQ",
+      "name": "TransactionQuantity",
+      "doc": "Transaction Quantity"
+    },
+    {
+      "value": "TRF",
+      "name": "TransferTradeQty",
+      "doc": "Transfer Trade Qty"
+    },
+    {
+      "value": "TX",
+      "name": "TransactionFromExercise",
+      "doc": "Transaction from Exercise"
+    },
+    {
+      "value": "XM",
+      "name": "CrossMarginQty",
+      "doc": "Cross Margin Qty"
+    },
+    {
+      "value": "RCV",
+      "name": "ReceiveQuantity",
+      "doc": "Receive Quantity"
+    },
+    {
+      "value": "CAA",
+      "name": "CorporateActionAdjustment",
+      "doc": "Corporate Action Adjustment"
+    },
+    {
+      "value": "DN",
+      "name": "DeliveryNoticeQty",
+      "doc": "Delivery Notice Qty"
+    },
+    {
+      "value": "EP",
+      "name": "ExchangeForPhysicalQty",
+      "doc": "Exchange for Physical Qty"
+    },
+    {
+      "value": "PNTN",
+      "name": "PrivatelyNegotiatedTradeQty",
+      "doc": "Privately negotiated Trade Qty (Non-regulated)"
+    },
+    {
+      "value": "CEA",
+      "name": "CreditEventAdjustment",
+      "doc": "Credit Event Adjustment"
+    },
+    {
+      "value": "DLT",
+      "name": "NetDeltaQty",
+      "doc": "Net Delta Qty"
+    },
+    {
+      "value": "SEA",
+      "name": "SuccessionEventAdjustment",
+      "doc": "Succession Event Adjustment"
+    },
+    {
+      "value": "NET",
+      "name": "NetQty",
+      "doc": "Net Qty"
+    },
+    {
+      "value": "GRS",
+      "name": "GrossQty",
+      "doc": "Gross Qty"
+    },
+    {
+      "value": "ITD",
+      "name": "IntradayQty",
+      "doc": "Intraday Qty"
+    },
+    {
+      "value": "NDAS",
+      "name": "GrossLongNonDeltaAdjustedSwaptionPosition",
+      "doc": "Gross non-delta-adjusted swaption position"
+    },
+    {
+      "value": "DAS",
+      "name": "LongDeltaAdjustedPairedSwaptionPosition",
+      "doc": "Delta-adjusted paired swaption position"
+    },
+    {
+      "value": "EXP",
+      "name": "ExpiringQuantity",
+      "doc": "Expiring quantity"
+    },
+    {
+      "value": "UNEX",
+      "name": "QuantityNotExercised",
+      "doc": "Quantity not exercised"
+    },
+    {
+      "value": "REQ",
+      "name": "RequestedExerciseQuantity",
+      "doc": "Requested exercise quantity"
+    },
+    {
+      "value": "CFE",
+      "name": "CashFuturesEquivalentQuantity",
+      "doc": "Cash futures equivalent quantity"
+    },
+    {
+      "value": "SECLN",
+      "name": "LoanOrBorrowedQuantity",
+      "doc": "Loan or borrowed quantity"
+    }
+  ]
+}

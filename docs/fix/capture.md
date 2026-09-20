@@ -386,7 +386,7 @@ A bridge logs what it exchanged over JMX beside what it exchanged over FIX, so a
 
 `msgtype`, never `35` and never `msg_type`. A column is spelled the way the dictionary spells the field's canonical name - ASCII case folded once, on the way in - so a row reads the way a message reads, in every binding and every catalog, and a reader spelling `row["msgseqnum"]` finds the sequence number without a dictionary in hand.
 
-The tag is still the identity. Each column carries its field's `FIX:tag`, its `display` and its code set, and the row is [filled by that tag](#a-column-is-filled-by-the-tag-its-field-carries) rather than by the spelling, so a venue that renames a field between versions changes nothing about where its value lands. `fix_schema_tags` is the same row as tags, in the same order.
+The tag is still the identity. Each column carries its field's `FIX:tag`, its `display` and the name of the [code set](registry.md#a-field-names-the-code-set-it-reads-by) it reads its values by - the members live once in the dictionary, reached through `codeset_of` - and the row is [filled by that tag](#a-column-is-filled-by-the-tag-its-field-carries) rather than by the spelling, so a venue that renames a field between versions changes nothing about where its value lands. `fix_schema_tags` is the same row as tags, in the same order.
 
 The order is nine bands, and each answers one question a reader has, so a row reads left to right the way a person asks about a message rather than in the order a dictionary happens to file its fields:
 

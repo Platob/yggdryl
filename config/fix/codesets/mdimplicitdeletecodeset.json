@@ -1,0 +1,15 @@
+{
+  "name": "mdimplicitdeletecodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "No",
+      "doc": "Server must send an explicit delete for bids or offers falling outside the requested MarketDepth of the request"
+    },
+    {
+      "value": "Y",
+      "name": "Yes",
+      "doc": "Client has responsibility for implicitly deleting bids or offers falling outside the MarketDepth of the request"
+    }
+  ]
+}

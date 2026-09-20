@@ -12,7 +12,6 @@ use std::str::Split;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::FixId;
-use super::codes::{FixCode, FixCodeValue, FixCodes};
 use super::directions::{FixDirection, FixDirections};
 use super::document::{Cursor, Numbers, Words, Writer, is_word, repeated_number, repeated_word};
 use super::replacements::{FixReplacement, FixReplacements};
@@ -43,7 +42,8 @@ const NULLS: &str = "nulls";
 /// FIX definition each publish. It is therefore read and written on the
 /// generic key every catalog already reads, rather than under `FIX:` where
 /// only a FIX reader would find it.
-/// The FIX code set this field's values are drawn from.
+/// The name of the FIX code set this field's values are drawn from; the
+/// dictionary holds its members.
 const CODES: &str = "codes";
 /// How a value of this field is restated at a later version.
 const REPLACEMENTS: &str = "replacements";
@@ -369,13 +369,16 @@ impl<'field> FixField<'field> {
         self.as_field().description()
     }
 
-    /// Walks this field's FIX code set, ordered by wire value.
+    /// Returns the name of the FIX code set this field's values are drawn
+    /// from.
     ///
-    /// The iterator is lazy and allocates nothing: every spelling is a slice
-    /// of the stored document, which the field already owns. An absent
-    /// property yields nothing.
-    pub fn codes(&self) -> FixCodes<'field> {
-        FixCodes::over(self.get(CODES))
+    /// A field states which vocabulary it reads by, never a copy of its
+    /// members: the [dictionary](super::FixRegistry) holds each set once
+    /// under this name, and
+    /// [`FixRegistry::codeset_of`](super::FixRegistry::codeset_of) is what
+    /// answers the members. A field drawing on no set answers nothing.
+    pub fn codeset(&self) -> Option<&'field str> {
+        self.get(CODES)
     }
 
     /// Walks how a value of this field is restated at a later version, in
@@ -481,56 +484,6 @@ impl<'field> FixField<'field> {
         term.check_budget()
             .map_err(|error| self.rejected(DERIVATION, format_smolstr!("{error}")))?;
         Ok(Some(term))
-    }
-
-    /// Returns the code one wire value stands for.
-    ///
-    /// The scan stops at the match: `value` leads each record, so this reads
-    /// one key per code passed and no more.
-    pub fn code(&self, value: &str) -> Option<FixCodeValue<'field>> {
-        FixCodes::seek_value(self.get(CODES)?, value)
-    }
-
-    /// Returns the code one symbolic name or alias stands for, folded.
-    ///
-    /// This does **not** stop at the first match. Two codes folding to one
-    /// spelling answer nothing rather than whichever the scan met first, so
-    /// the whole set runs and exactly one match answers. It is affordable
-    /// because [`Self::code`] is the hot path and a spelling lookup comes
-    /// from human or JSON input.
-    pub fn code_by_name(&self, name: &str) -> Option<FixCodeValue<'field>> {
-        self.one_matching(|code| code.is_spelled(name))
-    }
-
-    /// Resolves any spelling of a code to its wire value.
-    ///
-    /// Composes the three tiers this module documents. An unresolved spelling
-    /// answers `None` and the caller keeps its own text: a venue sends codes
-    /// no dictionary lists, and refusing one would drop data.
-    pub fn code_value(&self, text: &str) -> Option<&'field str> {
-        translate(self.codes_document()?, text)
-    }
-
-    /// Returns the symbolic name one wire value stands for.
-    pub fn code_name(&self, value: &str) -> Option<&'field str> {
-        self.code(value).map(FixCodeValue::name)
-    }
-
-    /// The stored code-set document, when this field carries one.
-    ///
-    /// What every code read scans; a reader remembering translations across
-    /// a run keys them by this document, because the answer is a fact of the
-    /// document, the version and the text alone.
-    pub(super) fn codes_document(&self) -> Option<&'field str> {
-        self.get(CODES)
-    }
-
-    /// The one code a predicate matches, or nothing when several do.
-    fn one_matching(
-        &self,
-        matches: impl Fn(&FixCodeValue<'field>) -> bool,
-    ) -> Option<FixCodeValue<'field>> {
-        one_matching(self.get(CODES)?, matches)
     }
 
     /// Name the full key a stored value failed under, and what it should be.
@@ -906,44 +859,35 @@ impl FixFieldMut<'_> {
         self.as_field_mut().set_description(value)
     }
 
-    /// Records the FIX code set this field's values are drawn from.
+    /// Names the FIX code set this field's values are drawn from.
     ///
-    /// Codes are ordered by wire value and rendered canonically, so one code
-    /// set is one text however it was built. Two names may share a value -
-    /// that is an alias - but two codes may not share a name.
+    /// A field states which vocabulary it reads by; the
+    /// [dictionary](super::FixRegistry) holds the members, once, under this
+    /// name. So a set is named, documented and aliased in one place however
+    /// many fields draw on it, and
+    /// [`FixRegistry::set_codeset`](super::FixRegistry::set_codeset) is where
+    /// its members are stated.
     ///
-    /// An empty slice removes the property, exactly as an empty tag or alias
+    /// An empty name removes the property, exactly as an empty tag or alias
     /// list removes its own.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Parse`] when two codes share a name or one states an
-    /// empty value or name, and the property write's refusal otherwise.
-    /// Either leaves the field unchanged.
-    pub fn set_codes(&mut self, codes: &[FixCode]) -> Result<()> {
-        if codes.is_empty() {
+    /// Returns [`Error::InvalidRecord`] when the name is not one a store can
+    /// file - the rule a named definition's is held to - and the property
+    /// write's refusal otherwise. Either leaves the field unchanged.
+    pub fn set_codeset(&mut self, name: &str) -> Result<()> {
+        if name.is_empty() {
             self.remove(CODES);
             return Ok(());
         }
-        let rendered = FixCodes::render(codes)?;
-        self.store(CODES, rendered)
+        super::catalog::validate_definition_name(name)?;
+        self.store(CODES, name.to_owned())
     }
 
-    /// Removes the FIX code set, answering what it held.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::Parse`] naming the byte position when the stored
-    /// document does not parse, having already removed it: a document a
-    /// reader refuses is one a caller asked to take away.
-    pub fn remove_codes(&mut self) -> Result<Option<Vec<FixCode>>> {
-        let Some(stored) = self.remove(CODES) else {
-            return Ok(None);
-        };
-        FixCodes::over(Some(stored.as_str()))
-            .map(|code| code.map(FixCode::from))
-            .collect::<Result<Vec<_>>>()
-            .map(Some)
+    /// Removes the code set reference, answering the name it held.
+    pub fn remove_codeset(&mut self) -> Option<String> {
+        self.remove(CODES)
     }
 
     /// Records how a value of this field is restated at a later version.
@@ -1082,31 +1026,19 @@ impl FixFieldMut<'_> {
             self.remove(DIRECTIONS);
             return Ok(());
         }
-        {
-            let held = self.as_protocol();
-            let mut named: Vec<&str> = Vec::with_capacity(directions.len());
-            for direction in directions {
-                let Some(code) = super::direction::resolve(&held, direction.code()) else {
-                    // The set as the reading names it: the declared codes,
-                    // else the specification's two.
-                    let mut set: Vec<&str> = held
-                        .codes()
-                        .filter_map(Result::ok)
-                        .map(|code| code.value())
-                        .collect();
-                    if set.is_empty() {
-                        set = vec!["S", "R"];
-                    }
-                    return Err(super::directions::outside_set(
-                        direction.code(),
-                        set.into_iter(),
-                    ));
-                };
-                if named.contains(&code) {
-                    return Err(super::directions::repeated(direction.code(), code));
-                }
-                named.push(code);
+        // Whether a code is one of the set is the dictionary's question, not
+        // the field's: a field names its set and the registry holds it, so
+        // `MsgDirection::from_registry` resolves every spelling against the
+        // set in force and drops - with this module's own refusal as the
+        // warning - a rule naming a code outside it. What the field can still
+        // answer alone is whether one spelling was stated twice.
+        let mut named: Vec<&str> = Vec::with_capacity(directions.len());
+        for direction in directions {
+            let code = direction.code().trim();
+            if let Some(held) = named.iter().find(|held| folds_equal(held, code)) {
+                return Err(super::directions::repeated(direction.code(), held));
             }
+            named.push(code);
         }
         let rendered = FixDirections::render(directions)?;
         self.store(DIRECTIONS, rendered)
@@ -1224,7 +1156,7 @@ impl FixFieldMut<'_> {
     /// | `FIX:tags` | union, incoming first, order kept, deduplicated |
     /// | `FIX:names` | union, folded, incoming first |
     /// | `description` | not folded here at all: it is a generic key, so the metadata merge every protocol shares carries it |
-    /// | `FIX:codes` | merged by wire value, incoming winning a shared value |
+    /// | `FIX:codes` | the stored set's name is kept; a stored field naming none takes the incoming name |
     /// | `FIX:replacements` | incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
     /// | `FIX:directions` | incoming wins whole: a rule table is one statement, and two tables have no order between them |
     /// | `FIX:derivation` | incoming wins whole: a derivation is one term, and a field derives one way |
@@ -1295,7 +1227,6 @@ impl FixFieldMut<'_> {
             }
         }
         let branches = render_branches(held.branches().chain(other.branches()));
-        let codes = merge_codes(&held, other)?;
 
         let mut merged: Vec<(&'static str, String)> = Vec::with_capacity(MERGED_KEYS.len());
         for key in MERGED_KEYS {
@@ -1303,7 +1234,18 @@ impl FixFieldMut<'_> {
                 TAGS => render_tags(&tags),
                 NAMES => render_names(&names)?,
                 BRANCHES => branches.clone(),
-                CODES => codes.clone(),
+                // The one key where the *stored* side wins, and `other` is
+                // the stored one: a registry fold hands the incoming field in
+                // as `self`. A field keeps the vocabulary it already reads by
+                // because the members are the dictionary's to fold -
+                // `unify_codeset` has already folded the incoming set into
+                // the held one under the held name - so taking the incoming
+                // name here would move the field to a set holding strictly
+                // less than the one it already reads by.
+                CODES => other
+                    .get(CODES)
+                    .or_else(|| held.get(CODES))
+                    .map(str::to_owned),
                 // Every other key is "incoming wins, stored keeps what only
                 // it has".
                 _ => held.get(key).or_else(|| other.get(key)).map(str::to_owned),
@@ -1472,120 +1414,4 @@ fn render_tags(tags: &[i32]) -> Option<String> {
         return None;
     }
     Some(Writer::list_of_numbers(tags.iter().copied()))
-}
-
-/// Fold two code sets by wire value, the incoming winning a shared value.
-///
-/// A code stated under a value the winner already holds is not dropped whole:
-/// its name and its own aliases become spellings on the code that stays,
-/// because a name one side declared is one the merged set has to answer to.
-///
-/// What cannot be kept is a spelling another code already answers to, folded:
-/// two codes one spelling reaches resolve to nothing rather than to either,
-/// and two sharing a name are refused outright. So that spelling is dropped,
-/// and a code whose own *name* is taken is dropped with it, having no other
-/// name to arrive under.
-///
-/// One exception to the winner keeping its name: a code named after its own
-/// wire value carries no name at all - it is what a source that knows the
-/// value exists but not what anyone calls it writes - so a real name from
-/// either side takes its place. That is what folds a dialect's `6 Inbound`
-/// into whatever the dictionary already calls tag 35 `6`, rather than
-/// renaming the type after the dialect's qualifier.
-fn merge_codes(winner: &FixField<'_>, other: &FixField<'_>) -> Result<Option<String>> {
-    let mut codes: Vec<FixCode> = Vec::new();
-    for code in winner.codes() {
-        codes.push(FixCode::from(code?));
-    }
-    for code in other.codes() {
-        let incoming = FixCode::from(code?);
-        // Every spelling this code arrives with, its name first, held apart
-        // from the code so the code itself can move into the set.
-        let mut spellings: Vec<SmolStr> = vec![SmolStr::new(incoming.name())];
-        spellings.extend(incoming.aliases().iter().cloned());
-        let named = !incoming.is_unnamed();
-        let at = match codes
-            .iter()
-            .position(|held| held.value() == incoming.value())
-        {
-            Some(at) => {
-                // A placeholder name yields to a real one, whichever side
-                // carries it. The incoming name is a spelling either way, so
-                // it is added below like any other spelling; taking it here
-                // is only a question of which one leads.
-                if named
-                    && codes[at].is_unnamed()
-                    && !codes
-                        .iter()
-                        .enumerate()
-                        .any(|(index, held)| index != at && held.is_spelled(&spellings[0]))
-                {
-                    codes[at] = codes[at].clone().with_name(spellings[0].clone());
-                }
-                at
-            }
-            None if codes.iter().any(|held| held.is_spelled(&spellings[0])) => continue,
-            None => {
-                codes.push(incoming.with_aliases(std::iter::empty::<SmolStr>()));
-                codes.len() - 1
-            }
-        };
-        // A code answers its own name, so this adds it where the value was
-        // already held and skips it where the code was just pushed.
-        for spelling in &spellings {
-            if !codes.iter().any(|held| held.is_spelled(spelling)) {
-                codes[at].push_alias(spelling.clone());
-            }
-        }
-    }
-    if codes.is_empty() {
-        return Ok(None);
-    }
-    FixCodes::render(&codes).map(Some)
-}
-
-/// The one code in `stored` a predicate matches, or nothing when several do.
-///
-/// Ambiguity answers nothing: two codes a caller's spelling reaches are two
-/// answers, and picking one is a guess. Free rather than a method so the
-/// tiers can share one already-read document.
-fn one_matching<'field>(
-    stored: &'field str,
-    matches: impl Fn(&FixCodeValue<'field>) -> bool,
-) -> Option<FixCodeValue<'field>> {
-    let mut found = None;
-    let mut walk = FixCodes::over(Some(stored));
-    while let Some(code) = walk.next_ok() {
-        if !matches(&code) {
-            continue;
-        }
-        if found.is_some_and(|held: FixCodeValue<'field>| held.value() != code.value()) {
-            return None;
-        }
-        found = Some(code);
-    }
-    found
-}
-
-/// [`FixField::code_value`] over a stored document: the three tiers, in order.
-///
-/// A set states one reading of every code it declares and dates none of them,
-/// so every code it holds is a candidate and there is no version to prefer by.
-pub(super) fn translate<'field>(stored: &'field str, text: &str) -> Option<&'field str> {
-    // Tier 1: the text as a wire value, exactly. A spelling that is already a
-    // legal code is never reinterpreted as somebody's name, and the record a
-    // value opens is addressed rather than searched for.
-    if let Some(code) = FixCodes::seek_value(stored, text) {
-        return Some(code.value());
-    }
-    // Tier 2: the folded symbolic name, then any alias.
-    if let Some(code) = one_matching(stored, |code| code.is_spelled(text)) {
-        return Some(code.value());
-    }
-    // Tier 3: the leading parenthesized abbreviation of the description.
-    one_matching(stored, |code| {
-        code.abbreviation()
-            .is_some_and(|short| folds_equal(short, text))
-    })
-    .map(FixCodeValue::value)
 }

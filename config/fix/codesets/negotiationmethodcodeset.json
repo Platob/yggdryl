@@ -1,0 +1,20 @@
+{
+  "name": "negotiationmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "AutoSpot",
+      "doc": "Auto spot"
+    },
+    {
+      "value": "1",
+      "name": "NegotiatedSpot",
+      "doc": "Negotiated spot"
+    },
+    {
+      "value": "2",
+      "name": "PhoneSpot",
+      "doc": "The spot price for the reference or benchmark security is to be negotiated via phone or voice."
+    }
+  ]
+}

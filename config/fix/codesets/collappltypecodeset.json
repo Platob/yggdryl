@@ -1,0 +1,15 @@
+{
+  "name": "collappltypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "SpecificDeposit",
+      "doc": "Specific Deposit"
+    },
+    {
+      "value": "1",
+      "name": "General",
+      "doc": "General"
+    }
+  ]
+}

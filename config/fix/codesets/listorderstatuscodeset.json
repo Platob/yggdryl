@@ -1,0 +1,40 @@
+{
+  "name": "listorderstatuscodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "InBiddingProcess",
+      "doc": "In bidding process"
+    },
+    {
+      "value": "2",
+      "name": "ReceivedForExecution",
+      "doc": "Received for execution"
+    },
+    {
+      "value": "3",
+      "name": "Executing",
+      "doc": "Executing"
+    },
+    {
+      "value": "4",
+      "name": "Cancelling",
+      "doc": "Cancelling"
+    },
+    {
+      "value": "5",
+      "name": "Alert",
+      "doc": "Alert"
+    },
+    {
+      "value": "6",
+      "name": "AllDone",
+      "doc": "All Done"
+    },
+    {
+      "value": "7",
+      "name": "Reject",
+      "doc": "Reject"
+    }
+  ]
+}

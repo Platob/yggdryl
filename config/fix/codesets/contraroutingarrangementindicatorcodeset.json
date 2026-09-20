@@ -1,0 +1,15 @@
+{
+  "name": "contraroutingarrangementindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoRoutingArrangementInPlace",
+      "doc": "No routing arrangement in place"
+    },
+    {
+      "value": "1",
+      "name": "RoutingArrangementInPlace",
+      "doc": "Routing arrangement in place"
+    }
+  ]
+}

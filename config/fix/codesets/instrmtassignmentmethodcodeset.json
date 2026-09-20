@@ -1,0 +1,15 @@
+{
+  "name": "instrmtassignmentmethodcodeset",
+  "codes": [
+    {
+      "value": "P",
+      "name": "ProRata",
+      "doc": "Pro rata"
+    },
+    {
+      "value": "R",
+      "name": "Random",
+      "doc": "Random"
+    }
+  ]
+}

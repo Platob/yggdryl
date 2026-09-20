@@ -1,0 +1,45 @@
+{
+  "name": "provisiontypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "MandatoryEarlyTermination",
+      "doc": "Mandatory early termination"
+    },
+    {
+      "value": "1",
+      "name": "OptionalEarlyTermination",
+      "doc": "Optional early termination"
+    },
+    {
+      "value": "2",
+      "name": "Cancelable",
+      "doc": "Cancelable"
+    },
+    {
+      "value": "3",
+      "name": "Extendable",
+      "doc": "Extendable"
+    },
+    {
+      "value": "4",
+      "name": "MutualEarlyTermination",
+      "doc": "Mutual early termination"
+    },
+    {
+      "value": "5",
+      "name": "Evergreen",
+      "doc": "Evergreen"
+    },
+    {
+      "value": "6",
+      "name": "Callable",
+      "doc": "Callable"
+    },
+    {
+      "value": "7",
+      "name": "Puttable",
+      "doc": "Puttable"
+    }
+  ]
+}

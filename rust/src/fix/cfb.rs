@@ -7,18 +7,22 @@
 //! transcoding, or the plugin, and is skipped - the version among it, because
 //! which version a run reads at is the codec's pin and not a vocabulary's.
 //!
-//! # Two entry points, one parse
+//! # One entry point, one parse
 //!
 //! [`FixRegistry::from_cfb_file`] answers the whole file: a dictionary of its
-//! scalar fields with code metadata, components, groups and message
-//! definitions, plus the message roots. [`FixField::from_cfb_file`] answers
-//! the vocabulary alone, in declaration order, and takes the dialect name
-//! from the file's own stem when the caller supplies none - which is what a
-//! reader folding one counterparty's file into a dictionary through
-//! [`FixRegistry::add_fields`] wants, and it loses the roots to say so. Both
-//! drive the same read, drop the same elements and refuse the same two
-//! documents, and both stamp every field they produce as a member of the
-//! dialect in its `FIX:branches`.
+//! scalar fields, the [code sets](super::codes) its maps decode, its
+//! components, groups and message definitions, plus the message roots. It
+//! takes the dialect name from the file's own stem when the caller supplies
+//! none, and stamps every field it produces as a member of the dialect in its
+//! `FIX:branches`.
+//!
+//! A vocabulary is a dictionary rather than a list of fields, because a code
+//! set is named and owned by the dictionary: a field carries the *name* of
+//! the set its maps decode, so a bare `Vec<Field>` would hand a reader
+//! fields naming vocabularies nothing states. So folding one counterparty's
+//! file into a dictionary that exists is
+//! [`FixRegistry::add_cfb_file`] - one parse, one fold, the sets travelling
+//! with the fields that read by them.
 //!
 //! # Two passes, and the second never invents a type
 //!
@@ -227,8 +231,9 @@ use quick_xml::events::{BytesStart, Event};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
-use crate::{DataType, Error, Field, FixField, IOBase, Result, StructType, Url};
+use crate::{DataType, Error, Field, IOBase, Result, StructType, Url};
 
+use super::codes::FixCodes;
 use super::{FixCode, FixRegistry, MSGTYPE_TAG_NAME};
 use crate::sequence::SequenceType;
 
@@ -281,9 +286,16 @@ impl FixRegistry {
     /// metadata. Named definitions carry no `FIX:tag`.
     ///
     /// No seed is taken: this answers what one file says. Folding it into a
-    /// dictionary that already exists is [`FixRegistry::add_fields`]'s job,
-    /// and [`FixField::from_cfb_file`] is the door to take when the roots are
-    /// not wanted.
+    /// dictionary that already exists is [`FixRegistry::add_cfb_file`]'s job,
+    /// which is this parse and [`FixRegistry::merge_with`] in one call, so
+    /// the code sets the file declares travel with the fields naming them.
+    ///
+    /// `dialect` names the dictionary, and nothing stands in for it: this
+    /// door answers what one file says, so a file read with no name stamps no
+    /// membership. The stem stands in where a file is *folded* into a
+    /// dictionary - [`FixRegistry::add_cfb_file`] and
+    /// [`FixRegistry::add_cfb_files`] - because that is where a contribution
+    /// has to be attributable and a `CBlock` never names itself.
     ///
     /// # Errors
     ///
@@ -301,52 +313,6 @@ impl FixRegistry {
     pub fn from_cfb_file(handle: &dyn IOBase, dialect: Option<&str>) -> Result<(Self, Vec<Field>)> {
         let bytes = handle.read_all_bytes()?;
         Parse::new(&bytes, dialect)?.run()
-    }
-}
-
-impl FixField<'_> {
-    /// Reads an Ullink CBlock configuration for the vocabulary it declares.
-    ///
-    /// The dictionary half of [`FixRegistry::from_cfb_file`], answered on
-    /// its own and in declaration order. Every field carries the `FIX:tag`
-    /// that keys it, the dialect it is a member of in `FIX:branches`, and
-    /// whatever code set the file's maps decode for it, which is what
-    /// [`FixRegistry::add_fields`] needs to fold one counterparty's file into
-    /// a dictionary that already exists.
-    ///
-    /// **`dialect` names the dictionary, and the file names it when the
-    /// caller does not.** A CBlock states a version and a session but no name
-    /// for the pair, so with none supplied the handle's own stem stands in
-    /// where it reads as a name: `s3://cblocks/MSFIX44.cfb` stamps its fields
-    /// as members of `msfix44`. A handle answering no URL at all has no stem,
-    /// and one whose stem is not a name - the address a
-    /// [`Buffer`](crate::holder::Buffer) is identified by, a bare number -
-    /// names nothing, and both stamp nothing: bytes held in memory are named
-    /// by the caller or not at all.
-    ///
-    /// A supplied name that cannot be a membership - empty, or carrying the
-    /// comma a membership list is rendered with - is refused rather than
-    /// folded into one, because a dictionary keyed on a guess is worse than
-    /// a refusal.
-    ///
-    /// The grammar bindings are still read and still validated, exactly as
-    /// [`FixRegistry::from_cfb_file`] reads them, and their roots dropped: one
-    /// parse, one set of drops and refusals, whichever entry point a caller
-    /// takes.
-    ///
-    /// The message roots are therefore not here; take
-    /// [`FixRegistry::from_cfb_file`] when they matter. One difference is not
-    /// a loss: a dictionary keeps one entry per identity, so a tag a file
-    /// declares twice identically arrives twice here and once there.
-    ///
-    /// # Errors
-    ///
-    /// Returns what [`FixRegistry::from_cfb_file`] returns, and the
-    /// membership refusal when the supplied name cannot be one.
-    pub fn from_cfb_file(handle: &dyn IOBase, dialect: Option<&str>) -> Result<Vec<Field>> {
-        let dialect = dialect.or_else(|| stem_dialect(handle));
-        let bytes = handle.read_all_bytes()?;
-        Parse::new(&bytes, dialect)?.fields()
     }
 }
 
@@ -423,6 +389,12 @@ struct Spelled {
 /// One `vocabulary-tag` as the file declared it.
 struct Declared {
     tag: i32,
+    /// The code set this tag's maps decode, held apart from the field.
+    ///
+    /// A field names its set and the dictionary owns the members, so the
+    /// members are collected here while the file is read and filed under the
+    /// field's own name when the dictionary is built.
+    codes: Vec<FixCode>,
     /// The byte the reader had reached when this declaration was read.
     ///
     /// Kept because the dictionary is built after the whole document is: a
@@ -478,45 +450,41 @@ impl<'doc> Parse<'doc> {
         self.dictionary()
     }
 
-    /// The vocabulary alone, in declaration order.
-    ///
-    /// Declaration order is what a caller folding one file into another wants
-    /// and what a dictionary does not keep, so it is taken first. The
-    /// dictionary is then built and dropped, because building it is the second
-    /// half of what reading this file means: it is where a name or an identity
-    /// the file declares twice is dropped, and both doors have to drop the
-    /// same declarations.
-    ///
-    /// The roots a dictionary would hold are not here. One more thing is a
-    /// difference rather than a loss: a dictionary keeps one entry per
-    /// identity, so a tag a file declares twice identically arrives twice
-    /// here and once there.
-    fn fields(mut self) -> Result<Vec<Field>> {
-        self.read()?;
-        let ordered: Vec<Field> = self
-            .vocabulary
-            .iter()
-            .map(|held| held.field.clone())
-            .collect();
-        self.dictionary()?;
-        Ok(ordered)
-    }
-
     /// The vocabulary as a dictionary.
     ///
-    /// Both terminals build it, because it is where the file's own entries are
-    /// checked against each other rather than only against the grammar.
+    /// Where the file's own entries are checked against each other rather
+    /// than only against the grammar, and where each map's code set is filed
+    /// under the name the field that decodes by it supplies.
     fn dictionary(mut self) -> Result<(FixRegistry, Vec<Field>)> {
         let mut registry = FixRegistry::new();
         for held in std::mem::take(&mut self.vocabulary) {
             let Declared {
                 tag,
                 position,
-                field,
+                codes,
+                mut field,
             } = held;
             // Read before the field moves: the warning names the entry the
             // file declared, which the registry no longer has to hand.
             let named = SmolStr::new(field.name());
+            // The set the file's maps decode, filed under the name this field
+            // supplies and named by the field: the dictionary owns the
+            // members, so they are stated before the field points at them.
+            if !codes.is_empty() {
+                let set = FixRegistry::derived_codeset_name(&field);
+                if let Err(error) = registry
+                    .set_codeset(&set, &codes)
+                    .and_then(|()| field.as_fix_mut().set_codeset(&set))
+                {
+                    self.dropped(&refusal(
+                        position,
+                        format_smolstr!(
+                            "the code set tag {tag} {:?} decodes: {error}",
+                            elide_to(&named, ERROR_TEXT_LIMIT)
+                        ),
+                    ));
+                }
+            }
             if let Err(error) = registry.insert(field) {
                 self.dropped(&refusal(
                     position,
@@ -571,7 +539,8 @@ impl<'doc> Parse<'doc> {
         let held = root.clone();
         let named = registry
             .get_field_by_tag(MSGTYPE_TAG_NAME.0)
-            .and_then(|field| field.as_fix().code_name(wire))
+            .and_then(|field| registry.codeset_of(field))
+            .and_then(|set| set.code_name(wire))
             .filter(|name| {
                 name.bytes()
                     .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
@@ -912,6 +881,7 @@ impl<'doc> Parse<'doc> {
         self.vocabulary.push(Declared {
             tag,
             position: self.position(),
+            codes: Vec::new(),
             field,
         });
         Ok(())
@@ -1091,22 +1061,25 @@ impl<'doc> Parse<'doc> {
             .then_some(at)
     }
 
-    /// Puts one code set on the vocabulary field its map decodes.
+    /// Holds one code set for the vocabulary field its map decodes.
     ///
-    /// An empty set is dropped rather than written: `set_codes` reads an empty
-    /// slice as a removal, and a map declaring no entries is not the file
-    /// saying the field has no codes.
+    /// An empty set is dropped rather than held: a map declaring no entries is
+    /// not the file saying the field has no codes. The members are filed under
+    /// a name when the dictionary is built, because that is where a name can
+    /// be given and a refusal can name the entry it came from.
     fn attach_codes(&mut self, at: usize, codes: &[FixCode], named: &str) -> Result<()> {
         if codes.is_empty() {
             return Ok(());
         }
         let tag = self.vocabulary[at].tag;
-        if let Err(error) = self.vocabulary[at].field.as_fix_mut().set_codes(codes) {
+        if let Err(error) = FixCodes::render(codes) {
             self.dropped(&self.refused_by(
                 format_args!("map {:?} on tag {tag}", elide_to(named, ERROR_TEXT_LIMIT)),
                 &error,
             ));
+            return Ok(());
         }
+        self.vocabulary[at].codes = codes.to_vec();
         Ok(())
     }
 
@@ -1307,13 +1280,7 @@ impl<'doc> Parse<'doc> {
         // What the file already said about tag 35 - a `map` naming it - leads,
         // because a map states the wire value and a message type is named by
         // the bridge; a spelling either already holds is not added twice.
-        let held: Vec<FixCode> = self.vocabulary[at]
-            .field
-            .as_fix()
-            .codes()
-            .filter_map(std::result::Result::ok)
-            .map(FixCode::from)
-            .collect();
+        let held = std::mem::take(&mut self.vocabulary[at].codes);
         codes.retain(|code| {
             !held
                 .iter()
@@ -1321,7 +1288,7 @@ impl<'doc> Parse<'doc> {
         });
         codes.splice(0..0, held);
         let position = self.vocabulary[at].position;
-        if let Err(error) = self.vocabulary[at].field.as_fix_mut().set_codes(&codes) {
+        if let Err(error) = FixCodes::render(&codes) {
             self.dropped(&refusal(
                 position,
                 format_smolstr!(
@@ -1329,7 +1296,9 @@ impl<'doc> Parse<'doc> {
                     MSGTYPE_TAG_NAME.0
                 ),
             ));
+            return Ok(());
         }
+        self.vocabulary[at].codes = codes;
         Ok(())
     }
 

@@ -1,0 +1,25 @@
+{
+  "name": "settlsessidcodeset",
+  "codes": [
+    {
+      "value": "ITD",
+      "name": "Intraday",
+      "doc": "Intraday"
+    },
+    {
+      "value": "RTH",
+      "name": "RegularTradingHours",
+      "doc": "Regular Trading Hours"
+    },
+    {
+      "value": "ETH",
+      "name": "ElectronicTradingHours",
+      "doc": "Electronic Trading Hours"
+    },
+    {
+      "value": "EOD",
+      "name": "EndOfDay",
+      "doc": "End Of Day"
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "name": "quoterequestrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "UnknownSymbol",
+      "doc": "Unknown Symbol (Security)"
+    },
+    {
+      "value": "2",
+      "name": "Exchange",
+      "doc": "Exchange (Security) Closed"
+    },
+    {
+      "value": "3",
+      "name": "QuoteRequestExceedsLimit",
+      "doc": "Quote Request Exceeds Limit"
+    },
+    {
+      "value": "4",
+      "name": "TooLateToEnter",
+      "doc": "Too Late to enter"
+    },
+    {
+      "value": "5",
+      "name": "InvalidPrice",
+      "doc": "Invalid Price"
+    },
+    {
+      "value": "6",
+      "name": "NotAuthorizedToRequestQuote",
+      "doc": "Not Authorized To Request Quote"
+    },
+    {
+      "value": "7",
+      "name": "NoMatchForInquiry",
+      "doc": "No Match For Inquiry"
+    },
+    {
+      "value": "8",
+      "name": "NoMarketForInstrument",
+      "doc": "No Market For Instrument"
+    },
+    {
+      "value": "9",
+      "name": "NoInventory",
+      "doc": "No Inventory"
+    },
+    {
+      "value": "10",
+      "name": "Pass",
+      "doc": "Pass"
+    },
+    {
+      "value": "11",
+      "name": "InsufficientCredit",
+      "doc": "Insufficient credit"
+    },
+    {
+      "value": "12",
+      "name": "ExceededClipSizeLimit",
+      "doc": "Exceeded clip size limit"
+    },
+    {
+      "value": "13",
+      "name": "ExceededMaxNotionalOrderAmt",
+      "doc": "Exceeded maximum notional order amount"
+    },
+    {
+      "value": "14",
+      "name": "ExceededDV01PV01Limit",
+      "doc": "Exceeded DV01/PV01 limit"
+    },
+    {
+      "value": "15",
+      "name": "ExceededCS01Limit",
+      "doc": "Exceeded CS01 limit"
+    },
+    {
+      "value": "16",
+      "name": "UnavailablePriceLiquidity",
+      "doc": "Unavailable price or liquidity"
+    },
+    {
+      "value": "17",
+      "name": "UnmetRegulatoryRequirement",
+      "doc": "Unmet regulatory requirement"
+    },
+    {
+      "value": "18",
+      "name": "UnknownAccounts",
+      "doc": "Unknown account(s)"
+    },
+    {
+      "value": "19",
+      "name": "InvalidMissingEntitlements",
+      "doc": "Invalid or missing entitlements"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

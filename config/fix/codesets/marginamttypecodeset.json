@@ -1,0 +1,180 @@
+{
+  "name": "marginamttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "AdditionalMargin",
+      "doc": "Additional Margin"
+    },
+    {
+      "value": "2",
+      "name": "AdjustedMargin",
+      "doc": "Adjusted Margin"
+    },
+    {
+      "value": "3",
+      "name": "UnadjustedMargin",
+      "doc": "Unadjusted Margin"
+    },
+    {
+      "value": "4",
+      "name": "BinaryAddOnAmount",
+      "doc": "Binary Add-On Amount"
+    },
+    {
+      "value": "5",
+      "name": "CashBalanceAmount",
+      "doc": "Cash Balance Amount"
+    },
+    {
+      "value": "6",
+      "name": "ConcentrationMargin",
+      "doc": "Concentration Margin"
+    },
+    {
+      "value": "7",
+      "name": "CoreMargin",
+      "doc": "Core Margin"
+    },
+    {
+      "value": "8",
+      "name": "DeliveryMargin",
+      "doc": "Delivery Margin"
+    },
+    {
+      "value": "9",
+      "name": "DiscretionaryMargin",
+      "doc": "Discretionary Margin"
+    },
+    {
+      "value": "10",
+      "name": "FuturesSpreadMargin",
+      "doc": "Futures Spread Margin"
+    },
+    {
+      "value": "11",
+      "name": "InitialMargin",
+      "doc": "Initial Margin"
+    },
+    {
+      "value": "12",
+      "name": "LiquidatingMargin",
+      "doc": "Liquidating Margin"
+    },
+    {
+      "value": "13",
+      "name": "MarginCallAmount",
+      "doc": "Margin Call Amount"
+    },
+    {
+      "value": "14",
+      "name": "MarginDeficitAmount",
+      "doc": "Margin Deficit Amount (Shortfall)"
+    },
+    {
+      "value": "15",
+      "name": "MarginExcessAmount",
+      "doc": "Margin Excess Amount (Surplus)"
+    },
+    {
+      "value": "16",
+      "name": "OptionPremiumAmount",
+      "doc": "Option Premium Amount"
+    },
+    {
+      "value": "17",
+      "name": "PremiumMargin",
+      "doc": "Premium Margin"
+    },
+    {
+      "value": "18",
+      "name": "ReserveMargin",
+      "doc": "Reserve Margin"
+    },
+    {
+      "value": "19",
+      "name": "SecurityCollateralAmount",
+      "doc": "Security Collateral Amount"
+    },
+    {
+      "value": "20",
+      "name": "StressTestAddOnAmount",
+      "doc": "Stress Test Add-On Amount"
+    },
+    {
+      "value": "21",
+      "name": "SuperMargin",
+      "doc": "Super Margin"
+    },
+    {
+      "value": "22",
+      "name": "TotalMargin",
+      "doc": "Total Margin"
+    },
+    {
+      "value": "23",
+      "name": "VariationMargin",
+      "doc": "Variation Margin"
+    },
+    {
+      "value": "24",
+      "name": "SecondaryVariationMargin",
+      "doc": "Secondary Variation Margin"
+    },
+    {
+      "value": "25",
+      "name": "RolledUpMarginDeficit",
+      "doc": "Rolled up margin deficit"
+    },
+    {
+      "value": "26",
+      "name": "SpreadResponseMargin",
+      "doc": "Spread response margin"
+    },
+    {
+      "value": "27",
+      "name": "SystemicRiskMargin",
+      "doc": "Systemic risk margin"
+    },
+    {
+      "value": "28",
+      "name": "CurveRiskMargin",
+      "doc": "Curve risk margin"
+    },
+    {
+      "value": "29",
+      "name": "IndexSpreadRiskMargin",
+      "doc": "Index spread risk margin"
+    },
+    {
+      "value": "30",
+      "name": "SectorRiskMargin",
+      "doc": "Sector risk margin"
+    },
+    {
+      "value": "31",
+      "name": "JumpToDefaultRiskMargin",
+      "doc": "Jump-to-default risk margin"
+    },
+    {
+      "value": "32",
+      "name": "BasisRiskMargin",
+      "doc": "Basis risk margin"
+    },
+    {
+      "value": "33",
+      "name": "InterestRateRiskMargin",
+      "doc": "Interest rate risk margin"
+    },
+    {
+      "value": "34",
+      "name": "JumpToHealthRiskMargin",
+      "doc": "Jump-to-health risk margin"
+    },
+    {
+      "value": "35",
+      "name": "OtherRiskMargin",
+      "doc": "Other risk margin"
+    }
+  ]
+}

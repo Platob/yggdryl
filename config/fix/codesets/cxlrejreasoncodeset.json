@@ -1,0 +1,60 @@
+{
+  "name": "cxlrejreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "TooLateToCancel",
+      "doc": "Too late to cancel"
+    },
+    {
+      "value": "1",
+      "name": "UnknownOrder",
+      "doc": "Unknown order"
+    },
+    {
+      "value": "2",
+      "name": "BrokerCredit",
+      "doc": "Broker / Exchange Option"
+    },
+    {
+      "value": "3",
+      "name": "OrderAlreadyInPendingStatus",
+      "doc": "Order already in Pending Cancel or Pending Replace status"
+    },
+    {
+      "value": "4",
+      "name": "UnableToProcessOrderMassCancelRequest",
+      "doc": "Unable to process Order Mass Cancel Request"
+    },
+    {
+      "value": "5",
+      "name": "OrigOrdModTime",
+      "doc": "OrigOrdModTime (586) did not match last TransactTime (60) of order"
+    },
+    {
+      "value": "6",
+      "name": "DuplicateClOrdID",
+      "doc": "Duplicate ClOrdID (11) received"
+    },
+    {
+      "value": "7",
+      "name": "PriceExceedsCurrentPrice",
+      "doc": "Price exceeds current price"
+    },
+    {
+      "value": "8",
+      "name": "PriceExceedsCurrentPriceBand",
+      "doc": "Price exceeds current price band"
+    },
+    {
+      "value": "18",
+      "name": "InvalidPriceIncrement",
+      "doc": "Invalid price increment"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

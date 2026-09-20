@@ -1,0 +1,15 @@
+{
+  "name": "sideclearingtradepricetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "TradeClearingAtExecutionPrice",
+      "doc": "Trade Clearing at Execution Price"
+    },
+    {
+      "value": "1",
+      "name": "TradeClearingAtAlternateClearingPrice",
+      "doc": "Trade Clearing at Alternate Clearing Price"
+    }
+  ]
+}

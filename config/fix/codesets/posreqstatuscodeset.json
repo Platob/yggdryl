@@ -1,0 +1,20 @@
+{
+  "name": "posreqstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Completed",
+      "doc": "Completed"
+    },
+    {
+      "value": "1",
+      "name": "CompletedWithWarnings",
+      "doc": "Completed With Warnings"
+    },
+    {
+      "value": "2",
+      "name": "Rejected",
+      "doc": "Rejected"
+    }
+  ]
+}

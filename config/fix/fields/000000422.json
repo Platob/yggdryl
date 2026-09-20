@@ -105,48 +105,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "42208",
       "description": "The business day convention used to adjust the cash settlement provision's date. Used only to override the business day convention defined in the Instrument component.",
       "display": "CashSettlDateBusinessDayConvention"
@@ -183,28 +142,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "42211",
       "description": "Time unit associated with the relative cash settlement date offset.",
       "display": "CashSettlDateOffsetUnit"
@@ -217,38 +155,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "42212",
       "description": "Specifies the day type of the relative cash settlement date offset.",
       "display": "CashSettlDateOffsetDayType"
@@ -310,18 +217,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Close",
-          "doc": "Close"
-        },
-        {
-          "value": "1",
-          "name": "Hedge",
-          "doc": "Hedge"
-        }
-      ],
+      "FIX:codes": "cashsettlpricedefaultcodeset",
       "FIX:tag": "42217",
       "description": "The default election for determining settlement price.",
       "display": "CashSettlPriceDefault"
@@ -358,28 +254,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreamrateindexcurveunitcodeset",
       "FIX:tag": "42220",
       "description": "Time unit associated with the dividend accrual floating rate index curve period.",
       "display": "DividendFloatingRateIndexCurveUnit"
@@ -418,18 +293,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Short",
-          "doc": "Short"
-        },
-        {
-          "value": "1",
-          "name": "Long",
-          "doc": "Long"
-        }
-      ],
+      "FIX:codes": "paymentstreamratespreadpositiontypecodeset",
       "FIX:tag": "42223",
       "description": "Identifies whether the rate spread is applied to a long or short position.",
       "display": "DividendFloatingRateSpreadPositionType"
@@ -442,18 +306,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "BondEquivalentYield",
-          "doc": "Bond equivalent yield"
-        },
-        {
-          "value": "1",
-          "name": "MoneyMarketYield",
-          "doc": "Money market yield"
-        }
-      ],
+      "FIX:codes": "paymentstreamratetreatmentcodeset",
       "FIX:tag": "42224",
       "description": "Specifies the yield calculation treatment for the index.",
       "display": "DividendFloatingRateTreatment"
@@ -478,18 +331,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buyer",
-          "doc": "Buyer of the trade"
-        },
-        {
-          "value": "2",
-          "name": "Seller",
-          "doc": "Seller of the trade"
-        }
-      ],
+      "FIX:codes": "paymentstreamcapratebuysidecodeset",
       "FIX:tag": "42226",
       "description": "Reference to the buyer of the cap rate option through its trade side.",
       "display": "DividendCapRateBuySide"
@@ -502,18 +344,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buyer",
-          "doc": "Buyer of the trade"
-        },
-        {
-          "value": "2",
-          "name": "Seller",
-          "doc": "Seller of the trade"
-        }
-      ],
+      "FIX:codes": "paymentstreamcapratebuysidecodeset",
       "FIX:tag": "42227",
       "description": "Reference to the seller of the cap rate option through its trade side.",
       "display": "DividendCapRateSellSide"
@@ -538,18 +369,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buyer",
-          "doc": "Buyer of the trade"
-        },
-        {
-          "value": "2",
-          "name": "Seller",
-          "doc": "Seller of the trade"
-        }
-      ],
+      "FIX:codes": "paymentstreamfloorratebuysidecodeset",
       "FIX:tag": "42229",
       "description": "Reference to the buyer of the floor rate option through its trade side.",
       "display": "DividendFloorRateBuySide"
@@ -562,18 +382,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buyer",
-          "doc": "Buyer of the trade"
-        },
-        {
-          "value": "2",
-          "name": "Seller",
-          "doc": "Seller of the trade"
-        }
-      ],
+      "FIX:codes": "paymentstreamfloorratebuysidecodeset",
       "FIX:tag": "42230",
       "description": "Reference to the seller of the floor rate option through its trade side.",
       "display": "DividendFloorRateSellSide"
@@ -598,23 +407,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "RoundToNearest",
-          "doc": "Round to nearest"
-        },
-        {
-          "value": "1",
-          "name": "RoundDown",
-          "doc": "Round down"
-        },
-        {
-          "value": "2",
-          "name": "RoundUp",
-          "doc": "Round up"
-        }
-      ],
+      "FIX:codes": "roundingdirectioncodeset",
       "FIX:tag": "42232",
       "description": "Specifies the rounding direction of the final rate.",
       "display": "DividendFinalRateRoundingDirection"
@@ -639,18 +432,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Unweighted",
-          "doc": "Unweighted"
-        },
-        {
-          "value": "1",
-          "name": "Weighted",
-          "doc": "Weighted"
-        }
-      ],
+      "FIX:codes": "paymentstreamaveragingmethodcodeset",
       "FIX:tag": "42234",
       "description": "When averaging is applicable, used to specify whether a weighted or unweighted average method of calculation is to be used.",
       "display": "DividendAveragingMethod"
@@ -663,18 +445,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "ZeroInterestRateMethod",
-          "doc": "Zero interest rate method"
-        },
-        {
-          "value": "1",
-          "name": "NegativeInterestRateMethod",
-          "doc": "Negative interest rate method"
-        }
-      ],
+      "FIX:codes": "paymentstreamnegativeratetreatmentcodeset",
       "FIX:tag": "42235",
       "description": "The specification of any provisions for calculating payment obligations when a floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
       "display": "DividendNegativeRateTreatment"
@@ -735,28 +506,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "42240",
       "description": "Time unit associated with the relative accrual payment date offset.",
       "display": "DividendAccrualPaymentDateOffsetUnit"
@@ -769,38 +519,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "42241",
       "description": "Specifies the day type of the relative accrual payment date offset.",
       "display": "DividendAccrualPaymentDateOffsetDayType"
@@ -826,48 +545,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "42243",
       "description": "Accrual payment date adjustment business day convention.",
       "display": "DividendAccrualPaymeentDateBusinessDayConvention"
@@ -905,18 +583,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "ExDate",
-          "doc": "Ex-date"
-        },
-        {
-          "value": "1",
-          "name": "RecordDate",
-          "doc": "Record date"
-        }
-      ],
+      "FIX:codes": "dividendentitlementeventcodeset",
       "FIX:tag": "42246",
       "description": "Defines the contract event which the receiver of the derivative is entitled to the dividend.",
       "display": "DividendEntitlementEvent"
@@ -929,28 +596,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "RecordAmount",
-          "doc": "Record amount"
-        },
-        {
-          "value": "1",
-          "name": "ExAmount",
-          "doc": "Ex amount"
-        },
-        {
-          "value": "2",
-          "name": "PaidAmount",
-          "doc": "Paid amount"
-        },
-        {
-          "value": "3",
-          "name": "PerMasterConfirm",
-          "doc": "As specified in master confirmation"
-        }
-      ],
+      "FIX:codes": "dividendamounttypecodeset",
       "FIX:tag": "42247",
       "description": "Indicates how the gross cash dividend amount per share is determined.",
       "display": "DividendAmountType"
@@ -975,18 +621,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buyer",
-          "doc": "Buyer of the trade"
-        },
-        {
-          "value": "2",
-          "name": "Seller",
-          "doc": "Seller of the trade"
-        }
-      ],
+      "FIX:codes": "paymentstreamcapratebuysidecodeset",
       "FIX:tag": "42249",
       "description": "Reference to the party through its side in the trade who makes the determination whether dividends are extraordinary in relation to normal levels.",
       "display": "ExtraordinaryDividendPartySide"
@@ -999,28 +634,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "RecordAmount",
-          "doc": "Record amount"
-        },
-        {
-          "value": "1",
-          "name": "ExAmount",
-          "doc": "Ex amount"
-        },
-        {
-          "value": "2",
-          "name": "PaidAmount",
-          "doc": "Paid amount"
-        },
-        {
-          "value": "3",
-          "name": "PerMasterConfirm",
-          "doc": "As specified in master confirmation"
-        }
-      ],
+      "FIX:codes": "dividendamounttypecodeset",
       "FIX:tag": "42250",
       "description": "Indicates how the extraordinary gross cash dividend per share is determined.",
       "display": "ExtraordinaryDividendAmountType"
@@ -1069,28 +683,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "None",
-          "doc": "None"
-        },
-        {
-          "value": "1",
-          "name": "Flat",
-          "doc": "Flat"
-        },
-        {
-          "value": "2",
-          "name": "Straight",
-          "doc": "Straight"
-        },
-        {
-          "value": "3",
-          "name": "SpreadExclusive",
-          "doc": "Spread exclusive"
-        }
-      ],
+      "FIX:codes": "paymentstreamcompoundingmethodcodeset",
       "FIX:tag": "42254",
       "description": "The compounding method to be used when more than one dividend period contributes to a single payment.",
       "display": "DividendCompoundingMethod"
@@ -1139,18 +732,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "PotentialAdjustment",
-          "doc": "Potential adjustment event"
-        },
-        {
-          "value": "1",
-          "name": "CashEquivalent",
-          "doc": "Cash equivalent"
-        }
-      ],
+      "FIX:codes": "noncashdividendtreatmentcodeset",
       "FIX:tag": "42258",
       "description": "Defines the treatment of non-cash dividends.",
       "display": "NonCashDividendTreatment"
@@ -1163,18 +745,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "EquityAmountReceiver",
-          "doc": "Equity amount receiver election"
-        },
-        {
-          "value": "1",
-          "name": "CalculationAgent",
-          "doc": "Calculation agent election"
-        }
-      ],
+      "FIX:codes": "dividendcompositioncodeset",
       "FIX:tag": "42259",
       "description": "Defines how the composition of dividends is to be determined.",
       "display": "DividendComposition"
@@ -1271,28 +842,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "42267",
       "description": "Time unit associated with the relative FX trigger date offset.",
       "display": "DividendFXTriggerDateOffsetUnit"
@@ -1305,38 +855,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "42268",
       "description": "Specifies the day type of the relative FX trigger date offset.",
       "display": "DividendFXTriggerDateOffsetDayType"
@@ -1362,48 +881,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "42270",
       "description": "The business day convention used for the FX trigger date adjustment.",
       "display": "DividendFXTriggerDateBusinessDayConvention"
@@ -1529,48 +1007,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "42280",
       "description": "The dividend period dates business day convention.",
       "display": "DividendPeriodBusinessDayConvention"
@@ -1620,28 +1057,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "42284",
       "description": "Time unit associated with the relative dividend period valuation date offset.",
       "display": "DividendPeriodValuationDateOffsetUnit"
@@ -1654,38 +1070,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "42285",
       "description": "Specifies the day type of the relative dividend period valuation date offset.",
       "display": "DividendPeriodValuationDateOffsetDayType"
@@ -1748,28 +1133,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "42290",
       "description": "Time unit associated with the relative dividend period payment date offset.",
       "display": "DividendPeriodPaymentDateOffsetUnit"
@@ -1782,38 +1146,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "42291",
       "description": "Specifies the day type of the relative dividend period payment date offset.",
       "display": "DividendPeriodPaymentDateOffsetDayType"

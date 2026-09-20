@@ -1,0 +1,20 @@
+{
+  "name": "crossedindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoCross",
+      "doc": "No cross"
+    },
+    {
+      "value": "1",
+      "name": "CrossRejected",
+      "doc": "Cross rejected"
+    },
+    {
+      "value": "2",
+      "name": "CrossAccepted",
+      "doc": "Cross accepted"
+    }
+  ]
+}

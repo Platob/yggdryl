@@ -61,20 +61,25 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
     // document reads and writes and are outside this tally. No manifest:
     // a dictionary is one namespace, and what each dialect contributed
     // travels on the field it contributed to.
-    // Five documents and the three category roots: the store's own field
-    // shard, the crate's block on its own shard, its `identifiers` and
-    // `metadata` groups and its `fixmsg` component - a store states the
-    // whole row, so the crate's four documents are written beside the
-    // store's one.
+    // Five documents and four roots: the store's own field shard, the crate's
+    // block on its own shard, its `identifiers` and `metadata` groups and its
+    // `fixmsg` component - a store states the whole row, so the crate's four
+    // documents are written beside the store's one - and the three category
+    // roots plus `codesets/`. This dictionary holds no code set, and the
+    // fourth root is still navigated for exactly that reason: a write that
+    // holds none has to take away the folder a previous write left, and a
+    // folder cannot be removed without being reached.
     costs(
-        "five documents, three categories",
+        "five documents, four roots",
         &calls,
-        "child_by_path=8",
+        "child_by_path=9",
         || {
             registry.write_into(&mut folder).unwrap();
         },
     );
-    costs("three category roots", &calls, "child_by_path=3", || {
+    // And four on the way back: the code sets are read before the fields,
+    // because a field naming a set the dictionary does not hold is refused.
+    costs("four roots", &calls, "child_by_path=4", || {
         assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
     });
     folder.remove(true).unwrap();

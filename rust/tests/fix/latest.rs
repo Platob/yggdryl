@@ -192,13 +192,24 @@ fn ruled_registry() -> Arc<FixRegistry> {
     capacity.as_fix_mut().set_tag(528).expect("a tag");
     capacity
         .as_fix_mut()
-        .set_codes(&[
-            FixCode::new("Agency", "A"),
-            FixCode::new("Principal", "P"),
-            FixCode::new("Retired", "Z"),
-        ])
+        .set_codeset("ordercapacitycodeset")
+        .expect("the set it reads by");
+    // The dictionary holds the members under that name, and states them
+    // before the field that names them arrives.
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(
+            "ordercapacitycodeset",
+            &[
+                FixCode::new("Agency", "A"),
+                FixCode::new("Principal", "P"),
+                FixCode::new("Retired", "Z"),
+            ],
+        )
         .expect("codes");
-    Arc::new(FixRegistry::from_fields([rule80a, capacity]).expect("a registry"))
+    registry.insert(rule80a).expect("the source");
+    registry.insert(capacity).expect("the target");
+    Arc::new(registry)
 }
 
 #[test]
@@ -299,7 +310,10 @@ fn a_fix_42_execution_report_restates_at_the_dictionarys_newest_version() {
     let registry = reader.registry();
     assert_eq!(registry.get_field(47).map(Field::name), Some("rule80a"));
     assert_eq!(
-        registry.field_by_tag(150).unwrap().as_fix().code_value("1"),
+        registry
+            .codeset_of(registry.field_by_tag(150).unwrap())
+            .expect("tag 150's set")
+            .code_value("1"),
         Some("1")
     );
 

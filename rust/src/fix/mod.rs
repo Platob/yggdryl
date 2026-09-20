@@ -170,7 +170,7 @@ mod warmth;
 
 pub use codec::DEFAULT_PAYLOAD_COLUMN;
 pub use codec::{DEFAULT_NULL_VALUES, DEFAULT_REFUSED_MSGTYPES, FixCodec, SOH};
-pub use codes::{FixCode, FixCodeValue, FixCodes};
+pub use codes::{FixCode, FixCodeSet, FixCodeValue, FixCodes};
 pub(crate) use component::occurrence_name;
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{

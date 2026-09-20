@@ -1,0 +1,15 @@
+{
+  "name": "streamtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "PaymentCashSettlement",
+      "doc": "Payment / cash settlement"
+    },
+    {
+      "value": "1",
+      "name": "PhysicalDelivery",
+      "doc": "Physical delivery"
+    }
+  ]
+}

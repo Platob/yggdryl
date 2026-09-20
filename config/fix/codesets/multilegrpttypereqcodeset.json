@@ -1,0 +1,20 @@
+{
+  "name": "multilegrpttypereqcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ReportByMulitlegSecurityOnly",
+      "doc": "Report by mulitleg security only (do not report legs)"
+    },
+    {
+      "value": "1",
+      "name": "ReportByMultilegSecurityAndInstrumentLegs",
+      "doc": "Report by multileg security and by instrument legs belonging to the multileg security"
+    },
+    {
+      "value": "2",
+      "name": "ReportByInstrumentLegsOnly",
+      "doc": "Report by instrument legs belonging to the multileg security only (do not report status of multileg security)"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "name": "productcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "AGENCY",
+      "doc": "AGENCY"
+    },
+    {
+      "value": "2",
+      "name": "COMMODITY",
+      "doc": "COMMODITY"
+    },
+    {
+      "value": "3",
+      "name": "CORPORATE",
+      "doc": "CORPORATE"
+    },
+    {
+      "value": "4",
+      "name": "CURRENCY",
+      "doc": "CURRENCY"
+    },
+    {
+      "value": "5",
+      "name": "EQUITY",
+      "doc": "EQUITY"
+    },
+    {
+      "value": "6",
+      "name": "GOVERNMENT",
+      "doc": "GOVERNMENT"
+    },
+    {
+      "value": "7",
+      "name": "INDEX",
+      "doc": "INDEX"
+    },
+    {
+      "value": "8",
+      "name": "LOAN",
+      "doc": "LOAN"
+    },
+    {
+      "value": "9",
+      "name": "MONEYMARKET",
+      "doc": "MONEYMARKET"
+    },
+    {
+      "value": "10",
+      "name": "MORTGAGE",
+      "doc": "MORTGAGE"
+    },
+    {
+      "value": "11",
+      "name": "MUNICIPAL",
+      "doc": "MUNICIPAL"
+    },
+    {
+      "value": "12",
+      "name": "OTHER",
+      "doc": "OTHER"
+    },
+    {
+      "value": "13",
+      "name": "FINANCING",
+      "doc": "FINANCING"
+    }
+  ]
+}

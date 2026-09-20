@@ -1,0 +1,23 @@
+{
+  "name": "transactionattributetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ExclusiveArrangement",
+      "doc": "Exclusive arrangement"
+    },
+    {
+      "value": "1",
+      "name": "CollateralReuse",
+      "doc": "Collateral reuse"
+    },
+    {
+      "value": "2",
+      "name": "CollateralArrangementType",
+      "aliases": [
+        "CollateralArrangmentType"
+      ],
+      "doc": "Collateral arrangement type"
+    }
+  ]
+}

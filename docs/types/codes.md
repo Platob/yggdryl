@@ -24,7 +24,7 @@ A code is an identity over a published registry, not a string with a charset: a 
 | --- | --- |
 | Value | one `Scalar` variant per code - `Country`, `Currency`, `Mic`, `Cfi`, `Side`, `State`, `TimeInForce`, `Isin`, `Cusip`, `Sedol`, `Bloomberg` - holding the text; equality, order and hash carry the identity, so `Side("BUY")` and `TimeInForce("BUY")` are two values, and they sort the way their datatypes sort |
 | Family | `Code` is the eleven as one value - a variant per code, named as the `Scalar` variant is - and a `FamilyValue` beside `CodeValue`: `Scalar::as_code` narrows to it and `into_scalar` widens back ([Scalar](scalar.md#families)) |
-| Read by spelling | `side` and `state` hold explicit values of the crate's own - `BUY`, `SSHORT`, `ASDEF`; `20NEW`, `80FILLED` - and read a FIX wire code, the specification's name or the stored value onto them through `Side::from_spelling` and `State::from_spelling`; a spelling that names none is refused, never stored. FIX's `Side(54)` reaches the side values through the name its dictionary gives each code, so a dialect's own code maps as its dictionary says |
+| Read by spelling | `side` and `state` hold explicit values of the crate's own - `BUY`, `SSHORT`, `ASDEF`; `20NEW`, `80FILLED` - and read a FIX wire code, the specification's name or the stored value onto them through `Side::from_spelling` and `State::from_spelling`; a spelling that names none is refused, never stored. FIX's `Side(54)` reaches the side values through the name the [code set](../fix/registry.md#a-field-names-the-code-set-it-reads-by) it reads by gives each code, so a dialect's own code maps as its dictionary says |
 | Storage | the text itself: nothing padded, nothing to trim, so a column dictionary-encodes and carries string statistics like any other text |
 | Identity | the extension *name*, never the storage: `yggdryl.currency` over `utf8` is a currency, and the same `utf8` under `yggdryl.string` or under no name at all is the text it is |
 | `code_width` | the most bytes one value may be, the number its standard fixes; `fixed_byte_width` is `None`, because the width bounds a value rather than laying it out |
@@ -468,11 +468,12 @@ one over any fixed width.
 `OrdStatus(39)` says where the order stands and `ExecType(150)` says what the
 report is - and a scheduler names a job's state in ordinary English. They are
 the same shape, so a capture and the pipeline reading it need one vocabulary
-rather than two and a join. The two FIX code sets share their letters and not
-always their meaning - `D` is Restated in one and AcceptedForBidding in the
-other - so a [FIX column](../fix/capture.md) reads a code through the name its
-own field gives it before it reads the letter: `150=D` is `70RESTATED` and
-`39=D` is `20ACCEPTED`.
+rather than two and a join. FIX's two are named [code sets](../fix/registry.md#a-field-names-the-code-set-it-reads-by)
+the dictionary holds, `ordstatuscodeset` and `exectypecodeset`; they share
+their letters and not always their meaning - `D` is Restated in one and
+AcceptedForBidding in the other - so a [FIX column](../fix/capture.md) reads a
+code through the name the set its own field reads by gives it, before it reads
+the letter: `150=D` is `70RESTATED` and `39=D` is `20ACCEPTED`.
 
 A value is **two decimal digits of rank then a name**, ten US-ASCII bytes. The
 rank is what makes the stored bytes sort from the first state to the terminal

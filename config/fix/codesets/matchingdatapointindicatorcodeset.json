@@ -1,0 +1,15 @@
+{
+  "name": "matchingdatapointindicatorcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Mandatory",
+      "doc": "Mandatory"
+    },
+    {
+      "value": "2",
+      "name": "Optional",
+      "doc": "Optional"
+    }
+  ]
+}

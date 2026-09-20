@@ -1,0 +1,35 @@
+{
+  "name": "settlinstmodecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Default",
+      "doc": "Default (Replaced)"
+    },
+    {
+      "value": "1",
+      "name": "StandingInstructionsProvided",
+      "doc": "Standing Instructions Provided"
+    },
+    {
+      "value": "2",
+      "name": "SpecificAllocationAccountOverriding",
+      "doc": "Specific Allocation Account Overriding (Replaced)"
+    },
+    {
+      "value": "3",
+      "name": "SpecificAllocationAccountStanding",
+      "doc": "Specific Allocation Account Standing (Replaced)"
+    },
+    {
+      "value": "4",
+      "name": "SpecificOrderForASingleAccount",
+      "doc": "Specific Order for a single account (for CIV)"
+    },
+    {
+      "value": "5",
+      "name": "RequestReject",
+      "doc": "Request reject"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "routingtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "TargetFirm",
+      "doc": "Target Firm"
+    },
+    {
+      "value": "2",
+      "name": "TargetList",
+      "doc": "Target List"
+    },
+    {
+      "value": "3",
+      "name": "BlockFirm",
+      "doc": "Block Firm"
+    },
+    {
+      "value": "4",
+      "name": "BlockList",
+      "doc": "Block List"
+    },
+    {
+      "value": "5",
+      "name": "TargetPerson",
+      "doc": "Target Person"
+    },
+    {
+      "value": "6",
+      "name": "BlockPerson",
+      "doc": "Block Person"
+    }
+  ]
+}

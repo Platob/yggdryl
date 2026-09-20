@@ -1,0 +1,60 @@
+{
+  "name": "ordereventtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Added",
+      "doc": "Added (0=New)"
+    },
+    {
+      "value": "2",
+      "name": "Modified",
+      "doc": "Modified (5=Replaced)"
+    },
+    {
+      "value": "3",
+      "name": "Deleted",
+      "doc": "Deleted (4=Canceled)"
+    },
+    {
+      "value": "4",
+      "name": "PartiallyFilled",
+      "doc": "Partially Filled (F=Trade)"
+    },
+    {
+      "value": "5",
+      "name": "Filled",
+      "doc": "Filled (F=Trade)"
+    },
+    {
+      "value": "6",
+      "name": "Suspended",
+      "doc": "Suspended (9=Suspended)"
+    },
+    {
+      "value": "7",
+      "name": "Released",
+      "doc": "Released (N=Released)"
+    },
+    {
+      "value": "8",
+      "name": "Restated",
+      "doc": "Restated (D=Restated)"
+    },
+    {
+      "value": "9",
+      "name": "Locked",
+      "doc": "Locked (M=Locked)"
+    },
+    {
+      "value": "10",
+      "name": "Triggered",
+      "doc": "Triggered (L=Triggered or Activated by System)"
+    },
+    {
+      "value": "11",
+      "name": "Activated",
+      "doc": "Activated (L=Triggered or Activated by System)"
+    }
+  ]
+}

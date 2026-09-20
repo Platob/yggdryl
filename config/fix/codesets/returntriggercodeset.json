@@ -1,0 +1,55 @@
+{
+  "name": "returntriggercodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Dividend",
+      "doc": "Dividend"
+    },
+    {
+      "value": "2",
+      "name": "Variance",
+      "doc": "Variance"
+    },
+    {
+      "value": "3",
+      "name": "Volatility",
+      "doc": "Volatility"
+    },
+    {
+      "value": "4",
+      "name": "TotalReturn",
+      "doc": "Total return"
+    },
+    {
+      "value": "5",
+      "name": "ContractForDifference",
+      "doc": "Contract for difference"
+    },
+    {
+      "value": "6",
+      "name": "CreditDefault",
+      "doc": "Credit default"
+    },
+    {
+      "value": "7",
+      "name": "SpreadBet",
+      "doc": "Spread bet"
+    },
+    {
+      "value": "8",
+      "name": "Price",
+      "doc": "Price"
+    },
+    {
+      "value": "9",
+      "name": "ForwardPriceUnderlyingInstrument",
+      "doc": "Forward price of underlying instrument"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

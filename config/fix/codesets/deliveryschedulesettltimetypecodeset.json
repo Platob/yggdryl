@@ -1,0 +1,15 @@
+{
+  "name": "deliveryschedulesettltimetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Hour",
+      "doc": "Hour of the day"
+    },
+    {
+      "value": "1",
+      "name": "Timestamp",
+      "doc": "HH:MM time format"
+    }
+  ]
+}

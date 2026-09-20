@@ -1,0 +1,60 @@
+{
+  "name": "posreqtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Positions",
+      "doc": "Positions"
+    },
+    {
+      "value": "1",
+      "name": "Trades",
+      "doc": "Trades"
+    },
+    {
+      "value": "2",
+      "name": "Exercises",
+      "doc": "Exercises"
+    },
+    {
+      "value": "3",
+      "name": "Assignments",
+      "doc": "Assignments"
+    },
+    {
+      "value": "4",
+      "name": "SettlementActivity",
+      "doc": "Settlement Activity"
+    },
+    {
+      "value": "5",
+      "name": "BackoutMessage",
+      "doc": "Backout Message"
+    },
+    {
+      "value": "6",
+      "name": "DeltaPositions",
+      "doc": "Delta Positions"
+    },
+    {
+      "value": "7",
+      "name": "NetPosition",
+      "doc": "Net Position"
+    },
+    {
+      "value": "8",
+      "name": "LargePositionsReporting",
+      "doc": "Large Positions Reporting"
+    },
+    {
+      "value": "9",
+      "name": "ExercisePositionReportingSubmission",
+      "doc": "Exercise Position Reporting Submission"
+    },
+    {
+      "value": "10",
+      "name": "PositionLimitReportingSubmissing",
+      "doc": "Position Limit Reporting Submission"
+    }
+  ]
+}

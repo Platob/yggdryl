@@ -1,0 +1,30 @@
+{
+  "name": "valuationmethodcodeset",
+  "codes": [
+    {
+      "value": "EQTY",
+      "name": "PremiumStyle",
+      "doc": "premium style"
+    },
+    {
+      "value": "FUT",
+      "name": "FuturesStyleMarkToMarket",
+      "doc": "futures style mark-to-market"
+    },
+    {
+      "value": "FUTDA",
+      "name": "FuturesStyleWithAnAttachedCashAdjustment",
+      "doc": "futures style with an attached cash adjustment"
+    },
+    {
+      "value": "CDS",
+      "name": "CDSStyleCollateralization",
+      "doc": "CDS style collateralization of market to market and coupon"
+    },
+    {
+      "value": "CDSD",
+      "name": "CDSInDeliveryUseRecoveryRateToCalculate",
+      "doc": "CDS in delivery - use recovery rate to calculate obligation"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "transferreporttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Submit",
+      "doc": "Submit"
+    },
+    {
+      "value": "1",
+      "name": "Alleged",
+      "doc": "Alleged"
+    }
+  ]
+}

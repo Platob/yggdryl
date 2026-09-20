@@ -1,0 +1,30 @@
+{
+  "name": "lastcapacitycodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Agent",
+      "doc": "Agent"
+    },
+    {
+      "value": "2",
+      "name": "CrossAsAgent",
+      "doc": "Cross as agent"
+    },
+    {
+      "value": "3",
+      "name": "CrossAsPrincipal",
+      "doc": "Cross as principal"
+    },
+    {
+      "value": "4",
+      "name": "Principal",
+      "doc": "Principal"
+    },
+    {
+      "value": "5",
+      "name": "RisklessPrincipal",
+      "doc": "Riskless principal"
+    }
+  ]
+}

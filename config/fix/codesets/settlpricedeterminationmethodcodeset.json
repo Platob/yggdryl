@@ -1,0 +1,55 @@
+{
+  "name": "settlpricedeterminationmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Unknown",
+      "doc": "Unknown"
+    },
+    {
+      "value": "1",
+      "name": "LastTradePrice",
+      "doc": "Last trade price"
+    },
+    {
+      "value": "2",
+      "name": "LastBidPrice",
+      "doc": "Last bid price"
+    },
+    {
+      "value": "3",
+      "name": "LastOfferPrice",
+      "doc": "Last offer price"
+    },
+    {
+      "value": "4",
+      "name": "MidPrice",
+      "doc": "Mid price"
+    },
+    {
+      "value": "5",
+      "name": "AverageLastTradePrice",
+      "doc": "Average last trade price"
+    },
+    {
+      "value": "6",
+      "name": "AverageLastTradePeriod",
+      "doc": "Average last trade period"
+    },
+    {
+      "value": "7",
+      "name": "UnderlyingPrice",
+      "doc": "Underlying price"
+    },
+    {
+      "value": "8",
+      "name": "CalculatedPrice",
+      "doc": "Calculated price"
+    },
+    {
+      "value": "9",
+      "name": "ManualPrice",
+      "doc": "Manual price"
+    }
+  ]
+}

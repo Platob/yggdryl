@@ -1,0 +1,21 @@
+{
+  "name": "possdupflagcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "OriginalTransmission",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Original transmission"
+    },
+    {
+      "value": "Y",
+      "name": "PossibleDuplicate",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Possible duplicate"
+    }
+  ]
+}

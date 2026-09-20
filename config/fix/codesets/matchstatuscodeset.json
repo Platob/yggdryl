@@ -1,0 +1,25 @@
+{
+  "name": "matchstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Compared",
+      "doc": "Compared, matched or affirmed"
+    },
+    {
+      "value": "1",
+      "name": "Uncompared",
+      "doc": "Uncompared, unmatched, or unaffirmed"
+    },
+    {
+      "value": "2",
+      "name": "AdvisoryOrAlert",
+      "doc": "Advisory or alert"
+    },
+    {
+      "value": "3",
+      "name": "Mismatched",
+      "doc": "Mismatched"
+    }
+  ]
+}

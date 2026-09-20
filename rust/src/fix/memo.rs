@@ -70,6 +70,12 @@ impl Facts {
     pub(super) fn is_null(&self, text: &str) -> bool {
         super::field::spells_absence(self.nulls.iter().map(SmolStr::as_str), text)
     }
+
+    /// The document of the set this field reads by, as the dictionary held it
+    /// when the field was first asked about.
+    pub(super) fn codes(&self) -> Option<&str> {
+        self.codes.as_deref()
+    }
 }
 
 /// What the dictionary holds under one key: the field the key names, by its
@@ -163,7 +169,7 @@ impl Memo {
 
     /// What `source`, a field the registry keeps, states about its values,
     /// read off its metadata the first time and remembered.
-    pub(super) fn facts(&self, source: &Field) -> Arc<Facts> {
+    pub(super) fn facts(&self, source: &Field, codes: Option<&str>) -> Arc<Facts> {
         let key = address(source);
         let id = self.id();
         let mirrored = MIRROR.with(|mirror| {
@@ -186,7 +192,10 @@ impl Memo {
                 let view = source.as_fix();
                 let facts = Arc::new(Facts {
                     nulls: view.nulls().map(SmolStr::new).collect(),
-                    codes: view.codes_document().map(Box::from),
+                    // The set the field names, resolved once here rather than
+                    // once per entry: a run translates a million spellings
+                    // through one document and looks its name up once.
+                    codes: codes.map(Box::from),
                 });
                 let mut table = held(&self.facts);
                 if table.len() < Self::CAPACITY {
@@ -228,7 +237,7 @@ impl Memo {
         let answer = match known {
             Some(answer) => answer,
             None => {
-                let answer = super::field::translate(stored, text).map(SmolStr::new);
+                let answer = super::codes::translate(stored, text).map(SmolStr::new);
                 let mut table = held(&self.translations);
                 if table.len() < Self::CAPACITY {
                     table.insert(key.clone(), answer.clone());

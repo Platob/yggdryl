@@ -2,35 +2,37 @@
 
 A FIX field is an ordinary :class:`~yggdryl.Field` whose ``FIX:`` metadata the
 protocol view ``field.fix`` reads and writes as typed properties - ``id``,
-``tag``, ``tags``, ``branches``, ``aliases``, ``identifiers``, ``description``,
-``derivation`` - so nothing here is a second field class. A field is its tag
-and its name together: ``id`` is the ``int`` the core derives from both under
-the one fold, never stored, and what the dictionaries that contributed the
-field say is ``branches``, a sorted list of names that a caller filters on
-and no lookup consults. The registry is one namespace: :class:`FixRegistry`
-resolves scalar fields, components and repeating groups by identifier, by
-tag, by counter, by name or by dotted path - a Struct is a component, a List
-of Structs or a Map a group, a message a component carrying ``FIX:msgtype``,
-each filed by :meth:`FixRegistry.insert` under the shape it has - and
-persists them as JSON shards through any ``IOBase`` location, the fixed row
-among them as ``components/fixmsg.json``. Every registry holds the crate's
-own definitions from construction - its columns from tag 65003 and the two
-Map groups ``identifiers`` and ``metadata`` - and seeds the standard clocks
+``tag``, ``tags``, ``branches``, ``aliases``, ``identifiers``, ``codeset``,
+``description``, ``derivation`` - so nothing here is a second field class. A
+field is its tag and its name together: ``id`` is the ``int`` the core derives
+from both under the one fold, never stored, and what the dictionaries that
+contributed the field say is ``branches``, a sorted list of names that a caller
+filters on and no lookup consults. The registry is one namespace:
+:class:`FixRegistry` resolves scalar fields, components and repeating groups by
+identifier, by tag, by counter, by name or by dotted path - a Struct is a
+component, a List of Structs or a Map a group, a message a component carrying
+``FIX:msgtype``, each filed by :meth:`FixRegistry.insert` under the shape it
+has - and persists them as JSON shards through any ``IOBase`` location, the
+fixed row among them as ``components/fixmsg.json``. Every registry holds the
+crate's own definitions from construction - its columns from tag 65003 and the
+two Map groups ``identifiers`` and ``metadata`` - and seeds the standard clocks
 ``SendingTime`` (52) and ``TransactTime`` (60) beside them as ordinary
 definitions a loaded dictionary may supply itself; ``len`` counts the scalar
-fields, the components and the groups, and iteration walks the scalars. A
-store writes the crate's definitions like any other and never lets a stored
-copy override them. A tag is a positive ``int``: ``fix.tag``, ``fix.tags``
-and ``fix.counter`` refuse 0, which only an unresolved entry records.
-Resolution, folding, merging, sharding and validation are native; this
-module only names them.
+fields, the components and the groups, and iteration walks the scalars. A store
+writes the crate's definitions like any other and never lets a stored copy
+override them. A tag is a positive ``int``: ``fix.tag``, ``fix.tags`` and
+``fix.counter`` refuse 0, which only an unresolved entry records. Resolution,
+folding, merging, sharding and validation are native; this module only names
+them.
 
-:func:`fix_cfb_fields` reads one Ullink ``CBlock`` for the vocabulary it
-declares, in declaration order and keyed, which is what
-:meth:`FixRegistry.add_fields` folds into a dictionary that already exists -
-adding what is absent, merging what is stored, and writing nothing at all when
-it refuses. :meth:`FixRegistry.from_cfb_file` is the same file read whole, answering
-a dictionary and the message roots its grammar bindings describe.
+:meth:`FixRegistry.from_cfb_file` reads one Ullink ``CBlock`` whole: the
+dictionary its vocabulary declares - every field keyed by its ``FIX:tag``,
+stamped with the dialect in ``FIX:branches`` and reading by the code set the
+file's maps decode for it, which the dictionary carries under a name of its
+own - and the message roots its grammar bindings describe.
+:meth:`FixRegistry.add_cfb_file` folds that same file into a dictionary that
+already exists, adding what is absent, merging what is stored, and writing
+nothing at all when it refuses.
 
 :class:`FixMsg` is a typed market event with a content row. The typed facts
 live in three holders and two extras - :meth:`FixMsg.event`, the facts the
@@ -134,8 +136,29 @@ Repeating counts such as ``NoPartyIDs`` are ``int32`` fields; ``Parties`` is a
 separate list of ``Party`` components, reached by its name or by
 :meth:`FixRegistry.field_by_counter`. A crate Map is a group too: its
 occurrence is its non-null entries Struct, its key stays non-null and its own
-tag is its counter. Enum codes remain inline in each field's ``FIX:codes``
-metadata.
+tag is its counter.
+
+A field's values are drawn from a *named code set*, and the dictionary holds
+each set once. ``field.fix.codeset`` is the name the field reads by - the one
+thing its ``FIX:codes`` metadata carries - and the members live under that name
+in the registry, persisted as ``codesets/<name>.json`` beside ``fields/``,
+``components/`` and ``groups/`` and as the fourth ``codesets`` key of
+:meth:`FixRegistry.into_json`. So one vocabulary is named, documented and
+aliased in one place however many fields read by it.
+:meth:`FixRegistry.codeset` answers a set's members and
+:meth:`FixRegistry.codeset_of` the members one field reads by, each a list of
+``{"value", "name", "description", "aliases", "group"}`` records in the order
+the set states them; :meth:`FixRegistry.codeset_names` lists the names held.
+:meth:`FixRegistry.set_codeset` states a set's members as those records, an
+empty list removing the set;
+:meth:`FixRegistry.merge_codeset` folds into what it held, keyed by wire value,
+the reading the dictionary already holds winning a shared one and every
+spelling either side declared kept as an alias, and
+:meth:`FixRegistry.remove_codeset` takes one away, refusing while a field still
+reads by it. A dictionary refuses a field naming a set it does not hold - at
+insert, update, ``from_fields``, ``from_json`` and store load alike - so a set
+is stated before a field points at it, and a merge folds the sets first while
+each field keeps the name it already reads by.
 
 A component's ``field.fix.identifiers`` accepts an iterable of its direct
 scalar member names, aliases or decimal tags and stores canonical names in
@@ -163,7 +186,6 @@ from ._native import (
     FixMessages,
     MarketEventData,
     MsgType,
-    fix_cfb_fields,
     fix_crate_fields,
     fix_schema,
     fix_schema_carrying,
@@ -181,7 +203,6 @@ __all__ = [
     "FixMessages",
     "MarketEventData",
     "MsgType",
-    "fix_cfb_fields",
     "fix_crate_fields",
     "fix_schema",
     "fix_schema_carrying",

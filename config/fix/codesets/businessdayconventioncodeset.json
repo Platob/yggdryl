@@ -1,0 +1,45 @@
+{
+  "name": "businessdayconventioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NotApplicable",
+      "doc": "Not applicable"
+    },
+    {
+      "value": "1",
+      "name": "None",
+      "doc": "None (current day)"
+    },
+    {
+      "value": "2",
+      "name": "FollowingDay",
+      "doc": "Following day"
+    },
+    {
+      "value": "3",
+      "name": "FloatingRateNote",
+      "doc": "Floating rate note"
+    },
+    {
+      "value": "4",
+      "name": "ModifiedFollowingDay",
+      "doc": "Modified following day"
+    },
+    {
+      "value": "5",
+      "name": "PrecedingDay",
+      "doc": "Preceding day"
+    },
+    {
+      "value": "6",
+      "name": "ModifiedPrecedingDay",
+      "doc": "Modified preceding day"
+    },
+    {
+      "value": "7",
+      "name": "NearestDay",
+      "doc": "Nearest day"
+    }
+  ]
+}

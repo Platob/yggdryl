@@ -1,0 +1,20 @@
+{
+  "name": "collrptstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Accepted",
+      "doc": "Accepted (successfully processed)"
+    },
+    {
+      "value": "1",
+      "name": "Received",
+      "doc": "Received (not yet processed)"
+    },
+    {
+      "value": "2",
+      "name": "Rejected",
+      "doc": "Rejected"
+    }
+  ]
+}

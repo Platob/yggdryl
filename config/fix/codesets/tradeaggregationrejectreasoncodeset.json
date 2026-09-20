@@ -1,0 +1,20 @@
+{
+  "name": "tradeaggregationrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "UnknownOrders",
+      "doc": "Unknown order(s)"
+    },
+    {
+      "value": "1",
+      "name": "UnknownExecutionFills",
+      "doc": "Unknown execution/fill(s)"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

@@ -1,0 +1,120 @@
+{
+  "name": "corporateactioncodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "ExDividend",
+      "doc": "Ex-Dividend"
+    },
+    {
+      "value": "B",
+      "name": "ExDistribution",
+      "doc": "Ex-Distribution"
+    },
+    {
+      "value": "C",
+      "name": "ExRights",
+      "doc": "Ex-Rights"
+    },
+    {
+      "value": "D",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "E",
+      "name": "ExInterest",
+      "doc": "Ex-Interest"
+    },
+    {
+      "value": "F",
+      "name": "CashDividend",
+      "doc": "Cash Dividend"
+    },
+    {
+      "value": "G",
+      "name": "StockDividend",
+      "doc": "Stock Dividend"
+    },
+    {
+      "value": "H",
+      "name": "NonIntegerStockSplit",
+      "doc": "Non-Integer Stock Split"
+    },
+    {
+      "value": "I",
+      "name": "ReverseStockSplit",
+      "doc": "Reverse Stock Split"
+    },
+    {
+      "value": "J",
+      "name": "StandardIntegerStockSplit",
+      "doc": "Standard-Integer Stock Split"
+    },
+    {
+      "value": "K",
+      "name": "PositionConsolidation",
+      "doc": "Position Consolidation"
+    },
+    {
+      "value": "L",
+      "name": "LiquidationReorganization",
+      "doc": "Liquidation Reorganization"
+    },
+    {
+      "value": "M",
+      "name": "MergerReorganization",
+      "doc": "Merger Reorganization"
+    },
+    {
+      "value": "N",
+      "name": "RightsOffering",
+      "doc": "Rights Offering"
+    },
+    {
+      "value": "O",
+      "name": "ShareholderMeeting",
+      "doc": "Shareholder Meeting"
+    },
+    {
+      "value": "P",
+      "name": "Spinoff",
+      "doc": "Spinoff"
+    },
+    {
+      "value": "Q",
+      "name": "TenderOffer",
+      "doc": "Tender Offer"
+    },
+    {
+      "value": "R",
+      "name": "Warrant",
+      "doc": "Warrant"
+    },
+    {
+      "value": "S",
+      "name": "SpecialAction",
+      "doc": "Special Action"
+    },
+    {
+      "value": "T",
+      "name": "SymbolConversion",
+      "doc": "Symbol Conversion"
+    },
+    {
+      "value": "U",
+      "name": "CUSIP",
+      "doc": "CUSIP / Name Change"
+    },
+    {
+      "value": "V",
+      "name": "LeapRollover",
+      "doc": "Leap Rollover"
+    },
+    {
+      "value": "W",
+      "name": "SuccessionEvent",
+      "doc": "Succession Event"
+    }
+  ]
+}

@@ -205,7 +205,59 @@ pub fn read(store: &Store, category: FixCategory, key: &str, json: bool) -> Resu
         style::entry("names", &names.join(", "));
     }
 
-    let codes: Vec<Vec<String>> = view
+    // The set a field reads by is named here and printed in full by
+    // `codesets read`: one vocabulary, printed once, however many fields name
+    // it.
+    if let Some(name) = view.codeset() {
+        style::entry("codes", name);
+    }
+    Ok(())
+}
+
+/// Lists the code sets the dictionary holds, with how many fields read by
+/// each.
+pub fn list_codesets(store: &Store, filter: Option<&str>, limit: usize) {
+    let registry = store.registry();
+    let mut readers: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for field in registry {
+        if let Some(name) = field.as_fix().codeset() {
+            *readers.entry(name).or_default() += 1;
+        }
+    }
+    let rows: Vec<Vec<String>> = registry
+        .codesets()
+        .filter(|set| filter.is_none_or(|text| set.name().contains(&text.to_ascii_lowercase())))
+        .take(limit)
+        .map(|set| {
+            vec![
+                set.name().to_owned(),
+                set.codes().count().to_string(),
+                readers
+                    .get(set.name())
+                    .copied()
+                    .unwrap_or_default()
+                    .to_string(),
+            ]
+        })
+        .collect();
+    style::table(&["name", "codes", "fields"], &rows);
+}
+
+/// Prints one code set: every member, or the document a store writes.
+pub fn read_codeset(store: &Store, name: &str, json: bool) -> Result<()> {
+    let set = store.registry().codeset(name)?;
+    if json {
+        println!(
+            "{}",
+            yggdryl::into_json_scalar(&yggdryl::Scalar::from_struct([
+                ("name", yggdryl::Scalar::from(set.name())),
+                ("codes", yggdryl::from_json_scalar(set.document())?),
+            ])?)?
+        );
+        return Ok(());
+    }
+    style::heading(set.name());
+    let codes: Vec<Vec<String>> = set
         .codes()
         .map(|code| {
             let code = code?;
@@ -217,10 +269,34 @@ pub fn read(store: &Store, category: FixCategory, key: &str, json: bool) -> Resu
             ])
         })
         .collect::<Result<Vec<_>>>()?;
-    if !codes.is_empty() {
-        style::heading("codes");
-        style::table(&["value", "name", "aliases", "doc"], &codes);
+    style::table(&["value", "name", "aliases", "doc"], &codes);
+    Ok(())
+}
+
+/// States one code set's members, replacing or folding into what it held.
+pub fn write_codeset(store: &mut Store, name: &str, document: &str, merge: bool) -> Result<()> {
+    let codes = yggdryl::FixCodes::parse(document)?;
+    let registry = store.registry_mut();
+    if merge {
+        registry.merge_codeset(name, &codes)?;
+        style::good(&format!("merged codesets/{name}"));
+    } else {
+        registry.set_codeset(name, &codes)?;
+        style::good(&format!("wrote codesets/{name}"));
     }
+    Ok(())
+}
+
+/// Removes one code set, refusing while a field still reads by it.
+pub fn delete_codeset(store: &mut Store, name: &str) -> Result<()> {
+    store
+        .registry_mut()
+        .remove_codeset(name)?
+        .ok_or_else(|| yggdryl::Error::Absent {
+            expected: "a FIX code set",
+            path: name.into(),
+        })?;
+    style::good(&format!("deleted codesets/{name}"));
     Ok(())
 }
 

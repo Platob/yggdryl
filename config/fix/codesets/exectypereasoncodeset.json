@@ -1,0 +1,80 @@
+{
+  "name": "exectypereasoncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "OrdAddedOnRequest",
+      "doc": "Order added upon request"
+    },
+    {
+      "value": "2",
+      "name": "OrdReplacedOnRequest",
+      "doc": "Order replaced upon request"
+    },
+    {
+      "value": "3",
+      "name": "OrdCxldOnRequest",
+      "doc": "Order cancelled upon request"
+    },
+    {
+      "value": "4",
+      "name": "UnsolicitedOrdCxl",
+      "doc": "Unsolicited order cancellation"
+    },
+    {
+      "value": "5",
+      "name": "NonRestingOrdAddedOnRequest",
+      "doc": "Non-resting order added upon request"
+    },
+    {
+      "value": "6",
+      "name": "OrdReplacedWithNonRestingOrdOnRequest",
+      "doc": "Order replaced with non-resting order upon request"
+    },
+    {
+      "value": "7",
+      "name": "TriggerOrdReplacedOnRequest",
+      "doc": "Trigger order replaced upon request"
+    },
+    {
+      "value": "8",
+      "name": "SuspendedOrdReplacedOnRequest",
+      "doc": "Suspended order replaced upon request"
+    },
+    {
+      "value": "9",
+      "name": "SuspendedOrdCxldOnRequest",
+      "doc": "Suspended order canceled upon request"
+    },
+    {
+      "value": "10",
+      "name": "OrdCxlPending",
+      "doc": "Order cancellation pending"
+    },
+    {
+      "value": "11",
+      "name": "PendingCxlExecuted",
+      "doc": "Pending cancellation executed"
+    },
+    {
+      "value": "12",
+      "name": "RestingOrdTriggered",
+      "doc": "Resting order triggered"
+    },
+    {
+      "value": "13",
+      "name": "SuspendedOrdActivated",
+      "doc": "Suspended order activated"
+    },
+    {
+      "value": "14",
+      "name": "ActiveOrdSuspended",
+      "doc": "Active order suspended"
+    },
+    {
+      "value": "15",
+      "name": "OrdExpired",
+      "doc": "Order expired"
+    }
+  ]
+}

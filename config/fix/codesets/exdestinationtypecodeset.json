@@ -1,0 +1,25 @@
+{
+  "name": "exdestinationtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoRestriction",
+      "doc": "No restriction"
+    },
+    {
+      "value": "1",
+      "name": "TradedOnlyOnTradingVenue",
+      "doc": "Can be traded only on a trading venue"
+    },
+    {
+      "value": "2",
+      "name": "TradedOnlyOnSI",
+      "doc": "Can be traded only on a Systematic Internaliser (SI)"
+    },
+    {
+      "value": "3",
+      "name": "TradedOnTradingVenueOrSI",
+      "doc": "Can be traded on a trading venue or Systematic internaliser (SI)"
+    }
+  ]
+}

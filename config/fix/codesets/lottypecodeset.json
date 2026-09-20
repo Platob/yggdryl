@@ -1,0 +1,25 @@
+{
+  "name": "lottypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "OddLot",
+      "doc": "Odd Lot"
+    },
+    {
+      "value": "2",
+      "name": "RoundLot",
+      "doc": "Round Lot"
+    },
+    {
+      "value": "3",
+      "name": "BlockLot",
+      "doc": "Block Lot"
+    },
+    {
+      "value": "4",
+      "name": "RoundLotBasedUpon",
+      "doc": "Round lot based upon UnitOfMeasure(996)"
+    }
+  ]
+}

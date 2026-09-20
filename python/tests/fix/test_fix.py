@@ -34,7 +34,6 @@ from yggdryl.fix import (
     FixRegistry,
     MarketEventData,
     MsgType,
-    fix_cfb_fields,
     fix_crate_fields,
     fix_schema,
     fix_schema_carrying,
@@ -131,6 +130,18 @@ def _field(
     if description is not None:
         field.fix.description = description
     return field
+
+
+def _declared(registry: FixRegistry) -> list[str]:
+    """The scalar names one source added, past what every dictionary holds.
+
+    A `CBlock` reads in as a whole dictionary now, so what the file declared
+    is what the crate's own definitions and the two seeded clocks are not.
+    Sorted, because a registry answers in identity order and a file declares
+    in its own.
+    """
+    seeded = {field.name for field in FixRegistry()}
+    return sorted(field.name for field in registry if field.name not in seeded)
 
 
 @pytest.fixture(scope="module")
@@ -632,38 +643,40 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect(tmp_path: pathlib.Path) 
     path = tmp_path / "bloomberg.cfb"
     path.write_text(CBLOCK, encoding="utf-8")
 
-    fields = fix_cfb_fields(path, "bloomberg")
-    assert [field.name for field in fields] == ["symbol", "excludeddealers"]
-    assert fields[0].description == "Ticker symbol."
-    assert fields[0].fix.branches == ["bloomberg"]
-
-    # Every location the registry takes, the vocabulary takes.
-    for location in (path, str(path), path.as_uri(), Url(path), IOBase(path)):
-        assert [field.name for field in fix_cfb_fields(location, "bloomberg")] == [
-            "symbol",
-            "excludeddealers",
-        ]
-
-    # The registry form is the same file read whole: the same vocabulary,
-    # plus the message roots its grammar bindings describe.
+    # One door: the file read whole is the dictionary its vocabulary states -
+    # code sets and all - and the message roots its grammar bindings describe.
     registry, roots = FixRegistry.from_cfb_file(path, dialect="Bloomberg")
+    assert _declared(registry) == ["excludeddealers", "symbol"]
+    symbol = registry.field_by_tag(55)
+    assert symbol.name == "symbol"
+    assert symbol.description == "Ticker symbol."
+    assert symbol.fix.branches == ["bloomberg"]
+
     assert [root.name for root in roots] == ["7"]
     message = registry.get_msgtype("7")
     assert message is not None and message.value == "7"
     assert message.field.fix.branches == ["bloomberg"]
     assert registry.dialects() == ["bloomberg"]
 
+    # Every location the registry takes reads the same file.
+    for location in (path, str(path), path.as_uri(), Url(path), IOBase(path)):
+        read, _ = FixRegistry.from_cfb_file(location, "bloomberg")
+        assert _declared(read) == ["excludeddealers", "symbol"], location
+
     unstamped, _ = FixRegistry.from_cfb_file(path)
     assert unstamped.dialects() == []
 
     # The vocabulary folds into a dictionary that already exists.
     dictionary = FixRegistry.from_fields([_field("symbol", "utf8", 55)])
-    assert dictionary.add_fields(fix_cfb_fields(path, "bloomberg")) == (1, 1)
+    added, merged = dictionary.add_cfb_file(path, "bloomberg")
+    assert added == 1, "excludeddealers is the one definition nothing held"
+    assert merged >= 1, "symbol is the dictionary's own, stamped by the fold"
     assert dictionary.field_by_tag(55).fix.branches == ["bloomberg"]
+    assert dictionary.field_by_name("excludeddealers").fix.branches == ["bloomberg"]
 
     # A stem or a dialect that carries a comma is refused rather than stored.
     with pytest.raises(ValueError, match="FIX:branches"):
-        fix_cfb_fields(path, "b,loomberg")
+        FixRegistry.from_cfb_file(path, "b,loomberg")
 
 
 def test_a_cblock_warns_about_the_declaration_it_dropped(
@@ -686,17 +699,158 @@ def test_a_cblock_warns_about_the_declaration_it_dropped(
     assert "invalid cfb expression at byte" in warnings[0]
 
     # The tag went; every other declaration the file made stands.
-    assert [field.name for field in fix_cfb_fields(broken)] == ["excludeddealers"]
+    stripped, _ = FixRegistry.from_cfb_file(broken)
+    assert _declared(stripped) == ["excludeddealers"]
 
-    # A document that stops with an element open is refused through both
-    # doors, with one sentence.
+    # A document that stops with an element open is refused, in one sentence
+    # the dialect does not change: what the reader stopped on is the file's.
     truncated = tmp_path / "truncated.cfb"
     truncated.write_text(CBLOCK.replace("</vocabulary>", ""), encoding="utf-8")
     with pytest.raises(ValueError) as refused:
         FixRegistry.from_cfb_file(truncated, "bloomberg")
     with pytest.raises(ValueError) as also:
-        fix_cfb_fields(truncated)
+        FixRegistry.from_cfb_file(truncated)
     assert str(also.value) == str(refused.value)
+    assert "vocabulary" in str(refused.value)
+
+
+def test_a_code_set_is_named_once_and_every_field_reads_by_that_name() -> None:
+    """The dictionary owns the vocabulary; a field only states its name."""
+    registry = FixRegistry()
+    registry.set_codeset(
+        "sidecodeset",
+        [
+            {"value": "1", "name": "Buy", "aliases": ["Bought"]},
+            {"value": "2", "name": "Sell", "description": "the short side"},
+        ],
+    )
+    assert registry.codeset_names() == ["sidecodeset"]
+    assert registry.codeset("sidecodeset") == [
+        {
+            "value": "1",
+            "name": "Buy",
+            "description": None,
+            "aliases": ["Bought"],
+            "group": None,
+        },
+        {
+            "value": "2",
+            "name": "Sell",
+            "description": "the short side",
+            "aliases": [],
+            "group": None,
+        },
+    ]
+    # The name folds the way every name folds, and absence is a `KeyError`.
+    assert registry.get_codeset("SideCodeSet") == registry.codeset("sidecodeset")
+    assert registry.get_codeset("nosuchcodeset") is None
+    with pytest.raises(KeyError, match="nosuchcodeset"):
+        registry.codeset("nosuchcodeset")
+
+    # A set is stated before a field points at it: a dictionary refuses a
+    # field naming a vocabulary nothing states.
+    side = _field("Side", "utf8", 54)
+    side.fix.codeset = "nosuchcodeset"
+    with pytest.raises(ValueError, match="nosuchcodeset"):
+        registry.insert(side)
+    assert registry.get_field_by_tag(54) is None
+
+    # The field carries the name and nothing else - `FIX:codes` is one word.
+    side.fix.codeset = "sidecodeset"
+    assert side.metadata["FIX:codes"] == "sidecodeset"
+    registry.insert(side)
+
+    # A second field reading by the same set reads the one set: resolution
+    # runs through the dictionary, never through a copy on the field.
+    other = _field("SideOfMarket", "utf8", 9054)
+    other.fix.codeset = "sidecodeset"
+    registry.insert(other)
+    held = registry.field_by_tag(54)
+    assert held.fix.codeset == "sidecodeset"
+    assert registry.codeset_of(held) == registry.codeset("sidecodeset")
+    assert registry.codeset_of(registry.field_by_tag(9054)) == registry.codeset_of(held)
+    assert registry.codeset_of(_field("Symbol", "utf8", 55)) is None
+
+    # Restating the set restates what both fields read by, at once.
+    registry.set_codeset("sidecodeset", [{"value": "1", "name": "Bought"}])
+    assert [code["name"] for code in registry.codeset("sidecodeset")] == ["Bought"]
+    assert registry.codeset_of(registry.field_by_tag(9054)) == registry.codeset(
+        "sidecodeset"
+    )
+
+    # A set a held field still reads by is not taken away, by either door.
+    for taking in (
+        lambda: registry.remove_codeset("sidecodeset"),
+        lambda: registry.set_codeset("sidecodeset", []),
+    ):
+        with pytest.raises(ValueError, match="sidecodeset"):
+            taking()
+    assert registry.codeset_names() == ["sidecodeset"]
+
+    # Removed once nothing reads by it, answering the members it held. The
+    # reference is dropped by `insert`, which replaces: a merge keeps the
+    # vocabulary the stored field already read by.
+    for tag in (54, 9054):
+        moved = registry.field_by_tag(tag)
+        moved.fix.codeset = None
+        assert moved.fix.codeset is None
+        assert "FIX:codes" not in moved.metadata
+        registry.insert(moved)
+    taken = registry.remove_codeset("sidecodeset")
+    assert taken is not None and [code["value"] for code in taken] == ["1"]
+    assert registry.codeset_names() == []
+    assert registry.remove_codeset("sidecodeset") is None
+
+
+def test_a_code_set_merge_keeps_what_the_dictionary_already_held() -> None:
+    """A fold widens a vocabulary; it never narrows one."""
+    registry = FixRegistry()
+    registry.set_codeset(
+        "lastqtycodeset",
+        [
+            {"value": "5", "name": "HeldOnly"},
+            {"value": "1", "name": "Shared", "description": "the held reading"},
+        ],
+    )
+    registry.merge_codeset(
+        "lastqtycodeset",
+        [
+            {"value": "9", "name": "FoldedOnly"},
+            {"value": "1", "name": "Folded", "description": "the folded reading"},
+        ],
+    )
+    folded = registry.codeset("lastqtycodeset")
+
+    # Keyed by wire value: a value only one side stated is kept, and the
+    # reading the dictionary already held wins the one they share.
+    assert [code["value"] for code in folded] == ["5", "1", "9"]
+    shared = folded[1]
+    assert shared["name"] == "Shared"
+    assert shared["description"] == "the held reading"
+    # What the fold would otherwise have dropped is kept as a spelling.
+    assert shared["aliases"] == ["Folded"]
+
+    # Two dictionaries fold the same way, and a field keeps the name it
+    # already reads by: the members are the dictionary's to widen.
+    source = FixRegistry()
+    source.set_codeset("lastqtycodeset", [{"value": "7", "name": "SourceOnly"}])
+    lastqty = _field("LastQty", "utf8", 32)
+    lastqty.fix.codeset = "lastqtycodeset"
+    source.insert(lastqty)
+    registry.insert(lastqty)
+    registry.merge_with(source)
+
+    assert registry.field_by_tag(32).fix.codeset == "lastqtycodeset"
+    assert [code["value"] for code in registry.codeset("lastqtycodeset")] == [
+        "5",
+        "1",
+        "9",
+        "7",
+    ]
+
+    # A set no dictionary held yet arrives whole.
+    registry.merge_codeset("newcodeset", [{"value": "A", "name": "Arrived"}])
+    assert registry.codeset_names() == ["lastqtycodeset", "newcodeset"]
 
 
 def test_registry_mutation_refuses_while_something_shares_it(seed: FixRegistry) -> None:

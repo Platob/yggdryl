@@ -1,0 +1,15 @@
+{
+  "name": "coveredoruncoveredcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Covered",
+      "doc": "Covered"
+    },
+    {
+      "value": "1",
+      "name": "Uncovered",
+      "doc": "Uncovered"
+    }
+  ]
+}

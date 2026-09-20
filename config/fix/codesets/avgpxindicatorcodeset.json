@@ -1,0 +1,30 @@
+{
+  "name": "avgpxindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoAveragePricing",
+      "doc": "No average pricing"
+    },
+    {
+      "value": "1",
+      "name": "Trade",
+      "doc": "Trade is part of an average price group identified by the AvgPxGroupID(1731)"
+    },
+    {
+      "value": "2",
+      "name": "LastTrade",
+      "doc": "Last trade of the average price group identified by the AvgPxGroupID(1731)"
+    },
+    {
+      "value": "3",
+      "name": "NotionalValueAveragePxGroupTrade",
+      "doc": "Trade is part of a notional value average price group"
+    },
+    {
+      "value": "4",
+      "name": "AveragePricedTrade",
+      "doc": "Trade is average priced"
+    }
+  ]
+}

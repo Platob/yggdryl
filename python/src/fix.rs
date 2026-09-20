@@ -19,16 +19,16 @@ use std::sync::{Arc, Mutex};
 
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDateTime, PyInt, PyIterator};
+use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt, PyIterator};
 
 use yggdryl::Uuid as CoreUuid;
 use yggdryl::graph::{Element, Event, MarketElement, MarketEventData as CoreMarketEventData};
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
-    FixCodec as CoreFixCodec, FixEntry as CoreFixEntry, FixField as CoreFixField,
-    FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg,
-    FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType, Scalar,
-    StructType, TimeUnit, Timezone,
+    FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
+    FixEntry as CoreFixEntry, FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey,
+    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase,
+    MsgType as CoreMsgType, Scalar, StructType, TimeUnit, Timezone,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -95,6 +95,78 @@ where
     Scalar: From<C>,
 {
     PyScalar::from_inner(Scalar::from(code.clone()))
+}
+
+/// One code as the record Python reads: `{"value", "name", "description",
+/// "aliases", "group"}`.
+///
+/// The shape `FIX:directions` already crosses in - one record per entry of
+/// the document, every key stated - because a code set is that same kind of
+/// document and a binding is a view rather than a second vocabulary. A key
+/// the specification said nothing about is `None` rather than absent, so one
+/// record reads like the next.
+fn code_record<'py>(py: Python<'py>, code: &CoreFixCode) -> PyResult<Bound<'py, PyDict>> {
+    let record = PyDict::new(py);
+    record.set_item("value", code.value())?;
+    record.set_item("name", code.name())?;
+    record.set_item("description", code.description())?;
+    let aliases: Vec<&str> = code.aliases().iter().map(AsRef::as_ref).collect();
+    record.set_item("aliases", aliases)?;
+    record.set_item("group", code.group())?;
+    Ok(record)
+}
+
+/// Every member of one stored set, in the order the document states them.
+fn code_records<'py>(
+    py: Python<'py>,
+    set: CoreFixCodeSet<'_>,
+) -> PyResult<Vec<Bound<'py, PyDict>>> {
+    set.codes()
+        .map(|code| {
+            let code = CoreFixCode::from(code.map_err(value_error)?);
+            code_record(py, &code)
+        })
+        .collect()
+}
+
+/// One optional text of a code record, absent and `None` reading alike.
+fn code_text(record: &Bound<'_, PyAny>, key: &str) -> PyResult<Option<String>> {
+    match record.get_item(key) {
+        Ok(value) => value.extract::<Option<String>>(),
+        Err(_) => Ok(None),
+    }
+}
+
+/// The codes a Python value states, typed.
+///
+/// An iterable of records shaped the way `codeset` answers them, where
+/// `value` and `name` are the two keys a code has to state and the rest are
+/// optional - the one shape `directions` already crosses in, so the two
+/// document properties a caller states are stated alike.
+fn codes_from_py(codes: &Bound<'_, PyAny>) -> PyResult<Vec<CoreFixCode>> {
+    let mut held = Vec::new();
+    for record in codes.try_iter()? {
+        let record = record?;
+        let mut code = CoreFixCode::new(
+            record.get_item("name")?.extract::<String>()?,
+            record.get_item("value")?.extract::<String>()?,
+        );
+        if let Some(description) = code_text(&record, "description")? {
+            code = code.with_description(description);
+        }
+        if let Some(group) = code_text(&record, "group")? {
+            code = code.with_group(group);
+        }
+        if let Ok(aliases) = record.get_item("aliases")
+            && !aliases.is_none()
+        {
+            for alias in aliases.try_iter()? {
+                code.push_alias(alias?.extract::<String>()?);
+            }
+        }
+        held.push(code);
+    }
+    Ok(held)
 }
 
 /// One of the market's numbers, exact, as the decimal `Scalar` it is.
@@ -493,6 +565,120 @@ impl PyFixRegistry {
             .msgtype(spelling)
             .map(|held| PyMsgType::new(Arc::clone(&self.inner), held.clone()))
             .map_err(|error| absent(&error))
+    }
+
+    /// The members of the code set `name`, or `None`.
+    ///
+    /// The lenient door beside `codeset`, which raises absence: a caller
+    /// asking whether a vocabulary is held asks this. The name folds the way
+    /// every name folds, so `SideCodeSet` and `sidecodeset` are one set.
+    fn get_codeset<'py>(
+        &self,
+        py: Python<'py>,
+        name: &str,
+    ) -> PyResult<Option<Vec<Bound<'py, PyDict>>>> {
+        self.inner
+            .get_codeset(name)
+            .map(|set| code_records(py, set))
+            .transpose()
+    }
+
+    /// The members of the code set `name`; absence is a `KeyError`.
+    ///
+    /// A field states the name of the set it reads by and the dictionary
+    /// holds the members, once, under that name: this is the door between
+    /// them. Each member is a record - `value`, `name`, `description`,
+    /// `aliases`, `group` - in the order the set states them, which is the
+    /// presentation rank the specification gives each code.
+    fn codeset<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Vec<Bound<'py, PyDict>>> {
+        let set = self.inner.codeset(name).map_err(|error| absent(&error))?;
+        code_records(py, set)
+    }
+
+    /// The members of the set `field` reads by, or `None`.
+    ///
+    /// `field` is anything `Field` accepts. A field naming no set answers
+    /// `None`; a held field never names a set this dictionary lacks, because
+    /// every door a field arrives through refuses one that does.
+    fn codeset_of<'py>(
+        &self,
+        py: Python<'py>,
+        field: &Bound<'_, PyAny>,
+    ) -> PyResult<Option<Vec<Bound<'py, PyDict>>>> {
+        let field = core_field_from_value(field)?;
+        self.inner
+            .codeset_of(&field)
+            .map(|set| code_records(py, set))
+            .transpose()
+    }
+
+    /// The name of every code set held, in name order.
+    ///
+    /// The names alone, and named so: the shipped dictionary holds hundreds
+    /// of sets and one of them is read by a hundred and three fields, so
+    /// the members are asked for one set at a time through `codeset`. The
+    /// JavaScript view spells it `codesetNames` for the same reason.
+    fn codeset_names(&self) -> Vec<String> {
+        self.inner
+            .codesets()
+            .map(|set| set.name().to_owned())
+            .collect()
+    }
+
+    /// State the members of the code set `name`, replacing what it held.
+    ///
+    /// `codes` is an iterable of records - `value` and `name` are required,
+    /// `description`, `aliases` and `group` optional - or the canonical JSON
+    /// document a store writes, as one `str`. The set is filed under the
+    /// folded name, and two names may share a value - that is an alias - but
+    /// two codes may not share a name.
+    ///
+    /// An empty list removes the set, exactly as an empty tag or alias list
+    /// removes its own property; removing one a held field still reads by is
+    /// a `ValueError`, because a field may not be left naming a vocabulary
+    /// nothing states. One mutation: a refusal leaves the dictionary exactly
+    /// as it was.
+    fn set_codeset(&mut self, name: &str, codes: &Bound<'_, PyAny>) -> PyResult<()> {
+        let codes = codes_from_py(codes)?;
+        self.inner_mut()?
+            .set_codeset(name, &codes)
+            .map_err(value_error)
+    }
+
+    /// Fold `codes` into the code set `name`, keeping what it already held.
+    ///
+    /// The fold is by wire value: a placeholder name yields to a real one,
+    /// every surviving spelling is kept as an alias, and a description or a
+    /// group either side stated stays. So a venue's statement of a set
+    /// enriches the one the dictionary holds rather than replacing it, and a
+    /// set no dictionary held yet arrives whole.
+    fn merge_codeset(&mut self, name: &str, codes: &Bound<'_, PyAny>) -> PyResult<()> {
+        let codes = codes_from_py(codes)?;
+        self.inner_mut()?
+            .merge_codeset(name, &codes)
+            .map_err(value_error)
+    }
+
+    /// Remove the code set `name`, answering the members it held.
+    ///
+    /// A set nothing holds answers `None`. A set a held field still reads by
+    /// is a `ValueError` naming that field: the field is moved to another set
+    /// first, or removed with it.
+    fn remove_codeset<'py>(
+        &mut self,
+        py: Python<'py>,
+        name: &str,
+    ) -> PyResult<Option<Vec<Bound<'py, PyDict>>>> {
+        self.inner_mut()?
+            .remove_codeset(name)
+            .map_err(value_error)?
+            .map(|codes| {
+                codes
+                    .iter()
+                    .map(|code| code_record(py, code))
+                    .collect::<PyResult<Vec<_>>>()
+            })
+            .transpose()
     }
 
     /// The repeating group one counter tag opens, or `None`.
@@ -2671,31 +2857,6 @@ pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
     yggdryl::fix_crate_fields()
         .map(|held| held.iter().cloned().map(PyField::from_inner).collect())
         .map_err(value_error)
-}
-
-/// The vocabulary one Ullink `CBlock` declares, in declaration order.
-///
-/// The dictionary half of `FixRegistry.from_cfb_file`, answered on its own: every
-/// field carries the `FIX:tag` that keys it, the dialect in `FIX:branches`,
-/// and whatever code set the file's maps decode for it, which is what
-/// `FixRegistry.add_fields` needs to fold one counterparty's file into a
-/// dictionary that exists. The message roots are what the registry form
-/// answers instead.
-///
-/// `dialect` names the dictionary, and the file names it when the caller does
-/// not: with none supplied the location's own stem stands in. A stem or a
-/// dialect that is empty or carries a comma is a `ValueError` rather than a
-/// guess.
-#[pyfunction]
-#[pyo3(name = "fix_cfb_fields", signature = (location, dialect=None))]
-pub(crate) fn fix_cfb_fields(
-    location: &Bound<'_, PyAny>,
-    dialect: Option<&str>,
-) -> PyResult<Vec<PyField>> {
-    read_located(location, |handle| {
-        CoreFixField::from_cfb_file(handle, dialect)
-    })
-    .map(|held| held.into_iter().map(PyField::from_inner).collect())
 }
 
 /// The `(name, value)` pairs of one message's root, in declared order.

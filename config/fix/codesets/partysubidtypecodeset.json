@@ -1,0 +1,450 @@
+{
+  "name": "partysubidtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Firm",
+      "doc": "Firm"
+    },
+    {
+      "value": "2",
+      "name": "Person",
+      "doc": "Person"
+    },
+    {
+      "value": "3",
+      "name": "System",
+      "doc": "System"
+    },
+    {
+      "value": "4",
+      "name": "Application",
+      "doc": "Application"
+    },
+    {
+      "value": "5",
+      "name": "FullLegalNameOfFirm",
+      "doc": "Full legal name of firm"
+    },
+    {
+      "value": "6",
+      "name": "PostalAddress",
+      "doc": "Postal address"
+    },
+    {
+      "value": "7",
+      "name": "PhoneNumber",
+      "doc": "Phone number"
+    },
+    {
+      "value": "8",
+      "name": "EmailAddress",
+      "doc": "Email address"
+    },
+    {
+      "value": "9",
+      "name": "ContactName",
+      "doc": "Contact name"
+    },
+    {
+      "value": "10",
+      "name": "SecuritiesAccountNumber",
+      "doc": "Securities account number (for settlement instructions)"
+    },
+    {
+      "value": "11",
+      "name": "RegistrationNumber",
+      "doc": "Registration number (for settlement instructions and confirmations)"
+    },
+    {
+      "value": "12",
+      "name": "RegisteredAddressForConfirmation",
+      "doc": "Registered address (for confirmation purposes)"
+    },
+    {
+      "value": "13",
+      "name": "RegulatoryStatus",
+      "doc": "Regulatory status (for confirmation purposes)"
+    },
+    {
+      "value": "14",
+      "name": "RegistrationName",
+      "doc": "Registration name (for settlement instructions)"
+    },
+    {
+      "value": "15",
+      "name": "CashAccountNumber",
+      "doc": "Cash account number (for settlement instructions)"
+    },
+    {
+      "value": "16",
+      "name": "BIC",
+      "doc": "BIC"
+    },
+    {
+      "value": "17",
+      "name": "CSDParticipantMemberCode",
+      "doc": "CSD participant member code"
+    },
+    {
+      "value": "18",
+      "name": "RegisteredAddress",
+      "doc": "Registered address"
+    },
+    {
+      "value": "19",
+      "name": "FundAccountName",
+      "doc": "Fund account name"
+    },
+    {
+      "value": "20",
+      "name": "TelexNumber",
+      "doc": "Telex number"
+    },
+    {
+      "value": "21",
+      "name": "FaxNumber",
+      "doc": "Fax number"
+    },
+    {
+      "value": "22",
+      "name": "SecuritiesAccountName",
+      "doc": "Securities account name"
+    },
+    {
+      "value": "23",
+      "name": "CashAccountName",
+      "doc": "Cash account name"
+    },
+    {
+      "value": "24",
+      "name": "Department",
+      "doc": "Department"
+    },
+    {
+      "value": "25",
+      "name": "LocationDesk",
+      "doc": "Location desk"
+    },
+    {
+      "value": "26",
+      "name": "PositionAccountType",
+      "doc": "Position account type"
+    },
+    {
+      "value": "27",
+      "name": "SecurityLocateID",
+      "doc": "Security locate ID"
+    },
+    {
+      "value": "28",
+      "name": "MarketMaker",
+      "doc": "Market maker"
+    },
+    {
+      "value": "29",
+      "name": "EligibleCounterparty",
+      "doc": "Eligible counterparty"
+    },
+    {
+      "value": "30",
+      "name": "ProfessionalClient",
+      "doc": "Professional client"
+    },
+    {
+      "value": "31",
+      "name": "Location",
+      "doc": "Location"
+    },
+    {
+      "value": "32",
+      "name": "ExecutionVenue",
+      "doc": "Execution venue"
+    },
+    {
+      "value": "33",
+      "name": "CurrencyDeliveryIdentifier",
+      "doc": "Currency delivery identifier"
+    },
+    {
+      "value": "34",
+      "name": "AddressCity",
+      "doc": "Address City"
+    },
+    {
+      "value": "35",
+      "name": "AddressStateOrProvince",
+      "doc": "Address State/Province"
+    },
+    {
+      "value": "36",
+      "name": "AddressPostalCode",
+      "doc": "Address Postal Code"
+    },
+    {
+      "value": "37",
+      "name": "AddressStreet",
+      "doc": "Address Street"
+    },
+    {
+      "value": "38",
+      "name": "AddressISOCountryCode",
+      "doc": "Address Country (ISO country code)"
+    },
+    {
+      "value": "39",
+      "name": "ISOCountryCode",
+      "doc": "ISO country code"
+    },
+    {
+      "value": "40",
+      "name": "MarketSegment",
+      "doc": "Market segment"
+    },
+    {
+      "value": "41",
+      "name": "CustomerAccountType",
+      "doc": "Customer account type"
+    },
+    {
+      "value": "42",
+      "name": "OmnibusAccount",
+      "doc": "Omnibus account"
+    },
+    {
+      "value": "43",
+      "name": "FundsSegregationType",
+      "doc": "Funds segregation type"
+    },
+    {
+      "value": "44",
+      "name": "GuaranteeFund",
+      "doc": "Guarantee fund"
+    },
+    {
+      "value": "45",
+      "name": "SwapDealer",
+      "doc": "Swap dealer"
+    },
+    {
+      "value": "46",
+      "name": "MajorParticipant",
+      "doc": "Major participant"
+    },
+    {
+      "value": "47",
+      "name": "FinancialEntity",
+      "doc": "Financial entity"
+    },
+    {
+      "value": "48",
+      "name": "USPerson",
+      "doc": "U.S. person"
+    },
+    {
+      "value": "49",
+      "name": "ReportingEntityIndicator",
+      "doc": "Reporting entity indicator"
+    },
+    {
+      "value": "50",
+      "name": "ElectedClearingRequirementException",
+      "doc": "Elected clearing requirement exception"
+    },
+    {
+      "value": "51",
+      "name": "BusinessCenter",
+      "doc": "Business center"
+    },
+    {
+      "value": "52",
+      "name": "ReferenceText",
+      "doc": "Reference text"
+    },
+    {
+      "value": "53",
+      "name": "ShortMarkingExemptAccount",
+      "doc": "Short-marking exempt account"
+    },
+    {
+      "value": "54",
+      "name": "ParentFirmIdentifier",
+      "doc": "Parent firm identifier"
+    },
+    {
+      "value": "55",
+      "name": "ParentFirmName",
+      "doc": "Parent firm name"
+    },
+    {
+      "value": "56",
+      "name": "DealIdentifier",
+      "doc": "Deal identifier"
+    },
+    {
+      "value": "57",
+      "name": "SystemTradeID",
+      "doc": "System trade identifier"
+    },
+    {
+      "value": "58",
+      "name": "SystemTradeSubID",
+      "doc": "System trade sub-identifier"
+    },
+    {
+      "value": "59",
+      "name": "FCMCode",
+      "doc": "Futures Commission Merchant (FCM) code"
+    },
+    {
+      "value": "60",
+      "name": "DlvryTrmlCode",
+      "doc": "Delivery terminal customer account/code"
+    },
+    {
+      "value": "61",
+      "name": "VolntyRptEntity",
+      "doc": "Voluntary reporting entity"
+    },
+    {
+      "value": "62",
+      "name": "RptObligJursdctn",
+      "doc": "Reporting obligation jurisdiction"
+    },
+    {
+      "value": "63",
+      "name": "VolntyRptJursdctn",
+      "doc": "Voluntary reporting jurisdiction"
+    },
+    {
+      "value": "64",
+      "name": "CompanyActivities",
+      "doc": "Company activities"
+    },
+    {
+      "value": "65",
+      "name": "EEAreaDomiciled",
+      "doc": "European Economic Area domiciled"
+    },
+    {
+      "value": "66",
+      "name": "ContractLinked",
+      "doc": "Contract linked to commercial or treasury financing for this counterparty"
+    },
+    {
+      "value": "67",
+      "name": "ContractAbove",
+      "doc": "Contract above clearing threshold for this counterparty"
+    },
+    {
+      "value": "68",
+      "name": "VolntyRptPty",
+      "doc": "Voluntary reporting party"
+    },
+    {
+      "value": "69",
+      "name": "EndUser",
+      "doc": "End user"
+    },
+    {
+      "value": "70",
+      "name": "LocationOrJurisdiction",
+      "doc": "Location or jurisdiction"
+    },
+    {
+      "value": "71",
+      "name": "DerivativesDealer",
+      "doc": "Derivatives dealer"
+    },
+    {
+      "value": "72",
+      "name": "Domicile",
+      "doc": "Domicile"
+    },
+    {
+      "value": "73",
+      "name": "ExemptFromRecognition",
+      "doc": "Exempt from recognition"
+    },
+    {
+      "value": "74",
+      "name": "Payer",
+      "doc": "Payer"
+    },
+    {
+      "value": "75",
+      "name": "Receiver",
+      "doc": "Receiver"
+    },
+    {
+      "value": "76",
+      "name": "SystematicInternaliser",
+      "doc": "Systematic Internaliser (SI)"
+    },
+    {
+      "value": "77",
+      "name": "PublishingEntityIndicator",
+      "doc": "Publishing entity indicator"
+    },
+    {
+      "value": "78",
+      "name": "FirstName",
+      "doc": "First name"
+    },
+    {
+      "value": "79",
+      "name": "Surname",
+      "doc": "Surname"
+    },
+    {
+      "value": "80",
+      "name": "DateOfBirth",
+      "doc": "Date of birth"
+    },
+    {
+      "value": "81",
+      "name": "OrderTransmittingFirm",
+      "doc": "Order transmitting firm"
+    },
+    {
+      "value": "82",
+      "name": "OrderTransmittingFirmBuyer",
+      "doc": "Order transmitting firm for buyer"
+    },
+    {
+      "value": "83",
+      "name": "OrderTransmitterSeller",
+      "doc": "Order transmitter for seller"
+    },
+    {
+      "value": "84",
+      "name": "LegalEntityIdentifier",
+      "doc": "Legal Entity Identifier (ISO 17442) LEI"
+    },
+    {
+      "value": "85",
+      "name": "SubSectorClassification",
+      "doc": "Sub-sector classification"
+    },
+    {
+      "value": "86",
+      "name": "PartySide",
+      "doc": "Party side"
+    },
+    {
+      "value": "87",
+      "name": "LegalRegistrationCountry",
+      "doc": "Legal registration country"
+    },
+    {
+      "value": "88",
+      "name": "AlgorithmVersion",
+      "doc": "Algorithm version"
+    },
+    {
+      "value": "89",
+      "name": "CertificateRegistrationStatus",
+      "doc": "Certificate registration status"
+    }
+  ]
+}

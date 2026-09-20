@@ -1,0 +1,13 @@
+{
+  "name": "cxltypecodeset",
+  "codes": [
+    {
+      "value": "F",
+      "name": "FullRemainingQuantity"
+    },
+    {
+      "value": "P",
+      "name": "PartialCancel"
+    }
+  ]
+}

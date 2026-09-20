@@ -1,0 +1,20 @@
+{
+  "name": "marketsegmentstatuscodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Active",
+      "doc": "Active"
+    },
+    {
+      "value": "2",
+      "name": "Inactive",
+      "doc": "Inactive"
+    },
+    {
+      "value": "3",
+      "name": "Published",
+      "doc": "Published"
+    }
+  ]
+}

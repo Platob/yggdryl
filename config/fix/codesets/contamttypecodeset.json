@@ -1,0 +1,80 @@
+{
+  "name": "contamttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "CommissionAmount",
+      "doc": "Commission amount (actual)"
+    },
+    {
+      "value": "2",
+      "name": "CommissionPercent",
+      "doc": "Commission percent (actual)"
+    },
+    {
+      "value": "3",
+      "name": "InitialChargeAmount",
+      "doc": "Initial Charge Amount"
+    },
+    {
+      "value": "4",
+      "name": "InitialChargePercent",
+      "doc": "Initial Charge Percent"
+    },
+    {
+      "value": "5",
+      "name": "DiscountAmount",
+      "doc": "Discount Amount"
+    },
+    {
+      "value": "6",
+      "name": "DiscountPercent",
+      "doc": "Discount Percent"
+    },
+    {
+      "value": "7",
+      "name": "DilutionLevyAmount",
+      "doc": "Dilution Levy Amount"
+    },
+    {
+      "value": "8",
+      "name": "DilutionLevyPercent",
+      "doc": "Dilution Levy Percent"
+    },
+    {
+      "value": "9",
+      "name": "ExitChargeAmount",
+      "doc": "Exit Charge Amount"
+    },
+    {
+      "value": "10",
+      "name": "ExitChargePercent",
+      "doc": "Exit Charge Percent"
+    },
+    {
+      "value": "11",
+      "name": "FundBasedRenewalCommissionPercent",
+      "doc": "Fund-Based Renewal Commission Percent (a.k.a. Trail commission)"
+    },
+    {
+      "value": "12",
+      "name": "ProjectedFundValue",
+      "doc": "Projected Fund Value (i.e. for investments intended to realise or exceed a specific future value)"
+    },
+    {
+      "value": "13",
+      "name": "FundBasedRenewalCommissionOnOrder",
+      "doc": "Fund-Based Renewal Commission Amount (based on Order value)"
+    },
+    {
+      "value": "14",
+      "name": "FundBasedRenewalCommissionOnFund",
+      "doc": "Fund-Based Renewal Commission Amount (based on Projected Fund value)"
+    },
+    {
+      "value": "15",
+      "name": "NetSettlementAmount",
+      "doc": "Net Settlement Amount"
+    }
+  ]
+}

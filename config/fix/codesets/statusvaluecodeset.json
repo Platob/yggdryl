@@ -1,0 +1,25 @@
+{
+  "name": "statusvaluecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Connected",
+      "doc": "Connected"
+    },
+    {
+      "value": "2",
+      "name": "NotConnectedUnexpected",
+      "doc": "Not Connected - down expected up"
+    },
+    {
+      "value": "3",
+      "name": "NotConnectedExpected",
+      "doc": "Not Connected - down expected down"
+    },
+    {
+      "value": "4",
+      "name": "InProcess",
+      "doc": "In Process"
+    }
+  ]
+}

@@ -23,15 +23,23 @@ const BULK_CONFIG: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioni
 /// stated direction lands in.
 fn direction_registry() -> Arc<FixRegistry> {
     let mut registry = FixRegistry::new();
-    // Tag 385 as the dictionary types it: text carrying its code set.
+    // Tag 385's set, held by the dictionary under the name the field reads
+    // it by, and stated before the field that names it arrives.
+    registry
+        .set_codeset(
+            "msgdirectioncodeset",
+            &[
+                yggdryl::FixCode::new("Receive", "R"),
+                yggdryl::FixCode::new("Send", "S"),
+            ],
+        )
+        .unwrap();
+    // Tag 385 as the dictionary types it: text naming its code set.
     let mut direction = DataType::utf8().nullable_field("MsgDirection");
     direction.as_fix_mut().set_tag(385).unwrap();
     direction
         .as_fix_mut()
-        .set_codes(&[
-            yggdryl::FixCode::new("Receive", "R"),
-            yggdryl::FixCode::new("Send", "S"),
-        ])
+        .set_codeset("msgdirectioncodeset")
         .unwrap();
     registry.insert(direction).unwrap();
     Arc::new(registry)

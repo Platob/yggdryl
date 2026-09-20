@@ -137,18 +137,29 @@ test('insert, update and remove carry a definition as they carry a field', () =>
 
 test('the complete native catalog survives a snapshot and a store', (t) => {
   const registry = catalog()
+  // A vocabulary is the dictionary's, and a field names it: the set is
+  // stated first, because a field naming one the dictionary does not hold is
+  // refused.
+  registry.setCodeset('partyrolecodeset', [{ value: 'B', name: 'Broker' }])
   const coded = registry.field(448)
-  coded.set('FIX:codes', '[{"value":"B","name":"Broker"}]')
+  coded.fix.codeset = 'partyrolecodeset'
   registry.update(coded)
-  assert.match(registry.fieldByPath('NewOrderSingle.Parties.PartyID').get('FIX:codes'), /Broker/)
+  const reached = registry.fieldByPath('NewOrderSingle.Parties.PartyID')
+  assert.equal(reached.get('FIX:codes'), 'partyrolecodeset')
+  assert.equal(registry.codeValue('partyrolecodeset', 'broker'), 'B')
   const vendor = tagged('Vendor', 9001)
   vendor.fix.branches = ['venue']
   registry.insert(vendor)
 
-  // Three categories and nothing else: a dictionary's membership is metadata
-  // on the field it contributed to, so it travels inside `fields`.
+  // Three categories and the vocabularies they read by, and nothing else: a
+  // dictionary's membership is metadata on the field it contributed to, so it
+  // travels inside `fields`, while a code set is named and held once.
   const document = registry.toJSON()
-  assert.deepEqual(Object.keys(document).sort(), ['components', 'fields', 'groups'])
+  assert.deepEqual(Object.keys(document).sort(), ['codesets', 'components', 'fields', 'groups'])
+  assert.deepEqual(
+    document.codesets.map((set) => set.name),
+    ['partyrolecodeset'],
+  )
   assert.equal(document.fields.find((value) => value.name === 'Vendor').metadata['FIX:branches'], 'venue')
   assert.ok(document.components.some((value) => value.name === 'Party'))
   assert.ok(document.groups.some((value) => value.name === 'Parties'))
@@ -167,7 +178,7 @@ test('the complete native catalog survives a snapshot and a store', (t) => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-node-catalog-'))
   t.after(() => fs.rmSync(folder, { recursive: true, force: true }))
   registry.writeInto(folder)
-  assert.deepEqual(fs.readdirSync(folder).sort(), ['components', 'fields', 'groups'])
+  assert.deepEqual(fs.readdirSync(folder).sort(), ['codesets', 'components', 'fields', 'groups'])
   // A definition is one document under its category, and the crate's own
   // are written like every other: the fixed row is `components/fixmsg.json`
   // and its two Map groups are two documents.
@@ -179,6 +190,9 @@ test('the complete native catalog survives a snapshot and a store', (t) => {
     ['identifiers.json', 'metadata.json', 'parties.json'],
   )
   assert.ok(documents('fields').every((name) => /^\d{9}\.json$/.test(name)))
+  // A code set is one document under its own name, which is how it is
+  // addressed and what a field states.
+  assert.deepEqual(documents('codesets'), ['partyrolecodeset.json'])
   assert.ok(fix.FixRegistry.fromHandle(folder).equals(registry))
 
   // A change to any category changes the value.

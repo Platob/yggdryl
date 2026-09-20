@@ -1,0 +1,15 @@
+{
+  "name": "paymentstreamratetreatmentcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "BondEquivalentYield",
+      "doc": "Bond equivalent yield"
+    },
+    {
+      "value": "1",
+      "name": "MoneyMarketYield",
+      "doc": "Money market yield"
+    }
+  ]
+}

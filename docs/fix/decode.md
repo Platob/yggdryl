@@ -11,7 +11,7 @@ your own bytes.
 | Native intake | `FixCodec::parse_line` accepts captured bytes and returns a lazy `FixMessages` iterator - [none, one or many](#a-line-yields-none-one-or-many-messages) of them a line; `parse_lines` streams a whole capture |
 | Single frames | `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line` and `parse_pairs` each answer one message and [refuse a body holding a second](#a-line-yields-none-one-or-many-messages); a door asked for one message answers it whatever its type, so the [type filter](#a-type-nobody-asked-for-is-never-built) applies to the row and stream doors alone |
 | Message types | `DEFAULT_REFUSED_MSGTYPES` - `Heartbeat`, `TestRequest` and the untyped row - are [dropped before anything is built](#a-type-nobody-asked-for-is-never-built); `with_include_msgtypes` names what to read, `with_exclude_msgtypes` what to refuse |
-| Scalar fields | Values resolve through the field catalog; inline `FIX:codes` supplies enum names |
+| Scalar fields | Values resolve through the field catalog; enum names come from the [code set](registry.md#a-field-names-the-code-set-it-reads-by) the field's `FIX:codes` names, which the dictionary holds |
 | Repeating groups | The count remains an `int32` field; a named List holds its component occurrences |
 | Content | The [entries](message.md) are the content row read as a tree, in the row's order: a value the field could not type is null in the row and the entry still spells what arrived |
 | Browser | Shows native sample fields, values, entries and emissions from `assets/fix.json` |

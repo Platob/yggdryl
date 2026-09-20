@@ -1,0 +1,55 @@
+{
+  "name": "securityrequesttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "RequestSecurityIdentityAndSpecifications",
+      "doc": "Request Security identity and specifications"
+    },
+    {
+      "value": "1",
+      "name": "RequestSecurityIdentityForSpecifications",
+      "doc": "Request Security identity for the specifications provided (name of the security is not supplied)"
+    },
+    {
+      "value": "2",
+      "name": "RequestListSecurityTypes",
+      "doc": "Request List Security Types"
+    },
+    {
+      "value": "3",
+      "name": "RequestListSecurities",
+      "doc": "Request List Securities (can be qualified with Symbol, SecurityType, TradingSessionID, SecurityExchange. If provided then only list Securities for the specific type.)"
+    },
+    {
+      "value": "4",
+      "name": "Symbol",
+      "doc": "Symbol"
+    },
+    {
+      "value": "5",
+      "name": "SecurityTypeAndOrCFICode",
+      "doc": "SecurityType and or CFICode"
+    },
+    {
+      "value": "6",
+      "name": "Product",
+      "doc": "Product"
+    },
+    {
+      "value": "7",
+      "name": "TradingSessionID",
+      "doc": "TradingSessionID"
+    },
+    {
+      "value": "8",
+      "name": "AllSecurities",
+      "doc": "All Securities"
+    },
+    {
+      "value": "9",
+      "name": "MarketIDOrMarketID",
+      "doc": "MarketID or MarketID + MarketSegmentID"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "extraordinaryeventadjustmentmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "CalculationAgent",
+      "doc": "Calculation agent"
+    },
+    {
+      "value": "1",
+      "name": "OptionsExchange",
+      "doc": "Options exchange"
+    }
+  ]
+}

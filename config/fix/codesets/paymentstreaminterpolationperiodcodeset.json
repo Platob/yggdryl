@@ -1,0 +1,25 @@
+{
+  "name": "paymentstreaminterpolationperiodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Initial",
+      "doc": "Initial"
+    },
+    {
+      "value": "1",
+      "name": "InitialAndFinal",
+      "doc": "Initial and final"
+    },
+    {
+      "value": "2",
+      "name": "Final",
+      "doc": "Final"
+    },
+    {
+      "value": "3",
+      "name": "AnyPeriod",
+      "doc": "Any period"
+    }
+  ]
+}

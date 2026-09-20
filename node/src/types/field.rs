@@ -2038,28 +2038,31 @@ impl JsProtocolField {
             .map_err(napi_error)
     }
 
-    /// The symbolic name of a wire value in this field's inline enumeration.
-    #[napi]
-    pub fn code_name(&self, env: Env, value: String) -> Result<Option<String>> {
-        self.require_fix(env, "codes")?;
-        Ok(self
-            .field
-            .inner
-            .as_fix()
-            .code_name(&value)
-            .map(ToOwned::to_owned))
+    /// The name of the FIX code set this field reads its values by, or
+    /// `null` for a field drawing on none.
+    ///
+    /// A field states the name and never a copy of the members: the
+    /// dictionary holds each set once under it, so a vocabulary is named,
+    /// documented and aliased in one place however many fields read by it.
+    /// `FixRegistry#codesetOf` is what answers the members.
+    #[napi(getter)]
+    pub fn codeset(&self, env: Env) -> Result<Option<String>> {
+        self.require_fix(env, "codeset")?;
+        Ok(self.field.inner.as_fix().codeset().map(ToOwned::to_owned))
     }
 
-    /// The wire value of a symbolic name or value in this field's inline enumeration.
-    #[napi]
-    pub fn code_value(&self, env: Env, text: String) -> Result<Option<String>> {
-        self.require_fix(env, "codes")?;
-        Ok(self
-            .field
+    /// Record the set this field reads by; `null` or an empty name removes
+    /// the property, and a name no store can file throws leaving the field
+    /// unchanged. A dictionary refuses a field naming a set it does not
+    /// hold, so the set is stated before the field points at it.
+    #[napi(setter)]
+    pub fn set_codeset(&mut self, env: Env, value: Option<String>) -> Result<()> {
+        self.require_fix(env, "codeset")?;
+        self.field
             .inner
-            .as_fix()
-            .code_value(&text)
-            .map(ToOwned::to_owned))
+            .as_fix_mut()
+            .set_codeset(value.as_deref().unwrap_or_default())
+            .map_err(napi_error)
     }
 
     /// The alternate tags, highest priority first.

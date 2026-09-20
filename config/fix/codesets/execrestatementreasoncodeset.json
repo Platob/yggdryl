@@ -1,0 +1,115 @@
+{
+  "name": "execrestatementreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "GTCorporateAction",
+      "doc": "GT corporate action"
+    },
+    {
+      "value": "1",
+      "name": "GTRenewal",
+      "doc": "GT renewal / restatement (no corporate action)"
+    },
+    {
+      "value": "2",
+      "name": "VerbalChange",
+      "doc": "Verbal change"
+    },
+    {
+      "value": "3",
+      "name": "RepricingOfOrder",
+      "doc": "Repricing of order"
+    },
+    {
+      "value": "4",
+      "name": "BrokerOption",
+      "doc": "Broker option"
+    },
+    {
+      "value": "5",
+      "name": "PartialDeclineOfOrderQty",
+      "doc": "Partial decline of OrderQty (e.g. exchange initiated partial cancel)"
+    },
+    {
+      "value": "6",
+      "name": "CancelOnTradingHalt",
+      "doc": "Cancel on Trading Halt"
+    },
+    {
+      "value": "7",
+      "name": "CancelOnSystemFailure",
+      "doc": "Cancel on System Failure"
+    },
+    {
+      "value": "8",
+      "name": "Market",
+      "doc": "Market (Exchange) option"
+    },
+    {
+      "value": "9",
+      "name": "Canceled",
+      "doc": "Canceled, not best"
+    },
+    {
+      "value": "10",
+      "name": "WarehouseRecap",
+      "doc": "Warehouse Recap"
+    },
+    {
+      "value": "11",
+      "name": "PegRefresh",
+      "doc": "Peg Refresh"
+    },
+    {
+      "value": "12",
+      "name": "CancelOnConnectionLoss",
+      "doc": "Cancel On Connection Loss"
+    },
+    {
+      "value": "13",
+      "name": "CancelOnLogout",
+      "doc": "Cancel On Logout"
+    },
+    {
+      "value": "14",
+      "name": "AssignTimePriority",
+      "doc": "Assign Time Priority"
+    },
+    {
+      "value": "15",
+      "name": "CancelledForTradePriceViolation",
+      "doc": "Cancelled, Trade Price Violation"
+    },
+    {
+      "value": "16",
+      "name": "CancelledForCrossImbalance",
+      "doc": "Cancelled, Cross Imbalance"
+    },
+    {
+      "value": "17",
+      "name": "CxldSMP",
+      "doc": "Cancelled, self-match prevention"
+    },
+    {
+      "value": "18",
+      "name": "CxldSMPAggressive",
+      "doc": "Cancelled, self-match prevention aggressive order"
+    },
+    {
+      "value": "19",
+      "name": "CxldSMPPassive",
+      "doc": "Cancelled, self-match prevention passive order"
+    },
+    {
+      "value": "20",
+      "name": "CxldSMPAggressivePassive",
+      "doc": "Cancelled, self-match prevention aggressive and passive order"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "name": "complexeventpricetimetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Expiration",
+      "doc": "Expiration"
+    },
+    {
+      "value": "2",
+      "name": "Immediate",
+      "doc": "Immediate (At Any Time)"
+    },
+    {
+      "value": "3",
+      "name": "SpecifiedDate",
+      "doc": "Specified Date/Time"
+    },
+    {
+      "value": "4",
+      "name": "Close",
+      "doc": "Close"
+    },
+    {
+      "value": "5",
+      "name": "Open",
+      "doc": "Open"
+    },
+    {
+      "value": "6",
+      "name": "OfficialSettlPrice",
+      "doc": "Official settlement price"
+    },
+    {
+      "value": "7",
+      "name": "DerivativesClose",
+      "doc": "Derivatives close"
+    },
+    {
+      "value": "8",
+      "name": "AsSpecifiedMasterConfirmation",
+      "doc": "As specified in Master Confirmation"
+    }
+  ]
+}

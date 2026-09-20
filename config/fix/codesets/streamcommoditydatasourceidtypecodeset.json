@@ -1,0 +1,25 @@
+{
+  "name": "streamcommoditydatasourceidtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "City",
+      "doc": "City (4 character business center code)"
+    },
+    {
+      "value": "1",
+      "name": "Airport",
+      "doc": "Airport (IATA standard)"
+    },
+    {
+      "value": "2",
+      "name": "WeatherStation",
+      "doc": "Weather station WBAN (Weather Bureau Army Navy)"
+    },
+    {
+      "value": "3",
+      "name": "WeatherIndex",
+      "doc": "Weather index WMO (World Meteorological Organization)"
+    }
+  ]
+}

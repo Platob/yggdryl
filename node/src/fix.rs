@@ -16,6 +16,13 @@
 //! `FIX:branches` on the field it contributed to, read on the protocol view;
 //! nothing here resolves through it.
 //!
+//! A code set is the dictionary's own, not the field's: a field states only
+//! the name it reads by, on `field.fix.codeset`, and the members are held
+//! here once under that name. They cross as plain objects, the way
+//! `FIX:directions` does - `{value, name, aliases?, doc?, group?}` per
+//! member - so the codes a caller writes are the records the store writes
+//! under `codesets/<name>.json`.
+//!
 //! A message's typed facts - its event, its header, its capture, its text
 //! and its metadata - cross as plain values: a UUID as its text, a hash and
 //! an instant as a `bigint`, a price as its decimal text, a code as the text
@@ -42,8 +49,9 @@ use yggdryl::graph::{Element, Event, MarketElement, MarketEventData};
 use yggdryl::{Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol};
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture,
-    FixCodec as CoreFixCodec, FixEntry, FixHeader, FixId as CoreFixId, FixKey,
-    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar, TimeUnit, Timezone,
+    FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec, FixEntry,
+    FixHeader, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry,
+    Scalar, TimeUnit, Timezone,
 };
 
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
@@ -128,6 +136,89 @@ impl FixKeyArg {
             Self::Name(name) => FixKey::Name(name.as_str()),
         }
     }
+}
+
+/// One member of a FIX code set, as the plain object JavaScript reads and
+/// writes.
+///
+/// The record a store writes under `codesets/<name>.json`: the wire value
+/// and the symbolic name every member states, and the spellings, the wording
+/// and the group a specification adds where it has them. A key a member does
+/// not state is absent rather than empty, so a bare code is the two facts it
+/// is.
+#[napi(object)]
+pub struct FixCode {
+    /// The wire value this code stands for.
+    pub value: String,
+    /// The symbolic name.
+    pub name: String,
+    /// The venue and per-version spellings that also reach this code.
+    pub aliases: Option<Vec<String>>,
+    /// The specification's own wording, decoded.
+    pub doc: Option<String>,
+    /// The group the specification files this code under, decoded.
+    pub group: Option<String>,
+}
+
+impl FixCode {
+    /// One owned core code, as the object JavaScript reads.
+    fn from_core(code: CoreFixCode) -> Self {
+        Self {
+            value: code.value().to_owned(),
+            name: code.name().to_owned(),
+            aliases: (!code.aliases().is_empty())
+                .then(|| code.aliases().iter().map(ToString::to_string).collect()),
+            doc: code.description().map(ToOwned::to_owned),
+            group: code.group().map(ToOwned::to_owned),
+        }
+    }
+
+    /// The core code this object states.
+    fn into_core(self) -> CoreFixCode {
+        let mut code = CoreFixCode::new(self.name, self.value);
+        if let Some(aliases) = self.aliases {
+            code = code.with_aliases(aliases);
+        }
+        if let Some(doc) = self.doc {
+            code = code.with_description(doc);
+        }
+        if let Some(group) = self.group {
+            code = code.with_group(group);
+        }
+        code
+    }
+}
+
+/// One named FIX code set, as the plain object JavaScript reads.
+///
+/// The dictionary owns the members under the name and a field states only
+/// the name, so this is the pair read together: one vocabulary, however many
+/// fields draw on it.
+#[napi(object, object_from_js = false)]
+pub struct FixCodeSetView {
+    /// The name the dictionary files this set under.
+    pub name: String,
+    /// The members, ordered by wire value.
+    pub codes: Vec<FixCode>,
+}
+
+/// One borrowed code set, as the object JavaScript reads.
+///
+/// The members are owned on the way across - a JavaScript value outlives the
+/// dictionary it was read from - and the stored escapes are decoded there,
+/// which is what `FixCode::from` does.
+fn codeset_view(set: CoreFixCodeSet<'_>) -> Result<FixCodeSetView> {
+    Ok(FixCodeSetView {
+        name: set.name().to_owned(),
+        codes: set
+            .codes()
+            .map(|code| {
+                Ok(FixCode::from_core(CoreFixCode::from(
+                    code.map_err(napi_error)?,
+                )))
+            })
+            .collect::<Result<Vec<_>>>()?,
+    })
 }
 
 /// FIX field definitions resolved by identifier, by tag, by name, or by dotted
@@ -525,6 +616,123 @@ impl JsFixRegistry {
     pub fn remove_by_id(&mut self, id: f64) -> Result<Option<JsField>> {
         let id = id_from_js(id)?;
         Ok(self.inner_mut()?.remove(id).map(JsField::from_core))
+    }
+
+    /// The code set held under `name`, or `null`.
+    ///
+    /// The lenient door beside `codeset`, which throws absence: a caller
+    /// asking whether a vocabulary is held asks this. The name is folded,
+    /// so whichever spelling a field states reaches it.
+    #[napi]
+    pub fn get_codeset(&self, name: String) -> Result<Option<FixCodeSetView>> {
+        self.inner.get_codeset(&name).map(codeset_view).transpose()
+    }
+
+    /// The code set held under `name`, failing when absent.
+    #[napi]
+    pub fn codeset(&self, name: String) -> Result<FixCodeSetView> {
+        self.inner
+            .codeset(&name)
+            .map_err(napi_error)
+            .and_then(codeset_view)
+    }
+
+    /// The code set `field` reads its values by, or `null`.
+    ///
+    /// The field states the name and the dictionary holds the members, so
+    /// this is the one door between them. A field naming no set answers
+    /// `null`; a held field never names one this dictionary lacks, because
+    /// every door a field arrives through refuses that.
+    #[napi]
+    pub fn codeset_of(&self, field: &JsField) -> Result<Option<FixCodeSetView>> {
+        self.inner
+            .codeset_of(&field.inner)
+            .map(codeset_view)
+            .transpose()
+    }
+
+    /// The names of every code set held, in name order.
+    ///
+    /// The listing, the way `dialects` lists membership: a set is read by
+    /// name through `codeset`, so nothing parses here.
+    #[napi]
+    pub fn codeset_names(&self) -> Vec<String> {
+        self.inner
+            .codesets()
+            .map(|set| set.name().to_owned())
+            .collect()
+    }
+
+    /// The symbolic name one wire value stands for in the set `name`.
+    ///
+    /// What a field's own `codeName` answered before a set had a name of its
+    /// own; the set is where the vocabulary lives now, so this is keyed by
+    /// it and throws when the dictionary holds none.
+    #[napi]
+    pub fn code_name(&self, name: String, value: String) -> Result<Option<String>> {
+        Ok(self
+            .inner
+            .codeset(&name)
+            .map_err(napi_error)?
+            .code_name(&value)
+            .map(ToOwned::to_owned))
+    }
+
+    /// The wire value any spelling of a code stands for in the set `name`:
+    /// the value itself, a symbolic name, or an alias, folded.
+    ///
+    /// A spelling the set does not answer to is `null` rather than a
+    /// refusal, because a venue sends codes no dictionary lists.
+    #[napi]
+    pub fn code_value(&self, name: String, text: String) -> Result<Option<String>> {
+        Ok(self
+            .inner
+            .codeset(&name)
+            .map_err(napi_error)?
+            .code_value(&text)
+            .map(ToOwned::to_owned))
+    }
+
+    /// State the members of the code set `name`, replacing what it held.
+    ///
+    /// The set is filed under the folded name, which is the stem a store
+    /// writes it as. An empty array removes the set, and one a held field
+    /// still reads by is refused: a field may not be left naming a
+    /// vocabulary nothing states.
+    #[napi]
+    pub fn set_codeset(&mut self, name: String, codes: Vec<FixCode>) -> Result<()> {
+        let codes: Vec<CoreFixCode> = codes.into_iter().map(FixCode::into_core).collect();
+        self.inner_mut()?
+            .set_codeset(&name, &codes)
+            .map_err(napi_error)
+    }
+
+    /// Fold `codes` into the code set `name`, keeping what it already held.
+    ///
+    /// Keyed by wire value: a placeholder name yields to a real one, every
+    /// surviving spelling is kept as an alias, and a set the dictionary did
+    /// not hold arrives whole. So a venue's statement of a vocabulary
+    /// enriches the one held rather than replacing it.
+    #[napi]
+    pub fn merge_codeset(&mut self, name: String, codes: Vec<FixCode>) -> Result<()> {
+        let codes: Vec<CoreFixCode> = codes.into_iter().map(FixCode::into_core).collect();
+        self.inner_mut()?
+            .merge_codeset(&name, &codes)
+            .map_err(napi_error)
+    }
+
+    /// Remove the code set `name`, answering the members it held.
+    ///
+    /// A set no field reads by leaves; one a held field still names is
+    /// refused, naming the field. A name nothing is filed under answers
+    /// `null`.
+    #[napi]
+    pub fn remove_codeset(&mut self, name: String) -> Result<Option<Vec<FixCode>>> {
+        Ok(self
+            .inner_mut()?
+            .remove_codeset(&name)
+            .map_err(napi_error)?
+            .map(|codes| codes.into_iter().map(FixCode::from_core).collect()))
     }
 
     /// The distinct dictionaries any field or definition names on its

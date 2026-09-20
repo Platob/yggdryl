@@ -1,0 +1,20 @@
+{
+  "name": "targetstrategycodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "VWAP",
+      "doc": "VWAP"
+    },
+    {
+      "value": "2",
+      "name": "Participate",
+      "doc": "Participate (i.e. aim to be x percent of the market volume)"
+    },
+    {
+      "value": "3",
+      "name": "MininizeMarketImpact",
+      "doc": "Mininize market impact"
+    }
+  ]
+}

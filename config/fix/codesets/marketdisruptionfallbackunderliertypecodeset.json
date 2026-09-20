@@ -1,0 +1,65 @@
+{
+  "name": "marketdisruptionfallbackunderliertypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Basket",
+      "doc": "Basket"
+    },
+    {
+      "value": "1",
+      "name": "Bond",
+      "doc": "Bond"
+    },
+    {
+      "value": "2",
+      "name": "Cash",
+      "doc": "Cash"
+    },
+    {
+      "value": "3",
+      "name": "Commodity",
+      "doc": "Commodity"
+    },
+    {
+      "value": "4",
+      "name": "ConvertibleBond",
+      "doc": "Convertible bond"
+    },
+    {
+      "value": "5",
+      "name": "Equity",
+      "doc": "Equity"
+    },
+    {
+      "value": "6",
+      "name": "ExchangeTradedFund",
+      "doc": "Exchange traded fund"
+    },
+    {
+      "value": "7",
+      "name": "Future",
+      "doc": "Future"
+    },
+    {
+      "value": "8",
+      "name": "Index",
+      "doc": "Index"
+    },
+    {
+      "value": "9",
+      "name": "Loan",
+      "doc": "Loan"
+    },
+    {
+      "value": "10",
+      "name": "Mortgage",
+      "doc": "Mortgage"
+    },
+    {
+      "value": "11",
+      "name": "MutualFund",
+      "doc": "Mutual fund"
+    }
+  ]
+}

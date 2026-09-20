@@ -1,0 +1,175 @@
+{
+  "name": "tradecontinuationcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Novation",
+      "doc": "Novation"
+    },
+    {
+      "value": "1",
+      "name": "PartialNovation",
+      "doc": "Partial novation"
+    },
+    {
+      "value": "2",
+      "name": "TradeUnwind",
+      "doc": "Trade unwind"
+    },
+    {
+      "value": "3",
+      "name": "PartialTradeUnwind",
+      "doc": "Partial trade unwind"
+    },
+    {
+      "value": "4",
+      "name": "Exercise",
+      "doc": "Exercise"
+    },
+    {
+      "value": "5",
+      "name": "Netting",
+      "doc": "Compression/Netting"
+    },
+    {
+      "value": "6",
+      "name": "FullNetting",
+      "doc": "Full netting"
+    },
+    {
+      "value": "7",
+      "name": "PartialNetting",
+      "doc": "Partial netting"
+    },
+    {
+      "value": "8",
+      "name": "Amendment",
+      "doc": "Amendment"
+    },
+    {
+      "value": "9",
+      "name": "Increase",
+      "doc": "Increase"
+    },
+    {
+      "value": "10",
+      "name": "CreditEvent",
+      "doc": "Credit event"
+    },
+    {
+      "value": "11",
+      "name": "StrategicRestructuring",
+      "doc": "Strategic restructuring"
+    },
+    {
+      "value": "12",
+      "name": "SuccessionEventReorganization",
+      "doc": "Succession event reorganization"
+    },
+    {
+      "value": "13",
+      "name": "SuccessionEventRenaming",
+      "doc": "Succession event renaming"
+    },
+    {
+      "value": "14",
+      "name": "Porting",
+      "doc": "Porting"
+    },
+    {
+      "value": "15",
+      "name": "Withdrawl",
+      "doc": "Withdrawal"
+    },
+    {
+      "value": "16",
+      "name": "Void",
+      "doc": "Void"
+    },
+    {
+      "value": "17",
+      "name": "AccountTransfer",
+      "doc": "Account transfer"
+    },
+    {
+      "value": "18",
+      "name": "GiveUp",
+      "doc": "Give up"
+    },
+    {
+      "value": "19",
+      "name": "TakeUp",
+      "doc": "TakeUp"
+    },
+    {
+      "value": "20",
+      "name": "AveragePricing",
+      "doc": "Average pricing"
+    },
+    {
+      "value": "21",
+      "name": "Reversal",
+      "doc": "Reversal"
+    },
+    {
+      "value": "22",
+      "name": "AllocTrdPosting",
+      "doc": "Allocation/Trade posting"
+    },
+    {
+      "value": "23",
+      "name": "Cascade",
+      "doc": "Cascade"
+    },
+    {
+      "value": "24",
+      "name": "Delivery",
+      "doc": "Delivery"
+    },
+    {
+      "value": "25",
+      "name": "OptionAsgn",
+      "doc": "Option assignment"
+    },
+    {
+      "value": "26",
+      "name": "Expiration",
+      "doc": "Expiration"
+    },
+    {
+      "value": "27",
+      "name": "Maturity",
+      "doc": "Maturity"
+    },
+    {
+      "value": "28",
+      "name": "EqualPosAdj",
+      "doc": "Equal position adjustment"
+    },
+    {
+      "value": "29",
+      "name": "UnequalPosAdj",
+      "doc": "Unequal position adjustment"
+    },
+    {
+      "value": "30",
+      "name": "Correction",
+      "doc": "Correction"
+    },
+    {
+      "value": "31",
+      "name": "EarlyTermination",
+      "doc": "Early termination"
+    },
+    {
+      "value": "32",
+      "name": "Rerate",
+      "doc": "Rerate"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other price-forming continuation data"
+    }
+  ]
+}

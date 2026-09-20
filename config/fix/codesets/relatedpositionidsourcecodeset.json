@@ -1,0 +1,20 @@
+{
+  "name": "relatedpositionidsourcecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "PosMaintRptID",
+      "doc": "Position maintenance report ID - PosMaintRptID(721)"
+    },
+    {
+      "value": "2",
+      "name": "TransferID",
+      "doc": "Position transfer ID - TransferID(2437)"
+    },
+    {
+      "value": "3",
+      "name": "PositionEntityID",
+      "doc": "Position entity ID - PositionID(2618)"
+    }
+  ]
+}

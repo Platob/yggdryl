@@ -1,0 +1,20 @@
+{
+  "name": "traderequeststatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "1",
+      "name": "Completed",
+      "doc": "Completed"
+    },
+    {
+      "value": "2",
+      "name": "Rejected",
+      "doc": "Rejected"
+    }
+  ]
+}

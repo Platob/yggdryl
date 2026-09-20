@@ -490,27 +490,37 @@ fn reading_which_way_a_line_moved_allocates_nothing() {
 
 #[test]
 fn a_fix_code_lookup_allocates_nothing() {
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(
+            "sidecodeset",
+            &[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")],
+        )
+        .expect("a static code set");
     let mut field = DataType::utf8().nullable_field("Side");
     field.as_fix_mut().set_tag(9_995).expect("a static tag");
     field
         .as_fix_mut()
-        .set_codes(&[FixCode::new("Buy", "1"), FixCode::new("Sell", "2")])
-        .expect("a static code set");
-    let view = field.as_fix();
+        .set_codeset("sidecodeset")
+        .expect("the set the field reads by");
+    // The field names the set and the dictionary holds its members, so the
+    // name is resolved here, once: what is counted below is the scan over
+    // the set alone.
+    let set = registry.codeset_of(&field).expect("a held code set");
     free("a code by its wire value", || {
-        let _ = black_box(view.code(black_box("1")));
+        let _ = black_box(set.code(black_box("1")));
     });
     free("a code by its name", || {
-        let _ = black_box(view.code_by_name(black_box("buy")));
+        let _ = black_box(set.code_by_name(black_box("buy")));
     });
     free("a name for a wire value", || {
-        let _ = black_box(view.code_name(black_box("2")));
+        let _ = black_box(set.code_name(black_box("2")));
     });
     free("a value no code spells", || {
-        let _ = black_box(view.code(black_box("9")));
+        let _ = black_box(set.code(black_box("9")));
     });
     free("the walk over the set", || {
-        let _ = black_box(view.codes().count());
+        let _ = black_box(set.codes().count());
     });
 }
 

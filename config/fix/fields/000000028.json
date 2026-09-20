@@ -54,23 +54,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "New",
-          "doc": "New"
-        },
-        {
-          "value": "1",
-          "name": "Replace",
-          "doc": "Replace"
-        },
-        {
-          "value": "2",
-          "name": "Status",
-          "doc": "Status"
-        }
-      ],
+      "FIX:codes": "payreporttranstypecodeset",
       "FIX:tag": "2804",
       "description": "Identifies the message transaction type.",
       "display": "PayReportTransType"
@@ -95,28 +79,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Received",
-          "doc": "Received, not yet processed"
-        },
-        {
-          "value": "1",
-          "name": "Accepted",
-          "doc": "Accepted"
-        },
-        {
-          "value": "2",
-          "name": "Rejected",
-          "doc": "Rejected"
-        },
-        {
-          "value": "3",
-          "name": "Disputed",
-          "doc": "Disputed"
-        }
-      ],
+      "FIX:codes": "payreportstatuscodeset",
       "FIX:tag": "2806",
       "description": "Identifies status of the payment report.",
       "display": "PayReportStatus"
@@ -177,18 +140,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "New",
-          "doc": "New"
-        },
-        {
-          "value": "1",
-          "name": "Cancel",
-          "doc": "Cancel"
-        }
-      ],
+      "FIX:codes": "payrequesttranstypecodeset",
       "FIX:tag": "2811",
       "description": "Identifies the message transaction type.",
       "display": "PayRequestTransType"
@@ -213,28 +165,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Received",
-          "doc": "Received, not yet processed"
-        },
-        {
-          "value": "1",
-          "name": "Accepted",
-          "doc": "Accepted"
-        },
-        {
-          "value": "2",
-          "name": "Rejected",
-          "doc": "Rejected"
-        },
-        {
-          "value": "3",
-          "name": "Disputed",
-          "doc": "Disputed"
-        }
-      ],
+      "FIX:codes": "payrequeststatuscodeset",
       "FIX:tag": "2813",
       "description": "Identifies status of the request being responded to.",
       "display": "PayRequestStatus"
@@ -309,18 +240,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "DebitPay",
-          "doc": "Debit / Pay"
-        },
-        {
-          "value": "1",
-          "name": "CreditReceive",
-          "doc": "Credit / Receive"
-        }
-      ],
+      "FIX:codes": "posttradepaymentdebitorcreditcodeset",
       "FIX:tag": "2819",
       "description": "Payment side of this individual payment from the requesting firm's perspective.",
       "display": "PostTradePaymentDebitOrCredit"
@@ -369,33 +289,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "New",
-          "doc": "New"
-        },
-        {
-          "value": "1",
-          "name": "Initiated",
-          "doc": "Initiated"
-        },
-        {
-          "value": "2",
-          "name": "Pending",
-          "doc": "Pending"
-        },
-        {
-          "value": "3",
-          "name": "Confirmed",
-          "doc": "Confirmed"
-        },
-        {
-          "value": "4",
-          "name": "Rejected",
-          "doc": "Rejected"
-        }
-      ],
+      "FIX:codes": "posttradepaymentstatuscodeset",
       "FIX:tag": "2823",
       "description": "Used to indicate the status of a post-trade payment.",
       "display": "PostTradePaymentStatus"
@@ -473,24 +367,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "N",
-          "name": "UniqueClOrdID",
-          "aliases": [
-            "No"
-          ],
-          "doc": "Unique ClOrdID(11)"
-        },
-        {
-          "value": "Y",
-          "name": "DuplicateClOrdID",
-          "aliases": [
-            "Yes"
-          ],
-          "doc": "Duplicate ClOrdID(11)"
-        }
-      ],
+      "FIX:codes": "duplicateclordidindicatorcodeset",
       "FIX:tag": "2829",
       "description": "Used to indicate that a ClOrdID(11) value is an intentional duplicate of a previously sent value. Allows to avoid the rejection of an order with OrdRejReason(103) = 6 (Duplicate Order).",
       "display": "DuplicateClOrdIDIndicator"
@@ -503,23 +380,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "C",
-          "name": "CustomerOrClient",
-          "doc": "Customer or client"
-        },
-        {
-          "value": "E",
-          "name": "ExchangeOrExecutionVenue",
-          "doc": "Exchange or execution venue"
-        },
-        {
-          "value": "F",
-          "name": "FirmOrBroker",
-          "doc": "Firm or broker"
-        }
-      ],
+      "FIX:codes": "eventinitiatortypecodeset",
       "FIX:tag": "2830",
       "description": "Indicates the type of entity who initiated an event, e.g. modification or cancellation of an order or quote.",
       "display": "EventInitiatorType"
@@ -532,23 +393,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bid",
-          "doc": "Bid"
-        },
-        {
-          "value": "1",
-          "name": "Offer",
-          "doc": "Offer"
-        },
-        {
-          "value": "2",
-          "name": "MidPrice",
-          "doc": "Mid-price"
-        }
-      ],
+      "FIX:codes": "nbboentrytypecodeset",
       "FIX:tag": "2831",
       "description": "Type of NBBO information.",
       "display": "NBBOEntryType"
@@ -589,28 +434,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "Direct",
-          "doc": "Direct"
-        },
-        {
-          "value": "2",
-          "name": "SIP",
-          "doc": "Securities Information Processor"
-        },
-        {
-          "value": "3",
-          "name": "Hybrid",
-          "doc": "Hybrid"
-        }
-      ],
+      "FIX:codes": "nbbosourcecodeset",
       "FIX:tag": "2834",
       "description": "Source of NBBO information.",
       "display": "NBBOSource"
@@ -649,24 +473,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "N",
-          "name": "MultipleQuotesAllowed",
-          "aliases": [
-            "No"
-          ],
-          "doc": "Multiple quotes allowed"
-        },
-        {
-          "value": "Y",
-          "name": "OnlyOneQuoteAllowed",
-          "aliases": [
-            "Yes"
-          ],
-          "doc": "Only one quote allowed"
-        }
-      ],
+      "FIX:codes": "singlequoteindicatorcodeset",
       "FIX:tag": "2837",
       "description": "Used to indicate whether the quoting system allows only one quote to be active at a time for the quote issuer or market maker.",
       "display": "SingleQuoteIndicator"
@@ -693,24 +500,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "N",
-          "name": "NotManuallyCaptured",
-          "aliases": [
-            "No"
-          ],
-          "doc": "Not manually captured"
-        },
-        {
-          "value": "Y",
-          "name": "ManuallyCaptured",
-          "aliases": [
-            "Yes"
-          ],
-          "doc": "Manually captured"
-        }
-      ],
+      "FIX:codes": "trdregtimestampmanualindicatorcodeset",
       "FIX:tag": "2839",
       "description": "Indicates whether a given timestamp was manually captured.",
       "display": "TrdRegTimestampManualIndicator"
@@ -773,33 +563,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "MoneyMarketFund",
-          "doc": "Money market fund"
-        },
-        {
-          "value": "1",
-          "name": "OtherComingledPool",
-          "doc": "Other comingled pool"
-        },
-        {
-          "value": "2",
-          "name": "RepoMarket",
-          "doc": "Repo market"
-        },
-        {
-          "value": "3",
-          "name": "DirectPurchaseOfSecurities",
-          "doc": "Direct purchase of securities"
-        },
-        {
-          "value": "4",
-          "name": "OtherInvestments",
-          "doc": "Other investments"
-        }
-      ],
+      "FIX:codes": "collateralreinvestmenttypecodeset",
       "FIX:tag": "2844",
       "description": "Indicates the type of investment the cash collateral is re-invested in.",
       "display": "CollateralReinvestmentType"
@@ -824,43 +588,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Repo",
-          "doc": "Repurchase agreement"
-        },
-        {
-          "value": "1",
-          "name": "Cash",
-          "doc": "Cash"
-        },
-        {
-          "value": "2",
-          "name": "FreeCedits",
-          "doc": "Free credits"
-        },
-        {
-          "value": "3",
-          "name": "CustomerShortSales",
-          "doc": "Customer short sales"
-        },
-        {
-          "value": "4",
-          "name": "BrokerShortSales",
-          "doc": "Broker short sales"
-        },
-        {
-          "value": "5",
-          "name": "UnsecuredBorrowing",
-          "doc": "Unsecured borrowing"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "fundingsourcecodeset",
       "FIX:tag": "2846",
       "description": "Specifies the funding source used to finance margin or collateralized loan.",
       "display": "FundingSource"
@@ -911,18 +639,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Posted",
-          "doc": "Posted"
-        },
-        {
-          "value": "1",
-          "name": "Received",
-          "doc": "Received"
-        }
-      ],
+      "FIX:codes": "margindirectioncodeset",
       "FIX:tag": "2851",
       "description": "Indicates whether the margin described is posted or received.",
       "display": "MarginDirection"
@@ -997,33 +714,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "MoneyMarketFund",
-          "doc": "Money market fund"
-        },
-        {
-          "value": "1",
-          "name": "OtherComingledPool",
-          "doc": "Other comingled pool"
-        },
-        {
-          "value": "2",
-          "name": "RepoMarket",
-          "doc": "Repo market"
-        },
-        {
-          "value": "3",
-          "name": "DirectPurchaseOfSecurities",
-          "doc": "Direct purchase of securities"
-        },
-        {
-          "value": "4",
-          "name": "OtherInvestments",
-          "doc": "Other investments"
-        }
-      ],
+      "FIX:codes": "collateralreinvestmenttypecodeset",
       "FIX:tag": "2867",
       "description": "Indicates the type of investment the cash collateral is re-invested in.",
       "display": "SideCollateralReinvestmentType"
@@ -1086,26 +777,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "ExclusiveArrangement",
-          "doc": "Exclusive arrangement"
-        },
-        {
-          "value": "1",
-          "name": "CollateralReuse",
-          "doc": "Collateral reuse"
-        },
-        {
-          "value": "2",
-          "name": "CollateralArrangementType",
-          "aliases": [
-            "CollateralArrangmentType"
-          ],
-          "doc": "Collateral arrangement type"
-        }
-      ],
+      "FIX:codes": "transactionattributetypecodeset",
       "FIX:tag": "2872",
       "description": "Type of attribute(s) or characteristic(s) associated with the transaction.",
       "display": "TransactionAttributeType"
@@ -1156,133 +828,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Percentage",
-          "doc": "Percentage (i.e. percent of par) (often called \"dollar price\" for fixed income)"
-        },
-        {
-          "value": "2",
-          "name": "PerUnit",
-          "doc": "Per unit (i.e. per share or contract)"
-        },
-        {
-          "value": "3",
-          "name": "FixedAmount",
-          "doc": "Fixed amount (absolute value)"
-        },
-        {
-          "value": "4",
-          "name": "Discount",
-          "doc": "Discount - percentage points below par"
-        },
-        {
-          "value": "5",
-          "name": "Premium",
-          "doc": "Premium - percentage points over par"
-        },
-        {
-          "value": "6",
-          "name": "Spread",
-          "doc": "Spread (basis points spread)"
-        },
-        {
-          "value": "7",
-          "name": "TEDPrice",
-          "doc": "TED Price"
-        },
-        {
-          "value": "8",
-          "name": "TEDYield",
-          "doc": "TED Yield"
-        },
-        {
-          "value": "9",
-          "name": "Yield",
-          "doc": "Yield"
-        },
-        {
-          "value": "10",
-          "name": "FixedCabinetTradePrice",
-          "doc": "Fixed cabinet trade price (primarily for listed futures and options)"
-        },
-        {
-          "value": "11",
-          "name": "VariableCabinetTradePrice",
-          "doc": "Variable cabinet trade price (primarily for listed futures and options)"
-        },
-        {
-          "value": "12",
-          "name": "PriceSpread",
-          "doc": "Price spread"
-        },
-        {
-          "value": "13",
-          "name": "ProductTicksInHalves",
-          "doc": "Product ticks in halves"
-        },
-        {
-          "value": "14",
-          "name": "ProductTicksInFourths",
-          "doc": "Product ticks in fourths"
-        },
-        {
-          "value": "15",
-          "name": "ProductTicksInEighths",
-          "doc": "Product ticks in eighths"
-        },
-        {
-          "value": "16",
-          "name": "ProductTicksInSixteenths",
-          "doc": "Product ticks in sixteenths"
-        },
-        {
-          "value": "17",
-          "name": "ProductTicksInThirtySeconds",
-          "doc": "Product ticks in thirty-seconds"
-        },
-        {
-          "value": "18",
-          "name": "ProductTicksInSixtyFourths",
-          "doc": "Product ticks in sixty-fourths"
-        },
-        {
-          "value": "19",
-          "name": "ProductTicksInOneTwentyEighths",
-          "doc": "Product ticks in one-twenty-eighths"
-        },
-        {
-          "value": "20",
-          "name": "NormalRateRepresentation",
-          "doc": "Normal rate representation (e.g. FX rate)"
-        },
-        {
-          "value": "21",
-          "name": "InverseRateRepresentation",
-          "doc": "Inverse rate representation (e.g. FX rate)"
-        },
-        {
-          "value": "22",
-          "name": "BasisPoints",
-          "doc": "Basis points"
-        },
-        {
-          "value": "23",
-          "name": "UpfrontPoints",
-          "doc": "Up front points"
-        },
-        {
-          "value": "24",
-          "name": "InterestRate",
-          "doc": "Interest rate"
-        },
-        {
-          "value": "25",
-          "name": "PercentageNotional",
-          "doc": "Percentage of notional"
-        }
-      ],
+      "FIX:codes": "posamtpricetypecodeset",
       "FIX:tag": "2877",
       "description": "Specifies the type of price for PosAmtPrice(2876).",
       "display": "PosAmtPriceType"
@@ -1344,43 +890,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "OrderReceivedFromCustomer",
-          "doc": "Order received from a customer"
-        },
-        {
-          "value": "2",
-          "name": "OrderReceivedFromWithinFirm",
-          "doc": "Order received from within the firm"
-        },
-        {
-          "value": "3",
-          "name": "OrderReceivedFromAnotherBrokerDealer",
-          "doc": "Order received from another broker-dealer"
-        },
-        {
-          "value": "4",
-          "name": "OrderReceivedFromCustomerOrWithFirm",
-          "doc": "Order received from a customer or originated from within the firm"
-        },
-        {
-          "value": "5",
-          "name": "OrderReceivedFromDirectAccessCustomer",
-          "doc": "Order received from a direct access or sponsored access customer"
-        },
-        {
-          "value": "6",
-          "name": "OrderReceivedFromForeignDealerEquivalent",
-          "doc": "Order received from a foreign dealer equivalent"
-        },
-        {
-          "value": "7",
-          "name": "OrderReceivedFromExecutionOnlyService",
-          "doc": "Order received from an execution-only service"
-        }
-      ],
+      "FIX:codes": "orderoriginationcodeset",
       "FIX:tag": "2882",
       "description": "Identifies the origin of the order from the counterparty of the execution or trade.",
       "display": "ContraOrderOrigination"
@@ -1393,21 +903,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NoRoutingArrangementInPlace",
-          "aliases": [
-            "NoRoutingArrangmentInPlace"
-          ],
-          "doc": "No routing arrangement in place"
-        },
-        {
-          "value": "1",
-          "name": "RoutingArrangementInPlace",
-          "doc": "Routing arrangement in place"
-        }
-      ],
+      "FIX:codes": "routingarrangementindicatorcodeset",
       "FIX:names": [
         "routingarrangmentindicator"
       ],
@@ -1423,18 +919,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NoRoutingArrangementInPlace",
-          "doc": "No routing arrangement in place"
-        },
-        {
-          "value": "1",
-          "name": "RoutingArrangementInPlace",
-          "doc": "Routing arrangement in place"
-        }
-      ],
+      "FIX:codes": "contraroutingarrangementindicatorcodeset",
       "FIX:names": [
         "contraroutingarrangmentindicator"
       ],
@@ -1488,33 +973,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NonFIXSource",
-          "doc": "Non-FIX Source"
-        },
-        {
-          "value": "1",
-          "name": "SystemOrderIdentifier",
-          "doc": "Order identifier"
-        },
-        {
-          "value": "2",
-          "name": "ClientOrderIdentifier",
-          "doc": "Client order identifier"
-        },
-        {
-          "value": "3",
-          "name": "SecondaryOrderIdentifier",
-          "doc": "Secondary order identifier"
-        },
-        {
-          "value": "4",
-          "name": "SecondaryClientOrderIdentifier",
-          "doc": "Secondary client order identifier"
-        }
-      ],
+      "FIX:codes": "relatedorderidsourcecodeset",
       "FIX:tag": "2888",
       "description": "Describes the source of the identifier that RelatedOrderID(2887) represents.",
       "display": "RelatedOrderIDSource"
@@ -1541,23 +1000,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotSpecified",
-          "doc": "Not specified"
-        },
-        {
-          "value": "1",
-          "name": "OrderAggregation",
-          "doc": "Order aggregation"
-        },
-        {
-          "value": "2",
-          "name": "OrderSplit",
-          "doc": "Order split"
-        }
-      ],
+      "FIX:codes": "orderrelationshipcodeset",
       "FIX:tag": "2890",
       "description": "Describes the type of relationship between the order identified by RelatedOrderID(2887) and the order outside of the RelatedOrderGrp component.",
       "display": "OrderRelationship"
@@ -1630,377 +1073,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "RegularTrade",
-          "doc": "Regular trade"
-        },
-        {
-          "value": "1",
-          "name": "BlockTrade",
-          "doc": "Block trade"
-        },
-        {
-          "value": "2",
-          "name": "EFP",
-          "doc": "Exchange for physical (EFP)"
-        },
-        {
-          "value": "3",
-          "name": "Transfer",
-          "doc": "Transfer"
-        },
-        {
-          "value": "4",
-          "name": "LateTrade",
-          "doc": "Late trade"
-        },
-        {
-          "value": "5",
-          "name": "TTrade",
-          "doc": "T trade"
-        },
-        {
-          "value": "6",
-          "name": "WeightedAveragePriceTrade",
-          "doc": "Weighted average price trade"
-        },
-        {
-          "value": "7",
-          "name": "BunchedTrade",
-          "doc": "Bunched trade"
-        },
-        {
-          "value": "8",
-          "name": "LateBunchedTrade",
-          "doc": "Late bunched trade"
-        },
-        {
-          "value": "9",
-          "name": "PriorReferencePriceTrade",
-          "doc": "Prior reference price trade"
-        },
-        {
-          "value": "10",
-          "name": "AfterHoursTrade",
-          "doc": "After hours trade"
-        },
-        {
-          "value": "11",
-          "name": "ExchangeForRisk",
-          "doc": "Exchange for risk (EFR)"
-        },
-        {
-          "value": "12",
-          "name": "ExchangeForSwap",
-          "doc": "Exchange for swap (EFS)"
-        },
-        {
-          "value": "13",
-          "name": "ExchangeOfFuturesFor",
-          "doc": "Exchange of futures for in market futures (EFM)"
-        },
-        {
-          "value": "14",
-          "name": "ExchangeOfOptionsForOptions",
-          "doc": "Exchange of options for options (EOO)"
-        },
-        {
-          "value": "15",
-          "name": "TradingAtSettlement",
-          "doc": "Trading at settlement"
-        },
-        {
-          "value": "16",
-          "name": "AllOrNone",
-          "doc": "All or none"
-        },
-        {
-          "value": "17",
-          "name": "FuturesLargeOrderExecution",
-          "doc": "Futures large order execution"
-        },
-        {
-          "value": "18",
-          "name": "ExchangeOfFuturesForFutures",
-          "doc": "Exchange of futures for external market futures (EFF)"
-        },
-        {
-          "value": "19",
-          "name": "OptionInterimTrade",
-          "doc": "Option interim trade"
-        },
-        {
-          "value": "20",
-          "name": "OptionCabinetTrade",
-          "doc": "Option cabinet trade"
-        },
-        {
-          "value": "22",
-          "name": "PrivatelyNegotiatedTrades",
-          "doc": "Privately negotiated trade"
-        },
-        {
-          "value": "23",
-          "name": "SubstitutionOfFuturesForForwards",
-          "doc": "Substitution of futures for forwards"
-        },
-        {
-          "value": "24",
-          "name": "ErrorTrade",
-          "group": "MiFID Values",
-          "doc": "Error trade"
-        },
-        {
-          "value": "25",
-          "name": "SpecialCumDividend",
-          "group": "MiFID Values",
-          "doc": "Special cum dividend (CD)"
-        },
-        {
-          "value": "26",
-          "name": "SpecialExDividend",
-          "group": "MiFID Values",
-          "doc": "Special ex dividend (XD)"
-        },
-        {
-          "value": "27",
-          "name": "SpecialCumCoupon",
-          "group": "MiFID Values",
-          "doc": "Special cum coupon (CC)"
-        },
-        {
-          "value": "28",
-          "name": "SpecialExCoupon",
-          "group": "MiFID Values",
-          "doc": "Special ex coupon (XC)"
-        },
-        {
-          "value": "29",
-          "name": "CashSettlement",
-          "group": "MiFID Values",
-          "doc": "Cash settlement (CS)"
-        },
-        {
-          "value": "30",
-          "name": "SpecialPrice",
-          "group": "MiFID Values",
-          "doc": "Special price (SP)"
-        },
-        {
-          "value": "31",
-          "name": "GuaranteedDelivery",
-          "group": "MiFID Values",
-          "doc": "Guaranteed delivery (GD)"
-        },
-        {
-          "value": "32",
-          "name": "SpecialCumRights",
-          "group": "MiFID Values",
-          "doc": "Special cum rights (CR)"
-        },
-        {
-          "value": "33",
-          "name": "SpecialExRights",
-          "group": "MiFID Values",
-          "doc": "Special ex rights (XR)"
-        },
-        {
-          "value": "34",
-          "name": "SpecialCumCapitalRepayments",
-          "group": "MiFID Values",
-          "doc": "Special cum capital repayments (CP)"
-        },
-        {
-          "value": "35",
-          "name": "SpecialExCapitalRepayments",
-          "group": "MiFID Values",
-          "doc": "Special ex capital repayments (XP)"
-        },
-        {
-          "value": "36",
-          "name": "SpecialCumBonus",
-          "group": "MiFID Values",
-          "doc": "Special cum bonus (CB)"
-        },
-        {
-          "value": "37",
-          "name": "SpecialExBonus",
-          "group": "MiFID Values",
-          "doc": "Special ex bonus (XB)"
-        },
-        {
-          "value": "38",
-          "name": "LargeTrade",
-          "group": "MiFID Values",
-          "doc": "Block trade"
-        },
-        {
-          "value": "39",
-          "name": "WorkedPrincipalTrade",
-          "group": "MiFID Values",
-          "doc": "Worked principal trade"
-        },
-        {
-          "value": "40",
-          "name": "BlockTrades",
-          "group": "MiFID Values",
-          "doc": "Block trades"
-        },
-        {
-          "value": "41",
-          "name": "NameChange",
-          "group": "MiFID Values",
-          "doc": "Name change"
-        },
-        {
-          "value": "42",
-          "name": "PortfolioTransfer",
-          "group": "MiFID Values",
-          "doc": "Portfolio transfer"
-        },
-        {
-          "value": "43",
-          "name": "ProrogationBuy",
-          "group": "MiFID Values",
-          "doc": "Prorogation buy"
-        },
-        {
-          "value": "44",
-          "name": "ProrogationSell",
-          "group": "MiFID Values",
-          "doc": "Prorogation sell"
-        },
-        {
-          "value": "45",
-          "name": "OptionExercise",
-          "group": "MiFID Values",
-          "doc": "Option exercise"
-        },
-        {
-          "value": "46",
-          "name": "DeltaNeutralTransaction",
-          "group": "MiFID Values",
-          "doc": "Delta neutral transaction"
-        },
-        {
-          "value": "47",
-          "name": "FinancingTransaction",
-          "group": "MiFID Values",
-          "doc": "Financing transaction"
-        },
-        {
-          "value": "48",
-          "name": "NonStandardSettlement",
-          "doc": "Non-standard settlement"
-        },
-        {
-          "value": "49",
-          "name": "DerivativeRelatedTransaction",
-          "doc": "Derivative related transaction"
-        },
-        {
-          "value": "50",
-          "name": "PortfolioTrade",
-          "doc": "Portfolio trade"
-        },
-        {
-          "value": "51",
-          "name": "VolumeWeightedAverageTrade",
-          "doc": "Volume weighted average trade"
-        },
-        {
-          "value": "52",
-          "name": "ExchangeGrantedTrade",
-          "doc": "Exchange granted trade"
-        },
-        {
-          "value": "53",
-          "name": "RepurchaseAgreement",
-          "doc": "Repurchase agreement"
-        },
-        {
-          "value": "54",
-          "name": "OTC",
-          "doc": "OTC"
-        },
-        {
-          "value": "55",
-          "name": "ExchangeBasisFacility",
-          "doc": "Exchange basis facility (EBF)"
-        },
-        {
-          "value": "56",
-          "name": "OpeningTrade",
-          "doc": "Opening trade"
-        },
-        {
-          "value": "57",
-          "name": "NettedTrade",
-          "doc": "Netted trade"
-        },
-        {
-          "value": "58",
-          "name": "BlockSwapTrade",
-          "doc": "Block swap trade"
-        },
-        {
-          "value": "59",
-          "name": "CreditEventTrade",
-          "doc": "Credit event trade"
-        },
-        {
-          "value": "60",
-          "name": "SuccessionEventTrade",
-          "doc": "Succession event trade"
-        },
-        {
-          "value": "61",
-          "name": "GiveUpGiveInTrade",
-          "doc": "Give-up Give-in trade"
-        },
-        {
-          "value": "62",
-          "name": "DarkTrade",
-          "doc": "Dark trade"
-        },
-        {
-          "value": "63",
-          "name": "TechnicalTrade",
-          "doc": "Technical trade"
-        },
-        {
-          "value": "64",
-          "name": "Benchmark",
-          "doc": "Benchmark"
-        },
-        {
-          "value": "65",
-          "name": "PackageTrade",
-          "doc": "Package trade"
-        },
-        {
-          "value": "66",
-          "name": "RollTrade",
-          "doc": "Roll trade"
-        },
-        {
-          "value": "67",
-          "name": "ClosingPriceTrade",
-          "doc": "Closing price trade"
-        },
-        {
-          "value": "68",
-          "name": "InterFundTransferTrade",
-          "doc": "Inter-fund transfer trade"
-        },
-        {
-          "value": "69",
-          "name": "NetAssetValueCalculatedTrade",
-          "doc": "Net asset value calculated trade"
-        }
-      ],
+      "FIX:codes": "trdtypecodeset",
       "FIX:tag": "2896",
       "description": "Type of trade assigned to a trade. Used in addition to TrdType(828) and SecondaryTrdType(855). Must not be used when only one additional trade type needs to be assigned.",
       "display": "TertiaryTrdType"
@@ -2013,38 +1086,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "CUSIP",
-          "doc": "CUSIP"
-        },
-        {
-          "value": "2",
-          "name": "SEDOL",
-          "doc": "SEDOL"
-        },
-        {
-          "value": "4",
-          "name": "ISINNumber",
-          "doc": "ISIN"
-        },
-        {
-          "value": "6",
-          "name": "ISOCurrencyCode",
-          "doc": "ISO Currency Code (ISO 4217)"
-        },
-        {
-          "value": "S",
-          "name": "FinancialInstrumentGlobalIdentifier",
-          "doc": "Financial Instrument Global Identifier"
-        },
-        {
-          "value": "Y",
-          "name": "DigitalTokenIdentifier",
-          "doc": "Digital Token Identifier (ISO 24165)"
-        }
-      ],
+      "FIX:codes": "currencycodesourcecodeset",
       "FIX:derivation": "case when currency is not null then '6' end",
       "FIX:tag": "2897",
       "description": "Identifies class or source of the Currency(15) value.",
@@ -2058,38 +1100,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "CUSIP",
-          "doc": "CUSIP"
-        },
-        {
-          "value": "2",
-          "name": "SEDOL",
-          "doc": "SEDOL"
-        },
-        {
-          "value": "4",
-          "name": "ISINNumber",
-          "doc": "ISIN"
-        },
-        {
-          "value": "6",
-          "name": "ISOCurrencyCode",
-          "doc": "ISO Currency Code (ISO 4217)"
-        },
-        {
-          "value": "S",
-          "name": "FinancialInstrumentGlobalIdentifier",
-          "doc": "Financial Instrument Global Identifier"
-        },
-        {
-          "value": "Y",
-          "name": "DigitalTokenIdentifier",
-          "doc": "Digital Token Identifier (ISO 24165)"
-        }
-      ],
+      "FIX:codes": "currencycodesourcecodeset",
       "FIX:tag": "2898",
       "description": "Identifies class or source of the LegCurrency(556) value.",
       "display": "LegCurrencyCodeSource"
@@ -2102,38 +1113,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "CUSIP",
-          "doc": "CUSIP"
-        },
-        {
-          "value": "2",
-          "name": "SEDOL",
-          "doc": "SEDOL"
-        },
-        {
-          "value": "4",
-          "name": "ISINNumber",
-          "doc": "ISIN"
-        },
-        {
-          "value": "6",
-          "name": "ISOCurrencyCode",
-          "doc": "ISO Currency Code (ISO 4217)"
-        },
-        {
-          "value": "S",
-          "name": "FinancialInstrumentGlobalIdentifier",
-          "doc": "Financial Instrument Global Identifier"
-        },
-        {
-          "value": "Y",
-          "name": "DigitalTokenIdentifier",
-          "doc": "Digital Token Identifier (ISO 24165)"
-        }
-      ],
+      "FIX:codes": "currencycodesourcecodeset",
       "FIX:tag": "2899",
       "description": "Identifies class or source of the SettlCurrency(120) value.",
       "display": "SettlCurrencyCodeSource"

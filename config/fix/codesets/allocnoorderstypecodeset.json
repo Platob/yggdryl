@@ -1,0 +1,15 @@
+{
+  "name": "allocnoorderstypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NotSpecified",
+      "doc": "Not specified"
+    },
+    {
+      "value": "1",
+      "name": "ExplicitListProvided",
+      "doc": "Explicit list provided"
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "name": "clearinginstructioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ProcessNormally",
+      "doc": "Process normally"
+    },
+    {
+      "value": "1",
+      "name": "ExcludeFromAllNetting",
+      "doc": "Exclude from all netting"
+    },
+    {
+      "value": "2",
+      "name": "BilateralNettingOnly",
+      "doc": "Bilateral netting only"
+    },
+    {
+      "value": "3",
+      "name": "ExClearing",
+      "doc": "Ex clearing"
+    },
+    {
+      "value": "4",
+      "name": "SpecialTrade",
+      "doc": "Special trade"
+    },
+    {
+      "value": "5",
+      "name": "MultilateralNetting",
+      "doc": "Multilateral netting"
+    },
+    {
+      "value": "6",
+      "name": "ClearAgainstCentralCounterparty",
+      "doc": "Clear against central counterparty"
+    },
+    {
+      "value": "7",
+      "name": "ExcludeFromCentralCounterparty",
+      "doc": "Exclude from central counterparty"
+    },
+    {
+      "value": "8",
+      "name": "ManualMode",
+      "doc": "Manual mode (pre-posting and/or pre-giveup)"
+    },
+    {
+      "value": "9",
+      "name": "AutomaticPostingMode",
+      "doc": "Automatic posting mode (trade posting to the position account number specified)"
+    },
+    {
+      "value": "10",
+      "name": "AutomaticGiveUpMode",
+      "doc": "Automatic give-up mode (trade give-up to the give-up destination number specified)"
+    },
+    {
+      "value": "11",
+      "name": "QualifiedServiceRepresentativeQSR",
+      "doc": "Qualified Service Representative QSR"
+    },
+    {
+      "value": "12",
+      "name": "CustomerTrade",
+      "doc": "Customer trade"
+    },
+    {
+      "value": "13",
+      "name": "SelfClearing",
+      "doc": "Self clearing"
+    },
+    {
+      "value": "14",
+      "name": "BuyIn",
+      "doc": "Buy-in"
+    }
+  ]
+}

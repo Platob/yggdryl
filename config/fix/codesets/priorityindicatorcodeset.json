@@ -1,0 +1,15 @@
+{
+  "name": "priorityindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "PriorityUnchanged",
+      "doc": "Priority unchanged"
+    },
+    {
+      "value": "1",
+      "name": "LostPriorityAsResultOfOrderChange",
+      "doc": "Lost Priority as result of order change"
+    }
+  ]
+}

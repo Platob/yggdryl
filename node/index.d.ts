@@ -2110,6 +2110,74 @@ export declare class FixRegistry {
    */
   removeById(id: number): JsField | null
   /**
+   * The code set held under `name`, or `null`.
+   *
+   * The lenient door beside `codeset`, which throws absence: a caller
+   * asking whether a vocabulary is held asks this. The name is folded,
+   * so whichever spelling a field states reaches it.
+   */
+  getCodeset(name: string): FixCodeSetView | null
+  /** The code set held under `name`, failing when absent. */
+  codeset(name: string): FixCodeSetView
+  /**
+   * The code set `field` reads its values by, or `null`.
+   *
+   * The field states the name and the dictionary holds the members, so
+   * this is the one door between them. A field naming no set answers
+   * `null`; a held field never names one this dictionary lacks, because
+   * every door a field arrives through refuses that.
+   */
+  codesetOf(field: JsField): FixCodeSetView | null
+  /**
+   * The names of every code set held, in name order.
+   *
+   * The listing, the way `dialects` lists membership: a set is read by
+   * name through `codeset`, so nothing parses here.
+   */
+  codesetNames(): Array<string>
+  /**
+   * The symbolic name one wire value stands for in the set `name`.
+   *
+   * What a field's own `codeName` answered before a set had a name of its
+   * own; the set is where the vocabulary lives now, so this is keyed by
+   * it and throws when the dictionary holds none.
+   */
+  codeName(name: string, value: string): string | null
+  /**
+   * The wire value any spelling of a code stands for in the set `name`:
+   * the value itself, a symbolic name, or an alias, folded.
+   *
+   * A spelling the set does not answer to is `null` rather than a
+   * refusal, because a venue sends codes no dictionary lists.
+   */
+  codeValue(name: string, text: string): string | null
+  /**
+   * State the members of the code set `name`, replacing what it held.
+   *
+   * The set is filed under the folded name, which is the stem a store
+   * writes it as. An empty array removes the set, and one a held field
+   * still reads by is refused: a field may not be left naming a
+   * vocabulary nothing states.
+   */
+  setCodeset(name: string, codes: Array<FixCode>): void
+  /**
+   * Fold `codes` into the code set `name`, keeping what it already held.
+   *
+   * Keyed by wire value: a placeholder name yields to a real one, every
+   * surviving spelling is kept as an alias, and a set the dictionary did
+   * not hold arrives whole. So a venue's statement of a vocabulary
+   * enriches the one held rather than replacing it.
+   */
+  mergeCodeset(name: string, codes: Array<FixCode>): void
+  /**
+   * Remove the code set `name`, answering the members it held.
+   *
+   * A set no field reads by leaves; one a held field still names is
+   * refused, naming the field. A name nothing is filed under answers
+   * `null`.
+   */
+  removeCodeset(name: string): Array<FixCode> | null
+  /**
    * The distinct dictionaries any field or definition names on its
    * `FIX:branches`, sorted.
    *
@@ -3458,10 +3526,23 @@ export declare class ProtocolField {
   get msgtype(): string | null
   /** Set this occurrence's complete wire message code. */
   set msgtype(value: string)
-  /** The symbolic name of a wire value in this field's inline enumeration. */
-  codeName(value: string): string | null
-  /** The wire value of a symbolic name or value in this field's inline enumeration. */
-  codeValue(text: string): string | null
+  /**
+   * The name of the FIX code set this field reads its values by, or
+   * `null` for a field drawing on none.
+   *
+   * A field states the name and never a copy of the members: the
+   * dictionary holds each set once under it, so a vocabulary is named,
+   * documented and aliased in one place however many fields read by it.
+   * `FixRegistry#codesetOf` is what answers the members.
+   */
+  get codeset(): string | null
+  /**
+   * Record the set this field reads by; `null` or an empty name removes
+   * the property, and a name no store can file throws leaving the field
+   * unchanged. A dictionary refuses a field naming a set it does not
+   * hold, so the set is stated before the field points at it.
+   */
+  set codeset(value: string | undefined | null)
   /**
    * The alternate tags, highest priority first.
    *
@@ -5909,6 +5990,29 @@ export interface FixCaptureView {
   msgsessionid: string | null
 }
 
+/**
+ * One member of a FIX code set, as the plain object JavaScript reads and
+ * writes.
+ *
+ * The record a store writes under `codesets/<name>.json`: the wire value
+ * and the symbolic name every member states, and the spellings, the wording
+ * and the group a specification adds where it has them. A key a member does
+ * not state is absent rather than empty, so a bare code is the two facts it
+ * is.
+ */
+export interface FixCode {
+  /** The wire value this code stands for. */
+  value: string
+  /** The symbolic name. */
+  name: string
+  /** The venue and per-version spellings that also reach this code. */
+  aliases?: Array<string>
+  /** The specification's own wording, decoded. */
+  doc?: string
+  /** The group the specification files this code under, decoded. */
+  group?: string
+}
+
 /** How a codec is pinned, where a caller pins it at all. */
 export interface FixCodecOptions {
   /** The byte a numeric frame splits on where the line does not say. */
@@ -5961,6 +6065,20 @@ export interface FixCodecOptions {
    * `null`.
    */
   defaultSendingTime?: Scalar | Date | null
+}
+
+/**
+ * One named FIX code set, as the plain object JavaScript reads.
+ *
+ * The dictionary owns the members under the name and a field states only
+ * the name, so this is the pair read together: one vocabulary, however many
+ * fields draw on it.
+ */
+export interface FixCodeSetView {
+  /** The name the dictionary files this set under. */
+  name: string
+  /** The members, ordered by wire value. */
+  codes: Array<FixCode>
 }
 
 /**

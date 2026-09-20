@@ -53,6 +53,7 @@ from yggdryl.text import json, toml, yaml
 from yggdryl._native import (
     ByteIterator,
     FieldMetadata,
+    FixCode,
     FixDirection,
     FixEntryTuple,
     FixMessages,
@@ -1600,6 +1601,10 @@ fix_direction.fix.directions = [
 fix_directions: list[FixDirection] = fix_direction.fix.directions
 fix_direction_code: str = fix_directions[0]["code"]
 fix_direction_patterns: list[str] = fix_directions[0]["patterns"]
+fix_side: Field = Field("Side", "utf8")
+fix_side.fix.tag = 54
+fix_side.fix.codeset = "sidecodeset"
+fix_codeset_name: str | None = fix_side.fix.codeset
 fix_derived: Field = Field("leavesqty", "float64")
 fix_derived.fix.tag = 151
 fix_derived.fix.derivation = "orderqty - cumqty"
@@ -1619,6 +1624,20 @@ fix_catalog_restored: fix.FixRegistry = fix.FixRegistry.from_json(fix_catalog_sn
 fix_catalog_hash: int = fix_catalog.stable_hash()
 fix_catalog_copy: fix.FixRegistry = fix_catalog.__copy__()
 fix_catalog_pickle: tuple[object, tuple[str]] = fix_catalog.__reduce__()
+fix_catalog.set_codeset("sidecodeset", [{"value": "1", "name": "Buy"}])
+fix_catalog.merge_codeset(
+    "sidecodeset", [{"value": "2", "name": "Sell", "aliases": ["Sold"]}]
+)
+fix_codeset: list[FixCode] = fix_catalog.codeset("sidecodeset")
+fix_optional_codeset: list[FixCode] | None = fix_catalog.get_codeset("sidecodeset")
+fix_codeset_of: list[FixCode] | None = fix_catalog.codeset_of(fix_side)
+fix_codeset_names: list[str] = fix_catalog.codeset_names()
+fix_code_value: str = fix_codeset[0]["value"]
+fix_code_name: str = fix_codeset[0]["name"]
+fix_code_description: str | None = fix_codeset[0]["description"]
+fix_code_aliases: list[str] = fix_codeset[0]["aliases"]
+fix_code_group: str | None = fix_codeset[0]["group"]
+fix_taken_codeset: list[FixCode] | None = fix_catalog.remove_codeset("sidecodeset")
 fix_registered_type: fix.MsgType = fix_catalog.register_msgtype("U1", "CustomMessage")
 fix_msgtype: fix.MsgType = fix_registry_loaded.msgtype("D")
 fix_optional_msgtype: fix.MsgType | None = fix_registry_loaded.get_msgtype("D")
@@ -1636,10 +1655,10 @@ fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
 fix_formatted_rows: list[Scalar] = fix_reader.format_messages([fix_message], fix_fixed_schema)
 fix_fixed_tags: list[int] = fix.fix_schema_tags()
 fix_crated: list[Field] = fix.fix_crate_fields()
-fix_cblock: list[Field] = fix.fix_cfb_fields("cblocks/bloomberg.cfb")
-fix_cblock_named: list[Field] = fix.fix_cfb_fields(
-    Path("cblocks") / "bloomberg.cfb", "bloomberg"
+fix_cblock_read: tuple[fix.FixRegistry, list[Field]] = fix.FixRegistry.from_cfb_file(
+    "cblocks/bloomberg.cfb"
 )
+fix_cblock: list[Field] = list(fix_cblock_read[0])
 fix_added_field: bool = fix_registry_from_fields.add_field(fix_field)
 fix_folded: tuple[int, int] = fix_registry_from_fields.add_fields(fix_cblock)
 fix_combined: tuple[int, int] = fix_registry_from_fields.merge_with(fix_registry_loaded)

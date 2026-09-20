@@ -1,0 +1,41 @@
+{
+  "name": "benchmarkcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Curve"
+    },
+    {
+      "value": "2",
+      "name": "FiveYr"
+    },
+    {
+      "value": "3",
+      "name": "Old5"
+    },
+    {
+      "value": "4",
+      "name": "TenYr"
+    },
+    {
+      "value": "5",
+      "name": "Old10"
+    },
+    {
+      "value": "6",
+      "name": "ThirtyYr"
+    },
+    {
+      "value": "7",
+      "name": "Old30"
+    },
+    {
+      "value": "8",
+      "name": "ThreeMolibor"
+    },
+    {
+      "value": "9",
+      "name": "SixMolibor"
+    }
+  ]
+}

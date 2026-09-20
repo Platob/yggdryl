@@ -1178,7 +1178,7 @@ impl FixMsg {
                 return;
             };
             let text = match self.registry.get_field_by_tag(tag) {
-                Some(field) => wire_text_under(field, &fact),
+                Some(field) => wire_text_under(&self.registry, field, &fact),
                 None => wire_text(&fact),
             };
             if let Some(text) = text {
@@ -2148,7 +2148,7 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
         _ => Some(FixEntry::new(
             tag,
             field.name(),
-            wire_text_under(field, value),
+            wire_text_under(registry, field, value),
         )),
     }
 }

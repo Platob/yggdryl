@@ -55,33 +55,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "VersusPayment",
-          "doc": "\"Versus Payment\": Deliver (if sell) or Receive (if buy) vs. (against) Payment"
-        },
-        {
-          "value": "1",
-          "name": "Free",
-          "doc": "\"Free\": Deliver (if sell) or Receive (if buy) Free"
-        },
-        {
-          "value": "2",
-          "name": "TriParty",
-          "doc": "Tri-Party"
-        },
-        {
-          "value": "3",
-          "name": "HoldInCustody",
-          "doc": "Hold In Custody"
-        },
-        {
-          "value": "4",
-          "name": "DeliverByValue",
-          "doc": "Deliver-by-Value"
-        }
-      ],
+      "FIX:codes": "deliverytypecodeset",
       "FIX:tag": "2504",
       "description": "Identifies type of settlement.",
       "display": "LegDeliveryType"
@@ -206,28 +180,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Overnight",
-          "doc": "Overnight"
-        },
-        {
-          "value": "2",
-          "name": "Term",
-          "doc": "Term"
-        },
-        {
-          "value": "3",
-          "name": "Flexible",
-          "doc": "Flexible"
-        },
-        {
-          "value": "4",
-          "name": "Open",
-          "doc": "Open"
-        }
-      ],
+      "FIX:codes": "terminationtypecodeset",
       "FIX:tag": "2514",
       "description": "Type of financing termination.",
       "display": "LegTerminationType"
@@ -338,23 +291,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NoCross",
-          "doc": "No cross"
-        },
-        {
-          "value": "1",
-          "name": "CrossRejected",
-          "doc": "Cross rejected"
-        },
-        {
-          "value": "2",
-          "name": "CrossAccepted",
-          "doc": "Cross accepted"
-        }
-      ],
+      "FIX:codes": "crossedindicatorcodeset",
       "FIX:tag": "2523",
       "description": "Indicates whether the order or quote was crossed with another order or quote having the same context, e.g. having accounts with a common ownership.",
       "display": "CrossedIndicator"
@@ -367,58 +304,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotReported",
-          "doc": "Trade has not (yet) been reported"
-        },
-        {
-          "value": "1",
-          "name": "OnBook",
-          "doc": "Trade has been or will be reported by a trading venue as an \"on-book\" trade"
-        },
-        {
-          "value": "2",
-          "name": "SISeller",
-          "doc": "Trade has or will be reported as a seller trade by the authorised reporter"
-        },
-        {
-          "value": "3",
-          "name": "SIBuyer",
-          "doc": "Trade has or will be reported as a buyer trade by the authorised reporter"
-        },
-        {
-          "value": "4",
-          "name": "NonSISeller",
-          "doc": "Trade has or will be reported as a seller trade by an entity other than the authorised reporter"
-        },
-        {
-          "value": "5",
-          "name": "SubDelegationByFirm",
-          "doc": "Trade has been or will be reported under a sub-delegation arrangement by an investment firm to a reporting facility (e.g. APA) on behalf of another investment firm"
-        },
-        {
-          "value": "6",
-          "name": "Reportable",
-          "doc": "Trade has been or will be reported"
-        },
-        {
-          "value": "7",
-          "name": "NonSIBuyer",
-          "doc": "Trade has been or will be reported as a buyer trade by an entity other than the authorised reporter"
-        },
-        {
-          "value": "8",
-          "name": "OffBook",
-          "doc": "Trade has been or will be reported by a trading venue as an \"off-book\" trade"
-        },
-        {
-          "value": "9",
-          "name": "NotReportable",
-          "doc": "Trade is not reportable"
-        }
-      ],
+      "FIX:codes": "tradereportingindicatorcodeset",
       "FIX:tag": "2524",
       "description": "Used between parties to convey trade reporting status.",
       "display": "TradeReportingIndicator"
@@ -493,68 +379,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "ASWSpread",
-          "doc": "Asset Swap Spread"
-        },
-        {
-          "value": "2",
-          "name": "OIS",
-          "doc": "Overnight Indexed Swap Spread"
-        },
-        {
-          "value": "3",
-          "name": "ZSpread",
-          "doc": "Zero Volatility Spread"
-        },
-        {
-          "value": "4",
-          "name": "DiscountMargin",
-          "doc": "Discount Margin"
-        },
-        {
-          "value": "5",
-          "name": "ISpread",
-          "doc": "Interpolated Spread"
-        },
-        {
-          "value": "6",
-          "name": "OAS",
-          "doc": "Option Adjusted Spread"
-        },
-        {
-          "value": "7",
-          "name": "GSpread",
-          "doc": "G-Spread"
-        },
-        {
-          "value": "8",
-          "name": "CDSBasis",
-          "doc": "CDS Basis"
-        },
-        {
-          "value": "9",
-          "name": "CDSInterpolatedBasis",
-          "doc": "CDS Interpolated Basis"
-        },
-        {
-          "value": "10",
-          "name": "DV01",
-          "doc": "DV01"
-        },
-        {
-          "value": "11",
-          "name": "PV01",
-          "doc": "PV01"
-        },
-        {
-          "value": "12",
-          "name": "CS01",
-          "doc": "CS01"
-        }
-      ],
+      "FIX:codes": "relativevaluetypecodeset",
       "FIX:tag": "2530",
       "description": "Indicates the type of relative value measurement being specified.",
       "display": "RelativeValueType"
@@ -579,23 +404,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Bid",
-          "doc": "Bid"
-        },
-        {
-          "value": "2",
-          "name": "Mid",
-          "doc": "Mid"
-        },
-        {
-          "value": "3",
-          "name": "Offer",
-          "doc": "Offer"
-        }
-      ],
+      "FIX:codes": "relativevaluesidecodeset",
       "FIX:tag": "2532",
       "description": "Specifies the side of the relative value.",
       "display": "RelativeValueSide"
@@ -632,78 +441,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "StartInstrumentRefData",
-          "doc": "Start of instrument reference data"
-        },
-        {
-          "value": "2",
-          "name": "EndInstrumentRefData",
-          "doc": "End of instrument reference data"
-        },
-        {
-          "value": "3",
-          "name": "StartOffMarketTrades",
-          "doc": "Start of off-market trades"
-        },
-        {
-          "value": "4",
-          "name": "EndOffMarketTrades",
-          "doc": "End of off-market trades"
-        },
-        {
-          "value": "5",
-          "name": "StartOrderBookTrades",
-          "doc": "Start of order book trades"
-        },
-        {
-          "value": "6",
-          "name": "EndOrderBookTrades",
-          "doc": "End of order book trades"
-        },
-        {
-          "value": "7",
-          "name": "StartOpenInterest",
-          "doc": "Start of open interest"
-        },
-        {
-          "value": "8",
-          "name": "EndOpenInterest",
-          "doc": "End of open interest"
-        },
-        {
-          "value": "9",
-          "name": "StartSettlementPrices",
-          "doc": "Start of settlement prices"
-        },
-        {
-          "value": "10",
-          "name": "EndSettlementPrices",
-          "doc": "End of settlement prices"
-        },
-        {
-          "value": "11",
-          "name": "StartStatsRefData",
-          "doc": "Start of statistics reference data"
-        },
-        {
-          "value": "12",
-          "name": "EndStatsRefData",
-          "doc": "End of statistics reference data"
-        },
-        {
-          "value": "13",
-          "name": "StartStatistics",
-          "doc": "Start of statistics"
-        },
-        {
-          "value": "14",
-          "name": "EndStatistics",
-          "doc": "End of statistics"
-        }
-      ],
+      "FIX:codes": "mdreporteventcodeset",
       "FIX:tag": "2535",
       "description": "Technical event within market data feed.",
       "display": "MDReportEvent"
@@ -788,23 +526,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Active",
-          "doc": "Active"
-        },
-        {
-          "value": "2",
-          "name": "Inactive",
-          "doc": "Inactive"
-        },
-        {
-          "value": "3",
-          "name": "Published",
-          "doc": "Published"
-        }
-      ],
+      "FIX:codes": "marketsegmentstatuscodeset",
       "FIX:tag": "2542",
       "description": "Status of market segment.",
       "display": "MarketSegmentStatus"
@@ -817,23 +539,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Pool",
-          "doc": "Pool"
-        },
-        {
-          "value": "2",
-          "name": "Retail",
-          "doc": "Retail"
-        },
-        {
-          "value": "3",
-          "name": "Wholesale",
-          "doc": "Wholesale"
-        }
-      ],
+      "FIX:codes": "marketsegmenttypecodeset",
       "FIX:tag": "2543",
       "description": "Used to classify the type of market segment.",
       "display": "MarketSegmentType"
@@ -846,13 +552,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "InterProductSpread",
-          "doc": "Inter-product spread"
-        }
-      ],
+      "FIX:codes": "marketsegmentsubtypecodeset",
       "FIX:tag": "2544",
       "description": "Used to further categorize market segments within a MarketSegmentType(2543).",
       "display": "MarketSegmentSubType"
@@ -889,23 +589,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "MarketSegmentPoolMember",
-          "doc": "Market segment pool member"
-        },
-        {
-          "value": "2",
-          "name": "RetailSegment",
-          "doc": "Retail segment"
-        },
-        {
-          "value": "3",
-          "name": "WholesaleSegment",
-          "doc": "Wholesale segment"
-        }
-      ],
+      "FIX:codes": "marketsegmentrelationshipcodeset",
       "FIX:tag": "2547",
       "description": "Type of relationship between two or more market segments.",
       "display": "MarketSegmentRelationship"
@@ -1056,18 +740,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "N",
-          "name": "No",
-          "doc": "Single sided quotes are not allowed"
-        },
-        {
-          "value": "Y",
-          "name": "Yes",
-          "doc": "Single sided quotes are allowed"
-        }
-      ],
+      "FIX:codes": "quotesideindicatorcodeset",
       "FIX:tag": "2559",
       "description": "Indicates whether single sided quotes are allowed.",
       "display": "QuoteSideIndicator"
@@ -1128,68 +801,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Seconds",
-          "doc": "Seconds (default if not specified)"
-        },
-        {
-          "value": "1",
-          "name": "TenthsOfASecond",
-          "doc": "Tenths of a second"
-        },
-        {
-          "value": "2",
-          "name": "HundredthsOfASecond",
-          "doc": "Hundredths of a second"
-        },
-        {
-          "value": "3",
-          "name": "Milliseconds",
-          "doc": "milliseconds"
-        },
-        {
-          "value": "4",
-          "name": "Microseconds",
-          "doc": "microseconds"
-        },
-        {
-          "value": "5",
-          "name": "Nanoseconds",
-          "doc": "nanoseconds"
-        },
-        {
-          "value": "10",
-          "name": "Minutes",
-          "doc": "minutes"
-        },
-        {
-          "value": "11",
-          "name": "Hours",
-          "doc": "hours"
-        },
-        {
-          "value": "12",
-          "name": "Days",
-          "doc": "days"
-        },
-        {
-          "value": "13",
-          "name": "Weeks",
-          "doc": "weeks"
-        },
-        {
-          "value": "14",
-          "name": "Months",
-          "doc": "months"
-        },
-        {
-          "value": "15",
-          "name": "Years",
-          "doc": "years"
-        }
-      ],
+      "FIX:codes": "orderdelayunitcodeset",
       "FIX:tag": "2564",
       "description": "The time unit associated with the time interval of the netting of market data in a price depth feed.",
       "display": "MarketDepthTimeIntervalUnit"
@@ -1214,68 +826,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Seconds",
-          "doc": "Seconds (default if not specified)"
-        },
-        {
-          "value": "1",
-          "name": "TenthsOfASecond",
-          "doc": "Tenths of a second"
-        },
-        {
-          "value": "2",
-          "name": "HundredthsOfASecond",
-          "doc": "Hundredths of a second"
-        },
-        {
-          "value": "3",
-          "name": "Milliseconds",
-          "doc": "milliseconds"
-        },
-        {
-          "value": "4",
-          "name": "Microseconds",
-          "doc": "microseconds"
-        },
-        {
-          "value": "5",
-          "name": "Nanoseconds",
-          "doc": "nanoseconds"
-        },
-        {
-          "value": "10",
-          "name": "Minutes",
-          "doc": "minutes"
-        },
-        {
-          "value": "11",
-          "name": "Hours",
-          "doc": "hours"
-        },
-        {
-          "value": "12",
-          "name": "Days",
-          "doc": "days"
-        },
-        {
-          "value": "13",
-          "name": "Weeks",
-          "doc": "weeks"
-        },
-        {
-          "value": "14",
-          "name": "Months",
-          "doc": "months"
-        },
-        {
-          "value": "15",
-          "name": "Years",
-          "doc": "years"
-        }
-      ],
+      "FIX:codes": "orderdelayunitcodeset",
       "FIX:tag": "2566",
       "description": "The time unit associated with the time interval between two cycles of the same market data in cyclic data recovery feeds.",
       "display": "MDRecoveryTimeIntervalUnit"
@@ -1324,18 +875,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NoPriority",
-          "doc": "No priority"
-        },
-        {
-          "value": "1",
-          "name": "UnconditionalPriority",
-          "doc": "Unconditional priority"
-        }
-      ],
+      "FIX:codes": "customerprioritycodeset",
       "FIX:tag": "2570",
       "description": "Specifies the kind of priority given to customers.",
       "display": "CustomerPriority"
@@ -1450,43 +990,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Shares",
-          "doc": "Shares"
-        },
-        {
-          "value": "2",
-          "name": "Derivatives",
-          "doc": "Derivatives"
-        },
-        {
-          "value": "3",
-          "name": "PaymentVsPayment",
-          "doc": "Payment vs payment"
-        },
-        {
-          "value": "4",
-          "name": "Notional",
-          "doc": "Notional"
-        },
-        {
-          "value": "5",
-          "name": "Cascade",
-          "doc": "Cascade"
-        },
-        {
-          "value": "6",
-          "name": "Repurchase",
-          "doc": "Repurchase"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "settlsubmethodcodeset",
       "FIX:tag": "2579",
       "description": "Specifies a suitable settlement sub-method for a given settlement method.",
       "display": "SettlSubMethod"
@@ -1511,48 +1015,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "2581",
       "description": "Relative identification of a business day.",
       "display": "BusinessDayType"
@@ -1689,18 +1152,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Automatic",
-          "doc": "Automatic (default)"
-        },
-        {
-          "value": "1",
-          "name": "Manual",
-          "doc": "Manual"
-        }
-      ],
+      "FIX:codes": "calculationmethodcodeset",
       "FIX:tag": "2592",
       "description": "Specifies how the calculation will be made.",
       "display": "CalculationMethod"
@@ -1725,83 +1177,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "AggregatedOrder",
-          "doc": "Aggregated order"
-        },
-        {
-          "value": "1",
-          "name": "PendingAllocation",
-          "doc": "Order pending allocation"
-        },
-        {
-          "value": "2",
-          "name": "LiquidityProvisionActivityOrder",
-          "doc": "Liquidity provision activity order"
-        },
-        {
-          "value": "3",
-          "name": "RiskReductionOrder",
-          "doc": "Risk reduction order"
-        },
-        {
-          "value": "4",
-          "name": "AlgorithmicOrder",
-          "doc": "Algorithmic order"
-        },
-        {
-          "value": "5",
-          "name": "SystematicInternaliserOrder",
-          "doc": "Authorised reporter order"
-        },
-        {
-          "value": "6",
-          "name": "AllExecutionsSubmittedToAPA",
-          "doc": "All executions for the order are to be submitted to an APA"
-        },
-        {
-          "value": "7",
-          "name": "OrderExecutionInstructedByClient",
-          "doc": "Order execution instructed by client"
-        },
-        {
-          "value": "8",
-          "name": "LargeInScale",
-          "doc": "Large in scale order"
-        },
-        {
-          "value": "9",
-          "name": "Hidden",
-          "doc": "Hidden order"
-        },
-        {
-          "value": "10",
-          "name": "SubjectToEUSTO",
-          "doc": "Subject to EU share trading obligation (STO)"
-        },
-        {
-          "value": "11",
-          "name": "SubjectToUKSTO",
-          "doc": "Subject to UK share trading obligation (STO)"
-        },
-        {
-          "value": "12",
-          "name": "RepresentativeOrder",
-          "doc": "Representative order"
-        },
-        {
-          "value": "13",
-          "name": "LinkageType",
-          "doc": "Linkage type"
-        },
-        {
-          "value": "14",
-          "name": "ExemptFromSTO",
-          "doc": "Exempt from share trading obligation (STO)"
-        }
-      ],
+      "FIX:codes": "orderattributetypecodeset",
       "FIX:tag": "2594",
       "description": "The type of order attribute.",
       "display": "OrderAttributeType"
@@ -1862,18 +1238,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Close",
-          "doc": "Close"
-        },
-        {
-          "value": "1",
-          "name": "HedgeElection",
-          "doc": "Hedge election"
-        }
-      ],
+      "FIX:codes": "complexeventpvfinalpriceelectionfallbackcodeset",
       "FIX:tag": "2599",
       "description": "Specifies the fallback provisions for the hedging party in the determination of the final settlement price.",
       "display": "ComplexEventPVFinalPriceElectionFallback"

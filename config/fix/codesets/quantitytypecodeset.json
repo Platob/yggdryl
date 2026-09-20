@@ -1,0 +1,37 @@
+{
+  "name": "quantitytypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Shares"
+    },
+    {
+      "value": "2",
+      "name": "Bonds"
+    },
+    {
+      "value": "3",
+      "name": "Currentface"
+    },
+    {
+      "value": "4",
+      "name": "Originalface"
+    },
+    {
+      "value": "5",
+      "name": "Currency"
+    },
+    {
+      "value": "6",
+      "name": "Contracts"
+    },
+    {
+      "value": "7",
+      "name": "Other"
+    },
+    {
+      "value": "8",
+      "name": "Par"
+    }
+  ]
+}

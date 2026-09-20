@@ -1,0 +1,20 @@
+{
+  "name": "marketconditioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Normal",
+      "doc": "Normal"
+    },
+    {
+      "value": "1",
+      "name": "Stressed",
+      "doc": "Stressed"
+    },
+    {
+      "value": "2",
+      "name": "Exceptional",
+      "doc": "Exceptional"
+    }
+  ]
+}

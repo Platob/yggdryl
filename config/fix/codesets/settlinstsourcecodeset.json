@@ -1,0 +1,20 @@
+{
+  "name": "settlinstsourcecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "BrokerCredit",
+      "doc": "Broker's Instructions"
+    },
+    {
+      "value": "2",
+      "name": "Institution",
+      "doc": "Institution's Instructions"
+    },
+    {
+      "value": "3",
+      "name": "Investor",
+      "doc": "Investor (e.g. CIV use)"
+    }
+  ]
+}

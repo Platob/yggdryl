@@ -1,0 +1,15 @@
+{
+  "name": "multijurisdictionreportingindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NotMultiJrsdctnEligible",
+      "doc": "Trade not eligible for multi-jurisdiction reporting"
+    },
+    {
+      "value": "1",
+      "name": "MultiJrsdctnEligible",
+      "doc": "Trade eligible for multi-jurisdiction reporting"
+    }
+  ]
+}

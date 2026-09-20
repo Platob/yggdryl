@@ -1,0 +1,25 @@
+{
+  "name": "referencedatadatetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "AdmitToTradeRequestDate",
+      "doc": "Date of request for admission to trading"
+    },
+    {
+      "value": "1",
+      "name": "AdmitToTradeApprovalDate",
+      "doc": "Date of approval of admission to trading"
+    },
+    {
+      "value": "2",
+      "name": "AdmitToTradeOrFirstTradeDate",
+      "doc": "Date of admission to trading or date of first trade"
+    },
+    {
+      "value": "3",
+      "name": "TerminationDate",
+      "doc": "Termination date"
+    }
+  ]
+}

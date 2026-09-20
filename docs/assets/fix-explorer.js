@@ -96,10 +96,10 @@
     return wrapper
   }
   const metadata = (field) => field.metadata ?? {}
-  // `fix:branches` is membership: the dictionaries that contributed a field,
+  // `FIX:branches` is membership: the dictionaries that contributed a field,
   // comma-separated, lowercase and sorted. Empty for every field the
   // specification alone defines; no lookup consults it.
-  const memberships = (field) => (metadata(field)['fix:branches'] ?? '').split(',').filter(Boolean)
+  const memberships = (field) => (metadata(field)['FIX:branches'] ?? '').split(',').filter(Boolean)
   const title = (field) => metadata(field).display ?? field.name
   const searchText = (text) => String(text).toLowerCase()
   // A list property is the JSON array the store holds; it reads as its elements, comma-joined.
@@ -114,12 +114,15 @@
         return answer.json()
       }).then((data) => ({
         data,
+        // The vocabularies, by the name a field's `FIX:codes` states: the
+        // dictionary holds one set however many fields read by it.
+        sets: new Map((data.codesets ?? []).map((set) => [set.name, set.codes])),
         // Search text is presentation state. Names keep their stored spelling;
         // this index does not implement registry lookup or the one fold.
         definitions: CATEGORIES.flatMap((category) => data.catalog[category].map((field) => ({
           category,
           field,
-          text: searchText([category, field.name, ...['display', 'description', 'fix:tag', 'fix:names', 'fix:tags', 'fix:counter', 'fix:component', 'fix:msgtype', 'fix:identifiers', 'fix:branches'].map((key) => listed(metadata(field)[key] ?? ''))].join(' ')),
+          text: searchText([category, field.name, ...['display', 'description', 'FIX:tag', 'FIX:names', 'FIX:tags', 'FIX:counter', 'FIX:component', 'FIX:msgtype', 'FIX:identifiers', 'FIX:branches', 'FIX:codes'].map((key) => listed(metadata(field)[key] ?? ''))].join(' ')),
         }))),
       }))
     }
@@ -130,7 +133,7 @@
     const entries = [
       [data.kpi.fields, 'scalar fields'], [data.kpi.messages, 'messages'],
       [data.kpi.components, 'components'], [data.kpi.groups, 'groups'],
-      [data.kpi.codes, 'inline codes'], [data.kpi.enumFields, 'fields with codes'],
+      [data.kpi.codesets, 'code sets'], [data.kpi.enumFields, 'fields with codes'],
       [data.kpi.columns, 'capture columns'], [data.spec.version, 'FIX version'],
     ]
     const cards = make('div', 'ygg-fx__cards')
@@ -143,7 +146,7 @@
     root.append(cards, note('Counts from the live native registry, including its built-in scalar fields, Map group and message component. Messages are a subset of components.'))
   }
 
-  function fieldDetail(field, category, navigate) {
+  function fieldDetail(field, category, navigate, sets) {
     const body = make('div')
     const meta = metadata(field)
     const held = memberships(field)
@@ -151,8 +154,8 @@
       ['category', category], ['name', field.name],
       ['datatype', field.dtype.type], ['nullable', field.nullable],
       ...(field.dtype.keys_sorted === undefined ? [] : [['keys_sorted', field.dtype.keys_sorted]]),
-      // `fix:names` and `fix:tags` are the JSON arrays the store holds.
-      ...['fix:tag', 'fix:tags', 'fix:names', 'fix:counter', 'fix:component', 'fix:msgtype', 'fix:identifiers', 'description'].filter((key) => meta[key] !== undefined).map((key) => [key, listed(meta[key])]),
+      // `FIX:names` and `FIX:tags` are the JSON arrays the store holds.
+      ...['FIX:tag', 'FIX:tags', 'FIX:names', 'FIX:counter', 'FIX:component', 'FIX:msgtype', 'FIX:identifiers', 'description'].filter((key) => meta[key] !== undefined).map((key) => [key, listed(meta[key])]),
       // Membership is provenance, shown only where a dictionary recorded it.
       ...(held.length ? [['membership', held.join(', ')]] : []),
     ]))
@@ -165,7 +168,7 @@
       body.append(grid(['Occurrence', 'Presence', 'Reference'], members.map((member) => {
         const held = metadata(member)
         const refs = make('span', 'ygg-fx__chips')
-        for (const [key, target] of [['fix:field', 'fields'], ['fix:component', 'components'], ['fix:group', 'groups']]) {
+        for (const [key, target] of [['FIX:field', 'fields'], ['FIX:component', 'components'], ['FIX:group', 'groups']]) {
           if (held[key] === undefined) continue
           const link = button(`${target}: ${held[key]}`)
           link.addEventListener('click', () => navigate(target, held[key]))
@@ -175,11 +178,13 @@
         return [member.name, member.nullable ? 'optional' : 'required', refs]
       })))
     }
-    if (meta['fix:codes']) {
-      // This is a stored native metadata document, not a second enum registry.
-      // The store writes it as the array it is, so nothing is parsed here.
-      const codes = meta['fix:codes']
-      const details = panel('Inline codes', `${codes.length}`)
+    if (meta['FIX:codes']) {
+      // A vocabulary is the dictionary's, not the field's: `FIX:codes` states
+      // the name of the set this field reads by, and the manifest lists that
+      // set once, however many fields name it. Nothing is parsed here.
+      const name = meta['FIX:codes']
+      const codes = sets.get(name) ?? []
+      const details = panel(`Code set ${name}`, `${codes.length}`)
       let filled = false
       details.element.addEventListener('toggle', () => {
         if (filled || !details.element.open) return
@@ -201,7 +206,7 @@
     category.append(new Option('All three categories', 'all'))
     for (const name of CATEGORIES) category.append(new Option(name, name))
     const coded = make('select', 'ygg-fx__select')
-    coded.append(new Option('All definitions', 'all'), new Option('Fields with inline codes', 'codes'))
+    coded.append(new Option('All definitions', 'all'), new Option('Fields reading by a code set', 'codes'))
     controls.append(control('Search catalog text', query), control('Category', category), control('Vocabulary', coded))
     const count = make('p', 'ygg-fx__counter')
     count.setAttribute('aria-live', 'polite')
@@ -221,19 +226,19 @@
       const wanted = words(query.value)
       const matches = held.definitions.filter((entry) =>
         (category.value === 'all' || entry.category === category.value) &&
-        (coded.value !== 'codes' || metadata(entry.field)['fix:codes'] !== undefined) &&
+        (coded.value !== 'codes' || metadata(entry.field)['FIX:codes'] !== undefined) &&
         wanted.every((word) => entry.text.includes(word)))
       count.textContent = `${matches.length.toLocaleString()} matching definitions; showing ${Math.min(limit, matches.length).toLocaleString()}`
       view.replaceChildren()
       for (const { field, category: kind } of matches.slice(0, limit)) {
         const meta = metadata(field)
-        const identity = meta['fix:tag'] ? `tag ${meta['fix:tag']}` : meta['fix:counter'] ? `counter ${meta['fix:counter']}` : meta['fix:msgtype'] ? `wire ${meta['fix:msgtype']}` : ''
+        const identity = meta['FIX:tag'] ? `tag ${meta['FIX:tag']}` : meta['FIX:counter'] ? `counter ${meta['FIX:counter']}` : meta['FIX:msgtype'] ? `wire ${meta['FIX:msgtype']}` : ''
         const entry = panel(title(field), [kind, identity, memberships(field).join(', ')].filter(Boolean).join(' / '))
         let filled = false
         entry.element.addEventListener('toggle', () => {
           if (filled || !entry.element.open) return
           filled = true
-          entry.body.append(fieldDetail(field, kind, navigate))
+          entry.body.append(fieldDetail(field, kind, navigate, held.sets))
         })
         view.append(entry.element)
       }
@@ -367,7 +372,7 @@
     root.append(grid(['Source', 'Format', 'Version', 'SHA-256', 'License'], data.spec.sources.map((source) => [
       link(source.id, source.url), source.format, source.version, source.sha256, link('License', source.license),
     ])))
-    // Membership travels on each field's `fix:branches`; a registry lists the
+    // Membership travels on each field's `FIX:branches`; a registry lists the
     // distinct names through `dialects()`. The shipped dictionary names none.
     const dialects = data.kpi.dialectSizes ?? []
     if (dialects.length) {

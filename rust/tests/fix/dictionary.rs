@@ -164,41 +164,59 @@ fn every_generated_name_is_folded_and_no_two_collide() {
 fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
     let registry = seed();
 
-    // Each field carries its enum metadata over the scalar datatype. Message codes
-    // remain unrestricted text; Side keeps its generic ASCII datatype.
+    // Each field names the set its values are drawn from, over the scalar
+    // datatype the generator gave it. Message codes remain unrestricted
+    // text; Side keeps its generic ASCII datatype.
     let msgtype = registry.field_by_tag(35).expect("tag 35");
     assert_eq!(msgtype.dtype(), &DataType::utf8());
-    assert_eq!(msgtype.as_fix().code_name("D"), Some("NewOrderSingle"));
-    assert_eq!(msgtype.as_fix().code_value("NewOrderSingle"), Some("D"));
+    let codes = registry.codeset_of(msgtype).expect("the MsgType code set");
+    assert_eq!(codes.name(), "msgtypecodeset");
+    assert_eq!(codes.code_name("D"), Some("NewOrderSingle"));
+    assert_eq!(codes.code_value("NewOrderSingle"), Some("D"));
 
     let side = registry.field_by_tag(54).expect("tag 54");
     assert_eq!(side.dtype(), &DataType::Side);
-    assert_eq!(side.as_fix().code_name("1"), Some("Buy"));
-    assert_eq!(side.as_fix().code_value("buy"), Some("1"));
+    let codes = registry.codeset_of(side).expect("the Side code set");
+    assert_eq!(codes.name(), "sidecodeset");
+    assert_eq!(codes.code_name("1"), Some("Buy"));
+    assert_eq!(codes.code_value("buy"), Some("1"));
     // The order's state is declared twice, as `OrdStatus` and as `ExecType`,
-    // each keeping its own code set as text; only the crate's `state` column
+    // each naming a code set of its own; only the crate's `state` column
     // is typed as a state, and it reads either.
     for tag in [39, 150] {
         let state = registry.field_by_tag(tag).expect("a state tag");
         assert_eq!(state.dtype(), &DataType::utf8(), "tag {tag}");
-        assert!(state.as_fix().codes().count() > 5, "tag {tag}");
+        let codes = registry
+            .codeset_of(state)
+            .unwrap_or_else(|| panic!("tag {tag}"));
+        assert!(codes.codes().count() > 5, "tag {tag}");
     }
     assert_eq!(
-        registry.field_by_tag(39).unwrap().as_fix().code_name("1"),
+        registry
+            .codeset_of(registry.field_by_tag(39).unwrap())
+            .unwrap()
+            .code_name("1"),
         Some("PartiallyFilled")
     );
-    // Every other code set keeps its base type, and one code set declared by
-    // two fields is stored whole on each.
+    // Every other code set keeps its base type, and one code set two fields
+    // declare is held once under the one name both of them name.
     let ord_type = registry.field_by_tag(40).expect("tag 40");
     assert_eq!(ord_type.dtype(), &DataType::utf8());
-    assert!(ord_type.as_fix().codes().count() > 5);
+    assert!(registry.codeset_of(ord_type).unwrap().codes().count() > 5);
     let source = registry.field_by_tag(22).expect("SecurityIDSource");
     let alternative = registry.field_by_tag(456).expect("SecurityAltIDSource");
     assert_eq!(
         source.as_metadata().get("FIX:codes"),
         alternative.as_metadata().get("FIX:codes")
     );
-    assert!(source.as_metadata().get("FIX:codes").is_some());
+    assert_eq!(
+        source.as_metadata().get("FIX:codes"),
+        Some("securityidsourcecodeset")
+    );
+    assert_eq!(
+        registry.codeset_of(source),
+        registry.codeset_of(alternative)
+    );
     assert!(source.as_metadata().get("FIX:codeset").is_none());
 
     // A price, a quantity, a price offset and an amount are exact numbers,
@@ -308,7 +326,6 @@ fn every_stored_document_walks_to_its_end() {
     let mut with_codes = 0_usize;
     let mut codes = 0_usize;
     for field in registry.iter() {
-        let view = field.as_fix();
         // A refusal ends a borrowed walk, and the walk is what resolution
         // reads - so one malformed record does not fail loudly, it silently
         // removes every record after it. Orchestra's `addedEP="-1"` did
@@ -316,14 +333,23 @@ fn every_stored_document_walks_to_its_end() {
         // because a code 60 records earlier would not parse. Nothing here can
         // catch that but walking every document to its end.
         let mut seen = 0_usize;
-        for code in view.codes() {
-            code.unwrap_or_else(|error| panic!("{}: {error}", field.name()));
-            seen += 1;
+        if let Some(set) = registry.codeset_of(field) {
+            for code in set.codes() {
+                code.unwrap_or_else(|error| panic!("{}: {error}", field.name()));
+                seen += 1;
+            }
         }
         if seen > 0 {
             with_codes += 1;
         }
         codes += seen;
+    }
+    // And every set the store holds, whether or not a field reads by it:
+    // the documents live in `codesets/` now, one file per name.
+    for set in registry.codesets() {
+        for code in set.codes() {
+            code.unwrap_or_else(|error| panic!("{}: {error}", set.name()));
+        }
     }
     for field in registry.iter() {
         assert!(field.as_metadata().get("FIX:codeset").is_none());
@@ -331,15 +357,16 @@ fn every_stored_document_walks_to_its_end() {
     }
     // A dictionary this size is the point: a truncation that hides one code
     // in twenty thousand is exactly what nobody notices by reading.
-    assert!(with_codes > 900, "{with_codes} fields with inline enums");
+    assert!(with_codes > 900, "{with_codes} fields name a code set");
     assert!(
         codes > 10_000,
-        "{codes} enum records stored with their fields"
+        "{codes} enum records reached through the fields that name them"
     );
     // The spelling the truncation hid, end to end.
     let role = registry.field_by_tag(452).expect("PartyRole");
-    assert_eq!(role.as_fix().code_value("ClearingFirm"), Some("4"));
-    assert_eq!(role.as_fix().code_name("4"), Some("ClearingFirm"));
+    let set = registry.codeset_of(role).expect("the PartyRole code set");
+    assert_eq!(set.code_value("ClearingFirm"), Some("4"));
+    assert_eq!(set.code_name("4"), Some("ClearingFirm"));
 }
 
 /// Every field the dictionary holds, occurrences and group members included.
@@ -596,11 +623,15 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// read from is the reader's word about the line and not the message's about
 /// itself, so it travels as one of the capture's own columns beside the row,
 /// the definition still hashes as a crate field of its own, and the fixed
-/// row hashes one member fewer.
+/// row hashes one member fewer. It last moved when a field's vocabulary
+/// became a named code set: the members left the field's own `FIX:codes`,
+/// which now holds the set's name, and the dictionary hashes each set once
+/// under that name beside the fields, so every coded field's metadata and
+/// the whole of the shipped vocabulary changed what they contribute.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 14_757_447_470_805_216_568);
+    assert_eq!(registry.stable_hash(), 16_437_756_573_517_745_290);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

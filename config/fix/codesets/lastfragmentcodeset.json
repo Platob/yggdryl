@@ -1,0 +1,21 @@
+{
+  "name": "lastfragmentcodeset",
+  "codes": [
+    {
+      "value": "N",
+      "name": "NotLastMessage",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Not Last Message"
+    },
+    {
+      "value": "Y",
+      "name": "LastMessage",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Last Message"
+    }
+  ]
+}

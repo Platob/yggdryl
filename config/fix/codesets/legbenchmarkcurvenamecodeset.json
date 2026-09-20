@@ -1,0 +1,290 @@
+{
+  "name": "legbenchmarkcurvenamecodeset",
+  "codes": [
+    {
+      "value": "EONIA",
+      "name": "EONIA",
+      "doc": "EONIA"
+    },
+    {
+      "value": "EUREPO",
+      "name": "EUREPO",
+      "doc": "EUREPO"
+    },
+    {
+      "value": "Euribor",
+      "name": "EuriborLegacy",
+      "doc": "EURIBOR (deprecated use enum EURIBOR instead)"
+    },
+    {
+      "value": "FutureSWAP",
+      "name": "FutureSWAP",
+      "doc": "FutureSWAP"
+    },
+    {
+      "value": "LIBID",
+      "name": "LIBID",
+      "doc": "LIBID"
+    },
+    {
+      "value": "LIBOR",
+      "name": "LIBOR",
+      "doc": "LIBOR (London Inter-Bank Offer)"
+    },
+    {
+      "value": "MuniAAA",
+      "name": "MuniAAA",
+      "doc": "MuniAAA"
+    },
+    {
+      "value": "OTHER",
+      "name": "OTHER",
+      "doc": "OTHER"
+    },
+    {
+      "value": "Pfandbriefe",
+      "name": "Pfandbriefe",
+      "doc": "Pfandbriefe"
+    },
+    {
+      "value": "SONIA",
+      "name": "SONIA",
+      "doc": "SONIA"
+    },
+    {
+      "value": "SWAP",
+      "name": "SWAP",
+      "doc": "SWAP"
+    },
+    {
+      "value": "Treasury",
+      "name": "Treasury",
+      "doc": "Treasury"
+    },
+    {
+      "value": "FEDEFF",
+      "name": "FedFundRateEffective",
+      "doc": "US Federal Reserve fed funds effective rate"
+    },
+    {
+      "value": "FEDOPEN",
+      "name": "FedOpen",
+      "doc": "US fed funds target rate"
+    },
+    {
+      "value": "EURIBOR",
+      "name": "EURIBOR",
+      "doc": "Euro interbank offer rate"
+    },
+    {
+      "value": "AUBSW",
+      "name": "AUBSW",
+      "doc": "Australian Bank Bill Swap Rate"
+    },
+    {
+      "value": "BUBOR",
+      "name": "BUBOR",
+      "doc": "Budapest Bank Offered Rate"
+    },
+    {
+      "value": "CDOR",
+      "name": "CDOR",
+      "doc": "Canadian Dollar Offered Rate"
+    },
+    {
+      "value": "CIBOR",
+      "name": "CIBOR",
+      "doc": "Copenhagen Interbank Offered Rate"
+    },
+    {
+      "value": "EONIASWAP",
+      "name": "EONIASWAP",
+      "doc": "Euro Overnight Index Average Swap Rate"
+    },
+    {
+      "value": "ESTR",
+      "name": "ESTR",
+      "doc": "Euro Short Term Rate"
+    },
+    {
+      "value": "EURODOLLAR",
+      "name": "EURODOLLAR",
+      "doc": "Euro Dollar Rate"
+    },
+    {
+      "value": "EUROSWISS",
+      "name": "EUROSWISS",
+      "doc": "Euro Swiss Franc Rate"
+    },
+    {
+      "value": "GCFREPO",
+      "name": "GCFREPO",
+      "doc": "DTCC General Collateral Finance Repo Index"
+    },
+    {
+      "value": "ISDAFIX",
+      "name": "ISDAFIX",
+      "doc": "ICE Swap Rate"
+    },
+    {
+      "value": "JIBAR",
+      "name": "JIBAR",
+      "doc": "Johannesburg Interbank Agreed Rate"
+    },
+    {
+      "value": "MOSPRIM",
+      "name": "MOSPRIM",
+      "doc": "Moscow Prime Offered Rate"
+    },
+    {
+      "value": "NIBOR",
+      "name": "NIBOR",
+      "doc": "Nigeria Three Month Interbank Rate"
+    },
+    {
+      "value": "PRIBOR",
+      "name": "PRIBOR",
+      "doc": "Czech Republic Interbank Offered Rate"
+    },
+    {
+      "value": "SOFR",
+      "name": "SOFR",
+      "doc": "Secured Overnight Financing Rate"
+    },
+    {
+      "value": "STIBOR",
+      "name": "STIBOR",
+      "doc": "Stockholm Interbank Offered Rate"
+    },
+    {
+      "value": "TELBOR",
+      "name": "TELBOR",
+      "doc": "Bank of Israel Interbank Offered Rate"
+    },
+    {
+      "value": "TIBOR",
+      "name": "TIBOR",
+      "doc": "Tokyo Interbank Offered Rate"
+    },
+    {
+      "value": "WIBOR",
+      "name": "WIBOR",
+      "doc": "Warsaw Interbank Offered Rate"
+    },
+    {
+      "value": "AONIA",
+      "name": "AONIA",
+      "doc": "Reserve Bank of Australia Interbank Overnight Cash Rate"
+    },
+    {
+      "value": "AONIA-R",
+      "name": "AONIAR",
+      "doc": "Realised AONIA"
+    },
+    {
+      "value": "BKBM",
+      "name": "BKBM",
+      "doc": "New Zealand Bank Bill Market Rate"
+    },
+    {
+      "value": "CD91D",
+      "name": "CD91D",
+      "doc": "Republic of Korea 90-Day Certificate of Deposit Rate"
+    },
+    {
+      "value": "CORRA",
+      "name": "CORRA",
+      "doc": "Canadian Overnight Repo Rate Average"
+    },
+    {
+      "value": "DIRR-TN",
+      "name": "DIRRTN",
+      "doc": "Danish Interbank Interest Rate-Tomorrow or Next"
+    },
+    {
+      "value": "EIBOR",
+      "name": "EIBOR",
+      "doc": "Emirates Interbank Offered Rate"
+    },
+    {
+      "value": "FixingRepoRate",
+      "name": "FixingRepoRate",
+      "doc": "China Interbank Overnight Repo Rate"
+    },
+    {
+      "value": "HIBOR",
+      "name": "HIBOR",
+      "doc": "Hong Kong Interbank Offered Rate"
+    },
+    {
+      "value": "IBR",
+      "name": "IBR",
+      "doc": "Colombia Overnight Interbank Reference Rate"
+    },
+    {
+      "value": "KLIBOR",
+      "name": "KLIBOR",
+      "doc": "Kuala Lumpur Interbank Offered Rate"
+    },
+    {
+      "value": "MIBOR",
+      "name": "MIBOR",
+      "doc": "Mumbia Interbank Offered Rate"
+    },
+    {
+      "value": "NZONIA",
+      "name": "NZONIA",
+      "doc": "New Zealand Overnight Indexed Swaps (OIS)"
+    },
+    {
+      "value": "PHIREF",
+      "name": "PHIREF",
+      "doc": "Philippines Interbank Reference Rate"
+    },
+    {
+      "value": "REIBOR",
+      "name": "REIBOR",
+      "doc": "Reykjavik Interbank Offered Rate"
+    },
+    {
+      "value": "SAIBOR",
+      "name": "SAIBOR",
+      "doc": "Saudi Arabian Interbank Offered Rate"
+    },
+    {
+      "value": "SARON",
+      "name": "SARON",
+      "doc": "Swiss Average Rate Overnight"
+    },
+    {
+      "value": "SORA",
+      "name": "SORA",
+      "doc": "Singapore Swap Offer Rate"
+    },
+    {
+      "value": "TLREF",
+      "name": "TLREF",
+      "doc": "Turkish Lira Overnight Reference Rate"
+    },
+    {
+      "value": "TIIE",
+      "name": "TIIE",
+      "doc": "Mexico Interbank Equilibrium Interest Rate"
+    },
+    {
+      "value": "THBFIX",
+      "name": "THBFIX",
+      "doc": "Thai Baht Interest Rate Fixing"
+    },
+    {
+      "value": "TONAR",
+      "name": "TONAR",
+      "doc": "Tokyo Overnight Average Rate"
+    },
+    {
+      "value": "OBFR",
+      "name": "OBFR",
+      "doc": "Overnight Bank Funding Rate"
+    }
+  ]
+}

@@ -948,7 +948,7 @@ impl<'registry> Builder<'registry> {
         }
         let critical = super::identity::required_dtype(fill.tag).is_some();
         let typed = if critical {
-            typed_fill(fill.field, fill.tag, fill.value)
+            typed_fill(self.registry, fill.field, fill.tag, fill.value)
         } else {
             fill.field.scalar(fill.value.clone())
         };
@@ -1155,7 +1155,10 @@ impl<'registry> Builder<'registry> {
         raw: &[u8],
         text: &str,
     ) -> Result<Scalar> {
-        let facts = source.map(|source| self.memo.facts(source));
+        let facts = source.map(|source| {
+            self.memo
+                .facts(source, self.registry.codes_document(source))
+        });
         // A spelling this field states as its own absence types as null while
         // the entry keeps the text: which spelling means "nothing was sent" is
         // a fact about the field, and the row is the interpretation where the
@@ -1178,9 +1181,9 @@ impl<'registry> Builder<'registry> {
         match (&facts, source) {
             (Some(facts), Some(source)) => {
                 let translated = self.memo.translation(source, facts, text);
-                typed_translation(field, text, translated.as_deref())
+                typed_translation(field, facts.codes(), text, translated.as_deref())
             }
-            _ => typed_spelling_checked(field, text),
+            _ => typed_spelling_checked(self.registry, field, text),
         }
     }
 
@@ -1880,7 +1883,7 @@ impl Built {
                         "expected valid UTF-8 in the composed value",
                     ));
                 }
-                typed_fill(&write.field, source.tag, &write.value)?
+                typed_fill(registry, &write.field, source.tag, &write.value)?
             } else {
                 let Ok(value) = write.field.scalar(write.value) else {
                     continue;
@@ -2216,32 +2219,51 @@ fn zoned(text: &str) -> (&str, Option<&str>) {
 /// at every version, where `at` is `None`, which is how a value is re-typed
 /// for a field it did not arrive under. A spelling that will not type is
 /// null rather than a failure, for the reason the builder's read is.
-pub(super) fn typed_spelling(field: &Field, text: &str) -> Scalar {
-    typed_spelling_checked(field, text).unwrap_or(Scalar::Null)
+pub(super) fn typed_spelling(registry: &FixRegistry, field: &Field, text: &str) -> Scalar {
+    typed_spelling_checked(registry, field, text).unwrap_or(Scalar::Null)
 }
 
 /// The same conversion with its typed refusal preserved for root invariants.
-pub(super) fn typed_spelling_checked(field: &Field, text: &str) -> Result<Scalar> {
-    let translated = field.as_fix().code_value(text);
-    typed_translation(field, text, translated)
+pub(super) fn typed_spelling_checked(
+    registry: &FixRegistry,
+    field: &Field,
+    text: &str,
+) -> Result<Scalar> {
+    let codes = registry.codes_document(field);
+    let translated = codes.and_then(|codes| super::codes::translate(codes, text));
+    typed_translation(field, codes, text, translated)
 }
 
 /// [`typed_spelling`] for a field the registry keeps, the translation
 /// read off the registry's memo: what a rebuilt row types a million
 /// entries through, each code set scanned once per spelling rather than
 /// once per entry.
-pub(super) fn typed_spelling_remembered(memo: &Memo, field: &Field, text: &str) -> Scalar {
-    let facts = memo.facts(field);
+pub(super) fn typed_spelling_remembered(
+    registry: &FixRegistry,
+    field: &Field,
+    text: &str,
+) -> Scalar {
+    let memo = registry.memo();
+    let facts = memo.facts(field, registry.codes_document(field));
     let translated = memo.translation(field, &facts, text);
-    typed_translation(field, text, translated.as_deref()).unwrap_or(Scalar::Null)
+    typed_translation(field, facts.codes(), text, translated.as_deref()).unwrap_or(Scalar::Null)
 }
 
 /// [`typed_spelling`], the translation already made: `translated` is the wire
 /// value the field's code set gives `text` at `at`, or nothing where the set
 /// gives none, exactly as the builder's own table answers it.
-fn typed_translation(field: &Field, text: &str, translated: Option<&str>) -> Result<Scalar> {
-    let view = field.as_fix();
+fn typed_translation(
+    field: &Field,
+    codes: Option<&str>,
+    text: &str,
+    translated: Option<&str>,
+) -> Result<Scalar> {
     let spelling = translated.unwrap_or(text);
+    let named = |value: &str| {
+        codes
+            .and_then(|codes| super::codes::FixCodes::seek_value(codes, value))
+            .map(|code| code.name())
+    };
     // A state is read through the name the field gives its code before
     // the code itself, because two fields share a letter and not a
     // meaning: `D` is Restated as an `ExecType` and AcceptedForBidding as
@@ -2250,12 +2272,12 @@ fn typed_translation(field: &Field, text: &str, translated: Option<&str>) -> Res
     // explicit value through the name its dictionary gives it.
     match field.dtype() {
         DataType::State => {
-            if let Some(state) = view.code_name(spelling).and_then(State::from_spelling) {
+            if let Some(state) = named(spelling).and_then(State::from_spelling) {
                 return Ok(Scalar::State(state));
             }
         }
         DataType::Side => {
-            if let Some(side) = view.code_name(spelling).and_then(Side::from_spelling) {
+            if let Some(side) = named(spelling).and_then(Side::from_spelling) {
                 return Ok(Scalar::Side(side));
             }
         }
@@ -2292,7 +2314,12 @@ fn invalid_value(field: &Field, error: impl std::fmt::Display) -> Error {
 
 /// Carrier/composed text shares the wire converter; native values must
 /// already have the declared critical layout rather than coerce into it.
-pub(super) fn typed_fill(field: &Field, tag: i32, value: &Scalar) -> Result<Scalar> {
+pub(super) fn typed_fill(
+    registry: &FixRegistry,
+    field: &Field,
+    tag: i32,
+    value: &Scalar,
+) -> Result<Scalar> {
     super::identity::validate_field(field, tag)?;
     if value.is_null() {
         return Ok(Scalar::Null);
@@ -2301,7 +2328,8 @@ pub(super) fn typed_fill(field: &Field, tag: i32, value: &Scalar) -> Result<Scal
         if field.as_fix().is_null_value(text) {
             return Ok(Scalar::Null);
         }
-        return typed_spelling_checked(field, text).map_err(|error| invalid_value(field, error));
+        return typed_spelling_checked(registry, field, text)
+            .map_err(|error| invalid_value(field, error));
     }
     super::identity::validate_value(field.name(), field.dtype(), value)?;
     Ok(value.clone())

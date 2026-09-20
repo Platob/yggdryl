@@ -1,0 +1,15 @@
+{
+  "name": "triggerordertypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Market",
+      "doc": "Market"
+    },
+    {
+      "value": "2",
+      "name": "Limit",
+      "doc": "Limit"
+    }
+  ]
+}

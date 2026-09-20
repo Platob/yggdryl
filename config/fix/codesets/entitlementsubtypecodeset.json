@@ -1,0 +1,45 @@
+{
+  "name": "entitlementsubtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "OrderEntry",
+      "doc": "Order entry"
+    },
+    {
+      "value": "2",
+      "name": "HItLift",
+      "doc": "Hit/Lift"
+    },
+    {
+      "value": "3",
+      "name": "ViewIndicativePx",
+      "doc": "View indicative prices"
+    },
+    {
+      "value": "4",
+      "name": "ViewExecutablePx",
+      "doc": "View executable prices"
+    },
+    {
+      "value": "5",
+      "name": "SingleQuote",
+      "doc": "Single quote"
+    },
+    {
+      "value": "6",
+      "name": "StreamingQuotes",
+      "doc": "Streaming quotes"
+    },
+    {
+      "value": "7",
+      "name": "SingleBroker",
+      "doc": "Single broker"
+    },
+    {
+      "value": "8",
+      "name": "MultiBrokers",
+      "doc": "Multi brokers"
+    }
+  ]
+}

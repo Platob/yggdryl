@@ -1,0 +1,120 @@
+{
+  "name": "complexeventtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Capped",
+      "doc": "Capped"
+    },
+    {
+      "value": "2",
+      "name": "Trigger",
+      "doc": "Trigger"
+    },
+    {
+      "value": "3",
+      "name": "KnockInUp",
+      "doc": "Knock-in up"
+    },
+    {
+      "value": "4",
+      "name": "KnockInDown",
+      "doc": "Knock-in down"
+    },
+    {
+      "value": "5",
+      "name": "KnockOutUp",
+      "doc": "Knock-out up"
+    },
+    {
+      "value": "6",
+      "name": "KnockOutDown",
+      "doc": "Knock-out down"
+    },
+    {
+      "value": "7",
+      "name": "Underlying",
+      "doc": "Underlying"
+    },
+    {
+      "value": "8",
+      "name": "ResetBarrier",
+      "doc": "Reset Barrier"
+    },
+    {
+      "value": "9",
+      "name": "RollingBarrier",
+      "doc": "Rolling Barrier"
+    },
+    {
+      "value": "10",
+      "name": "OneTouch",
+      "doc": "One-touch"
+    },
+    {
+      "value": "11",
+      "name": "NoTouch",
+      "doc": "No-touch"
+    },
+    {
+      "value": "12",
+      "name": "DblOneTouch",
+      "doc": "Double one-touch"
+    },
+    {
+      "value": "13",
+      "name": "DblNoTouch",
+      "doc": "Double no-touch"
+    },
+    {
+      "value": "14",
+      "name": "FXComposite",
+      "doc": "Foreign exchange composite"
+    },
+    {
+      "value": "15",
+      "name": "FXQuanto",
+      "doc": "Foreign exchange Quanto"
+    },
+    {
+      "value": "16",
+      "name": "FXCrssCcy",
+      "doc": "Foreign exchange cross currency"
+    },
+    {
+      "value": "17",
+      "name": "StrkSpread",
+      "doc": "Strike spread"
+    },
+    {
+      "value": "18",
+      "name": "ClndrSpread",
+      "doc": "Calendar spread"
+    },
+    {
+      "value": "19",
+      "name": "PxObsvtn",
+      "doc": "Price observation (Asian or Lookback)"
+    },
+    {
+      "value": "20",
+      "name": "PassThrough",
+      "doc": "Pass-through"
+    },
+    {
+      "value": "21",
+      "name": "StrkSched",
+      "doc": "Strike schedule"
+    },
+    {
+      "value": "22",
+      "name": "EquityValuation",
+      "doc": "Equity valuation"
+    },
+    {
+      "value": "23",
+      "name": "DividendValuation",
+      "doc": "Dividend valuation"
+    }
+  ]
+}

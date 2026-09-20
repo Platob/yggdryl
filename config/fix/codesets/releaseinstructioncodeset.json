@@ -1,0 +1,15 @@
+{
+  "name": "releaseinstructioncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "ISO",
+      "doc": "Intermarket Sweep Order (ISO)"
+    },
+    {
+      "value": "2",
+      "name": "NoAwayMarketBetterCheck",
+      "doc": "No Away Market Better check"
+    }
+  ]
+}

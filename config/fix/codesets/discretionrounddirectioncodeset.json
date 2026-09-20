@@ -1,0 +1,15 @@
+{
+  "name": "discretionrounddirectioncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "MoreAggressive",
+      "doc": "More aggressive - on a buy order round the price up to the nearest tick; on a sell round down to the nearest tick"
+    },
+    {
+      "value": "2",
+      "name": "MorePassive",
+      "doc": "More passive - on a buy order round down to the nearest tick; on a sell order round up to the nearest tick"
+    }
+  ]
+}

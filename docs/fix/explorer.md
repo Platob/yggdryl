@@ -7,8 +7,8 @@ Search the native FIX catalog and inspect the fields, components and groups it s
 | Surface | Contract |
 | --- | --- |
 | Source | `scripts/build_docs_fix.js` runs the native package over `config/fix`, retaining compact stored documents and adding the crate's own definitions, which the shipped seed does not state. |
-| Catalog | Three categories of native `Field` documents: `fields`, `components`, `groups`; messages are components carrying `FIX:msgtype`, and enum codes stay inline on fields. |
-| Search | Filters names, tags, `FIX:names`, `FIX:identifiers` and descriptions; it does not invoke registry lookup or parse FIX input. |
+| Catalog | Three categories of native `Field` documents: `fields`, `components`, `groups`; messages are components carrying `FIX:msgtype`. The [code sets](registry.md#a-field-names-the-code-set-it-reads-by) are the fourth thing the page holds and no category: each is stated once under its name, and a field's `FIX:codes` is that name. |
+| Search | Filters names, tags, `FIX:names`, `FIX:identifiers`, the code set a field names and descriptions; it does not invoke registry lookup or parse FIX input. |
 | References | A member button selects a search in its target category. The browser does not resolve or merge schemas. |
 | Samples | [Decode](decode.md) and [Encode](encode.md) display recorded native codec results and emitted bytes. |
 
@@ -22,6 +22,7 @@ A List group and its scalar count have separate definitions: `NoPartyIDs` is the
 | Groups | 580 | 582 |
 | Components, including messages | 928 | 928 |
 | Messages, a subset of components | 181 | 181 |
+| Code sets, read by 2,026 fields | 735 | 735 |
 
 The live additions are the crate's 20 fields - `parentuuids` and `srcuuids` among them, the identities a message descends from and the identities it was read from, each one field under one name rather than a repeating group - and its two Map groups; the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 116 columns.
 
@@ -129,7 +130,7 @@ Search `453` to see the scalar counter and group definitions that reference it. 
 This section searches the generated native catalog and needs JavaScript.
 </div>
 
-Codes and `FIX:identifiers` appear inside their owning field's detail panel. List groups carry a name-derived `FIX:tag` beside their scalar `FIX:counter`; the built-in `identifiers` and `metadata` Maps use their own reserved tag as their counter, and their entries Field is displayed directly from the native document. Search `identifiers` for that group, or `clordid` for declarations selecting that direct identifier; no browser-side reference expansion is involved.
+A field's detail panel names the code set it reads by and opens that one set's members under the name, however many fields state it; `FIX:identifiers` appears in its owning component's panel the same way, and the definition filter narrows the rows to the fields that read by a set at all. List groups carry a name-derived `FIX:tag` beside their scalar `FIX:counter`; the built-in `identifiers` and `metadata` Maps use their own reserved tag as their counter, and their entries Field is displayed directly from the native document. Search `identifiers` for that group, or `clordid` for declarations selecting that direct identifier; no browser-side reference expansion is involved.
 
 ## The capture row
 

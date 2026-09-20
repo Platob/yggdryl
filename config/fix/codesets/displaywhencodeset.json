@@ -1,0 +1,15 @@
+{
+  "name": "displaywhencodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Immediate",
+      "doc": "Immediate (after each fill)"
+    },
+    {
+      "value": "2",
+      "name": "Exhaust",
+      "doc": "Exhaust (when DisplayQty = 0)"
+    }
+  ]
+}

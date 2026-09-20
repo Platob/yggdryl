@@ -302,43 +302,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "OrderReceivedFromCustomer",
-          "doc": "Order received from a customer"
-        },
-        {
-          "value": "2",
-          "name": "OrderReceivedFromWithinFirm",
-          "doc": "Order received from within the firm"
-        },
-        {
-          "value": "3",
-          "name": "OrderReceivedFromAnotherBrokerDealer",
-          "doc": "Order received from another broker-dealer"
-        },
-        {
-          "value": "4",
-          "name": "OrderReceivedFromCustomerOrWithFirm",
-          "doc": "Order received from a customer or originated from within the firm"
-        },
-        {
-          "value": "5",
-          "name": "OrderReceivedFromDirectAccessCustomer",
-          "doc": "Order received from a direct access or sponsored access customer"
-        },
-        {
-          "value": "6",
-          "name": "OrderReceivedFromForeignDealerEquivalent",
-          "doc": "Order received from a foreign dealer equivalent"
-        },
-        {
-          "value": "7",
-          "name": "OrderReceivedFromExecutionOnlyService",
-          "doc": "Order received from an execution-only service"
-        }
-      ],
+      "FIX:codes": "orderoriginationcodeset",
       "FIX:tag": "1724",
       "description": "Identifies the origin of the order.",
       "display": "OrderOrigination"
@@ -471,18 +435,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Rollup",
-          "doc": "Roll up"
-        },
-        {
-          "value": "1",
-          "name": "DoNotRollUp",
-          "doc": "Do not roll up"
-        }
-      ],
+      "FIX:codes": "allocationrollupinstructioncodeset",
       "FIX:tag": "1735",
       "description": "An indicator to override the normal procedure to roll up allocations for the same take-up firm.",
       "display": "AllocationRollupInstruction"
@@ -523,23 +476,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Completed",
-          "doc": "Completed"
-        },
-        {
-          "value": "1",
-          "name": "Refused",
-          "doc": "Refused"
-        },
-        {
-          "value": "2",
-          "name": "Cancelled",
-          "doc": "Cancelled"
-        }
-      ],
+      "FIX:codes": "allocreversalstatuscodeset",
       "FIX:tag": "1738",
       "description": "Identifies the status of a reversal transaction.",
       "display": "AllocReversalStatus"
@@ -552,28 +489,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bond",
-          "doc": "Bond"
-        },
-        {
-          "value": "1",
-          "name": "ConvertBond",
-          "doc": "Convertible bond"
-        },
-        {
-          "value": "2",
-          "name": "Mortgage",
-          "doc": "Mortgage"
-        },
-        {
-          "value": "3",
-          "name": "Loan",
-          "doc": "Loan"
-        }
-      ],
+      "FIX:codes": "obligationtypecodeset",
       "FIX:tag": "1739",
       "description": "Type of reference obligation for credit derivatives contracts.",
       "display": "ObligationType"
@@ -586,43 +502,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "PercentPar",
-          "doc": "Percent of par"
-        },
-        {
-          "value": "1",
-          "name": "DealSpread",
-          "doc": "Deal spread"
-        },
-        {
-          "value": "2",
-          "name": "UpfrontPnts",
-          "doc": "Upfront points"
-        },
-        {
-          "value": "3",
-          "name": "UpfrontAmt",
-          "doc": "Upfront amount"
-        },
-        {
-          "value": "4",
-          "name": "ParUpfrontAmt",
-          "doc": "Percent of par and upfront amount"
-        },
-        {
-          "value": "5",
-          "name": "SpreadUpfrontAmt",
-          "doc": "Deal spread and upfront amount"
-        },
-        {
-          "value": "6",
-          "name": "UpfrontPntsAmt",
-          "doc": "Upfront points and upfront amount"
-        }
-      ],
+      "FIX:codes": "tradepricenegotiationmethodcodeset",
       "FIX:tag": "1740",
       "description": "Method used for negotiation of contract price.",
       "display": "TradePriceNegotiationMethod"
@@ -635,18 +515,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Percentage",
-          "doc": "Percentage (i.e. percent of par) (often called \"dollar price\" for fixed income)"
-        },
-        {
-          "value": "3",
-          "name": "FixedAmount",
-          "doc": "Fixed amount (absolute value)"
-        }
-      ],
+      "FIX:codes": "upfrontpricetypecodeset",
       "FIX:tag": "1741",
       "description": "Type of price used to determine upfront payment for swaps contracts.",
       "display": "UpfrontPriceType"
@@ -687,18 +556,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NoApplRecoveryNeeded",
-          "doc": "Application level recovery is not needed (default)"
-        },
-        {
-          "value": "1",
-          "name": "ApplRecoveryNeeded",
-          "doc": "Application level recovery is needed"
-        }
-      ],
+      "FIX:codes": "appllevelrecoveryindicatorcodeset",
       "FIX:tag": "1744",
       "description": "Indicates whether application level recovery is needed.",
       "display": "ApplLevelRecoveryIndicator"
@@ -905,23 +763,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Definitions",
-          "doc": "Definitions(Default)"
-        },
-        {
-          "value": "2",
-          "name": "Utilization",
-          "doc": "Utilization"
-        },
-        {
-          "value": "3",
-          "name": "DefinitionsAndUtilizations",
-          "doc": "Definitions and utilization"
-        }
-      ],
+      "FIX:codes": "risklimitrequesttypecodeset",
       "FIX:tag": "1760",
       "description": "Type of risk limit information.",
       "display": "RiskLimitRequestType"
@@ -934,93 +776,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Successful",
-          "doc": "Successful (default)"
-        },
-        {
-          "value": "1",
-          "name": "InvalidParty",
-          "doc": "Invalid party(-ies)"
-        },
-        {
-          "value": "2",
-          "name": "InvalidRelatedParty",
-          "doc": "Invalid related party(-ies)"
-        },
-        {
-          "value": "3",
-          "name": "InvalidRiskLimitType",
-          "doc": "Invalid risk limit type(s)"
-        },
-        {
-          "value": "4",
-          "name": "InvalidRiskLimitID",
-          "doc": "Invalid risk limit ID(s)"
-        },
-        {
-          "value": "5",
-          "name": "InvalidRiskLimitAmount",
-          "doc": "Invalid risk limit amount(s)"
-        },
-        {
-          "value": "6",
-          "name": "InvalidRiskWarningLevelAction",
-          "doc": "Invalid risk/warning level action(s)"
-        },
-        {
-          "value": "7",
-          "name": "InvalidRiskInstrumentScope",
-          "doc": "Invalid risk instrument scope(s)"
-        },
-        {
-          "value": "8",
-          "name": "RiskLimitActionsNotSupported",
-          "doc": "Risk limit actions not supported"
-        },
-        {
-          "value": "9",
-          "name": "WarningLevelsNotSupported",
-          "doc": "Warning levels not supported"
-        },
-        {
-          "value": "10",
-          "name": "WarningLevelActionsNotSupported",
-          "doc": "Warning level actions not supported"
-        },
-        {
-          "value": "11",
-          "name": "RiskInstrumentScopeNotSupported",
-          "doc": "Risk instrument scope not supported"
-        },
-        {
-          "value": "12",
-          "name": "RiskLimitNotApprovedForParty",
-          "doc": "Risk limit not approved for party(-ies)"
-        },
-        {
-          "value": "13",
-          "name": "RiskLimitAlreadyDefinedForParty",
-          "doc": "Risk limit already defined for party(-ies)"
-        },
-        {
-          "value": "14",
-          "name": "InstrumentNotApprovedForParty",
-          "doc": "Instrument not approved for party(-ies)"
-        },
-        {
-          "value": "98",
-          "name": "NotAuthorized",
-          "doc": "Not authorized"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "risklimitrequestresultcodeset",
       "FIX:tag": "1761",
       "description": "Result of risk limit definition request.",
       "display": "RiskLimitRequestResult"
@@ -1033,28 +789,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Accepted",
-          "doc": "Accepted"
-        },
-        {
-          "value": "1",
-          "name": "AcceptedWithChanges",
-          "doc": "Accepted with changes"
-        },
-        {
-          "value": "2",
-          "name": "Rejected",
-          "doc": "Rejected"
-        },
-        {
-          "value": "3",
-          "name": "AcceptancePending",
-          "doc": "Acceptance pending"
-        }
-      ],
+      "FIX:codes": "partydetailrequeststatuscodeset",
       "FIX:tag": "1762",
       "description": "Status of risk limit definition request.",
       "display": "RiskLimitRequestStatus"
@@ -1067,23 +802,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Accepted",
-          "doc": "Accepted"
-        },
-        {
-          "value": "1",
-          "name": "AcceptedWithChanges",
-          "doc": "Accepted with changes"
-        },
-        {
-          "value": "2",
-          "name": "Rejected",
-          "doc": "Rejected"
-        }
-      ],
+      "FIX:codes": "partydetaildefinitionstatuscodeset",
       "FIX:tag": "1763",
       "description": "Status of risk limit definition for one party.",
       "display": "RiskLimitStatus"
@@ -1096,93 +815,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Successful",
-          "doc": "Successful (default)"
-        },
-        {
-          "value": "1",
-          "name": "InvalidParty",
-          "doc": "Invalid party(-ies)"
-        },
-        {
-          "value": "2",
-          "name": "InvalidRelatedParty",
-          "doc": "Invalid related party(-ies)"
-        },
-        {
-          "value": "3",
-          "name": "InvalidRiskLimitType",
-          "doc": "Invalid risk limit type(s)"
-        },
-        {
-          "value": "4",
-          "name": "InvalidRiskLimitID",
-          "doc": "Invalid risk limit ID(s)"
-        },
-        {
-          "value": "5",
-          "name": "InvalidRiskLimitAmount",
-          "doc": "Invalid risk limit amount(s)"
-        },
-        {
-          "value": "6",
-          "name": "InvalidRiskWarningLevelAction",
-          "doc": "Invalid risk/warning level action(s)"
-        },
-        {
-          "value": "7",
-          "name": "InvalidRiskInstrumentScope",
-          "doc": "Invalid risk instrument scope(s)"
-        },
-        {
-          "value": "8",
-          "name": "RiskLimitActionsNotSupported",
-          "doc": "Risk limit actions not supported"
-        },
-        {
-          "value": "9",
-          "name": "WarningLevelsNotSupported",
-          "doc": "Warning levels not supported"
-        },
-        {
-          "value": "10",
-          "name": "WarningLevelActionsNotSupported",
-          "doc": "Warning level actions not supported"
-        },
-        {
-          "value": "11",
-          "name": "RiskInstrumentScopeNotSupported",
-          "doc": "Risk instrument scope not supported"
-        },
-        {
-          "value": "12",
-          "name": "RiskLimitNotApprovedForParty",
-          "doc": "Risk limit not approved for party(-ies)"
-        },
-        {
-          "value": "13",
-          "name": "RiskLimitAlreadyDefinedForParty",
-          "doc": "Risk limit already defined for party(-ies)"
-        },
-        {
-          "value": "14",
-          "name": "InstrumentNotApprovedForParty",
-          "doc": "Instrument not approved for party(-ies)"
-        },
-        {
-          "value": "98",
-          "name": "NotAuthorized",
-          "doc": "Not authorized"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "risklimitrequestresultcodeset",
       "FIX:tag": "1764",
       "description": "Result of risk limit definition for one party.",
       "display": "RiskLimitResult"
@@ -1221,63 +854,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "QueueInbound",
-          "doc": "Queue inbound"
-        },
-        {
-          "value": "1",
-          "name": "QueueOutbound",
-          "doc": "Queue outbound"
-        },
-        {
-          "value": "2",
-          "name": "Reject",
-          "doc": "Reject"
-        },
-        {
-          "value": "3",
-          "name": "Disconnect",
-          "doc": "Disconnect"
-        },
-        {
-          "value": "4",
-          "name": "Warning",
-          "doc": "Warning"
-        },
-        {
-          "value": "5",
-          "name": "PingCreditCheckWithRevalidation",
-          "doc": "Ping credit check model with revalidation"
-        },
-        {
-          "value": "6",
-          "name": "PingCreditCheckNoRevalidation",
-          "doc": "Ping credit check model without revalidation"
-        },
-        {
-          "value": "7",
-          "name": "PushCreditCheckWithRevalidation",
-          "doc": "Push credit check model with revalidation"
-        },
-        {
-          "value": "8",
-          "name": "PushCreditCheckNoRevalidation",
-          "doc": "Push credit check model without revalidation"
-        },
-        {
-          "value": "9",
-          "name": "Suspend",
-          "doc": "Suspend"
-        },
-        {
-          "value": "10",
-          "name": "HaltTrading",
-          "doc": "Halt trading"
-        }
-      ],
+      "FIX:codes": "risklimitactioncodeset",
       "FIX:tag": "1767",
       "description": "Identifies the action to take or risk model to assume should risk limit be exceeded or breached for the specified party.",
       "display": "RiskLimitAction"
@@ -1302,63 +879,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "QueueInbound",
-          "doc": "Queue inbound"
-        },
-        {
-          "value": "1",
-          "name": "QueueOutbound",
-          "doc": "Queue outbound"
-        },
-        {
-          "value": "2",
-          "name": "Reject",
-          "doc": "Reject"
-        },
-        {
-          "value": "3",
-          "name": "Disconnect",
-          "doc": "Disconnect"
-        },
-        {
-          "value": "4",
-          "name": "Warning",
-          "doc": "Warning"
-        },
-        {
-          "value": "5",
-          "name": "PingCreditCheckWithRevalidation",
-          "doc": "Ping credit check model with revalidation"
-        },
-        {
-          "value": "6",
-          "name": "PingCreditCheckNoRevalidation",
-          "doc": "Ping credit check model without revalidation"
-        },
-        {
-          "value": "7",
-          "name": "PushCreditCheckWithRevalidation",
-          "doc": "Push credit check model with revalidation"
-        },
-        {
-          "value": "8",
-          "name": "PushCreditCheckNoRevalidation",
-          "doc": "Push credit check model without revalidation"
-        },
-        {
-          "value": "9",
-          "name": "Suspend",
-          "doc": "Suspend"
-        },
-        {
-          "value": "10",
-          "name": "HaltTrading",
-          "doc": "Halt trading"
-        }
-      ],
+      "FIX:codes": "risklimitactioncodeset",
       "FIX:tag": "1769",
       "description": "Action to take should warning level be exceeded.",
       "display": "RiskWarningLevelAction"
@@ -1431,53 +952,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Trade",
-          "doc": "Trade"
-        },
-        {
-          "value": "1",
-          "name": "MakeMarkets",
-          "doc": "Make markets"
-        },
-        {
-          "value": "2",
-          "name": "HoldPositions",
-          "doc": "Hold positions"
-        },
-        {
-          "value": "3",
-          "name": "PerformGiveUps",
-          "doc": "Perform give-ups"
-        },
-        {
-          "value": "4",
-          "name": "SubmitIOIs",
-          "doc": "Submit Indications of Interest (IOIs)"
-        },
-        {
-          "value": "5",
-          "name": "SubscribeMarketData",
-          "doc": "Subscribe to market data"
-        },
-        {
-          "value": "6",
-          "name": "ShortWithPreBorrow",
-          "doc": "Short with pre-borrow"
-        },
-        {
-          "value": "7",
-          "name": "SubmitQuoteRequests",
-          "doc": "Submit quote requests"
-        },
-        {
-          "value": "8",
-          "name": "RespondToQuoteRequests",
-          "doc": "Respond to quote requests"
-        }
-      ],
+      "FIX:codes": "entitlementtypecodeset",
       "FIX:tag": "1775",
       "description": "Type of entitlement.",
       "display": "EntitlementType"
@@ -1526,218 +1001,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Int",
-          "group": "int",
-          "doc": "int"
-        },
-        {
-          "value": "2",
-          "name": "Length",
-          "group": "int",
-          "doc": "Length"
-        },
-        {
-          "value": "3",
-          "name": "NumInGroup",
-          "group": "int",
-          "doc": "NumInGroup"
-        },
-        {
-          "value": "4",
-          "name": "SeqNum",
-          "group": "int",
-          "doc": "SeqNum"
-        },
-        {
-          "value": "5",
-          "name": "TagNum",
-          "group": "int",
-          "doc": "TagNum"
-        },
-        {
-          "value": "6",
-          "name": "Float",
-          "group": "float",
-          "doc": "float"
-        },
-        {
-          "value": "7",
-          "name": "Qty",
-          "group": "float",
-          "doc": "Qty"
-        },
-        {
-          "value": "8",
-          "name": "Price",
-          "group": "float",
-          "doc": "Price"
-        },
-        {
-          "value": "9",
-          "name": "PriceOffset",
-          "group": "float",
-          "doc": "PriceOffset"
-        },
-        {
-          "value": "10",
-          "name": "Amt",
-          "group": "float",
-          "doc": "Amt"
-        },
-        {
-          "value": "11",
-          "name": "Percentage",
-          "group": "float",
-          "doc": "Percentage"
-        },
-        {
-          "value": "12",
-          "name": "Char",
-          "group": "char",
-          "doc": "char"
-        },
-        {
-          "value": "13",
-          "name": "Boolean",
-          "group": "char",
-          "doc": "Boolean"
-        },
-        {
-          "value": "14",
-          "name": "String",
-          "group": "String",
-          "doc": "String"
-        },
-        {
-          "value": "15",
-          "name": "MultipleCharValue",
-          "group": "String",
-          "doc": "MultipleCharValue"
-        },
-        {
-          "value": "16",
-          "name": "Currency",
-          "group": "String",
-          "doc": "Currency"
-        },
-        {
-          "value": "17",
-          "name": "Exchange",
-          "group": "String",
-          "doc": "Exchange"
-        },
-        {
-          "value": "18",
-          "name": "MonthYear",
-          "group": "String",
-          "doc": "MonthYear"
-        },
-        {
-          "value": "19",
-          "name": "UTCTimestamp",
-          "group": "String",
-          "doc": "UTCTimestamp"
-        },
-        {
-          "value": "20",
-          "name": "UTCTimeOnly",
-          "group": "String",
-          "doc": "UTCTimeOnly"
-        },
-        {
-          "value": "21",
-          "name": "LocalMktDate",
-          "group": "String",
-          "doc": "LocalMktDate"
-        },
-        {
-          "value": "22",
-          "name": "UTCDateOnly",
-          "group": "String",
-          "doc": "UTCDateOnly"
-        },
-        {
-          "value": "23",
-          "name": "Data",
-          "group": "String",
-          "doc": "data"
-        },
-        {
-          "value": "24",
-          "name": "MultipleStringValue",
-          "group": "String",
-          "doc": "MultipleStringValue"
-        },
-        {
-          "value": "25",
-          "name": "Country",
-          "group": "String",
-          "doc": "Country"
-        },
-        {
-          "value": "26",
-          "name": "Language",
-          "group": "String",
-          "doc": "Language"
-        },
-        {
-          "value": "27",
-          "name": "TZTimeOnly",
-          "group": "String",
-          "doc": "TZTimeOnly"
-        },
-        {
-          "value": "28",
-          "name": "TZTimestamp",
-          "group": "String",
-          "doc": "TZTimestamp"
-        },
-        {
-          "value": "29",
-          "name": "Tenor",
-          "group": "Pattern",
-          "doc": "Tenor"
-        },
-        {
-          "value": "30",
-          "name": "DayOfMonth",
-          "group": "int",
-          "doc": "DayOfMonth"
-        },
-        {
-          "value": "31",
-          "name": "XMLData",
-          "group": "String",
-          "doc": "XMLData"
-        },
-        {
-          "value": "32",
-          "name": "Pattern",
-          "group": "Pattern",
-          "doc": "Pattern"
-        },
-        {
-          "value": "33",
-          "name": "Reserved100Plus",
-          "group": "Pattern",
-          "doc": "Reserved100Plus"
-        },
-        {
-          "value": "34",
-          "name": "Reserved1000Plus",
-          "group": "Pattern",
-          "doc": "Reserved1000Plus"
-        },
-        {
-          "value": "35",
-          "name": "Reserved4000Plus",
-          "group": "Pattern",
-          "doc": "Reserved4000Plus"
-        }
-      ],
+      "FIX:codes": "entitlementattribdatatypecodeset",
       "FIX:tag": "1779",
       "description": "Datatype of the entitlement attribute.",
       "display": "EntitlementAttribDatatype"
@@ -1812,18 +1076,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Automatic",
-          "doc": "Automatic (Default)"
-        },
-        {
-          "value": "1",
-          "name": "Manual",
-          "doc": "Manual"
-        }
-      ],
+      "FIX:codes": "tradsescontrolcodeset",
       "FIX:tag": "1785",
       "description": "Indicates how control of trading session and subsession transitions are performed.",
       "display": "TradSesControl"
@@ -1836,18 +1089,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NumberOfUnits",
-          "doc": "Number of units (e.g. share, par, currency, contracts) (default)"
-        },
-        {
-          "value": "1",
-          "name": "NumberOfRoundLots",
-          "doc": "Number of round lots"
-        }
-      ],
+      "FIX:codes": "tradevoltypecodeset",
       "FIX:tag": "1786",
       "description": "Define the type of trade volume applicable for the MinTradeVol(562) and MaxTradeVol(1140)",
       "display": "TradeVolType"
@@ -1968,63 +1210,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Added",
-          "doc": "Added (0=New)"
-        },
-        {
-          "value": "2",
-          "name": "Modified",
-          "doc": "Modified (5=Replaced)"
-        },
-        {
-          "value": "3",
-          "name": "Deleted",
-          "doc": "Deleted (4=Canceled)"
-        },
-        {
-          "value": "4",
-          "name": "PartiallyFilled",
-          "doc": "Partially Filled (F=Trade)"
-        },
-        {
-          "value": "5",
-          "name": "Filled",
-          "doc": "Filled (F=Trade)"
-        },
-        {
-          "value": "6",
-          "name": "Suspended",
-          "doc": "Suspended (9=Suspended)"
-        },
-        {
-          "value": "7",
-          "name": "Released",
-          "doc": "Released (N=Released)"
-        },
-        {
-          "value": "8",
-          "name": "Restated",
-          "doc": "Restated (D=Restated)"
-        },
-        {
-          "value": "9",
-          "name": "Locked",
-          "doc": "Locked (M=Locked)"
-        },
-        {
-          "value": "10",
-          "name": "Triggered",
-          "doc": "Triggered (L=Triggered or Activated by System)"
-        },
-        {
-          "value": "11",
-          "name": "Activated",
-          "doc": "Activated (L=Triggered or Activated by System)"
-        }
-      ],
+      "FIX:codes": "ordereventtypecodeset",
       "FIX:tag": "1796",
       "description": "The type of event affecting an order. The last event type within the OrderEventGrp component indicates the ExecType(150) value resulting from the series of events (ExecType(150) values are shown in brackets).",
       "display": "OrderEventType"
@@ -2049,73 +1235,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "AddOrderRequest",
-          "doc": "Add order request"
-        },
-        {
-          "value": "2",
-          "name": "ModifyOrderRequest",
-          "doc": "Modify order request"
-        },
-        {
-          "value": "3",
-          "name": "DeleteOrderRequest",
-          "doc": "Delete order request"
-        },
-        {
-          "value": "4",
-          "name": "OrderEnteredOOB",
-          "doc": "Order entered out-of-band"
-        },
-        {
-          "value": "5",
-          "name": "OrderModifiedOOB",
-          "doc": "Order modified out-of-band"
-        },
-        {
-          "value": "6",
-          "name": "OrderDeletedOOB",
-          "doc": "Order deleted out-of-band"
-        },
-        {
-          "value": "7",
-          "name": "OrderActivatedOrTriggered",
-          "doc": "Order activated or triggered"
-        },
-        {
-          "value": "8",
-          "name": "OrderExpired",
-          "doc": "Order expired"
-        },
-        {
-          "value": "9",
-          "name": "ReserveOrderRefreshed",
-          "doc": "Reserve order refreshed"
-        },
-        {
-          "value": "10",
-          "name": "AwayMarketBetter",
-          "doc": "Away market better"
-        },
-        {
-          "value": "11",
-          "name": "CorporateAction",
-          "doc": "Corporate action"
-        },
-        {
-          "value": "12",
-          "name": "StartOfDay",
-          "doc": "Start of day"
-        },
-        {
-          "value": "13",
-          "name": "EndOfDay",
-          "doc": "End of day"
-        }
-      ],
+      "FIX:codes": "ordereventreasoncodeset",
       "FIX:tag": "1798",
       "description": "Action that caused the event to occur.",
       "display": "OrderEventReason"

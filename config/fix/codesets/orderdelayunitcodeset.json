@@ -1,0 +1,65 @@
+{
+  "name": "orderdelayunitcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Seconds",
+      "doc": "Seconds (default if not specified)"
+    },
+    {
+      "value": "1",
+      "name": "TenthsOfASecond",
+      "doc": "Tenths of a second"
+    },
+    {
+      "value": "2",
+      "name": "HundredthsOfASecond",
+      "doc": "Hundredths of a second"
+    },
+    {
+      "value": "3",
+      "name": "Milliseconds",
+      "doc": "milliseconds"
+    },
+    {
+      "value": "4",
+      "name": "Microseconds",
+      "doc": "microseconds"
+    },
+    {
+      "value": "5",
+      "name": "Nanoseconds",
+      "doc": "nanoseconds"
+    },
+    {
+      "value": "10",
+      "name": "Minutes",
+      "doc": "minutes"
+    },
+    {
+      "value": "11",
+      "name": "Hours",
+      "doc": "hours"
+    },
+    {
+      "value": "12",
+      "name": "Days",
+      "doc": "days"
+    },
+    {
+      "value": "13",
+      "name": "Weeks",
+      "doc": "weeks"
+    },
+    {
+      "value": "14",
+      "name": "Months",
+      "doc": "months"
+    },
+    {
+      "value": "15",
+      "name": "Years",
+      "doc": "years"
+    }
+  ]
+}

@@ -1,0 +1,155 @@
+{
+  "name": "mdstatistictypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Count",
+      "doc": "Count"
+    },
+    {
+      "value": "2",
+      "name": "AverageVolume",
+      "doc": "Average volume"
+    },
+    {
+      "value": "3",
+      "name": "TotalVolume",
+      "doc": "Total volume"
+    },
+    {
+      "value": "4",
+      "name": "Distribution",
+      "doc": "Distribution"
+    },
+    {
+      "value": "5",
+      "name": "Ratio",
+      "doc": "Ratio"
+    },
+    {
+      "value": "6",
+      "name": "Liquidity",
+      "doc": "Liquidity"
+    },
+    {
+      "value": "7",
+      "name": "VWAP",
+      "doc": "Volume weighted average price (VWAP)"
+    },
+    {
+      "value": "8",
+      "name": "Volatility",
+      "doc": "Volatility"
+    },
+    {
+      "value": "9",
+      "name": "Duration",
+      "doc": "Duration"
+    },
+    {
+      "value": "10",
+      "name": "Tick",
+      "doc": "Tick"
+    },
+    {
+      "value": "11",
+      "name": "AverageValue",
+      "doc": "Average value"
+    },
+    {
+      "value": "12",
+      "name": "TotalValue",
+      "doc": "Total value"
+    },
+    {
+      "value": "13",
+      "name": "High",
+      "doc": "High"
+    },
+    {
+      "value": "14",
+      "name": "Low",
+      "doc": "Low"
+    },
+    {
+      "value": "15",
+      "name": "Midpoint",
+      "doc": "Midpoint"
+    },
+    {
+      "value": "16",
+      "name": "First",
+      "doc": "First"
+    },
+    {
+      "value": "17",
+      "name": "Last",
+      "doc": "Last"
+    },
+    {
+      "value": "18",
+      "name": "Final",
+      "doc": "Final"
+    },
+    {
+      "value": "19",
+      "name": "ExchangeBest",
+      "doc": "Exchange best"
+    },
+    {
+      "value": "20",
+      "name": "ExchangeBestWithVolume",
+      "doc": "Exchange best with volume"
+    },
+    {
+      "value": "21",
+      "name": "ConsolidatedBest",
+      "doc": "Consolidated best"
+    },
+    {
+      "value": "22",
+      "name": "ConsolidatedBestWithVolume",
+      "doc": "Consolidated best with volume"
+    },
+    {
+      "value": "23",
+      "name": "TWAP",
+      "doc": "Time weighted average price (TWAP)"
+    },
+    {
+      "value": "24",
+      "name": "AverageDuration",
+      "doc": "Average duration"
+    },
+    {
+      "value": "25",
+      "name": "AveragePrice",
+      "doc": "Average price"
+    },
+    {
+      "value": "26",
+      "name": "TotalFees",
+      "doc": "Total fees"
+    },
+    {
+      "value": "27",
+      "name": "TotalBenefits",
+      "doc": "Total benefits"
+    },
+    {
+      "value": "28",
+      "name": "MedianValue",
+      "doc": "Median value"
+    },
+    {
+      "value": "29",
+      "name": "AverageLiquidity",
+      "doc": "Average liquidity"
+    },
+    {
+      "value": "30",
+      "name": "MedianDuration",
+      "doc": "Median duration"
+    }
+  ]
+}

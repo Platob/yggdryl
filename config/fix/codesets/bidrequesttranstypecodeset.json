@@ -1,0 +1,15 @@
+{
+  "name": "bidrequesttranstypecodeset",
+  "codes": [
+    {
+      "value": "C",
+      "name": "Cancel",
+      "doc": "Cancel"
+    },
+    {
+      "value": "N",
+      "name": "New",
+      "doc": "New"
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "name": "quotestatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "1",
+      "name": "CancelForSymbol",
+      "doc": "Canceled for specific securities"
+    },
+    {
+      "value": "2",
+      "name": "CanceledForSecurityType",
+      "doc": "Canceled for specific SecurityTypes(167)"
+    },
+    {
+      "value": "3",
+      "name": "CanceledForUnderlying",
+      "doc": "Canceled for underlying"
+    },
+    {
+      "value": "4",
+      "name": "CanceledAll",
+      "doc": "Canceled all"
+    },
+    {
+      "value": "5",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "6",
+      "name": "RemovedFromMarket",
+      "doc": "Removed from market"
+    },
+    {
+      "value": "7",
+      "name": "Expired",
+      "doc": "Expired"
+    },
+    {
+      "value": "8",
+      "name": "Query",
+      "doc": "Query"
+    },
+    {
+      "value": "9",
+      "name": "QuoteNotFound",
+      "doc": "Quote not found"
+    },
+    {
+      "value": "10",
+      "name": "Pending",
+      "doc": "Pending"
+    },
+    {
+      "value": "11",
+      "name": "Pass",
+      "doc": "Pass"
+    },
+    {
+      "value": "12",
+      "name": "LockedMarketWarning",
+      "doc": "Locked market warning"
+    },
+    {
+      "value": "13",
+      "name": "CrossMarketWarning",
+      "doc": "Crossed market warning"
+    },
+    {
+      "value": "14",
+      "name": "CanceledDueToLockMarket",
+      "doc": "Canceled due to locked market"
+    },
+    {
+      "value": "15",
+      "name": "CanceledDueToCrossMarket",
+      "doc": "Canceled due to crossed market"
+    },
+    {
+      "value": "16",
+      "name": "Active",
+      "doc": "Active"
+    },
+    {
+      "value": "17",
+      "name": "Canceled",
+      "doc": "Canceled"
+    },
+    {
+      "value": "18",
+      "name": "UnsolicitedQuoteReplenishment",
+      "doc": "Unsolicited quote replenishment"
+    },
+    {
+      "value": "19",
+      "name": "PendingEndTrade",
+      "doc": "Pending end trade"
+    },
+    {
+      "value": "20",
+      "name": "TooLateToEnd",
+      "doc": "Too late to end"
+    },
+    {
+      "value": "21",
+      "name": "Traded",
+      "doc": "Traded"
+    },
+    {
+      "value": "22",
+      "name": "TradedAndRemoved",
+      "doc": "Traded and removed"
+    },
+    {
+      "value": "23",
+      "name": "ContractTerminates",
+      "doc": "Contract terminated"
+    }
+  ]
+}

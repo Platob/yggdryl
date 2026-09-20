@@ -30,173 +30,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "CUSIP",
-          "doc": "CUSIP"
-        },
-        {
-          "value": "2",
-          "name": "SEDOL",
-          "doc": "SEDOL"
-        },
-        {
-          "value": "3",
-          "name": "QUIK",
-          "doc": "QUIK"
-        },
-        {
-          "value": "4",
-          "name": "ISINNumber",
-          "doc": "ISIN"
-        },
-        {
-          "value": "5",
-          "name": "RICCode",
-          "doc": "RIC"
-        },
-        {
-          "value": "6",
-          "name": "ISOCurrencyCode",
-          "doc": "ISO Currency Code (ISO 4217)"
-        },
-        {
-          "value": "7",
-          "name": "ISOCountryCode",
-          "doc": "ISO Country Code"
-        },
-        {
-          "value": "8",
-          "name": "ExchangeSymbol",
-          "doc": "Exchange symbol"
-        },
-        {
-          "value": "9",
-          "name": "ConsolidatedTapeAssociation",
-          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
-        },
-        {
-          "value": "A",
-          "name": "BloombergSymbol",
-          "doc": "Bloomberg Symbol"
-        },
-        {
-          "value": "B",
-          "name": "Wertpapier",
-          "doc": "Wertpapier"
-        },
-        {
-          "value": "C",
-          "name": "Dutch",
-          "doc": "Dutch"
-        },
-        {
-          "value": "D",
-          "name": "Valoren",
-          "doc": "Valoren"
-        },
-        {
-          "value": "E",
-          "name": "Sicovam",
-          "doc": "Sicovam"
-        },
-        {
-          "value": "F",
-          "name": "Belgian",
-          "doc": "Belgian"
-        },
-        {
-          "value": "G",
-          "name": "Common",
-          "doc": "\"Common\" (Clearstream and Euroclear)"
-        },
-        {
-          "value": "H",
-          "name": "ClearingHouse",
-          "doc": "Clearing house / Clearing organization"
-        },
-        {
-          "value": "I",
-          "name": "ISDAFpMLSpecification",
-          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
-        },
-        {
-          "value": "J",
-          "name": "OptionPriceReportingAuthority",
-          "doc": "Option Price Reporting Authority"
-        },
-        {
-          "value": "K",
-          "name": "ISDAFpMLURL",
-          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
-        },
-        {
-          "value": "L",
-          "name": "LetterOfCredit",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "M",
-          "name": "MarketplaceAssignedIdentifier",
-          "doc": "Marketplace-assigned Identifier"
-        },
-        {
-          "value": "N",
-          "name": "MarkitREDEntityCLIP",
-          "doc": "Markit RED entity CLIP"
-        },
-        {
-          "value": "P",
-          "name": "MarkitREDPairCLIP",
-          "doc": "Markit RED pair CLIP"
-        },
-        {
-          "value": "Q",
-          "name": "CFTCCommodityCode",
-          "doc": "CFTC commodity code"
-        },
-        {
-          "value": "R",
-          "name": "ISDACommodityReferencePrice",
-          "doc": "ISDA Commodity Reference Price"
-        },
-        {
-          "value": "S",
-          "name": "FinancialInstrumentGlobalIdentifier",
-          "doc": "Financial Instrument Global Identifier"
-        },
-        {
-          "value": "T",
-          "name": "LegalEntityIdentifier",
-          "doc": "Legal entity identifier"
-        },
-        {
-          "value": "U",
-          "name": "Synthetic",
-          "doc": "Synthetic"
-        },
-        {
-          "value": "V",
-          "name": "FidessaInstrumentMnemonic",
-          "doc": "Fidessa Instrument Mnemonic (FIM)"
-        },
-        {
-          "value": "W",
-          "name": "IndexName",
-          "doc": "Index name"
-        },
-        {
-          "value": "X",
-          "name": "UniformSymbol",
-          "doc": "Uniform Symbol (UMTF Symbol)"
-        },
-        {
-          "value": "Y",
-          "name": "DigitalTokenIdentifier",
-          "doc": "Digital Token Identifier (ISO 24165)"
-        }
-      ],
+      "FIX:codes": "securityidsourcecodeset",
       "FIX:tag": "40002",
       "description": "Identifies the source scheme of the AdditionalTermBondSecurityID(40001) value.",
       "display": "AdditionalTermBondSecurityIDSource"
@@ -293,38 +127,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "SD",
-          "name": "SeniorSecured",
-          "doc": "Senior Secured"
-        },
-        {
-          "value": "SR",
-          "name": "Senior",
-          "doc": "Senior"
-        },
-        {
-          "value": "SB",
-          "name": "Subordinated",
-          "doc": "Subordinated"
-        },
-        {
-          "value": "JR",
-          "name": "Junior",
-          "doc": "Junior"
-        },
-        {
-          "value": "MZ",
-          "name": "Mezzanine",
-          "doc": "Mezzanine"
-        },
-        {
-          "value": "SN",
-          "name": "SeniorNonPreferred",
-          "doc": "Senior Non-Preferred"
-        }
-      ],
+      "FIX:codes": "senioritycodeset",
       "FIX:tag": "40010",
       "description": "Specifies the bond's payment priority in the event of a default.",
       "display": "AdditionalTermBondSeniority"
@@ -337,28 +140,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Zero",
-          "doc": "Zero"
-        },
-        {
-          "value": "1",
-          "name": "FixedRate",
-          "doc": "Fixed rate"
-        },
-        {
-          "value": "2",
-          "name": "FloatingRate",
-          "doc": "Floating rate"
-        },
-        {
-          "value": "3",
-          "name": "Structured",
-          "doc": "Structured"
-        }
-      ],
+      "FIX:codes": "coupontypecodeset",
       "FIX:tag": "40011",
       "description": "Coupon type of the bond.",
       "display": "AdditionalTermBondCouponType"
@@ -436,48 +218,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        },
-        {
-          "value": "H",
-          "name": "Hour",
-          "doc": "Hour"
-        },
-        {
-          "value": "Min",
-          "name": "Minute",
-          "doc": "Minute"
-        },
-        {
-          "value": "S",
-          "name": "Second",
-          "doc": "Second"
-        },
-        {
-          "value": "T",
-          "name": "Term",
-          "doc": "Term"
-        }
-      ],
+      "FIX:codes": "couponfrequencyunitcodeset",
       "FIX:tag": "40017",
       "description": "Time unit associated with the frequency of the bond's coupon payment.",
       "display": "AdditionalTermBondCouponFrequencyUnit"
@@ -490,128 +231,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "OneOne",
-          "doc": "1/1"
-        },
-        {
-          "value": "1",
-          "name": "ThirtyThreeSixtyUS",
-          "doc": "30/360 (30U/360 or Bond Basis)"
-        },
-        {
-          "value": "2",
-          "name": "ThirtyThreeSixtySIA",
-          "doc": "30/360 (SIA)"
-        },
-        {
-          "value": "3",
-          "name": "ThirtyThreeSixtyM",
-          "doc": "30/360M"
-        },
-        {
-          "value": "4",
-          "name": "ThirtyEThreeSixty",
-          "doc": "30E/360 (Eurobond Basis)"
-        },
-        {
-          "value": "5",
-          "name": "ThirtyEThreeSixtyISDA",
-          "doc": "30E/360 (ISDA)"
-        },
-        {
-          "value": "6",
-          "name": "ActThreeSixty",
-          "doc": "Act/360"
-        },
-        {
-          "value": "7",
-          "name": "ActThreeSixtyFiveFixed",
-          "doc": "Act/365 (FIXED)"
-        },
-        {
-          "value": "8",
-          "name": "ActActAFB",
-          "doc": "Act/Act (AFB)"
-        },
-        {
-          "value": "9",
-          "name": "ActActICMA",
-          "doc": "Act/Act (ICMA)"
-        },
-        {
-          "value": "10",
-          "name": "ActActISMAUltimo",
-          "doc": "Act/Act (ICMA Ultimo)"
-        },
-        {
-          "value": "11",
-          "name": "ActActISDA",
-          "doc": "Act/Act (ISDA)"
-        },
-        {
-          "value": "12",
-          "name": "BusTwoFiftyTwo",
-          "doc": "BUS/252"
-        },
-        {
-          "value": "13",
-          "name": "ThirtyEPlusThreeSixty",
-          "doc": "30E+/360"
-        },
-        {
-          "value": "14",
-          "name": "ActThreeSixtyFiveL",
-          "doc": "Act/365L"
-        },
-        {
-          "value": "15",
-          "name": "NLThreeSixtyFive",
-          "doc": "NL365"
-        },
-        {
-          "value": "16",
-          "name": "NLThreeSixty",
-          "doc": "NL360"
-        },
-        {
-          "value": "17",
-          "name": "Act364",
-          "doc": "Act/364"
-        },
-        {
-          "value": "18",
-          "name": "ThirtyThreeSixtyFive",
-          "doc": "30/365"
-        },
-        {
-          "value": "19",
-          "name": "ThirtyActual",
-          "doc": "30/Actual"
-        },
-        {
-          "value": "20",
-          "name": "ThirtyThreeSixtyICMA",
-          "doc": "30/360 (ICMA or basis rule)"
-        },
-        {
-          "value": "21",
-          "name": "ThirtyETwoThreeSixty",
-          "doc": "30E2/360 (Eurobond basis model two)"
-        },
-        {
-          "value": "22",
-          "name": "ThirtyEThreeThreeSixty",
-          "doc": "30E3/360 (Eurobond basis model three)"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "coupondaycountcodeset",
       "FIX:tag": "40018",
       "description": "The day count convention used in interest calculations for a bond or an interest bearing security.",
       "display": "AdditionalTermBondDayCount"
@@ -721,23 +341,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bid",
-          "doc": "Bid"
-        },
-        {
-          "value": "1",
-          "name": "Mid",
-          "doc": "Mid"
-        },
-        {
-          "value": "2",
-          "name": "Offer",
-          "doc": "Offer"
-        }
-      ],
+      "FIX:codes": "cashsettlquotemethodcodeset",
       "FIX:tag": "40027",
       "description": "The type of quote used to determine the cash settlement price.",
       "display": "CashSettlQuoteMethod"
@@ -876,48 +480,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Market",
-          "doc": "Market"
-        },
-        {
-          "value": "1",
-          "name": "Highest",
-          "doc": "Highest"
-        },
-        {
-          "value": "2",
-          "name": "AverageMarket",
-          "doc": "Average market"
-        },
-        {
-          "value": "3",
-          "name": "AverageHighest",
-          "doc": "Average highest"
-        },
-        {
-          "value": "4",
-          "name": "BlendedMarket",
-          "doc": "Blended market"
-        },
-        {
-          "value": "5",
-          "name": "BlendedHighest",
-          "doc": "Blended highest"
-        },
-        {
-          "value": "6",
-          "name": "AverageBlendedMarket",
-          "doc": "Average blended market"
-        },
-        {
-          "value": "7",
-          "name": "AverageBlendedHighest",
-          "doc": "Average blended highest"
-        }
-      ],
+      "FIX:codes": "cashsettlvaluationmethodcodeset",
       "FIX:tag": "40038",
       "description": "The ISDA defined methodology for determining the final price of the reference obligation for purposes of cash settlement.",
       "display": "CashSettlValuationMethod"
@@ -1064,18 +627,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "PaymentCashSettlement",
-          "doc": "Payment / cash settlement"
-        },
-        {
-          "value": "1",
-          "name": "PhysicalDelivery",
-          "doc": "Physical delivery"
-        }
-      ],
+      "FIX:codes": "streamtypecodeset",
       "FIX:tag": "40050",
       "description": "Type of swap stream.",
       "display": "StreamType"
@@ -1100,18 +652,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buy",
-          "doc": "Buy"
-        },
-        {
-          "value": "2",
-          "name": "Sell",
-          "doc": "Sell"
-        }
-      ],
+      "FIX:codes": "paymentpaysidecodeset",
       "FIX:tag": "40052",
       "description": "The side of the party paying the stream.",
       "display": "StreamPaySide"
@@ -1124,18 +665,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buy",
-          "doc": "Buy"
-        },
-        {
-          "value": "2",
-          "name": "Sell",
-          "doc": "Sell"
-        }
-      ],
+      "FIX:codes": "paymentpaysidecodeset",
       "FIX:tag": "40053",
       "description": "The side of the party receiving the stream.",
       "display": "StreamReceiveSide"
@@ -1199,48 +729,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "40058",
       "description": "The business day convention used to adjust the underlying instrument's stream's effective, or relative effective, date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingStreamEffectiveDateBusinessDayConvention"
@@ -1289,28 +778,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "40062",
       "description": "Time unit associated with the relative effective date offset.",
       "display": "UnderlyingStreamEffectiveDateOffsetUnit"
@@ -1323,38 +791,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "40063",
       "description": "Specifies the day type of the relative effective date offset.",
       "display": "UnderlyingStreamEffectiveDateOffsetDayType"
@@ -1393,48 +830,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "40066",
       "description": "The business day convention used to adjust the instrument's stream's termination, or relative termination, date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "StreamTerminationDateBusinessDayConvention"
@@ -1483,28 +879,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "40070",
       "description": "Time unit associated with the relative termination date offset.",
       "display": "StreamTerminationDateOffsetUnit"
@@ -1517,38 +892,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "40071",
       "description": "Specifies the day type of the relative termination date offset.",
       "display": "StreamTerminationDateOffsetDayType"
@@ -1574,48 +918,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "40073",
       "description": "The business day convention used to adjust calculation periods. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "StreamCalculationPeriodBusinessDayConvention"
@@ -1653,48 +956,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "40076",
       "description": "The business day convention used to adjust the instrument's stream's first calculation period start date. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "StreamFirstPeriodStartDateBusinessDayConvention"
@@ -1783,48 +1045,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        },
-        {
-          "value": "H",
-          "name": "Hour",
-          "doc": "Hour"
-        },
-        {
-          "value": "Min",
-          "name": "Minute",
-          "doc": "Minute"
-        },
-        {
-          "value": "S",
-          "name": "Second",
-          "doc": "Second"
-        },
-        {
-          "value": "T",
-          "name": "Term",
-          "doc": "Term"
-        }
-      ],
+      "FIX:codes": "couponfrequencyunitcodeset",
       "FIX:tag": "40083",
       "description": "Time unit associated with the frequency at which calculation period end dates occur.",
       "display": "StreamCalculationFrequencyUnit"
@@ -1837,238 +1058,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "FirstDay",
-          "doc": "1st day of the month"
-        },
-        {
-          "value": "2",
-          "name": "SecondDay",
-          "doc": "2nd day of the month"
-        },
-        {
-          "value": "3",
-          "name": "ThirdDay",
-          "doc": "3rd day of the month"
-        },
-        {
-          "value": "4",
-          "name": "FourthDay",
-          "doc": "4th day of the month"
-        },
-        {
-          "value": "5",
-          "name": "FifthDay",
-          "doc": "5th day of the month"
-        },
-        {
-          "value": "6",
-          "name": "SixthDay",
-          "doc": "6thd day of the month"
-        },
-        {
-          "value": "7",
-          "name": "SeventhDay",
-          "doc": "7th day of the month"
-        },
-        {
-          "value": "8",
-          "name": "EighthDay",
-          "doc": "8th day of the month"
-        },
-        {
-          "value": "9",
-          "name": "NinthDay",
-          "doc": "9th day of the month"
-        },
-        {
-          "value": "10",
-          "name": "TenthDay",
-          "doc": "10th day of the month"
-        },
-        {
-          "value": "11",
-          "name": "EleventhDay",
-          "doc": "11th day of the month"
-        },
-        {
-          "value": "12",
-          "name": "TwelvthDay",
-          "doc": "12th day of the month"
-        },
-        {
-          "value": "13",
-          "name": "ThirteenthDay",
-          "doc": "13th day of the month"
-        },
-        {
-          "value": "14",
-          "name": "ForteenthDay",
-          "doc": "14th day of the month"
-        },
-        {
-          "value": "15",
-          "name": "FifteenthDay",
-          "doc": "15th day of the month"
-        },
-        {
-          "value": "16",
-          "name": "SixteenthDay",
-          "doc": "16th day of the month"
-        },
-        {
-          "value": "17",
-          "name": "SeventeenthDay",
-          "doc": "17th day of the month"
-        },
-        {
-          "value": "18",
-          "name": "EighteenthDay",
-          "doc": "18th day of the month"
-        },
-        {
-          "value": "19",
-          "name": "NineteenthDay",
-          "doc": "19th day of the month"
-        },
-        {
-          "value": "20",
-          "name": "TwentiethDay",
-          "doc": "20th day of the month"
-        },
-        {
-          "value": "21",
-          "name": "TwentyFirstDay",
-          "doc": "21st day of the month"
-        },
-        {
-          "value": "22",
-          "name": "TwentySecondDay",
-          "doc": "22nd day of the month"
-        },
-        {
-          "value": "23",
-          "name": "TwentyThirdDay",
-          "doc": "23rd day of the month"
-        },
-        {
-          "value": "24",
-          "name": "TwentyFourthDay",
-          "doc": "24th day of the month"
-        },
-        {
-          "value": "25",
-          "name": "TwentyFifthDay",
-          "doc": "25th day of the month"
-        },
-        {
-          "value": "26",
-          "name": "TwentySixthDay",
-          "doc": "26th day of the month"
-        },
-        {
-          "value": "27",
-          "name": "TwentySeventhDay",
-          "doc": "27th day of the month"
-        },
-        {
-          "value": "28",
-          "name": "TwentyEigthDa28y",
-          "doc": "28th day of the month"
-        },
-        {
-          "value": "29",
-          "name": "TwentyNinthDay",
-          "doc": "29th day of the month"
-        },
-        {
-          "value": "30",
-          "name": "ThirtiethDay",
-          "doc": "30th day of the month"
-        },
-        {
-          "value": "EOM",
-          "name": "EOM",
-          "doc": "The end of the month."
-        },
-        {
-          "value": "FRN",
-          "name": "FRN",
-          "doc": "The floating rate note convention or Eurodollar convention."
-        },
-        {
-          "value": "IMM",
-          "name": "IMM",
-          "doc": "The International Money Market settlement date, i.e. the 3rd Wednesday of the month."
-        },
-        {
-          "value": "IMMCAD",
-          "name": "IMMCAD",
-          "doc": "The last trading day/expiration day of the Canadian Derivatives Exchange."
-        },
-        {
-          "value": "IMMAUD",
-          "name": "IMMAUD",
-          "doc": "The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract."
-        },
-        {
-          "value": "IMMNZD",
-          "name": "IMMNZD",
-          "doc": "The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract."
-        },
-        {
-          "value": "SFE",
-          "name": "SFE",
-          "doc": "The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates."
-        },
-        {
-          "value": "NONE",
-          "name": "NONE",
-          "doc": "No adjustment"
-        },
-        {
-          "value": "TBILL",
-          "name": "TBILL",
-          "doc": "The 13-week and 26-week U.S. Treasury Bill auction dates."
-        },
-        {
-          "value": "MON",
-          "name": "MON",
-          "doc": "Monday"
-        },
-        {
-          "value": "TUE",
-          "name": "TUE",
-          "doc": "Tuesday"
-        },
-        {
-          "value": "WED",
-          "name": "WED",
-          "doc": "Wednesday"
-        },
-        {
-          "value": "THU",
-          "name": "THU",
-          "doc": "Thursday"
-        },
-        {
-          "value": "FRI",
-          "name": "FRI",
-          "doc": "Friday"
-        },
-        {
-          "value": "SAT",
-          "name": "SAT",
-          "doc": "Saturday"
-        },
-        {
-          "value": "SUN",
-          "name": "SUN",
-          "doc": "Sunday"
-        }
-      ],
+      "FIX:codes": "daterollconventioncodeset",
       "FIX:tag": "40084",
       "description": "The convention for determining the sequence of end dates. It is used in conjunction with a specified frequency. Used only to override the roll convention specified in the DateAdjustment component within the Instrument component.",
       "display": "StreamCalculationRollConvention"
@@ -2105,33 +1095,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bloomberg",
-          "doc": "Bloomberg"
-        },
-        {
-          "value": "1",
-          "name": "Reuters",
-          "doc": "Reuters"
-        },
-        {
-          "value": "2",
-          "name": "Telerate",
-          "doc": "Telerate"
-        },
-        {
-          "value": "3",
-          "name": "ISDARateOption",
-          "doc": "ISDA Settlement Rate Option"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "ratesourcecodeset",
       "FIX:tag": "40087",
       "description": "Identifies the source of the rate information.",
       "display": "LegPaymentStreamNonDeliverableSettlRateSource"
@@ -2156,28 +1120,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "ExercisingParty",
-          "doc": "Exercising party"
-        },
-        {
-          "value": "1",
-          "name": "NonExercisingParty",
-          "doc": "Non-exercising party"
-        },
-        {
-          "value": "2",
-          "name": "MasterAgreeent",
-          "doc": "As specified in the master agreement"
-        },
-        {
-          "value": "3",
-          "name": "Supplement",
-          "doc": "As specified in the standard terms supplement"
-        }
-      ],
+      "FIX:codes": "provisioncalculationagentcodeset",
       "FIX:tag": "40089",
       "description": "Used to identify the settlement rate postponement calculation agent.",
       "display": "SettlRatePostponementCalculationAgent"
@@ -2202,48 +1145,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "MandatoryEarlyTermination",
-          "doc": "Mandatory early termination"
-        },
-        {
-          "value": "1",
-          "name": "OptionalEarlyTermination",
-          "doc": "Optional early termination"
-        },
-        {
-          "value": "2",
-          "name": "Cancelable",
-          "doc": "Cancelable"
-        },
-        {
-          "value": "3",
-          "name": "Extendable",
-          "doc": "Extendable"
-        },
-        {
-          "value": "4",
-          "name": "MutualEarlyTermination",
-          "doc": "Mutual early termination"
-        },
-        {
-          "value": "5",
-          "name": "Evergreen",
-          "doc": "Evergreen"
-        },
-        {
-          "value": "6",
-          "name": "Callable",
-          "doc": "Callable"
-        },
-        {
-          "value": "7",
-          "name": "Puttable",
-          "doc": "Puttable"
-        }
-      ],
+      "FIX:codes": "provisiontypecodeset",
       "FIX:tag": "40091",
       "description": "Type of provisions.",
       "display": "ProvisionType"
@@ -2269,48 +1171,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "40093",
       "description": "The business day convention used to adjust the instrument's provision's dates. Used only to override the business day convention specified in the DateAdjustment component within the Instrument component.",
       "display": "ProvisionDateBusinessDayConvention"
@@ -2360,28 +1221,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "provisiondatetenorunitcodeset",
       "FIX:tag": "40097",
       "description": "Time unit associated with the provision's tenor period.",
       "display": "ProvisionDateTenorUnit"
@@ -2394,28 +1234,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "ExercisingParty",
-          "doc": "Exercising party"
-        },
-        {
-          "value": "1",
-          "name": "NonExercisingParty",
-          "doc": "Non-exercising party"
-        },
-        {
-          "value": "2",
-          "name": "MasterAgreeent",
-          "doc": "As specified in the master agreement"
-        },
-        {
-          "value": "3",
-          "name": "Supplement",
-          "doc": "As specified in the standard terms supplement"
-        }
-      ],
+      "FIX:codes": "provisioncalculationagentcodeset",
       "FIX:tag": "40098",
       "description": "Used to identify the calculation agent. The calculation agent may be identified in ProvisionCalculationAgent(40098) or in the ProvisionParties component.",
       "display": "ProvisionCalculationAgent"
@@ -2428,18 +1247,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buy",
-          "doc": "Buy"
-        },
-        {
-          "value": "2",
-          "name": "Sell",
-          "doc": "Sell"
-        }
-      ],
+      "FIX:codes": "provisionoptionsinglepartybuyersidecodeset",
       "FIX:tag": "40099",
       "description": "If optional early termination is not available to both parties then this component identifies the buyer of the option through its side of the trade.",
       "display": "ProvisionOptionSinglePartyBuyerSide"

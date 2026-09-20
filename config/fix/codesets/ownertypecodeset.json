@@ -1,0 +1,115 @@
+{
+  "name": "ownertypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "IndividualInvestor",
+      "doc": "Individual investor"
+    },
+    {
+      "value": "2",
+      "name": "PublicCompany",
+      "doc": "Public company"
+    },
+    {
+      "value": "3",
+      "name": "PrivateCompany",
+      "doc": "Private company"
+    },
+    {
+      "value": "4",
+      "name": "IndividualTrustee",
+      "doc": "Individual trustee"
+    },
+    {
+      "value": "5",
+      "name": "CompanyTrustee",
+      "doc": "Company trustee"
+    },
+    {
+      "value": "6",
+      "name": "PensionPlan",
+      "doc": "Pension plan"
+    },
+    {
+      "value": "7",
+      "name": "CustodianUnderGiftsToMinorsAct",
+      "doc": "Custodian under Gifts to Minors Act"
+    },
+    {
+      "value": "8",
+      "name": "Trusts",
+      "doc": "Trusts"
+    },
+    {
+      "value": "9",
+      "name": "Fiduciaries",
+      "doc": "Fiduciaries"
+    },
+    {
+      "value": "10",
+      "name": "NetworkingSubAccount",
+      "doc": "Networking sub-account"
+    },
+    {
+      "value": "11",
+      "name": "NonProfitOrganization",
+      "doc": "Non-profit organization"
+    },
+    {
+      "value": "12",
+      "name": "CorporateBody",
+      "doc": "Corporate body"
+    },
+    {
+      "value": "13",
+      "name": "Nominee",
+      "doc": "Nominee"
+    },
+    {
+      "value": "14",
+      "name": "InstitutionalCustomer",
+      "doc": "Institutional customer"
+    },
+    {
+      "value": "15",
+      "name": "Combined",
+      "doc": "Combined"
+    },
+    {
+      "value": "16",
+      "name": "MemberFirmEmployee",
+      "doc": "Member firm employee or associated person"
+    },
+    {
+      "value": "17",
+      "name": "MarketMakingAccount",
+      "doc": "Market making account"
+    },
+    {
+      "value": "18",
+      "name": "ProprietaryAccount",
+      "doc": "Proprietary account"
+    },
+    {
+      "value": "19",
+      "name": "NonbrokerDealer",
+      "doc": "Non-broker-dealer"
+    },
+    {
+      "value": "20",
+      "name": "UnknownBeneficialOwnerType",
+      "doc": "Unknown beneficial owner type"
+    },
+    {
+      "value": "21",
+      "name": "FirmsErrorAccount",
+      "doc": "Error account of firm"
+    },
+    {
+      "value": "22",
+      "name": "FirmAgencyAveragePriceAccount",
+      "doc": "Firm agency average price account"
+    }
+  ]
+}

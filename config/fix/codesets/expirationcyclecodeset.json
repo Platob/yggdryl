@@ -1,0 +1,20 @@
+{
+  "name": "expirationcyclecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ExpireOnTradingSessionClose",
+      "doc": "Expire on trading session close (default)"
+    },
+    {
+      "value": "1",
+      "name": "ExpireOnTradingSessionOpen",
+      "doc": "Expire on trading session open"
+    },
+    {
+      "value": "2",
+      "name": "SpecifiedExpiration",
+      "doc": "Trading eligibility expiration specified in the date and time fields [EventDate(866) and EventTime(1145)] associated with EventType(865)=7(Last Eligible Trade Date)"
+    }
+  ]
+}

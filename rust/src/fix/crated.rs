@@ -74,6 +74,8 @@
 
 use std::sync::LazyLock;
 
+use smol_str::SmolStr;
+
 use crate::graph::EventColumn;
 use crate::{DataType, Field, Result};
 
@@ -636,14 +638,24 @@ impl super::FixRegistry {
         description: Option<&str>,
     ) -> Result<&super::MsgType> {
         let field = self.field_by_tag(MSGTYPE_TAG_NAME.0)?;
-        let view = field.as_fix();
-        let mut codes: Vec<super::FixCode> = view
-            .codes()
-            .map(|code| code.map(super::FixCode::from))
-            .collect::<Result<_>>()?;
+        // The set tag 35 reads by, which the dictionary owns: a field naming
+        // none is registering the first code of a set of its own, and that
+        // set is named after the field.
+        let stated = field.as_fix().codeset().map(SmolStr::new);
+        let set_name = stated.unwrap_or_else(|| super::FixRegistry::derived_codeset_name(field));
+        let held = self.get_codeset(&set_name);
+        let mut codes: Vec<super::FixCode> = held
+            .map(|set| {
+                set.codes()
+                    .map(|code| code.map(super::FixCode::from))
+                    .collect::<Result<Vec<_>>>()
+            })
+            .transpose()?
+            .unwrap_or_default();
+        let spelled = |text: &str| held.and_then(|set| set.code_value(text));
         // Every spelling this registration states, the value's own first.
         let named = name.unwrap_or(spelling);
-        let (value, at) = match view.code_value(spelling) {
+        let (value, at) = match spelled(spelling) {
             // Already spelled, by name, alias or wire value: the set answers,
             // and this states whatever it did not already hold.
             Some(held) => {
@@ -665,7 +677,7 @@ impl super::FixRegistry {
         // A spelling another code already answers to is refused rather than
         // added: two codes one spelling reaches resolve to neither.
         for spelling in [named, spelling] {
-            if let Some(taken) = view.code_value(spelling) {
+            if let Some(taken) = spelled(spelling) {
                 if taken != value.as_str() {
                     return Err(crate::Error::Conflict {
                         expected: "a free message type spelling",
@@ -687,9 +699,15 @@ impl super::FixRegistry {
             }
         }
         let mut next = self.clone();
-        let mut field = field.clone();
-        field.as_fix_mut().set_codes(&codes)?;
-        next.update(field)?;
+        // The set first: a field may not name a vocabulary the dictionary
+        // does not hold, so the members are stated before the field points
+        // at them.
+        next.set_codeset(&set_name, &codes)?;
+        if field.as_fix().codeset().is_none() {
+            let mut field = field.clone();
+            field.as_fix_mut().set_codeset(&set_name)?;
+            next.update(field)?;
+        }
         if next.get_msgtype(&value).is_none() {
             let normalized = crate::normalized(codes[at].name());
             let canonical = if !normalized.is_empty()

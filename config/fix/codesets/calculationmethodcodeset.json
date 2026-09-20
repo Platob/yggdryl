@@ -1,0 +1,15 @@
+{
+  "name": "calculationmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Automatic",
+      "doc": "Automatic (default)"
+    },
+    {
+      "value": "1",
+      "name": "Manual",
+      "doc": "Manual"
+    }
+  ]
+}

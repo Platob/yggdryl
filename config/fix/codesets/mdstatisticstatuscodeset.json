@@ -1,0 +1,15 @@
+{
+  "name": "mdstatisticstatuscodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Active",
+      "doc": "Active (default)"
+    },
+    {
+      "value": "2",
+      "name": "Inactive",
+      "doc": "Inactive (not disseminated)"
+    }
+  ]
+}

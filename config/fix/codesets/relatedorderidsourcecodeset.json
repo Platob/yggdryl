@@ -1,0 +1,30 @@
+{
+  "name": "relatedorderidsourcecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NonFIXSource",
+      "doc": "Non-FIX Source"
+    },
+    {
+      "value": "1",
+      "name": "SystemOrderIdentifier",
+      "doc": "Order identifier"
+    },
+    {
+      "value": "2",
+      "name": "ClientOrderIdentifier",
+      "doc": "Client order identifier"
+    },
+    {
+      "value": "3",
+      "name": "SecondaryOrderIdentifier",
+      "doc": "Secondary order identifier"
+    },
+    {
+      "value": "4",
+      "name": "SecondaryClientOrderIdentifier",
+      "doc": "Secondary client order identifier"
+    }
+  ]
+}

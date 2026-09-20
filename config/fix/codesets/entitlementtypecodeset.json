@@ -1,0 +1,50 @@
+{
+  "name": "entitlementtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Trade",
+      "doc": "Trade"
+    },
+    {
+      "value": "1",
+      "name": "MakeMarkets",
+      "doc": "Make markets"
+    },
+    {
+      "value": "2",
+      "name": "HoldPositions",
+      "doc": "Hold positions"
+    },
+    {
+      "value": "3",
+      "name": "PerformGiveUps",
+      "doc": "Perform give-ups"
+    },
+    {
+      "value": "4",
+      "name": "SubmitIOIs",
+      "doc": "Submit Indications of Interest (IOIs)"
+    },
+    {
+      "value": "5",
+      "name": "SubscribeMarketData",
+      "doc": "Subscribe to market data"
+    },
+    {
+      "value": "6",
+      "name": "ShortWithPreBorrow",
+      "doc": "Short with pre-borrow"
+    },
+    {
+      "value": "7",
+      "name": "SubmitQuoteRequests",
+      "doc": "Submit quote requests"
+    },
+    {
+      "value": "8",
+      "name": "RespondToQuoteRequests",
+      "doc": "Respond to quote requests"
+    }
+  ]
+}

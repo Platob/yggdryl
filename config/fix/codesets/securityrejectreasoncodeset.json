@@ -1,0 +1,60 @@
+{
+  "name": "securityrejectreasoncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "InvalidInstrumentRequested",
+      "doc": "Invalid instrument requested"
+    },
+    {
+      "value": "2",
+      "name": "InstrumentAlreadyExists",
+      "doc": "Instrument already exists"
+    },
+    {
+      "value": "3",
+      "name": "RequestTypeNotSupported",
+      "doc": "Request type not supported"
+    },
+    {
+      "value": "4",
+      "name": "SystemUnavailableForInstrumentCreation",
+      "doc": "System unavailable for instrument creation"
+    },
+    {
+      "value": "5",
+      "name": "IneligibleInstrumentGroup",
+      "doc": "Ineligible instrument group"
+    },
+    {
+      "value": "6",
+      "name": "InstrumentIDUnavailable",
+      "doc": "Instrument ID unavailable"
+    },
+    {
+      "value": "7",
+      "name": "InvalidOrMissingDataOnOptionLeg",
+      "doc": "Invalid or missing data on option leg"
+    },
+    {
+      "value": "8",
+      "name": "InvalidOrMissingDataOnFutureLeg",
+      "doc": "Invalid or missing data on future leg"
+    },
+    {
+      "value": "10",
+      "name": "InvalidOrMissingDataOnFXLeg",
+      "doc": "Invalid or missing data on FX leg"
+    },
+    {
+      "value": "11",
+      "name": "InvalidLegPriceSpecified",
+      "doc": "Invalid leg price specified"
+    },
+    {
+      "value": "12",
+      "name": "InvalidInstrumentStructureSpecified",
+      "doc": "Invalid instrument structure specified"
+    }
+  ]
+}

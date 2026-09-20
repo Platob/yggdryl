@@ -1,0 +1,15 @@
+{
+  "name": "msgdirectioncodeset",
+  "codes": [
+    {
+      "value": "R",
+      "name": "Receive",
+      "doc": "Receive"
+    },
+    {
+      "value": "S",
+      "name": "Send",
+      "doc": "Send"
+    }
+  ]
+}

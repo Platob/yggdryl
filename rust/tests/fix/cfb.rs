@@ -10,7 +10,7 @@ use yggdryl::local::Folder;
 use yggdryl::SequenceType;
 use yggdryl::fs::{File, FileSystem, MemoryFileSystem};
 use yggdryl::holder::Buffer;
-use yggdryl::{DataType, Error, Field, FixCodec, FixField, FixId, FixRegistry, IOBase};
+use yggdryl::{DataType, Error, Field, FixCodec, FixId, FixRegistry, IOBase};
 
 /// A CBlock in the exact shape a production file has: the same element order,
 /// the same attribute order, the same escaping, the same self-closing forms.
@@ -639,18 +639,13 @@ fn catalog_members_resolve_codes_declared_after_their_grammar() {
         assert_eq!(roots[0].get_field(name), Some(occurrence));
         assert_eq!(occurrence.as_fix().field_ref(), Some(canonical.name()));
         assert_eq!(occurrence.is_nullable(), nullable);
+        // The occurrence reads by the set the canonical field reads by, which
+        // the maps and the message types declared after this grammar.
         assert_eq!(
-            occurrence
-                .as_fix()
-                .codes()
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap(),
-            canonical
-                .as_fix()
-                .codes()
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap()
+            registry.codeset_of(occurrence),
+            registry.codeset_of(canonical)
         );
+        assert!(registry.codeset_of(occurrence).is_some(), "{name}");
     }
     let repeated = message.as_field().get_field("beginstring2").unwrap();
     assert_eq!(roots[0].get_field("beginstring2"), Some(repeated));
@@ -822,8 +817,9 @@ fn a_warning_quotes_the_element_and_the_content_it_read() {
         // Bounded: a warning never grows with the document it read.
         assert!(rendered.len() < 400, "{rendered}");
         // Both doors read the same documents, and warn with the same sentence.
+        let mut folded = FixRegistry::new();
         let (also, spelled) =
-            super::warned::during(|| FixField::from_cfb_file(&handle(body), Some("bloomberg")));
+            super::warned::during(|| folded.add_cfb_file(&handle(body), Some("bloomberg")));
         also.expect("a readable CBlock");
         assert_eq!(spelled.first().map(String::as_str), Some(rendered.as_str()));
     }
@@ -840,7 +836,9 @@ fn a_warning_quotes_the_element_and_the_content_it_read() {
         assert!(rendered.contains(held), "{held} missing from {rendered}");
     }
     assert!(rendered.len() < 400, "{rendered}");
-    let also = FixField::from_cfb_file(&handle(malformed), Some("bloomberg")).unwrap_err();
+    let also = FixRegistry::new()
+        .add_cfb_file(&handle(malformed), Some("bloomberg"))
+        .unwrap_err();
     assert_eq!(also.to_string(), rendered);
 
     // An element longer than the budget is quoted up to it and elided, so a
@@ -1011,10 +1009,13 @@ fn a_description_keeps_its_words_and_loses_its_layout() {
         Some("Held as <yyyymmdd-hh:mm:ss> & nothing else."),
     );
 
-    // The vocabulary door reads the same file the same way.
-    let fields = FixField::from_cfb_file(&handle(&body), Some("bloomberg")).unwrap();
+    // The folding door reads the same file the same way.
+    let mut folded = FixRegistry::new();
+    folded
+        .add_cfb_file(&handle(&body), Some("bloomberg"))
+        .unwrap();
     assert_eq!(
-        fields[0].as_fix().description(),
+        folded.field_by_tag(58).unwrap().as_fix().description(),
         registry.field_by_tag(58).unwrap().as_fix().description(),
     );
 }
@@ -1135,7 +1136,10 @@ fn nesting_past_the_guard_is_dropped_rather_than_overflowing() {
 fn the_message_types_a_file_declares_become_the_code_set_of_tag_35() {
     let (registry, _) = parse(CBLOCK);
     let msgtype = registry.field_by_tag(35).expect("MsgType");
-    let view = msgtype.as_fix();
+    // The field names the set and the dictionary holds its members.
+    let view = registry
+        .codeset_of(msgtype)
+        .expect("the set tag 35 reads by");
 
     // A CBlock spells a type as the wire value and a qualifier, and the wire
     // value is what tag 35 carries: `P Report Ack` is `P` used as a report
@@ -1164,16 +1168,24 @@ fn the_message_types_a_file_declares_become_the_code_set_of_tag_35() {
 
     // And a name the dictionary this folds into already carries takes the
     // placeholder's place, rather than the dialect renaming the type.
+    let mut dictionary = FixRegistry::new();
+    dictionary
+        .set_codeset(
+            "msgtypecodeset",
+            &[yggdryl::FixCode::new("AllocationReportAck", "P")],
+        )
+        .unwrap();
     let mut held = DataType::utf8().nullable_field("MsgType");
     held.as_fix_mut().set_tag(35).unwrap();
-    held.as_fix_mut()
-        .set_codes(&[yggdryl::FixCode::new("AllocationReportAck", "P")])
-        .unwrap();
-    let mut dictionary = FixRegistry::from_fields([held]).unwrap();
+    held.as_fix_mut().set_codeset("msgtypecodeset").unwrap();
+    dictionary.insert(held).unwrap();
     dictionary.merge_with(&registry).unwrap();
     let merged = dictionary.field_by_tag(35).unwrap();
-    assert_eq!(merged.as_fix().code_name("P"), Some("AllocationReportAck"));
-    assert_eq!(merged.as_fix().code_value("P Report Ack"), Some("P"));
+    let set = dictionary
+        .codeset_of(merged)
+        .expect("the set both dictionaries name");
+    assert_eq!(set.code_name("P"), Some("AllocationReportAck"));
+    assert_eq!(set.code_value("P Report Ack"), Some("P"));
 
     // Two roles of one wire type are one code too: `c SDR` and `c SLR` are
     // both tag 35 `c`, and a code set keys on the wire.
@@ -1187,13 +1199,19 @@ fn the_message_types_a_file_declares_become_the_code_set_of_tag_35() {
     // carries: the binding declares `7`.
     assert_eq!(view.code_value("7"), Some("7"));
 
-    // The vocabulary door reads the same file the same way.
-    let fields = FixField::from_cfb_file(&handle(CBLOCK), Some("bloomberg")).unwrap();
-    let held = fields
-        .iter()
-        .find(|field| field.as_fix().tag().ok() == Some(Some(35)))
-        .expect("MsgType");
-    assert_eq!(held.as_fix().code_value("AR Outbound"), Some("AR"));
+    // The folding door reads the same file the same way.
+    let mut folded = FixRegistry::new();
+    folded
+        .add_cfb_file(&handle(CBLOCK), Some("bloomberg"))
+        .unwrap();
+    let held = folded.field_by_tag(35).expect("MsgType");
+    assert_eq!(
+        folded
+            .codeset_of(held)
+            .expect("the set tag 35 reads by")
+            .code_value("AR Outbound"),
+        Some("AR")
+    );
 }
 
 #[test]
@@ -1218,7 +1236,7 @@ fn a_map_becomes_the_code_set_of_the_tag_it_decodes() {
     // written the UlMessage way: the name keys and the value is the value,
     // which is already the order a code set wants.
     let advside = registry.field_by_tag(4).expect("AdvSide");
-    let view = advside.as_fix();
+    let view = registry.codeset_of(advside).expect("the set it reads by");
     assert_eq!(view.code_value("buy"), Some("B"));
     assert_eq!(view.code_name("X"), Some("cross"));
     assert_eq!(view.codes().count(), 4);
@@ -1226,7 +1244,9 @@ fn a_map_becomes_the_code_set_of_the_tag_it_decodes() {
     // `TimeInForce` is exactly how the vocabulary displays it, so that map is
     // written the FIX way and the key is the wire value.
     let timeinforce = registry.field_by_tag(59).expect("TimeInForce");
-    let view = timeinforce.as_fix();
+    let view = registry
+        .codeset_of(timeinforce)
+        .expect("the set it reads by");
     assert_eq!(view.code_value("day"), Some("0"));
     assert_eq!(view.code_name("1"), Some("goodtillcancel"));
 
@@ -1243,7 +1263,7 @@ fn a_map_is_oriented_by_its_name_and_never_by_the_shape_of_an_entry() {
     // wire value however long it runs. Reading the shorter side as the value
     // would have put `fx` on the wire and `FXSPOT` in a name.
     let security = registry.field_by_tag(167).expect("SecurityType");
-    let view = security.as_fix();
+    let view = registry.codeset_of(security).expect("the set it reads by");
     assert_eq!(view.code_value("fx"), Some("FXSPOT"));
     assert_eq!(view.code_name("CS"), Some("equity"));
 
@@ -1251,14 +1271,22 @@ fn a_map_is_oriented_by_its_name_and_never_by_the_shape_of_an_entry() {
     // by lands identically, which is the whole rule: the name decides, and the
     // entries are read whichever way it says.
     let underlying = registry.field_by_tag(310).expect("UnderlyingSecurityType");
-    let view = underlying.as_fix();
+    let view = registry
+        .codeset_of(underlying)
+        .expect("the set it reads by");
     assert_eq!(view.code_value("fx"), Some("FXSPOT"));
     assert_eq!(view.code_name("CS"), Some("equity"));
 
     // A tag declaring no `alt` is displayed as the tag itself, so a map named
     // for it matches and is read the FIX way.
     let extension = registry.field_by_tag(22830).expect("22830");
-    assert_eq!(extension.as_fix().code_value("one"), Some("1"));
+    assert_eq!(
+        registry
+            .codeset_of(extension)
+            .expect("the set it reads by")
+            .code_value("one"),
+        Some("1")
+    );
 }
 
 #[test]
@@ -1269,11 +1297,14 @@ fn a_map_reaches_the_field_it_spells_and_one_entry_never_refuses_the_file() {
     // resolving by the fold alone would put the set on the wrong tag and,
     // failing the strict compare there, read it backwards as well.
     let destination = registry.field_by_tag(20000).expect("ExDestination");
-    assert_eq!(destination.as_fix().code_value("paris"), Some("XPAR"));
     assert_eq!(
-        registry.field_by_tag(100).unwrap().as_fix().codes().count(),
-        0,
+        registry
+            .codeset_of(destination)
+            .expect("the set it reads by")
+            .code_value("paris"),
+        Some("XPAR")
     );
+    assert_eq!(registry.field_by_tag(100).unwrap().as_fix().codeset(), None);
 
     // Whitespace around a name is not a spelling, so it neither breaks the
     // match nor flips the orientation. An entry stating nothing on a side is
@@ -1282,7 +1313,9 @@ fn a_map_reaches_the_field_it_spells_and_one_entry_never_refuses_the_file() {
     // name one member twice, and one contradictory entry is not a reason to
     // refuse the file.
     let timeinforce = registry.field_by_tag(59).expect("TimeInForce");
-    let view = timeinforce.as_fix();
+    let view = registry
+        .codeset_of(timeinforce)
+        .expect("the set it reads by");
     assert_eq!(view.code_value("day"), Some("0"));
     assert_eq!(view.code_value("goodtilldate"), Some("6"));
     assert_eq!(view.codes().count(), 2);
@@ -1290,7 +1323,7 @@ fn a_map_reaches_the_field_it_spells_and_one_entry_never_refuses_the_file() {
     // Two names for one wire value is an alias rather than a contradiction,
     // so the second is kept as one rather than dropped or made a second code.
     let advside = registry.field_by_tag(4).expect("AdvSide");
-    let view = advside.as_fix();
+    let view = registry.codeset_of(advside).expect("the set it reads by");
     assert_eq!(view.code_value("buy"), Some("B"));
     assert_eq!(view.code_value("bid"), Some("B"));
     assert_eq!(view.codes().count(), 1);
@@ -1305,56 +1338,56 @@ fn a_map_reaches_the_field_it_spells_and_one_entry_never_refuses_the_file() {
 }
 
 #[test]
-fn a_file_answers_its_vocabulary_alone_and_in_declaration_order() {
-    let fields =
-        FixField::from_cfb_file(&handle(CBLOCK), Some("bloomberg")).expect("a readable CBlock");
+fn a_files_whole_vocabulary_lands_with_the_maps_that_sit_past_its_grammar() {
+    let (registry, roots) = parse(CBLOCK);
 
-    // Declaration order, where a registry answers tag-major: the file's own
-    // order is what a reader folding two sources wants to see.
-    assert_eq!(
-        fields.iter().map(Field::name).collect::<Vec<_>>(),
-        [
-            "beginstring",
-            "bodylength",
-            "msgtype",
-            "avgpx",
-            "exludeddealers",
-            "dealerparquote",
-            "22830",
-            "nolegs",
-            "legcurrency",
-            "nolegsecurityaltid",
-            "legsecurityaltid",
-            "transacttime",
-            "mdentrytime",
-            "timeinforce",
-            "advside",
-        ],
-    );
+    // Every tag the file declared is in the dictionary, and every one is a
+    // member of the dialect - a standard tag the file speaks as much as a
+    // venue's own. A dictionary answers tag-major, so what the file declared
+    // is what is pinned here and not the order it declared them in.
+    for name in [
+        "beginstring",
+        "bodylength",
+        "msgtype",
+        "avgpx",
+        "exludeddealers",
+        "dealerparquote",
+        "22830",
+        "nolegs",
+        "legcurrency",
+        "nolegsecurityaltid",
+        "legsecurityaltid",
+        "transacttime",
+        "mdentrytime",
+        "timeinforce",
+        "advside",
+    ] {
+        let held = registry.field_by_name(name).expect(name);
+        assert!(held.as_fix().has_branch(DIALECT), "{name}");
+    }
 
-    // Every field is keyed, so it enters a dictionary as it stands, and every
-    // one is a member of the dialect - a standard tag the file speaks as
-    // much as a venue's own.
-    let avgpx = &fields[3];
+    // Every field is keyed, so it enters a dictionary as it stands.
+    let avgpx = registry.field_by_name("avgpx").expect("AvgPx");
     assert_eq!(avgpx.as_fix().tag().unwrap(), Some(6));
     assert_eq!(branches(avgpx), [DIALECT]);
-    assert_eq!(branches(&fields[4]), [DIALECT]);
-    assert!(
-        fields
-            .iter()
-            .all(|field| field.as_fix().has_branch(DIALECT))
+    assert_eq!(
+        branches(registry.field_by_name("exludeddealers").unwrap()),
+        [DIALECT]
     );
 
     // The maps sit past the grammar bindings, so a code set proves the whole
     // document was read and not just its first pass.
-    assert_eq!(fields[14].as_fix().code_value("buy"), Some("B"));
-
-    // The roots are what a registry holds instead.
-    let (registry, roots) = FixRegistry::from_cfb_file(&handle(CBLOCK), Some(DIALECT)).unwrap();
+    let advside = registry.field_by_name("advside").expect("AdvSide");
     assert_eq!(
-        super::scalars(&registry),
-        fields.len() - 1 + super::seeded_fields()
+        registry
+            .codeset_of(advside)
+            .expect("the set it reads by")
+            .code_value("buy"),
+        Some("B")
     );
+
+    // Fifteen declarations, one of them the standard clock seed's own tag.
+    assert_eq!(super::scalars(&registry), 14 + super::seeded_fields());
     assert_eq!(roots.len(), 1);
     assert_eq!(registry.dialects(), [DIALECT]);
 }
@@ -1364,28 +1397,55 @@ fn an_unnamed_file_takes_its_dialect_from_its_own_stem() {
     // A CBlock never names itself, so the file standing in for the caller is
     // the stem and nothing else of the path, folded by case as every
     // membership is.
-    let fields = FixField::from_cfb_file(&named_handle(CBLOCK, "MSFIX44.cfb"), None)
+    let mut stemmed = FixRegistry::new();
+    stemmed
+        .add_cfb_file(&named_handle(CBLOCK, "MSFIX44.cfb"), None)
         .expect("a readable CBlock");
-    assert_eq!(branches(&fields[4]), ["msfix44"]);
-    assert_eq!(branches(&fields[3]), ["msfix44"]);
+    assert_eq!(
+        branches(stemmed.field_by_name("exludeddealers").unwrap()),
+        ["msfix44"]
+    );
+    assert_eq!(
+        branches(stemmed.field_by_name("avgpx").unwrap()),
+        ["msfix44"]
+    );
 
     // An explicit name still wins over the stem.
-    let fields = FixField::from_cfb_file(&named_handle(CBLOCK, "MSFIX44.cfb"), Some(DIALECT))
+    let mut named = FixRegistry::new();
+    named
+        .add_cfb_file(&named_handle(CBLOCK, "MSFIX44.cfb"), Some(DIALECT))
         .expect("a readable CBlock");
-    assert_eq!(branches(&fields[4]), [DIALECT]);
+    assert_eq!(
+        branches(named.field_by_name("exludeddealers").unwrap()),
+        [DIALECT]
+    );
 
     // Bytes held in memory are named by the caller: a buffer's URL is an
     // identity and not a location, and a name the caller states is the
     // dialect whatever the handle answers.
     let mut buffer = Buffer::new();
     buffer.write_all_bytes(CBLOCK.as_bytes()).unwrap();
-    let fields = FixField::from_cfb_file(&buffer, Some(DIALECT)).expect("a readable CBlock");
-    assert_eq!(branches(&fields[4]), [DIALECT]);
-    assert!(
-        fields
-            .iter()
-            .all(|field| field.as_fix().has_branch(DIALECT))
+    let mut buffered = FixRegistry::new();
+    buffered
+        .add_cfb_file(&buffer, Some(DIALECT))
+        .expect("a readable CBlock");
+    assert_eq!(
+        branches(buffered.field_by_name("exludeddealers").unwrap()),
+        [DIALECT]
     );
+    for field in buffered.iter() {
+        // Crate fields and unstated SendingTime are seeds, not this file's
+        // declarations.
+        if field
+            .as_fix()
+            .tag()
+            .unwrap()
+            .is_some_and(|tag| yggdryl::is_crate_tag(tag) || tag == 52)
+        {
+            continue;
+        }
+        assert!(field.as_fix().has_branch(DIALECT), "{}", field.name());
+    }
 }
 
 #[test]
@@ -1399,38 +1459,44 @@ fn a_stem_that_cannot_be_a_membership_is_refused_rather_than_folded_into_one() {
     // dictionary keyed on a guess is worse than a refusal, so the two that
     // cannot be one are refused rather than repaired, and by every door
     // before a byte of the file is read.
-    let fields = FixField::from_cfb_file(&named_handle(CBLOCK, "4.4-ms.cfb"), None)
+    let mut numbered = FixRegistry::new();
+    numbered
+        .add_cfb_file(&named_handle(CBLOCK, "4.4-ms.cfb"), None)
         .expect("a stem that is not a name stands in for nothing");
-    assert!(branches(&fields[4]).is_empty());
-    let fields = FixField::from_cfb_file(&named_handle(CBLOCK, "4.4-ms.cfb"), Some("4.4-ms"))
+    assert!(branches(numbered.field_by_name("exludeddealers").unwrap()).is_empty());
+    let mut supplied = FixRegistry::new();
+    supplied
+        .add_cfb_file(&named_handle(CBLOCK, "4.4-ms.cfb"), Some("4.4-ms"))
         .expect("a supplied name beginning with a digit is a name");
-    assert_eq!(branches(&fields[4]), ["4.4-ms"]);
-    let fields = FixField::from_cfb_file(
+    assert_eq!(
+        branches(supplied.field_by_name("exludeddealers").unwrap()),
+        ["4.4-ms"]
+    );
+    let mut long = FixRegistry::new();
+    long.add_cfb_file(
         &named_handle(CBLOCK, "a-name-well-past-the-old-inline-cap.cfb"),
         None,
     )
     .expect("a long stem is a name");
     assert_eq!(
-        branches(&fields[4]),
+        branches(long.field_by_name("exludeddealers").unwrap()),
         ["a-name-well-past-the-old-inline-cap"]
     );
     // A buffer is identified by an address, which is a stem and not a name.
-    let fields = FixField::from_cfb_file(&Buffer::from_bytes(CBLOCK.as_bytes().to_vec()), None)
+    let mut buffered = FixRegistry::new();
+    buffered
+        .add_cfb_file(&Buffer::from_bytes(CBLOCK.as_bytes().to_vec()), None)
         .expect("bytes held in memory are named by the caller or not at all");
-    assert!(branches(&fields[4]).is_empty());
+    assert!(branches(buffered.field_by_name("exludeddealers").unwrap()).is_empty());
 
     let refused = |error: &Error| matches!(error, Error::InvalidMetadataValue { key, .. } if key == "FIX:branches");
-    let error = FixField::from_cfb_file(&handle(CBLOCK), Some("ms,bloomberg")).unwrap_err();
+    let error = FixRegistry::from_cfb_file(&handle(CBLOCK), Some("ms,bloomberg")).unwrap_err();
     assert!(refused(&error), "{error}");
     assert!(error.to_string().contains("','"), "{error}");
     assert!(error.to_string().contains("\"ms,bloomberg\""), "{error}");
-    let error = FixField::from_cfb_file(&handle(CBLOCK), Some("")).unwrap_err();
-    assert!(refused(&error), "{error}");
-    assert!(error.to_string().contains("non-empty"), "{error}");
-    let error = FixRegistry::from_cfb_file(&handle(CBLOCK), Some("ms,bloomberg")).unwrap_err();
-    assert!(refused(&error), "{error}");
     let error = FixRegistry::from_cfb_file(&handle(CBLOCK), Some("")).unwrap_err();
     assert!(refused(&error), "{error}");
+    assert!(error.to_string().contains("non-empty"), "{error}");
     let mut dictionary = FixRegistry::new();
     let error = dictionary
         .add_cfb_file(&handle(CBLOCK), Some("ms,bloomberg"))
@@ -1449,15 +1515,19 @@ fn a_cblock_vocabulary_folds_into_a_dictionary_that_already_exists() {
     // Two counterparties' files meet in the one namespace a dictionary is:
     // a tag both declare under one name is one field, and each file's name
     // is recorded on it - which is the case the fold exists for.
-    let mut dictionary =
-        FixRegistry::from_fields(FixField::from_cfb_file(&handle(CBLOCK), Some(DIALECT)).unwrap())
-            .expect("one file's vocabulary");
+    let mut dictionary = FixRegistry::new();
+    dictionary
+        .add_cfb_file(&handle(CBLOCK), Some(DIALECT))
+        .expect("one file's vocabulary");
     let before = dictionary.len();
 
     let (added, merged) = dictionary
-        .add_fields(FixField::from_cfb_file(&handle(OVERLAY), Some("morgan")).unwrap())
+        .add_cfb_file(&handle(OVERLAY), Some("morgan"))
         .expect("the second file folds into the first");
-    assert_eq!((added, merged), (1, 1));
+    // One tag the second file alone declares, and three that fold: the one
+    // both files declare, and the two standard clocks every parsed dictionary
+    // carries from construction and so states back at whatever it folds into.
+    assert_eq!((added, merged), (1, 3));
     assert_eq!(dictionary.len(), before + added);
 
     // The fold keeps what only the stored definition declared, where the
@@ -1482,12 +1552,14 @@ fn a_cblock_vocabulary_folds_into_a_dictionary_that_already_exists() {
     // fields: nothing is added, every one merges, and every one now names
     // both dictionaries - the user range included, because a tag is what
     // identifies a field on the wire and no dictionary owns a range of them.
+    // Sixteen rather than fifteen: the parsed dictionary states the standard
+    // clock this one already holds back at it, and a restated field merges.
     let (added, merged) = dictionary
-        .add_fields(FixField::from_cfb_file(&named_handle(CBLOCK, "morgan.cfb"), None).unwrap())
+        .add_cfb_file(&named_handle(CBLOCK, "morgan.cfb"), None)
         .expect("the same vocabulary under a second dialect");
     assert_eq!(
         (added, merged),
-        (0, 15),
+        (0, 16),
         "one vocabulary, whichever file spoke it"
     );
     assert_eq!(
@@ -1508,18 +1580,15 @@ fn folding_a_cblock_into_the_committed_dictionary_refuses_what_it_would_lose() {
     let before = seeded.clone();
 
     // The imported AvgPx datatype disagrees with its committed physical width.
-    let fields = FixField::from_cfb_file(&handle(CBLOCK), Some("bloomberg")).unwrap();
-    let error = seeded.add_fields(fields.clone()).unwrap_err();
+    let (vocabulary, _) = FixRegistry::from_cfb_file(&handle(CBLOCK), Some("bloomberg")).unwrap();
+    let error = seeded.merge_with(&vocabulary).unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
     assert!(error.to_string().contains("float32"), "{error}");
     assert_eq!(
         seeded, before,
         "a conflicting scalar datatype does not mutate the catalog"
     );
-    let avgpx = fields
-        .into_iter()
-        .find(|field| field.as_fix().tag().unwrap() == Some(6))
-        .unwrap();
+    let avgpx = vocabulary.field_by_tag(6).unwrap().clone();
     let error = seeded.add_fields([avgpx]).unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
     let message = error.to_string();
@@ -1590,11 +1659,17 @@ fn a_spelling_two_tags_share_names_neither_of_them() {
         assert!(field.as_fix().tags().unwrap().is_empty(), "tag {tag}");
     }
 
-    // The vocabulary door reads the same file the same way.
-    let fields =
-        FixField::from_cfb_file(&handle(clashing), Some("bloomberg")).expect("a readable CBlock");
-    let named: Vec<&str> = fields.iter().map(Field::name).collect();
-    assert_eq!(named, ["44", "3044"]);
+    // The folding door reads the same file the same way.
+    let mut folded = FixRegistry::new();
+    folded
+        .add_cfb_file(&handle(clashing), Some("bloomberg"))
+        .expect("a readable CBlock");
+    for tag in [44, 3044] {
+        assert_eq!(
+            folded.field_by_tag(tag).expect("a declared tag").name(),
+            tag.to_string()
+        );
+    }
 
     // A spelling that is another tag's own decimal contends with that tag's
     // identity, so it names neither either - and the tag it named keeps the
@@ -1650,13 +1725,17 @@ fn a_spelling_two_tags_share_names_neither_of_them() {
         FixRegistry::from_cfb_file(&handle(mapped), Some(DIALECT)).expect("a readable CBlock");
     for tag in [44, 3044] {
         assert_eq!(
-            registry.field_by_tag(tag).unwrap().as_fix().codes().count(),
-            0,
+            registry.field_by_tag(tag).unwrap().as_fix().codeset(),
+            None,
             "tag {tag} keeps no code set from an ambiguous map",
         );
     }
     assert_eq!(
-        registry.field_by_tag(4).unwrap().as_fix().codes().count(),
+        registry
+            .codeset_of(registry.field_by_tag(4).unwrap())
+            .expect("the set AdvSide reads by")
+            .codes()
+            .count(),
         1,
         "a map naming one tag still decodes it",
     );
@@ -1696,16 +1775,12 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
 		<vocabulary-tag name="44" alt="LastPx" type="float" />
 	</vocabulary>
 </cplugin-configuration>"#;
-    let (read, warnings) =
-        super::warned::during(|| FixField::from_cfb_file(&handle(doubled), None));
-    // The vocabulary door answers declaration order.
-    let fields = read.expect("a readable CBlock");
-    assert_eq!(fields.len(), 2);
+    // The folding door keeps both, and warns about neither.
+    let mut folded = FixRegistry::new();
+    let (read, warnings) = super::warned::during(|| folded.add_cfb_file(&handle(doubled), None));
+    read.expect("a readable CBlock");
     assert!(warnings.is_empty(), "{warnings:?}");
-    assert_eq!(
-        fields.iter().map(Field::name).collect::<Vec<_>>(),
-        ["price", "lastpx"]
-    );
+    assert_eq!(super::scalars(&folded), 2 + super::seeded_fields());
     let (registry, _) = FixRegistry::from_cfb_file(&handle(doubled), None).unwrap();
     assert_eq!(super::scalars(&registry), 2 + super::seeded_fields());
     let holder = registry.field_by_tag(44).unwrap();
@@ -1753,8 +1828,8 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
         })
     );
 
-    // And the one difference that is not a loss: a dictionary keeps one entry
-    // per identity, so a tag declared twice identically arrives twice here.
+    // And a dictionary keeps one entry per identity, so a tag declared twice
+    // identically is one field and neither door warns about it.
     let repeated = r#"<?xml version="1.0"?>
 <cplugin-configuration fix-version="4.4">
 	<vocabulary>
@@ -1763,12 +1838,15 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
 	</vocabulary>
 </cplugin-configuration>"#;
     let (read, warnings) =
-        super::warned::during(|| FixField::from_cfb_file(&handle(repeated), None));
-    let fields = read.expect("a readable CBlock");
-    assert_eq!(fields.len(), 2);
+        super::warned::during(|| FixRegistry::from_cfb_file(&handle(repeated), None));
+    let (registry, _) = read.expect("a readable CBlock");
     assert!(warnings.is_empty(), "{warnings:?}");
-    let (registry, _) = FixRegistry::from_cfb_file(&handle(repeated), None).unwrap();
     assert_eq!(super::scalars(&registry), 1 + super::seeded_fields());
+    let mut folded = FixRegistry::new();
+    folded
+        .add_cfb_file(&handle(repeated), None)
+        .expect("a readable CBlock");
+    assert_eq!(super::scalars(&folded), 1 + super::seeded_fields());
 }
 
 #[test]
@@ -2138,16 +2216,15 @@ fn a_spelling_that_cannot_be_answered_is_dropped_and_never_refused() {
 
 #[test]
 fn both_doors_carry_the_names_a_normalization_spelled() {
-    let fields =
-        FixField::from_cfb_file(&handle(NORMALIZED), Some("bloomberg")).expect("a readable CBlock");
-    let held = fields
-        .iter()
-        .find(|field| field.name() == "22830")
-        .expect("the unnamed tag");
+    let mut folded = FixRegistry::new();
+    folded
+        .add_cfb_file(&handle(NORMALIZED), Some("bloomberg"))
+        .expect("a readable CBlock");
+    let held = folded.field_by_tag(22830).expect("the unnamed tag");
     assert_eq!(
         held.as_fix().names().collect::<Vec<_>>(),
         ["EXCLUDEDDEALERS", "EXCLUDED_DEALERS"],
-        "the vocabulary door carries them too",
+        "the folding door carries them too",
     );
 }
 
@@ -2417,7 +2494,7 @@ fn a_mapping_names_a_type_the_listing_declared_or_it_names_nothing() {
     let (read, warnings) = super::warned::during(|| parse(body));
     let (registry, _) = read;
     let field = registry.field_by_tag(35).expect("MsgType");
-    let codes = field.as_fix();
+    let codes = registry.codeset_of(field).expect("the set tag 35 reads by");
 
     // The key reaches the type the listing declared, and so does the whole
     // spelling the listing gave it.
@@ -2445,9 +2522,8 @@ fn a_mapping_names_a_type_the_listing_declared_or_it_names_nothing() {
     let (registry, _) = parse(bound);
     assert_eq!(
         registry
-            .field_by_tag(35)
-            .unwrap()
-            .as_fix()
+            .codeset_of(registry.field_by_tag(35).unwrap())
+            .expect("the set tag 35 reads by")
             .code_value("AE Inbound"),
         Some("AE")
     );
@@ -2482,10 +2558,13 @@ fn two_grammars_bound_under_one_wire_type_are_one_message_carrying_both() {
     // Tag 35 carries one code for the wire value, named after the value
     // rather than after either qualifier, answering to both spellings.
     let msgtype = registry.field_by_tag(35).expect("MsgType");
-    assert_eq!(msgtype.as_fix().codes().count(), 1);
-    assert_eq!(msgtype.as_fix().code_name("6"), Some("6"));
-    assert_eq!(msgtype.as_fix().code_value("6 Inbound"), Some("6"));
-    assert_eq!(msgtype.as_fix().code_value("6 Outbound"), Some("6"));
+    let codes = registry
+        .codeset_of(msgtype)
+        .expect("the set tag 35 reads by");
+    assert_eq!(codes.codes().count(), 1);
+    assert_eq!(codes.code_name("6"), Some("6"));
+    assert_eq!(codes.code_value("6 Inbound"), Some("6"));
+    assert_eq!(codes.code_value("6 Outbound"), Some("6"));
 
     // One message, holding the union of what the two bindings declared, the
     // first binding's members first and in its order.

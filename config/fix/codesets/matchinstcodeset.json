@@ -1,0 +1,15 @@
+{
+  "name": "matchinstcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Match",
+      "doc": "Match"
+    },
+    {
+      "value": "2",
+      "name": "DoNotMatch",
+      "doc": "Do Not Match"
+    }
+  ]
+}

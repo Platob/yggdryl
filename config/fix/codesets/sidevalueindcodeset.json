@@ -1,0 +1,15 @@
+{
+  "name": "sidevalueindcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "SideValue1",
+      "doc": "Side Value 1"
+    },
+    {
+      "value": "2",
+      "name": "SideValue2",
+      "doc": "Side Value 2"
+    }
+  ]
+}

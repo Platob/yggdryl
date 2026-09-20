@@ -19,7 +19,7 @@ use smol_str::SmolStr;
 use super::FixRegistry;
 use super::MSGDIRECTION_TAG_NAME;
 use super::directions::{FixDirection, compile, outside_set, repeated};
-use crate::{DataType, Field, FixField};
+use crate::{DataType, Field};
 
 /// The name tag 385's set gives the code a sent message carries.
 const SEND_NAME: &str = "Send";
@@ -83,6 +83,11 @@ pub struct MsgDirection {
     /// Tag 385 as a built message carries it: the dictionary's field, non-null,
     /// or a text field carrying the tag where the dictionary has none.
     field: Field,
+    /// The document of the set tag 385 reads by, as the dictionary held it
+    /// when the reading was taken: the field names its set and the registry
+    /// owns it, so a reading that outlives the borrow carries the text it
+    /// resolved every spelling against.
+    document: Option<Box<str>>,
     /// Every code of the set, in the set's order, and the name each carries.
     codes: Vec<(SmolStr, SmolStr)>,
     sent: SmolStr,
@@ -124,22 +129,24 @@ impl MsgDirection {
             },
             super::build::stated,
         );
-        let codes: Vec<(SmolStr, SmolStr)> = field
-            .as_fix()
-            .codes()
+        let document: Option<Box<str>> = registry
+            .codeset_of(&field)
+            .map(|set| Box::from(set.document()));
+        let codes: Vec<(SmolStr, SmolStr)> = super::codes::FixCodes::over(document.as_deref())
             .filter_map(Result::ok)
             .map(|code| (SmolStr::new(code.value()), SmolStr::new(code.name())))
             .collect();
         let named = |name: &str, default: &str| {
-            field
-                .as_fix()
-                .code_value(name)
+            document
+                .as_deref()
+                .and_then(|codes| super::codes::translate(codes, name))
                 .map_or_else(|| SmolStr::new(default), SmolStr::new)
         };
         let sent = named(SEND_NAME, SEND_CODE);
         let recv = named(RECEIVE_NAME, RECEIVE_CODE);
         let mut reading = Self {
             field,
+            document,
             codes,
             sent,
             recv,
@@ -259,7 +266,7 @@ impl MsgDirection {
     /// setter that admits one resolve exactly alike.
     #[must_use]
     pub fn code(&self, spelling: &str) -> Option<&str> {
-        resolve(&self.field.as_fix(), spelling)
+        resolve(self.document.as_deref(), spelling)
     }
 
     /// Reads which way one captured byte line moved.
@@ -309,25 +316,26 @@ impl MsgDirection {
     }
 }
 
-/// The code one spelling names in one field's set: its value, or the name
-/// the set gives it, ASCII case folded; else the specification's two halves
+/// The code one spelling names in tag 385's set: its value, or the name the
+/// set gives it, ASCII case folded; else the specification's two halves
 /// under the codes the set gives them, `S` and `R` where it names neither.
 ///
 /// The one place a spelling from outside becomes a code of the set: the
-/// reading resolves a pin, a stated column and a rule's code through it,
-/// and [`set_directions`](crate::FixFieldMut::set_directions) admits a
-/// rule's code through it, so what the door lets in is what the reading
-/// answers.
-pub(super) fn resolve<'field>(field: &FixField<'field>, spelling: &str) -> Option<&'field str> {
+/// reading resolves a pin, a stated column and a rule's code through it, so
+/// what a rule states and what the reading answers are one resolution. A
+/// dictionary holding no such set resolves the two halves alone, which is
+/// what an absent field reads by.
+pub(super) fn resolve<'codes>(codes: Option<&'codes str>, spelling: &str) -> Option<&'codes str> {
     let spelling = spelling.trim();
     if spelling.is_empty() {
         return None;
     }
-    if let Some(value) = field.code_value(spelling) {
+    let translate = |text: &str| codes.and_then(|codes| super::codes::translate(codes, text));
+    if let Some(value) = translate(spelling) {
         return Some(value);
     }
-    let sent = field.code_value(SEND_NAME).unwrap_or(SEND_CODE);
-    let recv = field.code_value(RECEIVE_NAME).unwrap_or(RECEIVE_CODE);
+    let sent = translate(SEND_NAME).unwrap_or(SEND_CODE);
+    let recv = translate(RECEIVE_NAME).unwrap_or(RECEIVE_CODE);
     [(sent, SEND_NAME), (recv, RECEIVE_NAME)]
         .into_iter()
         .find(|(value, name)| {

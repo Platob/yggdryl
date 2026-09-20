@@ -1,0 +1,30 @@
+{
+  "name": "collasgntranstypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "1",
+      "name": "Replace",
+      "doc": "Replace"
+    },
+    {
+      "value": "2",
+      "name": "Cancel",
+      "doc": "Cancel"
+    },
+    {
+      "value": "3",
+      "name": "Release",
+      "doc": "Release"
+    },
+    {
+      "value": "4",
+      "name": "Reverse",
+      "doc": "Reverse"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "name": "liststatustypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Ack",
+      "doc": "Ack"
+    },
+    {
+      "value": "2",
+      "name": "Response",
+      "doc": "Response"
+    },
+    {
+      "value": "3",
+      "name": "Timed",
+      "doc": "Timed"
+    },
+    {
+      "value": "4",
+      "name": "ExecStarted",
+      "doc": "Exec Started"
+    },
+    {
+      "value": "5",
+      "name": "AllDone",
+      "doc": "All Done"
+    },
+    {
+      "value": "6",
+      "name": "Alert",
+      "doc": "Alert"
+    }
+  ]
+}

@@ -1,0 +1,540 @@
+{
+  "name": "stipulationtypecodeset",
+  "codes": [
+    {
+      "value": "ABS",
+      "name": "AbsolutePrepaymentSpeed",
+      "group": "Prepayment Speeds",
+      "doc": "Absolute Prepayment Speed"
+    },
+    {
+      "value": "AMT",
+      "name": "AlternativeMinimumTax",
+      "doc": "Alternative Minimum Tax (Y/N)"
+    },
+    {
+      "value": "INCURRCVY",
+      "name": "IncurredRecovery",
+      "group": "CDS General Terms",
+      "doc": "Incurred recovery (Y/N)"
+    },
+    {
+      "value": "ADDTRM",
+      "name": "AdditionalTerm",
+      "group": "CDS General Terms",
+      "doc": "Additional term"
+    },
+    {
+      "value": "AUTOREINV",
+      "name": "AutoReinvestment",
+      "doc": "Auto Reinvestment at <rate> or better"
+    },
+    {
+      "value": "CPP",
+      "name": "ConstantPrepaymentPenalty",
+      "group": "Prepayment Speeds",
+      "doc": "Constant Prepayment Penalty"
+    },
+    {
+      "value": "BANKQUAL",
+      "name": "BankQualified",
+      "doc": "Bank qualified (Y/N)"
+    },
+    {
+      "value": "CPR",
+      "name": "ConstantPrepaymentRate",
+      "group": "Prepayment Speeds",
+      "doc": "Constant Prepayment Rate"
+    },
+    {
+      "value": "MODEQTYDLVY",
+      "name": "ModifiedEquityDelivery",
+      "group": "CDS General Terms",
+      "doc": "Modified equity delivery"
+    },
+    {
+      "value": "BGNCON",
+      "name": "BargainConditions",
+      "doc": "Bargain conditions (see StipulationValue (234) for values)"
+    },
+    {
+      "value": "CPY",
+      "name": "ConstantPrepaymentYield",
+      "group": "Prepayment Speeds",
+      "doc": "Constant Prepayment Yield"
+    },
+    {
+      "value": "NOREFOBLIG",
+      "name": "NoReferenceOblication",
+      "group": "CDS General Terms",
+      "doc": "No reference obligation (Y/N)"
+    },
+    {
+      "value": "COUPON",
+      "name": "CouponRange",
+      "doc": "Coupon range"
+    },
+    {
+      "value": "HEP",
+      "name": "FinalCPROfHomeEquityPrepaymentCurve",
+      "group": "Prepayment Speeds",
+      "doc": "final CPR of Home Equity Prepayment Curve"
+    },
+    {
+      "value": "UNKREFOBLIG",
+      "name": "UnknownReferenceObligation",
+      "group": "CDS General Terms",
+      "doc": "Unknown reference obligation (Y/N)"
+    },
+    {
+      "value": "ALLGUARANTEES",
+      "name": "AllGuarantees",
+      "group": "CDS General Terms",
+      "doc": "All guarantees (Y/N)"
+    },
+    {
+      "value": "CURRENCY",
+      "name": "ISOCurrencyCode",
+      "doc": "ISO Currency Code"
+    },
+    {
+      "value": "MHP",
+      "name": "PercentOfManufacturedHousingPrepaymentCurve",
+      "group": "Prepayment Speeds",
+      "doc": "Percent of Manufactured Housing Prepayment Curve"
+    },
+    {
+      "value": "CUSTOMDATE",
+      "name": "CustomStart",
+      "doc": "Custom start/end date"
+    },
+    {
+      "value": "MPR",
+      "name": "MonthlyPrepaymentRate",
+      "group": "Prepayment Speeds",
+      "doc": "Monthly Prepayment Rate"
+    },
+    {
+      "value": "REFPX",
+      "name": "ReferencePrice",
+      "group": "CDS General Terms",
+      "doc": "Reference price (Y/N)"
+    },
+    {
+      "value": "GEOG",
+      "name": "Geographics",
+      "doc": "Geographics and % range (ex. 234=CA 0-80 [minimum of 80% California assets])"
+    },
+    {
+      "value": "PPC",
+      "name": "PercentOfProspectusPrepaymentCurve",
+      "group": "Prepayment Speeds",
+      "doc": "Percent of Prospectus Prepayment Curve"
+    },
+    {
+      "value": "REFPOLICY",
+      "name": "ReferencePolicy",
+      "group": "CDS General Terms",
+      "doc": "Reference policy (Y/N)"
+    },
+    {
+      "value": "HAIRCUT",
+      "name": "ValuationDiscount",
+      "doc": "Valuation Discount"
+    },
+    {
+      "value": "PSA",
+      "name": "PercentOfBMAPrepaymentCurve",
+      "group": "Prepayment Speeds",
+      "doc": "Percent of BMA Prepayment Curve"
+    },
+    {
+      "value": "SECRDLIST",
+      "name": "SecuredList",
+      "group": "CDS General Terms",
+      "doc": "Secured list (Y/N)"
+    },
+    {
+      "value": "INSURED",
+      "name": "Insured",
+      "doc": "Insured (Y/N)"
+    },
+    {
+      "value": "SMM",
+      "name": "SingleMonthlyMortality",
+      "group": "Prepayment Speeds",
+      "doc": "Single Monthly Mortality"
+    },
+    {
+      "value": "ISSUE",
+      "name": "IssueDate",
+      "doc": "Year Or Year/Month of Issue (ex. 234=2002/09)"
+    },
+    {
+      "value": "ISSUER",
+      "name": "Issuer",
+      "doc": "Issuer's ticker"
+    },
+    {
+      "value": "ISSUESIZE",
+      "name": "IssueSizeRange",
+      "doc": "issue size range"
+    },
+    {
+      "value": "LOOKBACK",
+      "name": "LookbackDays",
+      "doc": "Lookback Days"
+    },
+    {
+      "value": "LOT",
+      "name": "ExplicitLotIdentifier",
+      "doc": "Explicit lot identifier"
+    },
+    {
+      "value": "LOTVAR",
+      "name": "LotVariance",
+      "doc": "Lot Variance (value in percent maximum over- or under-allocation allowed)"
+    },
+    {
+      "value": "MAT",
+      "name": "MaturityYearAndMonth",
+      "doc": "Maturity Year And Month"
+    },
+    {
+      "value": "MATURITY",
+      "name": "MaturityRange",
+      "doc": "Maturity range"
+    },
+    {
+      "value": "MAXSUBS",
+      "name": "MaximumSubstitutions",
+      "doc": "Maximum substitutions (Repo)"
+    },
+    {
+      "value": "MINDNOM",
+      "name": "MinimumDenomination",
+      "doc": "Minimum denomination"
+    },
+    {
+      "value": "MININCR",
+      "name": "MinimumIncrement",
+      "doc": "Minimum increment"
+    },
+    {
+      "value": "MINQTY",
+      "name": "MinimumQuantity",
+      "doc": "Minimum quantity"
+    },
+    {
+      "value": "PAYFREQ",
+      "name": "PaymentFrequency",
+      "doc": "Payment frequency, calendar"
+    },
+    {
+      "value": "PIECES",
+      "name": "NumberOfPieces",
+      "doc": "Number Of Pieces"
+    },
+    {
+      "value": "PMAX",
+      "name": "PoolsMaximum",
+      "doc": "Pools Maximum"
+    },
+    {
+      "value": "PPL",
+      "name": "PoolsPerLot",
+      "doc": "Pools per Lot"
+    },
+    {
+      "value": "PPM",
+      "name": "PoolsPerMillion",
+      "doc": "Pools per Million"
+    },
+    {
+      "value": "PPT",
+      "name": "PoolsPerTrade",
+      "doc": "Pools per Trade"
+    },
+    {
+      "value": "PRICE",
+      "name": "PriceRange",
+      "doc": "Price Range"
+    },
+    {
+      "value": "PRICEFREQ",
+      "name": "PricingFrequency",
+      "doc": "Pricing frequency"
+    },
+    {
+      "value": "PROD",
+      "name": "ProductionYear",
+      "doc": "Production Year"
+    },
+    {
+      "value": "PROTECT",
+      "name": "CallProtection",
+      "doc": "Call protection"
+    },
+    {
+      "value": "PURPOSE",
+      "name": "Purpose",
+      "doc": "Purpose"
+    },
+    {
+      "value": "PXSOURCE",
+      "name": "BenchmarkPriceSource",
+      "doc": "Benchmark price source"
+    },
+    {
+      "value": "RATING",
+      "name": "RatingSourceAndRange",
+      "doc": "Rating source and range"
+    },
+    {
+      "value": "REDEMPTION",
+      "name": "TypeOfRedemption",
+      "doc": "Type Of Redemption - values are: NonCallable, Prefunded, EscrowedToMaturity, Putable, Convertible"
+    },
+    {
+      "value": "RESTRICTED",
+      "name": "Restricted",
+      "doc": "Restricted (Y/N)"
+    },
+    {
+      "value": "SECTOR",
+      "name": "MarketSector",
+      "doc": "Market Sector"
+    },
+    {
+      "value": "SECTYPE",
+      "name": "SecurityTypeIncludedOrExcluded",
+      "doc": "Security Type included or excluded"
+    },
+    {
+      "value": "STRUCT",
+      "name": "Structure",
+      "doc": "Structure"
+    },
+    {
+      "value": "SUBSFREQ",
+      "name": "SubstitutionsFrequency",
+      "doc": "Substitutions frequency (Repo)"
+    },
+    {
+      "value": "SUBSLEFT",
+      "name": "SubstitutionsLeft",
+      "doc": "Substitutions left (Repo)"
+    },
+    {
+      "value": "TEXT",
+      "name": "FreeformText",
+      "doc": "Freeform Text"
+    },
+    {
+      "value": "TRDVAR",
+      "name": "TradeVariance",
+      "doc": "Trade Variance (value in percent maximum over- or under-allocation allowed)"
+    },
+    {
+      "value": "WAC",
+      "name": "WeightedAverageCoupon",
+      "doc": "Weighted Average Coupon - value in percent (exact or range) plus \"Gross\" or \"Net\" of servicing spread (the default) (ex. 234=6.5-Net [minimum of 6.5% net of servicing fee])"
+    },
+    {
+      "value": "WAL",
+      "name": "WeightedAverageLifeCoupon",
+      "doc": "Weighted Average Life Coupon - value in percent (exact or range)"
+    },
+    {
+      "value": "WALA",
+      "name": "WeightedAverageLoanAge",
+      "doc": "Weighted Average Loan Age - value in months (exact or range)"
+    },
+    {
+      "value": "WAM",
+      "name": "WeightedAverageMaturity",
+      "doc": "Weighted Average Maturity - value in months (exact or range)"
+    },
+    {
+      "value": "WHOLE",
+      "name": "WholePool",
+      "doc": "Whole Pool (Y/N)"
+    },
+    {
+      "value": "YIELD",
+      "name": "YieldRange",
+      "doc": "Yield Range"
+    },
+    {
+      "value": "AVFICO",
+      "name": "AverageFICOScore",
+      "group": "Other",
+      "doc": "Average FICO Score"
+    },
+    {
+      "value": "ORIGAMT",
+      "name": "OriginalAmount",
+      "doc": "Original amount"
+    },
+    {
+      "value": "AVSIZE",
+      "name": "AverageLoanSize",
+      "group": "Other",
+      "doc": "Average Loan Size"
+    },
+    {
+      "value": "POOLEFFDT",
+      "name": "PoolEffectiveDate",
+      "doc": "Pool effective date"
+    },
+    {
+      "value": "MAXBAL",
+      "name": "MaximumLoanBalance",
+      "group": "Other",
+      "doc": "Maximum Loan Balance"
+    },
+    {
+      "value": "POOLINITFCTR",
+      "name": "PoolInitialFactor",
+      "doc": "Pool initial factor"
+    },
+    {
+      "value": "POOL",
+      "name": "PoolIdentifier",
+      "group": "Other",
+      "doc": "Pool Identifier"
+    },
+    {
+      "value": "TRANCHE",
+      "name": "Tranche",
+      "doc": "Tranche identifier"
+    },
+    {
+      "value": "ROLLTYPE",
+      "name": "TypeOfRollTrade",
+      "group": "Other",
+      "doc": "Type of Roll trade"
+    },
+    {
+      "value": "SUBSTITUTION",
+      "name": "Substitution",
+      "doc": "Substitution (Y/N)"
+    },
+    {
+      "value": "MULTEXCHFLLBCK",
+      "name": "MULTEXCHFLLBCK",
+      "doc": "Multiple exchange fallback (Y/N)"
+    },
+    {
+      "value": "REFTRADE",
+      "name": "ReferenceToRollingOrClosingTrade",
+      "group": "Other",
+      "doc": "Reference to rolling or closing trade"
+    },
+    {
+      "value": "COMPSECFLLBCK",
+      "name": "COMPSECFLLBCK",
+      "doc": "Component security fallback (Y/N)"
+    },
+    {
+      "value": "REFPRIN",
+      "name": "PrincipalOfRollingOrClosingTrade",
+      "group": "Other",
+      "doc": "Principal to rolling or closing trade"
+    },
+    {
+      "value": "LOCLJRSDCTN",
+      "name": "LOCLJRSDCTN",
+      "doc": "Local jurisdiction (Y/N)"
+    },
+    {
+      "value": "REFINT",
+      "name": "InterestOfRollingOrClosingTrade",
+      "group": "Other",
+      "doc": "Interest of rolling or closing trade"
+    },
+    {
+      "value": "AVAILQTY",
+      "name": "AvailableOfferQuantityToBeShownToTheStreet",
+      "group": "Other",
+      "doc": "Available offer quantity to be shown to the street"
+    },
+    {
+      "value": "RELVJRSDCTN",
+      "name": "RELVJRSDCTN",
+      "doc": "Relevant jurisdiction (Y/N)"
+    },
+    {
+      "value": "BROKERCREDIT",
+      "name": "BrokerCredit",
+      "group": "Other",
+      "doc": "Broker's sales credit"
+    },
+    {
+      "value": "INTERNALPX",
+      "name": "OfferPriceToBeShownToInternalBrokers",
+      "group": "Other",
+      "doc": "Offer price to be shown to internal brokers"
+    },
+    {
+      "value": "INTERNALQTY",
+      "name": "OfferQuantityToBeShownToInternalBrokers",
+      "group": "Other",
+      "doc": "Offer quantity to be shown to internal brokers"
+    },
+    {
+      "value": "LEAVEQTY",
+      "name": "TheMinimumResidualOfferQuantity",
+      "group": "Other",
+      "doc": "The minimum residual offer quantity"
+    },
+    {
+      "value": "MAXORDQTY",
+      "name": "MaximumOrderSize",
+      "group": "Other",
+      "doc": "Maximum order size"
+    },
+    {
+      "value": "ORDRINCR",
+      "name": "OrderQuantityIncrement",
+      "group": "Other",
+      "doc": "Order quantity increment"
+    },
+    {
+      "value": "PRIMARY",
+      "name": "PrimaryOrSecondaryMarketIndicator",
+      "group": "Other",
+      "doc": "Primary or Secondary market indicator"
+    },
+    {
+      "value": "SALESCREDITOVR",
+      "name": "BrokerSalesCreditOverride",
+      "group": "Other",
+      "doc": "Broker sales credit override"
+    },
+    {
+      "value": "TRADERCREDIT",
+      "name": "TraderCredit",
+      "group": "Other",
+      "doc": "Trader's credit"
+    },
+    {
+      "value": "DISCOUNT",
+      "name": "DiscountRate",
+      "group": "Other",
+      "doc": "Discount Rate (when price is denominated in percent of par)"
+    },
+    {
+      "value": "YTM",
+      "name": "YieldToMaturity",
+      "group": "Other",
+      "doc": "Yield to Maturity (when YieldType(235) and Yield(236) show a different yield)"
+    },
+    {
+      "value": "PAYOFF",
+      "name": "InterestPayoffOfRollingOrAmendingTrade",
+      "group": "Other",
+      "doc": "Interest payoff of rolling or amending trade"
+    }
+  ]
+}

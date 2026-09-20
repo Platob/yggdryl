@@ -1,0 +1,65 @@
+{
+  "name": "mdstatisticratiotypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "BuyersToSellers",
+      "doc": "Buyers to sellers"
+    },
+    {
+      "value": "2",
+      "name": "UpticksToDownticks",
+      "doc": "Upticks to downticks"
+    },
+    {
+      "value": "3",
+      "name": "MarketMakerToNonMarketMaker",
+      "doc": "Market maker to non-market maker"
+    },
+    {
+      "value": "4",
+      "name": "AutomatedToNonAutomated",
+      "doc": "Automated to non-automated"
+    },
+    {
+      "value": "5",
+      "name": "OrdersToTrades",
+      "doc": "Orders to trades"
+    },
+    {
+      "value": "6",
+      "name": "QuotesToTrades",
+      "doc": "Quotes to trades"
+    },
+    {
+      "value": "7",
+      "name": "OrdersAndQuotesToTrades",
+      "doc": "Orders and quotes to trades"
+    },
+    {
+      "value": "8",
+      "name": "FailedToTotalTradedValue",
+      "doc": "Failed to total traded value"
+    },
+    {
+      "value": "9",
+      "name": "BenefitsToTotalTradedValue",
+      "doc": "Benefits to total traded value"
+    },
+    {
+      "value": "10",
+      "name": "FeesToTotalTradedValue",
+      "doc": "Fees to total traded value"
+    },
+    {
+      "value": "11",
+      "name": "TradeVolumeToTotalTradedVolume",
+      "doc": "Trade volume to total traded volume"
+    },
+    {
+      "value": "12",
+      "name": "OrdersToTotalNumberOrders",
+      "doc": "Orders to total number of orders"
+    }
+  ]
+}

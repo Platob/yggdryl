@@ -1,0 +1,20 @@
+{
+  "name": "applresponsetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "RequestSuccessfullyProcessed",
+      "doc": "Request successfully processed"
+    },
+    {
+      "value": "1",
+      "name": "ApplicationDoesNotExist",
+      "doc": "Application does not exist"
+    },
+    {
+      "value": "2",
+      "name": "MessagesNotAvailable",
+      "doc": "Messages not available"
+    }
+  ]
+}

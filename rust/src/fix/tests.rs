@@ -818,11 +818,12 @@ fn registering_a_message_type_names_it_describes_it_and_never_rewrites_it() {
         registry.msgtype("P Report Ack").unwrap(),
         registry.msgtype("AllocationReportAck").unwrap(),
     ));
+    // The vocabulary tag 35 reads by is the dictionary's, so a registration
+    // states its members there and the field only names the set.
     let code = |registry: &FixRegistry| {
         registry
-            .field_by_tag(super::MSGTYPE_TAG_NAME.0)
-            .unwrap()
-            .as_fix()
+            .codeset_of(registry.field_by_tag(super::MSGTYPE_TAG_NAME.0).unwrap())
+            .expect("the set tag 35 reads by")
             .codes()
             .map(Result::unwrap)
             .find(|code| code.name() == "AllocationReportAck")
@@ -841,11 +842,11 @@ fn registering_a_message_type_names_it_describes_it_and_never_rewrites_it() {
     registry
         .register_msgtype("D", None, Some("Order - Single"))
         .unwrap();
-    let field = registry.field_by_tag(super::MSGTYPE_TAG_NAME.0).unwrap();
+    let set = registry
+        .codeset_of(registry.field_by_tag(super::MSGTYPE_TAG_NAME.0).unwrap())
+        .expect("the set tag 35 reads by");
     assert_eq!(
-        field
-            .as_fix()
-            .codes()
+        set.codes()
             .map(Result::unwrap)
             .find(|code| code.value() == "D")
             .unwrap()
@@ -3248,47 +3249,63 @@ fn a_null_spelling_is_refused_when_it_carries_the_separator_or_repeats() {
 }
 
 /// Fixture A: the standard `SideCodeSet`, dated as the specification dates it.
-fn side() -> Field {
+///
+/// A vocabulary is the dictionary's and a field only names it, so the fixture
+/// is the pair: the dictionary holding `sidecodeset`, and the field that
+/// reads by it.
+fn side() -> (FixRegistry, Field) {
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(
+            "sidecodeset",
+            &[
+                FixCode::new("Buy", "1"),
+                FixCode::new("Sell", "2"),
+                FixCode::new("Undisclosed", "7"),
+                FixCode::new("CrossShort", "9"),
+                FixCode::new("CrossShortExempt", "A"),
+            ],
+        )
+        .unwrap();
     let mut field = DataType::utf8().nullable_field("Side");
     field.as_fix_mut().set_tag(54).unwrap();
-    field
-        .as_fix_mut()
-        .set_codes(&[
-            FixCode::new("Buy", "1"),
-            FixCode::new("Sell", "2"),
-            FixCode::new("Undisclosed", "7"),
-            FixCode::new("CrossShort", "9"),
-            FixCode::new("CrossShortExempt", "A"),
-        ])
-        .unwrap();
-    field
+    field.as_fix_mut().set_codeset("sidecodeset").unwrap();
+    registry.insert(field.clone()).unwrap();
+    (registry, field)
 }
 
 /// Fixture B: `CommTypeCodeSet`, whose long names are what tier 2 folds.
-fn comm_type() -> Field {
+fn comm_type() -> (FixRegistry, Field) {
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(
+            "commtypecodeset",
+            &[
+                FixCode::new("PerUnit", "1"),
+                FixCode::new("Percent", "2"),
+                FixCode::new("Absolute", "3"),
+                FixCode::new("PercentageWaivedCashDiscount", "4"),
+                FixCode::new("PercentageWaivedEnhancedUnits", "5"),
+                FixCode::new("PointsPerBondOrContract", "6")
+                    .with_description("Good Till Date (GTD) points per bond"),
+                FixCode::new("BasisPoints", "7"),
+                FixCode::new("AmountPerContract", "8"),
+            ],
+        )
+        .unwrap();
     let mut field = DataType::utf8().nullable_field("CommType");
     field.as_fix_mut().set_tag(13).unwrap();
-    field
-        .as_fix_mut()
-        .set_codes(&[
-            FixCode::new("PerUnit", "1"),
-            FixCode::new("Percent", "2"),
-            FixCode::new("Absolute", "3"),
-            FixCode::new("PercentageWaivedCashDiscount", "4"),
-            FixCode::new("PercentageWaivedEnhancedUnits", "5"),
-            FixCode::new("PointsPerBondOrContract", "6")
-                .with_description("Good Till Date (GTD) points per bond"),
-            FixCode::new("BasisPoints", "7"),
-            FixCode::new("AmountPerContract", "8"),
-        ])
-        .unwrap();
-    field
+    field.as_fix_mut().set_codeset("commtypecodeset").unwrap();
+    registry.insert(field.clone()).unwrap();
+    (registry, field)
 }
 
 #[test]
 fn a_code_set_resolves_by_value_by_name_and_by_every_folding_of_a_name() {
-    let field = comm_type();
-    let view = field.as_fix();
+    let (registry, field) = comm_type();
+    let view = registry
+        .codeset_of(&field)
+        .expect("the set the field names");
 
     // Tier 1: a spelling that is already a legal code is never reinterpreted.
     assert_eq!(view.code_value("4"), Some("4"));
@@ -3314,16 +3331,17 @@ fn a_code_set_resolves_by_value_by_name_and_by_every_folding_of_a_name() {
 
 #[test]
 fn an_alias_shares_a_value_and_an_unknown_spelling_falls_through() {
-    let mut field = DataType::utf8().nullable_field("Side");
-    field.as_fix_mut().set_tag(54).unwrap();
-    field
-        .as_fix_mut()
-        .set_codes(&[
-            FixCode::new("Buy", "1").with_aliases(["Bought", "BUYSIDE"]),
-            FixCode::new("Sell", "2"),
-        ])
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(
+            "sidecodeset",
+            &[
+                FixCode::new("Buy", "1").with_aliases(["Bought", "BUYSIDE"]),
+                FixCode::new("Sell", "2"),
+            ],
+        )
         .unwrap();
-    let view = field.as_fix();
+    let view = registry.codeset("sidecodeset").unwrap();
 
     assert_eq!(view.code_value("Buy"), Some("1"));
     assert_eq!(view.code_value("bought"), Some("1"));
@@ -3351,13 +3369,11 @@ fn a_reader_meeting_one_spelling_at_a_time_grows_a_code_rather_than_dropping_it(
     assert!(buy.is_spelled("bought"));
     assert_eq!(buy.aliases(), ["Bought"]);
 
-    let mut field = DataType::utf8().nullable_field("Side");
-    field.as_fix_mut().set_tag(54).unwrap();
-    field
-        .as_fix_mut()
-        .set_codes(&[buy, FixCode::new("Sell", "2")])
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset("sidecodeset", &[buy, FixCode::new("Sell", "2")])
         .unwrap();
-    let view = field.as_fix();
+    let view = registry.codeset("sidecodeset").unwrap();
 
     // The grown code is one code with two spellings, not two codes.
     assert_eq!(view.codes().count(), 2);
@@ -3367,16 +3383,17 @@ fn a_reader_meeting_one_spelling_at_a_time_grows_a_code_rather_than_dropping_it(
 
 #[test]
 fn an_ambiguous_spelling_resolves_to_nothing_rather_than_the_first_match() {
-    let mut field = DataType::utf8().nullable_field("Side");
-    field.as_fix_mut().set_tag(54).unwrap();
-    field
-        .as_fix_mut()
-        .set_codes(&[
-            FixCode::new("Cross", "8"),
-            FixCode::new("CrossOther", "9").with_aliases(["cross"]),
-        ])
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(
+            "sidecodeset",
+            &[
+                FixCode::new("Cross", "8"),
+                FixCode::new("CrossOther", "9").with_aliases(["cross"]),
+            ],
+        )
         .unwrap();
-    let view = field.as_fix();
+    let view = registry.codeset("sidecodeset").unwrap();
 
     // Two codes reach one spelling, so picking either would be a guess.
     assert_eq!(view.code_value("Cross"), None);
@@ -3384,33 +3401,39 @@ fn an_ambiguous_spelling_resolves_to_nothing_rather_than_the_first_match() {
     // Tier 1 still answers, because a legal wire value is never a spelling.
     assert_eq!(view.code_value("8"), Some("8"));
     // Two names sharing one value are an alias, not an ambiguity.
-    let mut aliased = DataType::utf8().nullable_field("Side");
-    aliased.as_fix_mut().set_tag(54).unwrap();
+    let mut aliased = FixRegistry::new();
     aliased
-        .as_fix_mut()
-        .set_codes(&[
-            FixCode::new("Cross", "8"),
-            FixCode::new("CrossSame", "8").with_aliases(["cross"]),
-        ])
+        .set_codeset(
+            "sidecodeset",
+            &[
+                FixCode::new("Cross", "8"),
+                FixCode::new("CrossSame", "8").with_aliases(["cross"]),
+            ],
+        )
         .unwrap();
-    assert_eq!(aliased.as_fix().code_value("cross"), Some("8"));
+    assert_eq!(
+        aliased.codeset("sidecodeset").unwrap().code_value("cross"),
+        Some("8")
+    );
 }
 
 #[test]
 fn tier_three_reads_a_leading_abbreviation_and_leaves_both_traps_alone() {
-    let mut field = DataType::utf8().nullable_field("TimeInForce");
-    field.as_fix_mut().set_tag(59).unwrap();
-    field
-        .as_fix_mut()
-        .set_codes(&[
-            FixCode::new("GoodTillDate", "6").with_description("Good Till Date (GTD)"),
-            FixCode::new("BrokenDate", "7")
-                .with_description("Broken date; SettlDate (64) is required"),
-            FixCode::new("SwapValueFactor", "8")
-                .with_description("Swap Value Factor (SVP) through a central counterparty (CCP)"),
-        ])
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(
+            "timeinforcecodeset",
+            &[
+                FixCode::new("GoodTillDate", "6").with_description("Good Till Date (GTD)"),
+                FixCode::new("BrokenDate", "7")
+                    .with_description("Broken date; SettlDate (64) is required"),
+                FixCode::new("SwapValueFactor", "8").with_description(
+                    "Swap Value Factor (SVP) through a central counterparty (CCP)",
+                ),
+            ],
+        )
         .unwrap();
-    let view = field.as_fix();
+    let view = registry.codeset("timeinforcecodeset").unwrap();
 
     assert_eq!(view.code_value("gtd"), Some("6"));
     assert_eq!(view.code_value("GTD"), Some("6"));
@@ -3423,11 +3446,13 @@ fn tier_three_reads_a_leading_abbreviation_and_leaves_both_traps_alone() {
 
 #[test]
 fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() {
-    let field = side();
-    let stored = field
-        .as_metadata()
-        .get("FIX:codes")
+    let (registry, field) = side();
+    // The field states the name; the dictionary holds the document.
+    assert_eq!(field.get_metadata("FIX:codes"), Some("sidecodeset"));
+    let stored = registry
+        .codeset_of(&field)
         .expect("the code set is stored")
+        .document()
         .to_owned();
     assert_eq!(
         stored,
@@ -3441,36 +3466,62 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
         )
     );
 
-    // Taking the set away and putting it back produces the same text.
-    let mut rebuilt = field.clone();
-    let taken = rebuilt.as_fix_mut().remove_codes().unwrap().unwrap();
-    assert_eq!(rebuilt.as_metadata().get("FIX:codes"), None);
-    rebuilt.as_fix_mut().set_codes(&taken).unwrap();
+    // Taking the set away and putting it back produces the same text. A
+    // vocabulary a held field reads by may not be taken away, so the round
+    // trip runs on a dictionary that holds the set alone.
+    let mut rebuilt = FixRegistry::new();
+    rebuilt
+        .set_codeset("sidecodeset", &FixCodes::parse(&stored).unwrap())
+        .unwrap();
+    let taken = rebuilt.remove_codeset("sidecodeset").unwrap().unwrap();
+    assert!(rebuilt.get_codeset("sidecodeset").is_none());
+    rebuilt.set_codeset("sidecodeset", &taken).unwrap();
     assert_eq!(
-        rebuilt.as_metadata().get("FIX:codes"),
-        Some(stored.as_str())
+        rebuilt.codeset("sidecodeset").unwrap().document(),
+        stored.as_str()
     );
 
     // Keys follow the document's declared order, so a reordered one is
     // refused rather than mis-scanned.
     let reordered = r#"[{"name":"Buy","value":"1"}]"#;
-    let mut edited = DataType::utf8().nullable_field("Side");
-    edited.set_metadata([("FIX:codes", reordered)]).unwrap();
-    let error = edited.as_fix().codes().next().unwrap().unwrap_err();
+    let mut held = FixRegistry::new();
+    held.create_codeset("sidecodeset", reordered.to_owned())
+        .unwrap();
+    let edited = held.codeset("sidecodeset").unwrap();
+    let error = edited.codes().next().unwrap().unwrap_err();
     assert!(
         matches!(&error, Error::Parse { target, position, .. }
             if *target == "fix codes" && *position == reordered.find(r#""value""#).unwrap()),
         "{error}"
     );
     // A read that cannot parse answers nothing rather than a wrong answer.
-    assert_eq!(edited.as_fix().code_value("Buy"), None);
-    assert_eq!(edited.as_fix().code("1"), None);
+    assert_eq!(edited.code_value("Buy"), None);
+    assert_eq!(edited.code("1"), None);
 
     // A document is the array of its entries, so the wrapper object an older
     // writer put around one is refused on its first byte like any other
-    // hand edit - there is one shape, and this is not it.
+    // hand edit - there is one shape, and this is not it. A code set is
+    // stored on its own, so the dictionary is what holds that edit.
+    let mut wrapping = FixRegistry::new();
+    wrapping
+        .create_codeset(
+            "sidecodeset",
+            r#"{"codes":[{"value":"1","name":"Buy"}]}"#.to_owned(),
+        )
+        .unwrap();
+    let error = wrapping
+        .codeset("sidecodeset")
+        .unwrap()
+        .codes()
+        .next()
+        .unwrap()
+        .unwrap_err();
+    assert!(
+        matches!(&error, Error::Parse { position, .. } if *position == 0),
+        "FIX:codes: {error}"
+    );
+    assert!(error.to_string().contains("'['"), "FIX:codes: {error}");
     for (property, wrapped) in [
-        ("FIX:codes", r#"{"codes":[{"value":"1","name":"Buy"}]}"#),
         (
             "FIX:directions",
             r#"{"directions":[{"code":"S","patterns":["^TX"]}]}"#,
@@ -3484,7 +3535,6 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
         wrapper.set_metadata([(property, wrapped)]).unwrap();
         let view = wrapper.as_fix();
         let error = match property {
-            "FIX:codes" => view.codes().next().unwrap().unwrap_err(),
             "FIX:directions" => view.directions().next().unwrap().unwrap_err(),
             _ => view.replacements().next().unwrap().unwrap_err(),
         };
@@ -3498,44 +3548,48 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
 
 #[test]
 fn two_codes_may_share_a_value_but_never_a_name_and_neither_may_be_empty() {
-    let mut field = DataType::utf8().nullable_field("Side");
-    field.as_fix_mut().set_tag(54).unwrap();
+    let mut registry = FixRegistry::new();
 
-    let error = field
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Buy", "1"), FixCode::new("BUY", "2")])
+    let error = registry
+        .set_codeset(
+            "sidecodeset",
+            &[FixCode::new("Buy", "1"), FixCode::new("BUY", "2")],
+        )
         .unwrap_err();
     assert!(error.to_string().contains("BUY"), "{error}");
-    assert_eq!(field.as_metadata().get("FIX:codes"), None, "atomic");
+    assert!(registry.get_codeset("sidecodeset").is_none(), "atomic");
 
-    let error = field
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Buy", "")])
+    let error = registry
+        .set_codeset("sidecodeset", &[FixCode::new("Buy", "")])
         .unwrap_err();
     assert!(error.to_string().contains("value"), "{error}");
 
     // Two names on one value is an alias, which is legal.
-    field
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Buy", "1"), FixCode::new("Bought", "1")])
+    registry
+        .set_codeset(
+            "sidecodeset",
+            &[FixCode::new("Buy", "1"), FixCode::new("Bought", "1")],
+        )
         .unwrap();
-    assert_eq!(field.as_fix().codes().count(), 2);
-    assert_eq!(field.as_fix().code_value("Bought"), Some("1"));
+    let view = registry.codeset("sidecodeset").unwrap();
+    assert_eq!(view.codes().count(), 2);
+    assert_eq!(view.code_value("Bought"), Some("1"));
 }
 
 #[test]
 fn a_code_set_carries_every_fact_the_specification_states_about_a_member() {
-    let mut field = DataType::utf8().nullable_field("Side");
-    field.as_fix_mut().set_tag(54).unwrap();
-    field
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Buy", "1")
-            .with_description(r#"Buy; the "long" side"#)
-            .with_aliases(["Bought"])
-            .with_group("Directional")])
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(
+            "sidecodeset",
+            &[FixCode::new("Buy", "1")
+                .with_description(r#"Buy; the "long" side"#)
+                .with_aliases(["Bought"])
+                .with_group("Directional")],
+        )
         .unwrap();
 
-    let view = field.as_fix();
+    let view = registry.codeset("sidecodeset").unwrap();
     let code = view.code("1").unwrap();
     assert_eq!(code.name(), "Buy");
     assert_eq!(code.group(), Some("Directional"));
@@ -3546,11 +3600,11 @@ fn a_code_set_carries_every_fact_the_specification_states_about_a_member() {
         Some(r#"Buy; the "long" side"#)
     );
     assert_eq!(code.aliases().collect::<Vec<_>>(), ["Bought"]);
-    // An empty set removes the property rather than storing an empty one.
-    let mut cleared = field.clone();
-    cleared.as_fix_mut().set_codes(&[]).unwrap();
-    assert_eq!(cleared.as_metadata().get("FIX:codes"), None);
-    assert_eq!(cleared.as_fix().codes().count(), 0);
+    // An empty slice removes the set rather than holding an empty one.
+    let mut cleared = registry.clone();
+    cleared.set_codeset("sidecodeset", &[]).unwrap();
+    assert!(cleared.get_codeset("sidecodeset").is_none());
+    assert_eq!(cleared.codesets().count(), 0);
 }
 
 #[test]
@@ -3564,13 +3618,7 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
         .as_fix_mut()
         .set_description("the stored wording")
         .unwrap();
-    stored
-        .as_fix_mut()
-        .set_codes(&[
-            FixCode::new("StoredOnly", "9"),
-            FixCode::new("Shared", "1").with_description("the stored reading"),
-        ])
-        .unwrap();
+    stored.as_fix_mut().set_codeset("storedcodeset").unwrap();
 
     // Incoming: the newer, higher-priority source.
     let mut incoming = DataType::utf8().nullable_field("LastQty");
@@ -3581,13 +3629,7 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
         .as_fix_mut()
         .set_description("the incoming wording")
         .unwrap();
-    incoming
-        .as_fix_mut()
-        .set_codes(&[
-            FixCode::new("IncomingOnly", "5"),
-            FixCode::new("Shared", "1").with_description("the incoming reading"),
-        ])
-        .unwrap();
+    incoming.as_fix_mut().set_codeset("lastqtycodeset").unwrap();
 
     incoming.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
     let merged = incoming.as_fix();
@@ -3598,17 +3640,45 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
     assert_eq!(merged.tags().unwrap(), [67, 66, 65]);
     // The description is never compared: incoming has one, so it wins.
     assert_eq!(merged.description(), Some("the incoming wording"));
-    // Codes merge by wire value; the incoming wins a shared one and the
-    // stored keeps a value only it has.
-    assert_eq!(merged.code_name("1"), Some("Shared"));
-    assert_eq!(
-        merged.code("1").unwrap().parse_doc().unwrap().as_deref(),
-        Some("the incoming reading")
-    );
-    assert_eq!(merged.code_name("5"), Some("IncomingOnly"));
-    assert_eq!(merged.code_name("9"), Some("StoredOnly"));
+    // A field keeps the vocabulary it already reads by, and the stored field
+    // is that one: a registry fold hands the incoming field in as `self`, and
+    // `unify_codeset` has already folded the incoming set into the held one,
+    // so taking the incoming name here would move the field to a set holding
+    // strictly less than the one it reads by.
+    assert_eq!(merged.codeset(), Some("storedcodeset"));
     // Aliases union, incoming first, folded and deduplicated.
     assert_eq!(merged.names().collect::<Vec<_>>(), ["qty", "lastshares"]);
+
+    // And the members fold where they are held: by wire value, the reading
+    // the dictionary already states winning a shared one, the other source
+    // keeping a value only it has.
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(
+            "lastqtycodeset",
+            &[
+                FixCode::new("IncomingOnly", "5"),
+                FixCode::new("Shared", "1").with_description("the incoming reading"),
+            ],
+        )
+        .unwrap();
+    registry
+        .merge_codeset(
+            "lastqtycodeset",
+            &[
+                FixCode::new("StoredOnly", "9"),
+                FixCode::new("Shared", "1").with_description("the stored reading"),
+            ],
+        )
+        .unwrap();
+    let folded = registry.codeset("lastqtycodeset").unwrap();
+    assert_eq!(folded.code_name("1"), Some("Shared"));
+    assert_eq!(
+        folded.code("1").unwrap().parse_doc().unwrap().as_deref(),
+        Some("the incoming reading")
+    );
+    assert_eq!(folded.code_name("5"), Some("IncomingOnly"));
+    assert_eq!(folded.code_name("9"), Some("StoredOnly"));
 }
 
 #[test]
@@ -3702,10 +3772,7 @@ fn a_merge_adding_nothing_leaves_the_field_byte_identical() {
     field.as_fix_mut().set_tags(&[65]).unwrap();
     field.as_fix_mut().set_description("wording").unwrap();
     field.as_fix_mut().set_names(["lastshares"]).unwrap();
-    field
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Shared", "1")])
-        .unwrap();
+    field.as_fix_mut().set_codeset("lastqtycodeset").unwrap();
 
     let before = field.clone();
     let other = field.clone();
@@ -4225,17 +4292,15 @@ fn every_committed_code_set_is_the_document_the_rust_writer_renders() {
     let registry = committed();
     let mut sets = 0_usize;
     let mut codes = 0_usize;
-    for field in every_committed_field(&registry) {
-        let Some(stored) = field.as_metadata().get("FIX:codes") else {
-            continue;
-        };
+    // The dictionary holds each vocabulary once, under its own name, however
+    // many fields read by it.
+    for set in registry.codesets() {
         sets += 1;
-        let held: Vec<FixCode> = field
-            .as_fix()
+        let held: Vec<FixCode> = set
             .codes()
             .map(|code| FixCode::from(code.expect("a readable code")))
             .collect();
-        assert!(!held.is_empty(), "{} declares a code", field.name());
+        assert!(!held.is_empty(), "{} declares a code", set.name());
         codes += held.len();
 
         // The cross-host assertion: the generator wrote this set in Python,
@@ -4245,13 +4310,17 @@ fn every_committed_code_set_is_the_document_the_rust_writer_renders() {
         // version their own way and neither spelling is the document.
         assert_eq!(
             FixCodes::render(&held).expect("the codes render"),
-            canonical_versions(stored),
+            canonical_versions(set.document()),
             "{}",
-            field.name()
+            set.name()
         );
     }
-    assert_eq!(sets, 2_026, "fields carrying a code set");
-    assert_eq!(codes, 27_209, "code records");
+    // One vocabulary per set rather than one per field reading by it: 2,026
+    // fields draw on these 735 sets, 165 of them on one unit set alone, and
+    // the 27,209 records that count used to be is what naming them once took
+    // out of the store.
+    assert_eq!(sets, 735, "code sets held");
+    assert_eq!(codes, 7_729, "code records");
 }
 
 #[test]

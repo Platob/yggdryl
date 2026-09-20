@@ -1,0 +1,60 @@
+{
+  "name": "securitystatuscodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Active",
+      "doc": "Active"
+    },
+    {
+      "value": "2",
+      "name": "Inactive",
+      "doc": "Inactive"
+    },
+    {
+      "value": "3",
+      "name": "ActiveClosingOrdersOnly",
+      "doc": "Active, closing orders only"
+    },
+    {
+      "value": "4",
+      "name": "Expired",
+      "doc": "Expired"
+    },
+    {
+      "value": "5",
+      "name": "Delisted",
+      "doc": "Delisted"
+    },
+    {
+      "value": "6",
+      "name": "KnockedOut",
+      "doc": "Knocked-out"
+    },
+    {
+      "value": "7",
+      "name": "KnockOutRevoked",
+      "doc": "Knock-out revoked"
+    },
+    {
+      "value": "8",
+      "name": "PendingExpiry",
+      "doc": "Pending Expiry"
+    },
+    {
+      "value": "9",
+      "name": "Suspended",
+      "doc": "Suspended"
+    },
+    {
+      "value": "10",
+      "name": "Published",
+      "doc": "Published"
+    },
+    {
+      "value": "11",
+      "name": "PendingDeletion",
+      "doc": "Pending Deletion"
+    }
+  ]
+}

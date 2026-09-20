@@ -1,0 +1,15 @@
+{
+  "name": "relatedpricesourcecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "NBBid",
+      "doc": "NBB (National Best Bid)"
+    },
+    {
+      "value": "2",
+      "name": "NBOffer",
+      "doc": "NBO (National Best Offer)"
+    }
+  ]
+}

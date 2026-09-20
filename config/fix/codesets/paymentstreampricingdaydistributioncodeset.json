@@ -1,0 +1,25 @@
+{
+  "name": "paymentstreampricingdaydistributioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "All",
+      "doc": "All"
+    },
+    {
+      "value": "1",
+      "name": "First",
+      "doc": "First"
+    },
+    {
+      "value": "2",
+      "name": "Last",
+      "doc": "Last"
+    },
+    {
+      "value": "3",
+      "name": "Penultimate",
+      "doc": "Penultimate"
+    }
+  ]
+}

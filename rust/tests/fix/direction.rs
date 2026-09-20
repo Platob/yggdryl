@@ -95,16 +95,19 @@ fn the_reading_is_the_registrys_code_set_and_a_dictionary_without_the_field_answ
     // A dictionary extending the set keeps the specification's two halves
     // under the names it gives them.
     let mut extended = FixRegistry::new();
+    extended
+        .set_codeset(
+            DIRECTION_SET,
+            &[
+                FixCode::new("Receive", "IN"),
+                FixCode::new("Send", "OUT"),
+                FixCode::new("Both", "B"),
+            ],
+        )
+        .unwrap();
     let mut field = DataType::utf8().nullable_field("MsgDirection");
     field.as_fix_mut().set_tag(385).unwrap();
-    field
-        .as_fix_mut()
-        .set_codes(&[
-            FixCode::new("Receive", "IN"),
-            FixCode::new("Send", "OUT"),
-            FixCode::new("Both", "B"),
-        ])
-        .unwrap();
+    field.as_fix_mut().set_codeset(DIRECTION_SET).unwrap();
     extended.insert(field).unwrap();
     let reading = extended.msgdirection();
     assert_eq!(reading.sent(), "OUT");
@@ -119,21 +122,35 @@ fn the_reading_is_the_registrys_code_set_and_a_dictionary_without_the_field_answ
     );
 }
 
+/// The name tag 385's set is filed under, as the committed dictionary
+/// files it.
+const DIRECTION_SET: &str = "msgdirectioncodeset";
+
 /// A registry whose tag 385 declares the specification's set and carries
 /// the rules given, or none.
 fn ruled(directions: &[FixDirection]) -> Arc<FixRegistry> {
-    let mut registry = FixRegistry::new();
+    let mut registry = ruled_dictionary();
     registry.insert(ruled_field(directions)).unwrap();
     Arc::new(registry)
+}
+
+/// A dictionary holding the specification's two halves under the name
+/// every field below reads by.
+fn ruled_dictionary() -> FixRegistry {
+    let mut registry = FixRegistry::new();
+    registry
+        .set_codeset(
+            DIRECTION_SET,
+            &[FixCode::new("Receive", "R"), FixCode::new("Send", "S")],
+        )
+        .unwrap();
+    registry
 }
 
 fn ruled_field(directions: &[FixDirection]) -> Field {
     let mut field = DataType::utf8().nullable_field("MsgDirection");
     field.as_fix_mut().set_tag(385).unwrap();
-    field
-        .as_fix_mut()
-        .set_codes(&[FixCode::new("Receive", "R"), FixCode::new("Send", "S")])
-        .unwrap();
+    field.as_fix_mut().set_codeset(DIRECTION_SET).unwrap();
     field.as_fix_mut().set_directions(directions).unwrap();
     field
 }
@@ -159,16 +176,19 @@ fn a_dictionary_without_the_property_reads_by_the_defaults_as_data_and_as_readin
     // A dictionary extending the set is read by the same defaults under the
     // codes it gives the two halves.
     let mut extended = FixRegistry::new();
+    extended
+        .set_codeset(
+            DIRECTION_SET,
+            &[
+                FixCode::new("Receive", "IN"),
+                FixCode::new("Send", "OUT"),
+                FixCode::new("Both", "B"),
+            ],
+        )
+        .unwrap();
     let mut field = DataType::utf8().nullable_field("MsgDirection");
     field.as_fix_mut().set_tag(385).unwrap();
-    field
-        .as_fix_mut()
-        .set_codes(&[
-            FixCode::new("Receive", "IN"),
-            FixCode::new("Send", "OUT"),
-            FixCode::new("Both", "B"),
-        ])
-        .unwrap();
+    field.as_fix_mut().set_codeset(DIRECTION_SET).unwrap();
     extended.insert(field).unwrap();
     let extended = extended.msgdirection();
     assert_eq!(
@@ -333,10 +353,12 @@ fn the_prose_in_front_of_a_jolokia_document_names_its_half_and_a_bare_document_n
 fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the_reading() {
     let mut field = ruled_field(&[FixDirection::new("S", ["^TX "])]);
     let before = field.clone();
-    // The setter is the door: an unbalanced group, an empty pattern, an
-    // empty code, a code outside the set, a code named twice - under one
-    // spelling or two - and an entry stating no pattern are all refused,
-    // and the field is unchanged.
+    // The setter is the door for what a field alone can answer: an
+    // unbalanced group, an empty pattern, an empty code, a code stated
+    // twice under one folded spelling and an entry stating no pattern are
+    // all refused, and the field is unchanged. Which codes are the set's is
+    // the dictionary's question, so a code outside it passes here and the
+    // reading below drops it.
     for (rules, reason) in [
         (
             vec![FixDirection::new("S", ["("])],
@@ -345,11 +367,7 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
         (vec![FixDirection::new("S", [""])], "got an empty one"),
         (
             vec![FixDirection::new("", ["^TX "])],
-            "expected a code of the set, one of R, S, got \"\"",
-        ),
-        (
-            vec![FixDirection::new("Q", ["^QX "])],
-            "expected a code of the set, one of R, S, got \"Q\"",
+            "expected \"code\" to hold a non-empty word",
         ),
         (
             vec![
@@ -357,13 +375,6 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
                 FixDirection::new("S", ["^RX "]),
             ],
             "expected each code once, got \"S\" naming \"S\" twice",
-        ),
-        (
-            vec![
-                FixDirection::new("S", ["^TX "]),
-                FixDirection::new("Send", ["<<<"]),
-            ],
-            "expected each code once, got \"Send\" naming \"S\" twice",
         ),
         (
             vec![
@@ -381,25 +392,38 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
         assert!(refused.to_string().contains(reason), "{refused}");
         assert_eq!(field, before);
     }
-    // A field declaring no set admits the specification's two halves under
-    // either spelling, and names them when it refuses.
+    // What the reading warns about when it drops a rule, in the words the
+    // setter used to refuse it in.
+    let dropped = |reason: &str| {
+        format!("tag 385 FIX:directions: invalid fix directions expression at byte 0: {reason}")
+    };
+    // A field declaring no set is read by the specification's two halves
+    // under either spelling, and the reading names them when it drops a
+    // rule naming neither.
     let mut bare = DataType::utf8().nullable_field("MsgDirection");
     bare.as_fix_mut().set_tag(385).unwrap();
     bare.as_fix_mut()
         .set_directions(&[
             FixDirection::new("send", ["^TX "]),
             FixDirection::new("Receive", ["^RX "]),
+            FixDirection::new("Both", ["^BX "]),
         ])
         .unwrap();
-    let refused = bare
-        .as_fix_mut()
-        .set_directions(&[FixDirection::new("Both", ["^BX "])])
-        .unwrap_err();
-    assert!(
-        refused
-            .to_string()
-            .contains("expected a code of the set, one of S, R, got \"Both\""),
-        "{refused}"
+    let mut bare_registry = FixRegistry::new();
+    bare_registry.insert(bare).unwrap();
+    let (reading, warnings) = super::warned::during(|| bare_registry.msgdirection());
+    assert_eq!(
+        reading.directions(),
+        [
+            FixDirection::new("S", ["^TX "]),
+            FixDirection::new("R", ["^RX "]),
+        ]
+    );
+    assert_eq!(
+        warnings,
+        [dropped(
+            "expected a code of the set, one of S, R, got \"Both\""
+        )]
     );
 
     // A dictionary edited by hand reaches the reading without the door: the
@@ -417,7 +441,7 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
             ),
         )
         .unwrap();
-    let mut registry = FixRegistry::new();
+    let mut registry = ruled_dictionary();
     registry.insert(field).unwrap();
     let (reading, warnings) = super::warned::during(|| registry.msgdirection());
     assert_eq!(
@@ -444,17 +468,8 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
                 "tag 385 FIX:directions: {}",
                 door(&[FixDirection::new("S", ["("])])
             ),
-            format!(
-                "tag 385 FIX:directions: {}",
-                door(&[FixDirection::new("Q", ["^QX "])])
-            ),
-            format!(
-                "tag 385 FIX:directions: {}",
-                door(&[
-                    FixDirection::new("S", ["^TX "]),
-                    FixDirection::new("Send", ["<<<"])
-                ])
-            ),
+            dropped("expected a code of the set, one of R, S, got \"Q\""),
+            dropped("expected each code once, got \"Send\" naming \"S\" twice"),
         ]
     );
     // A property the field carries reads by what it states, however little
@@ -468,7 +483,7 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
         .insert("directions", r#"[{"code":"S"}]"#)
         .unwrap();
     assert!(field.as_fix().directions().is_stated());
-    let mut registry = FixRegistry::new();
+    let mut registry = ruled_dictionary();
     registry.insert(field).unwrap();
     let (reading, warnings) = super::warned::during(|| registry.msgdirection());
     assert_eq!(reading.directions(), []);
@@ -515,7 +530,7 @@ fn the_rules_round_trip_through_the_field_escapes_included() {
         entry.parse_patterns().unwrap(),
         [r"(?i)(?:^|\s)tx\s", r#"say "out""#]
     );
-    let mut registry = FixRegistry::new();
+    let mut registry = ruled_dictionary();
     registry.insert(field.clone()).unwrap();
     let reading = registry.msgdirection();
     assert_eq!(reading.directions(), rules);

@@ -1,0 +1,55 @@
+{
+  "name": "massstatusreqtypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "StatusForOrdersForASecurity",
+      "doc": "Status for orders for a security"
+    },
+    {
+      "value": "2",
+      "name": "StatusForOrdersForAnUnderlyingSecurity",
+      "doc": "Status for orders for an underlying security"
+    },
+    {
+      "value": "3",
+      "name": "StatusForOrdersForAProduct",
+      "doc": "Status for orders for a product"
+    },
+    {
+      "value": "4",
+      "name": "StatusForOrdersForACFICode",
+      "doc": "Status for orders for a CFI Code"
+    },
+    {
+      "value": "5",
+      "name": "StatusForOrdersForASecurityType",
+      "doc": "Status for orders for a security type"
+    },
+    {
+      "value": "6",
+      "name": "StatusForOrdersForATradingSession",
+      "doc": "Status for orders for a trading session"
+    },
+    {
+      "value": "7",
+      "name": "StatusForAllOrders",
+      "doc": "Status for all orders"
+    },
+    {
+      "value": "8",
+      "name": "StatusForOrdersForAPartyID",
+      "doc": "Status for orders for a party identifier"
+    },
+    {
+      "value": "9",
+      "name": "StatusForSecurityIssuer",
+      "doc": "Status for orders for an issuer"
+    },
+    {
+      "value": "10",
+      "name": "StatusForIssuerOfUnderlyingSecurity",
+      "doc": "Status for orders for an issuer of underlying security"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "aggregatedbookcodeset",
+  "codes": [
+    {
+      "value": "Y",
+      "name": "BookEntriesToBeAggregated",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "book entries to be aggregated"
+    },
+    {
+      "value": "N",
+      "name": "BookEntriesShouldNotBeAggregated",
+      "aliases": [
+        "No"
+      ],
+      "doc": "book entries should not be aggregated"
+    }
+  ]
+}

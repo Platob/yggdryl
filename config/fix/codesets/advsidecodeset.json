@@ -1,0 +1,25 @@
+{
+  "name": "advsidecodeset",
+  "codes": [
+    {
+      "value": "B",
+      "name": "Buy",
+      "doc": "Buy"
+    },
+    {
+      "value": "S",
+      "name": "Sell",
+      "doc": "Sell"
+    },
+    {
+      "value": "T",
+      "name": "Trade",
+      "doc": "Trade"
+    },
+    {
+      "value": "X",
+      "name": "Cross",
+      "doc": "Cross"
+    }
+  ]
+}

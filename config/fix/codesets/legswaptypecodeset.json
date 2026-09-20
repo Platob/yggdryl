@@ -1,0 +1,25 @@
+{
+  "name": "legswaptypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "ParForPar",
+      "doc": "Par For Par"
+    },
+    {
+      "value": "2",
+      "name": "ModifiedDuration",
+      "doc": "Modified Duration"
+    },
+    {
+      "value": "4",
+      "name": "Risk",
+      "doc": "Risk"
+    },
+    {
+      "value": "5",
+      "name": "Proceeds",
+      "doc": "Proceeds"
+    }
+  ]
+}

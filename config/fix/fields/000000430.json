@@ -30,33 +30,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "FlatFee",
-          "doc": "Flat fee"
-        },
-        {
-          "value": "1",
-          "name": "AmortizedFee",
-          "doc": "Amortized fee"
-        },
-        {
-          "value": "2",
-          "name": "FundingFee",
-          "doc": "Funding fee"
-        },
-        {
-          "value": "3",
-          "name": "FlatAndFundingFee",
-          "doc": "Flat fee and funding fee"
-        },
-        {
-          "value": "4",
-          "name": "AmortizedAndFundingFee",
-          "doc": "Amortized fee and funding fee"
-        }
-      ],
+      "FIX:codes": "provisionbreakfeeelectioncodeset",
       "FIX:tag": "43002",
       "description": "Type of fee elected for the break provision.",
       "display": "UnderlyingProvisionBreakFeeElection"
@@ -142,18 +116,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "PriceValuation",
-          "doc": "Price valuation"
-        },
-        {
-          "value": "1",
-          "name": "DividendValuation",
-          "doc": "Dividend valuation"
-        }
-      ],
+      "FIX:codes": "returnratedatemodecodeset",
       "FIX:tag": "43009",
       "description": "Specifies the valuation type applicable to the return rate date.",
       "display": "UnderlyingReturnRateDateMode"
@@ -190,28 +153,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "43012",
       "description": "Time unit associated with the relative return rate valuation date offset.",
       "display": "UnderlyingReturnRateValuationDateOffsetUnit"
@@ -224,38 +166,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "43013",
       "description": "Specifies the day type of the relative return rate valuation date offset.",
       "display": "UnderlyingReturnRateValuationDateOffsetDayType"
@@ -305,28 +216,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "43017",
       "description": "Time unit associated with the relative return rate valuation start date offset.",
       "display": "UnderlyingReturnRateValuationStartDateOffsetUnit"
@@ -339,38 +229,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "43018",
       "description": "Specifies the day type of the relative return rate valuation start date offset.",
       "display": "UnderlyingReturnRateValuationStartDateOffsetDayType"
@@ -433,28 +292,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "43023",
       "description": "Time unit associated with the relative return rate valuation end date offset.",
       "display": "UnderlyingReturnRateValuationEndDateOffsetUnit"
@@ -467,38 +305,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "43024",
       "description": "Specifies the day type of the relative return rate valuation end date offset.",
       "display": "UnderlyingReturnRateValuationEndDateOffsetDayType"
@@ -536,48 +343,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        },
-        {
-          "value": "H",
-          "name": "Hour",
-          "doc": "Hour"
-        },
-        {
-          "value": "Min",
-          "name": "Minute",
-          "doc": "Minute"
-        },
-        {
-          "value": "S",
-          "name": "Second",
-          "doc": "Second"
-        },
-        {
-          "value": "T",
-          "name": "Term",
-          "doc": "Term"
-        }
-      ],
+      "FIX:codes": "couponfrequencyunitcodeset",
       "FIX:tag": "43027",
       "description": "Time unit associated with the frequency at which return rate valuation dates occur.",
       "display": "UnderlyingReturnRateValuationFrequencyUnit"
@@ -590,238 +356,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "FirstDay",
-          "doc": "1st day of the month"
-        },
-        {
-          "value": "2",
-          "name": "SecondDay",
-          "doc": "2nd day of the month"
-        },
-        {
-          "value": "3",
-          "name": "ThirdDay",
-          "doc": "3rd day of the month"
-        },
-        {
-          "value": "4",
-          "name": "FourthDay",
-          "doc": "4th day of the month"
-        },
-        {
-          "value": "5",
-          "name": "FifthDay",
-          "doc": "5th day of the month"
-        },
-        {
-          "value": "6",
-          "name": "SixthDay",
-          "doc": "6thd day of the month"
-        },
-        {
-          "value": "7",
-          "name": "SeventhDay",
-          "doc": "7th day of the month"
-        },
-        {
-          "value": "8",
-          "name": "EighthDay",
-          "doc": "8th day of the month"
-        },
-        {
-          "value": "9",
-          "name": "NinthDay",
-          "doc": "9th day of the month"
-        },
-        {
-          "value": "10",
-          "name": "TenthDay",
-          "doc": "10th day of the month"
-        },
-        {
-          "value": "11",
-          "name": "EleventhDay",
-          "doc": "11th day of the month"
-        },
-        {
-          "value": "12",
-          "name": "TwelvthDay",
-          "doc": "12th day of the month"
-        },
-        {
-          "value": "13",
-          "name": "ThirteenthDay",
-          "doc": "13th day of the month"
-        },
-        {
-          "value": "14",
-          "name": "ForteenthDay",
-          "doc": "14th day of the month"
-        },
-        {
-          "value": "15",
-          "name": "FifteenthDay",
-          "doc": "15th day of the month"
-        },
-        {
-          "value": "16",
-          "name": "SixteenthDay",
-          "doc": "16th day of the month"
-        },
-        {
-          "value": "17",
-          "name": "SeventeenthDay",
-          "doc": "17th day of the month"
-        },
-        {
-          "value": "18",
-          "name": "EighteenthDay",
-          "doc": "18th day of the month"
-        },
-        {
-          "value": "19",
-          "name": "NineteenthDay",
-          "doc": "19th day of the month"
-        },
-        {
-          "value": "20",
-          "name": "TwentiethDay",
-          "doc": "20th day of the month"
-        },
-        {
-          "value": "21",
-          "name": "TwentyFirstDay",
-          "doc": "21st day of the month"
-        },
-        {
-          "value": "22",
-          "name": "TwentySecondDay",
-          "doc": "22nd day of the month"
-        },
-        {
-          "value": "23",
-          "name": "TwentyThirdDay",
-          "doc": "23rd day of the month"
-        },
-        {
-          "value": "24",
-          "name": "TwentyFourthDay",
-          "doc": "24th day of the month"
-        },
-        {
-          "value": "25",
-          "name": "TwentyFifthDay",
-          "doc": "25th day of the month"
-        },
-        {
-          "value": "26",
-          "name": "TwentySixthDay",
-          "doc": "26th day of the month"
-        },
-        {
-          "value": "27",
-          "name": "TwentySeventhDay",
-          "doc": "27th day of the month"
-        },
-        {
-          "value": "28",
-          "name": "TwentyEigthDa28y",
-          "doc": "28th day of the month"
-        },
-        {
-          "value": "29",
-          "name": "TwentyNinthDay",
-          "doc": "29th day of the month"
-        },
-        {
-          "value": "30",
-          "name": "ThirtiethDay",
-          "doc": "30th day of the month"
-        },
-        {
-          "value": "EOM",
-          "name": "EOM",
-          "doc": "The end of the month."
-        },
-        {
-          "value": "FRN",
-          "name": "FRN",
-          "doc": "The floating rate note convention or Eurodollar convention."
-        },
-        {
-          "value": "IMM",
-          "name": "IMM",
-          "doc": "The International Money Market settlement date, i.e. the 3rd Wednesday of the month."
-        },
-        {
-          "value": "IMMCAD",
-          "name": "IMMCAD",
-          "doc": "The last trading day/expiration day of the Canadian Derivatives Exchange."
-        },
-        {
-          "value": "IMMAUD",
-          "name": "IMMAUD",
-          "doc": "The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract."
-        },
-        {
-          "value": "IMMNZD",
-          "name": "IMMNZD",
-          "doc": "The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract."
-        },
-        {
-          "value": "SFE",
-          "name": "SFE",
-          "doc": "The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates."
-        },
-        {
-          "value": "NONE",
-          "name": "NONE",
-          "doc": "No adjustment"
-        },
-        {
-          "value": "TBILL",
-          "name": "TBILL",
-          "doc": "The 13-week and 26-week U.S. Treasury Bill auction dates."
-        },
-        {
-          "value": "MON",
-          "name": "MON",
-          "doc": "Monday"
-        },
-        {
-          "value": "TUE",
-          "name": "TUE",
-          "doc": "Tuesday"
-        },
-        {
-          "value": "WED",
-          "name": "WED",
-          "doc": "Wednesday"
-        },
-        {
-          "value": "THU",
-          "name": "THU",
-          "doc": "Thursday"
-        },
-        {
-          "value": "FRI",
-          "name": "FRI",
-          "doc": "Friday"
-        },
-        {
-          "value": "SAT",
-          "name": "SAT",
-          "doc": "Saturday"
-        },
-        {
-          "value": "SUN",
-          "name": "SUN",
-          "doc": "Sunday"
-        }
-      ],
+      "FIX:codes": "daterollconventioncodeset",
       "FIX:tag": "43028",
       "description": "The convention for determining the sequence of return rate valuation dates. It is used in conjunction with a specified frequency.",
       "display": "UnderlyingReturnRateValuationFrequencyRollConvention"
@@ -834,48 +369,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "43029",
       "description": "The return rate valuation dates business day convention.",
       "display": "UnderlyingReturnRateValuationDateBusinessDayConvention"
@@ -924,18 +418,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "M",
-          "name": "Multiply",
-          "doc": "Multiply"
-        },
-        {
-          "value": "D",
-          "name": "Divide",
-          "doc": "Divide"
-        }
-      ],
+      "FIX:codes": "settlcurrfxratecalccodeset",
       "FIX:tag": "43033",
       "description": "Specifies whether UnderlyingReturnRateFXRate(43032) should be multiplied or divided.",
       "display": "UnderlyingReturnRateFXRateCalc"
@@ -960,23 +443,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Initial",
-          "doc": "Initial"
-        },
-        {
-          "value": "1",
-          "name": "Interim",
-          "doc": "Interim"
-        },
-        {
-          "value": "2",
-          "name": "Final",
-          "doc": "Final"
-        }
-      ],
+      "FIX:codes": "returnratepricesequencecodeset",
       "FIX:tag": "43035",
       "description": "Specifies the type of price sequence of the return rate.",
       "display": "UnderlyingReturnRatePriceSequence"
@@ -989,48 +456,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "PerUnit",
-          "doc": "Amount per unit"
-        },
-        {
-          "value": "2",
-          "name": "Percent",
-          "doc": "Percent"
-        },
-        {
-          "value": "3",
-          "name": "Absolute",
-          "doc": "Absolute"
-        },
-        {
-          "value": "4",
-          "name": "PercentageWaivedCashDiscount",
-          "doc": "Percentage waived, cash discount basis"
-        },
-        {
-          "value": "5",
-          "name": "PercentageWaivedEnhancedUnits",
-          "doc": "Percentage waived, enhanced units basis"
-        },
-        {
-          "value": "6",
-          "name": "PointsPerBondOrContract",
-          "doc": "Points per bond or contract"
-        },
-        {
-          "value": "7",
-          "name": "BasisPoints",
-          "doc": "Basis points"
-        },
-        {
-          "value": "8",
-          "name": "AmountPerContract",
-          "doc": "Amount per contract"
-        }
-      ],
+      "FIX:codes": "commtypecodeset",
       "FIX:tag": "43036",
       "description": "Specifies the basis or unit used to calculate the commission.",
       "display": "UnderlyingReturnRateCommissionBasis"
@@ -1131,23 +557,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bid",
-          "doc": "Bid"
-        },
-        {
-          "value": "1",
-          "name": "Mid",
-          "doc": "Mid"
-        },
-        {
-          "value": "2",
-          "name": "Offer",
-          "doc": "Offer"
-        }
-      ],
+      "FIX:codes": "cashsettlquotemethodcodeset",
       "FIX:tag": "43044",
       "description": "Specifies the type of quote used to determine the return rate of the swap.",
       "display": "UnderlyingReturnRateQuoteMethod"
@@ -1184,48 +594,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Open",
-          "doc": "Open"
-        },
-        {
-          "value": "1",
-          "name": "OfficialSettlPx",
-          "doc": "Official settlement price time"
-        },
-        {
-          "value": "2",
-          "name": "Xetra",
-          "doc": "XETRA"
-        },
-        {
-          "value": "3",
-          "name": "Close",
-          "doc": "Close"
-        },
-        {
-          "value": "4",
-          "name": "DerivativesClose",
-          "doc": "Derivatives close"
-        },
-        {
-          "value": "5",
-          "name": "High",
-          "doc": "High"
-        },
-        {
-          "value": "6",
-          "name": "Low",
-          "doc": "Low"
-        },
-        {
-          "value": "7",
-          "name": "AsSpecifiedInMasterConfirmation",
-          "doc": "As specified in the master confirmation"
-        }
-      ],
+      "FIX:codes": "returnratequotetimetypecodeset",
       "FIX:tag": "43047",
       "description": "Specifies how or the timing when the quote is to be obtained.",
       "display": "UnderlyingReturnRateQuoteTimeType"
@@ -1325,48 +694,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Open",
-          "doc": "Open"
-        },
-        {
-          "value": "1",
-          "name": "OfficialSettlPx",
-          "doc": "Official settlement price time"
-        },
-        {
-          "value": "2",
-          "name": "Xetra",
-          "doc": "XETRA"
-        },
-        {
-          "value": "3",
-          "name": "Close",
-          "doc": "Close"
-        },
-        {
-          "value": "4",
-          "name": "DerivativesClose",
-          "doc": "Derivatives close"
-        },
-        {
-          "value": "5",
-          "name": "High",
-          "doc": "High"
-        },
-        {
-          "value": "6",
-          "name": "Low",
-          "doc": "Low"
-        },
-        {
-          "value": "7",
-          "name": "AsSpecifiedInMasterConfirmation",
-          "doc": "As specified in the master confirmation"
-        }
-      ],
+      "FIX:codes": "returnratequotetimetypecodeset",
       "FIX:tag": "43055",
       "description": "Specifies the timing at which the calculation agent values the underlying.",
       "display": "UnderlyingReturnRateValuationTimeType"
@@ -1404,23 +732,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "None",
-          "doc": "None (the default)"
-        },
-        {
-          "value": "1",
-          "name": "FuturesPrice",
-          "doc": "Futures price"
-        },
-        {
-          "value": "2",
-          "name": "OptionsPrice",
-          "doc": "Options price"
-        }
-      ],
+      "FIX:codes": "returnratevaluationpriceoptioncodeset",
       "FIX:tag": "43058",
       "description": "Indicates whether an ISDA price option applies, and if applicable which type of price.",
       "display": "UnderlyingReturnRateValuationPriceOption"
@@ -1433,18 +745,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Close",
-          "doc": "Close"
-        },
-        {
-          "value": "1",
-          "name": "HedgeElection",
-          "doc": "Hedge election"
-        }
-      ],
+      "FIX:codes": "complexeventpvfinalpriceelectionfallbackcodeset",
       "FIX:tag": "43059",
       "description": "Specifies the fallback provision for the hedging party in the determination of the final price.",
       "display": "UnderlyingReturnRateFinalPriceFallback"
@@ -1469,33 +770,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bloomberg",
-          "doc": "Bloomberg"
-        },
-        {
-          "value": "1",
-          "name": "Reuters",
-          "doc": "Reuters"
-        },
-        {
-          "value": "2",
-          "name": "Telerate",
-          "doc": "Telerate"
-        },
-        {
-          "value": "3",
-          "name": "ISDARateOption",
-          "doc": "ISDA Settlement Rate Option"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "ratesourcecodeset",
       "FIX:tag": "43061",
       "description": "Identifies the source of rate information. For FX the references source to be used for the FX spot rate.",
       "display": "UnderlyingReturnRateInformationSource"
@@ -1544,28 +819,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Gross",
-          "doc": "Gross"
-        },
-        {
-          "value": "1",
-          "name": "Net",
-          "doc": "Net"
-        },
-        {
-          "value": "2",
-          "name": "Accrued",
-          "doc": "Accrued"
-        },
-        {
-          "value": "3",
-          "name": "CleanNet",
-          "doc": "Clean net"
-        }
-      ],
+      "FIX:codes": "returnratepricebasiscodeset",
       "FIX:tag": "43065",
       "description": "The basis of the return price.",
       "display": "UnderlyingReturnRatePriceBasis"
@@ -1604,18 +858,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "AbsoluteTerms",
-          "doc": "Absolute terms"
-        },
-        {
-          "value": "1",
-          "name": "PercentageOfNotional",
-          "doc": "Percentage of notional"
-        }
-      ],
+      "FIX:codes": "returnratepricetypecodeset",
       "FIX:tag": "43068",
       "description": "Specifies whether the UnderlyingReturnRatePrice(43066) is expressed in absolute or relative terms.",
       "display": "UnderlyingReturnRatePriceType"
@@ -1677,18 +920,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Unadjusted",
-          "doc": "Unadjusted"
-        },
-        {
-          "value": "1",
-          "name": "Adjusted",
-          "doc": "Adjusted"
-        }
-      ],
+      "FIX:codes": "nondeliverablefixingdatetypecodeset",
       "FIX:tag": "43073",
       "description": "Specifies the type of return rate valuation date (e.g. adjusted for holidays).",
       "display": "UnderlyingReturnRateValuationDateType"
@@ -1738,48 +970,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "43077",
       "description": "The settlement method election date adjustment business day convention.",
       "display": "UnderlyingSettlMethodElectionDateBusinessDayConvention"
@@ -1816,28 +1007,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "43080",
       "description": "Time unit associated with the relative settlement method election date offset.",
       "display": "UnderlyingSettlMethodElectionDateOffsetUnit"
@@ -1850,38 +1020,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "43081",
       "description": "Specifies the day type of the relative settlement method election date offset.",
       "display": "UnderlyingSettlMethodElectionDateOffsetDayType"
@@ -1944,23 +1083,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Execution",
-          "doc": "Execution"
-        },
-        {
-          "value": "1",
-          "name": "PortfolioRebalancing",
-          "doc": "Portfolio rebalancing"
-        },
-        {
-          "value": "2",
-          "name": "Standard",
-          "doc": "Standard"
-        }
-      ],
+      "FIX:codes": "streamnotionaladjustmentscodeset",
       "FIX:tag": "43086",
       "description": "For equity swaps this specifies the conditions that govern the adjustment to the number of units of the swap.",
       "display": "UnderlyingStreamNotionalAdjustments"
@@ -1997,173 +1120,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "CUSIP",
-          "doc": "CUSIP"
-        },
-        {
-          "value": "2",
-          "name": "SEDOL",
-          "doc": "SEDOL"
-        },
-        {
-          "value": "3",
-          "name": "QUIK",
-          "doc": "QUIK"
-        },
-        {
-          "value": "4",
-          "name": "ISINNumber",
-          "doc": "ISIN"
-        },
-        {
-          "value": "5",
-          "name": "RICCode",
-          "doc": "RIC"
-        },
-        {
-          "value": "6",
-          "name": "ISOCurrencyCode",
-          "doc": "ISO Currency Code (ISO 4217)"
-        },
-        {
-          "value": "7",
-          "name": "ISOCountryCode",
-          "doc": "ISO Country Code"
-        },
-        {
-          "value": "8",
-          "name": "ExchangeSymbol",
-          "doc": "Exchange symbol"
-        },
-        {
-          "value": "9",
-          "name": "ConsolidatedTapeAssociation",
-          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
-        },
-        {
-          "value": "A",
-          "name": "BloombergSymbol",
-          "doc": "Bloomberg Symbol"
-        },
-        {
-          "value": "B",
-          "name": "Wertpapier",
-          "doc": "Wertpapier"
-        },
-        {
-          "value": "C",
-          "name": "Dutch",
-          "doc": "Dutch"
-        },
-        {
-          "value": "D",
-          "name": "Valoren",
-          "doc": "Valoren"
-        },
-        {
-          "value": "E",
-          "name": "Sicovam",
-          "doc": "Sicovam"
-        },
-        {
-          "value": "F",
-          "name": "Belgian",
-          "doc": "Belgian"
-        },
-        {
-          "value": "G",
-          "name": "Common",
-          "doc": "\"Common\" (Clearstream and Euroclear)"
-        },
-        {
-          "value": "H",
-          "name": "ClearingHouse",
-          "doc": "Clearing house / Clearing organization"
-        },
-        {
-          "value": "I",
-          "name": "ISDAFpMLSpecification",
-          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
-        },
-        {
-          "value": "J",
-          "name": "OptionPriceReportingAuthority",
-          "doc": "Option Price Reporting Authority"
-        },
-        {
-          "value": "K",
-          "name": "ISDAFpMLURL",
-          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
-        },
-        {
-          "value": "L",
-          "name": "LetterOfCredit",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "M",
-          "name": "MarketplaceAssignedIdentifier",
-          "doc": "Marketplace-assigned Identifier"
-        },
-        {
-          "value": "N",
-          "name": "MarkitREDEntityCLIP",
-          "doc": "Markit RED entity CLIP"
-        },
-        {
-          "value": "P",
-          "name": "MarkitREDPairCLIP",
-          "doc": "Markit RED pair CLIP"
-        },
-        {
-          "value": "Q",
-          "name": "CFTCCommodityCode",
-          "doc": "CFTC commodity code"
-        },
-        {
-          "value": "R",
-          "name": "ISDACommodityReferencePrice",
-          "doc": "ISDA Commodity Reference Price"
-        },
-        {
-          "value": "S",
-          "name": "FinancialInstrumentGlobalIdentifier",
-          "doc": "Financial Instrument Global Identifier"
-        },
-        {
-          "value": "T",
-          "name": "LegalEntityIdentifier",
-          "doc": "Legal entity identifier"
-        },
-        {
-          "value": "U",
-          "name": "Synthetic",
-          "doc": "Synthetic"
-        },
-        {
-          "value": "V",
-          "name": "FidessaInstrumentMnemonic",
-          "doc": "Fidessa Instrument Mnemonic (FIM)"
-        },
-        {
-          "value": "W",
-          "name": "IndexName",
-          "doc": "Index name"
-        },
-        {
-          "value": "X",
-          "name": "UniformSymbol",
-          "doc": "Uniform Symbol (UMTF Symbol)"
-        },
-        {
-          "value": "Y",
-          "name": "DigitalTokenIdentifier",
-          "doc": "Digital Token Identifier (ISO 24165)"
-        }
-      ],
+      "FIX:codes": "securityidsourcecodeset",
       "FIX:tag": "43089",
       "description": "Source for the floating rate index identified in LegPaymentStreamRateIndexID(43088).",
       "display": "LegPaymentStreamRateIndexIDSource"
@@ -2188,173 +1145,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "CUSIP",
-          "doc": "CUSIP"
-        },
-        {
-          "value": "2",
-          "name": "SEDOL",
-          "doc": "SEDOL"
-        },
-        {
-          "value": "3",
-          "name": "QUIK",
-          "doc": "QUIK"
-        },
-        {
-          "value": "4",
-          "name": "ISINNumber",
-          "doc": "ISIN"
-        },
-        {
-          "value": "5",
-          "name": "RICCode",
-          "doc": "RIC"
-        },
-        {
-          "value": "6",
-          "name": "ISOCurrencyCode",
-          "doc": "ISO Currency Code (ISO 4217)"
-        },
-        {
-          "value": "7",
-          "name": "ISOCountryCode",
-          "doc": "ISO Country Code"
-        },
-        {
-          "value": "8",
-          "name": "ExchangeSymbol",
-          "doc": "Exchange symbol"
-        },
-        {
-          "value": "9",
-          "name": "ConsolidatedTapeAssociation",
-          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
-        },
-        {
-          "value": "A",
-          "name": "BloombergSymbol",
-          "doc": "Bloomberg Symbol"
-        },
-        {
-          "value": "B",
-          "name": "Wertpapier",
-          "doc": "Wertpapier"
-        },
-        {
-          "value": "C",
-          "name": "Dutch",
-          "doc": "Dutch"
-        },
-        {
-          "value": "D",
-          "name": "Valoren",
-          "doc": "Valoren"
-        },
-        {
-          "value": "E",
-          "name": "Sicovam",
-          "doc": "Sicovam"
-        },
-        {
-          "value": "F",
-          "name": "Belgian",
-          "doc": "Belgian"
-        },
-        {
-          "value": "G",
-          "name": "Common",
-          "doc": "\"Common\" (Clearstream and Euroclear)"
-        },
-        {
-          "value": "H",
-          "name": "ClearingHouse",
-          "doc": "Clearing house / Clearing organization"
-        },
-        {
-          "value": "I",
-          "name": "ISDAFpMLSpecification",
-          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
-        },
-        {
-          "value": "J",
-          "name": "OptionPriceReportingAuthority",
-          "doc": "Option Price Reporting Authority"
-        },
-        {
-          "value": "K",
-          "name": "ISDAFpMLURL",
-          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
-        },
-        {
-          "value": "L",
-          "name": "LetterOfCredit",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "M",
-          "name": "MarketplaceAssignedIdentifier",
-          "doc": "Marketplace-assigned Identifier"
-        },
-        {
-          "value": "N",
-          "name": "MarkitREDEntityCLIP",
-          "doc": "Markit RED entity CLIP"
-        },
-        {
-          "value": "P",
-          "name": "MarkitREDPairCLIP",
-          "doc": "Markit RED pair CLIP"
-        },
-        {
-          "value": "Q",
-          "name": "CFTCCommodityCode",
-          "doc": "CFTC commodity code"
-        },
-        {
-          "value": "R",
-          "name": "ISDACommodityReferencePrice",
-          "doc": "ISDA Commodity Reference Price"
-        },
-        {
-          "value": "S",
-          "name": "FinancialInstrumentGlobalIdentifier",
-          "doc": "Financial Instrument Global Identifier"
-        },
-        {
-          "value": "T",
-          "name": "LegalEntityIdentifier",
-          "doc": "Legal entity identifier"
-        },
-        {
-          "value": "U",
-          "name": "Synthetic",
-          "doc": "Synthetic"
-        },
-        {
-          "value": "V",
-          "name": "FidessaInstrumentMnemonic",
-          "doc": "Fidessa Instrument Mnemonic (FIM)"
-        },
-        {
-          "value": "W",
-          "name": "IndexName",
-          "doc": "Index name"
-        },
-        {
-          "value": "X",
-          "name": "UniformSymbol",
-          "doc": "Uniform Symbol (UMTF Symbol)"
-        },
-        {
-          "value": "Y",
-          "name": "DigitalTokenIdentifier",
-          "doc": "Digital Token Identifier (ISO 24165)"
-        }
-      ],
+      "FIX:codes": "securityidsourcecodeset",
       "FIX:tag": "43091",
       "description": "Source for the floating rate index identified in PaymentStreamRateIndexID(43090).",
       "display": "PaymentStreamRateIndexIDSource"
@@ -2379,173 +1170,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "CUSIP",
-          "doc": "CUSIP"
-        },
-        {
-          "value": "2",
-          "name": "SEDOL",
-          "doc": "SEDOL"
-        },
-        {
-          "value": "3",
-          "name": "QUIK",
-          "doc": "QUIK"
-        },
-        {
-          "value": "4",
-          "name": "ISINNumber",
-          "doc": "ISIN"
-        },
-        {
-          "value": "5",
-          "name": "RICCode",
-          "doc": "RIC"
-        },
-        {
-          "value": "6",
-          "name": "ISOCurrencyCode",
-          "doc": "ISO Currency Code (ISO 4217)"
-        },
-        {
-          "value": "7",
-          "name": "ISOCountryCode",
-          "doc": "ISO Country Code"
-        },
-        {
-          "value": "8",
-          "name": "ExchangeSymbol",
-          "doc": "Exchange symbol"
-        },
-        {
-          "value": "9",
-          "name": "ConsolidatedTapeAssociation",
-          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
-        },
-        {
-          "value": "A",
-          "name": "BloombergSymbol",
-          "doc": "Bloomberg Symbol"
-        },
-        {
-          "value": "B",
-          "name": "Wertpapier",
-          "doc": "Wertpapier"
-        },
-        {
-          "value": "C",
-          "name": "Dutch",
-          "doc": "Dutch"
-        },
-        {
-          "value": "D",
-          "name": "Valoren",
-          "doc": "Valoren"
-        },
-        {
-          "value": "E",
-          "name": "Sicovam",
-          "doc": "Sicovam"
-        },
-        {
-          "value": "F",
-          "name": "Belgian",
-          "doc": "Belgian"
-        },
-        {
-          "value": "G",
-          "name": "Common",
-          "doc": "\"Common\" (Clearstream and Euroclear)"
-        },
-        {
-          "value": "H",
-          "name": "ClearingHouse",
-          "doc": "Clearing house / Clearing organization"
-        },
-        {
-          "value": "I",
-          "name": "ISDAFpMLSpecification",
-          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
-        },
-        {
-          "value": "J",
-          "name": "OptionPriceReportingAuthority",
-          "doc": "Option Price Reporting Authority"
-        },
-        {
-          "value": "K",
-          "name": "ISDAFpMLURL",
-          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
-        },
-        {
-          "value": "L",
-          "name": "LetterOfCredit",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "M",
-          "name": "MarketplaceAssignedIdentifier",
-          "doc": "Marketplace-assigned Identifier"
-        },
-        {
-          "value": "N",
-          "name": "MarkitREDEntityCLIP",
-          "doc": "Markit RED entity CLIP"
-        },
-        {
-          "value": "P",
-          "name": "MarkitREDPairCLIP",
-          "doc": "Markit RED pair CLIP"
-        },
-        {
-          "value": "Q",
-          "name": "CFTCCommodityCode",
-          "doc": "CFTC commodity code"
-        },
-        {
-          "value": "R",
-          "name": "ISDACommodityReferencePrice",
-          "doc": "ISDA Commodity Reference Price"
-        },
-        {
-          "value": "S",
-          "name": "FinancialInstrumentGlobalIdentifier",
-          "doc": "Financial Instrument Global Identifier"
-        },
-        {
-          "value": "T",
-          "name": "LegalEntityIdentifier",
-          "doc": "Legal entity identifier"
-        },
-        {
-          "value": "U",
-          "name": "Synthetic",
-          "doc": "Synthetic"
-        },
-        {
-          "value": "V",
-          "name": "FidessaInstrumentMnemonic",
-          "doc": "Fidessa Instrument Mnemonic (FIM)"
-        },
-        {
-          "value": "W",
-          "name": "IndexName",
-          "doc": "Index name"
-        },
-        {
-          "value": "X",
-          "name": "UniformSymbol",
-          "doc": "Uniform Symbol (UMTF Symbol)"
-        },
-        {
-          "value": "Y",
-          "name": "DigitalTokenIdentifier",
-          "doc": "Digital Token Identifier (ISO 24165)"
-        }
-      ],
+      "FIX:codes": "securityidsourcecodeset",
       "FIX:tag": "43093",
       "description": "Source for the floating rate index identified in UnderlyingPaymentStreamRateIndexID(43092).",
       "display": "UnderlyingPaymentStreamRateIndexIDSource"

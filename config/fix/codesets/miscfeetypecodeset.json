@@ -1,0 +1,185 @@
+{
+  "name": "miscfeetypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Regulatory",
+      "doc": "Regulatory (e.g. SEC)"
+    },
+    {
+      "value": "2",
+      "name": "Tax",
+      "doc": "Tax"
+    },
+    {
+      "value": "3",
+      "name": "LocalCommission",
+      "doc": "Local Commission"
+    },
+    {
+      "value": "4",
+      "name": "ExchangeFees",
+      "doc": "Exchange Fees"
+    },
+    {
+      "value": "5",
+      "name": "Stamp",
+      "doc": "Stamp"
+    },
+    {
+      "value": "6",
+      "name": "Levy",
+      "doc": "Levy"
+    },
+    {
+      "value": "7",
+      "name": "Other",
+      "doc": "Other"
+    },
+    {
+      "value": "8",
+      "name": "Markup",
+      "doc": "Markup"
+    },
+    {
+      "value": "9",
+      "name": "ConsumptionTax",
+      "doc": "Consumption Tax"
+    },
+    {
+      "value": "10",
+      "name": "PerTransaction",
+      "doc": "Per transaction"
+    },
+    {
+      "value": "11",
+      "name": "Conversion",
+      "doc": "Conversion"
+    },
+    {
+      "value": "12",
+      "name": "Agent",
+      "doc": "Agent"
+    },
+    {
+      "value": "13",
+      "name": "TransferFee",
+      "doc": "Transfer Fee"
+    },
+    {
+      "value": "14",
+      "name": "SecurityLending",
+      "doc": "Security Lending"
+    },
+    {
+      "value": "15",
+      "name": "TradeReporting",
+      "doc": "Trade reporting"
+    },
+    {
+      "value": "16",
+      "name": "TaxOnPrincipalAmount",
+      "doc": "Tax on principal amount"
+    },
+    {
+      "value": "17",
+      "name": "TaxOnAccruedInterestAmount",
+      "doc": "Tax on accrued interest amount"
+    },
+    {
+      "value": "18",
+      "name": "NewIssuanceFee",
+      "doc": "New issuance fee"
+    },
+    {
+      "value": "19",
+      "name": "ServiceFee",
+      "doc": "Service fee"
+    },
+    {
+      "value": "20",
+      "name": "OddLotFee",
+      "doc": "Odd lot fee"
+    },
+    {
+      "value": "21",
+      "name": "AuctionFee",
+      "doc": "Auction fee"
+    },
+    {
+      "value": "22",
+      "name": "ValueAddedTax",
+      "doc": "Value Added tax - VAT"
+    },
+    {
+      "value": "23",
+      "name": "SalesTax",
+      "doc": "Sales tax"
+    },
+    {
+      "value": "24",
+      "name": "ExecutionFee",
+      "doc": "Execution venue fee"
+    },
+    {
+      "value": "25",
+      "name": "OrderEntryFee",
+      "doc": "Order or quote entry fee"
+    },
+    {
+      "value": "26",
+      "name": "OrderModificationFee",
+      "doc": "Order or quote modification fee"
+    },
+    {
+      "value": "27",
+      "name": "OrdersCancellationFee",
+      "doc": "Orders or quote cancellation fee"
+    },
+    {
+      "value": "28",
+      "name": "MarketDataAccessFee",
+      "doc": "Market data access fee"
+    },
+    {
+      "value": "29",
+      "name": "MarketDataTerminalFee",
+      "doc": "Market data terminal fee"
+    },
+    {
+      "value": "30",
+      "name": "MarketDataVolumeFee",
+      "doc": "Market data volume fee"
+    },
+    {
+      "value": "31",
+      "name": "ClearingFee",
+      "doc": "Clearing fee"
+    },
+    {
+      "value": "32",
+      "name": "SettlementFee",
+      "doc": "Settlement fee"
+    },
+    {
+      "value": "33",
+      "name": "Rebates",
+      "doc": "Rebates"
+    },
+    {
+      "value": "34",
+      "name": "Discounts",
+      "doc": "Discounts"
+    },
+    {
+      "value": "35",
+      "name": "Payments",
+      "doc": "Payments"
+    },
+    {
+      "value": "36",
+      "name": "NonMonetaryPayments",
+      "doc": "Non-monetary payments"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "underlyingcashtypecodeset",
+  "codes": [
+    {
+      "value": "FIXED",
+      "name": "FIXED",
+      "doc": "FIXED"
+    },
+    {
+      "value": "DIFF",
+      "name": "DIFF",
+      "doc": "DIFF"
+    }
+  ]
+}

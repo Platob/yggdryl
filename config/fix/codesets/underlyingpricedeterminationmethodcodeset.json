@@ -1,0 +1,25 @@
+{
+  "name": "underlyingpricedeterminationmethodcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Regular",
+      "doc": "Regular"
+    },
+    {
+      "value": "2",
+      "name": "SpecialReference",
+      "doc": "Special reference"
+    },
+    {
+      "value": "3",
+      "name": "OptimalValue",
+      "doc": "Optimal value (Lookback)"
+    },
+    {
+      "value": "4",
+      "name": "AverageValue",
+      "doc": "Average value (Asian option)"
+    }
+  ]
+}

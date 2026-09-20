@@ -56,28 +56,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NoRestriction",
-          "doc": "No restriction"
-        },
-        {
-          "value": "1",
-          "name": "TradedOnlyOnTradingVenue",
-          "doc": "Can be traded only on a trading venue"
-        },
-        {
-          "value": "2",
-          "name": "TradedOnlyOnSI",
-          "doc": "Can be traded only on a Systematic Internaliser (SI)"
-        },
-        {
-          "value": "3",
-          "name": "TradedOnTradingVenueOrSI",
-          "doc": "Can be traded on a trading venue or Systematic internaliser (SI)"
-        }
-      ],
+      "FIX:codes": "exdestinationtypecodeset",
       "FIX:tag": "2704",
       "description": "Identifies the type of execution destination for the order.",
       "display": "ExDestinationType"
@@ -90,23 +69,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Normal",
-          "doc": "Normal"
-        },
-        {
-          "value": "1",
-          "name": "Stressed",
-          "doc": "Stressed"
-        },
-        {
-          "value": "2",
-          "name": "Exceptional",
-          "doc": "Exceptional"
-        }
-      ],
+      "FIX:codes": "marketconditioncodeset",
       "FIX:tag": "2705",
       "description": "Market condition. In the context of ESMA RTS 8 it is important that trading venues communicate the condition of the market, particularly \"stressed\" and \"exceptional\", in order to provide incentives for firms contributing to liquidity.",
       "display": "MarketCondition"
@@ -131,33 +94,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "QuoteAboveStandardMarketSize",
-          "doc": "Quote is above standard market size"
-        },
-        {
-          "value": "1",
-          "name": "QuoteAboveSpecificInstrumentSize",
-          "doc": "Quote is above size specific to the instrument"
-        },
-        {
-          "value": "2",
-          "name": "QuoteApplicableForLiquidtyProvisionActivity",
-          "doc": "Quote applicable for liquidity provision activity"
-        },
-        {
-          "value": "3",
-          "name": "QuoteIssuerStatus",
-          "doc": "Quote issuer status"
-        },
-        {
-          "value": "4",
-          "name": "BidOrAskRequest",
-          "doc": "Bid or ask request"
-        }
-      ],
+      "FIX:codes": "quoteattributetypecodeset",
       "FIX:tag": "2707",
       "description": "The type of attribute for the quote.",
       "display": "QuoteAttributeType"
@@ -194,23 +131,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "AccruedInterestIsFactored",
-          "doc": "Accrued interest (if any) is factored into the price"
-        },
-        {
-          "value": "1",
-          "name": "TaxIsFactored",
-          "doc": "Tax is factored into the price"
-        },
-        {
-          "value": "2",
-          "name": "BondAmortizationIsFactored",
-          "doc": "The effect of bond amortization or the floating rate index offset is factored into the price"
-        }
-      ],
+      "FIX:codes": "pricequalifiercodeset",
       "FIX:tag": "2710",
       "description": "Qualifier for price. May be used when the price needs to be explicitly qualified.",
       "display": "PriceQualifier"
@@ -223,23 +144,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Range1",
-          "doc": "Range 1"
-        },
-        {
-          "value": "2",
-          "name": "Range2",
-          "doc": "Range 2"
-        },
-        {
-          "value": "3",
-          "name": "Range3",
-          "doc": "Range 3"
-        }
-      ],
+      "FIX:codes": "mdvaluetiercodeset",
       "FIX:tag": "2711",
       "description": "Describes the reporting ranges for executed transactions.",
       "display": "MDValueTier"
@@ -252,18 +157,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Contributes",
-          "doc": "Contributes (default)"
-        },
-        {
-          "value": "1",
-          "name": "DoesNotContribute",
-          "doc": "Does not contribute"
-        }
-      ],
+      "FIX:codes": "miscfeequalifiercodeset",
       "FIX:tag": "2712",
       "description": "Identifies whether the current entry contributes to the trade or transaction economics, i.e. affects NetMoney(118).",
       "display": "MiscFeeQualifier"
@@ -396,28 +290,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreamrateindexcurveunitcodeset",
       "FIX:tag": "2723",
       "description": "Curve time unit associated with the underlying index.",
       "display": "UnderlyingIndexCurveUnit"
@@ -442,26 +315,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "ResearchPaymentAccount",
-          "group": "Research Payment",
-          "doc": "Research payment account (RPA)"
-        },
-        {
-          "value": "1",
-          "name": "CommissionSharingAgreement",
-          "group": "Research Payment",
-          "doc": "Commission sharing agreement (CSA)"
-        },
-        {
-          "value": "2",
-          "name": "OtherTypeResearchPayment",
-          "group": "Research Payment",
-          "doc": "Other type of research payment"
-        }
-      ],
+      "FIX:codes": "commissionamountsubtypecodeset",
       "FIX:tag": "2725",
       "description": "Further sub classification of the CommissionAmountType(2641).",
       "display": "CommissionAmountSubType"
@@ -474,26 +328,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "ResearchPaymentAccount",
-          "group": "Research Payment",
-          "doc": "Research payment account (RPA)"
-        },
-        {
-          "value": "1",
-          "name": "CommissionSharingAgreement",
-          "group": "Research Payment",
-          "doc": "Commission sharing agreement (CSA)"
-        },
-        {
-          "value": "2",
-          "name": "OtherTypeResearchPayment",
-          "group": "Research Payment",
-          "doc": "Other type of research payment"
-        }
-      ],
+      "FIX:codes": "commissionamountsubtypecodeset",
       "FIX:tag": "2726",
       "description": "Further sub classification of the AllocCommissionAmountType(2655).",
       "display": "AllocCommissionAmountSubType"
@@ -544,28 +379,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreamrateindexcurveunitcodeset",
       "FIX:tag": "2730",
       "description": "Time unit associated with the floating rate index identified in FloatingRateIndexID(2731).",
       "display": "FloatingRateIndexCurveUnit"
@@ -590,173 +404,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "CUSIP",
-          "doc": "CUSIP"
-        },
-        {
-          "value": "2",
-          "name": "SEDOL",
-          "doc": "SEDOL"
-        },
-        {
-          "value": "3",
-          "name": "QUIK",
-          "doc": "QUIK"
-        },
-        {
-          "value": "4",
-          "name": "ISINNumber",
-          "doc": "ISIN"
-        },
-        {
-          "value": "5",
-          "name": "RICCode",
-          "doc": "RIC"
-        },
-        {
-          "value": "6",
-          "name": "ISOCurrencyCode",
-          "doc": "ISO Currency Code (ISO 4217)"
-        },
-        {
-          "value": "7",
-          "name": "ISOCountryCode",
-          "doc": "ISO Country Code"
-        },
-        {
-          "value": "8",
-          "name": "ExchangeSymbol",
-          "doc": "Exchange symbol"
-        },
-        {
-          "value": "9",
-          "name": "ConsolidatedTapeAssociation",
-          "doc": "Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)"
-        },
-        {
-          "value": "A",
-          "name": "BloombergSymbol",
-          "doc": "Bloomberg Symbol"
-        },
-        {
-          "value": "B",
-          "name": "Wertpapier",
-          "doc": "Wertpapier"
-        },
-        {
-          "value": "C",
-          "name": "Dutch",
-          "doc": "Dutch"
-        },
-        {
-          "value": "D",
-          "name": "Valoren",
-          "doc": "Valoren"
-        },
-        {
-          "value": "E",
-          "name": "Sicovam",
-          "doc": "Sicovam"
-        },
-        {
-          "value": "F",
-          "name": "Belgian",
-          "doc": "Belgian"
-        },
-        {
-          "value": "G",
-          "name": "Common",
-          "doc": "\"Common\" (Clearstream and Euroclear)"
-        },
-        {
-          "value": "H",
-          "name": "ClearingHouse",
-          "doc": "Clearing house / Clearing organization"
-        },
-        {
-          "value": "I",
-          "name": "ISDAFpMLSpecification",
-          "doc": "ISDA/FpML product specification (XML in SecurityXML(1185))"
-        },
-        {
-          "value": "J",
-          "name": "OptionPriceReportingAuthority",
-          "doc": "Option Price Reporting Authority"
-        },
-        {
-          "value": "K",
-          "name": "ISDAFpMLURL",
-          "doc": "ISDA/FpML product URL (URL in SecurityID(48))"
-        },
-        {
-          "value": "L",
-          "name": "LetterOfCredit",
-          "doc": "Letter of credit"
-        },
-        {
-          "value": "M",
-          "name": "MarketplaceAssignedIdentifier",
-          "doc": "Marketplace-assigned Identifier"
-        },
-        {
-          "value": "N",
-          "name": "MarkitREDEntityCLIP",
-          "doc": "Markit RED entity CLIP"
-        },
-        {
-          "value": "P",
-          "name": "MarkitREDPairCLIP",
-          "doc": "Markit RED pair CLIP"
-        },
-        {
-          "value": "Q",
-          "name": "CFTCCommodityCode",
-          "doc": "CFTC commodity code"
-        },
-        {
-          "value": "R",
-          "name": "ISDACommodityReferencePrice",
-          "doc": "ISDA Commodity Reference Price"
-        },
-        {
-          "value": "S",
-          "name": "FinancialInstrumentGlobalIdentifier",
-          "doc": "Financial Instrument Global Identifier"
-        },
-        {
-          "value": "T",
-          "name": "LegalEntityIdentifier",
-          "doc": "Legal entity identifier"
-        },
-        {
-          "value": "U",
-          "name": "Synthetic",
-          "doc": "Synthetic"
-        },
-        {
-          "value": "V",
-          "name": "FidessaInstrumentMnemonic",
-          "doc": "Fidessa Instrument Mnemonic (FIM)"
-        },
-        {
-          "value": "W",
-          "name": "IndexName",
-          "doc": "Index name"
-        },
-        {
-          "value": "X",
-          "name": "UniformSymbol",
-          "doc": "Uniform Symbol (UMTF Symbol)"
-        },
-        {
-          "value": "Y",
-          "name": "DigitalTokenIdentifier",
-          "doc": "Digital Token Identifier (ISO 24165)"
-        }
-      ],
+      "FIX:codes": "securityidsourcecodeset",
       "FIX:tag": "2732",
       "description": "Source for the floating rate index identified in FloatingRateIndexID(2731).",
       "display": "FloatingRateIndexIDSource"
@@ -805,43 +453,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "ArgusMcCloskey",
-          "doc": "Argus McCloskey"
-        },
-        {
-          "value": "1",
-          "name": "Baltic",
-          "doc": "Baltic"
-        },
-        {
-          "value": "2",
-          "name": "Exchange",
-          "doc": "Exchange"
-        },
-        {
-          "value": "3",
-          "name": "GlobalCoal",
-          "doc": "Global Coal"
-        },
-        {
-          "value": "4",
-          "name": "IHSMcCloskey",
-          "doc": "IHS McCloskey"
-        },
-        {
-          "value": "5",
-          "name": "Platts",
-          "doc": "Platts"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "commodityfinalpricetypecodeset",
       "FIX:tag": "2736",
       "description": "Final price type of the commodity as specified by the trading venue.",
       "display": "CommodityFinalPriceType"
@@ -989,28 +601,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "AdmitToTradeRequestDate",
-          "doc": "Date of request for admission to trading"
-        },
-        {
-          "value": "1",
-          "name": "AdmitToTradeApprovalDate",
-          "doc": "Date of approval of admission to trading"
-        },
-        {
-          "value": "2",
-          "name": "AdmitToTradeOrFirstTradeDate",
-          "doc": "Date of admission to trading or date of first trade"
-        },
-        {
-          "value": "3",
-          "name": "TerminationDate",
-          "doc": "Termination date"
-        }
-      ],
+      "FIX:codes": "referencedatadatetypecodeset",
       "FIX:tag": "2748",
       "description": "Reference data entry's date-time type.",
       "display": "ReferenceDataDateType"
@@ -1077,58 +668,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Dividend",
-          "doc": "Dividend"
-        },
-        {
-          "value": "2",
-          "name": "Variance",
-          "doc": "Variance"
-        },
-        {
-          "value": "3",
-          "name": "Volatility",
-          "doc": "Volatility"
-        },
-        {
-          "value": "4",
-          "name": "TotalReturn",
-          "doc": "Total return"
-        },
-        {
-          "value": "5",
-          "name": "ContractForDifference",
-          "doc": "Contract for difference"
-        },
-        {
-          "value": "6",
-          "name": "CreditDefault",
-          "doc": "Credit default"
-        },
-        {
-          "value": "7",
-          "name": "SpreadBet",
-          "doc": "Spread bet"
-        },
-        {
-          "value": "8",
-          "name": "Price",
-          "doc": "Price"
-        },
-        {
-          "value": "9",
-          "name": "ForwardPriceUnderlyingInstrument",
-          "doc": "Forward price of underlying instrument"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "returntriggercodeset",
       "FIX:tag": "2753",
       "description": "Indicates the type of return or payout trigger for the swap or forward.",
       "display": "ReturnTrigger"
@@ -1153,58 +693,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Dividend",
-          "doc": "Dividend"
-        },
-        {
-          "value": "2",
-          "name": "Variance",
-          "doc": "Variance"
-        },
-        {
-          "value": "3",
-          "name": "Volatility",
-          "doc": "Volatility"
-        },
-        {
-          "value": "4",
-          "name": "TotalReturn",
-          "doc": "Total return"
-        },
-        {
-          "value": "5",
-          "name": "ContractForDifference",
-          "doc": "Contract for difference"
-        },
-        {
-          "value": "6",
-          "name": "CreditDefault",
-          "doc": "Credit default"
-        },
-        {
-          "value": "7",
-          "name": "SpreadBet",
-          "doc": "Spread bet"
-        },
-        {
-          "value": "8",
-          "name": "Price",
-          "doc": "Price"
-        },
-        {
-          "value": "9",
-          "name": "ForwardPriceUnderlyingInstrument",
-          "doc": "Forward price of underlying instrument"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "returntriggercodeset",
       "FIX:tag": "2755",
       "description": "Indicates the type of return or payout trigger for the swap or forward.",
       "display": "LegReturnTrigger"
@@ -1229,58 +718,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Dividend",
-          "doc": "Dividend"
-        },
-        {
-          "value": "2",
-          "name": "Variance",
-          "doc": "Variance"
-        },
-        {
-          "value": "3",
-          "name": "Volatility",
-          "doc": "Volatility"
-        },
-        {
-          "value": "4",
-          "name": "TotalReturn",
-          "doc": "Total return"
-        },
-        {
-          "value": "5",
-          "name": "ContractForDifference",
-          "doc": "Contract for difference"
-        },
-        {
-          "value": "6",
-          "name": "CreditDefault",
-          "doc": "Credit default"
-        },
-        {
-          "value": "7",
-          "name": "SpreadBet",
-          "doc": "Spread bet"
-        },
-        {
-          "value": "8",
-          "name": "Price",
-          "doc": "Price"
-        },
-        {
-          "value": "9",
-          "name": "ForwardPriceUnderlyingInstrument",
-          "doc": "Forward price of underlying instrument"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "returntriggercodeset",
       "FIX:tag": "2757",
       "description": "Indicates the type of return or payout trigger for the swap or forward.",
       "display": "UnderlyingReturnTrigger"
@@ -1361,28 +799,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "TimeWeightedAveragePrice",
-          "doc": "Time weighted average price"
-        },
-        {
-          "value": "1",
-          "name": "VolumeWeightedAveragePrice",
-          "doc": "Volume weighted average price"
-        },
-        {
-          "value": "2",
-          "name": "PercentOfVolumeAveragePrice",
-          "doc": "Percent of volume average price"
-        },
-        {
-          "value": "3",
-          "name": "LimitOrderAveragePrice",
-          "doc": "Limit order average price"
-        }
-      ],
+      "FIX:codes": "averagepricetypecodeset",
       "FIX:tag": "2763",
       "description": "The average pricing model used for block trades.",
       "display": "AveragePriceType"
@@ -1435,33 +852,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Added",
-          "doc": "Added"
-        },
-        {
-          "value": "1",
-          "name": "Canceled",
-          "doc": "Canceled"
-        },
-        {
-          "value": "2",
-          "name": "Replaced",
-          "doc": "Replaced"
-        },
-        {
-          "value": "3",
-          "name": "Changed",
-          "doc": "Changed"
-        },
-        {
-          "value": "4",
-          "name": "Pending",
-          "doc": "Pending"
-        }
-      ],
+      "FIX:codes": "allocgroupstatuscodeset",
       "FIX:tag": "2767",
       "description": "Status of the trade give-up relative to the group identified in AllocGroupID(1730).",
       "display": "AllocGroupStatus"
@@ -1474,18 +865,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Accepted",
-          "doc": "Accepted"
-        },
-        {
-          "value": "1",
-          "name": "Rejected",
-          "doc": "Rejected"
-        }
-      ],
+      "FIX:codes": "allocrequeststatuscodeset",
       "FIX:tag": "2768",
       "description": "Status of the AllocationInstructionAlertRequest(35=DU).",
       "display": "AllocRequestStatus"
@@ -1498,33 +878,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NoAveragePricing",
-          "doc": "No average pricing"
-        },
-        {
-          "value": "1",
-          "name": "Trade",
-          "doc": "Trade is part of an average price group identified by the AvgPxGroupID(1731)"
-        },
-        {
-          "value": "2",
-          "name": "LastTrade",
-          "doc": "Last trade of the average price group identified by the AvgPxGroupID(1731)"
-        },
-        {
-          "value": "3",
-          "name": "NotionalValueAveragePxGroupTrade",
-          "doc": "Trade is part of a notional value average price group"
-        },
-        {
-          "value": "4",
-          "name": "AveragePricedTrade",
-          "doc": "Trade is average priced"
-        }
-      ],
+      "FIX:codes": "avgpxindicatorcodeset",
       "FIX:tag": "2769",
       "description": "Average pricing indicator at the allocation level.",
       "display": "AllocAvgPxIndicator"
@@ -1573,43 +927,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NoMatchingConfirmation",
-          "doc": "No matching confirmation"
-        },
-        {
-          "value": "1",
-          "name": "NoMatchingAllocation",
-          "doc": "No matching allocation"
-        },
-        {
-          "value": "2",
-          "name": "AllocationDataElementMissing",
-          "doc": "Allocation data element missing"
-        },
-        {
-          "value": "3",
-          "name": "ConfirmationDataElementMissing",
-          "doc": "Confirmation data element missing"
-        },
-        {
-          "value": "4",
-          "name": "DataDifferenceNotWithinTolerance",
-          "doc": "Data difference not within tolerance"
-        },
-        {
-          "value": "5",
-          "name": "MatchWithinTolerance",
-          "doc": "Match within tolerance"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "matchexceptiontypecodeset",
       "FIX:tag": "2773",
       "description": "Type of matching exception.",
       "display": "MatchExceptionType"
@@ -1622,98 +940,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "AccruedInterest",
-          "doc": "Accrued interest"
-        },
-        {
-          "value": "2",
-          "name": "DealPrice",
-          "doc": "Deal price"
-        },
-        {
-          "value": "3",
-          "name": "TradeDate",
-          "doc": "Trade date"
-        },
-        {
-          "value": "4",
-          "name": "SettlementDate",
-          "doc": "Settlement date"
-        },
-        {
-          "value": "5",
-          "name": "SideIndicator",
-          "doc": "Side indicator"
-        },
-        {
-          "value": "6",
-          "name": "TradedCurrency",
-          "doc": "Traded currency"
-        },
-        {
-          "value": "7",
-          "name": "AccountID",
-          "doc": "Account ID"
-        },
-        {
-          "value": "8",
-          "name": "ExecutingBrokerID",
-          "doc": "Executing broker ID"
-        },
-        {
-          "value": "9",
-          "name": "SettlementCurrencyAndAmount",
-          "doc": "Settlement currency and amount"
-        },
-        {
-          "value": "10",
-          "name": "InvestmentManagerID",
-          "doc": "Investment manager ID"
-        },
-        {
-          "value": "11",
-          "name": "NetAmount",
-          "doc": "Net amount"
-        },
-        {
-          "value": "12",
-          "name": "PlaceOfSettlement",
-          "doc": "Place of settlement"
-        },
-        {
-          "value": "13",
-          "name": "Commissions",
-          "doc": "Commissions"
-        },
-        {
-          "value": "14",
-          "name": "SecurityIdentifier",
-          "doc": "Security identifier"
-        },
-        {
-          "value": "15",
-          "name": "QualityAllocated",
-          "doc": "Quantity allocated"
-        },
-        {
-          "value": "16",
-          "name": "Principal",
-          "doc": "Principal"
-        },
-        {
-          "value": "17",
-          "name": "Fees",
-          "doc": "Fees"
-        },
-        {
-          "value": "18",
-          "name": "Tax",
-          "doc": "Tax"
-        }
-      ],
+      "FIX:codes": "matchexceptionelementtypecodeset",
       "FIX:tag": "2774",
       "description": "Identifies the data point used in the matching operation which resulted in an exception.",
       "display": "MatchExceptionElementType"
@@ -1774,18 +1001,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "FixedAmount",
-          "doc": "Fixed amount"
-        },
-        {
-          "value": "2",
-          "name": "Percentage",
-          "doc": "Percentage"
-        }
-      ],
+      "FIX:codes": "matchexceptiontolerancevaluetypecodeset",
       "FIX:tag": "2779",
       "description": "The type of value in MatchExceptionToleranceValue(2778). Omitted if no tolerance is allowed or not applicable.",
       "display": "MatchExceptionToleranceValueType"
@@ -1822,18 +1038,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Mandatory",
-          "doc": "Mandatory"
-        },
-        {
-          "value": "2",
-          "name": "Optional",
-          "doc": "Optional"
-        }
-      ],
+      "FIX:codes": "matchingdatapointindicatorcodeset",
       "FIX:tag": "2782",
       "description": "Data point's matching type.",
       "display": "MatchingDataPointIndicator"
@@ -1858,98 +1063,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "AccruedInterest",
-          "doc": "Accrued interest"
-        },
-        {
-          "value": "2",
-          "name": "DealPrice",
-          "doc": "Deal price"
-        },
-        {
-          "value": "3",
-          "name": "TradeDate",
-          "doc": "Trade date"
-        },
-        {
-          "value": "4",
-          "name": "SettlementDate",
-          "doc": "Settlement date"
-        },
-        {
-          "value": "5",
-          "name": "SideIndicator",
-          "doc": "Side indicator"
-        },
-        {
-          "value": "6",
-          "name": "TradedCurrency",
-          "doc": "Traded currency"
-        },
-        {
-          "value": "7",
-          "name": "AccountID",
-          "doc": "Account ID"
-        },
-        {
-          "value": "8",
-          "name": "ExecutingBrokerID",
-          "doc": "Executing broker ID"
-        },
-        {
-          "value": "9",
-          "name": "SettlementCurrencyAndAmount",
-          "doc": "Settlement currency and amount"
-        },
-        {
-          "value": "10",
-          "name": "InvestmentManagerID",
-          "doc": "Investment manager ID"
-        },
-        {
-          "value": "11",
-          "name": "NetAmount",
-          "doc": "Net amount"
-        },
-        {
-          "value": "12",
-          "name": "PlaceOfSettlement",
-          "doc": "Place of settlement"
-        },
-        {
-          "value": "13",
-          "name": "Commissions",
-          "doc": "Commissions"
-        },
-        {
-          "value": "14",
-          "name": "SecurityIdentifier",
-          "doc": "Security identifier"
-        },
-        {
-          "value": "15",
-          "name": "QualityAllocated",
-          "doc": "Quantity allocated"
-        },
-        {
-          "value": "16",
-          "name": "Principal",
-          "doc": "Principal"
-        },
-        {
-          "value": "17",
-          "name": "Fees",
-          "doc": "Fees"
-        },
-        {
-          "value": "18",
-          "name": "Tax",
-          "doc": "Tax"
-        }
-      ],
+      "FIX:codes": "matchexceptionelementtypecodeset",
       "FIX:tag": "2784",
       "description": "Identifies the data point used in the matching operation.",
       "display": "MatchingDataPointType"
@@ -1998,23 +1112,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "New",
-          "doc": "New"
-        },
-        {
-          "value": "1",
-          "name": "Cancel",
-          "doc": "Cancel"
-        },
-        {
-          "value": "2",
-          "name": "Replace",
-          "doc": "Replace"
-        }
-      ],
+      "FIX:codes": "tradeaggregationtranstypecodeset",
       "FIX:tag": "2788",
       "description": "Identifies the trade aggregation transaction type.",
       "display": "TradeAggregationTransType"
@@ -2041,18 +1139,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Accepted",
-          "doc": "Accepted"
-        },
-        {
-          "value": "1",
-          "name": "Rejected",
-          "doc": "Rejected"
-        }
-      ],
+      "FIX:codes": "tradeaggregationrequeststatuscodeset",
       "FIX:tag": "2790",
       "description": "Status of the trade aggregation request.",
       "display": "TradeAggregationRequestStatus"
@@ -2065,23 +1152,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "UnknownOrders",
-          "doc": "Unknown order(s)"
-        },
-        {
-          "value": "1",
-          "name": "UnknownExecutionFills",
-          "doc": "Unknown execution/fill(s)"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "tradeaggregationrejectreasoncodeset",
       "FIX:tag": "2791",
       "description": "Reason for trade aggregation request being rejected.",
       "display": "TradeAggregationRejectReason"
@@ -2134,23 +1205,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Regular",
-          "doc": "Regular - Default if not specified."
-        },
-        {
-          "value": "1",
-          "name": "Offshore",
-          "doc": "Offshore"
-        },
-        {
-          "value": "2",
-          "name": "Onshore",
-          "doc": "Onshore"
-        }
-      ],
+      "FIX:codes": "offshoreindicatorcodeset",
       "FIX:tag": "2795",
       "description": "Indicates the type of the currency rate being used. This is relevant for currencies that have offshore rate that different from onshore rate.",
       "display": "OffshoreIndicator"

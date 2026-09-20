@@ -1,0 +1,20 @@
+{
+  "name": "offshoreindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Regular",
+      "doc": "Regular - Default if not specified."
+    },
+    {
+      "value": "1",
+      "name": "Offshore",
+      "doc": "Offshore"
+    },
+    {
+      "value": "2",
+      "name": "Onshore",
+      "doc": "Onshore"
+    }
+  ]
+}

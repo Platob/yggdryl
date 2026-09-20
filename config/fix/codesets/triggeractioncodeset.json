@@ -1,0 +1,20 @@
+{
+  "name": "triggeractioncodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Activate",
+      "doc": "Activate"
+    },
+    {
+      "value": "2",
+      "name": "Modify",
+      "doc": "Modify"
+    },
+    {
+      "value": "3",
+      "name": "Cancel",
+      "doc": "Cancel"
+    }
+  ]
+}

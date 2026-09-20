@@ -40,6 +40,8 @@ export {
   type FieldCount,
   type FieldSummaryView,
   type FixCaptureView,
+  type FixCode,
+  type FixCodeSetView,
   type FixDirection,
   type FixEntryView,
   type FixEventView,

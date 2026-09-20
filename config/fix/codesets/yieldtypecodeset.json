@@ -1,0 +1,191 @@
+{
+  "name": "yieldtypecodeset",
+  "codes": [
+    {
+      "value": "AFTERTAX",
+      "name": "AfterTaxYield",
+      "doc": "After Tax Yield (Municipals)"
+    },
+    {
+      "value": "ANNUAL",
+      "name": "AnnualYield",
+      "doc": "Annual Yield"
+    },
+    {
+      "value": "ATISSUE",
+      "name": "YieldAtIssue",
+      "doc": "Yield At Issue (Municipals)"
+    },
+    {
+      "value": "AVGMATURITY",
+      "name": "YieldToAverageMaturity",
+      "doc": "Yield To Avg Maturity"
+    },
+    {
+      "value": "BOOK",
+      "name": "BookYield",
+      "doc": "Book Yield"
+    },
+    {
+      "value": "CALL",
+      "name": "YieldToNextCall",
+      "doc": "Yield to Next Call"
+    },
+    {
+      "value": "CHANGE",
+      "name": "YieldChangeSinceClose",
+      "doc": "Yield Change Since Close"
+    },
+    {
+      "value": "CLOSE",
+      "name": "ClosingYield",
+      "doc": "Closing Yield"
+    },
+    {
+      "value": "COMPOUND",
+      "name": "CompoundYield",
+      "doc": "Compound Yield"
+    },
+    {
+      "value": "CURRENT",
+      "name": "CurrentYield",
+      "doc": "Current Yield"
+    },
+    {
+      "value": "GOVTEQUIV",
+      "name": "GvntEquivalentYield",
+      "doc": "Gvnt Equivalent Yield"
+    },
+    {
+      "value": "GROSS",
+      "name": "TrueGrossYield",
+      "doc": "True Gross Yield"
+    },
+    {
+      "value": "INFLATION",
+      "name": "YieldWithInflationAssumption",
+      "doc": "Yield with Inflation Assumption"
+    },
+    {
+      "value": "INVERSEFLOATER",
+      "name": "InverseFloaterBondYield",
+      "doc": "Inverse Floater Bond Yield"
+    },
+    {
+      "value": "LASTCLOSE",
+      "name": "MostRecentClosingYield",
+      "doc": "Most Recent Closing Yield"
+    },
+    {
+      "value": "LASTMONTH",
+      "name": "ClosingYieldMostRecentMonth",
+      "doc": "Closing Yield Most Recent Month"
+    },
+    {
+      "value": "LASTQUARTER",
+      "name": "ClosingYieldMostRecentQuarter",
+      "doc": "Closing Yield Most Recent Quarter"
+    },
+    {
+      "value": "LASTYEAR",
+      "name": "ClosingYieldMostRecentYear",
+      "doc": "Closing Yield Most Recent Year"
+    },
+    {
+      "value": "LONGAVGLIFE",
+      "name": "YieldToLongestAverageLife",
+      "doc": "Yield to Longest Average Life"
+    },
+    {
+      "value": "MARK",
+      "name": "MarkToMarketYield",
+      "doc": "Mark to Market Yield"
+    },
+    {
+      "value": "MATURITY",
+      "name": "YieldToMaturity",
+      "doc": "Yield to Maturity"
+    },
+    {
+      "value": "NEXTREFUND",
+      "name": "YieldToNextRefund",
+      "doc": "Yield to Next Refund (Sinking Fund Bonds)"
+    },
+    {
+      "value": "OPENAVG",
+      "name": "OpenAverageYield",
+      "doc": "Open Average Yield"
+    },
+    {
+      "value": "PREVCLOSE",
+      "name": "PreviousCloseYield",
+      "doc": "Previous Close Yield"
+    },
+    {
+      "value": "PROCEEDS",
+      "name": "ProceedsYield",
+      "doc": "Proceeds Yield"
+    },
+    {
+      "value": "PUT",
+      "name": "YieldToNextPut",
+      "doc": "Yield to Next Put"
+    },
+    {
+      "value": "SEMIANNUAL",
+      "name": "SemiAnnualYield",
+      "doc": "Semi-annual Yield"
+    },
+    {
+      "value": "SHORTAVGLIFE",
+      "name": "YieldToShortestAverageLife",
+      "doc": "Yield to Shortest Average Life"
+    },
+    {
+      "value": "SIMPLE",
+      "name": "SimpleYield",
+      "doc": "Simple Yield"
+    },
+    {
+      "value": "TAXEQUIV",
+      "name": "TaxEquivalentYield",
+      "doc": "Tax Equivalent Yield"
+    },
+    {
+      "value": "TENDER",
+      "name": "YieldToTenderDate",
+      "doc": "Yield to Tender Date"
+    },
+    {
+      "value": "TRUE",
+      "name": "TrueYield",
+      "doc": "True Yield"
+    },
+    {
+      "value": "VALUE1_32",
+      "name": "YieldValueOf32nds",
+      "doc": "Yield Value Of 1/32"
+    },
+    {
+      "value": "WORST",
+      "name": "YieldToWorst",
+      "doc": "Yield To Worst"
+    },
+    {
+      "value": "AVGLIFE",
+      "name": "YieldToAverageLife"
+    },
+    {
+      "value": "LONGEST",
+      "name": "YieldToLongestAverage"
+    },
+    {
+      "value": "SHORTEST",
+      "name": "YieldToShortestAverage"
+    },
+    {
+      "value": "VALUE1/32",
+      "name": "YieldValueOf132"
+    }
+  ]
+}

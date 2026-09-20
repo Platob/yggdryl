@@ -463,7 +463,7 @@ fn occurrence_members(term: &Term) -> Option<Vec<(SmolStr, &Term)>> {
 /// which state `D` is for *this* field. Anything else goes through the value
 /// contract first - an instant lands in an instant column as itself - and
 /// through its wire text only where that refuses.
-fn converted(target: &Field, value: &Scalar) -> Scalar {
+fn converted(registry: &FixRegistry, target: &Field, value: &Scalar) -> Scalar {
     if value.is_null() {
         return Scalar::Null;
     }
@@ -475,7 +475,7 @@ fn converted(target: &Field, value: &Scalar) -> Scalar {
         }
     }
     match wire_text(value) {
-        Some(text) => typed_spelling(target, &text),
+        Some(text) => typed_spelling(registry, target, &text),
         None => Scalar::Null,
     }
 }
@@ -673,7 +673,7 @@ impl<'msg> Restater<'msg> {
             resolved.push(match child {
                 Child::Flat(field, value) if !field.dtype().is_nested() => self
                     .resolve(field)
-                    .map(|known| (known, retyped(known, field, value))),
+                    .map(|known| (known, retyped(self.registry, known, field, value))),
                 _ => None,
             });
         }
@@ -1019,10 +1019,14 @@ impl<'msg> Restater<'msg> {
         let own = source.is_some_and(|source| source.tag == tag);
         let value = match (source, term) {
             (Some(source), Term::Literal(literal)) if own => match literal.value().as_str() {
-                Some(text) => typed_spelling(&target, &restated_tokens(source.value, named, text)),
-                None => converted(&target, &value),
+                Some(text) => typed_spelling(
+                    self.registry,
+                    &target,
+                    &restated_tokens(source.value, named, text),
+                ),
+                None => converted(self.registry, &target, &value),
             },
-            _ => converted(&target, &value),
+            _ => converted(self.registry, &target, &value),
         };
         if value.is_null() {
             return None;
@@ -1102,7 +1106,10 @@ impl<'msg> Restater<'msg> {
             };
             let known = self.msg.known_by_name(name)?;
             let tag = known.as_fix().tag().ok().flatten()?;
-            constants.push((tag, converted(&stated_field(known), literal.value())));
+            constants.push((
+                tag,
+                converted(self.registry, &stated_field(known), literal.value()),
+            ));
         }
         let matched = occurrences.iter().position(|occurrence| {
             occurrence.as_ref().is_some_and(|held| {
@@ -1166,11 +1173,11 @@ impl<'msg> Restater<'msg> {
 
 /// One held value under the registry's field: kept where the child already
 /// carries that field's datatype, re-typed otherwise.
-fn retyped(known: &Field, held: &Field, value: &Scalar) -> Scalar {
+fn retyped(registry: &FixRegistry, known: &Field, held: &Field, value: &Scalar) -> Scalar {
     if value.is_null() || held.dtype() == known.dtype() {
         return value.clone();
     }
-    converted(known, value)
+    converted(registry, known, value)
 }
 
 /// The replacement plans one thread has read, by the text each is read from.

@@ -30,28 +30,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "40602",
       "description": "Time unit associated with the relative initial fixing date offset.",
       "display": "UnderlyingPaymentStreamInitialFixingDateOffsetUnit"
@@ -64,38 +43,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "40603",
       "description": "Specifies the day type of the relative initial fixing date offset.",
       "display": "UnderlyingPaymentStreamInitialFixingDateOffsetDayType"
@@ -133,48 +81,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "40606",
       "description": "The business day convention used to adjust the payment stream's fixing date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentStreamFixingDateBusinessDayConvention"
@@ -211,28 +118,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "40609",
       "description": "Time unit associated with the relative fixing date offset.",
       "display": "UnderlyingPaymentStreamFixingDateOffsetUnit"
@@ -245,38 +131,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "40610",
       "description": "Specifies the day type of the relative fixing date offset.",
       "display": "UnderlyingPaymentStreamFixingDateOffsetDayType"
@@ -314,28 +169,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "40613",
       "description": "Time unit associated with the relative rate cut-off date offset.",
       "display": "UnderlyingPaymentStreamRateCutoffDateOffsetUnit"
@@ -348,38 +182,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "40614",
       "description": "Specifies the day type of the relative rate cut-off date offset.",
       "display": "UnderlyingPaymentStreamRateCutoffDateOffsetDayType"
@@ -469,28 +272,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bloomberg",
-          "doc": "Bloomberg"
-        },
-        {
-          "value": "1",
-          "name": "Reuters",
-          "doc": "Reuters"
-        },
-        {
-          "value": "2",
-          "name": "Telerate",
-          "doc": "Telerate"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "paymentstreamrateindexsourcecodeset",
       "FIX:tag": "40621",
       "description": "The source of the payment stream floating rate index.",
       "display": "UnderlyingPaymentStreamRateIndexSource"
@@ -503,28 +285,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreamrateindexcurveunitcodeset",
       "FIX:tag": "40622",
       "description": "Time unit associated with the underlying instrument’s floating rate index.",
       "display": "UnderlyingPaymentStreamRateIndexCurveUnit"
@@ -575,18 +336,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Short",
-          "doc": "Short"
-        },
-        {
-          "value": "1",
-          "name": "Long",
-          "doc": "Long"
-        }
-      ],
+      "FIX:codes": "paymentstreamratespreadpositiontypecodeset",
       "FIX:tag": "40626",
       "description": "Identifies a short or long spread value.",
       "display": "UnderlyingPaymentStreamRateSpreadPositionType"
@@ -599,18 +349,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "BondEquivalentYield",
-          "doc": "Bond equivalent yield"
-        },
-        {
-          "value": "1",
-          "name": "MoneyMarketYield",
-          "doc": "Money market yield"
-        }
-      ],
+      "FIX:codes": "paymentstreamratetreatmentcodeset",
       "FIX:tag": "40627",
       "description": "Specifies the yield calculation treatment for the index.",
       "display": "UnderlyingPaymentStreamRateTreatment"
@@ -635,18 +374,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buyer",
-          "doc": "Buyer of the trade"
-        },
-        {
-          "value": "2",
-          "name": "Seller",
-          "doc": "Seller of the trade"
-        }
-      ],
+      "FIX:codes": "paymentstreamcapratebuysidecodeset",
       "FIX:tag": "40629",
       "description": "Reference to the buyer of the cap rate option through its trade side.",
       "display": "UnderlyingPaymentStreamCapRateBuySide"
@@ -659,18 +387,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buyer",
-          "doc": "Buyer of the trade"
-        },
-        {
-          "value": "2",
-          "name": "Seller",
-          "doc": "Seller of the trade"
-        }
-      ],
+      "FIX:codes": "paymentstreamcapratebuysidecodeset",
       "FIX:tag": "40630",
       "description": "Reference to the seller of the cap rate option through its trade side.",
       "display": "UnderlyingPaymentStreamCapRateSellSide"
@@ -695,18 +412,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buyer",
-          "doc": "Buyer of the trade"
-        },
-        {
-          "value": "2",
-          "name": "Seller",
-          "doc": "Seller of the trade"
-        }
-      ],
+      "FIX:codes": "paymentstreamfloorratebuysidecodeset",
       "FIX:tag": "40632",
       "description": "Reference to the buyer of the floor rate option through its trade side.",
       "display": "UnderlyingPaymentStreamFloorRateBuySide"
@@ -719,18 +425,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buyer",
-          "doc": "Buyer of the trade"
-        },
-        {
-          "value": "2",
-          "name": "Seller",
-          "doc": "Seller of the trade"
-        }
-      ],
+      "FIX:codes": "paymentstreamfloorratebuysidecodeset",
       "FIX:tag": "40633",
       "description": "Reference to the seller of the floor rate option through its trade side.",
       "display": "UnderlyingPaymentStreamFloorRateSellSide"
@@ -755,23 +450,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "RoundToNearest",
-          "doc": "Round to nearest"
-        },
-        {
-          "value": "1",
-          "name": "RoundDown",
-          "doc": "Round down"
-        },
-        {
-          "value": "2",
-          "name": "RoundUp",
-          "doc": "Round up"
-        }
-      ],
+      "FIX:codes": "roundingdirectioncodeset",
       "FIX:tag": "40635",
       "description": "Specifies the rounding direction.",
       "display": "UnderlyingPaymentStreamFinalRateRoundingDirection"
@@ -796,18 +475,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Unweighted",
-          "doc": "Unweighted"
-        },
-        {
-          "value": "1",
-          "name": "Weighted",
-          "doc": "Weighted"
-        }
-      ],
+      "FIX:codes": "paymentstreamaveragingmethodcodeset",
       "FIX:tag": "40637",
       "description": "When rate averaging is applicable, used to specify whether a weighted or unweighted average calculation method is to be used.",
       "display": "UnderlyingPaymentStreamAveragingMethod"
@@ -820,18 +488,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "ZeroInterestRateMethod",
-          "doc": "Zero interest rate method"
-        },
-        {
-          "value": "1",
-          "name": "NegativeInterestRateMethod",
-          "doc": "Negative interest rate method"
-        }
-      ],
+      "FIX:codes": "paymentstreamnegativeratetreatmentcodeset",
       "FIX:tag": "40638",
       "description": "The specification of any provisions for calculating payment obligations when a floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
       "display": "UnderlyingPaymentStreamNegativeRateTreatment"
@@ -856,28 +513,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreaminflationlagunitcodeset",
       "FIX:tag": "40640",
       "description": "Time unit associated with the inflation lag period.",
       "display": "UnderlyingPaymentStreamInflationLagUnit"
@@ -890,38 +526,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreaminflationlagdaytypecodeset",
       "FIX:tag": "40641",
       "description": "The inflation lag period day type.",
       "display": "UnderlyingPaymentStreamInflationLagDayType"
@@ -934,18 +539,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "None",
-          "doc": "None"
-        },
-        {
-          "value": "1",
-          "name": "LinearZeroYield",
-          "doc": "Linear zero yield"
-        }
-      ],
+      "FIX:codes": "paymentstreaminflationinterpolationmethodcodeset",
       "FIX:tag": "40642",
       "description": "The method used when calculating the Inflation Index Level from multiple points - the most common is Linear.",
       "display": "UnderlyingPaymentStreamInflationInterpolationMethod"
@@ -958,28 +552,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bloomberg",
-          "doc": "Bloomberg"
-        },
-        {
-          "value": "1",
-          "name": "Reuters",
-          "doc": "Reuters"
-        },
-        {
-          "value": "2",
-          "name": "Telerate",
-          "doc": "Telerate"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "paymentstreamrateindexsourcecodeset",
       "FIX:tag": "40643",
       "description": "The inflation index reference source.",
       "display": "UnderlyingPaymentStreamInflationIndexSource"
@@ -1028,23 +601,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "None",
-          "doc": "None"
-        },
-        {
-          "value": "1",
-          "name": "ISDA",
-          "doc": "International Swaps and Derivatives Association (ISDA)"
-        },
-        {
-          "value": "2",
-          "name": "AFMA",
-          "doc": "Australian Financial Markets Association (AFMA)"
-        }
-      ],
+      "FIX:codes": "paymentstreamfradiscountingcodeset",
       "FIX:tag": "40647",
       "description": "The method of Forward Rate Agreement (FRA) discounting, if any, that will apply.",
       "display": "UnderlyingPaymentStreamFRADiscounting"
@@ -1069,48 +626,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "40649",
       "description": "The business day convention used to adjust the payment stream's fixing date for the non-deliverable terms. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentStreamNonDeliverableFixingDatesBizDayConvention"
@@ -1159,28 +675,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "40653",
       "description": "Time unit associated with the relative non-deliverable fixing date offset.",
       "display": "UnderlyingPaymentStreamNonDeliverableFixingDatesOffsetUnit"
@@ -1193,38 +688,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "40654",
       "description": "Specifies the day type of the relative non-deliverable fixing date offset.",
       "display": "UnderlyingPaymentStreamNonDeliverableFixingDatesOffsetDayType"
@@ -1274,18 +738,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Unadjusted",
-          "doc": "Unadjusted"
-        },
-        {
-          "value": "1",
-          "name": "Adjusted",
-          "doc": "Adjusted"
-        }
-      ],
+      "FIX:codes": "nondeliverablefixingdatetypecodeset",
       "FIX:tag": "40658",
       "description": "Specifies the type of date (e.g. adjusted for holidays).",
       "display": "UnderlyingNonDeliverableFixingDateType"
@@ -1322,33 +775,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Bloomberg",
-          "doc": "Bloomberg"
-        },
-        {
-          "value": "1",
-          "name": "Reuters",
-          "doc": "Reuters"
-        },
-        {
-          "value": "2",
-          "name": "Telerate",
-          "doc": "Telerate"
-        },
-        {
-          "value": "3",
-          "name": "ISDARateOption",
-          "doc": "ISDA Settlement Rate Option"
-        },
-        {
-          "value": "99",
-          "name": "Other",
-          "doc": "Other"
-        }
-      ],
+      "FIX:codes": "ratesourcecodeset",
       "FIX:tag": "40661",
       "description": "Identifies the source of rate information.",
       "display": "UnderlyingPaymentStreamNonDeliverableSettlRateSource"
@@ -1373,28 +800,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "ExercisingParty",
-          "doc": "Exercising party"
-        },
-        {
-          "value": "1",
-          "name": "NonExercisingParty",
-          "doc": "Non-exercising party"
-        },
-        {
-          "value": "2",
-          "name": "MasterAgreeent",
-          "doc": "As specified in the master agreement"
-        },
-        {
-          "value": "3",
-          "name": "Supplement",
-          "doc": "As specified in the standard terms supplement"
-        }
-      ],
+      "FIX:codes": "provisioncalculationagentcodeset",
       "FIX:tag": "40663",
       "description": "Used to identify the settlement rate postponement calculation agent.",
       "display": "UnderlyingSettlRatePostponementCalculationAgent"
@@ -1419,128 +825,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Notional",
-          "doc": "Notional"
-        },
-        {
-          "value": "1",
-          "name": "CashFlow",
-          "doc": "Cash flow"
-        },
-        {
-          "value": "2",
-          "name": "FXLinkedNotional",
-          "doc": "FX linked notional"
-        },
-        {
-          "value": "3",
-          "name": "FixedRate",
-          "doc": "Fixed rate"
-        },
-        {
-          "value": "4",
-          "name": "FutureValueNotional",
-          "doc": "Future value notional"
-        },
-        {
-          "value": "5",
-          "name": "KnownAmount",
-          "doc": "Known amount"
-        },
-        {
-          "value": "6",
-          "name": "FloatingRateMultiplier",
-          "doc": "Floating rate multiplier"
-        },
-        {
-          "value": "7",
-          "name": "Spread",
-          "doc": "Spread"
-        },
-        {
-          "value": "8",
-          "name": "CapRate",
-          "doc": "Cap rate"
-        },
-        {
-          "value": "9",
-          "name": "FloorRate",
-          "doc": "Floor rate"
-        },
-        {
-          "value": "10",
-          "name": "NonDeliverableSettlPaymentDates",
-          "doc": "Non-deliverable settlement payment dates"
-        },
-        {
-          "value": "11",
-          "name": "NonDeliverableSettlCalculationDates",
-          "doc": "Non-deliverable settlement calculation dates"
-        },
-        {
-          "value": "12",
-          "name": "NonDeliverableFXFixingDates",
-          "doc": "Non-deliverable fixing dates."
-        },
-        {
-          "value": "13",
-          "name": "SettlPeriodNotnl",
-          "doc": "Settlement period notional"
-        },
-        {
-          "value": "14",
-          "name": "SettlPeriodPx",
-          "doc": "Settlement period price"
-        },
-        {
-          "value": "15",
-          "name": "CalcPeriod",
-          "doc": "Calculation period"
-        },
-        {
-          "value": "16",
-          "name": "DividendAccrualRateMultiplier",
-          "doc": "Dividend accrual rate multiplier"
-        },
-        {
-          "value": "17",
-          "name": "DividendAccrualRateSpread",
-          "doc": "Dividend accrual rate spread"
-        },
-        {
-          "value": "18",
-          "name": "DividendAccrualCapRate",
-          "doc": "Dividend accrual cap rate"
-        },
-        {
-          "value": "19",
-          "name": "DividendAccrualFloorRate",
-          "doc": "Dividend accrual floor rate"
-        },
-        {
-          "value": "20",
-          "name": "CompoundingRateMultiplier",
-          "doc": "Compounding rate multiplier"
-        },
-        {
-          "value": "21",
-          "name": "CompoundingRateSpread",
-          "doc": "Compounding rate spread"
-        },
-        {
-          "value": "22",
-          "name": "CompoundingCapRate",
-          "doc": "Compounding cap rate"
-        },
-        {
-          "value": "23",
-          "name": "CompoundingFloorRate",
-          "doc": "Compounding floor rate"
-        }
-      ],
+      "FIX:codes": "paymentscheduletypecodeset",
       "FIX:tag": "40665",
       "description": "Type of schedule.",
       "display": "UnderlyingPaymentScheduleType"
@@ -1553,28 +838,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Initial",
-          "doc": "Initial"
-        },
-        {
-          "value": "1",
-          "name": "Final",
-          "doc": "Final"
-        },
-        {
-          "value": "2",
-          "name": "CompoundingInitial",
-          "doc": "Compounding initial"
-        },
-        {
-          "value": "3",
-          "name": "CompoundingFinal",
-          "doc": "Compounding final"
-        }
-      ],
+      "FIX:codes": "paymentstubtypecodeset",
       "FIX:tag": "40666",
       "description": "Indicates to which stub this schedule applies.",
       "display": "UnderlyingPaymentScheduleStubType"
@@ -1613,18 +877,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buy",
-          "doc": "Buy"
-        },
-        {
-          "value": "2",
-          "name": "Sell",
-          "doc": "Sell"
-        }
-      ],
+      "FIX:codes": "paymentpaysidecodeset",
       "FIX:tag": "40669",
       "description": "The side of the party paying the step schedule.",
       "display": "UnderlyingPaymentSchedulePaySide"
@@ -1637,18 +890,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "1",
-          "name": "Buy",
-          "doc": "Buy"
-        },
-        {
-          "value": "2",
-          "name": "Sell",
-          "doc": "Sell"
-        }
-      ],
+      "FIX:codes": "paymentpaysidecodeset",
       "FIX:tag": "40670",
       "description": "The side of the party receiving the step schedule.",
       "display": "UnderlyingPaymentScheduleReceiveSide"
@@ -1725,18 +967,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Short",
-          "doc": "Short"
-        },
-        {
-          "value": "1",
-          "name": "Long",
-          "doc": "Long"
-        }
-      ],
+      "FIX:codes": "paymentstreamratespreadpositiontypecodeset",
       "FIX:tag": "40676",
       "description": "Identifies whether the rate spread is applied to a long or short position.",
       "display": "UnderlyingPaymentScheduleRateSpreadPositionType"
@@ -1749,18 +980,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "BondEquivalentYield",
-          "doc": "Bond equivalent yield"
-        },
-        {
-          "value": "1",
-          "name": "MoneyMarketYield",
-          "doc": "Money market yield"
-        }
-      ],
+      "FIX:codes": "paymentstreamratetreatmentcodeset",
       "FIX:tag": "40677",
       "description": "Specifies the yield calculation treatment for the step schedule.",
       "display": "UnderlyingPaymentScheduleRateTreatment"
@@ -1811,48 +1031,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        },
-        {
-          "value": "H",
-          "name": "Hour",
-          "doc": "Hour"
-        },
-        {
-          "value": "Min",
-          "name": "Minute",
-          "doc": "Minute"
-        },
-        {
-          "value": "S",
-          "name": "Second",
-          "doc": "Second"
-        },
-        {
-          "value": "T",
-          "name": "Term",
-          "doc": "Term"
-        }
-      ],
+      "FIX:codes": "couponfrequencyunitcodeset",
       "FIX:tag": "40681",
       "description": "Time unit associated with the step frequency.",
       "display": "UnderlyingPaymentScheduleStepFrequencyUnit"
@@ -1903,18 +1082,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Initial",
-          "doc": "Initial"
-        },
-        {
-          "value": "1",
-          "name": "Previous",
-          "doc": "Previous"
-        }
-      ],
+      "FIX:codes": "paymentschedulesteprelativetocodeset",
       "FIX:tag": "40685",
       "description": "Specifies whether the UnderlyingPaymentScheduleStepRate(40683) or UnderlyingPaymentScheduleStepOffsetValue(40682) should be applied to the initial notional or the previous notional in order to calculate the notional step change amount.",
       "display": "UnderlyingPaymentScheduleStepRelativeTo"
@@ -1964,48 +1132,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "40689",
       "description": "The business day convention used to adjust the payment schedule's fixing date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentScheduleFixingDateBusinessDayCnvtn"
@@ -2042,28 +1169,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "D",
-          "name": "Day",
-          "doc": "Day"
-        },
-        {
-          "value": "Wk",
-          "name": "Week",
-          "doc": "Week"
-        },
-        {
-          "value": "Mo",
-          "name": "Month",
-          "doc": "Month"
-        },
-        {
-          "value": "Yr",
-          "name": "Year",
-          "doc": "Year"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetunitcodeset",
       "FIX:tag": "40692",
       "description": "Time unit associated with the relative fixing date offset.",
       "display": "UnderlyingPaymentScheduleFixingDateOffsetUnit"
@@ -2076,38 +1182,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "Business",
-          "doc": "Business"
-        },
-        {
-          "value": "1",
-          "name": "Calendar",
-          "doc": "Calendar"
-        },
-        {
-          "value": "2",
-          "name": "CommodityBusiness",
-          "doc": "Commodity business"
-        },
-        {
-          "value": "3",
-          "name": "CurrencyBusiness",
-          "doc": "Currency business"
-        },
-        {
-          "value": "4",
-          "name": "ExchangeBusiness",
-          "doc": "Exchange business"
-        },
-        {
-          "value": "5",
-          "name": "ScheduledTradingDay",
-          "doc": "Scheduled trading day"
-        }
-      ],
+      "FIX:codes": "paymentstreampaymentdateoffsetdaytypecodeset",
       "FIX:tag": "40693",
       "description": "Specifies the day type of the relative fixing date offset.",
       "display": "UnderlyingPaymentScheduleFixingDateOffsetDayType"
@@ -2170,48 +1245,7 @@
     },
     "nullable": true,
     "metadata": {
-      "FIX:codes": [
-        {
-          "value": "0",
-          "name": "NotApplicable",
-          "doc": "Not applicable"
-        },
-        {
-          "value": "1",
-          "name": "None",
-          "doc": "None (current day)"
-        },
-        {
-          "value": "2",
-          "name": "FollowingDay",
-          "doc": "Following day"
-        },
-        {
-          "value": "3",
-          "name": "FloatingRateNote",
-          "doc": "Floating rate note"
-        },
-        {
-          "value": "4",
-          "name": "ModifiedFollowingDay",
-          "doc": "Modified following day"
-        },
-        {
-          "value": "5",
-          "name": "PrecedingDay",
-          "doc": "Preceding day"
-        },
-        {
-          "value": "6",
-          "name": "ModifiedPrecedingDay",
-          "doc": "Modified preceding day"
-        },
-        {
-          "value": "7",
-          "name": "NearestDay",
-          "doc": "Nearest day"
-        }
-      ],
+      "FIX:codes": "businessdayconventioncodeset",
       "FIX:tag": "40698",
       "description": "The business day convention used to adjust the payment schedule's interim exchange date. Used only to override the business day convention specified in the UnderlyingDateAdjustment component within the UnderlyingInstrument component.",
       "display": "UnderlyingPaymentScheduleInterimExchangeDatesBizDayConvention"

@@ -1,0 +1,20 @@
+{
+  "name": "trdackstatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "1",
+      "name": "Rejected",
+      "doc": "Rejected"
+    },
+    {
+      "value": "2",
+      "name": "Received",
+      "doc": "Received"
+    }
+  ]
+}

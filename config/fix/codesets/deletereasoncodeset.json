@@ -1,0 +1,15 @@
+{
+  "name": "deletereasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Cancellation",
+      "doc": "Cancellation / Trade Bust"
+    },
+    {
+      "value": "1",
+      "name": "Error",
+      "doc": "Error"
+    }
+  ]
+}

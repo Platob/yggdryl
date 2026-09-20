@@ -1,0 +1,15 @@
+{
+  "name": "tradeallocgroupinstructioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Add",
+      "doc": "Add to an existing allocation group if one exists."
+    },
+    {
+      "value": "1",
+      "name": "DoNotAdd",
+      "doc": "Do not add the trade to an allocation group."
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "gtbookinginstcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "BookOutAllTradesOnDayOfExecution",
+      "doc": "Book out all trades on day of execution"
+    },
+    {
+      "value": "1",
+      "name": "AccumulateUntilFilledOrExpired",
+      "doc": "Accumulate executions until order is filled or expires"
+    },
+    {
+      "value": "2",
+      "name": "AccumulateUntilVerballyNotifiedOtherwise",
+      "aliases": [
+        "AccumulateUntilVerballlyNotifiedOtherwise"
+      ],
+      "doc": "Accumulate until verbally notified otherwise"
+    }
+  ]
+}

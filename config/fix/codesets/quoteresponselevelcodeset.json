@@ -1,0 +1,25 @@
+{
+  "name": "quoteresponselevelcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NoAcknowledgement",
+      "doc": "No Acknowledgement"
+    },
+    {
+      "value": "1",
+      "name": "AcknowledgeOnlyNegativeOrErroneousQuotes",
+      "doc": "Acknowledge only negative or erroneous quotes"
+    },
+    {
+      "value": "2",
+      "name": "AcknowledgeEachQuoteMessage",
+      "doc": "Acknowledge each quote message"
+    },
+    {
+      "value": "3",
+      "name": "SummaryAcknowledgement",
+      "doc": "Summary Acknowledgement"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "metricscalculationpricesourcecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Realtime",
+      "doc": "Real-time"
+    },
+    {
+      "value": "2",
+      "name": "EndOfDay",
+      "doc": "End of day"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "mdentrystatuscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Accepted",
+      "doc": "Accepted"
+    },
+    {
+      "value": "1",
+      "name": "AcceptedWithErrors",
+      "doc": "Accepted with errors"
+    },
+    {
+      "value": "2",
+      "name": "Rejected",
+      "doc": "Rejected"
+    }
+  ]
+}

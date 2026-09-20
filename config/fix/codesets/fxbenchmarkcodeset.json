@@ -1,0 +1,40 @@
+{
+  "name": "fxbenchmarkcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Bloomberg",
+      "doc": "Bloomberg"
+    },
+    {
+      "value": "2",
+      "name": "CentralBank",
+      "doc": "Central Bank"
+    },
+    {
+      "value": "3",
+      "name": "WMR",
+      "doc": "WMR"
+    },
+    {
+      "value": "4",
+      "name": "MitsubishiUFJ",
+      "doc": "Mitsubishi-UFJ"
+    },
+    {
+      "value": "5",
+      "name": "LondonBullionMarketAssociation",
+      "doc": "London Bullion Market Association"
+    },
+    {
+      "value": "6",
+      "name": "LondonMetalExchange",
+      "doc": "London Metal Exchange"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

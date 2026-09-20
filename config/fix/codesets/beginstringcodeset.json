@@ -1,0 +1,20 @@
+{
+  "name": "beginstringcodeset",
+  "codes": [
+    {
+      "value": "FIX.4.2",
+      "name": "FIX42",
+      "doc": "Session profile FIX.4.2"
+    },
+    {
+      "value": "FIX.4.4",
+      "name": "FIX44",
+      "doc": "Session profile FIX4"
+    },
+    {
+      "value": "FIXT.1.1",
+      "name": "FIXT11",
+      "doc": "Session profile FIXT or LFXIT"
+    }
+  ]
+}

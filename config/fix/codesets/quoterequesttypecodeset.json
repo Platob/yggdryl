@@ -1,0 +1,20 @@
+{
+  "name": "quoterequesttypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Manual",
+      "doc": "Manual"
+    },
+    {
+      "value": "2",
+      "name": "Automatic",
+      "doc": "Automatic"
+    },
+    {
+      "value": "3",
+      "name": "ConfirmQuote",
+      "doc": "Confirm quote"
+    }
+  ]
+}

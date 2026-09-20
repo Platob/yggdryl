@@ -1,0 +1,25 @@
+{
+  "name": "impliedmarketindicatorcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NotImplied",
+      "doc": "Not implied"
+    },
+    {
+      "value": "1",
+      "name": "ImpliedIn",
+      "doc": "Implied-in - The existence of a multi-leg instrument is implied by the legs of that instrument"
+    },
+    {
+      "value": "2",
+      "name": "ImpliedOut",
+      "doc": "Implied-out - The existence of the underlying legs are implied by the multi-leg instrument"
+    },
+    {
+      "value": "3",
+      "name": "BothImpliedInAndImpliedOut",
+      "doc": "Both Implied-in and Implied-out"
+    }
+  ]
+}

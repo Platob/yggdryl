@@ -1,0 +1,30 @@
+{
+  "name": "adjustmenttypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "ProcessRequestAsMarginDisposition",
+      "doc": "Process request as margin disposition"
+    },
+    {
+      "value": "1",
+      "name": "DeltaPlus",
+      "doc": "Delta plus"
+    },
+    {
+      "value": "2",
+      "name": "DeltaMinus",
+      "doc": "Delta minus"
+    },
+    {
+      "value": "3",
+      "name": "Final",
+      "doc": "Final"
+    },
+    {
+      "value": "4",
+      "name": "CustomerSpecificPosition",
+      "doc": "Customer specific position"
+    }
+  ]
+}

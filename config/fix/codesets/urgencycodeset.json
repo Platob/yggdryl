@@ -1,0 +1,20 @@
+{
+  "name": "urgencycodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Normal",
+      "doc": "Normal"
+    },
+    {
+      "value": "1",
+      "name": "Flash",
+      "doc": "Flash"
+    },
+    {
+      "value": "2",
+      "name": "Background",
+      "doc": "Background"
+    }
+  ]
+}

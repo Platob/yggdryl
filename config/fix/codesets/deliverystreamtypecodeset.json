@@ -1,0 +1,20 @@
+{
+  "name": "deliverystreamtypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Periodic",
+      "doc": "Periodic (default if not specified)"
+    },
+    {
+      "value": "1",
+      "name": "Initial",
+      "doc": "Initial"
+    },
+    {
+      "value": "2",
+      "name": "Single",
+      "doc": "Single"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "nondeliverablefixingdatetypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Unadjusted",
+      "doc": "Unadjusted"
+    },
+    {
+      "value": "1",
+      "name": "Adjusted",
+      "doc": "Adjusted"
+    }
+  ]
+}

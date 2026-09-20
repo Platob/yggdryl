@@ -1,0 +1,30 @@
+{
+  "name": "provisionbreakfeeelectioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "FlatFee",
+      "doc": "Flat fee"
+    },
+    {
+      "value": "1",
+      "name": "AmortizedFee",
+      "doc": "Amortized fee"
+    },
+    {
+      "value": "2",
+      "name": "FundingFee",
+      "doc": "Funding fee"
+    },
+    {
+      "value": "3",
+      "name": "FlatAndFundingFee",
+      "doc": "Flat fee and funding fee"
+    },
+    {
+      "value": "4",
+      "name": "AmortizedAndFundingFee",
+      "doc": "Amortized fee and funding fee"
+    }
+  ]
+}

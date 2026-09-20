@@ -1,0 +1,170 @@
+{
+  "name": "mdstatisticsubscopecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "Visible",
+      "doc": "Visible"
+    },
+    {
+      "value": "2",
+      "name": "Hidden",
+      "doc": "Hidden"
+    },
+    {
+      "value": "3",
+      "name": "Indicative",
+      "doc": "Indicative"
+    },
+    {
+      "value": "4",
+      "name": "Tradeable",
+      "doc": "Tradeable"
+    },
+    {
+      "value": "5",
+      "name": "Passive",
+      "doc": "Passive"
+    },
+    {
+      "value": "6",
+      "name": "MarketConsensus",
+      "doc": "Market consensus"
+    },
+    {
+      "value": "7",
+      "name": "Power",
+      "doc": "Power"
+    },
+    {
+      "value": "8",
+      "name": "HardwareError",
+      "doc": "Hardware error"
+    },
+    {
+      "value": "9",
+      "name": "SoftwareError",
+      "doc": "Software error"
+    },
+    {
+      "value": "10",
+      "name": "NetworkError",
+      "doc": "Network error"
+    },
+    {
+      "value": "11",
+      "name": "Failed",
+      "doc": "Failed"
+    },
+    {
+      "value": "12",
+      "name": "Executed",
+      "doc": "Executed"
+    },
+    {
+      "value": "13",
+      "name": "Entered",
+      "doc": "Entered"
+    },
+    {
+      "value": "14",
+      "name": "Modified",
+      "doc": "Modified"
+    },
+    {
+      "value": "15",
+      "name": "Cancelled",
+      "doc": "Cancelled"
+    },
+    {
+      "value": "16",
+      "name": "MarketDataAccess",
+      "doc": "Market data access"
+    },
+    {
+      "value": "17",
+      "name": "TerminalAccess",
+      "doc": "Terminal access"
+    },
+    {
+      "value": "18",
+      "name": "Volume",
+      "doc": "Volume"
+    },
+    {
+      "value": "19",
+      "name": "Cleared",
+      "doc": "Cleared"
+    },
+    {
+      "value": "20",
+      "name": "Settled",
+      "doc": "Settled"
+    },
+    {
+      "value": "21",
+      "name": "Other",
+      "doc": "Other"
+    },
+    {
+      "value": "22",
+      "name": "Monetary",
+      "doc": "Monetary"
+    },
+    {
+      "value": "23",
+      "name": "NonMonetary",
+      "doc": "Non-monetary"
+    },
+    {
+      "value": "24",
+      "name": "Gross",
+      "doc": "Gross"
+    },
+    {
+      "value": "25",
+      "name": "LargeInScale",
+      "doc": "Large in scale"
+    },
+    {
+      "value": "26",
+      "name": "NeitherHiddenNorLargeInScale",
+      "doc": "Neither hidden nor large in scale"
+    },
+    {
+      "value": "27",
+      "name": "CorporateAction",
+      "doc": "Corporate action"
+    },
+    {
+      "value": "28",
+      "name": "VenueDecision",
+      "doc": "Venue decision"
+    },
+    {
+      "value": "29",
+      "name": "MinimumTimePeriod",
+      "doc": "Minimum time period"
+    },
+    {
+      "value": "30",
+      "name": "Open",
+      "doc": "Open"
+    },
+    {
+      "value": "31",
+      "name": "NotExecuted",
+      "doc": "Not executed"
+    },
+    {
+      "value": "32",
+      "name": "Aggressive",
+      "doc": "Aggressive"
+    },
+    {
+      "value": "33",
+      "name": "Directed",
+      "doc": "Directed"
+    }
+  ]
+}

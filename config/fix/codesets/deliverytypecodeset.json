@@ -1,0 +1,30 @@
+{
+  "name": "deliverytypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "VersusPayment",
+      "doc": "\"Versus Payment\": Deliver (if sell) or Receive (if buy) vs. (against) Payment"
+    },
+    {
+      "value": "1",
+      "name": "Free",
+      "doc": "\"Free\": Deliver (if sell) or Receive (if buy) Free"
+    },
+    {
+      "value": "2",
+      "name": "TriParty",
+      "doc": "Tri-Party"
+    },
+    {
+      "value": "3",
+      "name": "HoldInCustody",
+      "doc": "Hold In Custody"
+    },
+    {
+      "value": "4",
+      "name": "DeliverByValue",
+      "doc": "Deliver-by-Value"
+    }
+  ]
+}

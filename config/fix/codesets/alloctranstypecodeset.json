@@ -1,0 +1,37 @@
+{
+  "name": "alloctranstypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "New",
+      "doc": "New"
+    },
+    {
+      "value": "1",
+      "name": "Replace",
+      "doc": "Replace"
+    },
+    {
+      "value": "2",
+      "name": "Cancel",
+      "doc": "Cancel"
+    },
+    {
+      "value": "6",
+      "name": "Reversal",
+      "doc": "Reversal"
+    },
+    {
+      "value": "3",
+      "name": "Preliminary"
+    },
+    {
+      "value": "4",
+      "name": "Calculated"
+    },
+    {
+      "value": "5",
+      "name": "CalculatedWithoutPreliminary"
+    }
+  ]
+}

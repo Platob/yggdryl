@@ -1,8 +1,16 @@
-//! Native Field documents in explicit FIX category folders.
+//! Native Field documents in explicit FIX category folders, and the code sets
+//! they read by beside them.
 //!
 //! Tagged fields are arrays sharded by `tag / 100`. Named definitions are
 //! individual documents; their native Null-typed reference occurrences resolve
 //! once at this boundary into shared, typed Field subtrees.
+//!
+//! `codesets/` is the fourth folder, and it holds vocabularies rather than
+//! fields: one `<name>.json` per [code set](super::codes), stating its name
+//! and its members, and a field's `FIX:codes` names the set it draws on. It
+//! is not a [`FixCategory`] for that reason - a category holds `Field`
+//! documents and resolves references between them - so it is read first, and
+//! written and pruned beside them.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -15,6 +23,12 @@ use crate::text::Formatting;
 use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, StructType, Url};
 
 const SHARD_WIDTH: i32 = 100;
+/// The folder the code sets live in, beside the three category folders.
+pub(super) const CODESETS: &str = "codesets";
+/// What one stored code set states: the name it is filed under, and its
+/// members in the set's own order.
+const CODESET_NAME: &str = "name";
+const CODESET_CODES: &str = "codes";
 const LOAD_ORDER: [FixCategory; 3] = [
     FixCategory::Fields,
     FixCategory::Components,
@@ -90,6 +104,39 @@ pub(super) fn located(error: Error, entry: &dyn IOBase) -> Error {
             reason: format_smolstr!("{other}"),
         },
     }
+}
+
+/// The name and the members one stored code set document states.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidRecord`] when the document is not an object
+/// stating a text `name` and an array `codes`, which is the one shape a store
+/// writes.
+fn codeset_document(document: &Scalar) -> Result<(String, String)> {
+    let record = document.as_struct().ok_or_else(|| Error::InvalidRecord {
+        path: CODESETS.into(),
+        reason: crate::text::expected_got("a JSON code set object", document.kind()),
+    })?;
+    let name = record
+        .get(CODESET_NAME)
+        .and_then(Scalar::as_str)
+        .ok_or_else(|| Error::InvalidRecord {
+            path: CODESETS.into(),
+            reason: "expected a code set stating its name".into(),
+        })?
+        .to_owned();
+    let codes = record
+        .get(CODESET_CODES)
+        .filter(|codes| codes.as_sequence().is_some())
+        .ok_or_else(|| Error::InvalidRecord {
+            path: name.as_str().into(),
+            reason: "expected a code set stating an array of codes".into(),
+        })?;
+    // The array the file spells is the canonical text a set is held as, with
+    // every entry's keys put back into the order the grammar declares.
+    let document = super::codes::codes_text(codes)?;
+    Ok((name, document))
 }
 
 /// What one named definition is keyed by: its category and its canonical
@@ -363,8 +410,10 @@ impl FixRegistry {
     ///
     /// `fields`, `components`, and `groups` are arrays of native Field
     /// documents; a message is a component carrying `FIX:msgtype`, and any
-    /// other key - `messages` among them - is refused by name. References
-    /// resolve through the same bounded graph loader as the store.
+    /// other key - `messages` among them - is refused by name. `codesets` is
+    /// the vocabularies the fields read by, each stating its name and its
+    /// members, read before the fields that name them. References resolve
+    /// through the same bounded graph loader as the store.
     pub fn from_json(input: &str) -> Result<Self> {
         Self::from_snapshot(&crate::from_json_scalar(input)?)
     }
@@ -432,7 +481,23 @@ impl FixRegistry {
 
     fn snapshot(&self) -> Result<Scalar> {
         self.validate_catalog()?;
-        let mut document = Vec::with_capacity(FixCategory::ALL.len());
+        let mut document = Vec::with_capacity(FixCategory::ALL.len() + 1);
+        // The vocabularies lead, as they do in a folder store and for the
+        // same reason: a field names the set it reads by, so a reader has
+        // the sets before it meets a field naming one.
+        document.push((
+            CODESETS,
+            Scalar::from_sequence(
+                self.codesets()
+                    .map(|set| {
+                        Scalar::from_struct([
+                            (CODESET_NAME, Scalar::from(set.name())),
+                            (CODESET_CODES, crate::from_json_scalar(set.document())?),
+                        ])
+                    })
+                    .collect::<Result<Vec<_>>>()?,
+            ),
+        ));
         for category in FixCategory::ALL {
             // Every definition the dictionary holds, the crate's own among
             // them: a snapshot is the whole row as this registry types it,
@@ -465,18 +530,33 @@ impl FixRegistry {
             reason: crate::text::expected_got("a JSON registry object", document.kind()),
         })?;
         for key in record.keys() {
-            if !FixCategory::ALL
-                .iter()
-                .any(|category| category.as_str() == key)
+            if key != CODESETS
+                && !FixCategory::ALL
+                    .iter()
+                    .any(|category| category.as_str() == key)
             {
                 return Err(Error::InvalidRecord {
                     path: key.clone(),
-                    reason: "expected fields, components, or groups".into(),
+                    reason: "expected codesets, fields, components, or groups".into(),
                 });
             }
         }
         let mut registry = Self::base();
         let mut raw = BTreeMap::new();
+        // The vocabularies first, for the reason a folder store reads them
+        // first: a field naming a set the dictionary does not hold is
+        // refused. A snapshot stating none is a dictionary whose fields draw
+        // on none.
+        if let Some(codesets) = record.get(CODESETS) {
+            let sets = codesets.as_sequence().ok_or_else(|| Error::InvalidRecord {
+                path: CODESETS.into(),
+                reason: "expected an array of code set documents".into(),
+            })?;
+            for set in sets {
+                let (name, codes) = codeset_document(set)?;
+                registry.create_codeset(&name, codes)?;
+            }
+        }
         for category in LOAD_ORDER {
             let fields = record
                 .get(category.as_str())
@@ -584,6 +664,9 @@ impl FixRegistry {
     pub fn from_handle(handle: &dyn IOBase) -> Result<Self> {
         let mut registry = Self::base();
         let mut raw = BTreeMap::new();
+        // The vocabularies first: a field names the set it reads by, and a
+        // field naming one the dictionary does not hold is refused.
+        registry.load_codesets(handle)?;
         for category in LOAD_ORDER {
             let root = handle.child_by_path(category.as_str())?;
             for entry in root.ls(false, false) {
@@ -598,6 +681,38 @@ impl FixRegistry {
         registry.validate_catalog()?;
         registry.refresh_msgtype_aliases();
         Ok(registry)
+    }
+
+    /// Reads every `codesets/<name>.json` the store holds.
+    ///
+    /// A folder inside `codesets/` is not a store's layout and is passed
+    /// over, exactly as one inside a category is. A file whose stem does not
+    /// equal the name it states is refused, for the reason a definition's is:
+    /// the stem is how the set is addressed.
+    fn load_codesets(&mut self, handle: &dyn IOBase) -> Result<()> {
+        let root = handle.child_by_path(CODESETS)?;
+        for entry in root.ls(false, false) {
+            let entry = entry?;
+            if entry.is_container() || entry.url().and_then(Url::extension) != Some("json") {
+                continue;
+            }
+            let document = crate::from_json_scalar(entry.read_all_bytes()?)
+                .and_then(|document| codeset_document(&document))
+                .and_then(|(name, codes)| {
+                    if entry.url().and_then(Url::stem) == Some(name.as_str()) {
+                        Ok((name, codes))
+                    } else {
+                        Err(Error::InvalidRecord {
+                            path: name.as_str().into(),
+                            reason: "expected the code set name to equal its filename stem".into(),
+                        })
+                    }
+                })
+                .map_err(|error| located(error, entry.as_io()))?;
+            self.create_codeset(&document.0, document.1)
+                .map_err(|error| located(error, entry.as_io()))?;
+        }
+        Ok(())
     }
 
     fn load_definitions(
@@ -754,6 +869,26 @@ impl FixRegistry {
             format!("{}/{}.json", FixCategory::Components, fixmsg.name()),
             super::document::dump(compact(fixmsg, true)?.into_value())?,
         );
+        // The vocabularies beside the fields that name them, one document per
+        // set, each stating the name it is filed under so the file says what
+        // it is without its own path.
+        for set in self.codesets() {
+            documents.insert(
+                format!("{CODESETS}/{}.json", set.name()),
+                Scalar::from_struct([
+                    (CODESET_NAME, Scalar::from(set.name())),
+                    (
+                        CODESET_CODES,
+                        crate::from_json_scalar(set.document()).map_err(|error| {
+                            Error::InvalidRecord {
+                                path: set.name().into(),
+                                reason: format_smolstr!("{error}"),
+                            }
+                        })?,
+                    ),
+                ])?,
+            );
+        }
         for (path, document) in &documents {
             // A text file ends with a newline, as the one a person's editor
             // and the generator write does, so a rewrite changes no line it
@@ -763,9 +898,13 @@ impl FixRegistry {
             bytes.push(b'\n');
             root.child_by_path(path)?.write_all_bytes(&bytes)?;
         }
-        for category in FixCategory::ALL {
-            let prefix = format!("{category}/");
-            let mut tree = root.child_by_path(category.as_str())?;
+        for folder in FixCategory::ALL
+            .into_iter()
+            .map(FixCategory::as_str)
+            .chain(std::iter::once(CODESETS))
+        {
+            let prefix = format!("{folder}/");
+            let mut tree = root.child_by_path(folder)?;
             if !documents.keys().any(|path| path.starts_with(&prefix)) {
                 tree.remove(true)?;
                 continue;
@@ -783,7 +922,7 @@ impl FixRegistry {
                     continue;
                 }
                 if entry.url().and_then(Url::extension) == Some("json")
-                    && !documents.contains_key(&format!("{category}/{name}"))
+                    && !documents.contains_key(&format!("{folder}/{name}"))
                 {
                     entry.remove(false)?;
                 }

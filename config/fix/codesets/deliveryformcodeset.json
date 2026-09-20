@@ -1,0 +1,15 @@
+{
+  "name": "deliveryformcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "BookEntry",
+      "doc": "Book Entry (default)"
+    },
+    {
+      "value": "2",
+      "name": "Bearer",
+      "doc": "Bearer"
+    }
+  ]
+}

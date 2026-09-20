@@ -1,0 +1,15 @@
+{
+  "name": "listmethodcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "PreListedOnly",
+      "doc": "pre-listed only"
+    },
+    {
+      "value": "1",
+      "name": "UserRequested",
+      "doc": "user requested"
+    }
+  ]
+}

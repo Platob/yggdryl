@@ -12,8 +12,8 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Explorer](explorer.md) | The whole dictionary live: counts, field search, message layouts, provenance |
 | [Decode](decode.md) | A line in, every message it holds out; every shape a capture holds, read by the package |
 | [Encode](encode.md) | Native wire emission from captured message entries |
-| [Registry](registry.md) | `FixRegistry`: one-namespace resolution, `FixKey`, mutation, protocol inference, the process-wide default |
-| [Store](store.md) | Shard trees under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
+| [Registry](registry.md) | `FixRegistry`: one-namespace resolution, `FixKey`, mutation, the named code sets the fields read by, protocol inference, the process-wide default |
+| [Store](store.md) | Shard trees and `codesets/` under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
 | [Message](message.md) | `FixMsg`: a market event over a content row - the typed holders, the accessors, `set`/`remove`, `from_row` reading a fixed row back, and what restating a message under the dictionary decides |
 | [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `lifecycle_arrow_reader`, `messages`, `arrow_reader`, `write_arrow_reader`: a capture already in Arrow, streamed through a dictionary and back to the wire, batched by raw bytes |
 | [Capture](capture.md) | `FixCodec` and its `parse_*` readers, `fix_schema`, `FixMsg::into_row`, and what a parse fills in for a message: a day of session log as one table |
@@ -37,7 +37,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | List properties | `FIX:names` and `FIX:tags` are compact JSON arrays, `["Qty","Quantity"]` and `[1088]`, crossed by a store as the arrays they are; `names()` walks the array lazily and `tags()` parses it to a `Vec`. `FIX:branches`, `FIX:identifiers` and `FIX:nulls` stay comma-separated text, `branches()`, `identifiers()` and `nulls()` lazy slices of it. An empty list removes the key |
 | Identifiers | A component declares its own direct scalar members through `FIX:identifiers`; names, aliases and decimal tags resolve once to canonical names in component order, never by flattening a group |
 | Errors | `InvalidMetadataValue` naming the full key; the field stays unchanged |
-| Categories | `fields/` stores tagged scalar fields; `components/` named Structs, a message being the one that carries `FIX:msgtype`; `groups/` List/LargeList occurrences and Map entries. Every one is reached through the registry's [field doors](registry.md#accessors) |
+| Categories | `fields/` stores tagged scalar fields; `components/` named Structs, a message being the one that carries `FIX:msgtype`; `groups/` List/LargeList occurrences and Map entries. Every one is reached through the registry's [field doors](registry.md#accessors). `codesets/` is beside them and is no category: it holds the [vocabularies](registry.md#a-field-names-the-code-set-it-reads-by) the fields read by, each under its own name, reached through the registry's code set doors |
 | Bindings | Python `field.fix` and `yggdryl.fix`; JavaScript `field.fix` and its `fix` namespace; the id crosses as an integer, membership as a list of strings |
 
 ## Use
@@ -185,7 +185,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `names` | `FIX:names` | JSON array of names | alternate names, highest priority first |
 | `identifiers` | `FIX:identifiers` | canonical member names, in component order | the component's direct scalar identifiers; [declaration and compiled selection](registry.md#component-identifiers) |
 | `description` | `description` | text | the specification's wording, on the generic key every catalog reads |
-| `codes` | `FIX:codes` | canonical JSON, by wire value | the inline enum values declared by this field; see [Registry](registry.md#a-field-carries-its-code-set) |
+| `codeset` | `FIX:codes` | one name | the [code set](registry.md#a-field-names-the-code-set-it-reads-by) this field draws its values from; the dictionary holds the members under that name, and a registry refuses a field naming a set it does not hold |
 | `counter` | `FIX:counter` | `i32` | on a List/LargeList group, the separate scalar count field's tag; on a crate Map group, its own tag, without a scalar counter |
 | `component` | `FIX:component` | name | component reference, including a group's occurrence |
 | `field_ref` / `fieldRef` | `FIX:field` | name | scalar field reference in a definition |

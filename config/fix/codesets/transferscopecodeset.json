@@ -1,0 +1,20 @@
+{
+  "name": "transferscopecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "InterFirmTransfer",
+      "doc": "Inter-firm transfer"
+    },
+    {
+      "value": "1",
+      "name": "IntraFirmTransfer",
+      "doc": "Intra-firm transfer"
+    },
+    {
+      "value": "2",
+      "name": "CMTA",
+      "doc": "Clearing Member Trade Assignment"
+    }
+  ]
+}

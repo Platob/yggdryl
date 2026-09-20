@@ -1,0 +1,180 @@
+{
+  "name": "ioiqualifiercodeset",
+  "codes": [
+    {
+      "value": "A",
+      "name": "AllOrNone",
+      "doc": "All or None (AON)"
+    },
+    {
+      "value": "B",
+      "name": "MarketOnClose",
+      "doc": "Market On Close (MOC) (held to close)"
+    },
+    {
+      "value": "C",
+      "name": "AtTheClose",
+      "doc": "At the close (around/not held to close)"
+    },
+    {
+      "value": "D",
+      "name": "VWAP",
+      "doc": "VWAP (Volume Weighted Average Price)"
+    },
+    {
+      "value": "E",
+      "name": "Axe",
+      "doc": "Axe"
+    },
+    {
+      "value": "F",
+      "name": "AxeOnBid",
+      "doc": "Axe on bid"
+    },
+    {
+      "value": "G",
+      "name": "AxeOnOffer",
+      "doc": "Axe on offer"
+    },
+    {
+      "value": "H",
+      "name": "ClientNaturalWorking",
+      "doc": "Client natural working"
+    },
+    {
+      "value": "I",
+      "name": "InTouchWith",
+      "doc": "In touch with"
+    },
+    {
+      "value": "J",
+      "name": "PositionWanted",
+      "doc": "Position wanted"
+    },
+    {
+      "value": "K",
+      "name": "MarketMaking",
+      "doc": "Market making"
+    },
+    {
+      "value": "L",
+      "name": "Limit",
+      "doc": "Limit"
+    },
+    {
+      "value": "M",
+      "name": "MoreBehind",
+      "doc": "More Behind"
+    },
+    {
+      "value": "N",
+      "name": "ClientNaturalBlock",
+      "doc": "Client natural block"
+    },
+    {
+      "value": "O",
+      "name": "AtTheOpen",
+      "doc": "At the Open"
+    },
+    {
+      "value": "P",
+      "name": "TakingAPosition",
+      "doc": "Taking a Position"
+    },
+    {
+      "value": "Q",
+      "name": "AtTheMarket",
+      "doc": "At the Market (previously called Current Quote)"
+    },
+    {
+      "value": "R",
+      "name": "ReadyToTrade",
+      "doc": "Ready to Trade"
+    },
+    {
+      "value": "S",
+      "name": "PortfolioShown",
+      "doc": "Inventory or Portfolio Shown"
+    },
+    {
+      "value": "T",
+      "name": "ThroughTheDay",
+      "doc": "Through the Day"
+    },
+    {
+      "value": "U",
+      "name": "Unwind",
+      "doc": "Unwind"
+    },
+    {
+      "value": "V",
+      "name": "Versus",
+      "doc": "Versus"
+    },
+    {
+      "value": "W",
+      "name": "Indication",
+      "doc": "Indication - Working Away"
+    },
+    {
+      "value": "X",
+      "name": "CrossingOpportunity",
+      "doc": "Crossing Opportunity"
+    },
+    {
+      "value": "Y",
+      "name": "AtTheMidpoint",
+      "doc": "At the Midpoint"
+    },
+    {
+      "value": "Z",
+      "name": "PreOpen",
+      "doc": "Pre-open"
+    },
+    {
+      "value": "1",
+      "name": "QuantityNegotiable",
+      "doc": "Quantity is negotiable"
+    },
+    {
+      "value": "2",
+      "name": "AllowLateBids",
+      "doc": "Allow late bids"
+    },
+    {
+      "value": "3",
+      "name": "ImmediateOrCounter",
+      "doc": "Immediate or counter"
+    },
+    {
+      "value": "4",
+      "name": "AutoTrade",
+      "doc": "Auto trade"
+    },
+    {
+      "value": "a",
+      "name": "AutomaticSpot",
+      "doc": "Automatic spot"
+    },
+    {
+      "value": "b",
+      "name": "PlatformCalculatedSpot",
+      "doc": "Platform calculated spot"
+    },
+    {
+      "value": "c",
+      "name": "OutsideSpread",
+      "doc": "Outside spread"
+    },
+    {
+      "value": "d",
+      "name": "DeferredSpot",
+      "doc": "Deferred spot"
+    },
+    {
+      "value": "n",
+      "name": "NegotiatedSpot",
+      "doc": "Negotiated spot"
+    }
+  ]
+}

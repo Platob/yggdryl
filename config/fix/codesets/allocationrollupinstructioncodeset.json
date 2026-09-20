@@ -1,0 +1,15 @@
+{
+  "name": "allocationrollupinstructioncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Rollup",
+      "doc": "Roll up"
+    },
+    {
+      "value": "1",
+      "name": "DoNotRollUp",
+      "doc": "Do not roll up"
+    }
+  ]
+}

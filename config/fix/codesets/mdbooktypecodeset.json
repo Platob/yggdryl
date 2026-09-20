@@ -1,0 +1,20 @@
+{
+  "name": "mdbooktypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "TopOfBook",
+      "doc": "Top of Book"
+    },
+    {
+      "value": "2",
+      "name": "PriceDepth",
+      "doc": "Price Depth"
+    },
+    {
+      "value": "3",
+      "name": "OrderDepth",
+      "doc": "Order Depth"
+    }
+  ]
+}

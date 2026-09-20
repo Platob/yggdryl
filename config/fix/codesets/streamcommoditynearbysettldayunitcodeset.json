@@ -1,0 +1,15 @@
+{
+  "name": "streamcommoditynearbysettldayunitcodeset",
+  "codes": [
+    {
+      "value": "Wk",
+      "name": "Week",
+      "doc": "Week"
+    },
+    {
+      "value": "Mo",
+      "name": "Month",
+      "doc": "Month"
+    }
+  ]
+}

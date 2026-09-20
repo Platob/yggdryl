@@ -1,0 +1,21 @@
+{
+  "name": "aggressorindicatorcodeset",
+  "codes": [
+    {
+      "value": "Y",
+      "name": "OrderInitiatorIsAggressor",
+      "aliases": [
+        "Yes"
+      ],
+      "doc": "Order initiator is aggressor"
+    },
+    {
+      "value": "N",
+      "name": "OrderInitiatorIsPassive",
+      "aliases": [
+        "No"
+      ],
+      "doc": "Order initiator is passive"
+    }
+  ]
+}

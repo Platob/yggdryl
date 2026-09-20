@@ -1,0 +1,110 @@
+{
+  "name": "paymentmethodcodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "CREST",
+      "doc": "CREST"
+    },
+    {
+      "value": "2",
+      "name": "NSCC",
+      "doc": "NSCC"
+    },
+    {
+      "value": "3",
+      "name": "Euroclear",
+      "doc": "Euroclear"
+    },
+    {
+      "value": "4",
+      "name": "Clearstream",
+      "doc": "Clearstream"
+    },
+    {
+      "value": "5",
+      "name": "Cheque",
+      "doc": "Cheque"
+    },
+    {
+      "value": "6",
+      "name": "TelegraphicTransfer",
+      "doc": "Telegraphic Transfer"
+    },
+    {
+      "value": "7",
+      "name": "FedWire",
+      "doc": "Fed Wire"
+    },
+    {
+      "value": "8",
+      "name": "DebitCard",
+      "doc": "Debit Card"
+    },
+    {
+      "value": "9",
+      "name": "DirectDebit",
+      "doc": "Direct Debit (BECS)"
+    },
+    {
+      "value": "10",
+      "name": "DirectCredit",
+      "doc": "Direct Credit (BECS)"
+    },
+    {
+      "value": "11",
+      "name": "CreditCard",
+      "doc": "Credit Card"
+    },
+    {
+      "value": "12",
+      "name": "ACHDebit",
+      "doc": "ACH Debit"
+    },
+    {
+      "value": "13",
+      "name": "ACHCredit",
+      "doc": "ACH Credit"
+    },
+    {
+      "value": "14",
+      "name": "BPAY",
+      "doc": "BPAY"
+    },
+    {
+      "value": "15",
+      "name": "HighValueClearingSystem",
+      "doc": "High Value Clearing System (HVACS)"
+    },
+    {
+      "value": "16",
+      "name": "CHIPS",
+      "doc": "CHIPS"
+    },
+    {
+      "value": "17",
+      "name": "SWIFT",
+      "doc": "S.W.I.F.T."
+    },
+    {
+      "value": "18",
+      "name": "CHAPS",
+      "doc": "CHAPS"
+    },
+    {
+      "value": "19",
+      "name": "SIC",
+      "doc": "SIC"
+    },
+    {
+      "value": "20",
+      "name": "EuroSIC",
+      "doc": "euroSIC"
+    },
+    {
+      "value": "999",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

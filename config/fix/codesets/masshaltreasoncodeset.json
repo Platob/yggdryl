@@ -1,0 +1,40 @@
+{
+  "name": "masshaltreasoncodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "NewsDissemination",
+      "doc": "News Dissemination"
+    },
+    {
+      "value": "1",
+      "name": "OrderInflux",
+      "doc": "Order Influx"
+    },
+    {
+      "value": "2",
+      "name": "OrderImbalance",
+      "doc": "Order Imbalance"
+    },
+    {
+      "value": "3",
+      "name": "AdditionalInformation",
+      "doc": "Additional Information"
+    },
+    {
+      "value": "4",
+      "name": "NewsPending",
+      "doc": "News Pending"
+    },
+    {
+      "value": "5",
+      "name": "EquipmentChangeover",
+      "doc": "Equipment Changeover"
+    },
+    {
+      "value": "6",
+      "name": "Outage",
+      "doc": "Outage"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "name": "quotecanceltypecodeset",
+  "codes": [
+    {
+      "value": "1",
+      "name": "CancelForOneOrMoreSecurities",
+      "doc": "Cancel quotes for one or more securities"
+    },
+    {
+      "value": "2",
+      "name": "CancelForSecurityType",
+      "doc": "Cancel quotes for security type(s)"
+    },
+    {
+      "value": "3",
+      "name": "CancelForUnderlyingSecurity",
+      "doc": "Cancel quotes for underlying security"
+    },
+    {
+      "value": "4",
+      "name": "CancelAllQuotes",
+      "doc": "Cancel all quotes"
+    },
+    {
+      "value": "5",
+      "name": "CancelSpecifiedSingleQuote",
+      "aliases": [
+        "CancelQuoteSpecifiedInQuoteId"
+      ],
+      "doc": "Cancel specified single quote"
+    },
+    {
+      "value": "6",
+      "name": "CancelByTypeOfQuote",
+      "doc": "Cancel by type of quote"
+    },
+    {
+      "value": "7",
+      "name": "CancelForSecurityIssuer",
+      "doc": "Cancel quotes for an issuer"
+    },
+    {
+      "value": "8",
+      "name": "CancelForIssuerOfUnderlyingSecurity",
+      "doc": "Cancel quotes for an issuer of underlying security"
+    }
+  ]
+}

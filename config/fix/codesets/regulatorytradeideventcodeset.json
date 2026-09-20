@@ -1,0 +1,40 @@
+{
+  "name": "regulatorytradeideventcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "InitialBlockTrade",
+      "doc": "Initial block trade"
+    },
+    {
+      "value": "1",
+      "name": "Allocation",
+      "doc": "Allocation"
+    },
+    {
+      "value": "2",
+      "name": "Clearing",
+      "doc": "Clearing"
+    },
+    {
+      "value": "3",
+      "name": "Compression",
+      "doc": "Compression"
+    },
+    {
+      "value": "4",
+      "name": "Novation",
+      "doc": "Novation"
+    },
+    {
+      "value": "5",
+      "name": "Termination",
+      "doc": "Termination"
+    },
+    {
+      "value": "6",
+      "name": "PostTrdVal",
+      "doc": "Post-trade valuation"
+    }
+  ]
+}

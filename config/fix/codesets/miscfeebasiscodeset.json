@@ -1,0 +1,20 @@
+{
+  "name": "miscfeebasiscodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Absolute",
+      "doc": "Absolute"
+    },
+    {
+      "value": "1",
+      "name": "PerUnit",
+      "doc": "Per Unit"
+    },
+    {
+      "value": "2",
+      "name": "Percentage",
+      "doc": "Percentage"
+    }
+  ]
+}

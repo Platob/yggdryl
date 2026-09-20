@@ -1,6 +1,6 @@
 # CLI
 
-`ygg fix` manages the native FIX catalog through explicit `fields`, `components`, and `groups` command trees; a message is a component created with `--msgtype`. Rust only: the wheel ships this compiled executable without a Python runtime in its execution path.
+`ygg fix` manages the native FIX catalog through explicit `fields`, `components`, and `groups` command trees, with `codesets` beside them for the vocabularies they read by; a message is a component created with `--msgtype`. Rust only: the wheel ships this compiled executable without a Python runtime in its execution path.
 
 ## Contract
 
@@ -8,15 +8,15 @@
 | --- | --- |
 | Owner | `yggdryl-cli` parses arguments and renders results; the Rust registry owns schema validation, references, mutations, and persistence |
 | Root | `--root`, default `config/fix`; relative locations resolve against the working directory; a folder holding no catalog opens with the crate's built-in definitions rather than failing |
-| Categories | `fields`, `components`, `groups`; a message is a component carrying `FIX:msgtype` |
-| Operations | Every category supports `list`, `read`, `create`, `update`, and `delete` |
+| Categories | `fields`, `components`, `groups`; a message is a component carrying `FIX:msgtype`. `codesets` is not one of them: a set has no tag, no datatype and no reference, so it has verbs of its own |
+| Operations | Every category supports `list`, `read`, `create`, `update`, and `delete`; `codesets` supports `list`, `read`, `write` and `delete` |
 | Writes | Successful one-shot mutations save automatically; an interactive session saves only with `save` |
 | Keys | A field key is a decimal tag or a name; a named category's key is its definition name. The registry is one namespace: a key resolves the same way whatever dictionaries a definition belongs to, and no key spells an identity |
 | Dialect | `--dialect NAME` stamps membership (`FIX:branches`) on `ingest`, `sync`, `create`, and `update`; on `list` it is a filter; `read` and `delete` take none |
 | Create | Refuses an existing name or field identity |
 | Update | Replaces an existing definition completely, preserving identity; omitted metadata is removed |
 | Delete | Refuses absence and live references |
-| Enums | Scalar `FIX:codes` metadata; `--codes` accepts its canonical JSON document |
+| Enums | A named [code set](registry.md#a-field-names-the-code-set-it-reads-by) the dictionary holds: `--codes` on a field names one, `codesets write --codes '<json>'` states its members, and the set is stated before a field names it |
 | Direction rules | Tag 385's `FIX:directions` metadata; `--directions` accepts its canonical JSON document |
 | Identifiers | A component's direct scalar members; repeat `--identifiers` for names, aliases or decimal tags, resolved by the native setter into member order |
 | Output | Plain stable text when redirected; terminal styling only when supported and `NO_COLOR` is unset |
@@ -64,6 +64,7 @@ maturin build --manifest-path python/Cargo.toml --out dist
 | `<category> update <name> <type>` | Replace the complete existing definition |
 | `<category> update --input <file>` | Replace from a complete native `Field` JSON document |
 | `<category> delete <key>` | Delete the resolved definition, refusing dependents |
+| `codesets <list\|read\|write\|delete>` | The vocabularies, keyed by set name rather than by a definition key; see [Code sets](#code-sets) |
 
 A field key is a decimal tag or a name; named categories use their definition name. A decimal key is a tag and never an identity: the canonical holder of the tag answers, then an alternate. Anything else is a name resolved under the registry's one fold, canonical name before alias, so `Desk_Value`, `deskvalue` and `DeskValue` reach one field. A colon-bearing key such as `5001:venue` is a name that nothing holds, and a path such as `Parties[0].PartyID` is not a key here. Reads, deletes and lists consult no membership: `--dialect` on `list` filters the rows by provenance, and nothing else about resolution changes with it.
 
@@ -76,7 +77,7 @@ A field key is a decimal tag or a name; named categories use their definition na
 | `--component NAME` | Groups; identifies the existing occurrence component |
 | `--msgtype CODE` | Components; makes the component a message; full nonempty wire text, including spaces |
 | `--identifiers MEMBER` | Components; repeat for each direct scalar identifier. Canonical names, aliases and decimal tags resolve once; input order does not change member order |
-| `--codes JSON` | Scalar inline enum metadata |
+| `--codes NAME` | Scalar fields; the name of the code set this field reads its values by, which the dictionary must already hold. `codesets write` states the members |
 | `--directions JSON` | Tag 385's scalar; its [direction rules](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) as `FIX:directions`, one entry per code of the set; an empty list removes the property so the crate's defaults read again |
 | `--dialect NAME` | Membership: a dictionary this definition belongs to, recorded in `FIX:branches`; repeat the flag for several. Names are lowercased, deduplicated and sorted; an empty name or one carrying a comma is refused |
 | `--description TEXT` | Definition metadata |
@@ -90,8 +91,10 @@ ygg fix --root scratch/catalog fields create PartyID utf8 --tag 448
 ygg fix --root scratch/catalog components create Party 'struct<PartyID: utf8>' --required
 ygg fix --root scratch/catalog groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party
 ygg fix --root scratch/catalog components create Order 'struct<ClOrdID: utf8>' --msgtype D --identifiers ClOrdID
-ygg fix --root scratch/catalog fields create Side utf8 --tag 54 --codes '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
-ygg fix --root scratch/catalog fields create MsgDirection utf8 --tag 385 --codes '[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]' --directions '[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]'
+ygg fix --root scratch/catalog codesets write sidecodeset --codes '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
+ygg fix --root scratch/catalog fields create Side utf8 --tag 54 --codes sidecodeset
+ygg fix --root scratch/catalog codesets write msgdirectioncodeset --codes '[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]'
+ygg fix --root scratch/catalog fields create MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]'
 ygg fix --root scratch/catalog fields create DeskValue int32 --tag 5001 --dialect venue --dialect Desk
 ygg fix --root scratch/catalog fields read Desk_Value
 ygg fix --root scratch/catalog fields list --dialect desk
@@ -106,6 +109,23 @@ nested, ambiguous or duplicate members are refused atomically. Repeated flags
 replace the declaration as a whole, and a positional `update` without them
 removes it. `--input` takes the document's `FIX:identifiers` instead and cannot
 be combined with `--identifiers`.
+
+## Code sets
+
+A vocabulary is the dictionary's, not one field's, so it has its own verbs: `list` shows what is held with the size of each set and how many fields read by it, `read` prints the members or the document a store writes, `write` states them, and `delete` takes a set away.
+
+```bash
+ygg fix --root config/fix codesets list side --limit 20
+ygg fix --root config/fix codesets read sidecodeset
+ygg fix --root config/fix codesets read sidecodeset --json
+ygg fix --root scratch/catalog codesets write sidecodeset --codes '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
+ygg fix --root scratch/catalog codesets write sidecodeset --merge --codes '[{"value":"7","name":"Undisclosed"}]'
+ygg fix --root scratch/catalog codesets delete sidecodeset
+```
+
+`write` replaces the set; `--merge` folds by wire value instead, keeping what the set already held and adding every name, alias and wording the incoming statement brings, so a counterparty's own listing widens the vocabulary rather than replacing it. `read --json` prints the `{"name": ..., "codes": [...]}` document `codesets/<name>.json` holds, which `write --codes` takes back.
+
+Order matters in one direction only. A set is stated before a field names it, because `fields create Side utf8 --tag 54 --codes sidecodeset` is refused while the dictionary holds no `sidecodeset`; and a set is released after the last field lets go, because `codesets delete` refuses a set a field still reads by and names that field. Nothing else about a field changes with its vocabulary: `fields read Side` prints `codes sidecodeset`, one word, and restating the field never restates the members.
 
 ## Review and update a complete definition
 
@@ -153,11 +173,11 @@ ygg fix --root config/fix check
 ygg fix --root config/fix diff ../desk/config/fix --annotate
 ```
 
-`check` reports invalid catalog relationships and fails when a finding is an error. `diff` compares category definitions and metadata against another catalog; it is read-only.
+`check` reports invalid catalog relationships and fails when a finding is an error. It counts each category, then the `codesets` it holds and the `codes` in them, and walks each set once rather than once per field that reads by it - a malformed record is one finding about one vocabulary, not one about each of the hundred fields naming it. A set no field reads by is a note, a value stated twice in one set a warning, and a record the reader stops at a failure, because a borrowed walk ends at a refusal and every code after it is invisible. `diff` compares category definitions and metadata against another catalog; it is read-only.
 
 ## Interactive use
 
-With no command, `ygg fix` opens an interactive shell with the same category operations, flags, and native dispatcher. Completion includes category names, operations, definition names, and tags.
+With no command, `ygg fix` opens an interactive shell with the same category and code set operations, flags, and native dispatcher. Completion includes the command names, `codesets` among them, the category operations, definition names, and tags.
 
 ```bash
 ygg fix --root config/fix
@@ -167,19 +187,20 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 
 ## Edges
 
-- A catalog root holding no `fields/`, `components/`, or `groups/` folder loads with the crate's built-in definitions; a read does not create it.
+- A catalog root holding no `codesets/`, `fields/`, `components/`, or `groups/` folder loads with the crate's built-in definitions; a read does not create it.
 - `create` refuses a duplicate even when its supplied document is identical.
 - `update` requires an existing identity and is a full replacement.
 - Scalar fields require tags; a named definition whose document states none takes the tag derived from its name, inside `[100000, 1100000)`.
 - Wire group counters remain separate `int32` fields. The built-in `identifiers` (65020) and `metadata` (65049) Map groups have no scalar counter; a map's length is its cardinality.
-- Deleting a referenced field, component, or group fails before saving.
+- Deleting a referenced field, component, or group fails before saving, and so does deleting a code set a field still reads by; `codesets delete` names that field.
+- `fields create` and `fields update` refuse a `--codes` name the dictionary does not hold, so the set is written first and a field never names a vocabulary nothing states.
 - `ingest` creates by default and merges only when asked, because a new counterparty is a new catalog and a revised configuration is a change to one that exists; `sync` always folds.
 - `sync` of a location that is neither a folder nor a `.cfb` is refused, naming the location and the role it turned out to be; a location that does not exist yet is `unknown` and refused the same way.
-- `sync` of a `.cfb` whose stem does not read as a name - empty, or not opening with a letter - stamps no membership, exactly as [`FixField::from_cfb_file`](registry.md#folding-a-second-source-in) stamps none; a `--dialect` that is empty or carries a comma is refused before a byte is folded, on `ingest` and `sync` alike.
+- `sync` of a `.cfb` whose stem does not read as a name - empty, or not opening with a letter - stamps no membership, exactly as [`FixRegistry::from_cfb_file`](registry.md#folding-a-second-source-in) stamps none; a `--dialect` that is empty or carries a comma is refused before a byte is folded, on `ingest` and `sync` alike.
 - Two fields may hold one tag under two names; the bare tag answers the first holder, the store writes the holder first so it survives a reload, and a listing filtered on that tag shows both. Deleting the holder leaves the other alone on the tag.
 - `FIX:branches` is written inside each field's document; the store keeps no manifest and no per-dialect folder, so a `--dialect` on `create` changes one shard and nothing else.
 - Every location this tool is given resolves against the working directory before it becomes a URL, so a bare relative name works wherever a path is taken.
-- Invalid inline enums or direction rules, unresolved references, a dialect name that cannot be a membership, and malformed native documents carry native located errors.
+- A malformed code document on `codesets write`, invalid direction rules, unresolved references, a dialect name that cannot be a membership, a set name no store could file, and malformed native documents carry native located errors.
 - A registry mutation is atomic; persistence publishes separate documents and follows the backend's write semantics.
 - Interactive mode requires a terminal; piped one-shot commands emit plain text.
 
@@ -193,7 +214,7 @@ cargo run -p yggdryl-cli -- fix groups create --help
 
 ## Performance
 
-Measured in release mode on Windows, AMD Ryzen 5 150 with 12 logical CPUs and Rust 1.96. Each row launches 20 fresh processes; category reads include loading a local fixture with 100 scalar fields, inline enums, one component, one group, and one message, then printing native JSON.
+Measured in release mode on Windows, AMD Ryzen 5 150 with 12 logical CPUs and Rust 1.96. Each row launches 20 fresh processes; category reads include loading a local fixture with 100 scalar fields, the code sets they read by, one component, one group, and one message, then printing native JSON.
 
 | Process invocation | Mean elapsed |
 | --- | ---: |

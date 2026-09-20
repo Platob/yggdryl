@@ -1,0 +1,25 @@
+{
+  "name": "contractrefpostypecodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "TwoComponentIntercommoditySpread",
+      "doc": "Two component intercommodity spread"
+    },
+    {
+      "value": "1",
+      "name": "IndexOrBasket",
+      "doc": "Index or basket"
+    },
+    {
+      "value": "2",
+      "name": "TwoComponentLocationBasis",
+      "doc": "Two component locational basis"
+    },
+    {
+      "value": "99",
+      "name": "Other",
+      "doc": "Other"
+    }
+  ]
+}

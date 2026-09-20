@@ -1,0 +1,25 @@
+{
+  "name": "putorcallcodeset",
+  "codes": [
+    {
+      "value": "0",
+      "name": "Put",
+      "doc": "Put"
+    },
+    {
+      "value": "1",
+      "name": "Call",
+      "doc": "Call"
+    },
+    {
+      "value": "2",
+      "name": "Other",
+      "doc": "Other"
+    },
+    {
+      "value": "3",
+      "name": "Chooser",
+      "doc": "Chooser"
+    }
+  ]
+}
