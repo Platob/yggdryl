@@ -1843,7 +1843,7 @@ mod values {
     fn a_miss_is_null_and_never_an_error_or_a_panic() {
         let line = TextLine::from_bytes(
             0,
-            TextBytes::new(),
+            TextBytes::from_bytes("body").expect("a body"),
             std::sync::Arc::new(yggdryl::text::TextOptions::new()),
         )
         .unwrap()
@@ -1857,7 +1857,7 @@ mod values {
         // A line carrying no tree at all misses the same way.
         let bare = TextLine::from_bytes(
             0,
-            TextBytes::new(),
+            TextBytes::from_bytes("body").expect("a body"),
             std::sync::Arc::new(yggdryl::text::TextOptions::new()),
         )
         .unwrap();
@@ -1871,7 +1871,7 @@ mod values {
     fn a_key_with_no_value_is_found_and_is_not_a_miss() {
         let line = TextLine::from_bytes(
             0,
-            TextBytes::new(),
+            TextBytes::from_bytes("body").expect("a body"),
             std::sync::Arc::new(yggdryl::text::TextOptions::new()),
         )
         .unwrap()
@@ -1886,7 +1886,7 @@ mod values {
     fn the_setter_creates_what_is_not_there() {
         let mut line = TextLine::from_bytes(
             0,
-            TextBytes::new(),
+            TextBytes::from_bytes("body").expect("a body"),
             std::sync::Arc::new(yggdryl::text::TextOptions::new()),
         )
         .unwrap();
@@ -1922,7 +1922,7 @@ mod values {
     fn a_position_naming_no_entry_refuses_and_changes_nothing() {
         let mut line = TextLine::from_bytes(
             0,
-            TextBytes::new(),
+            TextBytes::from_bytes("body").expect("a body"),
             std::sync::Arc::new(yggdryl::text::TextOptions::new()),
         )
         .unwrap()
@@ -1939,7 +1939,7 @@ mod values {
     fn the_root_path_is_not_a_place_to_set() {
         let mut line = TextLine::from_bytes(
             0,
-            TextBytes::new(),
+            TextBytes::from_bytes("body").expect("a body"),
             std::sync::Arc::new(yggdryl::text::TextOptions::new()),
         )
         .unwrap();
@@ -1953,7 +1953,7 @@ mod values {
     fn removing_takes_one_entry_at_the_path() {
         let mut line = TextLine::from_bytes(
             0,
-            TextBytes::new(),
+            TextBytes::from_bytes("body").expect("a body"),
             std::sync::Arc::new(yggdryl::text::TextOptions::new()),
         )
         .unwrap()
@@ -1968,7 +1968,7 @@ mod values {
     fn a_repeated_key_is_two_entries_reachable_by_position() {
         let line = TextLine::from_bytes(
             0,
-            TextBytes::new(),
+            TextBytes::from_bytes("body").expect("a body"),
             std::sync::Arc::new(yggdryl::text::TextOptions::new()),
         )
         .unwrap()
@@ -2009,7 +2009,7 @@ mod values {
     fn a_path_segment_naming_nothing_addressable_misses_rather_than_panics() {
         let line = TextLine::from_bytes(
             0,
-            TextBytes::new(),
+            TextBytes::from_bytes("body").expect("a body"),
             std::sync::Arc::new(yggdryl::text::TextOptions::new()),
         )
         .unwrap()
@@ -3087,4 +3087,212 @@ fn a_text_read_is_shaped_by_its_select_and_where_sections() {
         .downcast_ref::<StringArray>()
         .unwrap();
     assert!(url.value(0).starts_with("mem://"), "{}", url.value(0));
+}
+
+/// A line with no body is no line, in either direction.
+///
+/// The `body` column is not nullable, and a cell holding the empty string
+/// would make that promise hollow: a row stating nothing is a row nobody can
+/// read back as the line it came from. So the reader never cuts one - a
+/// blank line, or one the strips take whole, is a separator between records
+/// and not a record - the line's own doors refuse one, and a write refuses a
+/// row that carries one.
+mod body {
+    use super::{EVENT_COLUMNS, bodies, collect, named, options, rownums, strings, with_event};
+    use yggdryl::IOMedia as _;
+    use yggdryl::text::{Text, TextBytes, TextLine, TextOptions};
+
+    fn line(body: &[u8]) -> yggdryl::Result<TextLine> {
+        TextLine::from_bytes(
+            7,
+            TextBytes::from_bytes(body).expect("a page"),
+            std::sync::Arc::new(TextOptions::new()),
+        )
+    }
+
+    #[test]
+    fn a_blank_line_is_a_separator_and_never_a_row() {
+        let source = named("blanks.log", b"alpha\n\nbeta\n\n\n");
+        let mut read = TextOptions::new();
+        read.start_rownum = Some(0);
+        let batches = collect(&source, read);
+        assert_eq!(bodies(&batches), [b"alpha".to_vec(), b"beta".to_vec()]);
+        // The numbering is the physical line's own, so the gap the blank
+        // line left is visible rather than closed over.
+        assert_eq!(rownums(&batches), [0, 2]);
+    }
+
+    #[test]
+    fn a_line_the_strips_take_whole_is_no_record_either() {
+        let source = named("stripped.log", b"xxx\nkeep\nxxx\n");
+        let mut read = TextOptions::new();
+        read.set_lstrip(["^x+"]).expect("an lstrip");
+        read.start_rownum = Some(1);
+        let batches = collect(&source, read);
+        assert_eq!(bodies(&batches), [b"keep".to_vec()]);
+        assert_eq!(rownums(&batches), [2]);
+    }
+
+    #[test]
+    fn a_count_and_a_read_drop_the_same_lines() {
+        // The counting pass keeps no body at all, so the two can only agree
+        // if what makes a line a record is what it cut and never what the
+        // retained limit kept.
+        let source = named("blanks.log", b"alpha\n\nbeta\n\n\n");
+        let counted = Text::new(source.clone()).with_options(TextOptions::new());
+        assert_eq!(counted.row_size().unwrap(), 2);
+        let batches = collect(&source, TextOptions::new());
+        let rows: usize = batches.iter().map(arrow_array::RecordBatch::num_rows).sum();
+        assert_eq!(rows, 2);
+    }
+
+    #[test]
+    fn the_line_doors_refuse_a_body_that_states_nothing() {
+        let refusal = line(b"").expect_err("no body, no line");
+        assert!(refusal.to_string().contains("$[7].body"), "{refusal}");
+        assert!(
+            refusal.to_string().contains("got an empty one"),
+            "{refusal}"
+        );
+        let mut held = line(b"alpha").expect("a line");
+        let refusal = held
+            .set_body(TextBytes::new())
+            .expect_err("no body, no line");
+        assert!(refusal.to_string().contains("$[7].body"), "{refusal}");
+        // And the line is the line it was: a refused write changes nothing.
+        assert_eq!(held.body(), "alpha");
+    }
+
+    #[test]
+    fn a_retained_limit_that_keeps_no_body_is_refused_before_a_byte_is_read() {
+        // With no row header there is nothing a record is known by, so a
+        // limit of zero would answer a line with no body on every row.
+        let refusal = named("any.log", b"alpha\n")
+            .read_arrow_reader(&TextOptions::new().with_max_record_byte_size(0).into())
+            .map(drop)
+            .expect_err("a limit that keeps nothing");
+        assert!(
+            refusal.to_string().contains("max_record_byte_size"),
+            "{refusal}"
+        );
+        // Under a row header the header is always retained, so the same
+        // limit keeps the bytes the record is known by and reads.
+        let batches = collect(
+            &named("headed.log", b"[A] alpha\n[B] beta\n"),
+            options(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(0),
+        );
+        assert_eq!(bodies(&batches), [b"[A] ".to_vec(), b"[B] ".to_vec()]);
+        assert_eq!(
+            strings(&batches, "kind"),
+            [Some("A".into()), Some("B".into())]
+        );
+    }
+
+    #[test]
+    fn a_row_that_states_no_body_is_refused_on_the_way_back_out() {
+        let source = named("round.log", b"alpha\nbeta\n");
+        let batches = collect(&source, TextOptions::new());
+        let schema = batches[0].schema();
+        let bodies_at = schema.index_of("body").unwrap();
+        let mut columns = batches[0].columns().to_vec();
+        columns[bodies_at] = std::sync::Arc::new(arrow_array::StringArray::from(vec![
+            Some("alpha"),
+            Some(""),
+        ]));
+        let hollow =
+            arrow_array::RecordBatch::try_new(std::sync::Arc::clone(&schema), columns).unwrap();
+        let mut target = named("written.log", b"");
+        let refusal = target
+            .write_arrow_reader(
+                yggdryl::arrow::batch_reader(schema, vec![hollow]),
+                yggdryl::IOMode::Overwrite,
+                &TextOptions::new().into(),
+            )
+            .map(drop)
+            .expect_err("a row stating no line");
+        assert!(refusal.to_string().contains("$[1].body"), "{refusal}");
+    }
+
+    #[test]
+    fn every_emitted_column_states_its_nullability_and_says_what_it_holds() {
+        let source = named("columns.log", b"2026-01-02T03:04:05Z INFO k=v hello\n");
+        let mut read = options(r"^(?<mtime>\S+) (?<level>\w+) ")
+            .with_max_record_byte_size(1_024)
+            .try_with_lift_names(["k"])
+            .expect("a lift");
+        read.start_rownum = Some(1);
+        read.parse_mimetype = true;
+        let batches = collect(&source, read);
+        let schema = batches[0].schema();
+        assert_eq!(
+            schema
+                .fields()
+                .iter()
+                .map(|field| field.name().as_str())
+                .collect::<Vec<_>>(),
+            with_event(&[
+                "sourceurl",
+                "rownum",
+                "mtime",
+                "mimetype",
+                "body",
+                "dropped_byte_size",
+                "level",
+                "k",
+            ])
+        );
+        // The five facts every event settles are the five a line always
+        // states; everything a line may leave unsaid is nullable, and the
+        // three the reader itself answers - which line it was, what it was
+        // classified as, and the line - are not.
+        let required = [
+            "currunix",
+            "curruuid",
+            "crossuuid",
+            "currhashcode",
+            "crosshashcode",
+        ];
+        for field in schema.fields() {
+            let expected = !(required.contains(&field.name().as_str())
+                || matches!(field.name().as_str(), "rownum" | "mimetype" | "body"));
+            assert_eq!(
+                field.is_nullable(),
+                expected,
+                "{} nullability",
+                field.name()
+            );
+            // Every column says what it holds, the ones a caller named
+            // included, so a catalog reading this schema needs nothing else.
+            assert!(
+                field.metadata().contains_key("description"),
+                "{} has no description",
+                field.name()
+            );
+        }
+        // And the sixteen a line opens with carry the spelling their own
+        // column states, so a line's row and a message's row name one fact
+        // one way.
+        for name in EVENT_COLUMNS {
+            let display = schema.field_with_name(name).unwrap().metadata()["display"].clone();
+            assert!(display.eq_ignore_ascii_case(name), "{name} shows {display}");
+        }
+        // A column that cannot be null never is, whatever the line left
+        // unsaid: this row states no level and no `k`.
+        let bare = collect(&named("bare.log", b"unmatched\n"), {
+            let mut read = options(r"^(?<mtime>\S+) (?<level>\w+) ");
+            read.parse_mimetype = true;
+            read.start_rownum = Some(1);
+            read
+        });
+        for field in bare[0].schema().fields() {
+            if !field.is_nullable() {
+                assert_eq!(
+                    bare[0].column_by_name(field.name()).unwrap().null_count(),
+                    0,
+                    "{} holds a null",
+                    field.name()
+                );
+            }
+        }
+    }
 }

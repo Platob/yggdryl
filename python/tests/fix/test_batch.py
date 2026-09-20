@@ -400,10 +400,18 @@ def test_a_row_reads_back_into_the_message_that_made_it(seed: FixRegistry) -> No
 def test_a_captures_own_columns_are_carried_and_never_become_facts(seed: FixRegistry) -> None:
     """A message carries what the reader said about its line, and states none of it."""
     codec = _fixed(seed)
+    # The object the line came out of is one of the capture's own columns: no
+    # column of the fixed row states it, so a capture that knows it declares
+    # it beside the body and the row number.
     capture = Field(
         "line",
         DataType.from_fields(
-            [Field("url", "utf8"), Field("rownum", "int64"), Field("body", "binary")]
+            [
+                Field("url", "utf8"),
+                Field("rownum", "int64"),
+                Field("body", "binary"),
+                Field("sourceurl", "url"),
+            ]
         ),
         nullable=False,
     )

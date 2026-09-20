@@ -54,7 +54,16 @@ pub(crate) struct TextColumn {
     /// The datatype it is built at.
     pub(crate) dtype: DataType,
     /// Whether it may hold a null.
+    ///
+    /// The one place the answer is decided, and load-bearing in both
+    /// directions: the row builder refuses a null this says cannot land,
+    /// and a batch read back refuses a null cell under the same name. A
+    /// column is nullable here exactly where the line can state nothing for
+    /// it.
     pub(crate) nullable: bool,
+    /// The column's own spelling, for a catalog that shows one; `None`
+    /// where the name a caller wrote is the spelling.
+    pub(crate) display: Option<&'static str>,
     /// What the column holds, for the catalog.
     pub(crate) description: Option<&'static str>,
 }
@@ -74,6 +83,7 @@ impl TextPlan {
     /// columns renamed onto one name, or a lifted path colliding with a column.
     /// The options are left exactly as they were.
     pub(crate) fn compile(options: &TextOptions) -> Result<Self> {
+        options.require_retained_body()?;
         let mut columns =
             Vec::with_capacity(EventColumn::ALL.len() + 8 + options.capture_names().len());
         // The event the line is, in the sixteen columns every graph event
@@ -85,6 +95,7 @@ impl TextPlan {
                 &mut columns,
                 TextSource::Event(column),
                 SmolStr::new_static(column.name()),
+                Some(column.display()),
                 column.datatype()?,
                 column.nullable(),
                 Some(column.description()),
@@ -93,7 +104,7 @@ impl TextPlan {
         push(
             &mut columns,
             TextSource::Url,
-            "sourceurl",
+            ("sourceurl", "SourceUrl"),
             DataType::url(),
             true,
             "The URL of the object this line was read from.",
@@ -102,7 +113,7 @@ impl TextPlan {
             push(
                 &mut columns,
                 TextSource::Rownum,
-                "rownum",
+                ("rownum", "RowNum"),
                 DataType::Int64,
                 false,
                 "The physical line number within that object.",
@@ -112,7 +123,7 @@ impl TextPlan {
             push(
                 &mut columns,
                 TextSource::Timestamp,
-                MTIME_COLUMN,
+                (MTIME_COLUMN, "MTime"),
                 mtime_dtype(),
                 true,
                 "When the record was written: its own captured timestamp, or the handle's modification time when it declares none.",
@@ -122,7 +133,7 @@ impl TextPlan {
             push(
                 &mut columns,
                 TextSource::BodyType,
-                MIMETYPE_COLUMN,
+                (MIMETYPE_COLUMN, "MimeType"),
                 DataType::utf8(),
                 false,
                 "What the line was classified as.",
@@ -131,16 +142,16 @@ impl TextPlan {
         push(
             &mut columns,
             TextSource::Body,
-            "body",
+            ("body", "Body"),
             DataType::utf8(),
             false,
-            "The line itself, as text: the row header included, the edges stripped, the byte limit applied.",
+            "The line itself, as text: the row header included, the edges stripped, the byte limit applied; never empty, because a line with no body is no line.",
         );
         if options.max_record_byte_size().is_some() {
             push(
                 &mut columns,
                 TextSource::DroppedByteSize,
-                "dropped_byte_size",
+                ("dropped_byte_size", "DroppedByteSize"),
                 DataType::UInt64,
                 true,
                 "How many bytes of this record went over the retained limit.",
@@ -151,13 +162,20 @@ impl TextPlan {
                 continue;
             }
             let dtype = options.capture_dtype(index);
+            // Nullable, and named by the expression rather than by this
+            // crate: a capture the header declared but did not match on a
+            // line is the null its column holds, and the name the caller
+            // wrote is the spelling a catalog shows.
             push_named(
                 &mut columns,
                 TextSource::Capture(index),
                 SmolStr::new(name),
+                None,
                 dtype,
                 true,
-                None,
+                Some(
+                    "One row-header capture, read at the datatype its syntax matches; empty on every line the header declared it for and did not match.",
+                ),
             );
         }
         for path in options.lift_paths() {
@@ -177,9 +195,12 @@ impl TextPlan {
                 &mut columns,
                 TextSource::Entry(path.clone()),
                 name,
+                None,
                 DataType::utf8(),
                 true,
-                None,
+                Some(
+                    "One entry lifted out of the payload by its path; empty on every line that stated nothing under it, which is what lifting a path out of a shape that varies is for.",
+                ),
             );
         }
         rename(&mut columns, options.rename_columns())?;
@@ -207,6 +228,13 @@ impl TextPlan {
                     .dtype
                     .clone()
                     .named_field(column.name.clone(), column.nullable);
+                // The spelling a catalog shows, beside what the column
+                // holds: the sixteen event columns carry the display their
+                // own enum states, so a line's row and a message's row name
+                // one fact one way.
+                if let Some(display) = column.display {
+                    field.set_display(display)?;
+                }
                 if let Some(description) = column.description {
                     field.set_description(description)?;
                 }
@@ -221,7 +249,7 @@ impl TextPlan {
 fn push(
     columns: &mut Vec<TextColumn>,
     source: TextSource,
-    name: &'static str,
+    (name, display): (&'static str, &'static str),
     dtype: DataType,
     nullable: bool,
     description: &'static str,
@@ -230,6 +258,7 @@ fn push(
         columns,
         source,
         SmolStr::new_static(name),
+        Some(display),
         dtype,
         nullable,
         Some(description),
@@ -241,6 +270,7 @@ fn push_named(
     columns: &mut Vec<TextColumn>,
     source: TextSource,
     name: SmolStr,
+    display: Option<&'static str>,
     dtype: DataType,
     nullable: bool,
     description: Option<&'static str>,
@@ -250,6 +280,7 @@ fn push_named(
         source,
         dtype,
         nullable,
+        display,
         description,
     });
 }

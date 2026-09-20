@@ -56,10 +56,18 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// Equality, order and hash read the stated facts alone and never a
 /// resolved slot.
 ///
-/// The body is text by construction: a line is made from the bytes the
-/// reader cut, and where those are not UTF-8 they are read once, where the
-/// line is made, by the charset layer's one rule for bytes offered as UTF-8
-/// that are not - the rule behind
+/// The body is never empty, and it is text by construction. A line is the
+/// line it holds, so a body stating nothing is refused wherever one is set -
+/// [`from_bytes`](Self::from_bytes) and [`set_body`](Self::set_body) - and
+/// the reader never offers one: a physical line that cut to nothing, a blank
+/// line or one the strips took whole, is a separator and not a record. That
+/// is what lets the `body` column a read answers be a column no null and no
+/// empty cell reaches.
+///
+/// As for the text: a line is made from the bytes the reader cut, and where
+/// those are not UTF-8 they are read once, where the line is made, by the
+/// charset layer's one rule for bytes offered as UTF-8 that are not - the
+/// rule behind
 /// [`Charset::transcribe`](crate::Charset::transcribe) - so every reader
 /// after that point reads text and none of them validates again. A body that
 /// was UTF-8 - every line of every capture this crate holds - stays the range
@@ -201,13 +209,22 @@ impl TextLine {
     /// header, the entries, the instant and the identity resolve on their
     /// first ask.
     ///
+    /// A line's body is the line, so an empty one is refused here: every
+    /// reading below is a reading of the body, the `body` column a read
+    /// answers is not nullable, and a row stating nothing is a row nobody
+    /// can read back. The reader never offers one - a physical line that cut
+    /// to nothing is a separator and not a record - and a caller building a
+    /// line by hand is told so by name.
+    ///
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) when the
-    /// decoded text is longer than a page can address in 32-bit offsets.
+    /// body is empty, and when the decoded text is longer than a page can
+    /// address in 32-bit offsets.
     ///
     /// [`decoded_byte_size`]: Self::decoded_byte_size
     pub fn from_bytes(index: u64, body: TextBytes, options: Arc<TextOptions>) -> Result<Self> {
+        require_body(index, &body)?;
         let (body, decoded_body) = decoded(body)?;
         Ok(Self {
             index,
@@ -358,9 +375,10 @@ impl TextLine {
     ///
     /// # Errors
     ///
-    /// Returns the refusal [`from_bytes`](Self::from_bytes) does, leaving the line
-    /// unchanged.
+    /// Returns the refusal [`from_bytes`](Self::from_bytes) does - an empty
+    /// body included - leaving the line unchanged.
     pub fn set_body(&mut self, body: TextBytes) -> Result<()> {
+        require_body(self.index, &body)?;
         let (body, decoded_body) = decoded(body)?;
         self.body = body;
         self.decoded_body = decoded_body;
@@ -1304,6 +1322,21 @@ impl<'a> From<&'a TextLine> for Result<&'a TextLine> {
     fn from(value: &'a TextLine) -> Self {
         Ok(value)
     }
+}
+
+/// Refuse a body that states nothing, naming the line it was offered for.
+///
+/// The one place the invariant is stated: every door that puts bytes in a
+/// line goes through it, so `body()` is text a reader can read and the
+/// `body` column a read answers is not nullable because it cannot be.
+fn require_body(index: u64, body: &TextBytes) -> Result<()> {
+    if body.is_empty() {
+        return Err(crate::Error::InvalidRecord {
+            path: format_smolstr!("$[{index}].body"),
+            reason: SmolStr::new_static("expected a line body, got an empty one"),
+        });
+    }
+    Ok(())
 }
 
 /// The bytes as text, and how many of them had to be decoded to be so.

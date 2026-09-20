@@ -4797,7 +4797,9 @@ export declare class TextLine {
    * value a message read from it records is a range of that page. A
    * `string` body is its UTF-8; a `Buffer` body that is not UTF-8 is
    * decoded as the core decodes one, each invalid byte as its Windows-1252
-   * character, and `decodedByteSize` counts them.
+   * character, and `decodedByteSize` counts them. A body that states
+   * nothing throws: a line is the line it holds, which is what lets a
+   * read's `body` column hold no null and no empty cell.
    */
   constructor(index: number, body: string | Buffer, captures?: Array<string | null> | null, options?: TextOptions)
   /**

@@ -23,7 +23,7 @@ A List group and its scalar count have separate definitions: `NoPartyIDs` is the
 | Components, including messages | 928 | 928 |
 | Messages, a subset of components | 181 | 181 |
 
-The live additions are the crate's 20 fields - `parentuuids` and `srcuuids` among them, the identities a message descends from and the identities it was read from, each one field under one name rather than a repeating group - and its two Map groups; the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 117 columns.
+The live additions are the crate's 20 fields - `parentuuids` and `srcuuids` among them, the identities a message descends from and the identities it was read from, each one field under one name rather than a repeating group - and its two Map groups; the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 116 columns.
 
 === "Rust"
 

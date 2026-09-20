@@ -46,7 +46,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 113);
+    assert_eq!(tags.len(), 112);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
@@ -90,6 +90,13 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         &tags[23..30],
         [8, 35, 34, 49, 56, 43, yggdryl::MSGDIRECTION_TAG_NAME.0],
         "which message"
+    );
+    // And not where the capture read it: the object a line came out of is
+    // the reader's word about the line, carried beside the row with the body
+    // and the row number, so no column of this row states it.
+    assert!(
+        !tags.contains(&yggdryl::SOURCEURL_TAG_NAME.0),
+        "the capture's own column is no column of the fixed row"
     );
     // Every tag the four standard lists name still has its column, each
     // exactly once, and a band claiming one early does not repeat it.

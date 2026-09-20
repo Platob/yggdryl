@@ -333,17 +333,6 @@
         }
       },
       {
-        "name": "sourceurl",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "sourceurl",
-          "FIX:tag": "65026"
-        }
-      },
-      {
         "name": "msgpluginid",
         "dtype": {
           "type": "null"
