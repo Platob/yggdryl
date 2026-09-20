@@ -38,12 +38,7 @@ use crate::{Field, Result, Scalar};
 /// A windows-1252 string column and a byte column are the same Arrow binary
 /// buffers; what tells them apart is the field, and this is that answer made
 /// a type so the two are different columns rather than one wearing two names.
-pub trait ByteKind: Send + Sync + Clone + Copy + fmt::Debug + 'static {
-    /// Widen a run of bytes under this marker to the serie root.
-    fn into_serie(column: Serie) -> Serie {
-        column
-    }
-}
+pub trait ByteKind: Send + Sync + Clone + Copy + fmt::Debug + 'static {}
 
 /// The marker for a run of bytes a field reads as text.
 ///
