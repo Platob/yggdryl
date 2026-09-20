@@ -862,9 +862,8 @@ impl FixRegistry {
     /// The field states the name and the dictionary holds the members, so
     /// this is the one door between them. A field naming no set, and one
     /// this dictionary does not hold, both answer nothing - a held field
-    /// never names a set this dictionary lacks, because
-    /// [`validate_references`](super::catalog) refuses one at every door
-    /// a field arrives through.
+    /// never names a set this dictionary lacks, because registry validation
+    /// refuses one at every door a field arrives through.
     #[must_use]
     pub fn codeset_of(&self, field: &Field) -> Option<FixCodeSet<'_>> {
         self.get_codeset(field.as_fix().codeset()?)
@@ -966,11 +965,10 @@ impl FixRegistry {
 
     /// Folds `codes` into the code set `name`, keeping what it already held.
     ///
-    /// The fold [`FixCodes::merge`] states: keyed by wire value, a
-    /// placeholder name yielding to a real one, every surviving spelling
-    /// kept as an alias. So a venue's statement of a set enriches the one
-    /// the dictionary holds rather than replacing it, and a set no
-    /// dictionary held yet arrives whole.
+    /// The fold is keyed by wire value: a placeholder name yields to a real
+    /// one and every surviving spelling remains an alias. So a venue's
+    /// statement of a set enriches the one the dictionary holds rather than
+    /// replacing it, and a set no dictionary held yet arrives whole.
     ///
     /// # Errors
     ///

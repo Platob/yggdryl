@@ -962,8 +962,8 @@ fn refused(target: &'static str, reason: impl fmt::Display) -> Error {
 /// the only difference between them is those four properties.
 ///
 /// A field's `FIX:codeset` is not one of them: it names the
-/// [code set](super::codes) the field reads by, and the members live in the
-/// store's own `codesets/` folder rather than in the field.
+/// [`FixCodeSet`](super::FixCodeSet) the field reads by, and the members live
+/// in the store's own `codesets/` folder rather than in the field.
 ///
 /// ```
 /// use yggdryl::{DataType, Scalar, fix};
