@@ -396,6 +396,19 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "geography",
             Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
         ),
+        // A variant is its two buffers, kept as they are: re-encoding the
+        // value they hold would restate a foreign writer's dictionary.
+        Scalar::Variant(value) => tagged_pickle_state(
+            py,
+            "variant",
+            Some(pickle_tuple(
+                py,
+                vec![
+                    PyBytes::new(py, value.metadata()).into_any().unbind(),
+                    PyBytes::new(py, value.value()).into_any().unbind(),
+                ],
+            )?),
+        ),
         Scalar::Date32(value) => {
             temporal_i32_pickle_state(py, "date32", value.count(), value.unit(), value.timezone())
         }
@@ -696,6 +709,15 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
         "geography" => Geography::new(pickle_bytes(&payload()?)?)
             .map(Scalar::Geography)
             .map_err(value_error),
+        "variant" => {
+            let payload = payload()?;
+            let (metadata, value) = payload
+                .extract::<(Vec<u8>, Vec<u8>)>()
+                .map_err(|_| PyTypeError::new_err("Scalar variant state must be two bytes"))?;
+            yggdryl::Variant::new(metadata, value)
+                .map(Scalar::Variant)
+                .map_err(value_error)
+        }
         "date32" => {
             let (count, unit, zone) = pickle_temporal::<i32>(&payload()?)?;
             Scalar::date32_in(count, unit, zone).map_err(value_error)
@@ -805,42 +827,43 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
 #[allow(clippy::wrong_self_convention)] // Python `into_*` methods do not consume wrappers.
 impl PyScalar {
     /// Rebuild a value from what pickle or a reconstructible repr carried:
-    /// the variant encoding as `bytes`, which is what `__reduce__` hands
+    /// the value stream as `bytes`, which is what `__reduce__` hands
     /// pickle, or the tagged state a `repr` spells.
     #[staticmethod]
     fn _from_pickle(state: &Bound<'_, PyAny>) -> PyResult<Self> {
         if state.is_instance_of::<PyBytes>() {
-            return Self::from_variant_bytes(state);
+            return Self::from_value_bytes(state);
         }
         scalar_from_pickle_state(state, 0).map(Self::from_inner)
     }
 
-    /// The value one variant encoding holds: the version, the datatype's
-    /// identifier and the payload, as `into_variant_bytes` wrote them,
+    /// The value one value stream holds: the version, the datatype's
+    /// identifier and the payload, as `into_value_bytes` wrote them,
     /// nested values inside.
     ///
     /// Raises `ValueError` naming the byte where the bytes could not be
     /// read: another version, a byte naming no datatype, a payload cut
     /// short, or bytes left after the value.
     #[staticmethod]
-    fn from_variant_bytes(data: &Bound<'_, PyAny>) -> PyResult<Self> {
+    fn from_value_bytes(data: &Bound<'_, PyAny>) -> PyResult<Self> {
         let buffer = pyo3::buffer::PyBuffer::<u8>::get(data).map_err(|_| {
-            PyTypeError::new_err("variant bytes must be bytes, a bytearray or a buffer")
+            PyTypeError::new_err("value bytes must be bytes, a bytearray or a buffer")
         })?;
         let held = buffer.to_vec(data.py())?;
-        Scalar::decode_variant_bytes(&held)
+        Scalar::decode_value_bytes(&held)
             .map(Self::from_inner)
             .map_err(value_error)
     }
 
-    /// This value as the variant encoding: one `bytes` holding the
-    /// version, the datatype's identifier and the payload the identifier
-    /// says how to read - a number as its little-endian bytes, a text as a
+    /// This value as the value stream: one `bytes` holding the version,
+    /// the datatype's identifier and the payload the identifier says how
+    /// to read - a number as its little-endian bytes, a text as a
     /// compression byte, a size and the characters, a nested value as a
     /// count and its children - compressed with zstd past four kibibytes.
-    /// What pickle carries, and what a variant column stores per row.
-    fn into_variant_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
-        PyBytes::new(py, &self.inner.into_variant_bytes())
+    /// What pickle carries; a `variant` column stores the Parquet Variant
+    /// encoding instead, which a cast into that datatype writes.
+    fn into_value_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new(py, &self.inner.into_value_bytes())
     }
 
     /// Convert a Python-native value without a text intermediate.
@@ -1429,7 +1452,7 @@ impl PyScalar {
     fn __reduce__(&self, py: Python<'_>) -> PyResult<(Py<PyAny>, (Py<PyAny>,))> {
         Ok((
             py.get_type::<Self>().getattr("_from_pickle")?.unbind(),
-            (self.into_variant_bytes(py).into_any().unbind(),),
+            (self.into_value_bytes(py).into_any().unbind(),),
         ))
     }
 
@@ -1594,6 +1617,9 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::Bytes(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
         Scalar::Geometry(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
         Scalar::Geography(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
+        // A variant crosses as the value it holds, which is what a caller
+        // asked a variant column for; the bytes stay on the Rust side.
+        Scalar::Variant(value) => as_py(py, &value.scalar().map_err(value_error)?),
         Scalar::Date32(_) | Scalar::Date64(_) => date_as_py(py, value),
         Scalar::Time32(time) => time_as_py(py, value, time.timezone()),
         Scalar::Time64(time) => time_as_py(py, value, time.timezone()),

@@ -914,6 +914,17 @@ fn floating(value: &Scalar) -> Option<f64> {
 /// for [`Safety::Strict`].
 #[allow(clippy::too_many_lines)]
 pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Result<Scalar> {
+    let target = unwrap_dictionary(target);
+    // A variant target owns the encoding boundary. In particular, null is
+    // the variant encoding's own null value, and an already encoded value is
+    // returned with its exact buffers rather than decoded and re-encoded.
+    if matches!(target, DataType::Variant) {
+        return match target.scalar(value.clone()) {
+            Ok(value) => Ok(value),
+            Err(_) if safety.is_safe() => Ok(Scalar::Null),
+            Err(error) => Err(error),
+        };
+    }
     // The empty-cell rule: `""` entering a target that does not keep it is
     // absence, decided before `safety` is asked. The one scalar door runs the
     // rule too, but the decimal, temporal, integer and UUID readings below
@@ -922,7 +933,16 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
     if value.is_null() || matches!(target, DataType::Null) || is_blank_text(target, value) {
         return Ok(Scalar::Null);
     }
-    let target = unwrap_dictionary(target);
+    // Outside a variant column the bytes mean the value they encode. Decode
+    // once, then send that value back through this same conversion so leaf
+    // width, text and safe-cast rules keep their one owner.
+    if let Scalar::Variant(variant) = value {
+        return match variant.scalar() {
+            Ok(decoded) => convert(target, &decoded, safety),
+            Err(_) if safety.is_safe() => Ok(Scalar::Null),
+            Err(error) => Err(error),
+        };
+    }
     let refuse = |reason: &str| -> Result<Scalar> {
         if safety.is_safe() {
             return Ok(Scalar::Null);

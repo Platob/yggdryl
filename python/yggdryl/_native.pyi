@@ -481,22 +481,21 @@ class Scalar:
     @staticmethod
     def _from_pickle(state: object) -> Scalar: ...
     @staticmethod
-    def from_variant_bytes(data: bytes | bytearray | memoryview) -> Scalar:
-        """The value one variant encoding holds, as ``into_variant_bytes`` wrote it.
+    def from_value_bytes(data: bytes | bytearray | memoryview) -> Scalar:
+        """The value one value stream holds, as ``into_value_bytes`` wrote it.
 
         Raises ``ValueError`` naming the byte where the bytes could not be
         read: another version, a byte naming no datatype, a payload cut
         short, or bytes left after the value.
         """
-    def into_variant_bytes(self) -> bytes:
-        """This value as the variant encoding.
+    def into_value_bytes(self) -> bytes:
+        """This value as the value stream.
 
         One ``bytes``: the version, the datatype's identifier and the payload
         the identifier says how to read - a number as its little-endian
         bytes, a text as a compression byte, a size and the characters, a
         nested value as a count and its children - compressed with zstd past
-        four kibibytes. What pickle carries, and what a variant column stores
-        per row.
+        four kibibytes. What pickle carries.
         """
     @staticmethod
     def from_(value: object) -> Scalar: ...

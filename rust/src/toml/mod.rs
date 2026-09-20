@@ -372,7 +372,7 @@ pub fn validate_for_write(value: &Scalar) -> Result<()> {
 
 /// Validate the natural TOML projection against explicit limits.
 pub fn validate_for_write_with_limits(value: &Scalar, limits: Limits) -> Result<()> {
-    wire::check_depth(value, limits.max_depth())
+    wire::check_depth(value, limits.max_depth()).map(|_| ())
 }
 
 /// Encode one value to a byte writer.
@@ -386,8 +386,8 @@ pub fn into_writer_with_formatting<W: Write>(
     mut writer: W,
     formatting: Formatting,
 ) -> Result<()> {
-    validate_for_write(value)?;
-    wire::write_document(&mut writer, value, formatting.into())
+    let value = wire::check_depth(value, Limits::default().max_depth())?;
+    wire::write_document(&mut writer, value.as_ref(), formatting.into())
 }
 
 /// Encode exactly one value as TOML bytes.

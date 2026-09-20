@@ -35,8 +35,8 @@ use yggdryl::{
 };
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
-    FixId, FixMsg, FixRegistry, MediaType, MimeType, PythonKind, PythonMetadata, Scalar, TimeUnit,
-    Timezone, Version,
+    FixId, FixMsg, FixRegistry, Int64, MediaType, MimeType, PythonKind, PythonMetadata, Scalar,
+    TimeUnit, Timezone, Value, Variant, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -129,6 +129,103 @@ fn costs(what: &str, each: usize, work: impl FnMut()) {
         repeated,
         each * 1_000,
         "{what} did not cost {each} per read over a thousand"
+    );
+}
+
+/// Pin the measured codec cost after warming shared empty metadata.
+fn variant_cost(what: &str, expected: usize, work: impl FnMut()) {
+    let (once, repeated) = counted_once_and_repeated(work);
+    assert_eq!(once, expected, "variant {what}: allocations on one call");
+    assert_eq!(
+        repeated,
+        expected * 1_000,
+        "variant {what}: repeated allocations"
+    );
+    eprintln!("variant_{what}: once={once} repeated={repeated}");
+}
+
+fn variant_object(fields: usize) -> Scalar {
+    Scalar::from_struct((0..fields).map(|index| {
+        (
+            format!("field{index:04}"),
+            Scalar::from(i64::try_from(index).expect("a small fixture")),
+        )
+    }))
+    .expect("the fixture builds")
+}
+
+fn variant_nested(width: usize) -> Scalar {
+    let children = Scalar::from_sequence(
+        (0..width).map(|index| Scalar::from(i64::try_from(index).expect("a small fixture"))),
+    );
+    Scalar::from_sequence([children.clone(), children])
+}
+
+#[test]
+fn variant_allocations_are_encoding_buffers_and_decoded_values() {
+    let primitive = Scalar::from(7_i64);
+    let object4 = variant_object(4);
+    let object64 = variant_object(64);
+    let nested = variant_nested(64);
+    let primitive_variant = Variant::encode(&primitive).expect("the fixture encodes");
+    let object4_variant = Variant::encode(&object4).expect("the fixture encodes");
+    let object64_variant = Variant::encode(&object64).expect("the fixture encodes");
+    let nested_variant = Variant::encode(&nested).expect("the fixture encodes");
+
+    // Empty metadata is shared; encoding retains its payload after one scratch Vec.
+    variant_cost("primitive_encode", 2, || {
+        black_box(primitive.into_variant().expect("the primitive encodes"));
+    });
+    variant_cost("primitive_decode", 0, || {
+        black_box(Scalar::from_variant(&primitive_variant).expect("the primitive decodes"));
+    });
+    variant_cost("object4_encode", 12, || {
+        black_box(object4.into_variant().expect("the object encodes"));
+    });
+    variant_cost("object4_decode", 2, || {
+        black_box(Scalar::from_variant(&object4_variant).expect("the object decodes"));
+    });
+    variant_cost("object64_encode", 25, || {
+        black_box(object64.into_variant().expect("the object encodes"));
+    });
+    variant_cost("object64_decode", 11, || {
+        black_box(Scalar::from_variant(&object64_variant).expect("the object decodes"));
+    });
+    // Each of the three decoded lists owns one final Arc slice, with no staging Vec.
+    variant_cost("nested_decode", 3, || {
+        black_box(Scalar::from_variant(&nested_variant).expect("the sequence decodes"));
+    });
+    let decoded = Scalar::from_variant(&nested_variant).expect("the sequence decodes");
+    variant_cost("nested_scalar_clone", 0, || {
+        black_box(decoded.clone());
+    });
+    variant_cost("nested_variant_clone", 0, || {
+        black_box(nested_variant.clone());
+    });
+}
+
+#[test]
+fn variant_identity_projections_allocate_nothing() {
+    let primitive = Int64::new(7);
+    let encoded = Value::into_variant(&primitive).expect("the integer encodes");
+    let wrapped = Scalar::Variant(encoded.clone());
+
+    costs("a Variant Value into_variant projection", 0, || {
+        black_box(Value::into_variant(&encoded).expect("the variant stays itself"));
+    });
+    costs("a Variant Value from_variant projection", 0, || {
+        black_box(<Variant as Value>::from_variant(&encoded).expect("the variant stays itself"));
+    });
+    costs("a Scalar::Variant into_variant projection", 0, || {
+        black_box(
+            wrapped
+                .into_variant()
+                .expect("the wrapped variant stays itself"),
+        );
+    });
+    assert_eq!(
+        <Int64 as Value>::from_variant(&encoded).expect("the exact integer decodes"),
+        primitive
     );
 }
 
@@ -2340,6 +2437,26 @@ fn a_string_column_is_built_into_one_buffer_whatever_its_charset() {
              a column's cost must not grow with its rows"
         );
     }
+}
+
+#[test]
+fn encoded_variants_build_arrow_columns_without_per_row_allocations() {
+    let field = DataType::Variant.nullable_field("value");
+    let encoded = Scalar::Variant(variant_object(4).into_variant().unwrap());
+    let mut counts = Vec::new();
+    for rows in [16_usize, 1_024, 16_384] {
+        let column = Scalar::from_sequence((0..rows).map(|_| encoded.clone()));
+        let build = || yggdryl::arrow::array_from_value(&field, &column).unwrap();
+        drop(build());
+        let (allocations, array) = counted(build);
+        assert_eq!(array.len(), rows);
+        counts.push(allocations);
+    }
+    eprintln!("encoded_variant_arrow_columns: {counts:?} allocations at 16, 1024, 16384 rows");
+    assert!(
+        counts.windows(2).all(|pair| pair[0] == pair[1]),
+        "encoded Variant columns must allocate their final buffers, not buffers per row: {counts:?}"
+    );
 }
 
 #[test]

@@ -231,10 +231,22 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
   pub const fn handle(&self) -> &H
   pub fn into_handle(self) -> crate::Result<H>
 
-### yggdryl::variant  [rust/src/variant.rs]  (the variant encoding: any Scalar as one byte stream and back)
-pub const VARIANT_VERSION: u8 = 0;  (the first byte of every stream)
+### yggdryl::variant  [rust/src/variant.rs]  (the Apache Parquet Variant binary encoding, version 1: one metadata dictionary and one value payload)
+pub const VARIANT_VERSION: u8 = 1;  (the specification version, the low nibble of the metadata header)
+pub const VARIANT_EXTENSION_NAME: &str = "arrow.parquet.variant";  (the canonical Arrow extension over the struct of two binaries)
+pub const VARIANT_METADATA_FIELD: &str = "metadata";  (the child holding the key dictionary)
+pub const VARIANT_VALUE_FIELD: &str = "value";  (the child holding the value payload)
+pub struct Variant  (Clone, Eq/Ord/Hash, Debug, Display = the JSON the value spells; the value of Scalar::Variant and what a `variant` column stores per row)
+  pub fn new(metadata: impl Into<Arc<[u8]>>, value: impl Into<Arc<[u8]>>) -> Result<Self>  (bytes a medium stored; the metadata header, its dictionary and its offsets are read here, the value payload by `scalar`)
+  pub fn encode(value: &Scalar) -> Result<Self>  (the tree's object keys sorted into one dictionary, sizes the narrowest the payload allows; refuses what the standard cannot spell - a decimal past 38 digits, a clock that is not a whole microsecond, a zoned time or duration, a mapping keyed by anything but text)
+  pub fn metadata(&self) -> &[u8]
+  pub fn value(&self) -> &[u8]
+  pub fn scalar(&self) -> Result<Scalar>  (the value the bytes hold, refused at the byte: a payload cut short, a primitive version 1 does not name, a field id past the dictionary, an object naming one key twice, bytes left over)
+
+### yggdryl::valuestream  [rust/src/valuestream.rs]  (the crate's own byte stream: any Scalar, leaf for leaf, and back)
+pub const VALUE_STREAM_VERSION: u8 = 0;  (the first byte of every stream)
 pub const COMPRESS_FROM: usize = 4 * 1024;  (a payload of no fixed width past this many bytes is a zstd frame)
-pub struct VariantStream  (Iterator<Item = Vec<u8>> + FusedIterator: one chunk per leaf, the children of a nested value after its header, holding what it has yet to write and nothing it wrote)
+pub struct ValueStream  (Iterator<Item = Vec<u8>> + FusedIterator: one chunk per leaf, the children of a nested value after its header, holding what it has yet to write and nothing it wrote)
 
 ### yggdryl::root::datatype_id  [rust/src/datatype_id.rs]
 pub enum DataTypeId
@@ -1246,10 +1258,11 @@ pub const SECRET_MINIMUM_LENGTH: usize = 136;
 pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>>
   pub fn stable_hash(&self) -> u64  (on Scalar and FieldRecord<'_>)
   pub fn write_bytes(&self, sink: &mut impl Hasher)
-  pub fn encode_variant_stream_bytes(&self) -> VariantStream  (the variant encoding one chunk per leaf: the version and the id, then the payload, then a nested value's children; on Scalar; DataType and every DataTypeValue answer `encode_variant_stream_bytes(&self, value: &Scalar) -> Result<VariantStream>`, the value cast first)
-  pub fn into_variant_bytes(&self) -> Vec<u8>  (the same bytes whole; DataType and every DataTypeValue answer `encode_variant_bytes(&self, value: &Scalar) -> Result<Vec<u8>>`)
-  pub fn decode_variant_bytes(bytes: &[u8]) -> Result<Self>  (the value one encoding holds, refused at the byte: another version, a byte naming no datatype or a family's placeholder, a payload cut short, bytes left over; DataType and every DataTypeValue answer `decode_variant_bytes(&self, bytes: &[u8]) -> Result<Scalar>`, cast to the datatype)
-  pub fn decode_variant_stream_bytes<I>(chunks: I) -> Result<Self> where I: IntoIterator, I::Item: AsRef<[u8]>  (the chunks gathered and read as one; DataType and every DataTypeValue answer the same over `&self`)
+  pub fn encode_value_stream_bytes(&self) -> ValueStream  (the value stream one chunk per leaf: the version and the id, then the payload, then a nested value's children; on Scalar; DataType and every DataTypeValue answer `encode_value_stream_bytes(&self, value: &Scalar) -> Result<ValueStream>`, the value cast first)
+  pub fn into_value_bytes(&self) -> Vec<u8>  (the same bytes whole; DataType and every DataTypeValue answer `encode_value_bytes(&self, value: &Scalar) -> Result<Vec<u8>>`)
+  pub fn decode_value_bytes(bytes: &[u8]) -> Result<Self>  (the value one stream holds, refused at the byte: another version, a byte naming no datatype or a family's placeholder, a payload cut short, bytes left over; DataType and every DataTypeValue answer `decode_value_bytes(&self, bytes: &[u8]) -> Result<Scalar>`, cast to the datatype)
+  pub fn decode_value_stream_bytes<I>(chunks: I) -> Result<Self> where I: IntoIterator, I::Item: AsRef<[u8]>  (the chunks gathered and read as one; DataType and every DataTypeValue answer the same over `&self`)
+  pub fn into_variant(&self) -> Result<Variant>  (on Scalar: the value as the Parquet Variant encoding; `Scalar::from_variant(&Variant)` reads it back, and DataType answers `encode_variant`/`decode_variant` with the cast)
   pub fn digest(&self, algorithm: DigestAlgorithm) -> Digest  (on Scalar, FieldScalar<'_>, and FieldRecord<'_>)
   pub struct ValueBytes<'a>
 
@@ -3701,7 +3714,7 @@ pub struct ProtocolField<'field>
   pub fn as_protocol(&self) -> PythonField<'_>
 
 ### yggdryl::scalar  [rust/src/scalar.rs]  (the Value and FamilyValue contracts a scalar's leaves answer are under yggdryl::value)
-  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Country, Currency, Mic, Cfi, Side, State, TimeInForce, Isin, Cusip, Sedol, Bloomberg, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Bytes, Geometry, Geography, Sequence, Mapping, Struct, Arrow (feature arrow: Arc<ArrowScalar>, a columnar payload crossing as the scalar it is; into_native reads it as rows, as_arrow borrows it); 48 bytes; every variant holds its leaf directly, the eleven registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Country, Currency, Mic, Cfi, Side, State, TimeInForce, Isin, Cusip, Sedol, Bloomberg, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Bytes, Geometry, Geography, Sequence, Mapping, Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload), Arrow (feature arrow: Arc<ArrowScalar>, a columnar payload crossing as the scalar it is; into_native reads it as rows, as_arrow borrows it); 48 bytes; every variant holds its leaf directly, the eleven registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub fn id(&self) -> DataTypeId
   pub fn family(&self) -> DataTypeKind
   pub const fn kind(&self) -> &'static str
@@ -3756,6 +3769,8 @@ pub trait Value: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + S
   fn dtype(&self) -> Result<DataType>
   fn into_scalar(self) -> Scalar
   fn from_scalar(value: &Scalar) -> Option<&Self>
+  fn into_variant(&self) -> Result<Variant>  (encode through Scalar using the Parquet Variant mapping)
+  fn from_variant(value: &Variant) -> Result<Self>  (decode and require this exact leaf; Variant itself shares its buffers)
 pub trait FamilyValue: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static  (what a family's value enum owes: it stands for any one leaf of the family; implemented by Integer, Floating, Decimal, Temporal, Code, Geospatial and Nested)
   const KIND: DataTypeKind
   fn dtype(&self) -> Result<DataType>
@@ -3794,7 +3809,7 @@ pub trait NestedValue: Value  (implemented by Sequence, Mapping and Struct)
   fn len(&self) -> usize
   fn is_empty(&self) -> bool  (provided: len() == 0)
   fn children(&self) -> Children<'_>
-pub enum Nested  (Sequence(Sequence), Mapping(Mapping), Struct(Struct); the nested family as one value, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)
+pub enum Nested  (Sequence(Sequence), Mapping(Mapping), Struct(Struct), Variant(Variant); the nested family as one value, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)
   impl FamilyValue for Nested  (KIND = DataTypeKind::Nested)
   impl From<Sequence>, From<Mapping>, From<Struct> for Nested
   impl From<Nested> for Scalar
@@ -3813,7 +3828,7 @@ pub trait DataTypeValue: Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + S
   fn into_dtype(self) -> DataType
   fn from_dtype(dtype: &DataType) -> Option<Self>  (owned: a payload is Copy or one shared pointer)
   fn cast_scalar(&self, value: &crate::Scalar) -> Result<crate::Scalar>  (provided, as are the four below: the datatype is the target, and every family answers the doors through the root's one recursive walk)
-  fn encode_variant_stream_bytes(&self, value: &crate::Scalar) -> Result<crate::VariantStream>  (provided: the value cast to this datatype and encoded one chunk per leaf; encode_variant_bytes, decode_variant_bytes and decode_variant_stream_bytes beside it, each through the datatype the leaf widens to)
+  fn encode_value_stream_bytes(&self, value: &crate::Scalar) -> Result<crate::ValueStream>  (provided: the value cast to this datatype and encoded one chunk per leaf; encode_value_bytes, decode_value_bytes and decode_value_stream_bytes beside it, each through the datatype the leaf widens to)
   fn cast_arrow_array(&self, array: arrow_array::ArrayRef, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::ArrayRef>
   fn cast_arrow_scalar(&self, array: arrow_array::ArrayRef, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::Scalar<arrow_array::ArrayRef>>
   fn cast_arrow_batch(&self, batch: arrow_array::RecordBatch, options: crate::ArrowCastOptions) -> crate::arrow::Result<arrow_array::RecordBatch>
@@ -4893,4 +4908,3 @@ pub trait IOMedia: Send
   fn append_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()> where
   fn merge_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()> where
   fn write_records<I, R>( &mut self, records: I, mode: crate::IOMode, options: &RecordOptions, ) -> Result<()> where
-

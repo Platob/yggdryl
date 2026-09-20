@@ -58,6 +58,36 @@ fn extension_field(
 }
 
 /// The canonical variant storage: a struct of two required binaries.
+fn variant_storage() -> ArrowDataType {
+    ArrowDataType::Struct(arrow_schema::Fields::from(vec![
+        ArrowField::new("metadata", ArrowDataType::Binary, false),
+        ArrowField::new("value", ArrowDataType::Binary, false),
+    ]))
+}
+
+/// One variant column holding the given values, both children filled.
+fn variant_column(values: &[crate::Scalar]) -> ArrayRef {
+    let variants: Vec<crate::Variant> = values
+        .iter()
+        .map(|value| crate::Variant::encode(value).unwrap())
+        .collect();
+    Arc::new(arrow_array::StructArray::new(
+        arrow_schema::Fields::from(vec![
+            ArrowField::new("metadata", ArrowDataType::Binary, false),
+            ArrowField::new("value", ArrowDataType::Binary, false),
+        ]),
+        vec![
+            Arc::new(arrow_array::BinaryArray::from_iter_values(
+                variants.iter().map(crate::Variant::metadata),
+            )) as ArrayRef,
+            Arc::new(arrow_array::BinaryArray::from_iter_values(
+                variants.iter().map(crate::Variant::value),
+            )) as ArrayRef,
+        ],
+        None,
+    ))
+}
+
 /// Write one file holding the given fields and columns.
 fn written(name: &str, fields: Vec<ArrowField>, columns: Vec<ArrayRef>) -> Parquet<Buffer> {
     let schema = Arc::new(Schema::new(fields));
@@ -305,37 +335,56 @@ fn a_geometry_nested_in_a_struct_still_gets_the_logical_type() {
 }
 
 #[test]
-fn a_variant_column_writes_a_plain_byte_array_and_keeps_its_identity() {
-    // A variant column is the variant encoding of each value, one binary per
-    // row: Parquet stores it as a plain `BYTE_ARRAY` with no logical type,
-    // and the Arrow schema the file carries keeps the extension name, so the
-    // column reads back as a variant holding the values it was written with.
+fn a_variant_column_writes_the_two_binaries_under_the_variant_logical_type() {
+    // A variant column is the format's own group of `metadata` and `value`
+    // byte arrays annotated `VARIANT(1)`, so a Parquet reader outside this
+    // crate sees a variant rather than an untyped pair of binaries, and the
+    // Arrow schema the file carries keeps the canonical extension name.
     let values = [
         crate::Scalar::from(7_i64),
         crate::Scalar::from_struct([("symbol", crate::Scalar::from("AAPL"))]).unwrap(),
     ];
-    let column: ArrayRef = Arc::new(arrow_array::BinaryArray::from_iter_values(
-        values.iter().map(crate::Scalar::into_variant_bytes),
-    ));
     let media = written(
         "variant.parquet",
         vec![extension_field(
             "payload",
-            ArrowDataType::Binary,
-            "yggdryl.variant",
+            variant_storage(),
+            "arrow.parquet.variant",
             Some(""),
         )],
-        vec![column],
+        vec![variant_column(&values)],
     );
 
-    assert_eq!(leaf_logical(&media, "payload"), None);
+    let group = {
+        let builder = super::open_builder(media.handle()).unwrap();
+        let root = builder.parquet_schema().root_schema_ptr();
+        Arc::clone(&root.get_fields()[0])
+    };
+    assert_eq!(
+        group.get_basic_info().logical_type_ref(),
+        Some(&LogicalType::variant(Some(1)))
+    );
+    let children = group.get_fields();
+    assert_eq!(children.len(), 2);
+    assert_eq!(children[0].name(), "metadata");
+    assert_eq!(children[1].name(), "value");
+    for child in children {
+        assert_eq!(
+            child.get_physical_type(),
+            parquet::basic::Type::BYTE_ARRAY,
+            "{child:?}"
+        );
+        assert!(!child.get_basic_info().has_id(), "{child:?}");
+    }
+    assert_eq!(leaf_logical(&media, "payload.metadata"), None);
+
     let schema = media.read_arrow_schema().unwrap();
     let field = schema.field_with_name("payload").unwrap();
     assert_eq!(
         field.metadata().get("ARROW:extension:name"),
-        Some(&"yggdryl.variant".to_owned())
+        Some(&"arrow.parquet.variant".to_owned())
     );
-    assert_eq!(field.data_type(), &ArrowDataType::Binary);
+    assert_eq!(field.data_type(), &variant_storage());
     let imported = crate::Field::from_arrow_field(field).unwrap();
     assert_eq!(imported.dtype(), &crate::DataType::Variant);
 
@@ -348,15 +397,238 @@ fn a_variant_column_writes_a_plain_byte_array_and_keeps_its_identity() {
         .unwrap();
     let read: Vec<crate::Scalar> = (0..batch.num_rows())
         .map(|row| {
-            crate::arrow::value::value_from_array(
+            let held = crate::arrow::value::value_from_array(
                 &crate::DataType::Variant,
                 batch.column(0).as_ref(),
                 row,
             )
-            .unwrap()
+            .unwrap();
+            let crate::Scalar::Variant(variant) = held else {
+                panic!("a variant value, got {held:?}");
+            };
+            variant.scalar().unwrap()
         })
         .collect();
     assert_eq!(read, values);
+}
+
+#[test]
+fn a_variant_group_keeps_only_its_outer_parquet_field_id() {
+    let child = |name: &str, id: &str| {
+        ArrowField::new(name, ArrowDataType::Binary, false).with_metadata(HashMap::from([(
+            "PARQUET:field_id".to_owned(),
+            id.to_owned(),
+        )]))
+    };
+    let storage = ArrowDataType::Struct(vec![child("metadata", "12"), child("value", "13")].into());
+    let metadata = HashMap::from([
+        (
+            "ARROW:extension:name".to_owned(),
+            "arrow.parquet.variant".to_owned(),
+        ),
+        ("ARROW:extension:metadata".to_owned(), String::new()),
+        ("PARQUET:field_id".to_owned(), "11".to_owned()),
+    ]);
+    let field = ArrowField::new("payload", storage, true).with_metadata(metadata);
+    let schema = Schema::new(vec![field]);
+    let descriptor = super::geospatial::extension_schema(&schema)
+        .unwrap()
+        .expect("a variant extension needs a descriptor");
+    let root = descriptor.root_schema_ptr();
+    let group = &root.get_fields()[0];
+    assert_eq!(
+        group
+            .get_basic_info()
+            .has_id()
+            .then(|| group.get_basic_info().id()),
+        Some(11)
+    );
+    for child in group.get_fields() {
+        assert!(!child.get_basic_info().has_id(), "{child:?}");
+        assert_eq!(child.get_basic_info().logical_type_ref(), None, "{child:?}");
+    }
+}
+
+#[test]
+fn a_variant_future_version_is_not_recovered() {
+    use parquet::basic::Repetition;
+    use parquet::schema::types::{SchemaDescriptor, Type};
+
+    let children = ["metadata", "value"].map(|name| {
+        Arc::new(
+            Type::primitive_type_builder(name, parquet::basic::Type::BYTE_ARRAY)
+                .with_repetition(Repetition::REQUIRED)
+                .build()
+                .unwrap(),
+        )
+    });
+    let group = Type::group_type_builder("payload")
+        .with_repetition(Repetition::OPTIONAL)
+        .with_logical_type(Some(LogicalType::variant(Some(2))))
+        .with_fields(children.to_vec())
+        .build()
+        .unwrap();
+    let root = Type::group_type_builder("arrow_schema")
+        .with_fields(vec![Arc::new(group)])
+        .build()
+        .unwrap();
+    let descriptor = SchemaDescriptor::new(Arc::new(root));
+    let foreign = Schema::new(vec![ArrowField::new("payload", variant_storage(), true)]);
+    assert!(super::geospatial::variant_schema(&descriptor, &foreign).is_none());
+}
+
+#[test]
+fn a_foreign_variant_group_reads_back_as_a_variant() {
+    // A file another writer produced carries an Arrow schema of its own -
+    // two plain binaries - so the `VARIANT` annotation is all there is to
+    // say they are one variant, and reading it is what makes the column
+    // import as one.
+    use parquet::basic::Repetition;
+    use parquet::schema::types::{SchemaDescriptor, Type};
+
+    let children = ["metadata", "value"].map(|name| {
+        Arc::new(
+            Type::primitive_type_builder(name, parquet::basic::Type::BYTE_ARRAY)
+                .with_repetition(Repetition::REQUIRED)
+                .build()
+                .unwrap(),
+        )
+    });
+    let group = Type::group_type_builder("payload")
+        .with_repetition(Repetition::OPTIONAL)
+        .with_logical_type(Some(LogicalType::variant(Some(1))))
+        .with_fields(children.to_vec())
+        .build()
+        .unwrap();
+    let root = Type::group_type_builder("arrow_schema")
+        .with_fields(vec![Arc::new(group)])
+        .build()
+        .unwrap();
+    let descriptor = SchemaDescriptor::new(Arc::new(root));
+
+    // The Arrow schema the foreign writer embeds says nothing of variants.
+    let schema = Arc::new(Schema::new(vec![ArrowField::new(
+        "payload",
+        variant_storage(),
+        true,
+    )]));
+    let values = [crate::Scalar::from(7_i64)];
+    let batch = RecordBatch::try_new(Arc::clone(&schema), vec![variant_column(&values)]).unwrap();
+    let mut encoded = Vec::new();
+    let mut writer = parquet::arrow::ArrowWriter::try_new_with_options(
+        &mut encoded,
+        Arc::clone(&schema),
+        parquet::arrow::arrow_writer::ArrowWriterOptions::new().with_parquet_schema(descriptor),
+    )
+    .unwrap();
+    writer.write(&batch).unwrap();
+    writer.close().unwrap();
+
+    let handle = Buffer::from_bytes(encoded).with_media_type(
+        Url::from_str("file:///foreign-variant.parquet")
+            .unwrap()
+            .media_type(),
+    );
+    let read = super::read_arrow_schema(&handle).unwrap();
+    let field = read.field_with_name("payload").unwrap();
+    assert_eq!(
+        field.metadata().get("ARROW:extension:name"),
+        Some(&"arrow.parquet.variant".to_owned()),
+        "the annotation names the column a variant"
+    );
+    assert_eq!(
+        crate::Field::from_arrow_field(field).unwrap().dtype(),
+        &crate::DataType::Variant
+    );
+
+    // And the batches carry it too, so a row reads as the value it holds.
+    let batch = super::read_batch_reader(&handle, None, &super::ParquetOptions::new())
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    let held = crate::arrow::value::value_from_array(
+        &crate::DataType::Variant,
+        batch.column(0).as_ref(),
+        0,
+    )
+    .unwrap();
+    let crate::Scalar::Variant(variant) = held else {
+        panic!("a variant value, got {held:?}");
+    };
+    assert_eq!(variant.scalar().unwrap(), values[0]);
+}
+
+#[test]
+fn foreign_variant_annotations_recover_inside_lists_and_maps() {
+    let variant = |name: &str, extension: bool| {
+        if extension {
+            extension_field(name, variant_storage(), "arrow.parquet.variant", Some(""))
+        } else {
+            ArrowField::new(name, variant_storage(), false)
+        }
+    };
+    let list = |extension| ArrowDataType::List(Arc::new(variant("item", extension)));
+    let map = |extension| {
+        ArrowDataType::Map(
+            Arc::new(ArrowField::new(
+                "entries",
+                ArrowDataType::Struct(
+                    vec![
+                        ArrowField::new("key", ArrowDataType::Utf8, false),
+                        variant("value", extension),
+                    ]
+                    .into(),
+                ),
+                false,
+            )),
+            true,
+        )
+    };
+    let declared = Schema::new(vec![
+        ArrowField::new("items", list(true), true),
+        ArrowField::new("attributes", map(true), false),
+    ]);
+    let descriptor = super::geospatial::extension_schema(&declared)
+        .unwrap()
+        .expect("the declared nested variants need annotations");
+    // A foreign Arrow footer supplies only physical storage; Parquet's
+    // annotation must restore the extension beneath both wrappers.
+    let foreign = Schema::new(vec![
+        ArrowField::new("items", list(false), true),
+        ArrowField::new("attributes", map(false), false),
+    ]);
+    let recovered = super::geospatial::variant_schema(&descriptor, &foreign)
+        .expect("the annotations restore nested variants");
+
+    let ArrowDataType::List(item) = recovered.field_with_name("items").unwrap().data_type() else {
+        panic!("a list");
+    };
+    assert_eq!(item.name(), "item");
+    assert!(!item.is_nullable());
+    assert_eq!(
+        item.metadata().get("ARROW:extension:name"),
+        Some(&"arrow.parquet.variant".to_owned())
+    );
+
+    let ArrowDataType::Map(entries, sorted) =
+        recovered.field_with_name("attributes").unwrap().data_type()
+    else {
+        panic!("a map");
+    };
+    assert!(*sorted);
+    assert_eq!(entries.name(), "entries");
+    assert!(!entries.is_nullable());
+    let ArrowDataType::Struct(children) = entries.data_type() else {
+        panic!("map entries");
+    };
+    assert_eq!(children[0].name(), "key");
+    assert_eq!(children[1].name(), "value");
+    assert!(!children[1].is_nullable());
+    assert_eq!(
+        children[1].metadata().get("ARROW:extension:name"),
+        Some(&"arrow.parquet.variant".to_owned())
+    );
 }
 
 #[test]
@@ -528,8 +800,8 @@ fn a_malformed_geoarrow_document_is_refused_before_any_write() {
 #[test]
 fn a_field_declared_schema_drives_the_logical_types_end_to_end() {
     // The schema comes from the Field layer's own projection rather than
-    // hand-spelled metadata, so the two layers are proven to agree; rows
-    // stay out because a variant value cannot cross an Arrow array yet.
+    // hand-spelled metadata, so the two layers are proven to agree; the
+    // rows the variant column carries are the test above's.
     let root = crate::StructType::from_fields([
         crate::DataType::Int64.required_field("id"),
         crate::DataType::geometry(Some("EPSG:3857"))
@@ -573,9 +845,13 @@ fn a_field_declared_schema_drives_the_logical_types_end_to_end() {
         .find(|field| field.name() == "payload")
         .cloned()
         .unwrap();
-    // A variant column is a plain byte array of the encoding: no logical
-    // type, the extension name in the Arrow schema the file carries.
-    assert_eq!(payload.get_basic_info().logical_type_ref(), None);
+    // A variant column is the format's own annotated group, whether the
+    // schema was hand-spelled or projected from a `Field`.
+    assert_eq!(
+        payload.get_basic_info().logical_type_ref(),
+        Some(&LogicalType::variant(Some(1)))
+    );
+    assert_eq!(payload.get_fields().len(), 2);
 
     // And the identity survives the read: the reimported root speaks the
     // datatypes the declaration did, extension transport keys stripped.

@@ -951,8 +951,24 @@ fn a_variant_column_digests_as_the_values_it_holds() {
         Scalar::from_struct([("id", Scalar::from(1_i32))]).unwrap(),
         Scalar::Null,
     ];
-    let array: ArrayRef = Arc::new(BinaryArray::from_iter_values(
-        values.iter().map(Scalar::into_variant_bytes),
+    let variants: Vec<yggdryl::Variant> = values
+        .iter()
+        .map(|value| yggdryl::Variant::encode(value).unwrap())
+        .collect();
+    let array: ArrayRef = Arc::new(arrow_array::StructArray::new(
+        arrow_schema::Fields::from(vec![
+            arrow_schema::Field::new("metadata", arrow_schema::DataType::Binary, false),
+            arrow_schema::Field::new("value", arrow_schema::DataType::Binary, false),
+        ]),
+        vec![
+            Arc::new(BinaryArray::from_iter_values(
+                variants.iter().map(yggdryl::Variant::metadata),
+            )) as ArrayRef,
+            Arc::new(BinaryArray::from_iter_values(
+                variants.iter().map(yggdryl::Variant::value),
+            )) as ArrayRef,
+        ],
+        None,
     ));
     let held = digests(
         &column_digests(array, &field, DigestAlgorithm::Xxh3).unwrap(),

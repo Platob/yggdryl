@@ -2316,8 +2316,8 @@ mod arrow {
     /// The core identity an Arrow field's extension metadata declares, when it
     /// declares one of the first-class extension-typed datatypes.
     pub(crate) enum RecognizedExtension {
-        /// The crate's own `yggdryl.variant` over its binary storage, the
-        /// variant encoding of each value.
+        /// The canonical `arrow.parquet.variant` over the struct of two
+        /// binaries the Parquet Variant encoding is.
         Variant,
         /// The community `geoarrow.wkb` over Binary storage; the parsed GeoArrow
         /// document says whether it is a geometry or a geography.
@@ -2376,8 +2376,9 @@ mod arrow {
     }
 
     /// Recognizes the Arrow extension spellings the first-class datatypes ride:
-    /// `geoarrow.wkb` over Binary storage, the crate's own `yggdryl.variant`
-    /// over Binary storage with an empty extension metadata document,
+    /// `geoarrow.wkb` over Binary storage, the canonical
+    /// `arrow.parquet.variant` over the two binaries of the Parquet Variant
+    /// encoding with an empty extension metadata document,
     /// `yggdryl.string` and `yggdryl.bytes` over the storage their documents lay
     /// out, each registered code's own `yggdryl.{country,currency,mic,cfi}` over
     /// Utf8, and the canonical `arrow.uuid` over `FixedSizeBinary(16)`, each with

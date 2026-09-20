@@ -70,8 +70,17 @@ struct RecordPlan {
     steps: Vec<Step>,
     /// Reader defaults for fields the writer never wrote: slot and value.
     fills: Vec<(usize, Scalar)>,
-    /// The reader's field names, in reader order, for assembling the row.
-    reader_fields: Arc<[SmolStr]>,
+    /// The reader's interpretation of the resolved fields.
+    output: RecordOutput,
+}
+
+/// How a resolved record becomes one scalar.
+#[derive(Debug)]
+enum RecordOutput {
+    /// An ordinary Avro record, retaining its reader field names.
+    Struct(Arc<[SmolStr]>),
+    /// An annotated Variant record, with its two field positions planned once.
+    Variant { metadata: usize, value: usize },
 }
 
 /// What to do with one writer field.
@@ -371,14 +380,31 @@ impl Builder<'_> {
             fills.push((index, value));
         }
 
+        let output = if reader.variant {
+            let index = |name| {
+                reader
+                    .fields
+                    .iter()
+                    .position(|field| field.name == name)
+                    .ok_or_else(|| invalid(format_smolstr!("expected a variant field {name}")))
+            };
+            RecordOutput::Variant {
+                metadata: index(crate::VARIANT_METADATA_FIELD)?,
+                value: index(crate::VARIANT_VALUE_FIELD)?,
+            }
+        } else {
+            RecordOutput::Struct(
+                reader
+                    .fields
+                    .iter()
+                    .map(|field| field.name.clone())
+                    .collect(),
+            )
+        };
         Ok(Arc::new(RecordPlan {
             steps,
             fills,
-            reader_fields: reader
-                .fields
-                .iter()
-                .map(|field| field.name.clone())
-                .collect(),
+            output,
         }))
     }
 }
@@ -516,27 +542,80 @@ impl Runner<'_> {
         depth: usize,
         budget: &mut usize,
     ) -> Result<Scalar> {
+        match &plan.output {
+            RecordOutput::Struct(fields) => {
+                let mut values: Vec<Scalar> = vec![Scalar::Null; fields.len()];
+                self.run_record_steps(plan, cursor, depth, budget, |index, value| {
+                    values[index] = value;
+                    Ok(())
+                })?;
+                Scalar::from_struct(
+                    fields
+                        .iter()
+                        .zip(values)
+                        .map(|(name, value)| (name.clone(), value)),
+                )
+            }
+            RecordOutput::Variant {
+                metadata: metadata_at,
+                value: value_at,
+            } => {
+                let mut metadata = Scalar::Null;
+                let mut value = Scalar::Null;
+                self.run_record_steps(plan, cursor, depth, budget, |index, decoded| {
+                    if index == *metadata_at {
+                        metadata = decoded;
+                    } else if index == *value_at {
+                        value = decoded;
+                    } else {
+                        return Err(invalid(SmolStr::new_static(
+                            "expected a resolved Variant field",
+                        )));
+                    }
+                    Ok(())
+                })?;
+                variant_scalar(metadata, value)
+            }
+        }
+    }
+
+    /// Decode or skip each writer field through one record plan.
+    fn run_record_steps(
+        &self,
+        plan: &RecordPlan,
+        cursor: &mut Cursor<'_>,
+        depth: usize,
+        budget: &mut usize,
+        mut store: impl FnMut(usize, Scalar) -> Result<()>,
+    ) -> Result<()> {
         self.reader.spend(budget)?;
         let depth = self.reader.descend(depth)?;
-        let mut values: Vec<Scalar> = vec![Scalar::Null; plan.reader_fields.len()];
         for (index, default) in &plan.fills {
-            values[*index] = default.clone();
+            store(*index, default.clone())?;
         }
         for step in &plan.steps {
             match step {
                 Step::Decode { index, op } => {
-                    values[*index] = self.run(op, cursor, depth, budget)?;
+                    store(*index, self.run(op, cursor, depth, budget)?)?;
                 }
                 Step::Skip(node) => self.writer.skip(node, cursor, depth, budget)?,
             }
         }
-        Scalar::from_struct(
-            plan.reader_fields
-                .iter()
-                .zip(values)
-                .map(|(name, value)| (name.clone(), value)),
-        )
+        Ok(())
     }
+}
+
+/// Assemble one Variant from its two reader fields.
+fn variant_scalar(metadata: Scalar, value: Scalar) -> Result<Scalar> {
+    let metadata = metadata.as_bytes().ok_or_else(|| {
+        invalid(SmolStr::new_static(
+            "expected a Variant metadata bytes field",
+        ))
+    })?;
+    let value = value
+        .as_bytes()
+        .ok_or_else(|| invalid(SmolStr::new_static("expected a Variant value bytes field")))?;
+    Ok(Scalar::Variant(crate::Variant::new(metadata, value)?))
 }
 
 /// Decode one leaf: read the writer's wire shape, present the reader's value.
@@ -915,6 +994,28 @@ fn default_value_at(
                     },
                 };
                 entries.push((field.name.clone(), value));
+            }
+            if record.variant {
+                let mut metadata = None;
+                let mut value = None;
+                for (name, field) in entries {
+                    match name.as_str() {
+                        crate::VARIANT_METADATA_FIELD => metadata = Some(field),
+                        crate::VARIANT_VALUE_FIELD => value = Some(field),
+                        _ => {
+                            return Err(invalid(SmolStr::new_static(
+                                "expected a Variant record field",
+                            )));
+                        }
+                    }
+                }
+                let metadata = metadata.ok_or_else(|| {
+                    invalid(SmolStr::new_static("expected a Variant metadata default"))
+                })?;
+                let value = value.ok_or_else(|| {
+                    invalid(SmolStr::new_static("expected a Variant value default"))
+                })?;
+                return variant_scalar(metadata, value);
             }
             Scalar::from_struct(entries)?
         }

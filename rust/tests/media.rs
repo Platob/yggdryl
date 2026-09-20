@@ -2,6 +2,8 @@
 
 #[path = "media/avro.rs"]
 mod avro;
+#[path = "media/avro_variant.rs"]
+mod avro_variant;
 #[cfg(feature = "iceberg")]
 #[path = "media/iceberg.rs"]
 mod iceberg;

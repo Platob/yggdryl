@@ -111,6 +111,7 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
 | `binary`, `sized_binary(n)`, `large_binary`, `binary_view`, `large_binary_view` | `bytes` | `binary` |
 | `fixed_binary(n)` | `fixed` of size `n` | `fixed_binary(n)` |
 | `uuid` | `string` with `logicalType: uuid` | `uuid` |
+| `variant` | a `record` of `metadata` and `value`, both `bytes`, with `logicalType: variant` | `variant` |
 
 === "Rust"
 

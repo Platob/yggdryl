@@ -636,6 +636,20 @@ enum ColumnReader {
         /// The declared symbols, by index.
         symbols: Arc<[SmolStr]>,
     },
+    /// A schema-validated Parquet Variant record, with canonical Arrow
+    /// children retained independently from Avro's wire field order.
+    Variant {
+        /// The canonical `metadata`, `value` Arrow fields.
+        fields: arrow_schema::Fields,
+        /// Whether Avro places metadata before value on the wire.
+        metadata_first: bool,
+        /// The metadata bytes per row.
+        metadata: BinaryBuilder,
+        /// The value bytes per row.
+        value: BinaryBuilder,
+        /// Validity per row.
+        nulls: NullBufferBuilder,
+    },
     /// Fields back to back.
     Struct {
         /// The arrow shape of the children.
@@ -815,6 +829,21 @@ impl ColumnReader {
                 builder: StringBuilder::new(),
                 symbols: declared.symbols.clone(),
             },
+            Node::Record(record) if record.variant => {
+                let ArrowDataType::Struct(fields) = arrow else {
+                    return Err(shape_error(node, arrow));
+                };
+                if !crate::is_variant_storage(arrow) {
+                    return Err(shape_error(node, arrow));
+                }
+                Self::Variant {
+                    fields: fields.clone(),
+                    metadata_first: record.fields[0].name == crate::VARIANT_METADATA_FIELD,
+                    metadata: BinaryBuilder::new(),
+                    value: BinaryBuilder::new(),
+                    nulls: NullBufferBuilder::new(1024),
+                }
+            }
             Node::Record(record) => {
                 let ArrowDataType::Struct(fields) = arrow else {
                     return Err(shape_error(node, arrow));
@@ -972,6 +1001,26 @@ impl ColumnReader {
                     })?;
                 builder.append_value(symbol);
             }
+            Self::Variant {
+                metadata_first,
+                metadata,
+                value,
+                nulls,
+                ..
+            } => {
+                datum.spend(budget)?;
+                let first = cursor.bytes()?;
+                datum.spend(budget)?;
+                let second = cursor.bytes()?;
+                if *metadata_first {
+                    metadata.append_value(first);
+                    value.append_value(second);
+                } else {
+                    value.append_value(first);
+                    metadata.append_value(second);
+                }
+                nulls.append_non_null();
+            }
             Self::Struct {
                 children,
                 nulls,
@@ -1074,6 +1123,16 @@ impl ColumnReader {
             Self::Decimal { builder, .. } => builder.append_null(),
             Self::Fixed { builder, .. } => builder.append_null(),
             Self::Enum { builder, .. } => builder.append_null(),
+            Self::Variant {
+                metadata,
+                value,
+                nulls,
+                ..
+            } => {
+                metadata.append_null();
+                value.append_null();
+                nulls.append_null();
+            }
             Self::Struct {
                 children,
                 nulls,
@@ -1115,7 +1174,6 @@ impl ColumnReader {
         Ok(match self {
             Self::Null { length } => {
                 let array: ArrayRef = Arc::new(arrow_array::NullArray::new(*length));
-                *length = 0;
                 array
             }
             Self::Boolean(builder) => Arc::new(builder.finish()),
@@ -1162,6 +1220,21 @@ impl ColumnReader {
             } => builder.finish(*precision, *scale)?,
             Self::Fixed { builder, .. } => Arc::new(builder.finish()),
             Self::Enum { builder, .. } => Arc::new(builder.finish()),
+            Self::Variant {
+                fields,
+                metadata,
+                value,
+                nulls,
+                ..
+            } => {
+                let array = StructArray::try_new(
+                    fields.clone(),
+                    vec![Arc::new(metadata.finish()), Arc::new(value.finish())],
+                    nulls.finish(),
+                )
+                .map_err(|error| invalid(format_smolstr!("{error}")))?;
+                Arc::new(array)
+            }
             Self::Struct {
                 fields,
                 children,
@@ -1409,6 +1482,18 @@ fn encode_cell(
                     ))
                 })?;
             put_long(payload, index as i64);
+        }
+        Node::Record(record) if record.variant => {
+            let entries = column.as_struct();
+            for field in &record.fields {
+                let child = entries.column_by_name(&field.name).ok_or_else(|| {
+                    invalid(format_smolstr!(
+                        "expected a variant child named {:?}",
+                        field.name
+                    ))
+                })?;
+                put_bytes(payload, child.as_binary::<i32>().value(row));
+            }
         }
         Node::Record(record) => {
             let entries = column.as_struct();

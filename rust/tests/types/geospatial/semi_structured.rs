@@ -171,7 +171,12 @@ fn defaults_are_a_present_variant_null_and_a_point_empty() {
     // encoding can spell, not an absence - so a required variant column
     // has a default.
     let variant = DataType::Variant.required_field("payload");
-    assert_eq!(variant.default_value().unwrap(), Scalar::Null);
+    let default = variant.default_value().unwrap();
+    let Scalar::Variant(held) = &default else {
+        panic!("a variant value, got {default:?}");
+    };
+    assert_eq!(held.value(), [0], "the encoding's own null byte");
+    assert_eq!(held.scalar().unwrap(), Scalar::Null);
 
     // The geospatial default is the conventional empty geometry, in the
     // canonical value spelling.
@@ -196,11 +201,12 @@ fn rows_validate_through_the_new_columns() {
     };
     let row = |value: Scalar| Scalar::from_sequence([value]);
 
-    // A variant column validates any value, null included: the variant
-    // null is a value the encoding can spell, so a required variant
-    // holding it is present, not absent.
+    // An encoded null is a present Variant; a bare null is field absence.
     let variant = root(DataType::Variant.required_field("payload"));
-    variant.validate_value(&row(Scalar::Null)).unwrap();
+    assert!(variant.validate_value(&row(Scalar::Null)).is_err());
+    variant
+        .validate_value(&row(Scalar::Variant(Scalar::Null.into_variant().unwrap())))
+        .unwrap();
     variant.validate_value(&row(Scalar::from(12_i64))).unwrap();
     variant
         .validate_value(&row(Scalar::from_mapping([(

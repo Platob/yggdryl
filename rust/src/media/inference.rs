@@ -201,6 +201,9 @@ impl Scalar {
             Self::MimeType(_) => Ok(DataType::MimeType),
             Self::MediaType(_) => Ok(DataType::MediaType),
             Self::Uuid(_) => Ok(DataType::Uuid),
+            // A variant declares its own types per value, so the column it
+            // proves is the variant itself, never what one row decodes to.
+            Self::Variant(_) => Ok(DataType::Variant),
             Self::Bytes(bytes) => bytes.dtype(),
             Self::Geometry(_) => DataType::geometry(None),
             Self::Geography(_) => DataType::geography(None, None),

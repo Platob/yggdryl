@@ -6,9 +6,10 @@
 //! that gap without it: the writer converts the Arrow schema itself, walks
 //! it beside the converted Parquet schema, and attaches the logical type
 //! wherever the Arrow field metadata declares the `geoarrow.wkb` extension.
-//! A variant column is a plain binary column of the crate's own encoding,
-//! under its `yggdryl.variant` extension name in the Arrow schema the file
-//! carries, and takes no Parquet logical type.
+//! A variant column takes the same treatment: the format states it as a
+//! group of two `BYTE_ARRAY` children, `metadata` and `value`, annotated
+//! `VARIANT(1)`, and the walk attaches that annotation wherever the Arrow
+//! field declares the canonical `arrow.parquet.variant` extension.
 //!
 //! Attaching `GEOMETRY`/`GEOGRAPHY` is also what turns the format's
 //! statistics contract on: the Parquet writer refuses min/max value bounds
@@ -22,7 +23,7 @@ use std::sync::{Arc, OnceLock};
 
 use arrow_array::{Array, BinaryArray, BinaryViewArray, LargeBinaryArray, RecordBatch};
 use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
-use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, FieldRef, Schema};
 use parquet::arrow::ArrowSchemaConverter;
 use parquet::arrow::ProjectionMask;
 use parquet::basic::{EdgeInterpolationAlgorithm, LogicalType, Type as PhysicalType};
@@ -40,7 +41,10 @@ use crate::GeospatialParameters;
 use crate::IOBase;
 use crate::arrow::{Error, Result, from_reader_error};
 use crate::wkb;
-use crate::{DEFAULT_CRS, GEOARROW_WKB_EXTENSION_NAME};
+use crate::{
+    DEFAULT_CRS, GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, VARIANT_VERSION,
+    is_variant_storage,
+};
 
 /// Bounds and geometry types of one geospatial column, in WKB vocabulary.
 ///
@@ -310,6 +314,146 @@ pub(super) fn extension_schema(schema: &Schema) -> Result<Option<SchemaDescripto
     Ok(Some(SchemaDescriptor::new(Arc::new(root))))
 }
 
+/// The Arrow schema a file's columns declare, with the variant extension
+/// attached wherever the Parquet schema says `VARIANT`.
+///
+/// Reading is the writing walk inverted, and it is needed for one reason:
+/// the pinned parquet crate maps `VARIANT` to a plain struct, its own
+/// mapping being behind a feature that pulls a Variant crate in. A file
+/// written here carries its Arrow schema in the footer and already declares
+/// the extension, so this answers `None` for it; a file another writer
+/// produced is where it pays, and the column reads back as the variant the
+/// annotation says it is.
+///
+/// Answers `None` when no column needs it, which is the writer's signal to
+/// read with the schema it already has.
+pub(super) fn variant_schema(parquet: &SchemaDescriptor, arrow: &Schema) -> Option<Schema> {
+    let root = parquet.root_schema_ptr();
+    let nodes = root.get_fields();
+    if nodes.len() != arrow.fields().len() {
+        return None;
+    }
+    let mut fields = Vec::with_capacity(nodes.len());
+    let mut attached = false;
+    for (field, node) in arrow.fields().iter().zip(nodes) {
+        let (field, found) = with_variant(field, node);
+        attached |= found;
+        fields.push(field);
+    }
+    attached.then(|| Schema::new_with_metadata(fields, arrow.metadata().clone()))
+}
+
+/// Attach the variant extension to one field, walking into the containers
+/// the writer walks so a variant nested in a struct is found too.
+fn with_variant(field: &FieldRef, node: &TypePtr) -> (FieldRef, bool) {
+    if field.metadata().contains_key(EXTENSION_TYPE_NAME_KEY) {
+        return (Arc::clone(field), false);
+    }
+    if matches!(
+        node.get_basic_info().logical_type_ref(),
+        Some(LogicalType::Variant(version))
+            if matches!(version.specification_version, None | Some(1))
+    ) && is_variant_storage(field.data_type())
+    {
+        let mut metadata = field.metadata().clone();
+        metadata.insert(
+            EXTENSION_TYPE_NAME_KEY.to_owned(),
+            VARIANT_EXTENSION_NAME.to_owned(),
+        );
+        metadata.insert(EXTENSION_TYPE_METADATA_KEY.to_owned(), String::new());
+        return (
+            Arc::new(field.as_ref().clone().with_metadata(metadata)),
+            true,
+        );
+    }
+    if !node.is_group() {
+        return (Arc::clone(field), false);
+    }
+    match field.data_type() {
+        ArrowDataType::Struct(children) => {
+            let nodes = node.get_fields();
+            if nodes.len() != children.len() {
+                return (Arc::clone(field), false);
+            }
+            let mut fields = Vec::with_capacity(children.len());
+            let mut attached = false;
+            for (child, child_node) in children.iter().zip(nodes) {
+                let (child, found) = with_variant(child, child_node);
+                attached |= found;
+                fields.push(child);
+            }
+            if !attached {
+                return (Arc::clone(field), false);
+            }
+            let rebuilt = field
+                .as_ref()
+                .clone()
+                .with_data_type(ArrowDataType::Struct(fields.into()));
+            (Arc::new(rebuilt), true)
+        }
+        ArrowDataType::List(child)
+        | ArrowDataType::LargeList(child)
+        | ArrowDataType::FixedSizeList(child, _) => {
+            let [middle] = node.get_fields() else {
+                return (Arc::clone(field), false);
+            };
+            if !middle.is_group() {
+                return (Arc::clone(field), false);
+            }
+            let [element] = middle.get_fields() else {
+                return (Arc::clone(field), false);
+            };
+            let (child, found) = with_variant(child, element);
+            if !found {
+                return (Arc::clone(field), false);
+            }
+            let dtype = match field.data_type() {
+                ArrowDataType::List(_) => ArrowDataType::List(child),
+                ArrowDataType::LargeList(_) => ArrowDataType::LargeList(child),
+                ArrowDataType::FixedSizeList(_, width) => {
+                    ArrowDataType::FixedSizeList(child, *width)
+                }
+                _ => unreachable!("the list family matched above"),
+            };
+            (Arc::new(field.as_ref().clone().with_data_type(dtype)), true)
+        }
+        ArrowDataType::Map(entries, sorted) => {
+            let [middle] = node.get_fields() else {
+                return (Arc::clone(field), false);
+            };
+            if !middle.is_group() {
+                return (Arc::clone(field), false);
+            }
+            let ArrowDataType::Struct(children) = entries.data_type() else {
+                return (Arc::clone(field), false);
+            };
+            let nodes = middle.get_fields();
+            if nodes.len() != children.len() {
+                return (Arc::clone(field), false);
+            }
+            let mut fields = Vec::with_capacity(children.len());
+            let mut attached = false;
+            for (child, child_node) in children.iter().zip(nodes) {
+                let (child, found) = with_variant(child, child_node);
+                attached |= found;
+                fields.push(child);
+            }
+            if !attached {
+                return (Arc::clone(field), false);
+            }
+            let entries = Arc::new(
+                entries
+                    .as_ref()
+                    .clone()
+                    .with_data_type(ArrowDataType::Struct(fields.into())),
+            );
+            let dtype = ArrowDataType::Map(entries, *sorted);
+            (Arc::new(field.as_ref().clone().with_data_type(dtype)), true)
+        }
+        _ => (Arc::clone(field), false),
+    }
+}
+
 /// Return whether this field or any field beneath it declares an extension
 /// this module attaches a logical type for.
 fn subtree_has_extension(field: &ArrowField) -> bool {
@@ -318,7 +462,7 @@ fn subtree_has_extension(field: &ArrowField) -> bool {
             .metadata()
             .get(EXTENSION_TYPE_NAME_KEY)
             .map(String::as_str),
-        Some(GEOARROW_WKB_EXTENSION_NAME)
+        Some(GEOARROW_WKB_EXTENSION_NAME | VARIANT_EXTENSION_NAME)
     ) {
         return true;
     }
@@ -343,6 +487,7 @@ fn annotated(field: &ArrowField, ty: &TypePtr, path: &str) -> Result<TypePtr> {
         .map(String::as_str)
     {
         Some(GEOARROW_WKB_EXTENSION_NAME) => Ok(Arc::new(geospatial_primitive(field, ty, path)?)),
+        Some(VARIANT_EXTENSION_NAME) => Ok(Arc::new(variant_group(field, ty, path)?)),
         _ => descend(field, ty, path),
     }
 }
@@ -420,6 +565,77 @@ fn geospatial_primitive(field: &ArrowField, ty: &Type, path: &str) -> Result<Typ
         builder = builder.with_repetition(info.repetition());
     }
     Ok(builder.build()?)
+}
+
+/// Rebuild one `arrow.parquet.variant` group with the `VARIANT` logical
+/// type the format states for it.
+///
+/// The two known children keep their names, requiredness, and `BYTE_ARRAY`
+/// storage, but take neither a logical annotation nor a field id. Shredded
+/// children remain as the Arrow converter wrote them.
+fn variant_group(field: &ArrowField, ty: &TypePtr, path: &str) -> Result<Type> {
+    if !ty.is_group() || !is_variant_storage(field.data_type()) {
+        return Err(invalid(
+            path,
+            "a group of `metadata` and `value` binaries for a variant column",
+            storage_name(ty),
+        ));
+    }
+    let mut metadata = false;
+    let mut value = false;
+    let mut fields = Vec::with_capacity(ty.get_fields().len());
+    for child in ty.get_fields() {
+        match child.name() {
+            crate::VARIANT_METADATA_FIELD if !metadata => {
+                metadata = true;
+                fields.push(variant_child(child, path)?);
+            }
+            crate::VARIANT_VALUE_FIELD if !value => {
+                value = true;
+                fields.push(variant_child(child, path)?);
+            }
+            crate::VARIANT_METADATA_FIELD | crate::VARIANT_VALUE_FIELD => {
+                return Err(invalid(
+                    path,
+                    "one `metadata` and one `value` child for a variant column",
+                    "a duplicate child name",
+                ));
+            }
+            _ => fields.push(Arc::clone(child)),
+        }
+    }
+    if !metadata || !value {
+        return Err(invalid(
+            path,
+            "a `metadata` and a `value` child for a variant column",
+            "a group missing one",
+        ));
+    }
+    rebuilt_group(
+        ty,
+        fields,
+        Some(LogicalType::variant(Some(
+            i8::try_from(VARIANT_VERSION).unwrap_or(1),
+        ))),
+    )
+}
+
+/// Rebuild one known variant child without its prohibited field id or
+/// annotation, retaining the storage name and requiredness Arrow declared.
+fn variant_child(child: &TypePtr, path: &str) -> Result<TypePtr> {
+    if !child.is_primitive() || child.get_physical_type() != PhysicalType::BYTE_ARRAY {
+        return Err(invalid(
+            path,
+            "BYTE_ARRAY storage for a variant child",
+            storage_name(child),
+        ));
+    }
+    let info = child.get_basic_info();
+    let mut builder = Type::primitive_type_builder(child.name(), PhysicalType::BYTE_ARRAY);
+    if info.has_repetition() {
+        builder = builder.with_repetition(info.repetition());
+    }
+    Ok(Arc::new(builder.build()?))
 }
 
 /// Rebuild one group node, preserving its identity and optionally attaching

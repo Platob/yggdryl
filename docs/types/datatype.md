@@ -276,7 +276,7 @@ The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sed
     assert.equal(fields.decimal('amount', 38, 4).dtype.kind, 'decimal')
     ```
 
-Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings. `DataTypeId::as_u8` is the identifier as one byte, laid out by family - `DataTypeKind::id` is the family's own number, the start of the range its leaves take - and `DataTypeId::from_u8` and `DataTypeKind::of_u8` read a byte back; the [variant encoding](variant.md) and the [digest feed](../hashing.md#encoding) write that byte.
+Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings. `DataTypeId::as_u8` is the identifier as one byte, laid out by family - `DataTypeKind::id` is the family's own number, the start of the range its leaves take - and `DataTypeId::from_u8` and `DataTypeKind::of_u8` read a byte back; the [value stream](value-stream.md) and the [digest feed](../hashing.md#encoding) write that byte.
 
 ## Arrow projection
 

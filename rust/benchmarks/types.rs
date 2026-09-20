@@ -33,6 +33,7 @@ criterion_group!(
     datatype::default::default_and_compatibility_benchmarks,
     datatype::arrow::arrow_benchmarks,
     datatype::geospatial::geospatial_benchmarks,
+    datatype::variant::variant_benchmarks,
     datatype::ascii::ascii_benchmarks,
     datatype::string::string_benchmarks,
     datatype::bytes::bytes_benchmarks,

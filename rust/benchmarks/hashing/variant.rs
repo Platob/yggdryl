@@ -1,4 +1,4 @@
-//! The variant encoding: any value as one byte stream, and back.
+//! The value stream: any value as one byte stream, and back.
 //!
 //! The same shapes the canonical feed is measured over, because the two
 //! walk one tree two ways - the feed into a digest, the encoding into
@@ -46,22 +46,21 @@ fn corpus() -> Vec<(&'static str, Scalar)> {
 pub(crate) fn variant_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("variant");
     for (name, value) in corpus() {
-        let bytes = value.into_variant_bytes();
+        let bytes = value.into_value_bytes();
         group.throughput(Throughput::Bytes(bytes.len() as u64));
         group.bench_function(format!("encode/{name}"), |bencher| {
-            bencher.iter(|| black_box(&value).into_variant_bytes());
+            bencher.iter(|| black_box(&value).into_value_bytes());
         });
         group.bench_function(format!("encode_stream/{name}"), |bencher| {
             bencher.iter(|| {
                 black_box(&value)
-                    .encode_variant_stream_bytes()
+                    .encode_value_stream_bytes()
                     .map(|chunk| chunk.len())
                     .sum::<usize>()
             });
         });
         group.bench_function(format!("decode/{name}"), |bencher| {
-            bencher
-                .iter(|| Scalar::decode_variant_bytes(black_box(&bytes)).expect("its own bytes"));
+            bencher.iter(|| Scalar::decode_value_bytes(black_box(&bytes)).expect("its own bytes"));
         });
     }
     group.finish();
@@ -80,21 +79,21 @@ pub(crate) fn variant_benchmarks(criterion: &mut Criterion) {
     ])
     .expect("unique names");
     let bytes = dtype
-        .encode_variant_bytes(&row)
+        .encode_value_bytes(&row)
         .expect("a row of the datatype");
     let mut group = criterion.benchmark_group("variant_datatype");
     group.throughput(Throughput::Bytes(bytes.len() as u64));
     group.bench_function("encode/trade", |bencher| {
         bencher.iter(|| {
             black_box(&dtype)
-                .encode_variant_bytes(black_box(&row))
+                .encode_value_bytes(black_box(&row))
                 .expect("a row of the datatype")
         });
     });
     group.bench_function("decode/trade", |bencher| {
         bencher.iter(|| {
             black_box(&dtype)
-                .decode_variant_bytes(black_box(&bytes))
+                .decode_value_bytes(black_box(&bytes))
                 .expect("its own bytes")
         });
     });

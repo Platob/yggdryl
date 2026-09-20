@@ -562,6 +562,11 @@ fn write_node<W: Write>(
     // After a dash the line is already open, so the collection continues it;
     // after a key the collection starts on the next line.
     let skip_first_indent = position == Position::AfterDash;
+    // A variant is the value its bytes hold, and that value decides the
+    // shape this writes.
+    if let Scalar::Variant(held) = value {
+        return write_node(writer, &held.scalar()?, columns, position, width);
+    }
     match value {
         Scalar::Sequence(values) if !values.as_slice().is_empty() => {
             if position == Position::AfterKey {
@@ -761,6 +766,12 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
                 reason: error.to_string().into(),
             })?;
             return write_inline(writer, &native);
+        }
+        // A variant reached `write_node` first, which wrote the value its
+        // bytes hold; only an empty one can arrive here.
+        Scalar::Variant(held) => {
+            let held = held.scalar()?;
+            return write_inline(writer, &held);
         }
         Scalar::Null => writer.write_all(b"null")?,
         Scalar::Boolean(value) => writer.write_all(if value.get() { b"true" } else { b"false" })?,

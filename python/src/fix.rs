@@ -1377,7 +1377,7 @@ impl PyFixMsg {
     #[staticmethod]
     fn _from_pickle(field: &str, value: &[u8], registry: &str) -> PyResult<Self> {
         let field = CoreField::from_json(field).map_err(value_error)?;
-        let value = Scalar::decode_variant_bytes(value).map_err(value_error)?;
+        let value = Scalar::decode_value_bytes(value).map_err(value_error)?;
         let registry = CoreFixRegistry::from_json(registry).map_err(value_error)?;
         CoreFixMsg::with_registry(Arc::new(registry), field, value)
             .map(Self::from_inner)
@@ -1621,7 +1621,7 @@ impl PyFixMsg {
             .map_err(value_error)?;
         let field = field.into_json().map_err(value_error)?;
         let value =
-            pyo3::types::PyBytes::new(py, &Scalar::from_sequence(values).into_variant_bytes())
+            pyo3::types::PyBytes::new(py, &Scalar::from_sequence(values).into_value_bytes())
                 .into_any()
                 .unbind();
         let registry = self.inner.registry().into_json().map_err(value_error)?;

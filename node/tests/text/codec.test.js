@@ -1713,27 +1713,46 @@ test('raw DEFLATE round-trips, reads node:zlib, and shares no framing with zlib'
   assert.throws(() => zlib.loadsRaw(zlib.dumps(payload)), /deflate/)
 })
 
-test('variant bytes carry any value and read back as itself', () => {
+test('value bytes carry any value and read back as itself', () => {
   const value = new DataType('int32').scalar(7)
-  const data = value.intoVariantBytes()
+  const data = value.intoValueBytes()
   assert.ok(Buffer.isBuffer(data))
   // The version, the identifier, then four little-endian bytes.
   assert.equal(data[0], 0)
   assert.equal(data.length, 6)
   assert.deepEqual([...data.subarray(2)], [7, 0, 0, 0])
-  assert.ok(Scalar.fromVariantBytes(data).equals(value))
-  assert.ok(Scalar.fromVariantBytes(new Uint8Array(data)).equals(value))
+  assert.ok(Scalar.fromValueBytes(data).equals(value))
+  assert.ok(Scalar.fromValueBytes(new Uint8Array(data)).equals(value))
 
   const quote = Scalar.from({ symbol: 'AAPL', sizes: [100, null] })
-  assert.ok(Scalar.fromVariantBytes(quote.intoVariantBytes()).equals(quote))
-  assert.equal(Scalar.fromVariantBytes(quote.intoVariantBytes()).kind, 'struct')
+  assert.ok(Scalar.fromValueBytes(quote.intoValueBytes()).equals(quote))
+  assert.equal(Scalar.fromValueBytes(quote.intoValueBytes()).kind, 'struct')
+
+  for (const [raw, expected] of [
+    [{ symbol: 'AAPL', sizes: [100, null] }, { symbol: 'AAPL', sizes: [100, null] }],
+    [7, 7],
+    [null, null],
+  ]) {
+    const held = new DataType('variant').scalar(raw)
+    assert.equal(held.kind, 'variant')
+    assert.deepEqual(held.asJs(), expected)
+    const restored = Scalar.fromValueBytes(held.intoValueBytes())
+    assert.equal(restored.kind, 'variant')
+    assert.ok(restored.equals(held))
+  }
+  const optional = new Field('payload', new DataType('variant'), true)
+  const required = new Field('payload', new DataType('variant'), false)
+  const encodedNull = new DataType('variant').scalar(null)
+  assert.equal(optional.scalar(null).kind, 'null')
+  assert.throws(() => required.scalar(null), /non-nullable/)
+  assert.ok(required.scalar(encodedNull).equals(encodedNull))
 
   const long = Scalar.from('x'.repeat(4 * 1024 + 1))
-  const packed = long.intoVariantBytes()
+  const packed = long.intoValueBytes()
   assert.equal(packed[2], 1)
   assert.ok(packed.length < 64)
-  assert.ok(Scalar.fromVariantBytes(packed).equals(long))
+  assert.ok(Scalar.fromValueBytes(packed).equals(long))
 
-  assert.throws(() => Scalar.fromVariantBytes(Buffer.from([1, 0])), /version 1/)
-  assert.throws(() => Scalar.fromVariantBytes(Buffer.from([0, 0, 0])), /bytes left/)
+  assert.throws(() => Scalar.fromValueBytes(Buffer.from([1, 0])), /version 1/)
+  assert.throws(() => Scalar.fromValueBytes(Buffer.from([0, 0, 0])), /bytes left/)
 })

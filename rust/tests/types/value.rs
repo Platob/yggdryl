@@ -3,6 +3,84 @@
 use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
 use yggdryl::{DateTimeType, DurationType, TimeType};
 
+#[test]
+fn variant_digest_keeps_the_native_depth_budget() {
+    let mut native = Scalar::from(7_i64);
+    for _ in 1..DataType::PARSE_RECURSION_LIMIT {
+        native = Scalar::from_sequence([native]);
+    }
+    let held = Scalar::Variant(native.into_variant().unwrap());
+    assert_eq!(
+        held.digest(yggdryl::DigestAlgorithm::Xxh3),
+        native.digest(yggdryl::DigestAlgorithm::Xxh3)
+    );
+}
+
+#[test]
+fn variant_conversions_share_the_value_and_scalar_contract() {
+    use yggdryl::{Int64, UInt8, Value};
+
+    let scalar = Scalar::from(7_i64);
+    let leaf = Int64::from_scalar(&scalar).unwrap();
+    let encoded = leaf.into_variant().unwrap();
+    assert_eq!(encoded, scalar.into_variant().unwrap());
+    assert_eq!(Int64::from_variant(&encoded).unwrap(), *leaf);
+    assert_eq!(Scalar::from_variant(&encoded).unwrap(), scalar);
+
+    let unsigned = Scalar::from(7_u8).into_variant().unwrap();
+    let refused = UInt8::from_variant(&unsigned).unwrap_err();
+    assert!(matches!(refused, yggdryl::Error::InvalidRecord { .. }));
+    let message = refused.to_string();
+    assert!(
+        message.contains("UInt8") && message.contains("int16"),
+        "{message}"
+    );
+    assert_eq!(
+        DataType::UInt8.decode_variant(&unsigned).unwrap(),
+        Scalar::from(7_u8)
+    );
+
+    let malformed = yggdryl::Variant::new(vec![0x11, 0, 0], vec![5 << 2]).unwrap();
+    assert!(matches!(
+        Int64::from_variant(&malformed),
+        Err(yggdryl::Error::Codec { .. })
+    ));
+}
+
+#[test]
+fn variant_casts_cross_the_encoding_boundary_once() {
+    let encoded = DataType::Variant.cast_scalar(&Scalar::from(7_i32)).unwrap();
+    let Scalar::Variant(variant) = &encoded else {
+        panic!("a variant value, got {encoded:?}");
+    };
+    assert_eq!(variant.scalar().unwrap(), Scalar::from(7_i32));
+    assert_eq!(
+        DataType::Int64.cast_scalar(&encoded).unwrap(),
+        Scalar::from(7_i64)
+    );
+    assert_eq!(
+        DataType::utf8().cast_scalar(&encoded).unwrap(),
+        Scalar::from("7")
+    );
+
+    let encoded_null = DataType::Variant.cast_scalar(&Scalar::Null).unwrap();
+    let Scalar::Variant(variant_null) = &encoded_null else {
+        panic!("an encoded variant null, got {encoded_null:?}");
+    };
+    assert_eq!(variant_null.scalar().unwrap(), Scalar::Null);
+    assert_eq!(
+        DataType::Int64.cast_scalar(&encoded_null).unwrap(),
+        Scalar::Null
+    );
+
+    let malformed = Scalar::Variant(yggdryl::Variant::new(vec![0x11, 0, 0], vec![5 << 2]).unwrap());
+    assert!(matches!(
+        DataType::Int64.cast_scalar(&malformed),
+        Err(yggdryl::Error::Codec { .. })
+    ));
+    assert_eq!(DataType::Int64.try_cast_scalar(&malformed), Scalar::Null);
+}
+
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     DataType::from(StructType::from_fields(fields).unwrap()).required_field("row")
 }
