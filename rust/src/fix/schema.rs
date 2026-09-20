@@ -171,7 +171,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
         MSGPLUGINID_TAG_NAME as MSGPLUGINID, MSGSESSIONID_TAG_NAME as MSGSESSIONID,
         PARENTUUIDS_TAG_NAME as PARENTUUIDS, PREVUNIX_TAG_NAME as PREVUNIX,
         PREVUUID_TAG_NAME as PREVUUID, SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX,
-        SOURCEURL_TAG_NAME as SOURCEURL, SRCUUIDS_TAG_NAME as SRCUUIDS, STATE_TAG_NAME as STATE,
+        SRCUUIDS_TAG_NAME as SRCUUIDS, STATE_TAG_NAME as STATE,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
     let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
@@ -225,7 +225,11 @@ pub fn fix_schema_tags() -> Vec<i32> {
         ],
     );
     // Which message, over which session: what the frame says it is, who sent
-    // it to whom, and where this capture read it.
+    // it to whom, and which bridge handled it. Not where this capture read
+    // it: that is the reader's statement about the line and not the
+    // message's about itself, so it travels as one of the capture's own
+    // columns, beside the body and the row number, and no column of this row
+    // restates it.
     band(
         &mut tags,
         &[
@@ -236,7 +240,6 @@ pub fn fix_schema_tags() -> Vec<i32> {
             56,
             43,
             MSGDIRECTION.0,
-            SOURCEURL.0,
             MSGPLUGINID.0,
             MSGCTXID.0,
             MSGSESSIONID.0,
@@ -285,11 +288,16 @@ pub fn fix_schema_tags() -> Vec<i32> {
     band(&mut tags, &BODY_TAGS);
     band(&mut tags, &TRAILER_TAGS);
     // And every crate column no band named, so a column added to this crate
-    // lands in the row without being listed twice.
+    // lands in the row without being listed twice - except the capture's
+    // own, which is no column of this row at all: whoever read the line
+    // states it beside the row, and a tail that swept it back in would put
+    // the reader's word among the message's.
     let rest: Vec<i32> = crated
         .iter()
         .filter_map(|field| field.as_fix().tag().ok().flatten())
-        .filter(|tag| *tag != counter && *tag != METADATA.0)
+        .filter(|tag| {
+            *tag != counter && *tag != METADATA.0 && !super::identity::is_capture_tag(*tag)
+        })
         .collect();
     band(&mut tags, &rest);
     // Last, what the message carried outside its fields: the bridge's own

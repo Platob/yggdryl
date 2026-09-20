@@ -232,17 +232,19 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         .map(|held| held.name().as_str())
         .collect();
 
-    // The text reader's own columns lead the row - which line it was, when it
-    // was written, what it was, the line itself and the header's captures -
-    // and the fixed columns follow. A capture whose folded name a fixed
-    // column takes is not carried in front, it fills that column: the
-    // reader's `msgtype` and `sourceurl`, and the header's `bridgesessionid`,
-    // `msgctxid` and `msgseqnum`, each named for the field it fills. What is
-    // left in front is what no column is spelled for - the thread that wrote
-    // the line and its level.
+    // The text reader's own columns lead the row - where the line was read
+    // from, which line it was, when it was written, what it was, the line
+    // itself and the header's captures - and the fixed columns follow. A
+    // capture whose folded name a fixed column takes is not carried in
+    // front, it fills that column: the reader's `msgtype`, and the header's
+    // `bridgesessionid`, `msgctxid` and `msgseqnum`, each named for the
+    // field it fills. What is left in front is what no column is spelled
+    // for - the object the line came out of, which is the reader's word and
+    // not the message's, the thread that wrote the line and its level.
     assert_eq!(
-        &names[..7],
+        &names[..8],
         [
+            "sourceurl",
             "rownum",
             "mtime",
             "mimetype",

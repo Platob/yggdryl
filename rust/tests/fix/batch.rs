@@ -482,20 +482,21 @@ fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() 
 
     // Neither refusal exists at the line door, and that is the point of it: a
     // line holds its bytes as a typed field, so there is no column to name
-    // wrongly and no cell that could hold a number instead. A line carrying
-    // no bytes carries no message either: an empty payload column is a row
-    // that had nothing to read, not a row holding an empty message.
-    let mut silent = codec
-        .parse_text_line(
-            &TextLine::from_bytes(
-                0,
-                TextBytes::default(),
-                std::sync::Arc::new(yggdryl::text::TextOptions::new()),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-    assert!(silent.next().is_none(), "no payload, no message");
+    // wrongly and no cell that could hold a number instead. Nor is there a
+    // line carrying no bytes to ask about: the door that makes one refuses an
+    // empty body by name, so an empty payload column stays a row that had
+    // nothing to read rather than becoming a line holding an empty message.
+    let refused = TextLine::from_bytes(
+        0,
+        TextBytes::default(),
+        std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+    )
+    .map(drop)
+    .unwrap_err();
+    assert!(
+        refused.to_string().contains("body"),
+        "no bytes, no line: {refused}"
+    );
 
     // The empty `unknown` survives for the one case that is not this: a
     // payload that was there and would not parse, which a batch must not fail

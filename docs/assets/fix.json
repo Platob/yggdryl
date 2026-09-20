@@ -104,7 +104,7 @@
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 117,
+    "columns": 116,
     "memberships": 0,
     "dialects": 0,
     "datatypes": 23,
@@ -379125,7 +379125,7 @@
         "metadata": {
           "FIX:tag": "65026",
           "FIX:transient": "false",
-          "description": "The object this message's line was read from.",
+          "description": "The object this message's line was read from; the capture's own column, carried beside the row and never one of its own.",
           "display": "SourceUrl"
         },
         "name": "sourceurl",
@@ -393472,13 +393472,6 @@
         "n": "MsgDirection",
         "y": "utf8",
         "x": "Specifies the direction of the message."
-      },
-      {
-        "c": "sourceurl",
-        "t": 65026,
-        "n": "SourceUrl",
-        "y": "url",
-        "x": "The object this message's line was read from."
       },
       {
         "c": "msgpluginid",

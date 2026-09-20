@@ -592,10 +592,15 @@ fn a_member_reference_carries_the_field_and_its_tag() {
 /// twenty-first and a twenty-second definition, each at its event column's
 /// datatype - a ranked state and a nanosecond clock - and as members of the
 /// fixed row, the state ahead of `OrdStatus` and the expiry beside the clocks.
+/// It last moved when `sourceurl` left the fixed row: the object a line was
+/// read from is the reader's word about the line and not the message's about
+/// itself, so it travels as one of the capture's own columns beside the row,
+/// the definition still hashes as a crate field of its own, and the fixed
+/// row hashes one member fewer.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 10_120_278_288_742_142_511);
+    assert_eq!(registry.stable_hash(), 14_757_447_470_805_216_568);
     let messages = definitions(&registry, FixCategory::Components)
         .filter(|component| component.as_fix().msgtype().is_some())
         .count();

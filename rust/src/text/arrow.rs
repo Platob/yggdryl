@@ -163,6 +163,9 @@ fn read_owned_text_lines_at<H: IOBase + 'static>(
 /// Count emitted records without materializing rows or Arrow arrays.
 pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -> Result<u64> {
     options.require_framing_rowheader()?;
+    // Refused here as a read refuses it, so a count never answers for a
+    // configuration no read could answer.
+    options.require_retained_body()?;
     let mut counting = options.clone();
     counting.start_rownum = None;
     counting.parse_mtime = false;
@@ -1092,13 +1095,15 @@ impl<R: Read> RawRows<R> {
                 Some(Err(error)) => return Some(Err(error)),
                 None => {
                     self.done = true;
-                    return self.active.take().map(RawRecord::finish);
+                    return self.active.take().and_then(RawRecord::finish);
                 }
             };
             if line.matched {
                 let next = RawRecord::new(line, self.options.max_record_byte_size());
-                if let Some(record) = self.active.replace(next) {
-                    return Some(record.finish());
+                // A leading fragment of nothing but blank lines states no
+                // record, so the one that matched opens the first row.
+                if let Some(row) = self.active.replace(next).and_then(RawRecord::finish) {
+                    return Some(row);
                 }
                 continue;
             }
@@ -1175,18 +1180,29 @@ impl RawRecord {
         Ok(())
     }
 
-    fn finish(self) -> Result<RawRow> {
+    /// The row this record states, or nothing where it stated no byte of
+    /// its own.
+    ///
+    /// A blank line, and one the strips took whole, cut to nothing: it is a
+    /// separator between records and not a record, so it is no row and no
+    /// line. Decided on what the record cut, never on what the retained
+    /// limit kept, so a count and a read drop the same lines - the counting
+    /// pass keeps no body at all.
+    fn finish(self) -> Option<Result<RawRow>> {
+        if self.decoded_size == 0 {
+            return None;
+        }
         let retained = u64::try_from(self.body.len()).unwrap_or(u64::MAX);
         let dropped_byte_size = self
             .decoded_size
             .checked_sub(retained)
             .filter(|size| *size > 0);
-        Ok(RawRow {
+        Some(self.body.into_text_bytes().map(|body| RawRow {
             index: self.index,
-            body: self.body.into_text_bytes()?,
+            body,
             dropped_byte_size,
             header: self.header,
-        })
+        }))
     }
 }
 
@@ -1209,11 +1225,19 @@ impl<R: Read> Iterator for RawRows<R> {
             let row = if self.options.framing() {
                 self.next_framed()
             } else {
-                self.next_line().map(|line| {
-                    line.and_then(|line| {
-                        RawRecord::new(line, self.options.max_record_byte_size()).finish()
-                    })
-                })
+                match self.next_line()? {
+                    Err(error) => Some(Err(error)),
+                    // A physical line that cut to nothing is a separator and
+                    // not a record: the next line is the next row, and the
+                    // one that was blank keeps its place in the numbering
+                    // because a row number is the line's own.
+                    Ok(line) => {
+                        match RawRecord::new(line, self.options.max_record_byte_size()).finish() {
+                            Some(row) => Some(row),
+                            None => continue,
+                        }
+                    }
+                }
             };
             let row = row?;
             if !self.options.dedup_adjacent {
@@ -1592,6 +1616,15 @@ impl BodyColumn {
                     reason: SmolStr::new_static("expected a non-null line body"),
                 });
             };
+            // A cell stating nothing would write the terminator alone, and
+            // a blank line is not a record a reader reads back: the row
+            // would be lost where it was meant to be kept.
+            if value.is_empty() {
+                return Err(Error::InvalidRecord {
+                    path: format_smolstr!("$[{row}].body"),
+                    reason: SmolStr::new_static("expected a line body, got an empty one"),
+                });
+            }
             let value = value.as_bytes();
             let contains_break = if flexible {
                 memchr::memchr2(b'\n', b'\r', value).is_some()

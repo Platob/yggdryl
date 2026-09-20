@@ -518,19 +518,35 @@ fn every_registry_registers_the_crates_fields_without_warning() {
 /// deduplicates against nothing and every archived day re-enters a table as
 /// new rows.
 ///
-/// The object is not a fact a message can hold at all: writing one is
-/// refused, the row a message writes states none, and a row a reader stated
-/// one on reads back as the same message. So the code cannot move, rather
-/// than being kept from moving.
+/// The object is not a fact a message can hold at all: the fixed row has no
+/// column for it, writing one is refused, and a row a reader stated one on -
+/// beside the row, where the capture's own columns go - reads back as the
+/// same message. So the code cannot move, rather than being kept from
+/// moving.
 #[test]
 fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
     let registry = super::committed_registry();
     let reader = super::fixed_codec(std::sync::Arc::clone(&registry));
-    let schema = yggdryl::fix_schema(&registry, "fix").unwrap();
+    let fixed = yggdryl::fix_schema(&registry, "fix").unwrap();
     let line = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|10=0|";
 
-    let at =
-        yggdryl::fix_column_of(&schema, yggdryl::SOURCEURL_TAG_NAME.0).expect("a sourceurl column");
+    // No column of the fixed row holds it, so a capture that knows where it
+    // read the line states it in front of the row, as it states the body.
+    assert!(
+        yggdryl::fix_column_of(&fixed, yggdryl::SOURCEURL_TAG_NAME.0).is_none(),
+        "the fixed row states no source object"
+    );
+    let capture = yggdryl::StructType::from_fields([
+        yggdryl::DataType::url().nullable_field(yggdryl::SOURCEURL_TAG_NAME.1)
+    ])
+    .map(yggdryl::DataType::from)
+    .unwrap()
+    .required_field("line");
+    let schema = yggdryl::fix_schema_carrying(&capture, &fixed).unwrap();
+
+    let at = schema
+        .index_of(yggdryl::SOURCEURL_TAG_NAME.1)
+        .expect("a carried sourceurl column");
     let hashcode_at = yggdryl::fix_column_of(&schema, yggdryl::CURRHASHCODE_TAG_NAME.0)
         .expect("a hashcode column");
     let mut identities = Vec::new();

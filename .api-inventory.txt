@@ -748,7 +748,7 @@ pub const PREVUNIX_TAG_NAME: (i32, &str) = (65_021, "prevunix");  (nullable cloc
 pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");  (nullable uuid: the identity of the message this one follows)
 pub const CREAUNIX_TAG_NAME: (i32, &str) = (65_023, "creaunix");  (non-null clock: a stated creation, else `currunix`; the earliest a chain knows once walked)
 pub const SNAPUNIX_TAG_NAME: (i32, &str) = (65_025, "snapunix");  (nullable clock: the opening instant of the grid step a walk read the message as the snapshot of)
-pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");  (the object a line was read from, typed url; the capture's own column: stated on the row by whoever read the line and carried by every message read out of that row, stated again at its column by `into_row`; held as no fact, so outside the currhashcode, the entries and the wire)
+pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");  (the object a line was read from, typed url; the capture's own column and no column of the fixed row: declared by whoever read the line, carried in front of the row and by every message read out of it, stated again at its column by `into_row`; held as no fact, so outside the currhashcode, the entries and the wire)
 pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");  (the arrival record group's counter, closing the fixed row; outside the currhashcode)
 pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_032, "msgsessionid");  (display `MsgSessionId`: the session instance a bridge handled a line on, as its own row header brackets it and never what the message states; a capture fact)
 pub const CURRUUID_TAG_NAME: (i32, &str) = (65_039, "curruuid");  (non-null uuid: the message's identity, the UUIDv7 its `currunix` and `currhashcode` derive)
@@ -2268,8 +2268,8 @@ pub struct TextEntries
   pub fn remove_entry_by_path(&mut self, path: &FieldPath) -> Option<TextEntry>
 
 ### yggdryl::text::line  [rust/src/text/line.rs]
-pub struct TextLine  (one text row and the `Event` of the graph it is: what the reader cut - the index, the object, the handle's modification time, the whole body with the row header included, the edges stripped and the byte limit applied - and the shared `Arc<TextOptions>` it reads itself by; every other fact is a reading of the body under the options, resolved on its first ask, once, into a slot of its own, so a caller reading the body and the row number resolves nothing else; a `set_` states a fact over the line's own reading, and `set_body` drops every resolved slot; equality, order and hash read the stated facts alone)
-  pub fn from_bytes(index: u64, body: TextBytes, options: Arc<TextOptions>) -> Result<Self>  (where the bytes become text: what is not UTF-8 is decoded once, each byte as its Windows-1252 character, and counted)
+pub struct TextLine  (one text row and the `Event` of the graph it is: what the reader cut - the index, the object, the handle's modification time, the whole body with the row header included, the edges stripped and the byte limit applied - and the shared `Arc<TextOptions>` it reads itself by; every other fact is a reading of the body under the options, resolved on its first ask, once, into a slot of its own, so a caller reading the body and the row number resolves nothing else; a `set_` states a fact over the line's own reading, and `set_body` drops every resolved slot; the body is never empty, refused at both doors that set one, which is why the `body` column a read answers is not nullable; equality, order and hash read the stated facts alone)
+  pub fn from_bytes(index: u64, body: TextBytes, options: Arc<TextOptions>) -> Result<Self>  (where the bytes become text: what is not UTF-8 is decoded once, each byte as its Windows-1252 character, and counted; an empty body is refused, naming the line, because a line is the line it holds)
   pub const fn index(&self) -> u64
   pub fn set_index(&mut self, index: u64)
   pub fn options(&self) -> &TextOptions
@@ -2285,7 +2285,7 @@ pub struct TextLine  (one text row and the `Event` of the graph it is: what the 
   pub fn with_bodytype(mut self, bodytype: MimeType) -> Self
   pub fn body(&self) -> &str  (the whole line, row header included)
   pub const fn body_bytes(&self) -> &TextBytes
-  pub fn set_body(&mut self, body: TextBytes) -> Result<()>  (drops every resolved reading and the header the cut matched; captures a caller stated stand, the payload then the whole new body, and so does every other stated fact)
+  pub fn set_body(&mut self, body: TextBytes) -> Result<()>  (drops every resolved reading and the header the cut matched; captures a caller stated stand, the payload then the whole new body, and so does every other stated fact; an empty body is refused and leaves the line as it was)
   pub const fn decoded_byte_size(&self) -> u64
   pub const fn dropped_byte_size(&self) -> Option<u64>
   pub const fn set_dropped_byte_size(&mut self, size: Option<u64>)
