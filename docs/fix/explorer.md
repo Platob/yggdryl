@@ -96,7 +96,7 @@ The live additions are the crate's 27 scalar fields - `parentuuids`, `srcuuids` 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     // Every category is in the one size: the fields, the components and the
     // groups, which is what a Node registry iterates too.
-    assert.equal(registry.size, 7777)
+    assert.equal(registry.size, 7778)
     assert.equal([...registry].length, registry.size)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
     const parties = registry.fieldByName('parties')

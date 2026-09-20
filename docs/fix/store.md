@@ -420,7 +420,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     // groups. A Node registry sizes and iterates every field, the components
     // and the groups among them.
     assert.equal(fix.crateFields().length, 29)
-    assert.equal(registry.size, 7777)
+    assert.equal(registry.size, 7778)
     assert.equal([...registry].length, registry.size)
     assert.equal(registry.fieldByCounter(65020).name, 'identifiers')
     assert.equal(registry.msgtype('D').name, 'newordersingle')
