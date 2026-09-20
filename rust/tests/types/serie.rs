@@ -388,7 +388,7 @@ fn a_serie_names_its_datatype_where_an_empty_sequence_cannot() {
 
 #[test]
 fn a_column_and_the_run_it_holds_order_by_their_rows_and_are_not_one_value() {
-    let column = Serie::from(prices());
+    let column = prices();
     let run = Serie::new(vec![Scalar::from(125_i64), Scalar::from(126_i64)]);
 
     // A run lends its rows where it holds them; a column has none to lend.
@@ -441,10 +441,7 @@ fn a_column_survives_the_value_contract_until_that_contract_rewrites_it() {
         .scalar(value.clone())
         .expect("a column is a list value");
     assert_eq!(kept.kind(), "serie");
-    assert_eq!(
-        <Serie as Value>::from_scalar(&kept).and_then(Some),
-        Some(&column)
-    );
+    assert_eq!(<Serie as Value>::from_scalar(&kept), Some(&column));
 
     // A narrower item rewrites the rows, and from there the declaring field
     // is the authority, so what comes back is the run it rewrote.
@@ -902,7 +899,7 @@ fn a_column_reads_as_a_sequence_wherever_meaning_is_read_from_one() {
         run.sequence_rows().expect("a run is a sequence").unwrap(),
         std::borrow::Cow::Borrowed(_)
     ));
-    assert_eq!(Scalar::from(1_i64).sequence_rows().is_none(), true);
+    assert!(Scalar::from(1_i64).sequence_rows().is_none());
 }
 
 #[test]

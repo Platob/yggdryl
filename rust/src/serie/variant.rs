@@ -24,7 +24,7 @@ use crate::{Field, Result, Scalar};
 
 /// One column of self-describing values, each row one encoded run of bytes.
 ///
-/// There is one width and no `Large` twin, because [`DataType::Variant`]
+/// There is one width and no `Large` twin, because `DataType::Variant`
 /// projects to Arrow `Binary` and nothing else - the encoding names the
 /// storage, so a second offset width would be a layout no field can declare.
 /// [`GenericSequenceSerie`](crate::GenericSequenceSerie) has both widths

@@ -16,18 +16,17 @@
 //! one item field, the same for all of them. That is why [`Self::item`] is
 //! the whole of what most readers need.
 //!
-//! On the value side the family has two leaves, and they differ in what they
-//! know rather than in what they hold:
+//! On the value side the family is [`crate::Serie`], which lives in
+//! `serie.rs`: it is what `Scalar::Sequence` holds, and it has two kinds of
+//! leaf that differ in what they know rather than in what they hold.
 //!
 //! | leaf | rows | field |
 //! | --- | --- | --- |
-//! | [`List`] | ordered values | inferred from the rows |
-//! | [`Serie`] | ordered values | carried, and the rows canonicalized by it |
+//! | [`List`], below | ordered values | inferred from the rows |
+//! | a column | Arrow buffers | carried, and the rows read through it |
 //!
-//! [`Serie`] itself lives in `serie.rs`, because a column is a type of its
-//! own with a contract of its own ([`SerieValue`](crate::SerieValue)); this
-//! file is where it registers as a value, so that a column is a [`Scalar`]
-//! wherever a sequence is one.
+//! This file keeps the datatype half - [`SequenceType`], the five layouts -
+//! and [`List`], the schema-free run that is one of those leaves.
 //!
 //! [`DataType::Sequence`]: crate::DataType::Sequence
 //! [`Self::item`]: SequenceType::item

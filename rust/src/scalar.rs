@@ -1516,7 +1516,7 @@ impl Scalar {
     ///
     /// A schema-free run lends its values and allocates nothing. A column
     /// holds Arrow buffers and no value at all, so it has none to lend and
-    /// answers `None`; [`Sequence::rows`](crate::Sequence::rows) reads one,
+    /// answers `None`; [`Serie::rows`](crate::Serie::rows) reads one,
     /// and [`Self::iter`] walks either.
     pub fn as_sequence(&self) -> Option<&[Self]> {
         match self {

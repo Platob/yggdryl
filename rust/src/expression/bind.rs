@@ -337,8 +337,7 @@ impl Bound {
 
     /// Evaluate this term for one row.
     ///
-    /// The row is a [`crate::sequence::Sequence`] of column values in
-    /// schema order.
+    /// The row is a [`crate::Serie`] of column values in schema order.
     ///
     /// # Errors
     ///

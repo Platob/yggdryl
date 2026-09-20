@@ -363,7 +363,7 @@ impl Serie {
 
     /// Read one Arrow table as the column of its rows.
     ///
-    /// The root is named [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME),
+    /// The root is named [`crate::media::DEFAULT_ROOT_NAME`],
     /// because Arrow names columns and never the record. The batch's own
     /// columns become this column's children, shared rather than copied.
     ///

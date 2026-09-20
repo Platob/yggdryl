@@ -327,17 +327,29 @@ pub trait NestedValue: Value {
 /// the value through the field's own contract and write the buffer under it.
 /// Nothing here stores a [`Scalar`].
 ///
+/// [`Serie`](crate::Serie) itself does *not* implement this, because its
+/// [`List`](crate::Serie::List) leaf is a schema-free run with no field to
+/// answer `field` with. The root answers the same verbs inherently, with
+/// [`Serie::field`](crate::Serie::field) returning `Option`; this trait is
+/// what a column - a leaf, or the family enum over leaves - owes.
+///
 /// ```
-/// use yggdryl::{DataType, Field, Scalar, Serie, SerieValue};
+/// use yggdryl::{DataType, Field, Int64Serie, Scalar, Serie, SerieValue};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let field = Field::new("size", DataType::Int64, true);
 /// let serie = Serie::from_scalars(field, [Scalar::from(7_i64), Scalar::Null])?;
 ///
-/// assert_eq!(SerieValue::field(&serie).name(), "size");
-/// assert_eq!(SerieValue::len(&serie), 2);
-/// assert_eq!(SerieValue::scalar(&serie, 0)?, Scalar::from(7_i64));
-/// assert!(SerieValue::is_null(&serie, 1));
+/// // The column leaf owes this contract.
+/// let column: &Int64Serie = serie.as_int64().expect("an int64 column");
+/// assert_eq!(SerieValue::field(column).name(), "size");
+/// assert_eq!(SerieValue::len(column), 2);
+/// assert_eq!(SerieValue::scalar(column, 0)?, Scalar::from(7_i64));
+/// assert!(SerieValue::is_null(column, 1));
+///
+/// // The root answers the same verbs, and says a run has no field.
+/// assert_eq!(serie.field().map(|held| held.name()), Some("size"));
+/// assert_eq!(Serie::new(vec![Scalar::from(7_i64)]).field(), None);
 /// # Ok(())
 /// # }
 /// ```
