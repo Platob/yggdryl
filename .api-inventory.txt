@@ -929,7 +929,7 @@ impl FixRegistry
 
 ### yggdryl::fix::aliases  [rust/src/fix/aliases.rs]
 impl FixRegistry
-  pub fn with_default_aliases(self) -> Result<Self>  (lends every shipped field the spellings a bridge writes it under, folded once; opt-in because the shipped dictionary re-registers every alias against every field and the pass is quadratic in the dictionary's size - minutes, not milliseconds)
+  pub fn with_default_aliases(self) -> Result<Self>  (Rust-only; lends canonical names the bid/demand, offer/ask, px/price and size/qty combinations in one batch; existing owners win, changed references refresh once, repeated calls leave the registry untouched)
 
 ### yggdryl::fix::registry  [rust/src/fix/registry.rs]
 pub struct FixRegistry  (one namespace of scalar fields, components and groups, every one reached through the field doors below; a message is a component carrying FIX:msgtype)

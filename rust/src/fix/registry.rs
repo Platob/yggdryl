@@ -805,6 +805,61 @@ impl FixRegistry {
         Ok(())
     }
 
+    /// Applies generated scalar aliases in one bounded registry pass.
+    ///
+    /// The alias generator owns the spelling combinations; this owner keeps
+    /// the indexes and catalog coherent. A lender changes only for spellings
+    /// no field already answers, in input order, so a dictionary's canonical
+    /// name and earlier aliases keep their first claim. The consumed registry
+    /// makes a refusal atomic to the caller without a full-registry clone.
+    pub(super) fn lend_field_aliases<I>(mut self, lending: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = (SmolStr, Vec<SmolStr>)>,
+    {
+        let mut changed = false;
+        for (name, spellings) in lending {
+            let Some(position) = self.position_by_name(&name) else {
+                continue;
+            };
+            // A spelling another field claims canonically or as an alias is
+            // that field's. Check before cloning the lender or its aliases:
+            // most catalog fields lend nothing new on a repeated call.
+            let mut spellings = spellings;
+            spellings.retain(|spelled| self.get_field_by_name(spelled).is_none());
+            if spellings.is_empty() {
+                continue;
+            }
+            let mut field = self.fields[position].clone();
+            let mut aliases: Vec<SmolStr> = field.as_fix().names().map(SmolStr::new).collect();
+            for spelled in spellings {
+                if !aliases.iter().any(|held| held == &spelled) {
+                    aliases.push(spelled);
+                }
+            }
+            field
+                .as_fix_mut()
+                .set_names(aliases.iter().map(SmolStr::as_str))?;
+            let (tag, id) = canonical_identity(&field)?;
+            let alternate = field.as_fix().tags()?;
+            self.check_free(&field, tag, id, &alternate, Some(position))?;
+            // Existing fields have already been validated. Validate their
+            // catalog once before the first direct replacement, then refresh
+            // references once after every new alias is indexed.
+            if !changed {
+                self.validate_catalog()?;
+            }
+            self.unindex(position, position);
+            self.fields[position] = field;
+            self.index(position);
+            changed = true;
+        }
+        if changed {
+            self.refresh_references()?;
+            self.validate_catalog()?;
+        }
+        Ok(self)
+    }
+
     /// Merges a definition into the field with the same canonical identity.
     /// A name folding to the stored one retains the stored canonical spelling.
     pub fn update(&mut self, field: Field) -> Result<()> {
@@ -2075,5 +2130,68 @@ mod tests {
             "{error}"
         );
         assert_eq!(registry.fields, before);
+    }
+
+    #[test]
+    fn default_aliases_refuse_a_digest_collision_without_mutating_the_source() {
+        let offer = tagged("offerpx", 1);
+        let unrelated = tagged("Unrelated", 2);
+        let mut registry = FixRegistry::from_fields([offer, unrelated]).unwrap();
+        let unrelated_at = registry
+            .fields
+            .iter()
+            .position(|field| field.name() == "Unrelated")
+            .expect("the unrelated holder");
+        registry
+            .aliases
+            .insert(name_digest("askpx", ALIAS_SEED), unrelated_at);
+
+        assert!(
+            registry.get_field_by_name("askpx").is_none(),
+            "a colliding alias digest is rechecked before lookup answers"
+        );
+        let before = registry.clone();
+        let error = registry.clone().with_default_aliases().unwrap_err();
+        assert!(
+            matches!(&error, Error::Conflict { path, .. } if path.contains("askpx")),
+            "{error}"
+        );
+        assert_eq!(
+            registry, before,
+            "the consumed attempt leaves its source intact"
+        );
+    }
+
+    #[test]
+    fn default_aliases_do_not_reindex_an_unchanged_second_pass() {
+        let registry = FixRegistry::from_fields([tagged("offerpx", 1)])
+            .unwrap()
+            .with_default_aliases()
+            .unwrap();
+        let before = registry
+            .get_field_by_name("offerpx")
+            .expect("the lender")
+            .as_metadata()
+            .storage_address();
+        let derivations = registry.derivations().unwrap();
+        registry.lifted_names();
+        let registry = registry.with_default_aliases().unwrap();
+        let after = registry
+            .get_field_by_name("offerpx")
+            .expect("the lender")
+            .as_metadata()
+            .storage_address();
+        assert_eq!(
+            after, before,
+            "an unchanged field keeps its metadata storage"
+        );
+        assert!(
+            Arc::ptr_eq(&derivations, &registry.derivations().unwrap()),
+            "an unchanged pass keeps the compiled derivations"
+        );
+        assert!(
+            registry.lifted_names.get().is_some(),
+            "an unchanged pass keeps the lifted-name cache"
+        );
     }
 }

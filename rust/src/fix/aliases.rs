@@ -33,12 +33,11 @@
 //!
 //! # When both spellings arrive
 //!
-//! They resolve to one field, and the crate already has exactly one answer
-//! for two voices on one field: conflicting voices fill nothing. A message
-//! carrying `OfferPx=10` and `AskPx=11` states one field twice and
-//! disagrees, so the build leaves it unfilled and the arrival record keeps
-//! both pairs - the same rule a bridge's two spellings of one tag already
-//! met. Agreeing voices are not a conflict and fill once.
+//! Namespaced bridge voices resolve to one field: conflicting voices fill
+//! nothing. A row carrying `FIRM.ORIG.OFFERPX=10` and
+//! `ULLINK.OFFERPRICE=11` disagrees, so composition leaves the canonical field
+//! unfilled and the arrival record keeps both pairs. Agreeing voices fill
+//! once. Direct duplicate flat FIX pairs retain their repeated values.
 //!
 //! A spelling a dictionary already defines as a field of its own is never
 //! taken from it: [`FixRegistry`] refuses to lend an alias another field
@@ -99,6 +98,11 @@ impl FixRegistry {
     /// Idempotent: a field already carrying a spelling keeps the one it has,
     /// and a spelling another field answers for stays with that field.
     ///
+    /// Generates the finite spelling catalog once per call, then
+    /// applies every free alias in one indexed pass and one catalog refresh.
+    /// Readers and setters only consult those indexed aliases; they never
+    /// generate spellings while handling a message.
+    ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// # use yggdryl::local::Folder;
@@ -121,9 +125,9 @@ impl FixRegistry {
     ///
     /// # Errors
     ///
-    /// Returns the catalog's refusal when a re-registered definition does not
+    /// Returns the catalog's refusal when one generated spelling does not
     /// land.
-    pub fn with_default_aliases(mut self) -> Result<Self> {
+    pub fn with_default_aliases(self) -> Result<Self> {
         let mut lending: Vec<(SmolStr, Vec<SmolStr>)> = Vec::new();
         for field in self.definitions(FixCategory::Fields) {
             let spellings = spellings_of(field.name());
@@ -131,28 +135,6 @@ impl FixRegistry {
                 lending.push((SmolStr::new(field.name()), spellings));
             }
         }
-        for (name, spellings) in lending {
-            let Some(held) = self.get_field_by_name(&name) else {
-                continue;
-            };
-            let mut field = held.clone();
-            let mut aliases: Vec<SmolStr> = field.as_fix().names().map(SmolStr::new).collect();
-            for spelled in spellings {
-                // A spelling another field claims canonically is that
-                // field's; the registry says so too, and saying it here keeps
-                // the definition itself honest about what it lends.
-                if self.get_field_by_name(&spelled).is_some() {
-                    continue;
-                }
-                if !aliases.iter().any(|held| held == &spelled) {
-                    aliases.push(spelled);
-                }
-            }
-            field
-                .as_fix_mut()
-                .set_names(aliases.iter().map(SmolStr::as_str))?;
-            self.insert_definition(FixCategory::Fields, field)?;
-        }
-        Ok(self)
+        self.lend_field_aliases(lending)
     }
 }

@@ -23,6 +23,7 @@ use std::fmt::Write as _;
 use std::hint::black_box;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
 
 use std::sync::Arc;
 
@@ -2499,6 +2500,70 @@ fn a_long_transcoded_cell_costs_its_buffer_and_its_handle() {
     costs("transcribing a long cell into compact storage", 2, || {
         black_box(Charset::Cp1252.transcribe_smol(black_box(wire.as_slice())));
     });
+}
+
+#[test]
+fn default_aliases_allocation_profile_is_idempotent() {
+    // Before direct reindexing, the first pass made 313,853,260 allocations
+    // by refreshing the catalog for each of 170 fields; the repeat still made
+    // 7,867,934. One alias registration now rebuilds the catalog once, so the
+    // first cap permits one refresh with 37% fixture headroom. An already
+    // aliased registry skips that refresh; its cap leaves room for spelling
+    // generation but remains below the cost of cloning the full catalog.
+    const FIRST_MAX_ALLOCATIONS: usize = 2_500_000;
+    const REPEATED_MAX_ALLOCATIONS: usize = 4_096;
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let folder = yggdryl::local::Folder::new(root).expect("the local seed path");
+    let loaded_at = Instant::now();
+    let registry = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
+    let load_elapsed = loaded_at.elapsed();
+
+    let first_input = registry.clone();
+    let first_at = Instant::now();
+    let (first_allocations, registered) = counted(|| {
+        first_input
+            .with_default_aliases()
+            .expect("the committed aliases register")
+    });
+    let first_elapsed = first_at.elapsed();
+    assert!(
+        first_allocations <= FIRST_MAX_ALLOCATIONS,
+        "default aliases first pass made {first_allocations} allocations; \
+         the one catalog refresh budget is {FIRST_MAX_ALLOCATIONS}"
+    );
+    assert_eq!(
+        registered
+            .field_by_name("askprice")
+            .expect("AskPrice resolves")
+            .name(),
+        "offerpx",
+        "the default aliases retain their canonical owner"
+    );
+
+    let repeated_input = registered.clone();
+    let repeated_at = Instant::now();
+    let (repeated_allocations, repeated) = counted(|| {
+        repeated_input
+            .with_default_aliases()
+            .expect("registering aliases twice succeeds")
+    });
+    let repeated_elapsed = repeated_at.elapsed();
+    assert!(
+        repeated_allocations <= REPEATED_MAX_ALLOCATIONS,
+        "default aliases repeat made {repeated_allocations} allocations; \
+         the no-op budget is {REPEATED_MAX_ALLOCATIONS}"
+    );
+    assert_eq!(
+        repeated
+            .field_by_name("askprice")
+            .expect("AskPrice still resolves")
+            .name(),
+        "offerpx"
+    );
+    eprintln!(
+        "default_aliases: load={load_elapsed:?}; first={first_allocations} allocations, \
+         {first_elapsed:?}; repeated={repeated_allocations} allocations, {repeated_elapsed:?}"
+    );
 }
 
 #[test]

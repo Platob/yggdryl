@@ -296,6 +296,10 @@ A Map group is a native mapping, not a numeric repeating frame: its entries and 
 
 Names and aliases use separate indexes; a stored name is rechecked after hashing, so a digest collision never selects an unrelated field. The id is the signed XXH32 of the tag's little-endian bytes followed by the folded name, so `MsgType`, `msgtype` and `Msg_Type` under tag 35 are one id; `FixId::of(tag, name)` refuses a tag that is not positive and displays as its decimal digest - the [fold and its halves](index.md#identity-is-a-tag-and-a-name) are the vocabulary's. An id crosses every boundary as that integer - `FixKey::Id` in Rust, `field_by_id(int)` and `get_by_id(int)` in Python and JavaScript - and a bare integer anywhere else is a tag.
 
+Rust's opt-in `registry.with_default_aliases()?` registers the alternative spellings of canonical field names: `bid` → `demand`, `offer` → `ask`, `px` → `price`, and `size` → `qty`. Combinations apply together, so `offerpx` also answers `askpx`, `offerprice`, and `askprice`. Existing canonical names and aliases keep their owners; when generated spellings compete, the first field in tag-major registry order keeps the spelling. These are the same indexed aliases the codec and message setters already resolve.
+
+Registration changes only fields gaining an alias, then refreshes catalog references once for the complete batch. Calling it again without new eligible fields leaves the registry untouched. The four rules generate at most fifteen alternatives per field; catalog validation and reference expansion are batched, with no alias generation added to message parsing or setters. This registration method is Rust-only.
+
 === "Rust"
 
     ```rust

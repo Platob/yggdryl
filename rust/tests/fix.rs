@@ -1,5 +1,7 @@
 //! FIX integration tests.
 
+#[path = "fix/aliases.rs"]
+mod aliases;
 #[path = "fix/allocations.rs"]
 mod allocations;
 #[path = "fix/batch.rs"]

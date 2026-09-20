@@ -13,6 +13,40 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .expect("the generated dictionary has no conflict");
     let mut group = criterion.benchmark_group("fix/mutate");
 
+    // The committed registry is prepared outside the timer. The first pass
+    // lends the standard aliases; the second proves the already-registered
+    // catalog does not make a different mutation path look inexpensive.
+    group.bench_function("default_aliases", |bencher| {
+        bencher.iter_batched(
+            || registry.clone(),
+            |registry| {
+                black_box(
+                    registry
+                        .with_default_aliases()
+                        .expect("the committed aliases register"),
+                )
+            },
+            BatchSize::PerIteration,
+        );
+    });
+    let aliases = registry
+        .clone()
+        .with_default_aliases()
+        .expect("the committed aliases register");
+    group.bench_function("default_aliases_idempotent", |bencher| {
+        bencher.iter_batched(
+            || aliases.clone(),
+            |registry| {
+                black_box(
+                    registry
+                        .with_default_aliases()
+                        .expect("the committed aliases re-register"),
+                )
+            },
+            BatchSize::PerIteration,
+        );
+    });
+
     // One insert into a dictionary of each size. The clone is outside the
     // timer, and so is the drop: every routine hands the registry back as its
     // output rather than letting it fall at the end of the timed closure.
