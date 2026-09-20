@@ -32,17 +32,18 @@
 //! and implemented beside each leaf.
 //!
 //! A fourth side stands beside the three: many values of one field, which is
-//! a column. [`SerieValue`] is what a column owes the root that holds it, the
-//! root is [`Serie`], and its one leaf today is [`Column`]. A column is a
-//! value as well, because a serie widens to
-//! `Scalar::Sequence(Sequence::Serie(..))`, so [`SerieValue`] is declared
-//! over [`NestedValue`] rather than beside it and nothing about a column is a
-//! second value model.
+//! a column. The root is [`Serie`] - one column leaf per family, beside the
+//! schema-free run a row canonicalizes to - and [`SerieValue`] is what each
+//! of those leaves owes it. A serie is a value as well, because it *is* the
+//! sequence family's value, `Scalar::Sequence(Serie)`: [`Serie`] implements
+//! [`Value`] and [`NestedValue`], and nothing about a column is a second
+//! value model. It does not implement [`SerieValue`], whose every method
+//! answers from a field, because the run leaf declares none.
 //!
 //! `canonical` is the schema-directed validation and canonicalization of row
 //! values: a struct [`Field`] is the schema of the rows it describes, so
-//! validating a row is validating one [`crate::sequence::Sequence`] against
-//! that field's children, and canonicalization is the same walk with
+//! validating a row is validating one sequence of values against that
+//! field's children, and canonicalization is the same walk with
 //! rewriting - integers, floats and nested containers narrowed into the exact
 //! representation the schema declares, and the input answered untouched when
 //! nothing needed changing.
@@ -50,7 +51,6 @@
 //! [`Field`]: crate::Field
 //! [`Scalar`]: crate::Scalar
 //! [`Serie`]: crate::Serie
-//! [`Column`]: crate::Column
 //! [`Integer`]: crate::Integer
 //! [`Floating`]: crate::Floating
 //! [`Decimal`]: crate::Decimal

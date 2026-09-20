@@ -309,6 +309,56 @@ A record's child, a sequence's items and a mapping's entries are each a `Serie` 
     assert!(!run.is_column());
     ```
 
+## A mapping is the sequence leaf read as entries
+
+Arrow lays a mapping out as a list of non-null key-value records, so a mapping column *is* the sequence leaf under a different marker: the same field, the same offsets, one item `Serie`, the same validity bitmap. What the marker changes is what a row means — `items()` are the entry records, and a row reads back as the mapping it was written as.
+
+=== "Rust"
+
+    ```rust
+    use arrow_array::{Array, MapArray};
+    use yggdryl::{DataType, Field, Scalar, Serie, StructType};
+
+    let entries = Field::new(
+        "entries",
+        DataType::Struct(StructType::from_fields([
+            Field::new("key", DataType::utf8(), false),
+            Field::new("value", DataType::Int64, false),
+        ])?),
+        false,
+    );
+    let field = Field::new("weights", DataType::map(entries, false)?, false);
+    let column = Serie::from_scalars(
+        field.clone(),
+        [Scalar::from_mapping([
+            (Scalar::from("AAPL"), Scalar::from(1_i64)),
+            (Scalar::from("MSFT"), Scalar::from(2_i64)),
+        ])?],
+    )?;
+
+    // One row in, the same row out: the marker pairs the stored records back
+    // into the mapping `Field::scalar` took.
+    assert_eq!(column.scalar(0)?.kind(), "mapping");
+
+    // Underneath, the entries are a record column, reached through the one
+    // spelling both leaves share.
+    let maps = column.as_mapping().expect("a mapping column");
+    assert_eq!(maps.range(0), Some((0, 2)));
+    let pairs = maps.items().as_struct().expect("the entry records");
+    assert_eq!(
+        pairs.child("key").expect("the keys").as_utf8().expect("a utf8 column").value(1),
+        Some("MSFT")
+    );
+
+    // The shape is the leaf, so narrowing to the other one answers `None`.
+    assert!(column.as_sequence().is_none());
+
+    // Arrow takes it as a map, and the buffers come back without a row read.
+    let array = column.into_arrow_array().expect("a column has buffers");
+    assert!(array.as_any().downcast_ref::<MapArray>().is_some());
+    assert_eq!(Serie::from_arrow_array(field, array)?, column);
+    ```
+
 ## Arrow: an array, a batch, a reader
 
 Every crossing shares buffers. A column of a leaf field is an array; a column of a non-null Struct field is a table, and the stream of it is what a record write already speaks. Coming the other way, the field decides which leaf the buffers land in and proves every level of the layout and its nullability before taking them.
@@ -398,6 +448,8 @@ A variant row is one run of the crate's own [variant encoding](variant.md), so a
 - A batch read back names its root `row`, because Arrow names columns and never the record.
 - A column and a schema-free run with the same rows are not equal; equality is what tells them apart, and the leaf breaks the ordering tie.
 - Two columns are equal when their field and their rows are, whichever buffers hold them - a `Utf8View` column and a `Utf8` column of one field are not, because the field names the layout. A column hashes by its field and its length, so a hash never decodes a buffer.
+- A column whose rows its own field refuses orders after every column whose rows read, and two of those order by their length and then their field - which is exactly what a column hashes, so equality and hashing stay in step where there is no row to compare.
+- A mapping's `keys_sorted` is the leaf its datatype is, and Arrow carries it in the datatype rather than in the buffers - so the column reads it off its own field when it lays out, and a sorted map reads back as one.
 - `Serie::as_slice` and `Scalar::as_sequence` borrow, so they answer only for the schema-free run: a column holds Arrow buffers and no `Scalar`, so there is nothing to borrow. `Serie::rows` reads either — borrowing the run's values, building the column's — and `Scalar::iter` walks either, yielding `Cow`.
 - `Serie::field` answers `None` for a run, because a run declares none. `Serie::require_field` is the same read as a refusal, and it is what a record's child, a sequence's items and a mapping's entries go through — a run cannot stand where Arrow names a layout.
 - Nothing caches a decoded row. Reading a column's rows twice reads them twice; hold the answer rather than asking again.
