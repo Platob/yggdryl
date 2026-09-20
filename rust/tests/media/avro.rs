@@ -1733,6 +1733,80 @@ mod records {
     }
 
     #[test]
+    fn a_variant_column_writes_the_record_the_specification_states() {
+        // Avro spells a variant as a record of `metadata` and `value`, both
+        // `bytes`, read by name and carrying no field ids. The annotation
+        // beside them is what names it one on the way back.
+        let field = StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::variant().required_field("payload"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        let payload = Scalar::from_struct([
+            ("symbol", Scalar::from("AAPL")),
+            ("size", Scalar::from(100_i64)),
+        ])
+        .unwrap();
+        let rows = Scalar::from_sequence([Scalar::from_struct([
+            ("id", Scalar::from(1_i64)),
+            ("payload", payload.clone()),
+        ])
+        .unwrap()]);
+        let batch = yggdryl::arrow::batch_from_value(&field, &rows).unwrap();
+        let mut handle = handle();
+        avro::overwrite_arrow_reader(
+            &mut handle,
+            yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+            &AvroOptions::new(),
+        )
+        .unwrap();
+
+        // The written schema is the record the specification states.
+        let written = avro::read_container(&handle).unwrap().schema.into_json();
+        let columns = written
+            .get_key_str("fields")
+            .unwrap()
+            .as_sequence()
+            .unwrap();
+        let variant = columns[1].get_key_str("type").unwrap();
+        assert_eq!(
+            variant.get_key_str("type").unwrap().as_str(),
+            Some("record")
+        );
+        assert_eq!(
+            variant.get_key_str("logicalType").unwrap().as_str(),
+            Some("variant")
+        );
+        let children = variant
+            .get_key_str("fields")
+            .unwrap()
+            .as_sequence()
+            .unwrap();
+        assert_eq!(children.len(), 2);
+        for (child, name) in children.iter().zip(["metadata", "value"]) {
+            assert_eq!(child.get_key_str("name").unwrap().as_str(), Some(name));
+            assert_eq!(child.get_key_str("type").unwrap().as_str(), Some("bytes"));
+            assert!(child.get_key_str("field-id").is_none(), "{child:?}");
+        }
+
+        // And the column reads back as a variant holding the value written.
+        let read_field = avro::read_field(&handle, &AvroOptions::new()).unwrap();
+        assert_eq!(read_field.fields()[1].dtype(), &DataType::variant());
+        let batches = avro::read_batch_reader(&handle, None, &AvroOptions::new())
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let values = yggdryl::arrow::batch_to_value(&batches[0]).unwrap();
+        let row = values.as_sequence().unwrap()[0].as_sequence().unwrap();
+        let Scalar::Variant(held) = &row[1] else {
+            panic!("a variant value, got {:?}", row[1]);
+        };
+        assert_eq!(held.scalar().unwrap(), payload);
+    }
+
+    #[test]
     fn a_projection_skips_the_bytes_of_unselected_columns() {
         let (_, batch) = batch();
         let mut handle = handle();

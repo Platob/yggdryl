@@ -1,16 +1,16 @@
 # Geospatial
 
-Variant, geometry, and geography datatypes plus the dependency-free WKB reader behind display, casts, and bounds.
+Geometry and geography datatypes plus the dependency-free WKB reader behind display, casts, and bounds. The `variant` datatype is spelled beside them in the grammar and owns [its own page](variant.md).
 
 ## Contract
 
 | | |
 | --- | --- |
-| Owns | `variant`, `geometry(crs)`, `geography(crs, algorithm)`, `Scalar::Geometry`, `Scalar::Geography`, `wkb` |
+| Owns | `geometry(crs)`, `geography(crs, algorithm)`, `Scalar::Geometry`, `Scalar::Geography`, `wkb`; the bare `variant` spelling, whose value and encoding are [the variant's](variant.md) |
 | Defaults | CRS `OGC:CRS84`; edges `spherical`; display omits defaults |
 | Algorithms | `spherical`, `vincenty`, `thomas`, `andoyer`, `karney`; case-insensitive ([`EdgeAlgorithm`](scalar.md)) |
-| Arrow | variant: a `Binary` of the [variant encoding](variant.md) per row under `yggdryl.variant`; pair: WKB binary under `geoarrow.wkb`, CRS and algorithm in GeoArrow JSON; both ride `ARROW:extension:name`/`ARROW:extension:metadata` |
-| Variant value | the [`Scalar`](scalar.md) tree itself; no `Scalar::Variant`; a column stores each value as its [encoding](variant.md) and digests it as the value |
+| Arrow | WKB binary under `geoarrow.wkb`, CRS and algorithm in GeoArrow JSON, riding `ARROW:extension:name`/`ARROW:extension:metadata`; a [variant](variant.md) column is the two binaries that page states |
+| Variant value | `Scalar::Variant`, holding the [Parquet Variant encoding](variant.md) of the value; a value cast into a variant column is encoded and a variant cast out of one is decoded |
 | WKB reader | Rust only; no dependency; no WKT parser |
 
 ## Use

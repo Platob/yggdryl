@@ -20,7 +20,7 @@ use crate::{Error, Result};
 /// [`DataTypeKind::id`], a placeholder no leaf takes - and its leaves follow
 /// in that range, so the high bits of a leaf's byte say its family and a
 /// family has room for the leaves it does not have yet. The byte is what
-/// [the variant encoding](crate::Scalar::into_variant_bytes) and
+/// [the variant encoding](crate::Scalar::into_value_bytes) and
 /// [`crate::Scalar::write_bytes`] write as a value's tag, and
 /// [`Self::from_u8`] reads it back.
 ///
@@ -412,7 +412,7 @@ impl DataTypeId {
     /// Return this identifier's discriminant as one byte.
     ///
     /// Every variant states its number, and the number is a wire contract:
-    /// [the variant encoding](crate::Scalar::into_variant_bytes) and
+    /// [the variant encoding](crate::Scalar::into_value_bytes) and
     /// [`crate::Scalar::write_bytes`] write it as the tag of every value, so
     /// a number is never reused and never moves. The numbers are laid out
     /// by family - the family's own number first, [`DataTypeKind::id`],

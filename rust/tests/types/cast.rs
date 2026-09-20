@@ -344,8 +344,23 @@ fn wkb_point(x: f64, y: f64) -> Vec<u8> {
 }
 
 fn variant_storage_array(rows: usize) -> ArrayRef {
-    Arc::new(BinaryArray::from_iter_values(
-        (0..rows).map(|row| Scalar::from(row as i64).into_variant_bytes()),
+    let variants: Vec<yggdryl::Variant> = (0..rows)
+        .map(|row| yggdryl::Variant::encode(&Scalar::from(row as i64)).unwrap())
+        .collect();
+    Arc::new(arrow_array::StructArray::new(
+        arrow_schema::Fields::from(vec![
+            arrow_schema::Field::new("metadata", arrow_schema::DataType::Binary, false),
+            arrow_schema::Field::new("value", arrow_schema::DataType::Binary, false),
+        ]),
+        vec![
+            Arc::new(BinaryArray::from_iter_values(
+                variants.iter().map(yggdryl::Variant::metadata),
+            )) as ArrayRef,
+            Arc::new(BinaryArray::from_iter_values(
+                variants.iter().map(yggdryl::Variant::value),
+            )) as ArrayRef,
+        ],
+        None,
     ))
 }
 
@@ -532,15 +547,15 @@ fn a_variant_casts_only_from_its_own_storage() {
         .unwrap();
     assert!(Arc::ptr_eq(&identity, &storage));
 
-    // Anything else refuses by name: the column holds the encoding, which
-    // a caller writes with `into_variant_bytes`.
+    // Anything else refuses by name: the column holds the two binaries
+    // the encoding is, which a caller writes with `Variant::encode`.
     let numbers: ArrayRef = Arc::new(Int64Array::from(vec![7]));
     let refused = field
         .to_field()
         .cast_arrow_array(numbers, ArrowCastOptions::new().with_safe(false))
         .unwrap_err()
         .to_string();
-    assert!(refused.contains("into_variant_bytes"), "{refused}");
+    assert!(refused.contains("Variant::encode"), "{refused}");
 }
 
 #[test]
@@ -565,7 +580,7 @@ fn a_variant_column_refuses_to_leave_the_type_by_a_cast() {
         .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
         .unwrap_err()
         .to_string();
-    assert!(refused.contains("decode_variant_bytes"), "{refused}");
+    assert!(refused.contains("Variant::scalar"), "{refused}");
 }
 
 /// Every wrapper reads what the value inside it reads: a list layout is a

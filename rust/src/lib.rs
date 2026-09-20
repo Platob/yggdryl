@@ -120,6 +120,7 @@ pub mod uri;
 pub mod utf8;
 pub mod uuid;
 mod value;
+mod valuestream;
 mod variant;
 pub mod version;
 mod vocabulary;
@@ -228,10 +229,8 @@ pub use field::*;
 pub use floating::*;
 #[cfg(feature = "parquet")]
 pub(crate) use geospatial::DEFAULT_CRS;
+pub(crate) use geospatial::GEOARROW_WKB_EXTENSION_NAME;
 pub use geospatial::*;
-pub(crate) use geospatial::{
-    GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME, is_variant_storage,
-};
 pub use integer::*;
 pub use interval::*;
 pub use isin::*;
@@ -273,7 +272,11 @@ pub use value::{
     FieldValue, FloatingValue, GeographyType, GeometryType, GeospatialValue, IntegerValue, Nested,
     NestedValue, RunEndType, TemporalValue, UnionType, Value,
 };
-pub use variant::{COMPRESS_FROM, VARIANT_VERSION, VariantStream};
+pub use valuestream::{COMPRESS_FROM, VALUE_STREAM_VERSION, ValueStream};
+pub use variant::{
+    VARIANT_EXTENSION_NAME, VARIANT_METADATA_FIELD, VARIANT_VALUE_FIELD, VARIANT_VERSION, Variant,
+};
+pub(crate) use variant::{is_variant_storage, variant_fields};
 pub(crate) use version::VERSION_EXTENSION_NAME;
 pub use version::*;
 

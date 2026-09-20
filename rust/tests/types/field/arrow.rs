@@ -178,7 +178,7 @@ fn geospatial_and_variant_ffi_schemas_carry_the_extension_identity() {
     let metadata = schema.metadata().unwrap();
     assert_eq!(
         metadata.get("ARROW:extension:name"),
-        Some(&"yggdryl.variant".to_owned())
+        Some(&"arrow.parquet.variant".to_owned())
     );
     assert_eq!(
         metadata.get("ARROW:extension:metadata"),
@@ -810,8 +810,13 @@ fn a_strict_applied_reader_answers_its_schema_and_applies_every_batch() {
     assert!(applied.next().is_none());
 }
 
+/// The storage a variant column lays out: the two binaries the Parquet
+/// Variant encoding is, named and in specification order.
 fn variant_storage() -> ArrowDataType {
-    ArrowDataType::Binary
+    ArrowDataType::Struct(arrow_schema::Fields::from(vec![
+        ArrowField::new("metadata", ArrowDataType::Binary, false),
+        ArrowField::new("value", ArrowDataType::Binary, false),
+    ]))
 }
 
 #[test]
@@ -847,11 +852,11 @@ fn a_geography_projection_carries_the_edge_algorithm_and_round_trips() {
 }
 
 #[test]
-fn a_variant_field_projects_a_binary_and_reimports_itself() {
+fn a_variant_field_projects_the_two_binaries_and_reimports_itself() {
     let field = Field::new("payload", DataType::variant(), true);
     let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &variant_storage());
-    assert_eq!(arrow.extension_type_name(), Some("yggdryl.variant"));
+    assert_eq!(arrow.extension_type_name(), Some("arrow.parquet.variant"));
     assert_eq!(arrow.extension_type_metadata(), Some(""));
 
     let imported = Field::from_arrow_field(&arrow).unwrap();
@@ -950,7 +955,7 @@ fn a_caller_set_extension_key_on_an_extension_typed_field_is_refused_naming_both
     .unwrap();
     let refused = variant.into_arrow_field().unwrap_err().to_string();
     assert!(refused.contains("shredded"), "{refused}");
-    assert!(refused.contains("yggdryl.variant"), "{refused}");
+    assert!(refused.contains("arrow.parquet.variant"), "{refused}");
 }
 
 #[test]
@@ -959,7 +964,7 @@ fn a_variant_with_a_nonempty_document_or_foreign_shape_keeps_todays_import() {
         ArrowField::new("payload", variant_storage(), true).with_metadata(HashMap::from([
             (
                 EXTENSION_TYPE_NAME_KEY.to_owned(),
-                "yggdryl.variant".to_owned(),
+                "arrow.parquet.variant".to_owned(),
             ),
             (
                 EXTENSION_TYPE_METADATA_KEY.to_owned(),
@@ -967,21 +972,33 @@ fn a_variant_with_a_nonempty_document_or_foreign_shape_keeps_todays_import() {
             ),
         ]));
     let imported = Field::from_arrow_field(&shredded).unwrap();
-    assert!(matches!(imported.dtype(), DataType::Bytes(_)), "{imported}");
-
-    let foreign = ArrowDataType::Struct(arrow_schema::Fields::from(vec![
-        ArrowField::new("metadata", ArrowDataType::Binary, false),
-        ArrowField::new("value", ArrowDataType::Binary, false),
-    ]));
-    let foreign = ArrowField::new("payload", foreign, true).with_metadata(HashMap::from([(
-        EXTENSION_TYPE_NAME_KEY.to_owned(),
-        "yggdryl.variant".to_owned(),
-    )]));
-    let imported = Field::from_arrow_field(&foreign).unwrap();
     assert!(
         matches!(imported.dtype(), DataType::Struct(_)),
         "{imported}"
     );
+
+    // The name over a storage it does not spell is a foreign field wearing
+    // it: the column imports as the binary it is.
+    let foreign =
+        ArrowField::new("payload", ArrowDataType::Binary, true).with_metadata(HashMap::from([(
+            EXTENSION_TYPE_NAME_KEY.to_owned(),
+            "arrow.parquet.variant".to_owned(),
+        )]));
+    let imported = Field::from_arrow_field(&foreign).unwrap();
+    assert!(matches!(imported.dtype(), DataType::Bytes(_)), "{imported}");
+
+    // The two binaries a foreign writer laid out as views are the storage
+    // too: the extension names the struct, never the layout inside it.
+    let views = ArrowDataType::Struct(arrow_schema::Fields::from(vec![
+        ArrowField::new("metadata", ArrowDataType::BinaryView, false),
+        ArrowField::new("value", ArrowDataType::LargeBinary, true),
+    ]));
+    let views = ArrowField::new("payload", views, true).with_metadata(HashMap::from([(
+        EXTENSION_TYPE_NAME_KEY.to_owned(),
+        "arrow.parquet.variant".to_owned(),
+    )]));
+    let imported = Field::from_arrow_field(&views).unwrap();
+    assert_eq!(imported.dtype(), &DataType::Variant);
 }
 
 #[test]

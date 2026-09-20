@@ -493,6 +493,7 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         Scalar::Url(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Urn(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Timezone(held) => Some(SmolStr::new(held.as_str())),
+        Scalar::Variant(held) => Some(SmolStr::new(held.to_string())),
         Scalar::MimeType(held) => Some(SmolStr::new(held.as_str())),
         Scalar::MediaType(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Uuid(held) => {

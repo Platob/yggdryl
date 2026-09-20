@@ -3868,21 +3868,22 @@ export declare class Scalar {
   /** Return deterministic hash bits shared with Rust and Python. */
   stableHash(): bigint
   /**
-   * This value as the variant encoding: one `Buffer` holding the
-   * version, the datatype's identifier and the payload the identifier
-   * says how to read - a number as its little-endian bytes, a text as a
+   * This value as the value stream: one `Buffer` holding the version,
+   * the datatype's identifier and the payload the identifier says how
+   * to read - a number as its little-endian bytes, a text as a
    * compression byte, a size and the characters, a nested value as a
    * count and its children - compressed with zstd past four kibibytes.
-   * What a variant column stores per row.
+   * A `variant` column stores the Parquet Variant encoding instead,
+   * which a cast into that datatype writes.
    */
-  intoVariantBytes(): Buffer
+  intoValueBytes(): Buffer
   /**
-   * The value one variant encoding holds, as `intoVariantBytes` wrote
-   * it. Throws naming the byte where the bytes could not be read:
+   * The value one value stream holds, as `intoValueBytes` wrote it.
+   * Throws naming the byte where the bytes could not be read:
    * another version, a byte naming no datatype, a payload cut short, or
    * bytes left after the value.
    */
-  static fromVariantBytes(data: Uint8Array): Scalar
+  static fromValueBytes(data: Uint8Array): Scalar
   /**
    * Digest this value's canonical byte representation.
    *

@@ -129,6 +129,16 @@ pub(crate) struct RecordType {
     pub(crate) aliases: Vec<SmolStr>,
     /// The fields, in encoding order.
     pub(crate) fields: Vec<FieldType>,
+    /// Whether this record is one [variant](crate::Variant) value.
+    ///
+    /// The format states a variant as a record of a `metadata` and a
+    /// `value` field, both `bytes`, read by name and carrying no field
+    /// ids. Avro has no registered logical type for it, so the annotation
+    /// this writes - `"logicalType": "variant"` - is what names one here,
+    /// and it is set only when the shape agrees: a reader that does not
+    /// know the annotation reads the record, which is what the
+    /// specification asks of an unknown logical type.
+    pub(crate) variant: bool,
 }
 
 /// One field of a record type.
@@ -720,13 +730,32 @@ impl Parser {
             });
         }
 
+        let variant = document
+            .get_key_str("logicalType")
+            .and_then(Scalar::as_str)
+            .is_some_and(|annotation| annotation == "variant")
+            && Self::is_variant_record(&fields);
         let node = Node::Record(Arc::new(RecordType {
             name: fullname.clone(),
             aliases,
             fields,
+            variant,
         }));
         self.names.insert(fullname, node.clone());
         Ok(node)
+    }
+
+    /// Whether these fields are the pair a variant record states: exactly
+    /// `metadata` and `value`, both `bytes`, in that order.
+    fn is_variant_record(fields: &[FieldType]) -> bool {
+        matches!(
+            fields,
+            [metadata, value]
+                if metadata.name == crate::VARIANT_METADATA_FIELD
+                    && value.name == crate::VARIANT_VALUE_FIELD
+                    && matches!(metadata.schema, Node::Bytes)
+                    && matches!(value.schema, Node::Bytes)
+        )
     }
 
     /// Refuse a second definition of an already-registered name.

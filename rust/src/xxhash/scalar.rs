@@ -69,6 +69,7 @@ impl Scalar {
             | Self::Sequence(_)
             | Self::Mapping(_)
             | Self::Struct(_)
+            | Self::Variant(_)
             | Self::Version(_)
             | Self::Url(_)
             | Self::Urn(_)
@@ -366,6 +367,14 @@ impl Scalar {
                     depth,
                 );
             }
+            // A variant feeds as the value it holds, so one value digests
+            // alike whether it crossed as itself or as a variant column's
+            // bytes. A payload this cannot read feeds as a null, the same
+            // answer an unreadable Arrow payload gets.
+            Self::Variant(value) => match value.scalar() {
+                Ok(held) => held.feed(sink, depth + 1),
+                Err(_) => write_null(sink),
+            },
             // Every remaining variant answered one of the cross-width readers
             // above.
             Self::Int8(_)

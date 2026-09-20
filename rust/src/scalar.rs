@@ -225,6 +225,16 @@ pub enum Scalar {
     Mapping(Mapping),
     /// A schema-free record of values sorted by field name.
     Struct(Struct),
+    /// One semi-structured value in [the Parquet Variant binary
+    /// encoding](crate::Variant): its metadata dictionary and its value
+    /// payload, the pair a `variant` column stores per row.
+    ///
+    /// A variant *is* those bytes, the way a geometry is its WKB: the value
+    /// inside them is [`Variant::scalar`](crate::Variant::scalar), and a
+    /// cast either way encodes or decodes. Two variants are equal when
+    /// their bytes are, which is why a value cast into a variant is
+    /// canonically encoded - keys sorted, sizes narrowest.
+    Variant(crate::Variant),
     /// An Arrow payload - one pinned row, a column, a table, or a stream -
     /// carrying the exact field that types it, behind one shared pointer so
     /// a clone shares the buffers rather than the rows.
@@ -450,6 +460,12 @@ impl Serialize for Scalar {
             Self::Sequence(values) => tagged(serializer, "sequence", &values.as_slice()),
             Self::Mapping(entries) => tagged(serializer, "mapping", &entries.as_slice()),
             Self::Struct(entries) => tagged(serializer, "struct", &entries.as_map()),
+            // The two buffers as they are: a variant is its bytes, and
+            // re-encoding the value they hold would restate a foreign
+            // writer's dictionary as this one's.
+            Self::Variant(value) => {
+                tagged(serializer, "variant", &(value.metadata(), value.value()))
+            }
             // A stream is drained to be written, which is what serializing a
             // one-shot value means; a held shape is shared and stays readable.
             Self::Arrow(value) => match (**value).clone().into_scalar() {
@@ -578,6 +594,7 @@ impl<'de> Deserialize<'de> for Scalar {
             Sequence(Vec<Scalar>),
             Mapping(Vec<(Scalar, Scalar)>),
             Struct(RecordEntries),
+            Variant(Arc<[u8]>, Arc<[u8]>),
         }
 
         match StructuralWire::deserialize(deserializer)? {
@@ -761,6 +778,9 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::Struct(entries) => {
                 Self::from_struct(entries.0).map_err(D::Error::custom)
             }
+            StructuralWire::Variant(metadata, value) => crate::Variant::new(metadata, value)
+                .map(Self::Variant)
+                .map_err(D::Error::custom),
         }
     }
 }
@@ -877,6 +897,10 @@ impl Ord for Scalar {
             Self::Sequence(left) => same_kind!(Self::Sequence(right) => left.cmp(right)),
             Self::Mapping(left) => same_kind!(Self::Mapping(right) => left.cmp(right)),
             Self::Struct(left) => same_kind!(Self::Struct(right) => left.cmp(right)),
+            // A variant orders by its bytes, metadata first: its value is
+            // not one this comparison decodes, and two encodings of one
+            // value are one value only when their bytes agree.
+            Self::Variant(left) => same_kind!(Self::Variant(right) => left.cmp(right)),
             Self::Arrow(left) => same_kind!(Self::Arrow(right) => left.cmp(right)),
         }
     }
@@ -970,6 +994,10 @@ impl Hash for Scalar {
             }
             Self::Struct(value) => {
                 2_isize.hash(state);
+                value.hash(state);
+            }
+            Self::Variant(value) => {
+                3_isize.hash(state);
                 value.hash(state);
             }
         }
@@ -1104,6 +1132,10 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::MediaType(_) => 23,
         Scalar::Arrow(_) => 24,
         Scalar::Urn(_) => 25,
+        // A variant is its own kind, ranked after the containers it can
+        // hold: the bytes say what is inside, and nothing else orders by
+        // what they decode to.
+        Scalar::Variant(_) => 26,
     }
 }
 
@@ -1178,6 +1210,7 @@ impl Scalar {
             Self::Sequence(_) => DataTypeId::List,
             Self::Mapping(_) => DataTypeId::Map,
             Self::Struct(_) => DataTypeId::Struct,
+            Self::Variant(_) => DataTypeId::Variant,
         }
     }
 
@@ -1252,6 +1285,7 @@ impl Scalar {
             Self::Sequence(_) => "sequence",
             Self::Mapping(_) => "mapping",
             Self::Struct(_) => "struct",
+            Self::Variant(_) => "variant",
         }
     }
 
@@ -1654,6 +1688,7 @@ impl Scalar {
     /// variant answers `None`, because its spelling is the caller's to choose.
     pub(crate) fn leaf_display(&self) -> Option<&dyn fmt::Display> {
         let leaf: &dyn fmt::Display = match self {
+            Self::Variant(value) => value,
             Self::Int8(value) => value,
             Self::Int16(value) => value,
             Self::Int32(value) => value,

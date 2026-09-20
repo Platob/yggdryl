@@ -25,8 +25,9 @@
 //! A column whose Arrow field metadata declares the `geoarrow.wkb` extension
 //! writes Parquet's own `GEOMETRY` or `GEOGRAPHY` logical type over
 //! `BYTE_ARRAY` WKB - CRS and edge algorithm included - and one declaring
-//! `yggdryl.variant` writes a plain `BYTE_ARRAY` of the variant encoding,
-//! its extension name kept in the Arrow schema the file carries. (GeoArrow is a community specification
+//! `arrow.parquet.variant` writes the group the format states for a variant:
+//! two required `BYTE_ARRAY` children, `metadata` and `value`, annotated
+//! `VARIANT(1)` and carrying no field id. (GeoArrow is a community specification
 //! whose own documents say it is not finalized; the `geoarrow.wkb` spelling
 //! here is revisitable if it changes.) The writer then refuses min/max value
 //! bounds for geospatial columns - their sort order is undefined, so a bound
@@ -37,14 +38,14 @@
 //! [`read_geospatial_statistics`]. Geography columns record no bounding box:
 //! a planar fold of the vertices under-covers non-planar edges.
 //!
-//! Two named limits remain. Reading a *foreign* file whose columns carry
-//! `GEOMETRY`/`GEOGRAPHY`/`VARIANT` surfaces plain `Binary`/`Struct` Arrow
-//! types without extension metadata, because the pinned parquet crate only
-//! maps those logical types to Arrow extensions behind crate features that
-//! pull new dependencies; files written here round-trip their extension
-//! metadata through the embedded Arrow schema. And a variant *value* cannot
-//! cross an Arrow array boundary yet - the variant binary encoding lands with
-//! the Iceberg v3 layer - so variant columns are schema-level until it does.
+//! One named limit remains. Reading a *foreign* file whose columns carry
+//! `GEOMETRY` or `GEOGRAPHY` surfaces plain `Binary` Arrow types without
+//! extension metadata, because the pinned parquet crate only maps those
+//! logical types to Arrow extensions behind a crate feature that pulls new
+//! dependencies; files written here round-trip their extension metadata
+//! through the embedded Arrow schema. A foreign `VARIANT` group does not
+//! share that limit: the annotation is read back and the column imports as
+//! the variant it is, whatever Arrow schema the file carries.
 //!
 //! ```
 //! use yggdryl::{IOBase, IOMedia, StructType, holder::Buffer};
@@ -609,8 +610,28 @@ fn load_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<Arc<ParquetMetaData>>
 
 /// Recover the embedded Arrow schema from a footer already in hand.
 fn schema_from_metadata(metadata: Arc<ParquetMetaData>) -> Result<Arc<Schema>> {
-    let metadata = ArrowReaderMetadata::try_new(metadata, ArrowReaderOptions::new())?;
+    let metadata = reader_metadata(metadata)?;
     Ok(Arc::clone(metadata.schema()))
+}
+
+/// The reader metadata for one footer, with the variant extension attached
+/// wherever the Parquet schema says `VARIANT` and the Arrow schema does not.
+///
+/// A file written here already declares it, so this is the read of a
+/// *foreign* file: the annotation is what says the two binaries are one
+/// variant, and reading it is what makes the column import as one.
+fn reader_metadata(metadata: Arc<ParquetMetaData>) -> Result<ArrowReaderMetadata> {
+    let read = ArrowReaderMetadata::try_new(Arc::clone(&metadata), ArrowReaderOptions::new())?;
+    let Some(schema) = geospatial::variant_schema(
+        metadata.file_metadata().schema_descr(),
+        read.schema().as_ref(),
+    ) else {
+        return Ok(read);
+    };
+    Ok(ArrowReaderMetadata::try_new(
+        metadata,
+        ArrowReaderOptions::new().with_schema(Arc::new(schema)),
+    )?)
 }
 
 /// Open a reader builder over a handle's complete bytes.
@@ -622,10 +643,11 @@ fn schema_from_metadata(metadata: Arc<ParquetMetaData>) -> Result<Arc<Schema>> {
 fn open_builder<H: IOBase + ?Sized>(handle: &H) -> Result<ParquetRecordBatchReaderBuilder<Bytes>> {
     reject_outer_coding(handle)?;
     let bytes = Bytes::from(handle.read_all_bytes()?);
-    Ok(ParquetRecordBatchReaderBuilder::try_new_with_options(
-        bytes,
-        ArrowReaderOptions::new(),
-    )?)
+    let metadata = ArrowReaderMetadata::load(&bytes, ArrowReaderOptions::new())?;
+    let metadata = reader_metadata(Arc::clone(metadata.metadata()))?;
+    Ok(ParquetRecordBatchReaderBuilder::new_with_metadata(
+        bytes, metadata,
+    ))
 }
 
 /// Open a reader builder over only the leading row groups a row bound needs.
@@ -699,8 +721,7 @@ fn bounded_builder<H: IOBase + ?Sized>(
         return Ok(None);
     };
     let prefix = Bytes::from(handle.read_range_bytes(0, end)?);
-    let arrow_metadata =
-        ArrowReaderMetadata::try_new(Arc::new(metadata), ArrowReaderOptions::new())?;
+    let arrow_metadata = reader_metadata(Arc::new(metadata))?;
     Ok(Some(
         ParquetRecordBatchReaderBuilder::new_with_metadata(prefix, arrow_metadata)
             .with_row_groups(selected),

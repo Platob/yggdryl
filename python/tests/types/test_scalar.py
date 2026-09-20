@@ -246,32 +246,32 @@ def test_a_default_answers_for_an_absent_name_and_for_a_stored_null() -> None:
     assert record.get_or("absent", 0).as_py() == 0
 
 
-def test_variant_bytes_carry_any_value_and_pickle_rides_them() -> None:
+def test_value_bytes_carry_any_value_and_pickle_rides_them() -> None:
     import pickle
 
     value = DataType("int32").scalar(7)
-    data = value.into_variant_bytes()
+    data = value.into_value_bytes()
     assert isinstance(data, bytes)
     # The version, the identifier, then four little-endian bytes.
     assert data[0] == 0 and len(data) == 6 and data[2:] == b"\x07\x00\x00\x00"
-    assert Scalar.from_variant_bytes(data) == value
-    assert Scalar.from_variant_bytes(bytearray(data)) == value
+    assert Scalar.from_value_bytes(data) == value
+    assert Scalar.from_value_bytes(bytearray(data)) == value
 
     quote = Scalar.from_struct({"symbol": "AAPL", "sizes": [100, None]})
-    assert Scalar.from_variant_bytes(quote.into_variant_bytes()) == quote
-    assert Scalar.from_variant_bytes(quote.into_variant_bytes()).kind == "struct"
+    assert Scalar.from_value_bytes(quote.into_value_bytes()) == quote
+    assert Scalar.from_value_bytes(quote.into_value_bytes()).kind == "struct"
     # Pickle hands the same bytes to `_from_pickle`.
     rebuilder, (state,) = quote.__reduce__()
-    assert state == quote.into_variant_bytes()
+    assert state == quote.into_value_bytes()
     assert rebuilder(state) == quote
     assert pickle.loads(pickle.dumps(quote)) == quote
 
     long = Scalar.from_("x" * (4 * 1024 + 1))
-    data = long.into_variant_bytes()
+    data = long.into_value_bytes()
     assert data[2] == 1 and len(data) < 64
-    assert Scalar.from_variant_bytes(data) == long
+    assert Scalar.from_value_bytes(data) == long
 
     with pytest.raises(ValueError, match="version 1"):
-        Scalar.from_variant_bytes(b"\x01\x00")
+        Scalar.from_value_bytes(b"\x01\x00")
     with pytest.raises(ValueError, match="bytes left"):
-        Scalar.from_variant_bytes(b"\x00\x00\x00")
+        Scalar.from_value_bytes(b"\x00\x00\x00")

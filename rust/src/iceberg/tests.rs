@@ -7775,18 +7775,35 @@ mod isolation {
         let _ = std::fs::remove_dir_all(&v3);
     }
 
-    /// One variant value: the v1 metadata of an empty dictionary and a null.
+    /// One variant column: the two binaries the encoding states, per row.
     fn variant_column(rows: usize, field: &arrow_schema::Field) -> ArrayRef {
-        assert_eq!(
-            field.data_type(),
-            &arrow_schema::DataType::Binary,
-            "a variant lays out as the binary of its encoding"
-        );
-        Arc::new(BinaryArray::from_iter_values((0..rows).map(|row| {
-            crate::Scalar::from_struct([("row", crate::Scalar::from(row as i64))])
+        let arrow_schema::DataType::Struct(children) = field.data_type() else {
+            panic!(
+                "a variant lays out as the struct of its two binaries, got {}",
+                field.data_type()
+            );
+        };
+        let variants: Vec<crate::Variant> = (0..rows)
+            .map(|row| {
+                crate::Variant::encode(
+                    &crate::Scalar::from_struct([("row", crate::Scalar::from(row as i64))])
+                        .unwrap(),
+                )
                 .unwrap()
-                .into_variant_bytes()
-        })))
+            })
+            .collect();
+        Arc::new(arrow_array::StructArray::new(
+            children.clone(),
+            vec![
+                Arc::new(BinaryArray::from_iter_values(
+                    variants.iter().map(crate::Variant::metadata),
+                )) as ArrayRef,
+                Arc::new(BinaryArray::from_iter_values(
+                    variants.iter().map(crate::Variant::value),
+                )) as ArrayRef,
+            ],
+            None,
+        ))
     }
 
     #[test]

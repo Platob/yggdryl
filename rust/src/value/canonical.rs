@@ -370,7 +370,13 @@ pub(crate) fn dtype_canonical(dtype: &DataType, value: Scalar) -> Result<Scalar>
 /// child; it is the same rule at a root.
 fn spells_bare_null(dtype: &DataType, value: &Scalar) -> bool {
     matches!(value, Scalar::Null)
-        && !matches!(dtype, DataType::Union(..) | DataType::RunEndEncoded(_))
+        && !matches!(
+            dtype,
+            // A variant *spells* null: the encoding has a null of its own,
+            // so a null entering a variant column is a value to encode,
+            // never the absence a validity bitmap records.
+            DataType::Union(..) | DataType::RunEndEncoded(_) | DataType::Variant
+        )
 }
 
 /// Rewrite one row value into the exact representation a root field declares.
@@ -484,6 +490,13 @@ fn read_as(dtype: &DataType, value: &Scalar) -> Option<Result<Scalar>> {
     // one comparison rather than by falling through every arm below.
     if dtype.id() == value.id() {
         return None;
+    }
+    // A variant is a spelling of the value its bytes hold: every other
+    // datatype reads it as that value, which is what makes a variant column
+    // castable to the columns its values would be. The variant datatype
+    // itself returned above, its ids being equal.
+    if let Scalar::Variant(held) = value {
+        return Some(held.scalar());
     }
     match dtype {
         // A string column stores the spelling every tier prints, and bytes
@@ -900,8 +913,13 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Duration(_) => unreachable!("typed scalars returned above"),
         D::Mapping(map) => canonical_map(map, value),
         D::RunEndEncoded(encoded) => canonicalize_field_value(encoded.values(), value),
-        // A variant value is any value: the tree describes itself.
-        D::Variant => Ok((value.clone(), false)),
+        // A variant column holds variant values, so a value entering one
+        // is encoded here - canonically, keys sorted and sizes narrowest -
+        // and a value already encoded is answered untouched.
+        D::Variant => match value {
+            Scalar::Variant(_) => Ok((value.clone(), false)),
+            held => Ok((Scalar::Variant(crate::Variant::encode(held)?), true)),
+        },
         // The canonical geospatial spelling is `Scalar::Geometry` or
         // `Scalar::Geography`; plain
         // bytes are accepted on the way in and rewritten here.

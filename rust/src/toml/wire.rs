@@ -256,6 +256,11 @@ fn write_scalar<W: Write>(
             })?;
             return write_scalar(writer, &native, layout, depth);
         }
+        // A variant is the value its bytes hold, written as that value.
+        Scalar::Variant(held) => {
+            let held = held.scalar()?;
+            return write_scalar(writer, &held, layout, depth);
+        }
         Scalar::Null => return Err(codec_error("TOML cannot represent null")),
         Scalar::Boolean(value) => writer.write_all(if value.get() { b"true" } else { b"false" })?,
         Scalar::Int8(_)

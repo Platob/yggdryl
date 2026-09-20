@@ -288,12 +288,33 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 .map(|value| optional_wkb(value))
                 .collect::<Result<Vec<_>>>()?,
         )),
-        // A variant value crosses this boundary as the variant encoding,
-        // one binary per row; a null value is the encoding's own null, a
-        // value the column holds, and never an absent cell.
-        DataType::Variant => Arc::new(BinaryArray::from_iter_values(
-            values.iter().map(|value| value.into_variant_bytes()),
-        )),
+        // A variant value crosses this boundary as the two binaries the
+        // encoding is, `metadata` and `value`; a null value is the
+        // encoding's own null, a value the column holds, and never an
+        // absent cell.
+        DataType::Variant => {
+            let mut metadata = Vec::with_capacity(values.len());
+            let mut payloads = Vec::with_capacity(values.len());
+            for value in values {
+                // A cast into a variant column already encoded the value, so
+                // the ordinary path copies the two buffers it holds; a value
+                // handed here unencoded is encoded now.
+                let variant = match value {
+                    Scalar::Variant(held) => held.clone(),
+                    held => crate::Variant::encode(held)?,
+                };
+                metadata.push(variant.metadata().to_vec());
+                payloads.push(variant.value().to_vec());
+            }
+            Arc::new(StructArray::new(
+                crate::variant_fields(),
+                vec![
+                    Arc::new(BinaryArray::from_iter_values(metadata)) as ArrayRef,
+                    Arc::new(BinaryArray::from_iter_values(payloads)) as ArrayRef,
+                ],
+                None,
+            ))
+        }
     };
     Ok(array)
 }
@@ -654,7 +675,10 @@ pub(crate) fn value_from_array(
             downcast::<BinaryArray>(array)?.value(index),
         ))?),
         DataType::Variant => {
-            Scalar::decode_variant_bytes(downcast::<BinaryArray>(array)?.value(index))?
+            let stored = downcast::<StructArray>(array)?;
+            let metadata = variant_child(stored, crate::VARIANT_METADATA_FIELD, index)?;
+            let payload = variant_child(stored, crate::VARIANT_VALUE_FIELD, index)?;
+            Scalar::Variant(crate::Variant::new(metadata, payload)?)
         }
     };
     Ok(value)
@@ -1274,6 +1298,36 @@ fn downcast<T: Array + 'static>(array: &dyn Array) -> Result<&T> {
             array.data_type()
         ))
     })
+}
+
+/// One binary cell of a variant column's named child.
+///
+/// The child is found by name, never by position, which is what the
+/// Parquet, Avro and ORC spellings of a variant all state; any of Arrow's
+/// three binary layouts holds it, because a foreign writer chooses its own.
+fn variant_child<'a>(stored: &'a StructArray, name: &str, index: usize) -> Result<&'a [u8]> {
+    let child = stored.column_by_name(name).ok_or_else(|| {
+        Error::IncompatibleSchema(format!(
+            "expected a variant column with a {name:?} child, got {}",
+            stored.data_type()
+        ))
+    })?;
+    if child.is_null(index) {
+        return Ok(&[]);
+    }
+    if let Some(binary) = child.as_any().downcast_ref::<BinaryArray>() {
+        return Ok(binary.value(index));
+    }
+    if let Some(binary) = child.as_any().downcast_ref::<LargeBinaryArray>() {
+        return Ok(binary.value(index));
+    }
+    if let Some(binary) = child.as_any().downcast_ref::<BinaryViewArray>() {
+        return Ok(binary.value(index));
+    }
+    Err(Error::IncompatibleSchema(format!(
+        "expected binary storage for a variant's {name:?} child, got {}",
+        child.data_type()
+    )))
 }
 
 fn duration32_from_array(array: &dyn Array, index: usize, unit: TimeUnit) -> Result<Scalar> {

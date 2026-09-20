@@ -1,97 +1,105 @@
-# Variant encoding
+# Variant
 
-One byte stream for any value: the encoding's version, the value's datatype identifier, and the payload that identifier says how to read, nested values inside it and a long payload compressed. What pickle carries, what a variant column stores per row, and what any caller uses to move one value as bytes and get the same value back, leaf for leaf.
+One semi-structured value as the two binaries the [Apache Parquet Variant binary encoding](https://github.com/apache/parquet-format/blob/master/VariantEncoding.md) states: a `metadata` dictionary of the object keys in the tree, and a `value` payload whose first byte names a primitive, a short string, an object or an array. It is version `1` of that specification, byte for byte, so a value written here is one Spark, Iceberg, Parquet and Arrow read, and one any of them wrote reads back here.
+
+`variant` is a datatype (`DataType::Variant`), a field (`VariantField`) and a value (`Scalar::Variant`, holding a `Variant`). A variant *is* its bytes, the way a geometry is its WKB: the value inside them is `Variant::scalar`, and a cast either way encodes or decodes.
 
 ## Contract
 
 | | |
 | --- | --- |
-| Owns | `Scalar::encode_variant_stream_bytes`, `Scalar::into_variant_bytes`, `Scalar::decode_variant_bytes`, `Scalar::decode_variant_stream_bytes`; the same four on `DataType` and on every `DataTypeValue`, casting to the datatype first; `VARIANT_VERSION`, `COMPRESS_FROM`, `VariantStream` |
-| Frame | byte 0 is the version, `0`; byte 1 is the value's [`DataTypeId`](datatype.md#identity-and-family), the same byte the [digest feed](../hashing.md#encoding) writes as a tag; then the payload |
-| Fixed payloads | a number is its little-endian bytes and nothing else, because the identifier says how wide it is: `int32` is two bytes and four, a `uuid` two and sixteen, a boolean two and one, a null two and none; a decimal is its scale as one byte, then its coefficient; a clock is its unit as one byte, its zone as a length-prefixed text where the leaf has one, then its count |
-| Variable payloads | text, bytes, a code, a version, a location, a zone, a media type, a geometry: one compression byte - `0` as it is, `1` a zstd frame - the size as an unsigned LEB128 count, then the bytes; past `COMPRESS_FROM`, 4 KiB, the bytes are compressed; a fixed or bounded leaf states its width first |
-| Nested payloads | a list is a count then each child; a map a count then each key and value; a struct a count then, per child sorted by name, a length-prefixed name and the child; a child is the same encoding without the version byte, which the stream stated once |
-| Stream | `encode_variant_stream_bytes` answers one chunk per leaf, in order, holding what it has yet to write and nothing it wrote; `into_variant_bytes` is the same bytes in one buffer; either decoder reads either cut |
-| Identifiers | one byte laid out by family: every [`DataTypeKind`](datatype.md#identity-and-family) owns a range starting at its own number, `DataTypeKind::id`, a placeholder no leaf takes, and its leaves follow; `DataTypeId::from_u8` reads a byte back and `DataTypeKind::of_u8` says which family a byte is in, so a leaf added later lands beside its family and a stream written before it never moves |
-| Refusals | positioned at the byte: another version, a byte naming no datatype or a family's own placeholder, a payload cut short, a compression this does not read, text that is not UTF-8, a struct naming a child twice, a value the leaf refuses, bytes left after the value |
-| Arrow | a `variant` column is a `Binary` array of one encoding per row under the `yggdryl.variant` extension name; a null value is the encoding's null, a present cell; the column digests as the values it decodes to |
-| Pickle | Python's `Scalar.__reduce__` hands pickle the bytes and `Scalar._from_pickle` reads them back; a `FixMsg` pickles its row the same way |
-| Bindings | Python `Scalar.into_variant_bytes() -> bytes`, `Scalar.from_variant_bytes(data)`; JavaScript `intoVariantBytes(): Buffer`, `Scalar.fromVariantBytes(data)`; the stream and the datatype doors are Rust-only |
+| Owns | `Variant` with `new`, `encode`, `metadata`, `value`, `scalar`; `Scalar::Variant`, `Scalar::into_variant`, `Scalar::from_variant`; `DataType::encode_variant` and `DataType::decode_variant`, casting first; `VARIANT_VERSION`, `VARIANT_EXTENSION_NAME`, `VARIANT_METADATA_FIELD`, `VARIANT_VALUE_FIELD` |
+| Metadata | a header byte - the version in its low nibble, `sorted_strings` set, the offset width in its top two bits - then the dictionary size, `size + 1` offsets and the key bytes; the keys of every object in the tree, sorted and deduplicated, so the value payload names each one by index |
+| Value | one `value_metadata` byte: two bits of basic type - primitive, short string, object, array - and six bits of header; then the payload that byte says how to read. A string under 64 bytes folds its length into the header; an object states its count, its field ids in key order, its offsets and its values; an array the same without the ids |
+| Widths | the narrowest the payload allows: a count under 256 is one byte and four past it, an offset or a field id is one to four bytes |
+| Primitives | the twenty-one the specification names: `null`, `boolean`, `int8`..`int64`, `float`, `double`, `decimal4`/`8`/`16`, `date`, `timestamp` and `timestamp ntz` in microseconds and in nanoseconds, `time` (microseconds, no zone), `binary`, `string`, `uuid` |
+| Arrow | a struct of two required binaries, `metadata` and `value`, under the canonical `arrow.parquet.variant` extension name with an empty document; a foreign writer's `LargeBinary` or `BinaryView` children are the same storage |
+| Parquet | `optional group name (VARIANT(1)) { required binary metadata; required binary value; }` - the annotation the format states, the two children carrying no field id, which is what Iceberg requires; a file another writer produced imports as a variant from that annotation alone |
+| Avro | a record of `metadata` and `value`, both `bytes`, read by name and carrying no field ids, annotated `"logicalType": "variant"`; a reader that does not know the annotation reads the record, as the specification requires |
+| Iceberg | the v3 `variant` type: written as the Parquet group above, and never given bounds - a variant's ordering is not defined |
+| Children | the two binaries are storage, not schema children: `field_len()` is `0`, nothing descends into them, and `assign_parquet_field_ids` numbers neither - which is exactly what Parquet, Avro and Iceberg require of them |
+| Null | a variant can *spell* null, so `Scalar::Null` in a variant column is the encoding's own null byte in a present cell, never an absent one; an absent cell is the struct's own validity bit |
+| Equality | two variants are equal when their bytes are; a value cast into a variant is canonically encoded - keys sorted, sizes narrowest - so values that are equal here encode alike |
+| Digest | a variant feeds the digest as the value it holds, so one value digests alike whether it crossed as itself or as a variant column's bytes |
+| Structured text | JSON, TOML and YAML write the value a variant holds, which is what every other variant reader shows |
+| Refusals | positioned at the byte: metadata of another version, a dictionary cut short, an offset past the key bytes, a field id past the dictionary, a payload cut short, a primitive type version 1 does not name, text that is not UTF-8, an object naming one key twice, bytes left after the value |
+
+## What a value writes as
+
+Every value the crate holds writes, because a leaf the standard has no physical type for takes the spelling the [JSON codec](../media/structured.md) gives it - the same text or number another reader would see. The mapping is exact on the way out for the types the standard names:
+
+| value | variant physical type | reads back as |
+| --- | --- | --- |
+| `null`, `boolean` | `null`, `boolean` | the same |
+| `int8`, `int16`, `int32`, `int64` | the same width | the same width |
+| `uint8`, `uint16`, `uint32` | the next signed width up | that width |
+| `uint64`, `int128`, `uint128` | `int64`, else `decimal16` | that type |
+| `float16`, `float32` | `float` | `float32` |
+| `float64` | `double` | `float64` |
+| `decimal32/64/128/256` | `decimal4`/`decimal8`/`decimal16` | `decimal32/64/128` |
+| `date32`, `date64` | `date` | `date32` |
+| `time32`, `time64` | `time`, microseconds, no zone | `time64` |
+| `datetime64` | `timestamp`, zoned or not, microseconds or nanoseconds | `datetime64` |
+| `uuid` | `uuid`, sixteen bytes big-endian | `uuid` |
+| every string, code, version, location, zone and media type | `string` | `utf8` |
+| every byte layout, and a geometry or geography's WKB | `binary` | `binary` |
+| `duration32`, `duration64` | `string`, the ISO-8601 spelling | `utf8` |
+| `interval` | the JSON codec's number or array | that shape |
+| a list | `array` | a list |
+| a struct, and a mapping whose keys are text | `object` | a struct |
+
+A decimal past thirty-eight digits, a time or a timestamp whose count is not a whole microsecond, a zoned time, a zoned duration and a mapping with a key that is not text are what no reading spells, and each is refused by name.
 
 ## Use
 
 === "Rust"
 
     ```rust
-    use std::str::FromStr as _;
+    use yggdryl::{DataType, Scalar, VARIANT_VERSION, Value, Variant};
 
-    use yggdryl::{COMPRESS_FROM, DataType, DataTypeId, DataTypeKind, Scalar, VARIANT_VERSION};
-
-    // A number is the version, the identifier and its bytes.
-    let bytes = Scalar::from(7_i32).into_variant_bytes();
-    assert_eq!(bytes, [VARIANT_VERSION, DataTypeId::Int32.as_u8(), 7, 0, 0, 0]);
-    assert_eq!(Scalar::decode_variant_bytes(&bytes)?, Scalar::from(7_i32));
-
-    // A tree reads back leaf for leaf, in one buffer or as a stream.
+    // A value encodes as the two binaries the specification states.
     let quote = Scalar::from_struct([
         ("symbol", Scalar::from("AAPL")),
-        ("sizes", Scalar::from_sequence([Scalar::from(100_i64), Scalar::Null])),
+        ("size", Scalar::from(100_i64)),
     ])?;
-    let chunks: Vec<Vec<u8>> = quote.encode_variant_stream_bytes().collect();
-    assert_eq!(chunks.len(), 7, "the struct, then a name and a value per child");
-    assert_eq!(chunks.concat(), quote.into_variant_bytes());
-    assert_eq!(Scalar::decode_variant_stream_bytes(&chunks)?, quote);
+    let variant = Variant::encode(&quote)?;
+    assert_eq!(variant.metadata()[0] & 0x0f, VARIANT_VERSION);
+    assert_eq!(variant.scalar()?, quote);
 
-    // A long text is compressed once it is past four kibibytes.
-    let long = "x".repeat(COMPRESS_FROM + 1);
-    let bytes = Scalar::from(long.as_str()).into_variant_bytes();
-    assert_eq!(bytes[2], 1, "a zstd frame");
-    assert!(bytes.len() < 64);
-    assert_eq!(Scalar::decode_variant_bytes(&bytes)?, Scalar::from(long.as_str()));
+    // A variant is a value: it widens into `Scalar` and narrows back.
+    let value = variant.clone().into_scalar();
+    assert!(matches!(value, Scalar::Variant(_)));
+    assert_eq!(value.id(), yggdryl::DataTypeId::Variant);
+    assert_eq!(Variant::from_scalar(&value), Some(&variant));
 
-    // A datatype casts on the way in and on the way out.
-    let bytes = DataType::Int64.encode_variant_bytes(&Scalar::from(7_i32))?;
-    assert_eq!(bytes[1], DataTypeId::Int64.as_u8());
-    assert_eq!(DataType::utf8().decode_variant_bytes(&bytes)?, Scalar::from("7"));
+    // Casting into a variant column encodes; casting out decodes.
+    let held = DataType::Variant.scalar(quote.clone())?;
+    assert_eq!(held, Scalar::Variant(variant));
+    assert_eq!(DataType::Int64.scalar(Scalar::Variant(Variant::encode(&Scalar::from(7_i32))?))?,
+               Scalar::from(7_i64));
 
-    // The identifiers are laid out by family.
-    assert_eq!(DataTypeKind::Integer.id(), 0x10);
-    assert_eq!(DataTypeKind::of_u8(DataTypeId::Int32.as_u8()), Some(DataTypeKind::Integer));
-    assert_eq!(DataTypeId::from_u8(0x10), None, "a family's own number is a placeholder");
-    let refused = Scalar::decode_variant_bytes(&[VARIANT_VERSION, 0x10]).unwrap_err();
-    assert!(refused.to_string().contains("placeholder"));
-    let _ = DataType::from_str("int32")?;
+    // The column is a struct of two binaries under the canonical name.
+    let field = DataType::Variant.nullable_field("payload").into_arrow_field()?;
+    assert_eq!(field.extension_type_name(), Some(yggdryl::VARIANT_EXTENSION_NAME));
     ```
 
 === "Python"
 
     ```python
-    import pickle
-
     from yggdryl import DataType, Scalar
 
-    # A number is the version, the identifier and its bytes.
-    value = DataType("int32").scalar(7)
-    data = value.into_variant_bytes()
-    assert data[0] == 0 and len(data) == 6
-    assert Scalar.from_variant_bytes(data) == value
+    # A value cast into a variant column is the variant encoding of it.
+    quote = Scalar.from_struct({"symbol": "AAPL", "size": 100})
+    held = DataType("variant").scalar(quote)
+    assert held.kind == "variant"
 
-    # A tree reads back leaf for leaf, and pickle carries the same bytes.
-    quote = Scalar.from_struct({"symbol": "AAPL", "sizes": [100, None]})
-    assert Scalar.from_variant_bytes(quote.into_variant_bytes()) == quote
-    assert pickle.loads(pickle.dumps(quote)) == quote
+    # It crosses to Python as the value its bytes hold.
+    assert held.as_py() == {"size": 100, "symbol": "AAPL"}
 
-    # A long text is compressed once it is past four kibibytes.
-    long = Scalar.from_("x" * (4 * 1024 + 1))
-    data = long.into_variant_bytes()
-    assert data[2] == 1 and len(data) < 64
-    assert Scalar.from_variant_bytes(data) == long
-
-    # A refusal names the byte.
-    try:
-        Scalar.from_variant_bytes(b"\x01\x00")
-    except ValueError as error:
-        assert "version 1" in str(error)
+    # And casting it out of the variant decodes it, so every cast a value
+    # answers a variant answers too.
+    number = DataType("variant").scalar(7)
+    assert DataType("int64").scalar(number).as_py() == 7
     ```
 
 === "JavaScript"
@@ -100,48 +108,59 @@ One byte stream for any value: the encoding's version, the value's datatype iden
     const assert = require('node:assert/strict')
     const { DataType, Scalar } = require('yggdryl')
 
-    // A number is the version, the identifier and its bytes.
-    const value = new DataType('int32').scalar(7)
-    const data = value.intoVariantBytes()
-    assert.equal(data[0], 0)
-    assert.equal(data.length, 6)
-    assert.ok(Scalar.fromVariantBytes(data).equals(value))
+    // A value cast into a variant column is the variant encoding of it.
+    const quote = Scalar.from({ symbol: 'AAPL', size: 100 })
+    const held = new DataType('variant').scalar(quote)
+    assert.equal(held.kind, 'variant')
 
-    // A tree reads back leaf for leaf.
-    const quote = Scalar.from({ symbol: 'AAPL', sizes: [100, null] })
-    assert.ok(Scalar.fromVariantBytes(quote.intoVariantBytes()).equals(quote))
+    // It crosses to JavaScript as the value its bytes hold.
+    assert.deepEqual(held.asJs(), { size: 100, symbol: 'AAPL' })
 
-    // A long text is compressed once it is past four kibibytes.
-    const long = Scalar.from('x'.repeat(4 * 1024 + 1))
-    const packed = long.intoVariantBytes()
-    assert.equal(packed[2], 1)
-    assert.ok(packed.length < 64)
-    assert.ok(Scalar.fromVariantBytes(packed).equals(long))
-
-    // A refusal names the byte.
-    assert.throws(() => Scalar.fromVariantBytes(Buffer.from([1, 0])), /version 1/)
+    // And casting it out of the variant decodes it, so every cast a value
+    // answers a variant answers too.
+    const number = new DataType('variant').scalar(7)
+    assert.equal(new DataType('int32').scalar(number).asJs(), 7)
     ```
 
-## One byte says the leaf
+## The dictionary is the tree's keys
 
-The second byte is the value's own `DataTypeId`, so the decoder reads the payload with nothing else: it knows an `int32` is four bytes, a `fixed_ascii(n)` states its width first, a `datetime64` its unit and zone. What a datatype states beside its identifier travels only where the value needs it - a decimal's scale, never its precision, which is the column's rule and not the value's - so the bytes decode to the value that was encoded and its leaf, and a value cast to a datatype first encodes under that datatype's leaf.
+The keys of every object anywhere in the value are gathered first, sorted by their UTF-8 bytes and deduplicated into one dictionary, so a key repeated in a thousand rows of one object costs its bytes once per value and an index per use. The header states `sorted_strings`, which lets a reader binary-search the field ids, and the object's ids and offsets are written in that key order - what the specification requires, and what makes a field lookup a search rather than a scan.
 
-The identifiers are the digest feed's tags too: [`Scalar::write_bytes`](../hashing.md#encoding) writes the same byte before a value's canonical bytes. The two encodings differ after it, deliberately: the feed normalizes so that equal values feed alike whatever width holds them, and the variant encoding keeps the width so that the value reads back as itself.
+Because the encoding is canonical here - sorted keys, narrowest widths - two equal values encode alike, which is what makes byte equality a usable equality. A variant another engine wrote may use wider offsets or an unsorted dictionary; it reads back as the same value, and it compares as the different bytes it is.
 
-## Families own ranges
+## One pair, four media
 
-A `DataTypeId` is one byte, and the bytes are laid out by family: every `DataTypeKind` starts a range at its own number - `0x00` null, `0x08` boolean, `0x10` integer, `0x20` floating, `0x28` decimal, `0x30` temporal, `0x40` bytes, `0x50` text, `0x70` code, `0x80` uuid, `0x90` nested, `0xb0` geospatial - and its leaves follow in the range, so the high bits of a leaf say its family. The family's own number is a placeholder no leaf takes, except the null family's, whose one leaf is the null itself: a stream tagged with a placeholder is refused as a value of that family and of no leaf, and a leaf added later takes the next number in its family's range rather than the end of the enum, so no stream written before it moves. `DataTypeId::ALL` states the leaves in that order, and the test pinning every byte is what makes a moved number a failure rather than a surprise.
+A variant column is the same two binaries wherever it lands, because every format states the same shape for it:
+
+- **Arrow** - a struct of `metadata` and `value` under `arrow.parquet.variant`.
+- **Parquet** - a group of two `BYTE_ARRAY` children annotated `VARIANT(1)`.
+- **Avro** - a record of two `bytes` fields, annotated `variant`.
+- **Iceberg** - the v3 `variant` type, stored as that Parquet group, with no bounds in the manifest.
+
+So the encoding happens once, at the value boundary, and the media layers move the bytes: nothing re-encodes a variant on the way to a file, and reading one back is the bytes plus the decode the caller asks for.
 
 ## Edges
 
-- Another version byte -> refused, naming the version read and the one this reads.
-- A family's own number as a tag -> refused as a placeholder, naming the family.
-- A byte past every family -> refused as naming no datatype.
-- Bytes left after the value -> refused, counting them; a stream is one value.
-- A struct naming one child twice -> refused; a struct's children are one map.
-- An Arrow-held value -> encodes as the native value it holds, and as a null where it holds none the native reading can spell.
-- Exactly 4 KiB -> stored as it is; one byte past -> a zstd frame, unless compressing would not shorten it.
-- `decode_variant_stream_bytes` -> the chunks gathered, then read as one; any cut of the same bytes reads the same value.
+- A `Scalar::Null` in a variant column -> the encoding's null byte, a present cell.
+- A variant holding a value another datatype can hold -> casts to it, decoding first.
+- A foreign variant with wider offsets -> reads as the same value, compares as different bytes.
+- A foreign writer's shredded column -> the unshredded rows read as themselves; a row whose `value` is null holds its value in `typed_value`, which this does not read, and refuses by name.
+- The `arrow.parquet.variant` name over a storage it does not spell -> a foreign field wearing it: the column imports as that storage.
+- A foreign Parquet file's `VARIANT` group -> imports as a variant from the annotation alone, whatever Arrow schema the file carries.
+- A decimal past thirty-eight digits, or a `uint128` past `i128::MAX` -> refused, naming the digits the standard holds.
+- A timestamp in seconds or milliseconds -> exact in microseconds, which is the precision the standard states.
+- A nanosecond timestamp -> its own two primitive types, zoned and not.
+
+## Cost
+
+The encoding's cost is the value's shape. A leaf is a header byte and its
+bytes; an object gathers the tree's keys once, sorts them and writes each
+one's bytes a single time, naming them by index from then on; a wide object
+is its dictionary plus two small integers per field. `cargo bench -p
+yggdryl --bench types -- variant` measures encode and decode over a leaf, a
+small object and a wide one, and builds the same object through
+`parquet-variant` beside it, so the two rows are the same bytes on the same
+value.
 
 ## Commands
 
@@ -149,16 +168,18 @@ A `DataTypeId` is one byte, and the bytes are laid out by family: every `DataTyp
 
     ```bash
     cargo test -p yggdryl --test types variant
+    cargo test -p yggdryl --test interop variant
+    cargo bench -p yggdryl --bench types -- variant --quick
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/types/test_scalar.py -k variant
+    python/.venv/bin/python -m pytest python/tests/types -k variant
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="variant" node/tests/text/codec.test.js
+    node --test --test-name-pattern="variant" node/tests/types/datatype.test.js
     ```

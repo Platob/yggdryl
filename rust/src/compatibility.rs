@@ -775,7 +775,8 @@ fn field_with_dtype(
 
 /// Reports whether a field still carries a *foreign* Arrow extension label.
 ///
-/// The extensions this workspace owns never reach here: `yggdryl.variant`,
+/// The extensions this workspace owns never reach here: the canonical
+/// `arrow.parquet.variant`,
 /// `geoarrow.wkb`, `yggdryl.string`, `arrow.uuid`, and each registered code's
 /// own `yggdryl.{country,currency,mic,cfi}` import as the first-class
 /// `variant`, `geometry`, `geography`, string, `uuid` and code datatypes

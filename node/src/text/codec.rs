@@ -472,24 +472,25 @@ impl JsScalar {
         self.inner.stable_hash()
     }
 
-    /// This value as the variant encoding: one `Buffer` holding the
-    /// version, the datatype's identifier and the payload the identifier
-    /// says how to read - a number as its little-endian bytes, a text as a
+    /// This value as the value stream: one `Buffer` holding the version,
+    /// the datatype's identifier and the payload the identifier says how
+    /// to read - a number as its little-endian bytes, a text as a
     /// compression byte, a size and the characters, a nested value as a
     /// count and its children - compressed with zstd past four kibibytes.
-    /// What a variant column stores per row.
+    /// A `variant` column stores the Parquet Variant encoding instead,
+    /// which a cast into that datatype writes.
     #[napi]
-    pub fn into_variant_bytes(&self) -> Buffer {
-        self.inner.into_variant_bytes().into()
+    pub fn into_value_bytes(&self) -> Buffer {
+        self.inner.into_value_bytes().into()
     }
 
-    /// The value one variant encoding holds, as `intoVariantBytes` wrote
-    /// it. Throws naming the byte where the bytes could not be read:
+    /// The value one value stream holds, as `intoValueBytes` wrote it.
+    /// Throws naming the byte where the bytes could not be read:
     /// another version, a byte naming no datatype, a payload cut short, or
     /// bytes left after the value.
     #[napi(factory)]
-    pub fn from_variant_bytes(data: Uint8Array) -> Result<Self> {
-        Scalar::decode_variant_bytes(data.as_ref())
+    pub fn from_value_bytes(data: Uint8Array) -> Result<Self> {
+        Scalar::decode_value_bytes(data.as_ref())
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -2408,6 +2409,15 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         Scalar::Duration64(leaf) => Ok(fixed_temporal_transport(value, leaf)),
         Scalar::Mapping(entries) => mapping_transport(entries.as_slice(), depth, max_depth),
         Scalar::Struct(entries) => record_transport(entries.as_map(), depth, max_depth),
+        // A variant crosses as the value it holds, which is what a caller
+        // asked a variant column for; the bytes stay on the Rust side.
+        Scalar::Variant(held) => value_to_transport(
+            &held
+                .scalar()
+                .map_err(|error| napi_error(error.to_string()))?,
+            depth,
+            max_depth,
+        ),
         _ => Err(napi_error("unsupported native Scalar representation")),
     }
 }

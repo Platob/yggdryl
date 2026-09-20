@@ -60,7 +60,7 @@ use smol_str::SmolStr;
 use crate::{
     DataType, DataTypeId, DataTypeKind, Field, Metadata, Result, Scalar, TimeUnit, Timezone, i256,
 };
-use crate::{Mapping, Sequence, Struct};
+use crate::{Mapping, Sequence, Struct, Variant};
 
 /// One concrete scalar representation.
 ///
@@ -285,7 +285,8 @@ pub trait NestedValue: Value {
 }
 
 family_value!(
-    /// The nested family as one value: a sequence, a mapping or a record.
+    /// The nested family as one value: a sequence, a mapping, a record or
+    /// one semi-structured [`Variant`](crate::Variant).
     ///
     /// ```
     /// use yggdryl::{DataType, FamilyValue, Nested, Scalar};
@@ -297,7 +298,7 @@ family_value!(
     /// assert_eq!(held.into_scalar(), value);
     /// assert_eq!(Nested::from_scalar(&Scalar::from(1_i64)), None);
     /// ```
-    Nested, Nested, [Sequence, Mapping, Struct]
+    Nested, Nested, [Sequence, Mapping, Struct, Variant]
 );
 
 /// The per-column facts a field carries that only one datatype has.
@@ -437,20 +438,20 @@ pub trait DataTypeValue:
 
     // ---------------------------------------------------------------------
     // The variant encoding: `value` cast to this datatype and encoded, and
-    // encoded bytes read back and cast to it. `crate::variant` owns the
+    // encoded bytes read back and cast to it. `crate::valuestream` owns the
     // bytes; a leaf answers through the datatype it widens to.
     // ---------------------------------------------------------------------
 
-    /// `value` cast to this datatype and encoded as [the variant
-    /// encoding](crate::Scalar::encode_variant_stream_bytes), one chunk at
+    /// `value` cast to this datatype and encoded as [the value
+    /// stream](crate::Scalar::encode_value_stream_bytes), one chunk at
     /// a time.
     ///
     /// # Errors
     ///
     /// Returns the cast's refusal where the value is not one this datatype
     /// holds.
-    fn encode_variant_stream_bytes(&self, value: &crate::Scalar) -> Result<crate::VariantStream> {
-        self.clone().into_dtype().encode_variant_stream_bytes(value)
+    fn encode_value_stream_bytes(&self, value: &crate::Scalar) -> Result<crate::ValueStream> {
+        self.clone().into_dtype().encode_value_stream_bytes(value)
     }
 
     /// `value` cast to this datatype and encoded, whole.
@@ -459,34 +460,32 @@ pub trait DataTypeValue:
     ///
     /// Returns the cast's refusal where the value is not one this datatype
     /// holds.
-    fn encode_variant_bytes(&self, value: &crate::Scalar) -> Result<Vec<u8>> {
-        self.clone().into_dtype().encode_variant_bytes(value)
+    fn encode_value_bytes(&self, value: &crate::Scalar) -> Result<Vec<u8>> {
+        self.clone().into_dtype().encode_value_bytes(value)
     }
 
-    /// The value one variant encoding holds, cast to this datatype.
+    /// The value one value stream holds, cast to this datatype.
     ///
     /// # Errors
     ///
     /// Returns the codec's refusal, or the cast's where the bytes hold a
     /// value this datatype does not.
-    fn decode_variant_bytes(&self, bytes: &[u8]) -> Result<crate::Scalar> {
-        self.clone().into_dtype().decode_variant_bytes(bytes)
+    fn decode_value_bytes(&self, bytes: &[u8]) -> Result<crate::Scalar> {
+        self.clone().into_dtype().decode_value_bytes(bytes)
     }
 
-    /// The value a variant encoding split into chunks holds, cast to this
+    /// The value a value stream split into chunks holds, cast to this
     /// datatype.
     ///
     /// # Errors
     ///
-    /// [`Self::decode_variant_bytes`] carries the rule.
-    fn decode_variant_stream_bytes<I>(&self, chunks: I) -> Result<crate::Scalar>
+    /// [`Self::decode_value_bytes`] carries the rule.
+    fn decode_value_stream_bytes<I>(&self, chunks: I) -> Result<crate::Scalar>
     where
         I: IntoIterator,
         I::Item: AsRef<[u8]>,
     {
-        self.clone()
-            .into_dtype()
-            .decode_variant_stream_bytes(chunks)
+        self.clone().into_dtype().decode_value_stream_bytes(chunks)
     }
 
     /// Cast an Arrow array to this datatype's exact physical array.

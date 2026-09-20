@@ -11,6 +11,7 @@ pub(crate) mod string;
 pub(crate) mod temporal;
 pub(crate) mod uuid;
 pub(crate) mod value;
+pub(crate) mod variant;
 pub(crate) mod version;
 
 pub(crate) const NESTED_SQL: &str = concat!(

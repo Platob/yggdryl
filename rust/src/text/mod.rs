@@ -690,8 +690,9 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
                     visit(value, child_depth, maximum, format)?;
                 }
             }
-            // An Arrow payload nests by its field, which is bounded already.
-            Scalar::Arrow(_) => {}
+            // An Arrow payload nests by its field, and a variant by the
+            // parse limit its own decoder holds: both are bounded already.
+            Scalar::Arrow(_) | Scalar::Variant(_) => {}
             Scalar::Null
             | Scalar::Boolean(_)
             | Scalar::Int8(_)

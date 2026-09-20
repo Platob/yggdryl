@@ -1253,9 +1253,10 @@ mod typed {
     typed_array!(crate::StructType, arrow_array::StructArray);
     typed_array!(crate::UnionType, arrow_array::UnionArray);
     typed_array!(crate::MappingType, arrow_array::MapArray);
-    // A variant's storage is the binary of its encoding, and a geospatial
-    // value is its WKB payload, so their physical arrays are fixed.
-    typed_array!(crate::VariantType, arrow_array::BinaryArray);
+    // A variant's storage is the struct of its two binaries, and a
+    // geospatial value is its WKB payload, so their physical arrays are
+    // fixed.
+    typed_array!(crate::VariantType, arrow_array::StructArray);
     typed_array!(crate::GeometryType, arrow_array::BinaryArray);
     typed_array!(crate::GeographyType, arrow_array::BinaryArray);
 
@@ -1883,8 +1884,9 @@ impl ArrayCastPlan {
                     return Err(Error::Unsupported {
                         kind: dtype.name(),
                         reason: format!(
-                            "casting {source:?} to variant: a variant column holds the \
-                             variant encoding of each value, which `into_variant_bytes` writes"
+                            "casting {source:?} to variant: a variant column is the \
+                             struct of `metadata` and `value` binaries the variant \
+                             encoding writes, which `Variant::encode` fills"
                         ),
                     });
                 }
@@ -2848,7 +2850,7 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
             kind: "variant",
             reason: format!(
                 "casting variant to {}: a variant column holds the variant encoding of \
-                 each value, which `decode_variant_bytes` reads",
+                 each value, which `Variant::scalar` reads",
                 other.name()
             ),
         }),
