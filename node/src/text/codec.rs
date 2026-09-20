@@ -336,7 +336,12 @@ impl JsScalar {
     #[napi(js_name = "_iterNative", skip_typescript)]
     pub fn iter_native(&self) -> JsScalarIterator {
         JsScalarIterator {
-            inner: self.inner.iter().cloned().collect::<Vec<_>>().into_iter(),
+            inner: self
+                .inner
+                .iter()
+                .map(std::borrow::Cow::into_owned)
+                .collect::<Vec<_>>()
+                .into_iter(),
         }
     }
 
@@ -2374,7 +2379,8 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
             [("value", JsonValue::String(BASE64.encode(value.as_bytes())))],
         )),
         Scalar::Sequence(values) => values
-            .as_slice()
+            .rows()
+            .map_err(napi_error)?
             .iter()
             .map(|value| value_to_transport(value, depth + 1, max_depth))
             .collect::<Result<Vec<_>>>()
@@ -2424,9 +2430,11 @@ fn struct_transport_with_field(
     depth: usize,
     max_depth: usize,
 ) -> Result<JsonValue> {
+    let rows;
     let values = match value {
-        Scalar::Sequence(values) if values.as_slice().len() == fields.len() => {
-            fields.iter().zip(values.as_slice()).collect::<Vec<_>>()
+        Scalar::Sequence(values) if values.len() == fields.len() => {
+            rows = values.rows().map_err(napi_error)?;
+            fields.iter().zip(rows.iter()).collect::<Vec<_>>()
         }
         Scalar::Struct(values) => fields
             .iter()

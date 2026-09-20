@@ -822,13 +822,15 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
     // A column already holds the buffers this would build. Where its field
     // is the one asked for, the buffers cross as they are: no row is decoded
     // and none is laid out a second time.
-    if let Scalar::Sequence(column) = values
-        && column
+    // Nested rather than one `if let ... && let ...`: let chains are not
+    // stable at this crate's 1.85 MSRV.
+    if let Scalar::Sequence(column) = values {
+        let same = column
             .field()
-            .is_some_and(|held| held.dtype() == field.dtype())
-        && let Some(array) = column.into_arrow_array()
-    {
-        return Ok(array);
+            .is_some_and(|held| held.dtype() == field.dtype());
+        if let Some(array) = same.then(|| column.into_arrow_array()).flatten() {
+            return Ok(array);
+        }
     }
     // A column under some other field still holds rows this can lay out, so
     // the fallback reads the sequence rather than borrowing it: a run lends
@@ -865,12 +867,13 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
 pub fn batch_from_value(root: &Field, rows: &Scalar) -> Result<RecordBatch> {
     // The same short circuit a column's array crossing takes: a column of
     // records is already the table this would build.
-    if let Scalar::Sequence(column) = rows
-        && column
+    if let Scalar::Sequence(column) = rows {
+        let same = column
             .field()
-            .is_some_and(|held| held.dtype() == root.dtype())
-    {
-        return column.into_arrow_batch();
+            .is_some_and(|held| held.dtype() == root.dtype());
+        if same {
+            return column.into_arrow_batch();
+        }
     }
     // The same reading the array crossing takes: a column of records under
     // some other root still holds the rows this lays out.
