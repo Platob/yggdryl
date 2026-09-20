@@ -56,7 +56,6 @@ use crate::integer::{
 };
 use crate::interval::Interval;
 use crate::mapping::{Map, Mapping};
-use crate::sequence::Sequence;
 use crate::string::Str;
 use crate::structure::Struct;
 use crate::temporal::scalars::temporal_key;
@@ -221,7 +220,7 @@ pub enum Scalar {
     /// Geographic coordinates as validated Well-Known Binary.
     Geography(Geography),
     /// A schema-free ordered sequence of values.
-    Sequence(Sequence),
+    Sequence(crate::Serie),
     /// A schema-free insertion-ordered mapping of arbitrary keys.
     Mapping(Mapping),
     /// A schema-free record of values sorted by field name.
@@ -450,7 +449,7 @@ impl Serialize for Scalar {
             Self::Interval(value) => tagged(serializer, "interval", value),
             // A column carries the field that types it, which the values
             // alone cannot say, so it writes under its own tag.
-            Self::Sequence(Sequence::Serie(serie)) => tagged(serializer, "serie", serie),
+            Self::Sequence(serie) if serie.is_column() => tagged(serializer, "serie", serie),
             Self::Sequence(values) => tagged(
                 serializer,
                 "sequence",
@@ -1259,7 +1258,7 @@ impl Scalar {
             Self::Duration32(_) => "duration32",
             Self::Duration64(_) => "duration64",
             Self::Interval(_) => "interval",
-            Self::Sequence(Sequence::Serie(_)) => "serie",
+            Self::Sequence(serie) if serie.is_column() => "serie",
             Self::Sequence(_) => "sequence",
             Self::Mapping(_) => "mapping",
             Self::Struct(_) => "struct",
@@ -1269,7 +1268,7 @@ impl Scalar {
     /// The one shared empty sequence, which every empty run answers with.
     fn empty_sequence() -> Self {
         static EMPTY: OnceLock<Arc<[Scalar]>> = OnceLock::new();
-        Self::Sequence(Sequence::new(Arc::clone(
+        Self::Sequence(crate::Serie::new(Arc::clone(
             EMPTY.get_or_init(|| Arc::from([])),
         )))
     }
@@ -1289,7 +1288,7 @@ impl Scalar {
     /// the whole run between the two, which is what a row build pays per row.
     pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self {
         shared_children(values.into_iter()).map_or_else(Self::empty_sequence, |values| {
-            Self::Sequence(Sequence::new(values))
+            Self::Sequence(crate::Serie::new(values))
         })
     }
 
@@ -1567,7 +1566,7 @@ impl Scalar {
     /// rather than by decoding a row.
     pub fn len(&self) -> usize {
         match self {
-            Self::Sequence(values) => values.row_count(),
+            Self::Sequence(values) => values.len(),
             Self::Mapping(entries) => entries.as_slice().len(),
             Self::Struct(entries) => entries.as_map().len(),
             _ => 0,
@@ -2209,7 +2208,7 @@ mod tests {
     fn a_width_variant_borrows_the_leaf_display_it_holds() {
         use std::sync::Arc;
 
-        use crate::{decimal, integer, sequence};
+        use crate::{decimal, integer};
 
         let decimal = Scalar::Decimal32(decimal::Decimal32::new(1_250, 2));
         assert_eq!(decimal.leaf_display().unwrap().to_string(), "12.50");
@@ -2220,7 +2219,7 @@ mod tests {
                 .to_string(),
             "7"
         );
-        let held = sequence::Sequence::new(Arc::from([Scalar::from(1_i32)]));
+        let held = crate::Serie::new(Arc::from([Scalar::from(1_i32)]));
         assert_eq!(
             Scalar::Sequence(held.clone())
                 .leaf_display()

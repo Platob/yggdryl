@@ -254,12 +254,15 @@ macro_rules! byte_leaf {
 
         impl ByteLeaf<$marker> for $arrow {
             fn into_serie(column: ByteSerie<Self, $marker>) -> Serie {
-                Serie::$family(super::$held::$variant(column))
+                Serie::$family(::std::sync::Arc::new(super::$held::$variant(column)))
             }
 
             fn from_serie(serie: &Serie) -> Option<&ByteSerie<Self, $marker>> {
                 match serie {
-                    Serie::$family(super::$held::$variant(column)) => Some(column),
+                    Serie::$family(family) => match family.as_ref() {
+                        super::$held::$variant(column) => Some(column),
+                        _ => None,
+                    },
                     _ => None,
                 }
             }
@@ -485,12 +488,15 @@ macro_rules! view_leaf {
 
         impl ViewLeaf<$marker> for $arrow {
             fn into_serie(column: ByteViewSerie<Self, $marker>) -> Serie {
-                Serie::$family(super::$held::$variant(column))
+                Serie::$family(::std::sync::Arc::new(super::$held::$variant(column)))
             }
 
             fn from_serie(serie: &Serie) -> Option<&ByteViewSerie<Self, $marker>> {
                 match serie {
-                    Serie::$family(super::$held::$variant(column)) => Some(column),
+                    Serie::$family(family) => match family.as_ref() {
+                        super::$held::$variant(column) => Some(column),
+                        _ => None,
+                    },
                     _ => None,
                 }
             }
@@ -687,12 +693,15 @@ pub trait FixedLeaf: Sized {
 
 impl FixedLeaf for FixedSerie<Text> {
     fn into_serie(column: Self) -> Serie {
-        Serie::String(super::StringSerie::Fixed(column))
+        Serie::String(Arc::new(super::StringSerie::Fixed(column)))
     }
 
     fn from_serie(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::String(super::StringSerie::Fixed(column)) => Some(column),
+            Serie::String(family) => match family.as_ref() {
+                super::StringSerie::Fixed(column) => Some(column),
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -700,12 +709,15 @@ impl FixedLeaf for FixedSerie<Text> {
 
 impl FixedLeaf for FixedSerie<Raw> {
     fn into_serie(column: Self) -> Serie {
-        Serie::Bytes(super::BytesSerie::Fixed(column))
+        Serie::Bytes(Arc::new(super::BytesSerie::Fixed(column)))
     }
 
     fn from_serie(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Bytes(super::BytesSerie::Fixed(column)) => Some(column),
+            Serie::Bytes(family) => match family.as_ref() {
+                super::BytesSerie::Fixed(column) => Some(column),
+                _ => None,
+            },
             _ => None,
         }
     }

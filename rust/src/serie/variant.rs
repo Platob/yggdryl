@@ -14,156 +14,30 @@
 use std::fmt;
 use std::sync::Arc;
 
-use arrow_array::builder::{BinaryBuilder, LargeBinaryBuilder};
-use arrow_array::{Array, ArrayRef, BinaryArray, LargeBinaryArray};
+use arrow_array::builder::BinaryBuilder;
+use arrow_array::{Array, ArrayRef, BinaryArray};
 use arrow_buffer::{Buffer, NullBuffer, OffsetBuffer};
 
 use super::Serie;
 use crate::value::SerieValue;
 use crate::{Field, Result, Scalar};
 
-/// The two byte layouts a variant column is written under.
-#[derive(Clone, Debug)]
-pub(crate) enum EncodedRuns {
-    /// 32-bit offsets.
-    Small(BinaryArray),
-    /// 64-bit offsets.
-    Large(LargeBinaryArray),
-}
-
-impl EncodedRuns {
-    /// The rows these runs hold.
-    fn len(&self) -> usize {
-        match self {
-            Self::Small(runs) => runs.len(),
-            Self::Large(runs) => runs.len(),
-        }
-    }
-
-    /// How many rows hold no value.
-    fn null_count(&self) -> usize {
-        match self {
-            Self::Small(runs) => runs.null_count(),
-            Self::Large(runs) => runs.null_count(),
-        }
-    }
-
-    /// Whether row `index` holds no value.
-    fn is_null(&self, index: usize) -> bool {
-        match self {
-            Self::Small(runs) => index >= runs.len() || runs.is_null(index),
-            Self::Large(runs) => index >= runs.len() || runs.is_null(index),
-        }
-    }
-
-    /// The encoded run row `index` holds.
-    fn value(&self, index: usize) -> Option<&[u8]> {
-        if self.is_null(index) {
-            return None;
-        }
-        Some(match self {
-            Self::Small(runs) => runs.value(index),
-            Self::Large(runs) => runs.value(index),
-        })
-    }
-
-    /// The validity bitmap, or `None` where no row is absent.
-    fn nulls(&self) -> Option<&NullBuffer> {
-        match self {
-            Self::Small(runs) => runs.nulls(),
-            Self::Large(runs) => runs.nulls(),
-        }
-    }
-
-    /// The payload buffer every run lies in.
-    fn payload(&self) -> &Buffer {
-        match self {
-            Self::Small(runs) => runs.values(),
-            Self::Large(runs) => runs.values(),
-        }
-    }
-
-    /// The same runs with one more encoded value on the end.
-    fn appended(&self, value: Option<&[u8]>) -> Self {
-        match self {
-            Self::Small(runs) => {
-                let mut builder = BinaryBuilder::new();
-                for row in 0..runs.len() {
-                    if runs.is_null(row) {
-                        builder.append_null();
-                    } else {
-                        builder.append_value(runs.value(row));
-                    }
-                }
-                builder.append_option(value);
-                Self::Small(builder.finish())
-            }
-            Self::Large(runs) => {
-                let mut builder = LargeBinaryBuilder::new();
-                for row in 0..runs.len() {
-                    if runs.is_null(row) {
-                        builder.append_null();
-                    } else {
-                        builder.append_value(runs.value(row));
-                    }
-                }
-                builder.append_option(value);
-                Self::Large(builder.finish())
-            }
-        }
-    }
-
-    /// The same runs with row `index` rewritten.
-    fn replaced(&self, index: usize, value: Option<&[u8]>) -> Self {
-        match self {
-            Self::Small(runs) => {
-                let mut builder = BinaryBuilder::new();
-                for row in 0..runs.len() {
-                    if row == index {
-                        builder.append_option(value);
-                    } else if runs.is_null(row) {
-                        builder.append_null();
-                    } else {
-                        builder.append_value(runs.value(row));
-                    }
-                }
-                Self::Small(builder.finish())
-            }
-            Self::Large(runs) => {
-                let mut builder = LargeBinaryBuilder::new();
-                for row in 0..runs.len() {
-                    if row == index {
-                        builder.append_option(value);
-                    } else if runs.is_null(row) {
-                        builder.append_null();
-                    } else {
-                        builder.append_value(runs.value(row));
-                    }
-                }
-                Self::Large(builder.finish())
-            }
-        }
-    }
-
-    /// The shared Arrow handle these runs already are.
-    fn shared(&self) -> ArrayRef {
-        match self {
-            Self::Small(runs) => Arc::new(runs.clone()),
-            Self::Large(runs) => Arc::new(runs.clone()),
-        }
-    }
-}
-
 /// One column of self-describing values, each row one encoded run of bytes.
+///
+/// There is one width and no `Large` twin, because [`DataType::Variant`]
+/// projects to Arrow `Binary` and nothing else - the encoding names the
+/// storage, so a second offset width would be a layout no field can declare.
+/// [`GenericSequenceSerie`](crate::GenericSequenceSerie) has both widths
+/// because `list` and `large_list` are both datatypes.
 #[derive(Clone)]
 pub struct VariantSerie {
     field: Arc<Field>,
-    runs: EncodedRuns,
+    runs: BinaryArray,
 }
 
 impl VariantSerie {
     /// Pair a variant field with the runs that hold its rows.
-    pub(crate) const fn new(field: Arc<Field>, runs: EncodedRuns) -> Self {
+    pub(crate) const fn new(field: Arc<Field>, runs: BinaryArray) -> Self {
         Self { field, runs }
     }
 
@@ -172,31 +46,22 @@ impl VariantSerie {
     /// The bytes are the crate's variant encoding, so a caller that wants to
     /// forward a row rather than read it moves them without decoding.
     pub fn bytes(&self, index: usize) -> Option<&[u8]> {
-        self.runs.value(index)
+        (index < self.runs.len() && !self.runs.is_null(index)).then(|| self.runs.value(index))
     }
 
     /// Borrow the payload buffer every run lies in, without copying it.
     pub fn payload(&self) -> &Buffer {
-        self.runs.payload()
+        self.runs.values()
     }
 
-    /// Borrow the offsets buffer, without copying it.
-    ///
-    /// Answers `None` for a column written under 64-bit offsets;
-    /// [`Self::large_offsets`] is that column's.
-    pub fn offsets(&self) -> Option<&OffsetBuffer<i32>> {
-        match &self.runs {
-            EncodedRuns::Small(runs) => Some(runs.offsets()),
-            EncodedRuns::Large(_) => None,
-        }
+    /// Borrow the offsets buffer that cuts the runs, without copying it.
+    pub fn offsets(&self) -> &OffsetBuffer<i32> {
+        self.runs.offsets()
     }
 
-    /// Borrow the 64-bit offsets buffer, without copying it.
-    pub fn large_offsets(&self) -> Option<&OffsetBuffer<i64>> {
-        match &self.runs {
-            EncodedRuns::Small(_) => None,
-            EncodedRuns::Large(runs) => Some(runs.offsets()),
-        }
+    /// Borrow the Arrow array these runs are.
+    pub const fn array(&self) -> &BinaryArray {
+        &self.runs
     }
 
     /// Borrow the validity bitmap, or `None` where no row is absent.
@@ -206,7 +71,25 @@ impl VariantSerie {
 
     /// Append one already-encoded run, without decoding it.
     pub fn push_bytes(&mut self, value: Option<&[u8]>) {
-        self.runs = self.runs.appended(value);
+        self.runs = self.rebuilt(None, value);
+    }
+
+    /// The same runs, with row `replace` rewritten or one more on the end.
+    fn rebuilt(&self, replace: Option<usize>, value: Option<&[u8]>) -> BinaryArray {
+        let mut builder = BinaryBuilder::new();
+        for row in 0..self.runs.len() {
+            if replace == Some(row) {
+                builder.append_option(value);
+            } else if self.runs.is_null(row) {
+                builder.append_null();
+            } else {
+                builder.append_value(self.runs.value(row));
+            }
+        }
+        if replace.is_none() {
+            builder.append_option(value);
+        }
+        builder.finish()
     }
 }
 
@@ -224,11 +107,11 @@ impl SerieValue for VariantSerie {
     }
 
     fn is_null(&self, index: usize) -> bool {
-        self.runs.is_null(index)
+        index >= self.runs.len() || self.runs.is_null(index)
     }
 
     fn scalar(&self, index: usize) -> Result<Scalar> {
-        let Some(bytes) = self.runs.value(index) else {
+        let Some(bytes) = self.bytes(index) else {
             return Ok(Scalar::Null);
         };
         Scalar::decode_variant_bytes(bytes)
@@ -238,10 +121,10 @@ impl SerieValue for VariantSerie {
         super::require_row(self.field.name(), index, self.runs.len())?;
         let value = self.field.scalar(value)?;
         if value.is_null() {
-            self.runs = self.runs.replaced(index, None);
+            self.runs = self.rebuilt(Some(index), None);
             return Ok(());
         }
-        self.runs = self.runs.replaced(index, Some(&value.into_variant_bytes()));
+        self.runs = self.rebuilt(Some(index), Some(&value.into_variant_bytes()));
         Ok(())
     }
 
@@ -256,16 +139,16 @@ impl SerieValue for VariantSerie {
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
-        self.runs.shared()
+        Arc::new(self.runs.clone())
     }
 
     fn into_serie(self) -> Serie {
-        Serie::Variant(self)
+        Serie::Variant(Arc::new(self))
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
         match value {
-            Serie::Variant(column) => Some(column),
+            Serie::Variant(column) => Some(column.as_ref()),
             _ => None,
         }
     }

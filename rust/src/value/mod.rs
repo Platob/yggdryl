@@ -72,7 +72,7 @@ use smol_str::SmolStr;
 use crate::{
     DataType, DataTypeId, DataTypeKind, Field, Metadata, Result, Scalar, TimeUnit, Timezone, i256,
 };
-use crate::{Mapping, Sequence, Struct};
+use crate::{Mapping, Struct};
 
 /// One concrete scalar representation.
 ///
@@ -125,16 +125,26 @@ pub trait FamilyValue:
 /// variant that leaf widens to, so the enum, the scalar and the leaf share
 /// one spelling: `Integer::Int32(Int32)` is `Scalar::Int32(Int32)`.
 macro_rules! family_value {
+    // A family whose variant names are its leaf types: the common shape.
     (
         $(#[$meta:meta])*
         $family:ident, $kind:ident, [$($leaf:ident),+ $(,)?]
+    ) => {
+        family_value!($(#[$meta])* $family, $kind, [$($leaf => $leaf),+]);
+    };
+    // A family where one variant is spelled as the `Scalar` variant it
+    // carries rather than as the type it holds - the nested family, whose
+    // `Sequence` holds a `Serie`.
+    (
+        $(#[$meta:meta])*
+        $family:ident, $kind:ident, [$($leaf:ident => $held:ty),+ $(,)?]
     ) => {
         $(#[$meta])*
         #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub enum $family {
             $(
-                #[doc = concat!("One `", stringify!($leaf), "`.")]
-                $leaf($leaf),
+                #[doc = concat!("One `", stringify!($held), "`.")]
+                $leaf($held),
             )+
         }
 
@@ -170,8 +180,8 @@ macro_rules! family_value {
         }
 
         $(
-            impl From<$leaf> for $family {
-                fn from(value: $leaf) -> Self {
+            impl From<$held> for $family {
+                fn from(value: $held) -> Self {
                     Self::$leaf(value)
                 }
             }
@@ -415,7 +425,7 @@ family_value!(
     /// assert_eq!(held.into_scalar(), value);
     /// assert_eq!(Nested::from_scalar(&Scalar::from(1_i64)), None);
     /// ```
-    Nested, Nested, [Sequence, Mapping, Struct]
+    Nested, Nested, [Sequence => crate::Serie, Mapping => Mapping, Struct => Struct]
 );
 
 /// The per-column facts a field carries that only one datatype has.
@@ -869,13 +879,13 @@ impl<'a> ColumnRows<'a> {
         Self {
             column,
             front: 0,
-            back: crate::SerieValue::len(column),
+            back: column.len(),
         }
     }
 
     /// Build row `index`, or the null a refusal reads as.
     fn row(&self, index: usize) -> Scalar {
-        crate::SerieValue::scalar(self.column, index).unwrap_or(Scalar::Null)
+        self.column.scalar(index).unwrap_or(Scalar::Null)
     }
 }
 

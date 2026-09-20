@@ -1,22 +1,25 @@
 # Serie
 
-One column: the Arrow buffers that hold the rows of one [`Field`](field.md), and the array, batch and batch reader they cross as.
+Many values: a schema-free run, or the Arrow buffers of one [`Field`](field.md). `Serie` is what the sequence family holds, so there is one type for "many values" and not two.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
-| What it is | The fourth side of the value model: `DataType` is the shape, `Field` the schema, `Scalar` one row, `Serie` the rows |
-| Storage | Arrow buffers and nothing else - a values buffer, offsets where the layout has them, a validity bitmap. No `Scalar` is stored anywhere in a column |
+| What it is | The fourth side of the value model: `DataType` is the shape, `Field` the schema, `Scalar` one value, `Serie` many of them |
+| Two leaves | `Serie::List` is a schema-free ordered run and holds its values; every other leaf is a column and holds Arrow buffers. What separates them is the field: a run declares none |
+| Storage | A column stores a values buffer, offsets where the layout has them, and a validity bitmap. No `Scalar` is stored anywhere in a column |
+| Recursion | A record's child, a sequence's items and a mapping's entries are each a `Serie`, so the nesting is the same type all the way down |
+| Size | 24 bytes — the column leaves are shared behind one pointer each, the run is held inline because a row canonicalizes to one |
 | Shape | A family enum over one leaf per Arrow layout: `Int32Serie` lends `&[i32]`, `Utf8StringSerie` lends the offsets and the characters, `StructSerie` holds one child `Serie` per child field |
 | Proof from values | `from_scalars` and `push` send every row through `Field::scalar`, the one value contract, then lay the rows out once |
 | Proof from buffers | `from_arrow_*` prove the layout and the nullability of every level in constant time; a value the field's own contract refuses is refused where it is read |
-| Datatype | `list(<the field>)`, read off the field rather than inferred, so an empty column still names its datatype |
-| Registration | `Sequence::Serie`, so a column is `Scalar::Sequence(Sequence::Serie(..))` - a value wherever a sequence is one |
-| Reads as | A sequence: `len`, `iter`, `get`, indexing and dotted paths all answer its rows, each built as it is reached. `as_sequence` borrows, and a column has no value to lend, so it answers `None` there and `Sequence::rows` is the door that reads it |
-| `kind()` | `serie`, so a refusal says which of the two it was handed |
+| Datatype | For a column, `list(<the field>)` — read rather than inferred, so an empty column still names it. For a run, agreed back out of its rows |
+| Registration | `Scalar::Sequence(Serie)`. It adds no `DataTypeId`, no `DataType` variant and no `Field` variant |
+| Reads as | A sequence, because it is one: `len`, `iter` and the rest answer for both leaves. `as_sequence` borrows, and a column has no value to lend, so it answers `None` there and `Serie::rows` is the door that reads either |
+| `kind()` | `serie` for a column, `sequence` for a run, so a refusal says which of the two it was handed |
 | Not `ArrowScalar` | That holds one payload in four shapes and answers `None` to every native accessor; a serie is one shape, a column, and reads as the sequence it is |
-| Family | `SerieValue`, implemented by every leaf, by every family enum, and by `Serie` itself |
+| Family | `SerieValue`, implemented by every column leaf and every family enum. `Serie` itself does not implement it, because a run has no field to answer with |
 | Wire | The crate's own serde writes `{"type": "serie", "value": {"field": .., "rows": [..]}}`; JSON, YAML and TOML write the rows alone, because a codec document carries no schema envelope |
 | Bindings | Rust only |
 
@@ -34,10 +37,12 @@ A leaf is one Arrow layout under one field, and its accessors are that layout's 
 | `BytesSerie` | `BinarySerie`, `LargeBinarySerie`, `BinaryViewSerie`, `FixedBytesSerie` | the same |
 | `BooleanSerie` | - | `values() -> &BooleanBuffer` |
 | `NullSerie` | - | a length, and no buffer at all |
-| `StructSerie` | - | `children()`, `child(name)`, `child_at`, `nulls()` |
-| `ListSerie` | - | `items()`, `range(row)`, `nulls()` |
-| `MapSerie` | - | `entries()`, `range(row)`, `nulls()` |
-| `VariantSerie` | - | `bytes(row)`, `payload()`, `offsets()` |
+| `StructSerie` | - | `children()` (each a `Serie`), `child(name)`, `child_at`, `nulls()` |
+| `SequenceSerie`, `LargeSequenceSerie` | - | `items()` (a `Serie`), `offsets()` typed at the leaf's own width, `range(row)`, `nulls()` |
+| `MappingSerie` | - | `entries()` (a `Serie`), `range(row)`, `nulls()` |
+| `VariantSerie` | - | `bytes(row)`, `payload()`, `offsets()`. One width only: `DataType::Variant` projects to Arrow `Binary` and nothing else |
+
+Arrow spells a sequence at two offset widths, so `SequenceSerie` and `LargeSequenceSerie` are two names for one implementation generic over the width — the same way `Utf8StringSerie` and `LargeUtf8StringSerie` are. The width is the leaf, so nothing branches on it per row, and narrowing to the other answers `None`.
 
 A layout that is both a string leaf and a byte leaf - `Binary` under a windows-1252 column, `Binary` under a byte column - is told apart by the field rather than by the buffers, which is why `BinaryStringSerie` and `BinarySerie` are two names for one Arrow array.
 
@@ -56,7 +61,7 @@ A layout that is both a string leaf and a byte leaf - `Binary` under a windows-1
 | `with_child`, `without_child` | one field edit and one `Vec` of pointers, never a row |
 | `into_arrow_array` | the array itself, shared |
 | `into_arrow_batch`, `into_arrow_reader` | one batch of the children's own arrays, no row decoded |
-| `scalars`, `Sequence::rows`, and walking a column as a value | one row built per row, every time — nothing is cached, so hold the answer rather than asking twice |
+| `scalars`, `Serie::rows`, and walking a column as a value | one row built per row, every time — nothing is cached, so hold the answer rather than asking twice |
 
 ## Use
 
@@ -184,7 +189,7 @@ A record column is made of child columns, and Arrow already holds each one separ
 
     // One child is a column of its own field, over its own buffers.
     let symbols = structure.child("symbol").expect("a named child");
-    assert_eq!(symbols.field().name(), "symbol");
+    assert_eq!(symbols.field().expect("a column").name(), "symbol");
     assert_eq!(symbols.as_utf8().unwrap().value(0), Some("AAPL"));
 
     // Dropping one takes its field with it; the other is shared, not rebuilt.
@@ -205,7 +210,7 @@ A record column is made of child columns, and Arrow already holds each one separ
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Scalar, Sequence, Serie, SerieValue};
+    use yggdryl::{DataType, Field, Scalar, Serie, SerieValue};
 
     let serie = Serie::from_scalars(
         Field::new("price", DataType::Int64, false),
@@ -243,12 +248,58 @@ A record column is made of child columns, and Arrow already holds each one separ
     assert_eq!(sequence.as_slice(), None, "the read kept nothing");
     assert_eq!(run.as_sequence().expect("a run lends").len(), 2);
 
-    // The buffers are untouched by being read.
-    let column = sequence.as_serie().expect("a column");
-    assert_eq!(column.as_int64().unwrap().values(), &[125, 126]);
+    // The buffers are untouched by being read, and the sequence value *is*
+    // the serie - there is no second type between them.
+    assert!(sequence.is_column());
+    assert!(sequence.as_run().is_none());
+    assert_eq!(sequence.as_int64().unwrap().values(), &[125, 126]);
 
     // Dropping the field is spelled, never implied.
     assert_eq!(serie.into_sequence()?, run);
+    ```
+
+## The nesting points back here
+
+A record's child, a sequence's items and a mapping's entries are each a `Serie` — the same type, all the way down. A column of records is therefore columns of columns, and reaching a leaf three levels deep is three borrows and no copy.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field, Scalar, Serie, StructType};
+
+    let root = Field::new(
+        "row",
+        DataType::Struct(StructType::from_fields([
+            Field::new("id", DataType::Int64, false),
+            Field::new(
+                "tags",
+                DataType::list(Field::new("item", DataType::utf8(), false)),
+                false,
+            ),
+        ])?),
+        false,
+    );
+    let column = Serie::from_scalars(
+        root,
+        [Scalar::from_struct([
+            ("id", Scalar::from(1_i64)),
+            ("tags", Scalar::from_sequence([Scalar::from("a"), Scalar::from("b")])),
+        ])?],
+    )?;
+
+    // Every step down answers a `Serie`, and every one carries its own field.
+    let tags = column.as_struct().expect("a record column").child("tags").expect("a named child");
+    assert_eq!(tags.field().expect("a column").name(), "tags");
+
+    let items = tags.as_sequence().expect("a sequence column").items();
+    assert_eq!(items.field().expect("a column").name(), "item");
+    assert_eq!(items.as_utf8().expect("a utf8 column").value(1), Some("b"));
+
+    // A schema-free run is the same type, and the one leaf with no field.
+    let run = Serie::new(vec![Scalar::from(1_i64)]);
+    assert_eq!(run.field(), None);
+    assert!(run.require_field().is_err());
+    assert!(!run.is_column());
     ```
 
 ## Arrow: an array, a batch, a reader
@@ -264,10 +315,12 @@ Every crossing shares buffers. A column of a leaf field is an array; a column of
     let field = Field::new("price", DataType::Int64, false);
     let serie = Serie::from_scalars(field.clone(), [Scalar::from(125_i64), Scalar::from(126_i64)])?;
 
-    // One column, both directions, nothing copied.
-    let array = serie.into_arrow_array();
+    // One column, both directions, nothing copied. A run names no Arrow
+    // layout, so the buffers answer for a column and `None` for a run.
+    let array = serie.into_arrow_array().expect("a column has buffers");
     assert_eq!(array.len(), 2);
     assert_eq!(Serie::from_arrow_array(field, array)?, serie);
+    assert_eq!(Serie::new(vec![Scalar::from(1_i64)]).into_arrow_array(), None);
 
     // The rows of a record root: a table, and the stream of it.
     let root = Field::new(
@@ -338,7 +391,8 @@ A variant row is one run of the crate's own [variant encoding](variant.md), so a
 - A batch read back names its root `row`, because Arrow names columns and never the record.
 - A column and a schema-free run with the same rows are not equal; equality is what tells them apart, and the leaf breaks the ordering tie.
 - Two columns are equal when their field and their rows are, whichever buffers hold them - a `Utf8View` column and a `Utf8` column of one field are not, because the field names the layout. A column hashes by its field and its length, so a hash never decodes a buffer.
-- `Sequence::as_slice` and `Scalar::as_sequence` borrow, so they answer only for the schema-free run: a column holds Arrow buffers and no `Scalar`, so there is nothing to borrow. `Sequence::rows` reads either — borrowing the run's values, building the column's — and `Scalar::iter` walks either, yielding `Cow`.
+- `Serie::as_slice` and `Scalar::as_sequence` borrow, so they answer only for the schema-free run: a column holds Arrow buffers and no `Scalar`, so there is nothing to borrow. `Serie::rows` reads either — borrowing the run's values, building the column's — and `Scalar::iter` walks either, yielding `Cow`.
+- `Serie::field` answers `None` for a run, because a run declares none. `Serie::require_field` is the same read as a refusal, and it is what a record's child, a sequence's items and a mapping's entries go through — a run cannot stand where Arrow names a layout.
 - Nothing caches a decoded row. Reading a column's rows twice reads them twice; hold the answer rather than asking again.
 - The value contract reads a column the way it reads a run: `Field::scalar` on a `list(...)` field accepts one, leaves it alone when there is nothing to rewrite, and rewrites its rows into the run the declaring field asked for when there is. From there the declaring field is the authority, which is why a rewritten column comes back a run.
 - `Scalar::get` and `scalar[i]` borrow a stored row, so they answer for the schema-free run and not for a column, which stores none — `value.get(0)` on a column is `None` and `value[0]` panics, the way they do on any value that is not a run. `Serie::scalar(i)` builds that one row, and `Scalar::iter` walks them all.

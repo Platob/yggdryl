@@ -2,14 +2,15 @@
 //!
 //! A nested layout in Arrow is its own buffers plus the columns under them,
 //! so that is what these hold: [`StructSerie`] keeps one [`Serie`] per child
-//! field, [`ListSerie`] keeps the offsets and the item column they cut, and
-//! [`MapSerie`] keeps the offsets and the entry column. Reaching a child is
+//! field, [`SequenceSerie`] keeps the offsets and the item column they cut, and
+//! [`MappingSerie`] keeps the offsets and the entry column. Reaching a child is
 //! therefore a borrow rather than a projection, and adding or dropping one
 //! is one column rather than one row.
 
 use std::fmt;
 use std::sync::Arc;
 
+use arrow_array::OffsetSizeTrait;
 use arrow_array::{
     Array, ArrayRef, LargeListArray, ListArray, MapArray, StructArray, new_empty_array,
 };
@@ -132,9 +133,10 @@ impl StructSerie {
                 ),
             });
         }
-        let name = child.field().name().to_owned();
+        let declared = child.require_field()?;
+        let name = declared.name().to_owned();
         let mut field = self.field.as_ref().clone();
-        field.set_field(name.as_str(), child.field().clone())?;
+        field.set_field(name.as_str(), declared.clone())?;
         let mut children = self.children.clone();
         match field.index_of(name.as_str()) {
             Some(index) if index < children.len() => children[index] = child.clone(),
@@ -263,7 +265,13 @@ impl SerieValue for StructSerie {
             match cells.get(index) {
                 Some(cell) => child.push(cell.clone())?,
                 None => {
-                    let filler = child.field().default_value()?;
+                    // A child column fills its slot with the value its own
+                    // field declares; a run declares none, so it takes the
+                    // bare null a row without that cell holds.
+                    let filler = match child.field() {
+                        Some(field) => field.default_value()?,
+                        None => Scalar::Null,
+                    };
                     child.push(filler)?;
                 }
             }
@@ -277,11 +285,14 @@ impl SerieValue for StructSerie {
         let Ok(fields) = self.arrow_fields() else {
             return new_empty_array(&arrow_schema::DataType::Null);
         };
-        let columns: Vec<ArrayRef> = self
+        let Some(columns) = self
             .children
             .iter()
-            .map(SerieValue::into_arrow_array)
-            .collect();
+            .map(Serie::into_arrow_array)
+            .collect::<Option<Vec<ArrayRef>>>()
+        else {
+            return new_empty_array(&arrow_schema::DataType::Null);
+        };
         if columns.is_empty() {
             return Arc::new(StructArray::new_empty_fields(self.rows, self.nulls.clone()));
         }
@@ -292,12 +303,12 @@ impl SerieValue for StructSerie {
     }
 
     fn into_serie(self) -> Serie {
-        Serie::Struct(self)
+        Serie::Struct(Arc::new(self))
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
         match value {
-            Serie::Struct(column) => Some(column),
+            Serie::Struct(column) => Some(column.as_ref()),
             _ => None,
         }
     }
@@ -311,87 +322,43 @@ impl fmt::Debug for StructSerie {
 
 serie_leaf!(StructSerie);
 
-/// The offsets a list column cuts its item column by.
+/// One column of sequences: the offsets that cut it, and the item serie
+/// under them.
 ///
-/// Arrow spells them at two widths and a column keeps whichever it was given,
-/// because rewriting them would copy every row to say the same thing.
-#[derive(Clone, Debug)]
-pub(crate) enum ListOffsets {
-    /// 32-bit offsets.
-    Small(OffsetBuffer<i32>),
-    /// 64-bit offsets.
-    Large(OffsetBuffer<i64>),
-}
-
-impl ListOffsets {
-    /// The rows this cut names.
-    fn len(&self) -> usize {
-        match self {
-            Self::Small(offsets) => offsets.len().saturating_sub(1),
-            Self::Large(offsets) => offsets.len().saturating_sub(1),
-        }
-    }
-
-    /// The item range row `index` occupies.
-    fn range(&self, index: usize) -> Option<(usize, usize)> {
-        match self {
-            Self::Small(offsets) => {
-                let start = usize::try_from(*offsets.get(index)?).ok()?;
-                let end = usize::try_from(*offsets.get(index + 1)?).ok()?;
-                Some((start, end))
-            }
-            Self::Large(offsets) => {
-                let start = usize::try_from(*offsets.get(index)?).ok()?;
-                let end = usize::try_from(*offsets.get(index + 1)?).ok()?;
-                Some((start, end))
-            }
-        }
-    }
-
-    /// The same cut with one more row of `items` items on the end.
-    fn appended(&self, items: usize) -> Self {
-        match self {
-            Self::Small(offsets) => {
-                let mut held: Vec<i32> = offsets.iter().copied().collect();
-                let last = held.last().copied().unwrap_or_default();
-                held.push(last + i32::try_from(items).unwrap_or_default());
-                Self::Small(OffsetBuffer::new(ScalarBuffer::from(held)))
-            }
-            Self::Large(offsets) => {
-                let mut held: Vec<i64> = offsets.iter().copied().collect();
-                let last = held.last().copied().unwrap_or_default();
-                held.push(last + i64::try_from(items).unwrap_or_default());
-                Self::Large(OffsetBuffer::new(ScalarBuffer::from(held)))
-            }
-        }
-    }
-}
-
-/// One column of lists: the offsets that cut it, and the item column under
-/// them.
+/// The items are one serie of the item field, so a caller reading every item
+/// of every row reads one buffer rather than walking rows.
 ///
-/// The items are one column of the item field, so a caller reading every
-/// item of every row reads one buffer rather than walking rows.
+/// `O` is the offset width Arrow cut the rows at, so
+/// [`SequenceSerie`] and [`LargeSequenceSerie`] are two names for one
+/// implementation - the same way [`Utf8StringSerie`](crate::Utf8StringSerie)
+/// and [`LargeUtf8StringSerie`](crate::LargeUtf8StringSerie) are. The width
+/// is the type, so nothing branches on it per row.
 #[derive(Clone)]
-pub struct ListSerie {
+pub struct GenericSequenceSerie<O: SequenceOffset> {
     field: Arc<Field>,
-    offsets: ListOffsets,
-    items: Box<Serie>,
+    offsets: OffsetBuffer<O>,
+    items: Serie,
     nulls: Option<NullBuffer>,
 }
 
-impl ListSerie {
-    /// Pair a list field with its cut and the column it cuts.
+/// A column of sequences, 32-bit offsets.
+pub type SequenceSerie = GenericSequenceSerie<i32>;
+
+/// A column of sequences, 64-bit offsets.
+pub type LargeSequenceSerie = GenericSequenceSerie<i64>;
+
+impl<O: SequenceOffset> GenericSequenceSerie<O> {
+    /// Pair a sequence field with its cut and the serie it cuts.
     pub(crate) fn new(
         field: Arc<Field>,
-        offsets: ListOffsets,
+        offsets: OffsetBuffer<O>,
         items: Serie,
         nulls: Option<NullBuffer>,
     ) -> Self {
         Self {
             field,
             offsets,
-            items: Box::new(items),
+            items,
             nulls,
         }
     }
@@ -408,22 +375,37 @@ impl ListSerie {
 
     /// Return the item range row `index` occupies.
     pub fn range(&self, index: usize) -> Option<(usize, usize)> {
-        self.offsets.range(index)
+        let start = (*self.offsets.get(index)?).as_usize();
+        let end = (*self.offsets.get(index + 1)?).as_usize();
+        Some((start, end))
+    }
+
+    /// Borrow the offsets buffer that cuts the items, without copying it.
+    pub const fn offsets(&self) -> &OffsetBuffer<O> {
+        &self.offsets
     }
 
     /// Borrow the validity bitmap, or `None` where no row is absent.
     pub const fn nulls(&self) -> Option<&NullBuffer> {
         self.nulls.as_ref()
     }
+
+    /// The same cut with one more row of `items` items on the end.
+    fn appended(&self, items: usize) -> OffsetBuffer<O> {
+        let mut held: Vec<O> = self.offsets.iter().copied().collect();
+        let last = held.last().copied().unwrap_or_default();
+        held.push(last + O::usize_as(items));
+        OffsetBuffer::new(ScalarBuffer::from(held))
+    }
 }
 
-impl SerieValue for ListSerie {
+impl<O: SequenceOffset> SerieValue for GenericSequenceSerie<O> {
     fn field(&self) -> &Field {
         &self.field
     }
 
     fn len(&self) -> usize {
-        self.offsets.len()
+        self.offsets.len().saturating_sub(1)
     }
 
     fn null_count(&self) -> usize {
@@ -431,7 +413,7 @@ impl SerieValue for ListSerie {
     }
 
     fn is_null(&self, index: usize) -> bool {
-        index >= self.len()
+        index >= SerieValue::len(self)
             || self
                 .nulls
                 .as_ref()
@@ -442,7 +424,7 @@ impl SerieValue for ListSerie {
         if self.is_null(index) {
             return Ok(Scalar::Null);
         }
-        let Some((start, end)) = self.offsets.range(index) else {
+        let Some((start, end)) = self.range(index) else {
             return Ok(Scalar::Null);
         };
         let items = (start..end)
@@ -452,14 +434,14 @@ impl SerieValue for ListSerie {
     }
 
     fn set(&mut self, index: usize, value: Scalar) -> Result<()> {
-        let rows = self.len();
+        let rows = SerieValue::len(self);
         super::require_row(self.field.name(), index, rows)?;
         let row = self.field.scalar(value)?;
         if row.is_null() {
             self.nulls = with_validity(self.nulls.as_ref(), rows, index, false);
             return Ok(());
         }
-        let Some((start, end)) = self.offsets.range(index) else {
+        let Some((start, end)) = self.range(index) else {
             return Ok(());
         };
         let items = row.as_sequence().unwrap_or_default().to_vec();
@@ -481,7 +463,7 @@ impl SerieValue for ListSerie {
     }
 
     fn push(&mut self, value: Scalar) -> Result<()> {
-        let rows = self.len();
+        let rows = SerieValue::len(self);
         let row = self.field.scalar(value)?;
         // An absent row is a cut of no items and a cleared validity bit; a
         // present empty row is the same cut, which is why the bitmap is the
@@ -492,51 +474,108 @@ impl SerieValue for ListSerie {
         for item in items {
             self.items.push(item)?;
         }
-        self.offsets = self.offsets.appended(count);
+        self.offsets = self.appended(count);
         self.nulls = pushed_validity(self.nulls.as_ref(), rows, present);
         Ok(())
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
-        let items = self.items.into_arrow_array();
-        let Ok(item) = self.items.field().clone().into_arrow_field_ref() else {
+        // The items must be a column: Arrow names a list's item layout, and
+        // a schema-free run names none.
+        let (Some(items), Some(declared)) = (self.items.into_arrow_array(), self.items.field())
+        else {
             return new_empty_array(&arrow_schema::DataType::Null);
         };
-        match &self.offsets {
-            ListOffsets::Small(offsets) => Arc::new(ListArray::new(
-                item,
-                offsets.clone(),
-                items,
-                self.nulls.clone(),
-            )),
-            ListOffsets::Large(offsets) => Arc::new(LargeListArray::new(
-                item,
-                offsets.clone(),
-                items,
-                self.nulls.clone(),
-            )),
-        }
+        let Ok(item) = declared.clone().into_arrow_field_ref() else {
+            return new_empty_array(&arrow_schema::DataType::Null);
+        };
+        O::array(item, self.offsets.clone(), items, self.nulls.clone())
     }
 
     fn into_serie(self) -> Serie {
-        Serie::List(self)
+        O::into_serie(self)
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
+        O::from_serie(value)
+    }
+}
+
+/// Which leaf of the root one offset width widens to, and the Arrow array
+/// that width lays out.
+///
+/// Arrow spells a sequence at two offset widths and keeps a type for each, so
+/// this is the one place that width is tied to the crate's own leaf - the way
+/// [`PrimitiveLeaf`](crate::PrimitiveLeaf) ties an Arrow width to its leaf.
+/// The bound is on the width, so [`GenericSequenceSerie`] stays one
+/// implementation over both.
+pub trait SequenceOffset: OffsetSizeTrait {
+    /// Lay these buffers out as the Arrow array this width names.
+    fn array(
+        item: arrow_schema::FieldRef,
+        offsets: OffsetBuffer<Self>,
+        items: ArrayRef,
+        nulls: Option<NullBuffer>,
+    ) -> ArrayRef;
+
+    /// Widen a column of this width to the serie root.
+    fn into_serie(column: GenericSequenceSerie<Self>) -> Serie;
+
+    /// Narrow a serie root to a column of this width.
+    fn from_serie(value: &Serie) -> Option<&GenericSequenceSerie<Self>>;
+}
+
+impl SequenceOffset for i32 {
+    fn array(
+        item: arrow_schema::FieldRef,
+        offsets: OffsetBuffer<Self>,
+        items: ArrayRef,
+        nulls: Option<NullBuffer>,
+    ) -> ArrayRef {
+        Arc::new(ListArray::new(item, offsets, items, nulls))
+    }
+
+    fn into_serie(column: GenericSequenceSerie<Self>) -> Serie {
+        Serie::Sequence(Arc::new(column))
+    }
+
+    fn from_serie(value: &Serie) -> Option<&GenericSequenceSerie<Self>> {
         match value {
-            Serie::List(column) => Some(column),
+            Serie::Sequence(column) => Some(column.as_ref()),
             _ => None,
         }
     }
 }
 
-impl fmt::Debug for ListSerie {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        super::debug_leaf(self, "ListSerie", formatter)
+impl SequenceOffset for i64 {
+    fn array(
+        item: arrow_schema::FieldRef,
+        offsets: OffsetBuffer<Self>,
+        items: ArrayRef,
+        nulls: Option<NullBuffer>,
+    ) -> ArrayRef {
+        Arc::new(LargeListArray::new(item, offsets, items, nulls))
+    }
+
+    fn into_serie(column: GenericSequenceSerie<Self>) -> Serie {
+        Serie::LargeSequence(Arc::new(column))
+    }
+
+    fn from_serie(value: &Serie) -> Option<&GenericSequenceSerie<Self>> {
+        match value {
+            Serie::LargeSequence(column) => Some(column.as_ref()),
+            _ => None,
+        }
     }
 }
 
-serie_leaf!(ListSerie);
+impl<O: SequenceOffset> fmt::Debug for GenericSequenceSerie<O> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        super::debug_leaf(self, "SequenceSerie", formatter)
+    }
+}
+
+serie_leaf!(GenericSequenceSerie, O: SequenceOffset);
 
 /// One column of mappings: the offsets that cut it, and the entry column
 /// under them.
@@ -545,14 +584,14 @@ serie_leaf!(ListSerie);
 /// so the entries are a [`StructSerie`] and reaching the keys or the values
 /// is reaching one of its children.
 #[derive(Clone)]
-pub struct MapSerie {
+pub struct MappingSerie {
     field: Arc<Field>,
-    entries: Box<Serie>,
+    entries: Serie,
     offsets: OffsetBuffer<i32>,
     nulls: Option<NullBuffer>,
 }
 
-impl MapSerie {
+impl MappingSerie {
     /// Pair a mapping field with its cut and the entries it cuts.
     pub(crate) fn new(
         field: Arc<Field>,
@@ -562,7 +601,7 @@ impl MapSerie {
     ) -> Self {
         Self {
             field,
-            entries: Box::new(entries),
+            entries,
             offsets,
             nulls,
         }
@@ -586,7 +625,7 @@ impl MapSerie {
     }
 }
 
-impl SerieValue for MapSerie {
+impl SerieValue for MappingSerie {
     fn field(&self) -> &Field {
         &self.field
     }
@@ -677,11 +716,17 @@ impl SerieValue for MapSerie {
     }
 
     fn into_arrow_array(&self) -> ArrayRef {
-        let entries = self.entries.into_arrow_array();
+        // The entries must be a record column, for the reason a list's items
+        // must be a column: Arrow names the layout and a run names none.
+        let (Some(entries), Some(declared)) =
+            (self.entries.into_arrow_array(), self.entries.field())
+        else {
+            return new_empty_array(&arrow_schema::DataType::Null);
+        };
         let Some(records) = entries.as_any().downcast_ref::<StructArray>() else {
             return new_empty_array(&arrow_schema::DataType::Null);
         };
-        let Ok(entry) = self.entries.field().clone().into_arrow_field_ref() else {
+        let Ok(entry) = declared.clone().into_arrow_field_ref() else {
             return new_empty_array(&arrow_schema::DataType::Null);
         };
         MapArray::try_new(
@@ -698,21 +743,21 @@ impl SerieValue for MapSerie {
     }
 
     fn into_serie(self) -> Serie {
-        Serie::Map(self)
+        Serie::Mapping(Arc::new(self))
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
         match value {
-            Serie::Map(column) => Some(column),
+            Serie::Mapping(column) => Some(column.as_ref()),
             _ => None,
         }
     }
 }
 
-impl fmt::Debug for MapSerie {
+impl fmt::Debug for MappingSerie {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        super::debug_leaf(self, "MapSerie", formatter)
+        super::debug_leaf(self, "MappingSerie", formatter)
     }
 }
 
-serie_leaf!(MapSerie);
+serie_leaf!(MappingSerie);

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, Int64Array, StringArray};
 use yggdryl::{
-    DataType, Field, Int32Serie, Int64Serie, Scalar, Sequence, Serie, SerieValue, StructType,
+    DataType, Field, Int32Serie, Int64Serie, Scalar, Serie, SerieValue, StructType,
     Utf8StringSerie, Value,
 };
 
@@ -66,7 +66,10 @@ fn a_serie_rewrites_every_row_into_what_its_field_declares() {
 
     assert_eq!(column.scalar(0).unwrap(), Scalar::from(1_i64));
     assert_eq!(column.scalar(1).unwrap(), Scalar::from(2_i64));
-    assert_eq!(column.field().dtype(), &DataType::Int64);
+    assert_eq!(
+        column.field().expect("a column carries its field").dtype(),
+        &DataType::Int64
+    );
 
     // And the buffers are the declared width, not a second reading of it.
     assert_eq!(
@@ -258,6 +261,7 @@ fn a_record_column_lends_its_children_and_takes_them_away() {
             .child_at(1)
             .expect("a positional child")
             .field()
+            .expect("a child column carries its field")
             .name(),
         "symbol"
     );
@@ -326,9 +330,9 @@ fn a_serie_reads_as_the_sequence_it_is() {
         Scalar::Sequence(sequence) => sequence,
         other => panic!("a column is a sequence value, got {other:?}"),
     };
-    assert!(sequence.as_list().is_none());
-    assert_eq!(sequence.as_serie().expect("a column").len(), 2);
-    assert_eq!(sequence.row_count(), 2);
+    assert!(sequence.as_run().is_none());
+    assert!(sequence.is_column());
+    assert_eq!(sequence.len(), 2);
 }
 
 #[test]
@@ -342,12 +346,12 @@ fn a_column_read_as_a_value_stores_no_row_and_is_unchanged_by_being_read() {
     // A column holds buffers and no value, so it has none to lend - before a
     // read, after a read, ever.
     assert!(sequence.as_slice().is_none());
-    assert_eq!(sequence.row_count(), 2);
+    assert_eq!(sequence.len(), 2);
     assert_eq!(sequence.rows().unwrap().len(), 2);
     assert!(sequence.as_slice().is_none(), "reading kept nothing");
 
     // A run is the other leaf, and it does lend.
-    let run = Sequence::new(vec![Scalar::from(125_i64), Scalar::from(126_i64)]);
+    let run = Serie::new(vec![Scalar::from(125_i64), Scalar::from(126_i64)]);
     assert!(run.as_slice().is_some());
     assert!(matches!(run.rows().unwrap(), std::borrow::Cow::Borrowed(_)));
     assert!(matches!(
@@ -357,12 +361,7 @@ fn a_column_read_as_a_value_stores_no_row_and_is_unchanged_by_being_read() {
 
     // And the column itself still holds buffers, not rows.
     assert_eq!(
-        sequence
-            .as_serie()
-            .expect("a column")
-            .as_int64()
-            .expect("an int64 column")
-            .values(),
+        sequence.as_int64().expect("an int64 column").values(),
         &[125, 126]
     );
 
@@ -389,8 +388,8 @@ fn a_serie_names_its_datatype_where_an_empty_sequence_cannot() {
 
 #[test]
 fn a_column_and_the_run_it_holds_order_by_their_rows_and_are_not_one_value() {
-    let column = Sequence::from(prices());
-    let run = Sequence::new(vec![Scalar::from(125_i64), Scalar::from(126_i64)]);
+    let column = Serie::from(prices());
+    let run = Serie::new(vec![Scalar::from(125_i64), Scalar::from(126_i64)]);
 
     // A run lends its rows where it holds them; a column has none to lend.
     assert!(run.as_slice().is_some());
@@ -422,10 +421,7 @@ fn a_column_survives_the_value_contract_until_that_contract_rewrites_it() {
     let value = Scalar::from(column.clone());
 
     // A column carried as a value is the same column on the way back.
-    assert_eq!(
-        Sequence::from_scalar(&value).and_then(Sequence::as_serie),
-        Some(&column)
-    );
+    assert_eq!(<Serie as Value>::from_scalar(&value), Some(&column));
 
     // Dropping to the schema-free run is the one direction that loses the
     // field, and it is spelled rather than implied.
@@ -434,7 +430,7 @@ fn a_column_survives_the_value_contract_until_that_contract_rewrites_it() {
         run,
         Scalar::from_sequence([Scalar::from(125_i64), Scalar::from(126_i64)])
     );
-    assert!(matches!(run, Scalar::Sequence(Sequence::List(_))));
+    assert!(matches!(run, Scalar::Sequence(Serie::List(_))));
 
     // The value contract reads a column the way it reads a run, because it
     // is the one contract every caller value crosses. Nothing to rewrite
@@ -446,7 +442,7 @@ fn a_column_survives_the_value_contract_until_that_contract_rewrites_it() {
         .expect("a column is a list value");
     assert_eq!(kept.kind(), "serie");
     assert_eq!(
-        Sequence::from_scalar(&kept).and_then(Sequence::as_serie),
+        <Serie as Value>::from_scalar(&kept).and_then(Some),
         Some(&column)
     );
 
@@ -494,10 +490,14 @@ fn a_column_survives_the_value_contract_until_that_contract_rewrites_it() {
 #[test]
 fn a_column_crosses_into_one_arrow_array_and_back() {
     let column = price_buffers();
-    let array = column.into_arrow_array();
+    let array = column.into_arrow_array().expect("a column has buffers");
     assert_eq!(array.len(), 2);
 
-    let back = Serie::from_arrow_array(column.field().clone(), array).expect("the same buffers");
+    let back = Serie::from_arrow_array(
+        column.field().expect("a column carries its field").clone(),
+        array,
+    )
+    .expect("the same buffers");
     assert_eq!(back, column);
 }
 
@@ -543,8 +543,8 @@ fn a_column_clone_shares_its_buffers_rather_than_copying_them() {
     let column = price_buffers();
     let copy = column.clone();
 
-    let one = column.into_arrow_array();
-    let other = copy.into_arrow_array();
+    let one = column.into_arrow_array().expect("a column has buffers");
+    let other = copy.into_arrow_array().expect("a column has buffers");
     assert!(
         std::ptr::eq(
             one.to_data().buffers()[0].as_ptr(),
@@ -594,7 +594,7 @@ fn a_record_column_writes_its_own_validity_and_leaves_its_children_alone() {
     );
 
     // The buffers still cross as one batch, absent rows and all.
-    let array = records.into_arrow_array();
+    let array = records.into_arrow_array().expect("a column has buffers");
     assert_eq!(array.len(), 3);
     assert_eq!(array.null_count(), 2);
 
@@ -634,7 +634,7 @@ fn a_list_column_cuts_one_item_column_and_writes_its_own_validity() {
 
     // Every item of every row is one column, and the offsets say where each
     // row starts - so reading them all reads one buffer.
-    let column = lists.as_list().expect("a list column");
+    let column = lists.as_sequence().expect("a list column");
     assert_eq!(
         column
             .items()
@@ -659,7 +659,7 @@ fn a_list_column_cuts_one_item_column_and_writes_its_own_validity() {
     assert_eq!(lists.scalar(3).unwrap(), Scalar::from_sequence([]));
 
     // And the buffers still cross, absent rows and all.
-    let array = lists.into_arrow_array();
+    let array = lists.into_arrow_array().expect("a column has buffers");
     assert_eq!(array.len(), 4);
     assert_eq!(array.null_count(), 1);
 }
@@ -686,7 +686,7 @@ fn a_list_row_that_does_not_fit_its_cut_is_refused_rather_than_moving_every_late
         .expect("the same length");
     assert_eq!(
         lists
-            .as_list()
+            .as_sequence()
             .expect("a list column")
             .items()
             .as_int64()
@@ -724,7 +724,7 @@ fn a_mapping_column_holds_its_entries_as_a_record_column() {
     )
     .expect("one mapping row");
 
-    let maps = column.as_map().expect("a mapping column");
+    let maps = column.as_mapping().expect("a mapping column");
     assert_eq!(maps.range(0), Some((0, 1)));
 
     // The entries are a record column, so the keys and the values are each a
@@ -768,7 +768,7 @@ fn a_variant_column_lends_the_run_it_encoded_and_decodes_only_on_demand() {
     let first = leaf.bytes(0).expect("an encoded run").to_vec();
     assert!(!first.is_empty());
     assert!(!leaf.payload().is_empty());
-    assert!(leaf.offsets().is_some(), "the default cut is 32-bit");
+    assert_eq!(leaf.offsets().len(), 3, "one offset per row, plus the end");
 
     // A row is a value only when one is asked for, and it comes back what it
     // went in as.
@@ -903,4 +903,99 @@ fn a_column_reads_as_a_sequence_wherever_meaning_is_read_from_one() {
         std::borrow::Cow::Borrowed(_)
     ));
     assert_eq!(Scalar::from(1_i64).sequence_rows().is_none(), true);
+}
+
+#[test]
+fn the_offset_width_is_the_leaf_and_not_a_branch_inside_one() {
+    use arrow_array::{LargeListArray, ListArray};
+    use arrow_buffer::OffsetBuffer;
+    use arrow_schema::Field as ArrowField;
+
+    let item = Field::new("item", DataType::Int64, false);
+    let values: ArrayRef = Arc::new(Int64Array::from(vec![1_i64, 2, 3]));
+    let arrow_item = Arc::new(ArrowField::new(
+        "item",
+        arrow_schema::DataType::Int64,
+        false,
+    ));
+
+    // The same rows at both Arrow offset widths.
+    let small: ArrayRef = Arc::new(ListArray::new(
+        Arc::clone(&arrow_item),
+        OffsetBuffer::new(vec![0_i32, 2, 3].into()),
+        ArrayRef::clone(&values),
+        None,
+    ));
+    let large: ArrayRef = Arc::new(LargeListArray::new(
+        arrow_item,
+        OffsetBuffer::new(vec![0_i64, 2, 3].into()),
+        values,
+        None,
+    ));
+
+    let narrow = Serie::from_arrow_array(
+        Field::new("rows", DataType::list(item.clone()), false),
+        small,
+    )
+    .expect("a 32-bit sequence column");
+    let wide =
+        Serie::from_arrow_array(Field::new("rows", DataType::large_list(item), false), large)
+            .expect("a 64-bit sequence column");
+
+    // Each width is its own leaf, so narrowing to the other answers None -
+    // no branch inside one type decides which offsets it holds.
+    assert!(narrow.as_sequence().is_some());
+    assert!(narrow.as_large_sequence().is_none());
+    assert!(wide.as_large_sequence().is_some());
+    assert!(wide.as_sequence().is_none());
+
+    // And each lends its own offsets buffer, typed at its own width.
+    assert_eq!(narrow.as_sequence().unwrap().offsets().as_ref(), &[0, 2, 3]);
+    assert_eq!(
+        wide.as_large_sequence().unwrap().offsets().as_ref(),
+        &[0_i64, 2, 3]
+    );
+
+    // The rows they cut are the same rows, and the items are one serie
+    // under either width.
+    assert_eq!(narrow.scalar(0).unwrap(), wide.scalar(0).unwrap());
+    assert_eq!(narrow.len(), wide.len());
+    assert_eq!(
+        wide.as_large_sequence()
+            .unwrap()
+            .items()
+            .as_int64()
+            .expect("an int64 item serie")
+            .values(),
+        &[1, 2, 3]
+    );
+
+    // Growing works the same at either width.
+    let mut growing = wide.clone();
+    growing
+        .push(Scalar::from_sequence([Scalar::from(4_i64)]))
+        .expect("one more row");
+    assert_eq!(growing.len(), 3);
+    assert_eq!(
+        growing.as_large_sequence().unwrap().offsets().as_ref(),
+        &[0_i64, 2, 3, 4]
+    );
+    assert_eq!(
+        growing.scalar(2).unwrap(),
+        Scalar::from_sequence([Scalar::from(4_i64)])
+    );
+
+    // And the buffers cross back out under the width they came in at.
+    assert_eq!(
+        narrow.into_arrow_array().expect("a column").data_type(),
+        &arrow_schema::DataType::List(Arc::new(ArrowField::new(
+            "item",
+            arrow_schema::DataType::Int64,
+            false
+        )))
+    );
+    assert!(matches!(
+        wide.into_arrow_array().expect("a column").data_type(),
+        arrow_schema::DataType::LargeList(_)
+    ));
 }

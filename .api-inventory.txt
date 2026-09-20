@@ -3341,27 +3341,25 @@ pub enum DataType
   pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self
   pub fn as_slice(&self) -> &[Scalar]
   pub fn into_inner(self) -> Arc<[Scalar]>
-  pub enum Sequence  (#[non_exhaustive]; List(List), Serie(Arc<Serie>); the family's value payload, and what Scalar::Sequence holds. A run holds its values and lends them; a column holds Arrow buffers and builds a row when one is asked for, keeping nothing. Ord reads the rows first and the leaf only breaks the tie; Hash is the leaf's own, never the discriminant, so a run's stable hash is what it always was and a column's costs no read. Serialize forwards to the leaf, Deserialize is untagged over the two wire shapes)
-  pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self  (the schema-free leaf)
+### yggdryl::serie  [rust/src/serie.rs]  (many values: a schema-free run, or the Arrow buffers of one field. This IS the sequence family's value - `Scalar::Sequence(Serie)` - so there is one type for "many values" and not two. It adds no DataTypeId, no DataType variant and no Field variant. 24 bytes: the column leaves are shared behind one pointer each, the run is held inline because a row canonicalizes to one)
+  pub enum Serie  (#[non_exhaustive]; List(List) the schema-free run, then Null(Arc<NullSerie>), Boolean(Arc<BooleanSerie>), Integer(Arc<IntegerSerie>), Floating(Arc<FloatingSerie>), Decimal(Arc<DecimalSerie>), Temporal(Arc<TemporalSerie>), String(Arc<StringSerie>), Bytes(Arc<BytesSerie>), Struct(Arc<StructSerie>), Sequence(Arc<SequenceSerie>), LargeSequence(Arc<LargeSequenceSerie>), Mapping(Arc<MappingSerie>), Variant(Arc<VariantSerie>) - one column variant per family, each family an enum over its leaves. The nesting points back here: a record's child, a sequence's items and a mapping's entries are each a Serie. Ordering reads the rows then the leaf then the field; Hash is the leaf's own, never the discriminant, so a run's stable hash is what it always was and a column's costs no read)
+  pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self  (the schema-free run)
+  pub fn field(&self) -> Option<&Field>  (None for a run, which declares none)
+  pub fn require_field(&self) -> Result<&Field>  (the same read as a refusal; what a record's child, a sequence's items and a mapping's entries go through, since a run names no Arrow layout)
   pub fn as_slice(&self) -> Option<&[Scalar]>  (the run's own values; None for a column, which holds no Scalar to lend)
-  pub fn rows(&self) -> Result<Cow<'_, [Scalar]>>  (borrows the run's values, builds the column's; keeps nothing either way, and reports a value the column's field refuses)
-  pub fn row_count(&self) -> usize  (constant for either leaf, never a decode)
-  pub fn is_empty(&self) -> bool
-  pub const fn as_list(&self) -> Option<&List>
-  pub fn as_serie(&self) -> Option<&Serie>
-  pub fn into_inner(self) -> Result<Arc<[Scalar]>>
-
-### yggdryl::serie  [rust/src/serie.rs]  (one column: the Arrow buffers that hold the rows of one field, the fourth side of the value model; registered in the sequence family, so it adds no DataTypeId, no DataType variant and no Field variant. A column stores no Scalar - every leaf is one Arrow array behind the field that types it)
-  pub enum Serie  (Null(NullSerie), Boolean(BooleanSerie), Integer(IntegerSerie), Floating(FloatingSerie), Decimal(DecimalSerie), Temporal(TemporalSerie), String(StringSerie), Bytes(BytesSerie), Struct(StructSerie), List(ListSerie), Map(MapSerie), Variant(VariantSerie); one variant per family, each family an enum over its leaves. Ordering reads the field then the rows, hashing reads the field and the length so a hash never decodes a buffer)
-  pub fn field / len / is_empty / null_count / is_null  (constant, off the array)
+  pub fn rows(&self) -> Result<Cow<'_, [Scalar]>>  (borrows the run's values, builds the column's; keeps nothing either way)
+  pub const fn as_run(&self) -> Option<&List> / pub const fn is_column(&self) -> bool
+  pub fn into_arrow_array(&self) -> Option<ArrayRef>  (the buffers themselves; None for a run)
+  pub fn require_arrow_array(&self) -> Result<ArrayRef>  (the same, as a refusal)
+  pub fn len / is_empty / null_count / is_null  (constant for either leaf: a column knows its length without reading a row)
   pub fn scalar(&self, index: usize) -> Result<Scalar>  (one value built through the crate's one schema-directed decode; Scalar::Null past the end)
   pub fn scalars(&self) -> Result<Vec<Scalar>>  (every row, one at a time, nothing kept)
   pub fn set(&mut self, index: usize, value: Scalar) -> Result<()> / pub fn push(&mut self, value: Scalar) -> Result<()>  (the field's value contract, then the buffer write)
   pub fn dtype(&self) -> Result<DataType>  (list(<the field>), read rather than inferred)
   pub fn into_sequence(self) -> Result<Scalar>  (the rows as the schema-free run they are; the one direction that drops the field, spelled rather than implied)
-  pub const fn as_null / as_boolean / as_struct / as_list / as_map / as_variant(&self) -> Option<&..>  (the leaves the root holds directly)
-  pub const fn as_integer / as_floating / as_decimal / as_temporal / as_string / as_bytes(&self) -> Option<&..>  (the family enums)
-  pub const fn as_int8 / as_int16 / as_int32 / as_int64 / as_uint8 / as_uint16 / as_uint32 / as_uint64 / as_float32 / as_float64 / as_utf8 / as_large_utf8 / as_binary(&self) -> Option<&..>  (straight to one leaf)
+  pub fn as_null / as_boolean / as_struct / as_sequence / as_large_sequence / as_mapping / as_variant(&self) -> Option<&..>  (the column leaves the root holds directly; the two sequence widths are two leaves, so narrowing to the other answers None)
+  pub fn as_integer / as_floating / as_decimal / as_temporal / as_string / as_bytes(&self) -> Option<&..>  (the family enums)
+  pub fn as_int8 / as_int16 / as_int32 / as_int64 / as_uint8 / as_uint16 / as_uint32 / as_uint64 / as_float32 / as_float64 / as_utf8 / as_large_utf8 / as_binary(&self) -> Option<&..>  (straight to one leaf)
   pub const fn as_int8_mut / as_int16_mut / as_int32_mut / as_int64_mut / as_uint8_mut / as_uint16_mut / as_uint32_mut / as_uint64_mut / as_float32_mut / as_float64_mut / as_utf8_mut / as_large_utf8_mut / as_binary_mut / as_null_mut / as_boolean_mut / as_struct_mut / as_list_mut / as_map_mut / as_variant_mut / as_integer_mut / as_floating_mut / as_decimal_mut / as_temporal_mut / as_string_mut / as_bytes_mut(&mut self) -> Option<&mut ..>  (the mutable twin of each accessor above; the buffer writers live on the leaf)
   pub fn from_arrow_array(field: Field, array: ArrayRef) -> arrow::Result<Self>  (layout and nullability proven at every level in constant time; no row read, nothing copied)
   pub fn empty(field: Field) -> arrow::Result<Self>
@@ -3405,16 +3403,19 @@ pub enum DataType
   pub fn children(&self) -> &[Serie] / pub fn child(&self, name: &str) -> Option<&Serie> / pub fn child_at(&self, index: usize) -> Option<&Serie> / pub fn child_mut(&mut self, name: &str) -> Option<&mut Serie>
   pub const fn nulls(&self) -> Option<&NullBuffer>
   pub fn with_child(&self, child: &Serie) -> Result<Self> / pub fn without_child(&self, name: &str) -> Result<Self>  (one field edit and one Vec of pointers; the children that stay are shared, not rebuilt)
-  pub struct ListSerie  (pub fn items(&self) -> &Serie / items_mut / range(&self, index) -> Option<(usize, usize)> / nulls)
-  pub struct MapSerie  (pub fn entries(&self) -> &Serie / range / nulls)
-  pub struct VariantSerie  (one encoded run per row, over Binary or LargeBinary)
+  pub trait SequenceOffset: OffsetSizeTrait  (fn array / into_serie / from_serie; the bound is on the offset WIDTH, the way PrimitiveLeaf is on the Arrow width, so GenericSequenceSerie is one implementation over both. Implemented by i32 and i64)
+  pub struct GenericSequenceSerie<O: SequenceOffset>  (one Arc<Field>, one OffsetBuffer<O>, one item Serie, the validity bitmap)
+  pub type SequenceSerie = GenericSequenceSerie<i32> / pub type LargeSequenceSerie = GenericSequenceSerie<i64>
+  pub fn items(&self) -> &Serie / items_mut / offsets(&self) -> &OffsetBuffer<O> / range(&self, index) -> Option<(usize, usize)> / nulls
+  pub struct MappingSerie  (pub fn entries(&self) -> &Serie / range / nulls)
+  pub struct VariantSerie  (one encoded run per row, over Arrow Binary. One width only: DataType::Variant projects to Binary and nothing else, so there is no Large twin - the encoding names the storage)
   pub fn bytes(&self, index: usize) -> Option<&[u8]>  (the encoded run where it lies, undecoded)
-  pub fn payload(&self) -> &Buffer / pub fn offsets(&self) -> Option<&OffsetBuffer<i32>> / pub fn large_offsets(&self) -> Option<&OffsetBuffer<i64>> / pub fn nulls
+  pub fn payload(&self) -> &Buffer / pub fn offsets(&self) -> &OffsetBuffer<i32> / pub const fn array(&self) -> &BinaryArray / pub fn nulls
   pub fn push_bytes(&mut self, value: Option<&[u8]>)  (one already-encoded run, without decoding it)
 
   pub enum IntegerSerie / FloatingSerie / DecimalSerie / TemporalSerie / StringSerie / BytesSerie  (one variant per leaf of the family; each implements SerieValue and dispatches to the leaf)
-  impl SerieValue for every leaf, every family enum and Serie; impl Serialize and Deserialize for Serie, the serde shadow the private SerieWire, one document of the field and the rows
-  impl From<each family> for Serie; impl From<Serie> for Scalar; impl From<Serie> for Sequence
+  impl SerieValue for every column leaf and every family enum - NOT for Serie, whose run leaf has no field to answer with. impl Value and NestedValue for Serie. Serialize writes a run's values and a column's field beside its rows; Deserialize is untagged over the two shapes, the column's shadow the private SerieWire
+  impl From<each family> for Serie; impl From<List> for Serie; impl From<Serie> for Scalar
 
 ### yggdryl::mapping  [rust/src/mapping.rs]  (the mapping family: a list of key-value entries)
   pub enum MappingType  (#[non_exhaustive]; Map(Arc<MapType>), SortedMap(Arc<MapType>); the leaf is the promise, so no flag can disagree with it)
@@ -3869,7 +3870,7 @@ pub trait CodeValue: Value  (implemented by the eleven registered codes)
   fn as_str(&self) -> &str
   fn storage(&self) -> &SmolStr
   fn merge_with(self, other: &Self) -> Self  (provided as this code; the better statement of two codes of one kind: Cfi fills every `X` from the other where the two describe one instrument, State that reached none takes the other and otherwise the further along stands, Side `UNKNOWN`, Currency `XXX` and Mic `XXXX` take the other, every identifier stands as it is)
-pub trait NestedValue: Value  (implemented by List, Sequence, Mapping, Map and Struct)
+pub trait NestedValue: Value  (implemented by List, Serie, Mapping, Map and Struct)
   fn len(&self) -> usize
   fn is_empty(&self) -> bool  (provided: len() == 0)
   fn children(&self) -> Children<'_>
@@ -3882,7 +3883,7 @@ pub trait SerieValue  (the fourth side: many values of one field, a column. Impl
   fn into_arrow_array(&self) -> ArrayRef  (the buffers themselves)
   fn into_serie(self) -> Serie
   fn from_serie(value: &Serie) -> Option<&Self>
-pub enum Nested  (Sequence(Sequence), Mapping(Mapping), Struct(Struct); the nested family as one value, every variant named as the leaf and the Scalar variant are; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)
+pub enum Nested  (Sequence(Serie), Mapping(Mapping), Struct(Struct); the nested family as one value, every variant named as the Scalar variant is - Sequence holds a Serie, which is what that variant carries; Clone, Eq/Ord/Hash, Debug, Display = the leaf's)
   impl FamilyValue for Nested  (KIND = DataTypeKind::Nested)
   impl From<Sequence>, From<Mapping>, From<Struct> for Nested
   impl From<Nested> for Scalar

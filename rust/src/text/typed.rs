@@ -188,7 +188,7 @@ fn structure(value: Scalar, fields: &crate::StructType, field: &Field) -> Result
             Scalar::from_struct(prepared)
         }
         Scalar::Sequence(values) => {
-            if values.row_count() != fields.len() {
+            if values.len() != fields.len() {
                 return Err(invalid(field, "struct array has the wrong length"));
             }
             values

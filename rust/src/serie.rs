@@ -1,17 +1,38 @@
-//! Serie: one column, on the fourth side of the value model.
+//! Serie: many values, on the fourth side of the value model.
 //!
 //! One type, one file - and a folder beside it, because a column is as wide
-//! as Arrow's layouts are. [`DataType`] says what shape a column has,
-//! [`Field`] says whose it is and whether a row may be absent, and [`Scalar`]
-//! is one row of it. A [`Serie`] is the rows themselves, held the way Arrow
-//! holds them.
+//! as Arrow's layouts are. [`DataType`] says what shape a value has,
+//! [`Field`] says whose it is and whether a row may be absent, [`Scalar`] is
+//! one value, and a [`Serie`] is many of them. It is what the sequence
+//! family holds: `Scalar::Sequence(Serie)`, so there is one type for "many
+//! values" and not two.
 //!
 //! | side | root | trait | widen | narrow |
 //! | --- | --- | --- | --- | --- |
 //! | datatype | [`DataType`] | [`DataTypeValue`] | `into_dtype` | `from_dtype` |
 //! | field | [`Field`] | [`FieldValue`] | `into_field` | `from_field` |
 //! | value | [`Scalar`] | [`Value`] | `into_scalar` | `from_scalar` |
-//! | column | [`Serie`] | [`SerieValue`] | `into_serie` | `from_serie` |
+//! | many | [`Serie`] | [`SerieValue`] | `into_serie` | `from_serie` |
+//!
+//! # Two kinds of many, and one type over both
+//!
+//! [`Serie::List`] is a schema-free ordered run - what a row canonicalizes
+//! to, what a document parses as, and what [`Scalar::from_sequence`] builds.
+//! It holds its values and lends them. Every other leaf is a column: the
+//! Arrow buffers of one [`Field`], which holds no [`Scalar`] at all and
+//! builds a row only when one is asked for.
+//!
+//! What separates them is the field. A run declares none, so
+//! [`Serie::field`] answers `None` for it and its datatype is agreed back
+//! out of its rows; a column carries one, so its datatype is read rather
+//! than agreed and an empty column still names it.
+//!
+//! # The nesting points back here
+//!
+//! A record's child, a sequence's items and a mapping's entries are each a
+//! [`Serie`] - the same type, all the way down. So a column of records is
+//! columns of columns, and reaching a leaf three levels deep is three
+//! borrows and no copy.
 //!
 //! # The rows are buffers, and the leaf names them
 //!
@@ -29,15 +50,20 @@
 //! | [`StringSerie`] | [`Utf8StringSerie`], [`LargeUtf8StringSerie`], and the rest | the offsets and the character bytes |
 //! | [`BytesSerie`] | [`BinarySerie`] .. [`FixedBytesSerie`] | the offsets and the payload bytes |
 //! | [`StructSerie`] | - | one child [`Serie`] per child field |
-//! | [`ListSerie`] | - | the offsets, and the item column under them |
-//! | [`MapSerie`] | - | the offsets, and the entry column under them |
+//! | [`SequenceSerie`] | - | the offsets, and the item column under them |
+//! | [`MappingSerie`] | - | the offsets, and the entry column under them |
 //! | [`VariantSerie`] | - | the encoded bytes of one row, decoded on demand |
 //!
 //! Every leaf is one [`ArrayRef`]'s buffers behind the field that types them,
 //! so a column crosses into Arrow and back by sharing them -
-//! [`Serie::from_arrow_array`] and [`SerieValue::into_arrow_array`] copy no
-//! row - and a nested column crosses child by child, which is why
-//! [`StructSerie::child`] answers a column rather than a projection.
+//! [`Serie::from_arrow_array`] and [`Serie::into_arrow_array`] copy no row -
+//! and a nested column crosses child by child, which is why
+//! [`StructSerie::child`] answers a [`Serie`] rather than a projection.
+//!
+//! The column leaves are shared behind one pointer each, so a [`Scalar`]
+//! carrying a serie is two words and cloning one is a pointer bump. The run
+//! is held inline, because a row canonicalizes to one and paying an extra
+//! indirection per row is the one cost this type cannot take.
 //!
 //! # The value side is lazy
 //!
@@ -63,17 +89,15 @@
 //!   binary - is refused where it is read, by [`SerieValue::scalar`], and
 //!   never silently.
 //!
-//! A column of one field is a list of that field, which is a datatype the
-//! sequence family already owns, so a serie registers there rather than as a
-//! root of its own: [`Sequence::Serie`] carries it and
-//! `Scalar::Sequence(Sequence::Serie(..))` is how a column is a value. It
-//! adds no [`DataTypeId`](crate::DataTypeId), no [`DataType`] variant and no
+//! Many values of one field is a list of that field, which is a datatype the
+//! sequence family already owns, so a serie *is* that family's value rather
+//! than a root of its own: `Scalar::Sequence(Serie)`. It adds no
+//! [`DataTypeId`](crate::DataTypeId), no [`DataType`] variant and no
 //! [`Field`] variant.
 //!
-//! A column stores no [`Scalar`] anywhere, so it lends none: reading one as
-//! a sequence builds the rows asked for and keeps nothing.
-//! [`Sequence::as_slice`](crate::Sequence::as_slice) therefore answers only
-//! for the schema-free run, [`Sequence::rows`](crate::Sequence::rows) reads
+//! A column stores no [`Scalar`] anywhere, so it lends none: reading one
+//! builds the rows asked for and keeps nothing. [`Serie::as_slice`]
+//! therefore answers only for the schema-free run, [`Serie::rows`] reads
 //! either - borrowing the run's values, building the column's - and a walk
 //! over a value yields `Cow`, borrowed where the value was already there.
 //!
@@ -112,13 +136,16 @@
 //! [`SerieValue`]: crate::SerieValue
 //! [`Value`]: crate::Value
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::sequence::Sequence;
+use crate::sequence::List;
 use crate::value::SerieValue;
 use crate::{DataType, Field, Result, Scalar};
 
@@ -221,12 +248,12 @@ macro_rules! serie_family {
             }
 
             fn into_serie(self) -> Serie {
-                Serie::$variant(self)
+                Serie::$variant(::std::sync::Arc::new(self))
             }
 
             fn from_serie(value: &Serie) -> Option<&Self> {
                 match value {
-                    Serie::$variant(family) => Some(family),
+                    Serie::$variant(family) => Some(family.as_ref()),
                     _ => None,
                 }
             }
@@ -242,7 +269,7 @@ macro_rules! serie_family {
 
         impl From<$family> for Serie {
             fn from(value: $family) -> Self {
-                Self::$variant(value)
+                Self::$variant(::std::sync::Arc::new(value))
             }
         }
     };
@@ -253,7 +280,10 @@ mod primitive;
 mod text;
 mod variant;
 
-pub use nested::{ListSerie, MapSerie, StructSerie};
+pub use nested::{
+    GenericSequenceSerie, LargeSequenceSerie, MappingSerie, SequenceOffset, SequenceSerie,
+    StructSerie,
+};
 pub use primitive::{
     BooleanSerie, Date32Serie, Date64Serie, DateTimeMicrosecondSerie, DateTimeMillisecondSerie,
     DateTimeNanosecondSerie, DateTimeSecondSerie, Decimal32Serie, Decimal64Serie, Decimal128Serie,
@@ -489,46 +519,63 @@ serie_family!(
 // The root.
 // ------------------------------------------------------------------------
 
-/// One column: the field that types its rows, and the Arrow buffers that
-/// hold them.
+/// The sequence family's value: many values, under one field or under none.
 ///
-/// One variant per family, each an enum over the leaves that share a value
-/// reading - the same shape [`DataType`] has, for the same reason: a caller
-/// branching on the family never asks which width it was stored at, and one
-/// that wants the buffers narrows to the leaf and gets them typed.
+/// One type answers "many values" everywhere in the crate. A [`Serie::List`]
+/// is a schema-free ordered run - what a row canonicalizes to, and what a
+/// document parses as. Every other leaf is a column: the Arrow buffers of
+/// one [`Field`], one variant per family, each family an enum over the
+/// leaves that share a value reading. That is the shape [`DataType`] has,
+/// for the same reason - a caller branching on the family never asks which
+/// width it was stored at, and one that wants the buffers narrows to the
+/// leaf and gets them typed.
+///
+/// The column leaves are shared, so a [`Scalar`] carrying a serie is two
+/// words and a clone of one is a pointer bump. The run is held inline,
+/// because a row is one and paying an extra indirection per row is the one
+/// cost this type cannot take.
 #[derive(Clone)]
 #[non_exhaustive]
 pub enum Serie {
+    /// A schema-free ordered run of values: what a row canonicalizes to.
+    List(List),
     /// A column of nulls: a length, and no buffer at all.
-    Null(NullSerie),
+    Null(Arc<NullSerie>),
     /// A column of booleans.
-    Boolean(BooleanSerie),
+    Boolean(Arc<BooleanSerie>),
     /// A column of integers, at any signed or unsigned width.
-    Integer(IntegerSerie),
+    Integer(Arc<IntegerSerie>),
     /// A column of floats, at any IEEE width.
-    Floating(FloatingSerie),
+    Floating(Arc<FloatingSerie>),
     /// A column of exact decimals, at any coefficient width.
-    Decimal(DecimalSerie),
+    Decimal(Arc<DecimalSerie>),
     /// A column of temporals, at the unit its field declares.
-    Temporal(TemporalSerie),
+    Temporal(Arc<TemporalSerie>),
     /// A column of text, or of one registered code.
-    String(StringSerie),
+    String(Arc<StringSerie>),
     /// A column of bytes, or of one identity stored as bytes.
-    Bytes(BytesSerie),
-    /// A column of records, each child a column of its own.
-    Struct(StructSerie),
-    /// A column of lists, the items a column under the offsets.
-    List(ListSerie),
-    /// A column of mappings, the entries a column under the offsets.
-    Map(MapSerie),
+    Bytes(Arc<BytesSerie>),
+    /// A column of records, each child a serie of its own.
+    Struct(Arc<StructSerie>),
+    /// A column of sequences, the items a serie under 32-bit offsets.
+    Sequence(Arc<SequenceSerie>),
+    /// A column of sequences, the items a serie under 64-bit offsets.
+    LargeSequence(Arc<LargeSequenceSerie>),
+    /// A column of mappings, the entries a serie under the offsets.
+    Mapping(Arc<MappingSerie>),
     /// A column of self-describing values, each one encoded run of bytes.
-    Variant(VariantSerie),
+    Variant(Arc<VariantSerie>),
 }
 
-/// Forward one verb from the root to whichever family holds the rows.
-macro_rules! dispatch {
-    ($self:ident, $column:ident, $answer:expr) => {
+/// Forward one verb to whichever column holds the rows, with the run's own
+/// answer beside it.
+///
+/// The run is the one leaf that carries no field, so every verb that reads a
+/// field states what a run answers instead rather than pretending it has one.
+macro_rules! column {
+    ($self:ident, $run:ident => $bare:expr, $column:ident => $answer:expr) => {
         match $self {
+            Serie::List($run) => $bare,
             Serie::Null($column) => $answer,
             Serie::Boolean($column) => $answer,
             Serie::Integer($column) => $answer,
@@ -538,127 +585,242 @@ macro_rules! dispatch {
             Serie::String($column) => $answer,
             Serie::Bytes($column) => $answer,
             Serie::Struct($column) => $answer,
-            Serie::List($column) => $answer,
-            Serie::Map($column) => $answer,
+            Serie::Sequence($column) => $answer,
+            Serie::LargeSequence($column) => $answer,
+            Serie::Mapping($column) => $answer,
             Serie::Variant($column) => $answer,
         }
     };
 }
 
-impl SerieValue for Serie {
-    fn field(&self) -> &Field {
-        dispatch!(self, column, column.field())
-    }
-
-    fn len(&self) -> usize {
-        dispatch!(self, column, column.len())
-    }
-
-    fn null_count(&self) -> usize {
-        dispatch!(self, column, column.null_count())
-    }
-
-    fn is_null(&self, index: usize) -> bool {
-        dispatch!(self, column, column.is_null(index))
-    }
-
-    fn scalar(&self, index: usize) -> Result<Scalar> {
-        dispatch!(self, column, column.scalar(index))
-    }
-
-    fn set(&mut self, index: usize, value: Scalar) -> Result<()> {
-        dispatch!(self, column, column.set(index, value))
-    }
-
-    fn push(&mut self, value: Scalar) -> Result<()> {
-        dispatch!(self, column, column.push(value))
-    }
-
-    fn into_arrow_array(&self) -> ArrayRef {
-        dispatch!(self, column, column.into_arrow_array())
-    }
-
-    fn into_serie(self) -> Self {
-        self
-    }
-
-    fn from_serie(value: &Self) -> Option<&Self> {
-        Some(value)
-    }
+/// The same, where the verb needs the column to write to.
+macro_rules! column_mut {
+    ($self:ident, $run:ident => $bare:expr, $column:ident => $answer:expr) => {
+        match $self {
+            Serie::List($run) => $bare,
+            Serie::Null(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Boolean(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Integer(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Floating(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Decimal(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Temporal(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::String(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Bytes(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Struct(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Sequence(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::LargeSequence(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Mapping(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Variant(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+        }
+    };
 }
 
 impl fmt::Debug for Serie {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        dispatch!(self, column, fmt::Debug::fmt(column, formatter))
+        column!(
+            self,
+            run => fmt::Debug::fmt(run, formatter),
+            column => fmt::Debug::fmt(column.as_ref(), formatter)
+        )
     }
 }
 
-serie_leaf!(Serie);
+impl fmt::Display for Serie {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        column!(
+            self,
+            run => fmt::Display::fmt(run, formatter),
+            column => display_leaf(column.as_ref(), formatter)
+        )
+    }
+}
 
 impl Serie {
-    /// Return the field every row of this column is typed by.
-    pub fn field(&self) -> &Field {
-        SerieValue::field(self)
+    /// Construct a schema-free ordered run.
+    pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self {
+        Self::List(List::new(values))
+    }
+
+    /// Return the field every row is typed by, or `None` for a run.
+    ///
+    /// A run is schema free: its rows are whatever they are, and its
+    /// datatype is agreed back out of them rather than read off a field.
+    pub fn field(&self) -> Option<&Field> {
+        column!(
+            self,
+            _run => None,
+            column => Some(SerieValue::field(column.as_ref()))
+        )
     }
 
     /// Return the number of rows.
+    ///
+    /// Constant for either leaf: a column knows its length without reading a
+    /// row.
     pub fn len(&self) -> usize {
-        SerieValue::len(self)
+        column!(
+            self,
+            run => run.as_slice().len(),
+            column => SerieValue::len(column.as_ref())
+        )
     }
 
-    /// Return whether this column holds no rows.
+    /// Return whether this serie holds no rows.
     pub fn is_empty(&self) -> bool {
-        SerieValue::is_empty(self)
+        self.len() == 0
     }
 
     /// Return how many rows hold no value.
     pub fn null_count(&self) -> usize {
-        SerieValue::null_count(self)
+        column!(
+            self,
+            run => run.as_slice().iter().filter(|value| value.is_null()).count(),
+            column => SerieValue::null_count(column.as_ref())
+        )
     }
 
     /// Return whether row `index` holds no value.
     pub fn is_null(&self, index: usize) -> bool {
-        SerieValue::is_null(self, index)
+        column!(
+            self,
+            run => run.as_slice().get(index).is_none_or(Scalar::is_null),
+            column => SerieValue::is_null(column.as_ref(), index)
+        )
     }
 
-    /// Build row `index` as a value, or [`Scalar::Null`] past the end.
+    /// Return row `index` as a value, or [`Scalar::Null`] past the end.
+    ///
+    /// A run lends what it holds and clones it; a column builds the row from
+    /// its buffers and keeps nothing.
     ///
     /// # Errors
     ///
-    /// [`SerieValue::scalar`] carries the rule.
+    /// [`SerieValue::scalar`] carries the rule for a column. A run never
+    /// refuses.
     pub fn scalar(&self, index: usize) -> Result<Scalar> {
-        SerieValue::scalar(self, index)
+        column!(
+            self,
+            run => Ok(run.as_slice().get(index).cloned().unwrap_or(Scalar::Null)),
+            column => SerieValue::scalar(column.as_ref(), index)
+        )
     }
 
-    /// Overwrite row `index`, through the field's contract.
+    /// Overwrite row `index`, through the field's contract where there is one.
+    ///
+    /// A column's buffers are written in place when nothing else holds them
+    /// and copied once when something does, which is what sharing a column
+    /// between two values costs the first write.
     ///
     /// # Errors
     ///
-    /// [`SerieValue::set`] carries the rule.
+    /// [`SerieValue::set`] carries the rule, and a row past the end is
+    /// refused by name.
     pub fn set(&mut self, index: usize, value: Scalar) -> Result<()> {
-        SerieValue::set(self, index, value)
+        column_mut!(
+            self,
+            run => {
+                let mut values = run.as_slice().to_vec();
+                let slot = values.get_mut(index).ok_or_else(|| crate::Error::InvalidRecord {
+                    path: smol_str::SmolStr::new_static("$"),
+                    reason: smol_str::format_smolstr!(
+                        "row {index} is past the {} this run holds",
+                        run.as_slice().len()
+                    ),
+                })?;
+                *slot = value;
+                *run = List::new(values);
+                Ok(())
+            },
+            column => SerieValue::set(column, index, value)
+        )
     }
 
-    /// Append one row, through the field's contract.
+    /// Append one row, through the field's contract where there is one.
     ///
     /// # Errors
     ///
-    /// [`SerieValue::push`] carries the rule.
+    /// [`SerieValue::push`] carries the rule. A run accepts every value,
+    /// because it declares none.
     pub fn push(&mut self, value: Scalar) -> Result<()> {
-        SerieValue::push(self, value)
+        column_mut!(
+            self,
+            run => {
+                let mut values = run.as_slice().to_vec();
+                values.push(value);
+                *run = List::new(values);
+                Ok(())
+            },
+            column => SerieValue::push(column, value)
+        )
     }
 
-    /// Return the datatype this column materializes into.
+    /// Borrow the ordered values where the leaf holds them.
     ///
-    /// The field is carried, so this is a read rather than an agreement
-    /// computed back out of the rows: an empty column names its datatype
-    /// where an empty sequence cannot.
+    /// A run does and always will. A column holds Arrow buffers and no
+    /// [`Scalar`], so it has none to lend and answers `None`; [`Self::rows`]
+    /// is the door that reads it.
+    pub fn as_slice(&self) -> Option<&[Scalar]> {
+        match self {
+            Self::List(run) => Some(run.as_slice()),
+            _ => None,
+        }
+    }
+
+    /// Return the ordered values of whichever leaf this is.
+    ///
+    /// A run lends what it holds; a column builds its rows, one at a time,
+    /// and hands them over owned. Nothing is kept either way, so a caller
+    /// reading a column twice reads it twice - hold the answer rather than
+    /// asking again.
     ///
     /// # Errors
     ///
-    /// Infallible today; the signature is [`crate::Value::dtype`]'s.
-    pub fn dtype(&self) -> Result<DataType> {
-        Ok(DataType::list(self.field().clone()))
+    /// Returns the column's field's own refusal where its buffers hold a
+    /// value that field does not accept. A run never refuses.
+    pub fn rows(&self) -> Result<Cow<'_, [Scalar]>> {
+        match self {
+            Self::List(run) => Ok(Cow::Borrowed(run.as_slice())),
+            column => Ok(Cow::Owned(column.scalars()?)),
+        }
     }
 
     /// Build every row as a value.
@@ -670,20 +832,166 @@ impl Serie {
     ///
     /// [`SerieValue::scalar`] carries the rule, and names the row.
     pub fn scalars(&self) -> Result<Vec<Scalar>> {
+        if let Self::List(run) = self {
+            return Ok(run.as_slice().to_vec());
+        }
         (0..self.len()).map(|index| self.scalar(index)).collect()
     }
 
-    /// Return the rows as the schema-free sequence they are.
+    /// Return the datatype this serie materializes into.
     ///
-    /// The field is what a serie has that a sequence has not, so this is the
-    /// one direction that drops something and it is spelled rather than
-    /// implied.
+    /// A column carries its field, so this is a read: an empty column names
+    /// its datatype where an empty run cannot. A run has its item agreed
+    /// back out of its rows, which is what makes the two different values.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error where a run's rows do not agree on one item
+    /// datatype.
+    pub fn dtype(&self) -> Result<DataType> {
+        match self.field() {
+            Some(field) => Ok(DataType::list(field.clone())),
+            None => Scalar::Sequence(self.clone()).dtype(),
+        }
+    }
+
+    /// Return the rows as the schema-free run they are.
+    ///
+    /// The field is what a column has that a run has not, so this is the one
+    /// direction that drops something and it is spelled rather than implied.
+    /// A run answers itself.
     ///
     /// # Errors
     ///
     /// [`Self::scalars`] carries the rule.
     pub fn into_sequence(self) -> Result<Scalar> {
+        if matches!(self, Self::List(_)) {
+            return Ok(Scalar::Sequence(self));
+        }
         Ok(Scalar::from_sequence(self.scalars()?))
+    }
+
+    /// Return the schema-free run when this is that leaf.
+    pub fn as_run(&self) -> Option<&List> {
+        match self {
+            Self::List(run) => Some(run),
+            _ => None,
+        }
+    }
+
+    /// Return whether this serie is a column rather than a schema-free run.
+    pub const fn is_column(&self) -> bool {
+        !matches!(self, Self::List(_))
+    }
+
+    /// Return every row's buffers as one Arrow array, or `None` for a run.
+    ///
+    /// A run declares no field, so it names no Arrow layout; lay one out
+    /// with [`crate::arrow::array_from_value`] under the field it should
+    /// have.
+    pub fn into_arrow_array(&self) -> Option<ArrayRef> {
+        column!(
+            self,
+            _run => None,
+            column => Some(SerieValue::into_arrow_array(column.as_ref()))
+        )
+    }
+
+    /// The field this serie's rows are typed by, refused by name for a run.
+    ///
+    /// A run declares no field, so it cannot stand where a column must -
+    /// under a record's child, a sequence's item, a mapping's entry. The
+    /// refusal says that rather than inventing a field for it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the run where this is one.
+    pub fn require_field(&self) -> Result<&Field> {
+        self.field().ok_or_else(|| crate::Error::InvalidRecord {
+            path: smol_str::SmolStr::new_static("$"),
+            reason: smol_str::SmolStr::new_static(
+                "a schema-free run declares no field, so it cannot be a column",
+            ),
+        })
+    }
+
+    /// This serie's buffers, refused by name for a run.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::require_field`] carries the rule.
+    pub fn require_arrow_array(&self) -> Result<ArrayRef> {
+        self.require_field()?;
+        self.into_arrow_array()
+            .ok_or_else(|| crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new_static("$"),
+                reason: smol_str::SmolStr::new_static("a schema-free run names no Arrow layout"),
+            })
+    }
+
+    /// Which leaf this is, for the tie a run of equal rows leaves open.
+    const fn leaf_rank(&self) -> u8 {
+        match self {
+            Self::List(_) => 0,
+            _ => 1,
+        }
+    }
+}
+
+impl Default for Serie {
+    fn default() -> Self {
+        Self::List(List::default())
+    }
+}
+
+impl PartialEq for Serie {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Serie {}
+
+impl Ord for Serie {
+    /// The rows first, because that is what a reader of a sequence sees; the
+    /// leaf only breaks a tie, so a column never sorts away from the run it
+    /// holds, and two columns over one run order by the field that types
+    /// them.
+    fn cmp(&self, other: &Self) -> Ordering {
+        // A column reads its rows here; a run has none to read. Rows that
+        // cannot be read order after rows that can, and two that both refuse
+        // order equal, so the order stays total.
+        match (self.rows(), other.rows()) {
+            (Ok(left), Ok(right)) => left.as_ref().cmp(right.as_ref()),
+            (Ok(_), Err(_)) => return Ordering::Less,
+            (Err(_), Ok(_)) => return Ordering::Greater,
+            (Err(_), Err(_)) => Ordering::Equal,
+        }
+        .then_with(|| self.leaf_rank().cmp(&other.leaf_rank()))
+        .then_with(|| match (self.field(), other.field()) {
+            (Some(left), Some(right)) => left.cmp(right),
+            _ => Ordering::Equal,
+        })
+    }
+}
+
+impl PartialOrd for Serie {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Hash for Serie {
+    /// The leaf's own hash, never the discriminant: a schema-free run hashes
+    /// exactly what it hashed before the family had a second leaf, which is
+    /// what keeps every pinned stable hash byte-identical. A column hashes
+    /// its field and its length, so a hash never reads a buffer.
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        column!(
+            self,
+            run => run.hash(state),
+            column => hash_leaf(column.as_ref(), state)
+        );
     }
 }
 
@@ -697,9 +1005,12 @@ impl Serie {
 macro_rules! narrow_mut {
     ($(#[$meta:meta])* $name:ident, $leaf:ty, $family:ident, $held:ident, $variant:ident) => {
         $(#[$meta])*
-        pub const fn $name(&mut self) -> Option<&mut $leaf> {
+        pub fn $name(&mut self) -> Option<&mut $leaf> {
             match self {
-                Self::$family($held::$variant(column)) => Some(column),
+                Self::$family(family) => match ::std::sync::Arc::make_mut(family) {
+                    $held::$variant(column) => Some(column),
+                    _ => None,
+                },
                 _ => None,
             }
         }
@@ -710,9 +1021,12 @@ macro_rules! narrow_mut {
 macro_rules! narrow {
     ($(#[$meta:meta])* $name:ident, $leaf:ty, $family:ident, $held:ident, $variant:ident) => {
         $(#[$meta])*
-        pub const fn $name(&self) -> Option<&$leaf> {
+        pub fn $name(&self) -> Option<&$leaf> {
             match self {
-                Self::$family($held::$variant(column)) => Some(column),
+                Self::$family(family) => match family.as_ref() {
+                    $held::$variant(column) => Some(column),
+                    _ => None,
+                },
                 _ => None,
             }
         }
@@ -721,97 +1035,105 @@ macro_rules! narrow {
 
 impl Serie {
     /// Return the null column when this is that leaf.
-    pub const fn as_null(&self) -> Option<&NullSerie> {
+    pub fn as_null(&self) -> Option<&NullSerie> {
         match self {
-            Self::Null(column) => Some(column),
+            Self::Null(column) => Some(column.as_ref()),
             _ => None,
         }
     }
 
     /// Return the boolean column when this is that leaf.
-    pub const fn as_boolean(&self) -> Option<&BooleanSerie> {
+    pub fn as_boolean(&self) -> Option<&BooleanSerie> {
         match self {
-            Self::Boolean(column) => Some(column),
+            Self::Boolean(column) => Some(column.as_ref()),
             _ => None,
         }
     }
 
     /// Return the integer family when this column is one.
-    pub const fn as_integer(&self) -> Option<&IntegerSerie> {
+    pub fn as_integer(&self) -> Option<&IntegerSerie> {
         match self {
-            Self::Integer(family) => Some(family),
+            Self::Integer(family) => Some(family.as_ref()),
             _ => None,
         }
     }
 
     /// Return the floating family when this column is one.
-    pub const fn as_floating(&self) -> Option<&FloatingSerie> {
+    pub fn as_floating(&self) -> Option<&FloatingSerie> {
         match self {
-            Self::Floating(family) => Some(family),
+            Self::Floating(family) => Some(family.as_ref()),
             _ => None,
         }
     }
 
     /// Return the decimal family when this column is one.
-    pub const fn as_decimal(&self) -> Option<&DecimalSerie> {
+    pub fn as_decimal(&self) -> Option<&DecimalSerie> {
         match self {
-            Self::Decimal(family) => Some(family),
+            Self::Decimal(family) => Some(family.as_ref()),
             _ => None,
         }
     }
 
     /// Return the temporal family when this column is one.
-    pub const fn as_temporal(&self) -> Option<&TemporalSerie> {
+    pub fn as_temporal(&self) -> Option<&TemporalSerie> {
         match self {
-            Self::Temporal(family) => Some(family),
+            Self::Temporal(family) => Some(family.as_ref()),
             _ => None,
         }
     }
 
     /// Return the string family when this column is one.
-    pub const fn as_string(&self) -> Option<&StringSerie> {
+    pub fn as_string(&self) -> Option<&StringSerie> {
         match self {
-            Self::String(family) => Some(family),
+            Self::String(family) => Some(family.as_ref()),
             _ => None,
         }
     }
 
     /// Return the byte family when this column is one.
-    pub const fn as_bytes(&self) -> Option<&BytesSerie> {
+    pub fn as_bytes(&self) -> Option<&BytesSerie> {
         match self {
-            Self::Bytes(family) => Some(family),
+            Self::Bytes(family) => Some(family.as_ref()),
             _ => None,
         }
     }
 
     /// Return the record column when this is that leaf.
-    pub const fn as_struct(&self) -> Option<&StructSerie> {
+    pub fn as_struct(&self) -> Option<&StructSerie> {
         match self {
-            Self::Struct(column) => Some(column),
+            Self::Struct(column) => Some(column.as_ref()),
             _ => None,
         }
     }
 
-    /// Return the list column when this is that leaf.
-    pub const fn as_list(&self) -> Option<&ListSerie> {
+    /// Return the 32-bit-offset sequence column when this is that leaf.
+    pub fn as_sequence(&self) -> Option<&SequenceSerie> {
         match self {
-            Self::List(column) => Some(column),
+            Self::Sequence(column) => Some(column.as_ref()),
+            _ => None,
+        }
+    }
+
+    /// Return the 64-bit-offset sequence column when this is that leaf.
+    pub fn as_large_sequence(&self) -> Option<&LargeSequenceSerie> {
+        match self {
+            Self::LargeSequence(column) => Some(column.as_ref()),
             _ => None,
         }
     }
 
     /// Return the mapping column when this is that leaf.
-    pub const fn as_map(&self) -> Option<&MapSerie> {
+    pub fn as_mapping(&self) -> Option<&MappingSerie> {
         match self {
-            Self::Map(column) => Some(column),
+            Self::Mapping(column) => Some(column.as_ref()),
             _ => None,
         }
     }
 
     /// Return the variant column when this is that leaf.
-    pub const fn as_variant(&self) -> Option<&VariantSerie> {
+    pub fn as_variant(&self) -> Option<&VariantSerie> {
         match self {
-            Self::Variant(column) => Some(column),
+            Self::Variant(column) => Some(column.as_ref()),
             _ => None,
         }
     }
@@ -870,97 +1192,105 @@ impl Serie {
     );
 
     /// Return the null column to write when this is that leaf.
-    pub const fn as_null_mut(&mut self) -> Option<&mut NullSerie> {
+    pub fn as_null_mut(&mut self) -> Option<&mut NullSerie> {
         match self {
-            Self::Null(column) => Some(column),
+            Self::Null(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 
     /// Return the boolean column to write when this is that leaf.
-    pub const fn as_boolean_mut(&mut self) -> Option<&mut BooleanSerie> {
+    pub fn as_boolean_mut(&mut self) -> Option<&mut BooleanSerie> {
         match self {
-            Self::Boolean(column) => Some(column),
+            Self::Boolean(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 
     /// Return the struct column to write when this is that leaf.
-    pub const fn as_struct_mut(&mut self) -> Option<&mut StructSerie> {
+    pub fn as_struct_mut(&mut self) -> Option<&mut StructSerie> {
         match self {
-            Self::Struct(column) => Some(column),
+            Self::Struct(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 
     /// Return the list column to write when this is that leaf.
-    pub const fn as_list_mut(&mut self) -> Option<&mut ListSerie> {
+    pub fn as_sequence_mut(&mut self) -> Option<&mut SequenceSerie> {
         match self {
-            Self::List(column) => Some(column),
+            Self::Sequence(held) => Some(Arc::make_mut(held)),
+            _ => None,
+        }
+    }
+
+    /// Return the 64-bit-offset sequence column to write when this is that leaf.
+    pub fn as_large_sequence_mut(&mut self) -> Option<&mut LargeSequenceSerie> {
+        match self {
+            Self::LargeSequence(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 
     /// Return the map column to write when this is that leaf.
-    pub const fn as_map_mut(&mut self) -> Option<&mut MapSerie> {
+    pub fn as_mapping_mut(&mut self) -> Option<&mut MappingSerie> {
         match self {
-            Self::Map(column) => Some(column),
+            Self::Mapping(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 
     /// Return the variant column to write when this is that leaf.
-    pub const fn as_variant_mut(&mut self) -> Option<&mut VariantSerie> {
+    pub fn as_variant_mut(&mut self) -> Option<&mut VariantSerie> {
         match self {
-            Self::Variant(column) => Some(column),
+            Self::Variant(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 
     /// Return the integer family to write when this column is one.
-    pub const fn as_integer_mut(&mut self) -> Option<&mut IntegerSerie> {
+    pub fn as_integer_mut(&mut self) -> Option<&mut IntegerSerie> {
         match self {
-            Self::Integer(family) => Some(family),
+            Self::Integer(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 
     /// Return the floating family to write when this column is one.
-    pub const fn as_floating_mut(&mut self) -> Option<&mut FloatingSerie> {
+    pub fn as_floating_mut(&mut self) -> Option<&mut FloatingSerie> {
         match self {
-            Self::Floating(family) => Some(family),
+            Self::Floating(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 
     /// Return the decimal family to write when this column is one.
-    pub const fn as_decimal_mut(&mut self) -> Option<&mut DecimalSerie> {
+    pub fn as_decimal_mut(&mut self) -> Option<&mut DecimalSerie> {
         match self {
-            Self::Decimal(family) => Some(family),
+            Self::Decimal(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 
     /// Return the temporal family to write when this column is one.
-    pub const fn as_temporal_mut(&mut self) -> Option<&mut TemporalSerie> {
+    pub fn as_temporal_mut(&mut self) -> Option<&mut TemporalSerie> {
         match self {
-            Self::Temporal(family) => Some(family),
+            Self::Temporal(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 
     /// Return the string family to write when this column is one.
-    pub const fn as_string_mut(&mut self) -> Option<&mut StringSerie> {
+    pub fn as_string_mut(&mut self) -> Option<&mut StringSerie> {
         match self {
-            Self::String(family) => Some(family),
+            Self::String(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 
     /// Return the bytes family to write when this column is one.
-    pub const fn as_bytes_mut(&mut self) -> Option<&mut BytesSerie> {
+    pub fn as_bytes_mut(&mut self) -> Option<&mut BytesSerie> {
         match self {
-            Self::Bytes(family) => Some(family),
+            Self::Bytes(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -1044,11 +1374,20 @@ struct SerieWire {
 }
 
 impl Serialize for Serie {
+    /// A schema-free run writes its values; a column writes the field that
+    /// types them beside those values, because that is the one thing the
+    /// values cannot say for it.
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
         use serde::ser::Error as _;
 
+        let Some(field) = self.field() else {
+            return match self {
+                Self::List(run) => run.serialize(serializer),
+                _ => unreachable!("only a run carries no field"),
+            };
+        };
         SerieWire {
-            field: self.field().clone(),
+            field: field.clone(),
             rows: self.scalars().map_err(S::Error::custom)?,
         }
         .serialize(serializer)
@@ -1056,17 +1395,66 @@ impl Serialize for Serie {
 }
 
 impl<'de> Deserialize<'de> for Serie {
+    /// Either wire shape, told apart by its own form: a column is the
+    /// document a field and its rows make, a run is the values alone.
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
         use serde::de::Error as _;
 
-        let wire = SerieWire::deserialize(deserializer)?;
-        Self::from_scalars(wire.field, wire.rows).map_err(D::Error::custom)
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Wire {
+            Column(SerieWire),
+            Run(List),
+        }
+
+        Ok(match Wire::deserialize(deserializer)? {
+            Wire::Column(wire) => {
+                Self::from_scalars(wire.field, wire.rows).map_err(D::Error::custom)?
+            }
+            Wire::Run(run) => Self::List(run),
+        })
+    }
+}
+
+impl crate::value::Value for Serie {
+    fn dtype(&self) -> Result<DataType> {
+        Self::dtype(self)
+    }
+
+    fn into_scalar(self) -> Scalar {
+        Scalar::Sequence(self)
+    }
+
+    fn from_scalar(value: &Scalar) -> Option<&Self> {
+        match value {
+            Scalar::Sequence(value) => Some(value),
+            _ => None,
+        }
+    }
+}
+
+impl crate::value::NestedValue for Serie {
+    fn len(&self) -> usize {
+        Self::len(self)
+    }
+
+    fn children(&self) -> crate::value::Children<'_> {
+        match self {
+            Self::List(run) => crate::value::Children::Sequence(run.as_slice().iter()),
+            column => crate::value::Children::Column(crate::value::ColumnRows::new(column)),
+        }
     }
 }
 
 impl From<Serie> for Scalar {
     fn from(value: Serie) -> Self {
-        Self::Sequence(Sequence::from(value))
+        Self::Sequence(value)
+    }
+}
+
+impl From<List> for Serie {
+    fn from(value: List) -> Self {
+        Self::List(value)
     }
 }
 

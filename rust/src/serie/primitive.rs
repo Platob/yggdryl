@@ -238,12 +238,15 @@ macro_rules! primitive_leaf {
 
         impl PrimitiveLeaf for $arrow {
             fn into_serie(column: PrimitiveSerie<Self>) -> Serie {
-                Serie::$family(super::$held::$variant(column))
+                Serie::$family(::std::sync::Arc::new(super::$held::$variant(column)))
             }
 
             fn from_serie(serie: &Serie) -> Option<&PrimitiveSerie<Self>> {
                 match serie {
-                    Serie::$family(super::$held::$variant(column)) => Some(column),
+                    Serie::$family(family) => match family.as_ref() {
+                        super::$held::$variant(column) => Some(column),
+                        _ => None,
+                    },
                     _ => None,
                 }
             }
@@ -640,12 +643,12 @@ impl SerieValue for BooleanSerie {
     }
 
     fn into_serie(self) -> Serie {
-        Serie::Boolean(self)
+        Serie::Boolean(Arc::new(self))
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
         match value {
-            Serie::Boolean(column) => Some(column),
+            Serie::Boolean(column) => Some(column.as_ref()),
             _ => None,
         }
     }
@@ -709,12 +712,12 @@ impl SerieValue for NullSerie {
     }
 
     fn into_serie(self) -> Serie {
-        Serie::Null(self)
+        Serie::Null(Arc::new(self))
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
         match value {
-            Serie::Null(column) => Some(column),
+            Serie::Null(column) => Some(column.as_ref()),
             _ => None,
         }
     }

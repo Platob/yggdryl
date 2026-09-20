@@ -23,17 +23,17 @@ use arrow_array::types::{
 };
 use arrow_array::{
     Array, ArrayRef, BinaryArray, BooleanArray, FixedSizeBinaryArray, GenericByteArray,
-    GenericByteViewArray, LargeBinaryArray, LargeListArray, ListArray, MapArray, PrimitiveArray,
-    RecordBatch, RecordBatchOptions, RecordBatchReader, StructArray,
+    GenericByteViewArray, LargeListArray, ListArray, MapArray, PrimitiveArray, RecordBatch,
+    RecordBatchOptions, RecordBatchReader, StructArray,
 };
 use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType as ArrowDataType, IntervalUnit, TimeUnit as ArrowTimeUnit};
 
 use super::Serie;
-use super::nested::{ListOffsets, ListSerie, MapSerie, StructSerie};
+use super::nested::{LargeSequenceSerie, MappingSerie, SequenceSerie, StructSerie};
 use super::primitive::{BooleanSerie, NullSerie, PrimitiveSerie};
 use super::text::{ByteSerie, ByteViewSerie, FixedSerie, Raw, Text};
-use super::variant::{EncodedRuns, VariantSerie};
+use super::variant::VariantSerie;
 use crate::arrow::{
     BatchReader, Error, Result, arrow_schema_from_field, batch_reader, field_from_arrow_schema,
 };
@@ -132,18 +132,10 @@ fn column_of(field: Arc<Field>, array: &ArrayRef, parent: Option<&NullBuffer>) -
     }
 
     if matches!(dtype, DataType::Variant) {
-        let runs = match array.data_type() {
-            ArrowDataType::Binary => EncodedRuns::Small(held::<BinaryArray>(&field_ref, array)?),
-            ArrowDataType::LargeBinary => {
-                EncodedRuns::Large(held::<LargeBinaryArray>(&field_ref, array)?)
-            }
-            other => {
-                return Err(Error::IncompatibleSchema(format!(
-                    "a variant column is stored in binary, got {other}"
-                )));
-            }
-        };
-        return Ok(VariantSerie::new(field, runs).into_serie());
+        // `DataType::Variant` projects to Arrow `Binary` and nothing else,
+        // so there is one storage to take and `require_layout` has already
+        // refused anything but it.
+        return Ok(VariantSerie::new(field, held::<BinaryArray>(&field_ref, array)?).into_serie());
     }
 
     match array.data_type() {
@@ -260,9 +252,9 @@ fn column_of(field: Arc<Field>, array: &ArrayRef, parent: Option<&NullBuffer>) -
             let lists = held::<ListArray>(&field_ref, array)?;
             let item = item_field(&field_ref)?;
             let items = column_of(Arc::new(item), lists.values(), None)?;
-            Ok(ListSerie::new(
+            Ok(SequenceSerie::new(
                 field,
-                ListOffsets::Small(lists.offsets().clone()),
+                lists.offsets().clone(),
                 items,
                 lists.nulls().cloned(),
             )
@@ -272,9 +264,9 @@ fn column_of(field: Arc<Field>, array: &ArrayRef, parent: Option<&NullBuffer>) -
             let lists = held::<LargeListArray>(&field_ref, array)?;
             let item = item_field(&field_ref)?;
             let items = column_of(Arc::new(item), lists.values(), None)?;
-            Ok(ListSerie::new(
+            Ok(LargeSequenceSerie::new(
                 field,
-                ListOffsets::Large(lists.offsets().clone()),
+                lists.offsets().clone(),
                 items,
                 lists.nulls().cloned(),
             )
@@ -285,7 +277,7 @@ fn column_of(field: Arc<Field>, array: &ArrayRef, parent: Option<&NullBuffer>) -
             let entries = entry_field(&field_ref)?;
             let entry_array: ArrayRef = Arc::new(maps.entries().clone());
             let held_entries = column_of(Arc::new(entries), &entry_array, None)?;
-            Ok(MapSerie::new(
+            Ok(MappingSerie::new(
                 field,
                 held_entries,
                 maps.offsets().clone(),
@@ -391,8 +383,8 @@ impl Serie {
     ///
     /// Returns an error unless this column's field is a record root.
     pub fn into_arrow_batch(&self) -> Result<RecordBatch> {
-        let schema = arrow_schema_from_field(self.field())?;
-        let array = self.into_arrow_array();
+        let schema = arrow_schema_from_field(self.require_field()?)?;
+        let array = self.require_arrow_array()?;
         let Some(records) = array.as_any().downcast_ref::<StructArray>() else {
             return Err(Error::Internal {
                 site: "serie::into_arrow_batch",
@@ -411,7 +403,7 @@ impl Serie {
     ///
     /// [`Self::into_arrow_batch`] carries the rule.
     pub fn into_arrow_reader(&self) -> Result<BatchReader> {
-        let schema = arrow_schema_from_field(self.field())?;
+        let schema = arrow_schema_from_field(self.require_field()?)?;
         let batch = self.into_arrow_batch()?;
         Ok(batch_reader(schema, [batch]))
     }

@@ -32,20 +32,17 @@
 //! [`DataType::Sequence`]: crate::DataType::Sequence
 //! [`Self::item`]: SequenceType::item
 
-use std::borrow::Cow;
-use std::cmp::Ordering;
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::sync::Arc;
 
 use crate::Scalar;
 use crate::datatype::validate_non_negative;
-use crate::serie::Serie;
 use crate::value::DataTypeValue;
 use crate::value::Value;
 use crate::value::{Children, NestedValue};
 use crate::{DataType, DataTypeId, DataTypeKind, Field, Result};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 /// The sequence family's datatype payload.
 ///
@@ -273,265 +270,18 @@ impl NestedValue for List {
 
 impl Value for List {
     fn dtype(&self) -> Result<DataType> {
-        Scalar::Sequence(Sequence::List(self.clone())).dtype()
+        Scalar::Sequence(crate::Serie::List(self.clone())).dtype()
     }
 
     fn into_scalar(self) -> Scalar {
-        Scalar::Sequence(Sequence::List(self))
+        Scalar::Sequence(crate::Serie::List(self))
     }
 
     fn from_scalar(value: &Scalar) -> Option<&Self> {
         match value {
-            Scalar::Sequence(Sequence::List(value)) => Some(value),
+            Scalar::Sequence(crate::Serie::List(value)) => Some(value),
             _ => None,
         }
-    }
-}
-
-/// The sequence family's value payload.
-///
-/// Both leaves are the same rows in the same order; what a [`Serie`] adds is
-/// the [`Field`] that types them, which is why an empty serie names its
-/// datatype where an empty list cannot.
-///
-/// The two differ in one thing a reader can see: a run holds its values and
-/// lends them, while a column holds Arrow buffers and builds a row when one
-/// is asked for. So [`Self::as_slice`] answers only for the run, and
-/// [`Self::rows`] is the door that reads either - borrowing the run's values
-/// where they already are, and building the column's where they are not.
-/// Nothing caches: a column stores no [`Scalar`], and reading one leaves it
-/// exactly as it was.
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum Sequence {
-    /// A schema-free ordered run of values.
-    List(List),
-    /// A column: the Arrow buffers of one field, read a row at a time.
-    Serie(Arc<Serie>),
-}
-
-impl Sequence {
-    /// Construct a schema-free ordered sequence.
-    pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self {
-        Self::List(List::new(values))
-    }
-
-    /// Borrow the ordered values where the leaf holds them.
-    ///
-    /// A schema-free run does and always will. A column holds Arrow buffers
-    /// and no [`Scalar`], so it has none to lend and answers `None`;
-    /// [`Self::rows`] is the door that reads it.
-    pub fn as_slice(&self) -> Option<&[Scalar]> {
-        match self {
-            Self::List(values) => Some(values.as_slice()),
-            Self::Serie(_) => None,
-        }
-    }
-
-    /// Return the ordered values of whichever leaf this is.
-    ///
-    /// A run lends what it holds; a column builds its rows, one at a time,
-    /// and hands them over owned. Nothing is kept either way, so a caller
-    /// reading a column twice reads it twice - hold the answer rather than
-    /// asking again.
-    ///
-    /// # Errors
-    ///
-    /// Returns the column's field's own refusal where its buffers hold a
-    /// value that field does not accept. A schema-free run never refuses.
-    pub fn rows(&self) -> Result<Cow<'_, [Scalar]>> {
-        match self {
-            Self::List(values) => Ok(Cow::Borrowed(values.as_slice())),
-            Self::Serie(column) => Ok(Cow::Owned(column.scalars()?)),
-        }
-    }
-
-    /// Return whether this sequence holds no values.
-    ///
-    /// Constant for either leaf, the way [`Self::row_count`] is.
-    pub fn is_empty(&self) -> bool {
-        self.row_count() == 0
-    }
-
-    /// Return how many values this sequence holds.
-    ///
-    /// Constant for either leaf: a column knows its length without decoding
-    /// a row.
-    pub fn row_count(&self) -> usize {
-        match self {
-            Self::List(values) => values.as_slice().len(),
-            Self::Serie(column) => column.len(),
-        }
-    }
-
-    /// Returns the schema-free run when this is that leaf.
-    pub const fn as_list(&self) -> Option<&List> {
-        match self {
-            Self::List(values) => Some(values),
-            Self::Serie(_) => None,
-        }
-    }
-
-    /// Returns the column when this is that leaf.
-    pub fn as_serie(&self) -> Option<&Serie> {
-        match self {
-            Self::Serie(column) => Some(column.as_ref()),
-            Self::List(_) => None,
-        }
-    }
-
-    /// Consume this value and return its children as one shared run.
-    ///
-    /// # Errors
-    ///
-    /// [`Self::rows`] carries the rule.
-    pub fn into_inner(self) -> Result<Arc<[Scalar]>> {
-        match &self {
-            Self::List(values) => Ok(Arc::clone(&values.0)),
-            Self::Serie(column) => Ok(Arc::from(column.scalars()?)),
-        }
-    }
-
-    /// Which leaf this is, for the tie a run of equal rows leaves open.
-    const fn leaf_rank(&self) -> u8 {
-        match self {
-            Self::List(_) => 0,
-            Self::Serie(_) => 1,
-        }
-    }
-}
-
-impl Default for Sequence {
-    fn default() -> Self {
-        Self::List(List::default())
-    }
-}
-
-impl Ord for Sequence {
-    /// The rows first, because that is what a reader of a sequence sees; the
-    /// leaf only breaks a tie, so a column never sorts away from the run it
-    /// holds, and two columns over one run order by the field that types
-    /// them.
-    fn cmp(&self, other: &Self) -> Ordering {
-        // A column reads its rows here; a run has none to read. Rows that
-        // cannot be read order after rows that can, and two that both refuse
-        // order equal, so the order stays total.
-        match (self.rows(), other.rows()) {
-            (Ok(left), Ok(right)) => left.as_ref().cmp(right.as_ref()),
-            (Ok(_), Err(_)) => return Ordering::Less,
-            (Err(_), Ok(_)) => return Ordering::Greater,
-            (Err(_), Err(_)) => Ordering::Equal,
-        }
-        .then_with(|| self.leaf_rank().cmp(&other.leaf_rank()))
-        .then_with(|| match (self, other) {
-            (Self::Serie(left), Self::Serie(right)) => left.cmp(right),
-            _ => Ordering::Equal,
-        })
-    }
-}
-
-impl PartialOrd for Sequence {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl fmt::Display for Sequence {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::List(values) => fmt::Display::fmt(values, formatter),
-            Self::Serie(column) => fmt::Display::fmt(column.as_ref(), formatter),
-        }
-    }
-}
-
-impl Hash for Sequence {
-    /// The leaf's own hash, never the discriminant: a schema-free run hashes
-    /// exactly what it hashed before the family had a second leaf, which is
-    /// what keeps every pinned stable hash byte-identical.
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            Self::List(values) => values.hash(state),
-            Self::Serie(column) => column.hash(state),
-        }
-    }
-}
-
-impl NestedValue for Sequence {
-    fn len(&self) -> usize {
-        self.row_count()
-    }
-
-    fn children(&self) -> Children<'_> {
-        match self {
-            Self::List(values) => Children::Sequence(values.as_slice().iter()),
-            Self::Serie(column) => Children::Column(crate::value::ColumnRows::new(column)),
-        }
-    }
-}
-
-impl Value for Sequence {
-    fn dtype(&self) -> Result<DataType> {
-        Scalar::Sequence(self.clone()).dtype()
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Sequence(self)
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Sequence(value) => Some(value),
-            _ => None,
-        }
-    }
-}
-
-impl From<List> for Sequence {
-    fn from(value: List) -> Self {
-        Self::List(value)
-    }
-}
-
-impl From<Serie> for Sequence {
-    fn from(value: Serie) -> Self {
-        Self::Serie(Arc::new(value))
-    }
-}
-
-impl Serialize for Sequence {
-    /// A schema-free run writes its values; a column writes the field that
-    /// types them beside those values, because that is the one thing the
-    /// values cannot say for it.
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            Self::List(values) => values.serialize(serializer),
-            Self::Serie(values) => values.serialize(serializer),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Sequence {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        /// Either wire shape, told apart by its own form: a column is the
-        /// document a field and its rows make, a run is the values alone.
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Wire {
-            Serie(Serie),
-            List(List),
-        }
-
-        Ok(match Wire::deserialize(deserializer)? {
-            Wire::Serie(values) => Self::Serie(Arc::new(values)),
-            Wire::List(values) => Self::List(values),
-        })
     }
 }
 

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use yggdryl::arrow::batch_reader;
-use yggdryl::{DataType, Field, Scalar, Serie, SerieValue};
+use yggdryl::{DataType, Field, Scalar, Serie};
 
 use super::root;
 
@@ -72,8 +72,14 @@ fn a_multi_batch_stream_drains_into_one_column_of_every_row() {
 
     let column = Serie::from_arrow_reader(reader).expect("three batches of one schema");
     assert_eq!(column.len(), 6);
-    assert_eq!(column.field().name(), "row");
-    assert_eq!(column.field().dtype(), quotes_root().dtype());
+    assert_eq!(
+        column.field().expect("a column carries its field").name(),
+        "row"
+    );
+    assert_eq!(
+        column.field().expect("a column carries its field").dtype(),
+        quotes_root().dtype()
+    );
 
     // Every row is there, in the order the batches yielded them - and the
     // child is a column of its own, so the ids come off its values buffer.
@@ -93,11 +99,14 @@ fn an_empty_stream_drains_into_the_empty_column_of_its_declared_root() {
     let column = Serie::from_arrow_reader(reader).expect("a schema with no batches");
 
     assert!(column.is_empty());
-    assert_eq!(column.field().dtype(), quotes_root().dtype());
+    assert_eq!(
+        column.field().expect("a column carries its field").dtype(),
+        quotes_root().dtype()
+    );
     // Empty and still exact, which is the whole point of carrying the field.
     assert_eq!(
         column.dtype().unwrap(),
-        DataType::list(column.field().clone())
+        DataType::list(column.field().expect("a column carries its field").clone())
     );
 }
 
@@ -156,7 +165,7 @@ fn the_buffers_a_column_was_read_from_are_the_buffers_it_hands_back() {
     let array: ArrayRef = Arc::new(Int64Array::from(vec![7_i64, 8, 9]));
 
     let column = Serie::from_arrow_array(field, ArrayRef::clone(&array)).expect("an int64 column");
-    let back = column.into_arrow_array();
+    let back = column.into_arrow_array().expect("a column has buffers");
 
     // No row was decoded on the way in or on the way out: the values buffer
     // that came in is the one that goes back out.
