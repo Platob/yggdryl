@@ -302,9 +302,11 @@ impl FixCodec {
     /// messages that made it - re-emitting its lines, digesting, restating
     /// and stamping as they did, and carrying what their rows said for
     /// themselves - at the cost of the values it already holds and no parse.
-    /// One batch is held at a time. A source batch of another schema than
-    /// the first is a conflict item, and a row the schema does not make a
-    /// message of is an error item; either fuses the stream.
+    /// One thread holds one batch at a time. Several threads retain bounded
+    /// row chunks, which can span batches, and yield messages in source order.
+    /// A source batch of another schema than the first is a conflict item,
+    /// and a row the schema does not make a message of is an error item;
+    /// either fuses the stream.
     ///
     /// The one half every door that reads rows composes with
     /// [`Self::arrow_reader`]: `lifecycle_arrow_reader` walks between the

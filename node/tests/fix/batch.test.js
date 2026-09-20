@@ -534,7 +534,7 @@ test('a scalar alias never takes the identifiers Map name', () => {
 })
 
 test('messages pull from the reader one batch at a time', () => {
-  const codec = reading(seed())
+  const codec = reading(seed(), { threads: 1 })
   const source = codec.parseTextArrowReader(capture(CAPTURE, 3))
   const messages = codec.messages(source)
   assert.ok(messages instanceof fix.FixMessages)
