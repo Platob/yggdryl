@@ -3216,17 +3216,14 @@ fn a_field_states_the_spellings_that_mean_nothing_was_sent() {
     // The row types it as null, and the entries are the row read as a tree,
     // so a stated absence is no entry.
     let registry = Arc::new(FixRegistry::from_fields([field]).unwrap());
-    let message = super::FixCodec::new(Arc::clone(&registry))
-        .parse_fix_line(b"99=N/A|")
-        .expect("a readable frame");
+    let codec = super::FixCodec::new(registry).with_null_values::<[&str; 0], &str>([]);
+    let message = codec.parse_fix_line(b"99=N/A|").expect("a readable frame");
     assert_eq!(message.get_by_tag(99), Some(Scalar::Null));
     assert!(!message.entries().iter().any(|held| held.tag() == 99));
 
     // A value the list does not name is read as the price it is - a float
     // here, because the field this registry holds for the tag is one.
-    let message = super::FixCodec::new(registry)
-        .parse_fix_line(b"99=12.5|")
-        .expect("a readable frame");
+    let message = codec.parse_fix_line(b"99=12.5|").expect("a readable frame");
     assert_eq!(message.by_tag(99).unwrap(), Scalar::from(12.5_f64));
 }
 
@@ -4400,14 +4397,49 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
 
     // The Arrow value materializes exactly three fixentry levels; the fourth
     // and fifth fold into a non-empty leaf.
-    let schema = super::fix_schema(&registry, "row").unwrap();
+    let full = super::fix_schema(&registry, "row").unwrap();
+    let row = deep.into_row(&full).unwrap();
+    let columns = row.as_sequence().expect("a row");
+    assert!(
+        columns[full.index_of("parties").expect("the projected group")]
+            .as_sequence()
+            .is_some()
+    );
+    assert_eq!(
+        columns[full.index_of("symbol").expect("the projected symbol")].as_str(),
+        Some("AAPL")
+    );
+    let residual = columns[full
+        .index_of(super::FIXENTRIES_COLUMN)
+        .expect("the residual column")]
+    .as_sequence()
+    .unwrap_or_default();
+    assert!(
+        residual
+            .iter()
+            .map(entry_members)
+            .all(|held| { held[0] != Scalar::from(453) && held[0] != Scalar::from(55) }),
+        "fully projected fields are absent from the residual record"
+    );
+
+    // A projection without the typed group and symbol carries both in the
+    // residual record, where its bounded materialization can be inspected.
+    let schema = StructType::from_fields(
+        full.fields()
+            .iter()
+            .filter(|field| !matches!(field.name(), "parties" | "symbol"))
+            .cloned(),
+    )
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
     let row = deep.into_row(&schema).unwrap();
     let columns = row.as_sequence().expect("a row").to_vec();
-    let entries = columns
-        .last()
-        .unwrap()
-        .as_sequence()
-        .expect("the arrival column");
+    let entries = columns[schema
+        .index_of(super::FIXENTRIES_COLUMN)
+        .expect("the residual column")]
+    .as_sequence()
+    .expect("the arrival column");
     let level1 = entry_tagged(entries, 453);
     let level2 = entry_members(&level1[3].as_sequence().expect("one occurrence")[0]);
     let level3 = level2[3]
@@ -4838,25 +4870,41 @@ fn retirement_corpus(registry: &FixRegistry) -> Vec<String> {
 #[test]
 fn the_specifications_retirements_restate_as_documents_of_the_same_rules_would() {
     use super::retired::RULES;
-    let table = committed();
-    let mut documented = table.as_ref().clone();
-    for (tag, rules) in RULES {
-        let mut field = documented
-            .field_by_tag(*tag)
-            .expect("a retired tag the dictionary holds")
-            .clone();
+    let committed = committed();
+    let snapshot = crate::from_json_scalar(committed.into_json().unwrap()).unwrap();
+    let record = snapshot.as_struct().expect("a registry snapshot");
+    let fields = record[crate::FixCategory::Fields.as_str()]
+        .as_sequence()
+        .expect("the scalar definitions");
+    let mut stripped = Vec::with_capacity(fields.len());
+    let mut stated = Vec::with_capacity(fields.len());
+    let mut touched = 0;
+    for value in fields {
+        let mut field = Field::from_value(super::document::load(value.clone()).unwrap()).unwrap();
+        let tag = field.as_fix().tag().unwrap().unwrap_or_default();
+        let Some((_, rules)) = RULES.iter().find(|(held, _)| *held == tag) else {
+            stripped.push(value.clone());
+            stated.push(value.clone());
+            continue;
+        };
+        field
+            .as_fix_mut()
+            .remove_replacements()
+            .expect("replacement metadata can be removed");
         assert!(
             field.as_fix().replacements().next().is_none(),
-            "{} states the specification's retirement as a document of its own",
+            "{} is stripped before either fixture is built",
             field.name()
         );
+        stripped.push(super::document::dump(field.clone().into_value()).unwrap());
+
         let entries: Vec<FixReplacement> = rules
             .iter()
             .map(|rule| {
-                let plan: Plan = plan_of_retirement(&table, *tag, rule)
+                let plan: Plan = plan_of_retirement(&committed, tag, rule)
                     .parse()
                     .expect("a retirement spells a plan");
-                assert_plan_resolves(&table, &plan, field.name());
+                assert_plan_resolves(&committed, &plan, field.name());
                 FixReplacement::new(plan)
             })
             .collect();
@@ -4864,9 +4912,44 @@ fn the_specifications_retirements_restate_as_documents_of_the_same_rules_would()
             .as_fix_mut()
             .set_replacements(&entries)
             .expect("a document");
-        documented.update(field).expect("updated");
+        stated.push(super::document::dump(field.into_value()).unwrap());
+        touched += 1;
     }
-    let documented = Arc::new(documented);
+    assert_eq!(touched, 37, "every specification retirement was restated");
+    assert_eq!(touched, RULES.len());
+
+    let with_fields = |fields| {
+        let mut snapshot = record.clone();
+        snapshot.insert(
+            crate::FixCategory::Fields.as_str().into(),
+            Scalar::from_sequence(fields),
+        );
+        Scalar::from_struct(snapshot).expect("a registry snapshot")
+    };
+    let table = Arc::new(
+        FixRegistry::from_json(
+            &crate::into_json_scalar(&with_fields(stripped)).expect("the table snapshot"),
+        )
+        .expect("the table registry"),
+    );
+    for (tag, _) in RULES {
+        assert!(
+            table
+                .field_by_tag(*tag)
+                .expect("a retired tag the table holds")
+                .as_fix()
+                .replacements()
+                .next()
+                .is_none(),
+            "tag {tag} reaches the specification table"
+        );
+    }
+    let documented = Arc::new(
+        FixRegistry::from_json(
+            &crate::into_json_scalar(&with_fields(stated)).expect("the documented snapshot"),
+        )
+        .expect("the documented registry"),
+    );
     let clock = crate::Scalar::datetime64(
         1_704_190_530_000_000_000,
         crate::TimeUnit::Nanosecond,

@@ -443,13 +443,13 @@ A source row is read for every message it carries, so a capture answers one row 
     }
 
     // And out to the wire: one line per row, rebuilt from the message's
-    // own facts and its entries - what arrived, and what the dictionary
-    // derived from it.
+    // own facts and its entries. Residual entries lead, then projected facts
+    // reconstruct in schema order, so this canonical wire is explicit.
     let mut written = Vec::new();
     assert_eq!(codec.write_arrow_reader(codec.arrow_reader(schema, again)?, &mut written)?, 2);
     assert_eq!(
         String::from_utf8(written)?,
-        "8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|9999=x|59=0|10=0|\n8=FIX.4.4|35=8|17=E1|31=12.75|32=50|37=O9|59=0|381=637.5|10=0|\n",
+        "8=FIX.4.4|35=D|11=ORDER-1|9999=x|55=AAPL|54=1|59=0|10=0|\n8=FIX.4.4|35=8|17=E1|31=12.75|32=50|37=O9|381=637.5|59=0|10=0|\n",
     );
     ```
 
@@ -476,13 +476,13 @@ A source row is read for every message it carries, so a capture answers one row 
         assert held.into_row(schema) == message.into_row(schema)
 
     # And out to the wire: one line per row, rebuilt from the message's own
-    # facts and its entries - what arrived, and what the dictionary derived
-    # from it.
+    # facts and its entries. Residual entries lead, then projected facts
+    # reconstruct in schema order, so this canonical wire is explicit.
     sink = io.BytesIO()
     assert codec.write_arrow_reader(codec.arrow_reader(schema, again), sink) == 2
     assert sink.getvalue().decode().splitlines() == [
-        "8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|9999=x|59=0|10=0|",
-        "8=FIX.4.4|35=8|17=E1|31=12.75|32=50|37=O9|59=0|381=637.5|10=0|",
+        "8=FIX.4.4|35=D|11=ORDER-1|9999=x|55=AAPL|54=1|59=0|10=0|",
+        "8=FIX.4.4|35=8|17=E1|31=12.75|32=50|37=O9|381=637.5|59=0|10=0|",
     ]
     ```
 
@@ -510,12 +510,13 @@ A source row is read for every message it carries, so a capture answers one row 
 
     // And out to the wire: anything with write(chunk) is a sink - a stream,
     // a socket, an array - one line per row, rebuilt from the message's own
-    // facts and its entries.
+    // facts and its entries. Residual entries lead, then projected facts
+    // reconstruct in schema order, so this canonical wire is explicit.
     const chunks = []
     assert.equal(codec.writeArrowReader(codec.arrowReader(schema, again), { write: (chunk) => chunks.push(Buffer.from(chunk)) }), 2)
     assert.deepEqual(Buffer.concat(chunks).toString().split('\n').slice(0, 2), [
-      '8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|9999=x|59=0|10=0|',
-      '8=FIX.4.4|35=8|17=E1|31=12.75|32=50|37=O9|59=0|381=637.5|10=0|',
+      '8=FIX.4.4|35=D|11=ORDER-1|9999=x|55=AAPL|54=1|59=0|10=0|',
+      '8=FIX.4.4|35=8|17=E1|31=12.75|32=50|37=O9|381=637.5|59=0|10=0|',
     ])
     ```
 

@@ -197,15 +197,16 @@ test('a bridge capture parses whole and walks its chains', () => {
   assert.equal(parties.entries.length, 8)
 
   // The finite capture drops exact deliveries before it walks the chains.
-  // The bridge repeated 25 execution reports, six rows without a FIX type,
-  // and two cancel rejects. The one additional output is the expiry of a
-  // live order at its stated deadline.
+  // Canonical content removes two field-order duplicates and retains four
+  // reports that add ullink.bypassrisk metadata. That leaves 23 repeated
+  // reports, six rows without a FIX type, and two cancel rejects removed.
+  // One additional output expires a live order at its stated deadline.
   const walked = [...codec.lifecycle(messages)]
   const expired = walked.filter((message) => message.state === '95EXPIRED')
   const retained = walked.filter((message) => message.state !== '95EXPIRED')
-  assert.equal(retained.length, 61)
+  assert.equal(retained.length, 63)
   assert.equal(expired.length, 1)
-  assert.equal(walked.length, 62)
+  assert.equal(walked.length, 64)
 
   const counts = (held) => {
     const found = new Map()
@@ -220,11 +221,12 @@ test('a bridge capture parses whole and walks its chains', () => {
   const removed = Object.fromEntries(
     [...inputCounts].map(([type, count]) => [type, count - (retainedCounts.get(type) ?? 0)]).filter(([, count]) => count > 0),
   )
-  assert.deepEqual(removed, { 8: 25, '': 6, cancelreject: 2 })
+  assert.deepEqual(removed, { 8: 23, '': 6, cancelreject: 2 })
 
-  // The walk states a predecessor for every message that has one.
-  assert.equal(walked.filter((message) => message.prevuuid !== null).length, 22)
-  assert.equal(walked.filter((message) => message.seqnum > 0).length, 22)
+  // The default cross-code chains one additional retained bridge message.
+  // Every non-root message states both its predecessor and a positive sequence.
+  assert.equal(walked.filter((message) => message.prevuuid !== null).length, 23)
+  assert.equal(walked.filter((message) => message.seqnum > 0).length, 23)
   // A walked message descends from the whole chain before it, and every
   // retained source message keeps its own input line. The synthetic expiry
   // keeps its predecessor's provenance and lands at the stated deadline.
@@ -247,11 +249,10 @@ test('a bridge capture parses whole and walks its chains', () => {
   const rows = codec.lifecycleArrowReader(codec.arrowReader(schema, messages))
   const chained = [...codec.messages(rows)]
   assert.equal(chained.length, walked.length)
-  assert.equal(chained.filter((message) => message.prevuuid !== null).length, 22)
+  assert.equal(chained.filter((message) => message.prevuuid !== null).length, 23)
 
-  // Row intake settles a new content UUID and restates its intake-only header
-  // SendingTime. The lifecycle event clock, facts and chain topology are the
-  // same on both doors.
+  // Row intake preserves recorded identity; the lifecycle event clock,
+  // facts and chain topology agree on both doors.
   const signature = (message) => {
     const header = message.header()
     const event = message.event()
@@ -268,6 +269,10 @@ test('a bridge capture parses whole and walks its chains', () => {
       capture: message.capture(),
       metadata: message.metadata,
       event: {
+        curruuid: event.curruuid,
+        currhashcode: event.currhashcode,
+        prevuuid: event.prevuuid,
+        parentuuids: event.parentuuids,
         crossuuid: event.crossuuid,
         crosscode: event.crosscode,
         crosshashcode: event.crosshashcode,

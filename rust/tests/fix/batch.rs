@@ -792,6 +792,123 @@ fn lifecycle_drops_republications_and_true_retransmissions_but_keeps_distinct_de
 }
 
 #[test]
+fn lifecycle_delivery_identity_survives_arrow_reconstruction() {
+    let codec = codec();
+    let original = b"8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|1=ACCOUNT|55=AAPL|10=0|";
+    // The two ordinary row fields have distinct wire order but one content ID.
+    let reordered = b"8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|55=AAPL|1=ACCOUNT|10=0|";
+    let replay = b"8=FIX.4.4|35=D|49=S|56=T|34=7|43=Y|52=20260102-10:15:31|122=20260102-10:15:30|1=ACCOUNT|55=AAPL|10=0|";
+    // Delivery headers alone do not collapse changed content.
+    let changed_content =
+        b"8=FIX.4.4|35=D|49=S|56=T|34=7|52=20260102-10:15:30|1=ACCOUNT|55=MSFT|10=0|";
+    let distinct = b"8=FIX.4.4|35=D|49=S|56=T|34=8|52=20260102-10:15:32|1=ACCOUNT|55=AAPL|10=0|";
+    // No SendingTime or TransactTime: the fixed intake clock dates it, while
+    // the distinct delivery sequence keeps the otherwise same event.
+    let unstated_time = b"8=FIX.4.4|35=D|49=S|56=T|34=9|1=ACCOUNT|55=AAPL|10=0|";
+    let original_message = codec.parse_fix_line(original).unwrap();
+    let reordered_message = codec.parse_fix_line(reordered).unwrap();
+    assert_ne!(original_message.digest(), reordered_message.digest());
+    assert_eq!(
+        original_message.get_currhashcode(),
+        reordered_message.get_currhashcode()
+    );
+    let messages = vec![
+        original_message.clone(),
+        original_message,
+        reordered_message,
+        codec.parse_fix_line(replay).unwrap(),
+        codec.parse_fix_line(changed_content).unwrap(),
+        codec.parse_fix_line(distinct).unwrap(),
+        codec.parse_fix_line(unstated_time).unwrap(),
+        codec.parse_fix_line(unstated_time).unwrap(),
+    ];
+
+    let direct: Vec<FixMsg> = codec
+        .lifecycle(messages.clone())
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(
+        direct.len(),
+        4,
+        "repeat, reordered body, replay and duplicate unstated clock deduplicate"
+    );
+    assert_eq!(
+        direct
+            .iter()
+            .filter(|message| message.header().msgseqnum() == Some(7))
+            .count(),
+        2,
+        "changed content under one delivery header stays"
+    );
+    assert!(
+        direct
+            .iter()
+            .any(|message| message.header().msgseqnum() == Some(8)),
+        "a distinct delivery sequence stays"
+    );
+    assert!(
+        direct
+            .iter()
+            .any(|message| message.header().msgseqnum() == Some(9)),
+        "an unstated SendingTime without TransactTime stays"
+    );
+    assert_eq!(
+        codec
+            .lifecycle(direct.clone())
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap()
+            .len(),
+        direct.len(),
+        "a second walk retains the settled deliveries"
+    );
+
+    let schema = fix_schema(codec.registry(), "fix").unwrap();
+    let rows = codec.arrow_reader(schema, messages).unwrap();
+    let arrow: Vec<FixMsg> = codec
+        .messages(codec.lifecycle_arrow_reader(rows).unwrap())
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(arrow.len(), direct.len());
+    for (direct, arrow) in direct.iter().zip(&arrow) {
+        assert_eq!(arrow.get_curruuid(), direct.get_curruuid());
+        assert_eq!(arrow.get_currhashcode(), direct.get_currhashcode());
+        assert_eq!(arrow.get_prevuuid(), direct.get_prevuuid());
+        assert_eq!(arrow.get_parentuuids(), direct.get_parentuuids());
+        assert_eq!(arrow.get_state(), direct.get_state());
+        assert_eq!(arrow.get_seqnum(), direct.get_seqnum());
+        assert_eq!(arrow.get_currunix(), direct.get_currunix());
+    }
+}
+
+#[test]
+fn lifecycle_headerless_reordered_content_is_one_delivery_through_arrow() {
+    let codec = codec();
+    let first = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|1=ACCOUNT|55=AAPL|10=0|")
+        .unwrap();
+    let reordered = codec
+        .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|55=AAPL|1=ACCOUNT|10=0|")
+        .unwrap();
+    assert_ne!(first.digest(), reordered.digest());
+    assert_eq!(first.get_curruuid(), reordered.get_curruuid());
+
+    let direct: Vec<FixMsg> = codec
+        .lifecycle([first.clone(), reordered.clone()])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(direct.len(), 1);
+    let schema = fix_schema(codec.registry(), "fix").unwrap();
+    let rows = codec.arrow_reader(schema, [first, reordered]).unwrap();
+    let arrow: Vec<FixMsg> = codec
+        .messages(codec.lifecycle_arrow_reader(rows).unwrap())
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(arrow.len(), 1);
+    assert_eq!(arrow[0].get_curruuid(), direct[0].get_curruuid());
+    assert_eq!(arrow[0].get_currhashcode(), direct[0].get_currhashcode());
+}
+
+#[test]
 fn lifecycle_remembers_deliveries_across_the_whole_finite_capture() {
     let codec = codec();
     let first = codec

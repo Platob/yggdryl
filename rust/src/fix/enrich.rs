@@ -89,7 +89,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::expression::{Bound, Term};
 use crate::graph::instrument::InstrumentCodes;
 use crate::graph::iterator::order;
-use crate::graph::{Element, EventIterator};
+use crate::graph::{Element, Event, EventIterator};
 use crate::{DataType, Error, Field, FixCategory, Result, Scalar, StructType};
 
 use super::msg::FixMsg;
@@ -582,13 +582,13 @@ enum DeliveryKey {
         capture_session: Option<SmolStr>,
         sequence: u64,
         original_time: i64,
-        content: u128,
+        content: u64,
     },
     /// A headerless bridge row can only prove an exact repeated event. Its
     /// capture facts keep equal content observed in distinct contexts apart.
     Exact {
         uuid: crate::Uuid,
-        content: u128,
+        content: u64,
         sequence: Option<u64>,
         capture_session: Option<SmolStr>,
         capture_context: Option<SmolStr>,
@@ -604,7 +604,7 @@ fn text(message: &FixMsg, tag: i32) -> Option<SmolStr> {
 
 fn delivery_key(message: &FixMsg) -> DeliveryKey {
     let header = message.header();
-    let content = message.digest();
+    let content = message.get_currhashcode();
     let capture_session = message.capture().msgsessionid().map(SmolStr::new);
     let (Some(sender), Some(target), Some(sequence)) = (
         header.sendercompid(),
@@ -627,13 +627,18 @@ fn delivery_key(message: &FixMsg) -> DeliveryKey {
                     .as_str()
                     .is_some_and(|value| value.eq_ignore_ascii_case("Y"))
         });
+    let sending_time = if header.stated_sendingtime() {
+        header.sendingtime()
+    } else {
+        message.get_currunix()
+    };
     let original_time = if replay {
         message
             .get_by_tag(122)
             .and_then(|value| value.temporal_count_at(crate::TimeUnit::Nanosecond))
-            .unwrap_or_else(|| header.sendingtime())
+            .unwrap_or(sending_time)
     } else {
-        header.sendingtime()
+        sending_time
     };
     DeliveryKey::Session {
         beginstring: SmolStr::new(header.beginstring()),

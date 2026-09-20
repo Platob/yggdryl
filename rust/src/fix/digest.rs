@@ -94,7 +94,7 @@ static ENVELOPE_TAGS: LazyLock<Vec<i32>> = LazyLock::new(|| {
 });
 
 /// Whether one tag belongs to the envelope rather than the message.
-fn is_envelope(tag: i32) -> bool {
+pub(super) fn is_envelope(tag: i32) -> bool {
     ENVELOPE_TAGS.binary_search(&tag).is_ok()
 }
 

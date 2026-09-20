@@ -1311,6 +1311,76 @@ fn indexed_values_keep_gaps_and_nested_rows_replace_outer_occurrences() {
 }
 
 #[test]
+fn a_nested_payload_keeps_an_outer_group_whole_and_overrides_only_scalars() {
+    let payload = b"MSGTYPE=D|ORDERQTY=3|NOPARTYIDS=1|\
+NOPARTYIDS[0]=PARTYID=NESTED\x04\x03PARTYIDSOURCE=C\x04\x03PARTYROLE=7";
+    let mut frame = format!(
+        "8=FIX.4.4|35=UL|38=1|453=2|448=OUTER-A|447=D|452=1|\
+448=OUTER-B|447=D|452=3|212={}|213=",
+        payload.len()
+    )
+    .into_bytes();
+    frame.extend_from_slice(payload);
+    frame.extend_from_slice(b"|10=0|");
+
+    let message = reader().sole_line(&frame).unwrap();
+    assert_eq!(message.by_tag(453).unwrap(), Scalar::from(2_i32));
+    assert_eq!(message.by_tag(38).unwrap(), super::decimal("3"));
+
+    let schema = yggdryl::fix_schema(message.registry(), "fix").unwrap();
+    let parties_at = schema.index_of("parties").expect("the projected group");
+    let DataType::Sequence(SequenceType::List(party)) = schema.fields()[parties_at].dtype() else {
+        panic!("parties is not a list")
+    };
+    let partyid = party.index_of("partyid").expect("PartyID");
+    let source = party.index_of("partyidsource").expect("PartyIDSource");
+    let role = party.index_of("partyrole").expect("PartyRole");
+    let row = message.into_row(&schema).unwrap();
+    let parties = row
+        .get(parties_at)
+        .and_then(Scalar::as_sequence)
+        .expect("the projected occurrences");
+    assert_eq!(parties.len(), 2);
+    for (occurrence, (expected_id, expected_role)) in
+        parties.iter().zip([("OUTER-A", 1_i64), ("OUTER-B", 3_i64)])
+    {
+        let members = occurrence.as_sequence().expect("a party row");
+        assert_eq!(members[partyid].as_str(), Some(expected_id));
+        assert_eq!(members[source].as_str(), Some("D"));
+        assert_eq!(members[role].as_i64(), Some(expected_role));
+    }
+
+    // A shadowed numeric group ends before its later scalar: the outer
+    // group stays whole and the nested scalar still overrides its outer value.
+    let payload = b"MSGTYPE=D|453=1|448=NESTED|447=C|452=7|38=3|";
+    let mut frame = format!(
+        "8=FIX.4.4|35=UL|38=1|453=2|448=OUTER-A|447=D|452=1|\
+448=OUTER-B|447=D|452=3|212={}|213=",
+        payload.len()
+    )
+    .into_bytes();
+    frame.extend_from_slice(payload);
+    frame.extend_from_slice(b"|10=0|");
+    let numeric = reader().sole_line(&frame).unwrap();
+    assert_eq!(numeric.by_tag(453).unwrap(), Scalar::from(2_i32));
+    assert_eq!(numeric.by_tag(38).unwrap(), super::decimal("3"));
+    let row = numeric.into_row(&schema).unwrap();
+    let parties = row
+        .get(parties_at)
+        .and_then(Scalar::as_sequence)
+        .expect("the outer projected occurrences");
+    assert_eq!(parties.len(), 2);
+    for (occurrence, (expected_id, expected_role)) in
+        parties.iter().zip([("OUTER-A", 1_i64), ("OUTER-B", 3_i64)])
+    {
+        let members = occurrence.as_sequence().expect("an outer party row");
+        assert_eq!(members[partyid].as_str(), Some(expected_id));
+        assert_eq!(members[source].as_str(), Some("D"));
+        assert_eq!(members[role].as_i64(), Some(expected_role));
+    }
+}
+
+#[test]
 fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
     let reader = reader();
     let message = reader

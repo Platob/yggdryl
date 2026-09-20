@@ -14,13 +14,13 @@
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
-use yggdryl::graph::{Event, MarketElement};
+use yggdryl::graph::{Element, Event, MarketElement};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::{FixCodec, FixMsg, FixRegistry, IOMedia, Scalar, Timezone, Url};
 
-use super::path;
+use super::{SoleMessage, path};
 
 /// The capture, exactly as the bridge wrote it.
 const LOG: &[u8] = include_bytes!("ulbridge.log");
@@ -97,6 +97,52 @@ fn line_messages(codec: &FixCodec) -> Vec<FixMsg> {
         .parse_text_lines(text_lines())
         .collect::<yggdryl::Result<Vec<_>>>()
         .expect("every line reads")
+}
+
+#[test]
+fn ulbridge_lifecycle_preserves_deliveries_and_identities_through_arrow() {
+    let codec = codec().with_exclude_msgtypes::<[&str; 0], &str>([]);
+    let messages = line_messages(&codec);
+    assert_eq!(messages.len(), EVERY_ROW);
+    let schema = super::format_target(&registry());
+    let reader = codec.arrow_reader(schema, messages.clone()).unwrap();
+    let direct = codec
+        .lifecycle(messages)
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    // Two field-order duplicates collapse, while four bypass-risk metadata
+    // changes survive: 63 distinct source events and one expiry.
+    assert_eq!(direct.len(), 64);
+    assert_eq!(
+        direct
+            .iter()
+            .filter(|message| message.get_state().as_str() == "95EXPIRED")
+            .count(),
+        1
+    );
+    let arrow = codec
+        .messages(codec.lifecycle_arrow_reader(reader).unwrap())
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(arrow.len(), direct.len(), "the same distinct deliveries");
+    for (index, (before, after)) in direct.iter().zip(&arrow).enumerate() {
+        assert_eq!(after.get_curruuid(), before.get_curruuid(), "row {index}");
+        assert_eq!(
+            after.get_currhashcode(),
+            before.get_currhashcode(),
+            "row {index}"
+        );
+        assert_eq!(after.get_currunix(), before.get_currunix(), "row {index}");
+        assert_eq!(after.get_prevuuid(), before.get_prevuuid(), "row {index}");
+        assert_eq!(
+            after.get_parentuuids(),
+            before.get_parentuuids(),
+            "row {index}"
+        );
+        assert_eq!(after.get_srcuuids(), before.get_srcuuids(), "row {index}");
+        assert_eq!(after.get_seqnum(), before.get_seqnum(), "row {index}");
+        assert_eq!(after.get_state(), before.get_state(), "row {index}");
+    }
 }
 
 /// The batch door's answer for the whole capture: a capture row in, one FIX
@@ -516,25 +562,54 @@ fn a_parse_fills_the_crate_columns_the_line_only_implied() {
     );
 }
 
-/// The rows whose parties nest a sub-group, which is the one shape
-/// `FixMsg::from_row` names as inexact: a repeating group whose occurrences
-/// nest a second group only some of them state comes back with the nested
-/// occurrences behind the parties rather than inside the one that stated
-/// them, so the wire moves `NoPartySubIDs(802)` and its members.
-const PARTIES_NESTING_A_SUBGROUP: [usize; 4] = [4, 6, 37, 64];
+fn wire_tokens(wire: &str) -> Vec<&str> {
+    let mut tokens = wire
+        .split('|')
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    tokens.sort_unstable();
+    tokens
+}
 
-/// The rows whose bridge spelled a coded value in its own words.
-///
-/// `TimeInForce(59)` is a coded field, and this capture's bridge writes
-/// `TIMEINFORCE=day` where FIX's code set says `0`. The column holds the
-/// code, the arrival record holds the word, and only the line door still
-/// has the word to re-emit - which is what a row round trip costs for a
-/// venue's own spelling of a code.
-const A_VENUES_OWN_WORD_FOR_A_CODE: [usize; 3] = [76, 77, 78];
+fn unresolved_occurrences(
+    message: &FixMsg,
+) -> std::collections::BTreeMap<&str, Vec<&yggdryl::FixEntry>> {
+    let mut occurrences = std::collections::BTreeMap::<_, Vec<_>>::new();
+    for entry in message.entries().iter().filter(|entry| entry.tag() == 0) {
+        occurrences.entry(entry.name()).or_default().push(entry);
+    }
+    occurrences
+}
 
 #[test]
 fn the_writer_re_emits_each_rows_own_wire_and_none_of_the_captures_columns() {
     let codec = codec();
+    let source_messages = line_messages(&codec);
+    assert_eq!(source_messages.len(), ROWS);
+    let target = super::format_target(codec.registry());
+    let protocol_columns = target
+        .fields()
+        .iter()
+        .enumerate()
+        .filter_map(|(at, field)| {
+            let fix = field.as_fix();
+            fix.counter()
+                .expect("a valid group counter")
+                .or(fix.tag().expect("a valid FIX tag"))
+                // Crate facts and capture-derived MsgDirection are outside
+                // the protocol content written to the wire.
+                .filter(|tag| {
+                    !(yggdryl::CRATE_TAG_MIN..=yggdryl::CRATE_TAG_MAX).contains(tag)
+                        && *tag != yggdryl::MSGDIRECTION_TAG_NAME.0
+                })
+                .map(|tag| (at, field.name().to_owned(), tag))
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !protocol_columns.is_empty(),
+        "the fixed schema has FIX columns"
+    );
+
     let mut written: Vec<u8> = Vec::new();
     let filled = codec
         .parse_text_arrow_reader(source().read_arrow_reader(&reading()).expect("a reader"))
@@ -546,55 +621,97 @@ fn the_writer_re_emits_each_rows_own_wire_and_none_of_the_captures_columns() {
         .expect("the capture writes");
     assert_eq!(rows, ROWS as u64);
 
-    // A row in is a line out: every row's wire, the codec's separator, a
-    // newline - and the line door emits the same bytes for the same line.
-    let wires: Vec<String> = line_messages(&codec)
+    // A row in is a line out: root entries may move between residual and
+    // projected schema order, but every tag=value token remains exactly once.
+    let wires = source_messages
         .iter()
         .map(|message| String::from_utf8_lossy(&message.into_bytes(b'|')).into_owned())
-        .collect();
-    assert_eq!(wires.len(), ROWS);
-    let written: Vec<&str> = std::str::from_utf8(&written)
+        .collect::<Vec<_>>();
+    let written = std::str::from_utf8(&written)
         .expect("the wire is text here")
         .lines()
-        .collect();
+        .collect::<Vec<_>>();
+    assert_eq!(wires.len(), ROWS);
     assert_eq!(written.len(), ROWS);
-    for (at, wire) in wires.iter().enumerate() {
+    for (at, (message, wire)) in source_messages.iter().zip(&wires).enumerate() {
         // The capture's columns are the capture's: the body the line was
         // read from, its place in the object and the bridge's row header
         // are not content, so none of them reaches a counterparty.
         for carried in ["|body=", "|rownum=", "|mimetype=", "|url=", "|msgthreadid="] {
             assert!(!written[at].contains(carried), "row {at}: {}", written[at]);
         }
-        if PARTIES_NESTING_A_SUBGROUP.contains(&at) {
-            // Named, not skipped: what moves is the nested occurrence, and
-            // the two wires still hold the same bytes elsewhere.
-            assert!(wire.contains("|802="), "row {at} nests a sub-group");
-            assert_ne!(written[at], wire, "row {at}");
-            continue;
-        }
-        if A_VENUES_OWN_WORD_FOR_A_CODE.contains(&at) {
-            // The venue's own word for a coded value is what the arrival
-            // record keeps, and a row round trip types it: the line door
-            // re-emits `59=day` because that is what the bridge wrote, and
-            // the batch door re-emits `59=0` because the column it came
-            // back through holds the code. Everything else is byte for byte.
+        let source_tokens = wire_tokens(wire);
+        let stated_tags = source_tokens
+            .iter()
+            .filter_map(|token| token.split_once('=')?.0.parse::<i32>().ok())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            source_tokens,
+            wire_tokens(written[at]),
+            "row {at} lost or duplicated a scalar token"
+        );
+
+        // Root ordering is intentionally not a row contract. Reparse the
+        // emitted frame and compare protocol columns under the fixed schema,
+        // keeping nested scopes and repeated scalar/group order exact.
+        let reparsed = codec
+            .sole_line(written[at].as_bytes())
+            .unwrap_or_else(|error| panic!("row {at} did not parse: {error}"));
+        let reparsed_unknowns = unresolved_occurrences(&reparsed);
+        for (name, occurrences) in unresolved_occurrences(message) {
             assert_eq!(
-                written[at].replace("|59=0|", "|59=day|"),
-                *wire,
-                "row {at} differs in more than the coded word"
+                reparsed_unknowns.get(name),
+                Some(&occurrences),
+                "row {at} changed unresolved {name} occurrence order or content"
             );
-            continue;
         }
-        assert_eq!(written[at], wire, "row {at} re-emits its own wire");
+        // Pipes inside this length-delimited value are data, not root
+        // boundaries; the token multiset alone cannot prove their order.
+        assert_eq!(
+            reparsed.get_by_tag(213),
+            message.get_by_tag(213),
+            "row {at} changed XmlData bytes"
+        );
+        let source_row = message
+            .into_row(&target)
+            .unwrap_or_else(|error| panic!("row {at} did not project: {error}"));
+        let reparsed_row = reparsed
+            .into_row(&target)
+            .unwrap_or_else(|error| panic!("row {at} did not reproject: {error}"));
+        let source_cells = source_row.as_sequence().expect("a fixed row");
+        let reparsed_cells = reparsed_row.as_sequence().expect("a fixed row");
+        for (column, name, tag) in &protocol_columns {
+            // A fresh wire parse can infer a previously absent scalar from
+            // residual content. Conversely, capture fills such as Text can
+            // have a protocol tag without being emitted in this frame.
+            if source_cells[*column].is_null() || !stated_tags.contains(tag) {
+                continue;
+            }
+            let source = &source_cells[*column];
+            let reparsed = &reparsed_cells[*column];
+            // A bridge spelling such as `day` and the wire code `0` name
+            // one value in the registry's shared vocabulary.
+            let same_code = match (
+                source.as_str(),
+                reparsed.as_str(),
+                codec.registry().codeset_of(&target.fields()[*column]),
+            ) {
+                (Some(source), Some(reparsed), Some(codes)) => {
+                    matches!((codes.code_value(source), codes.code_value(reparsed)),
+                        (Some(source), Some(reparsed)) if source == reparsed)
+                }
+                _ => false,
+            };
+            assert!(
+                source == reparsed || same_code,
+                "row {at} changed FIX column {name}: {}",
+                written[at]
+            );
+        }
     }
 
-    // Every frame the bridge wrote with `|` comes back byte for byte, the
-    // XmlData rows included, because the entries are the frame and nothing
-    // read inside one of its values was recorded as an arrival.
-    let framed = wires
-        .iter()
-        .enumerate()
-        .filter(|(at, wire)| !PARTIES_NESTING_A_SUBGROUP.contains(at) && wire.contains("|10="))
-        .count();
+    // Every frame the bridge wrote with `|` comes back with all of its tokens,
+    // including frames whose nested groups changed root entry order.
+    let framed = wires.iter().filter(|wire| wire.contains("|10=")).count();
     assert!(framed >= 11, "{framed} frames checked");
 }

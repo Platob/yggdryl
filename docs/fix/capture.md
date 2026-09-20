@@ -415,8 +415,9 @@ A List group column carries `FIX:counter` beside the `FIX:tag` its definition de
     let header = schema.index_of("beginstring").expect("the band opens");
     assert_eq!(&columns[header..header + 4], ["beginstring", "msgtype", "msgcat", "msgseqnum"]);
     assert_eq!(columns.last(), Some(&"fixentries"));
-    assert_eq!(fix_schema_tags().len(), 118);
-    assert_eq!(columns.len(), 122);
+    // FIGI adds one protocol tag and its projected column.
+    assert_eq!(fix_schema_tags().len(), 119);
+    assert_eq!(columns.len(), 123);
     assert_eq!(&fix_schema_tags()[header..header + 4], [8, 35, 65054, 34]);
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -447,8 +448,9 @@ A List group column carries `FIX:counter` beside the `FIX:tag` its definition de
     header = columns.index("beginstring")
     assert columns[header:header + 4] == ["beginstring", "msgtype", "msgcat", "msgseqnum"]
     assert columns[-1] == "fixentries"
-    assert len(fix_schema_tags()) == 118
-    assert len(columns) == 122
+    # FIGI adds one protocol tag and its projected column.
+    assert len(fix_schema_tags()) == 119
+    assert len(columns) == 123
     assert fix_schema_tags()[header:header + 4] == [8, 35, 65054, 34]
 
     # The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -476,8 +478,9 @@ A List group column carries `FIX:counter` beside the `FIX:tag` its definition de
     const header = schema.indexOf('beginstring')
     assert.deepEqual(columns.slice(header, header + 4), ['beginstring', 'msgtype', 'msgcat', 'msgseqnum'])
     assert.equal(columns[columns.length - 1], 'fixentries')
-    assert.equal(fix.schemaTags().length, 118)
-    assert.equal(columns.length, 122)
+    // FIGI adds one protocol tag and its projected column.
+    assert.equal(fix.schemaTags().length, 119)
+    assert.equal(columns.length, 123)
     assert.deepEqual(fix.schemaTags().slice(header, header + 4), [8, 35, 65054, 34])
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.

@@ -554,7 +554,8 @@ def test_a_store_writes_the_whole_row_and_reads_its_own_dump_back(tmp_path: path
 
     # One shard arithmetic for every field, nine digits with leading zeros:
     # tag 35 lands in shard 0, tag 5001 in shard 50, the crate's own in 650.
-    assert sorted(str(path.relative_to(root)) for path in root.rglob("*.json")) == [
+    assert sorted(path.relative_to(root).as_posix() for path in root.rglob("*.json")) == [
+        "codesets/msgcatcodeset.json",
         "components/fixmsg.json",
         "fields/000000000.json",
         "fields/000000050.json",
@@ -1850,14 +1851,11 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert row[schema.index_of("msgsessionid")] is None
     assert row[schema.index_of("nofixentries")] == len(row[schema.index_of("fixentries")])
 
-    # The record closes the row with everything that arrived, a key no
-    # dictionary explained under tag 0 and its own name.
-    # A row cell is the ordered sequence its Struct declares: the tag, the
-    # canonical name, the value, and the entries nested under it.
-    # `ClOrdID(11)` is a fact the message lifts and `CheckSum(10)` the
-    # trailer's, so neither is an entry; the derived `TimeInForce(59)` is.
+    # The residual record holds only names no projected column represents.
+    # `ClOrdID(11)` is lifted and `TimeInForce(59)` is projected, so neither
+    # reaches it; the two unknown names remain under tag 0.
     arrived = row[schema.index_of("fixentries")]
-    assert [entry[0] for entry in arrived] == [0, 0, 59]
+    assert [entry[0] for entry in arrived] == [0, 0]
     assert [entry[1] for entry in arrived if entry[0] == 0] == ["9999", "venueownthing"]
     assert FixMsg.from_row(schema, row, seed).into_row(schema).as_py() == row
 
@@ -1960,10 +1958,10 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     # A column spelled for a field fills it where the frame stated none.
     assert parsed.column("msgsessionid").to_pylist() == ["e7254b22", None]
     assert parsed.column("msgseqnum").to_pylist() == [4507, 696]
-    # Row-only: what the row filled is never an entry, and neither is the
-    # trailer's own checksum; the derived `TimeInForce(59)` is.
+    # `Symbol(55)` and derived `TimeInForce(59)` are projected columns, so
+    # neither is staged in the residual record.
     assert [[entry["tag"] for entry in row] for row in parsed.column("fixentries").to_pylist()] == [
-        [55, 59],
+        [],
         [],
     ]
 
@@ -1984,10 +1982,10 @@ def test_a_rows_msgpluginid_fills_its_field_and_selects_nothing(seed: FixRegistr
     assert parsed.schema.names[0] == "body"
     assert parsed.schema.names.count("msgpluginid") == 1
     assert parsed.column("msgpluginid").to_pylist() == spellings
-    # The plugin selects nothing: the venue's key maps to its field on every
-    # row, so no arrival is left unresolved.
+    # The plugin selects nothing: the venue key remains residual because the
+    # fixed schema has no column for it; derived TimeInForce is projected.
     for row in parsed.column("fixentries").to_pylist():
-        assert [entry["tag"] for entry in row] == [5001, 59]
+        assert [entry["tag"] for entry in row] == [5001]
 
     # One line read alone answers exactly what the batch did, and the plugin
     # is a fact about the capture rather than an entry.

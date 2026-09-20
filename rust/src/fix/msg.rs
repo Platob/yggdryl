@@ -1004,7 +1004,10 @@ impl FixMsg {
     /// [the wire digest](super::digest) states too. A capture logs one
     /// message at every hop it passes and each hop frames it in a session
     /// of its own, so a code over the rest of the frame would make one
-    /// message as many messages as hops. The cross code names a chain and
+    /// message as many messages as hops. Residual header or trailer entries
+    /// use the wire digest's same envelope predicate, so storing an
+    /// unlifted `OrigSendingTime(122)`, `PossResend(97)`, or `BodyLength(9)`
+    /// cannot change this canonical code. The cross code names a chain and
     /// stays outside the content digest too. The derived `msgsectxid`
     /// identifier records capture provenance and is excluded for the same
     /// reason as the capture fields it combines.
@@ -2226,6 +2229,9 @@ fn feed_entries(state: &mut crate::xxhash::Xxh3, entries: &[FixEntry]) {
 
 /// Feeds one entry with boundaries around each variable-length member.
 fn feed_entry(state: &mut crate::xxhash::Xxh3, entry: &FixEntry) {
+    if super::digest::is_envelope(entry.tag()) {
+        return;
+    }
     state.write_usize(entry.name().len());
     state.write(entry.name().as_bytes());
     if let Some(value) = entry.value() {
@@ -2235,7 +2241,13 @@ fn feed_entry(state: &mut crate::xxhash::Xxh3, entry: &FixEntry) {
     } else {
         state.write_u8(0);
     }
-    state.write_usize(entry.entries().len());
+    state.write_usize(
+        entry
+            .entries()
+            .iter()
+            .filter(|child| !super::digest::is_envelope(child.tag()))
+            .count(),
+    );
     feed_entries(state, entry.entries());
 }
 

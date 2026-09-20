@@ -1302,6 +1302,24 @@ impl<'registry> Builder<'registry> {
                 return;
             }
             self.open.clear();
+            // A nested row cannot partly replace a group the enclosing frame
+            // already stated. Keep the open-group cursor only to consume its
+            // numeric members; `push_grouped` sees the shadowed root and
+            // leaves both the frame's counter and its occurrences untouched.
+            if let Some(group) = self
+                .outer
+                .and_then(|_| self.numeric_group(parsed))
+                .filter(|group| self.shadowed(group.name()))
+            {
+                self.open.push(OpenGroup {
+                    name: SmolStr::new(group.name()),
+                    members: declared_members(group),
+                    occurrence: None,
+                    base: 0,
+                    seen: Vec::new(),
+                });
+                return;
+            }
             // The tag's first holder, the same probe `push_pairs` reads under.
             match self.by_tag(parsed) {
                 Some(found) => {
@@ -1337,6 +1355,13 @@ impl<'registry> Builder<'registry> {
             located = self.known(key);
             self.field_from(key, located.field, self.scope())
         };
+        let counter = self.counter_from(&located);
+        if counter
+            .as_ref()
+            .is_some_and(|(group, _)| self.shadowed(group.name()))
+        {
+            return;
+        }
         if self.shadowed(field.name()) {
             self.overshadow(field.name());
         }
@@ -1360,10 +1385,7 @@ impl<'registry> Builder<'registry> {
         // The counter's child is built first, so the count keeps the column
         // its own field names; the group it heads is opened after it, empty
         // until a member arrives - located, indexed or numbered.
-        if let Some((group, counter)) = self.counter_from(&located) {
-            if self.shadowed(group.name()) {
-                self.overshadow(group.name());
-            }
+        if let Some((group, counter)) = counter {
             // Not `known`, for the reason the numeric path states: the
             // counter holds the tag, the group it heads does not.
             self.slot_for(group, counter, false).group = true;

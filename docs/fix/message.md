@@ -445,14 +445,14 @@ A written value is then [restated](#restated-under-the-dictionary) exactly as a 
     );
 
     // The written message is a fixed row, and the row a message again:
-    // the same canonical row and content identity; wire order is not a row contract.
+    // the same canonical row and content identity. Residual entries rebuild before
+    // projected columns, so entry and wire order are not row contracts.
     let schema = fix_schema(&registry, "fix")?;
     let row = message.into_row(&schema)?;
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row)?;
     assert_eq!(held.by_tag(55)?, message.by_tag(55)?);
-    assert_eq!(held.entries(), message.entries());
+    assert_eq!(held.by_tag(7777)?.as_str(), Some("custom"));
     assert_eq!(held.get_currhashcode(), message.get_currhashcode());
-    assert_eq!(held.into_bytes(b'|'), message.into_bytes(b'|'));
     assert_eq!(held.into_row(&schema)?, row);
     ```
 
@@ -514,14 +514,14 @@ A written value is then [restated](#restated-under-the-dictionary) exactly as a 
     assert message.into_text("|") == "8=FIX.4.4|35=D|34=7|52=20260102-10:15:30|11=A1|55=MSFT|9999=x|59=0|7777=custom|10=0|"
 
     # The written message is a fixed row, and the row a message again: the same
-    # canonical row and content identity; wire order is not a row contract.
+    # canonical row and content identity. Residual entries rebuild before projected
+    # columns, so entry and wire order are not row contracts.
     schema = fix_schema(registry, "fix")
     row = message.into_row(schema)
     held = FixMsg.from_row(schema, row, registry)
     assert held.by_tag(55) == message.by_tag(55)
-    assert held.entries() == message.entries()
+    assert held.by_tag(7777).as_py() == "custom"
     assert held.currhashcode == message.currhashcode
-    assert held.into_bytes(ord("|")) == message.into_bytes(ord("|"))
     assert held.into_row(schema) == row
     ```
 
@@ -584,11 +584,13 @@ A written value is then [restated](#restated-under-the-dictionary) exactly as a 
     )
 
     // A fixed row preserves the semantic message: projected facts and residual
-    // entries rebuild to the same row and content identity.
+    // entries rebuild to the same row and content identity; their order is not
+    // a row contract.
     const schema = fix.schema(registry, 'fix')
     const row = message.intoRow(schema)
     const held = fix.FixMsg.fromRow(schema, row, registry)
     assert.ok(held.byTag(55).equals(message.byTag(55)))
+    assert.equal(held.byTag(7777).asJs(), 'custom')
     assert.equal(held.currhashcode, message.currhashcode)
     assert.ok(held.intoRow(schema).equals(row))
     ```

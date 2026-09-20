@@ -287,7 +287,9 @@ def test_a_capture_answers_one_row_per_message_not_one_per_line(seed: FixRegistr
     # Every row settles its identity, so the non-null columns are filled.
     assert all(held is not None for held in _column(parsed, "curruuid"))
     assert all(held is not None for held in _column(parsed, "currhashcode"))
-    assert len(_column(parsed, "fixentries")[0]) >= 1
+    # This ordinary message is fully projected; the residual record remains
+    # present but empty rather than restaging projected facts.
+    assert _column(parsed, "fixentries")[0] == []
 
 
 def test_several_small_input_batches_accumulate_into_one_output_batch(seed: FixRegistry) -> None:

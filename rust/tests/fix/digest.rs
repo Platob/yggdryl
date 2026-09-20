@@ -130,6 +130,34 @@ fn the_envelope_is_not_the_message() {
 }
 
 #[test]
+fn every_header_extra_is_excluded_from_the_canonical_message_hash() {
+    let reader = reader();
+    let original = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|")
+        .unwrap();
+    let replay = reader
+        .sole_line(
+            b"8=FIX.4.4|9=999|35=D|122=20240102-10:15:30.000|97=Y|50=DESK|11=A|55=AAPL|10=000|",
+        )
+        .unwrap();
+    // The wire digest already ignores all envelope fields. The canonical
+    // message hash must do the same for deduplication and lifecycle identity.
+    assert_eq!(original.digest(), replay.digest());
+    assert_eq!(
+        yggdryl::graph::Element::get_currhashcode(&original),
+        yggdryl::graph::Element::get_currhashcode(&replay)
+    );
+
+    let changed = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=MSFT|10=0|")
+        .unwrap();
+    assert_ne!(
+        yggdryl::graph::Element::get_currhashcode(&original),
+        yggdryl::graph::Element::get_currhashcode(&changed)
+    );
+}
+
+#[test]
 fn two_unknown_keys_carrying_one_value_are_two_messages() {
     let reader = reader();
     // Neither key names a field, so the tag is `0` for both and only the key

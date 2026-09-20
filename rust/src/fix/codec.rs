@@ -2071,12 +2071,16 @@ impl FixCodec {
     /// fused.
     ///
     /// Exact republications and flagged FIX retransmissions are removed by a
-    /// delivery set over session, sequence, original time and wire content,
-    /// bounded by the number of distinct deliveries in the finite capture.
-    /// Distinct deliveries with equal business content
-    /// remain distinct. Missing instrument codes may be learned from earlier
-    /// messages of this lifecycle only, after sorting, and never overwrite a
-    /// stated fact. Finite expirations emit at their exact deadline. Where
+    /// delivery set over session, sequence, original time and the recorded
+    /// canonical content code. That code survives a semantic row round trip,
+    /// so this walk and [`Self::lifecycle_arrow_reader`] remove the same
+    /// deliveries. A row without a complete session header keeps the stricter
+    /// event identity, capture context, direction and sequence in its key. The
+    /// set is bounded by the number of distinct deliveries in the finite
+    /// capture. Distinct deliveries with equal business content remain
+    /// distinct. Missing instrument codes may be learned from earlier messages
+    /// of this lifecycle only, after sorting, and never overwrite a stated
+    /// fact. Finite expirations emit at their exact deadline. Where
     /// [`Self::snapshot_ns`] is set, separate owned views of every living
     /// identity are emitted on that epoch-aligned grid without advancing its
     /// chain.
