@@ -630,10 +630,10 @@ impl IcebergOptions {
     /// use yggdryl::iceberg::{
     ///     FormatVersion, IcebergOptions, PartitionSpec, TableMetadata, assign_field_ids,
     /// };
-    /// use yggdryl::{DataType, Field, StructureType};
+    /// use yggdryl::{DataType, Field, StructType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut schema: Field = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+    /// let mut schema: Field = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
     ///     .required_field("row");
     /// assign_field_ids(&mut schema, 1)?;
     /// let mut metadata = TableMetadata::new(

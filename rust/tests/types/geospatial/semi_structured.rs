@@ -1,4 +1,4 @@
-use yggdryl::{DataType, GeospatialParameters, StructureType};
+use yggdryl::{DataType, GeospatialParameters, StructType};
 use yggdryl::{DataTypeId, DataTypeKind, EdgeAlgorithm};
 use yggdryl::{Field, Scalar};
 
@@ -189,7 +189,7 @@ fn defaults_are_a_present_variant_null_and_a_point_empty() {
 #[test]
 fn rows_validate_through_the_new_columns() {
     let root = |field: Field| {
-        StructureType::from_fields([field])
+        StructType::from_fields([field])
             .map(DataType::from)
             .unwrap()
             .required_field("row")
@@ -237,7 +237,7 @@ fn rows_validate_through_the_new_columns() {
 fn compatibility_rows_answer_for_every_target() {
     use yggdryl::Scheme;
 
-    let schema = StructureType::from_fields([
+    let schema = StructType::from_fields([
         DataType::Variant.nullable_field("payload"),
         DataType::geometry(None).unwrap().nullable_field("shape"),
         DataType::geography(None, None)

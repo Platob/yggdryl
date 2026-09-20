@@ -10,6 +10,7 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 
 use crate::arrow::BatchReader;
+use crate::graph::Event as _;
 use crate::media::IORecordOptions as _;
 use crate::{DataType, Result, Scalar};
 
@@ -112,37 +113,24 @@ fn value_of(
     options: &TextOptions,
 ) -> Result<Scalar> {
     Ok(match source {
+        // The line's own reading of the fact, which refuses by name a
+        // capture the fact's type cannot read.
+        TextSource::Event(column) => line.event_fact(*column)?.unwrap_or(Scalar::Null),
         TextSource::Url => line
             .shared_url()
             .map_or(Scalar::Null, |url| Scalar::Url(Arc::clone(url))),
         TextSource::Rownum => super::arrow::physical_rownum(options.start_rownum, line.index())?
             .map_or(Scalar::Null, Scalar::from),
-        // The line counts in 128 bits and the column holds 64, so this is
-        // where the narrowing happens - once, by name, refusing rather than
-        // wrapping a count no nanosecond column can hold.
-        TextSource::Timestamp => match line.timestamp() {
+        // The line's own reading, which refuses by name a capture that is
+        // not an instant; the column is the clock the reading counts in.
+        TextSource::Timestamp => match line.mtime()? {
             Some(count) => {
-                let count = i64::try_from(count).map_err(|_| {
-                    super::arrow::row_error(
-                        line.index(),
-                        None,
-                        line.sourceurl(),
-                        super::options::MTIME_COLUMN,
-                        smol_str::format_smolstr!(
-                            "expected a nanosecond count a 64-bit column can hold, got {count}"
-                        ),
-                    )
-                })?;
                 Scalar::datetime64(count, crate::TimeUnit::Nanosecond, crate::Timezone::UTC)
                     .unwrap_or(Scalar::Null)
             }
             None => Scalar::Null,
         },
-        TextSource::BodyType => Scalar::from(
-            line.bodytype()
-                .unwrap_or(&crate::MimeType::OCTET_STREAM)
-                .as_str(),
-        ),
+        TextSource::BodyType => Scalar::from(line.bodytype().as_str()),
         TextSource::Body => Scalar::from(line.body()),
         TextSource::DroppedByteSize => line.dropped_byte_size().map_or(Scalar::Null, Scalar::from),
         TextSource::Capture(index) => capture_value(line, *index, dtype, options)?,
@@ -209,6 +197,7 @@ const ALIASES: [(&str, &[&str]); 6] = [
 /// The name a fixed column carries before any rename.
 const fn default_name_of(source: &TextSource) -> Option<&'static str> {
     Some(match source {
+        TextSource::Event(column) => column.name(),
         TextSource::Url => "sourceurl",
         TextSource::Rownum => "rownum",
         TextSource::Timestamp => "mtime",
@@ -262,7 +251,13 @@ struct Intake {
     positions: Vec<Option<usize>>,
     field: crate::Field,
     capture_size: usize,
+    /// Whether the batch carries a capture column at all: a line read back
+    /// states its captures only where a column stated them, and matches
+    /// its own header otherwise.
+    captures_located: bool,
     start_rownum: i64,
+    /// The options every line read back is built under, shared once.
+    options: Arc<TextOptions>,
 }
 
 impl Intake {
@@ -291,11 +286,17 @@ impl Intake {
             }
             positions.push(at);
         }
+        let captures_located =
+            plan.columns().iter().zip(&positions).any(|(column, at)| {
+                at.is_some() && matches!(column.source, TextSource::Capture(_))
+            });
         Ok(Self {
             positions,
             field,
             capture_size: options.capture_names().len(),
+            captures_located,
             start_rownum: options.start_rownum.unwrap_or_default(),
+            options: Arc::new(options.clone()),
         })
     }
 }
@@ -396,7 +397,11 @@ fn line_of(
     row: usize,
     ordinal: u64,
 ) -> Result<TextLine> {
-    let mut line = TextLine::from_bytes(ordinal, super::TextBytes::new())?;
+    let mut line = TextLine::from_bytes(
+        ordinal,
+        super::TextBytes::new(),
+        Arc::clone(&intake.options),
+    )?;
     let mut captures = vec![None; intake.capture_size];
     // The plan built the field one child per column, so the three walk together.
     for ((column, child), at) in plan
@@ -436,7 +441,9 @@ fn line_of(
             (ordinal, intake.start_rownum),
         )?;
     }
-    line.set_captures(captures)?;
+    if intake.captures_located {
+        line.set_captures(captures)?;
+    }
     Ok(line)
 }
 
@@ -486,6 +493,23 @@ fn apply(
         })
     };
     match &column.source {
+        // What the batch states of the event is the line's word: a line
+        // read back keeps the identity a message named as its source. The
+        // columns never null spell nothing as the epoch and the nil
+        // identity, and nothing stated is nothing to restate: the line
+        // reads its own instant and identity, as it did before the batch.
+        TextSource::Event(held) => {
+            let nothing = match held {
+                crate::graph::EventColumn::CurrUnix => value.temporal_count() == Some(0),
+                crate::graph::EventColumn::CurrUuid | crate::graph::EventColumn::CrossUuid => {
+                    matches!(value, Scalar::Uuid(uuid) if uuid.is_nil())
+                }
+                _ => false,
+            };
+            if !nothing {
+                held.record(line, value);
+            }
+        }
         TextSource::Url => {
             if let Scalar::Url(url) = value {
                 line.set_sourceurl(Some(Arc::clone(url)));
@@ -502,9 +526,11 @@ fn apply(
                 })?;
             line.set_index(number);
         }
+        // The column is the clock the line counts in, so what it states is
+        // the line's instant: the row's word, over what its header reads.
         TextSource::Timestamp => {
             if let Some(count) = value.temporal_count() {
-                line.set_timestamp(Some(i128::from(count)));
+                line.set_currunix(count);
             }
         }
         TextSource::BodyType => {
@@ -555,7 +581,12 @@ mod tests {
     use crate::text::TextBytes;
 
     fn line(index: u64, body: &str) -> TextLine {
-        TextLine::from_bytes(index, TextBytes::from_bytes(body).expect("bytes")).expect("line")
+        TextLine::from_bytes(
+            index,
+            TextBytes::from_bytes(body).expect("bytes"),
+            Arc::new(TextOptions::new()),
+        )
+        .expect("line")
     }
 
     fn batch(fields: Vec<ArrowField>, columns: Vec<ArrayRef>) -> RecordBatch {

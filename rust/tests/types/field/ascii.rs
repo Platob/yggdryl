@@ -12,7 +12,7 @@ use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema};
 use yggdryl::string;
 use yggdryl::{
-    ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, StringEnum, StructureType,
+    ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, StringEnum, StructType,
 };
 use yggdryl::{CfiField, CountryField, CurrencyField, MicField, StringField};
 
@@ -175,7 +175,7 @@ fn a_string_enum_is_accepted_on_fixed_us_ascii_up_to_sixteen_bytes_or_a_code() {
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new(
         "row",
-        DataType::from(StructureType::from_fields(fields).unwrap()),
+        DataType::from(StructType::from_fields(fields).unwrap()),
         false,
     )
 }
@@ -389,7 +389,7 @@ fn a_hidden_struct_child_is_neither_validated_nor_copied() {
     let target = root([Field::new(
         "position",
         DataType::from(
-            StructureType::from_fields([DataType::fixed_ascii(4).unwrap().required_field("ccy")])
+            StructType::from_fields([DataType::fixed_ascii(4).unwrap().required_field("ccy")])
                 .unwrap(),
         ),
         true,

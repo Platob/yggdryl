@@ -27,8 +27,8 @@
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the three categories - `{fields, components, groups}` and no other key - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 19 definitions from tag 65003: 17 scalar fields and the sorted Map groups `identifiers(65020)` and `metadata(65049)`. `new()` registers every one, beside its own `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 19 fields and two groups and its `len()` is 21. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
-| Standard clocks | `new()` also seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields the [message clocks](capture.md#every-message-is-dated) are typed by, so an empty registry holds 20 scalar fields beside its two Map groups - 22 definitions; a loaded dictionary defining either supplies its own, which must keep that layout, and removing or overriding them stays an ordinary mutation |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 22 definitions from tag 65003: 20 scalar fields - the `parentuuids` and `srcuuids` lists among them - and the sorted Map groups `identifiers(65020)` and `metadata(65049)`. `new()` registers every one, beside its own `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 22 fields and two groups and its `len()` is 24. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
+| Standard clocks | `new()` also seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields the [message clocks](capture.md#every-message-is-dated) are typed by, so an empty registry holds 22 scalar fields beside its two Map groups - 24 definitions; a loaded dictionary defining either supplies its own, which must keep that layout, and removing or overriding them stays an ordinary mutation |
 
 ## Use
 
@@ -37,7 +37,7 @@
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixRegistry, FieldPath, StructureType};
+    use yggdryl::{DataType, FixRegistry, FieldPath, StructType};
 
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
     counter.as_fix_mut().set_tag(453)?;
@@ -49,7 +49,7 @@
     // one a group, and a scalar a field.
     let mut member = registry.field(448)?.clone();
     member.as_fix_mut().set_field_ref("PartyID")?;
-    let party = DataType::from(StructureType::from_fields([member])?).required_field("Party");
+    let party = DataType::from(StructType::from_fields([member])?).required_field("Party");
     registry.insert(party.clone())?;
     let mut parties = DataType::list(party).nullable_field("Parties");
     parties.as_fix_mut().set_counter(453)?;
@@ -60,7 +60,7 @@
     group.as_fix_mut().set_group("Parties")?;
     let mut count = registry.field(453)?.clone();
     count.as_fix_mut().set_field_ref("NoPartyIDs")?;
-    let mut order = DataType::from(StructureType::from_fields([count, group])?).required_field("Order");
+    let mut order = DataType::from(StructType::from_fields([count, group])?).required_field("Order");
     order.as_fix_mut().set_msgtype("D")?;
     registry.insert(order)?;
 
@@ -168,14 +168,14 @@ The generator preserves official group names, including `Grp` suffixes. It deriv
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructureType};
+    use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructType};
 
     let mut client = DataType::utf8().nullable_field("clordid");
     client.as_fix_mut().set_tag(11)?;
     client.as_fix_mut().set_names(["ClientOrder"])?;
     let mut server = DataType::utf8().nullable_field("orderid");
     server.as_fix_mut().set_tag(37)?;
-    let mut order = DataType::from(StructureType::from_fields([client.clone(), server.clone()])?).required_field("order");
+    let mut order = DataType::from(StructType::from_fields([client.clone(), server.clone()])?).required_field("order");
     order.as_fix_mut().set_msgtype("D")?;
     order.as_fix_mut().set_identifiers(["37", "ClientOrder"])?;
     assert_eq!(order.as_fix().identifiers().collect::<Vec<_>>(), ["clordid", "orderid"]);
@@ -188,7 +188,7 @@ The generator preserves official group names, including `Grp` suffixes. It deriv
     registry.insert(order)?;
     let registry = Arc::new(registry);
     // The row is reordered; the result still follows declaration order.
-    let row = DataType::from(StructureType::from_fields([server, client])?).required_field("row");
+    let row = DataType::from(StructType::from_fields([server, client])?).required_field("row");
     let message = FixMsg::with_registry(
         Arc::clone(&registry), row,
         Scalar::from_sequence([Scalar::from("O-1"), Scalar::from("C-1")]),

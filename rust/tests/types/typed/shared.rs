@@ -113,11 +113,11 @@ fn an_unbounded_or_invalid_datatype_keeps_no_shared_field() {
     for dtype in [
         DataType::list(item.clone()),
         DataType::large_list(item.clone()),
-        DataType::from(StructureType::from_fields([item.clone()]).unwrap()),
+        DataType::from(StructType::from_fields([item.clone()]).unwrap()),
         DataType::map(
             Field::new(
                 "entries",
-                StructureType::from_fields([
+                StructType::from_fields([
                     Field::new("key", DataType::utf8(), false),
                     Field::new("value", DataType::Int64, true),
                 ]).map(DataType::from)

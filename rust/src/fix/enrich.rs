@@ -88,7 +88,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::expression::{Bound, Term};
 use crate::graph::{Element, EventIterator};
-use crate::{DataType, Error, Field, FixCategory, Result, Scalar, StructureType};
+use crate::{DataType, Error, Field, FixCategory, Result, Scalar, StructType};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
@@ -300,7 +300,7 @@ impl Derivations {
             }
             carried.push((tag, field.clone(), term));
         }
-        let schema = StructureType::from_fields(inputs.iter().map(|input| input.field.clone()))
+        let schema = StructType::from_fields(inputs.iter().map(|input| input.field.clone()))
             .map(DataType::from)
             .map_err(|error| Refused::new("FIX:derivation", &error))?
             .required_field("derived");
@@ -376,6 +376,9 @@ impl Derivations {
     /// is indistinguishable from a stated one and a value the field refuses
     /// was silence before any write was planned.
     ///
+    /// The identity is not settled: the pass settles once, after
+    /// everything it writes.
+    ///
     /// # Errors
     ///
     /// Returns the schema grammar's refusal when the written children do not
@@ -386,11 +389,18 @@ impl Derivations {
         }
         let mut row = self.working_row(msg, 0..self.inputs.len());
         let mut landed: Vec<(i32, Scalar)> = Vec::new();
+        // Which working columns the last sweep wrote. A term is a function
+        // of the columns it reads, so a derivation that read no column the
+        // last sweep wrote answers what it answered then: a later sweep
+        // evaluates only the derivations reading a column that moved, and
+        // the first evaluates every one.
+        let mut moved: Vec<bool> = Vec::new();
         // A productive sweep fills at least one target and a filled target
         // is never revisited, so the derivation count bounds the sweeps; the
         // one past it is the sweep that writes nothing.
-        for _ in 0..=self.list.len() {
-            let mut wrote = false;
+        for sweep in 0..=self.list.len() {
+            let mut wrote: Vec<bool> = vec![false; self.inputs.len()];
+            let mut any = false;
             for derivation in &self.list {
                 // A stated value is never overwritten, which is what makes
                 // this idempotent: the second pass finds the first pass's
@@ -398,10 +408,14 @@ impl Derivations {
                 if !row[derivation.slot].is_null() {
                     continue;
                 }
+                if sweep > 0 && !derivation.reads.iter().any(|at| moved[*at]) {
+                    continue;
+                }
                 let Some(value) = derivation.answer(&row) else {
                     continue;
                 };
                 row[derivation.slot] = value.clone();
+                wrote[derivation.slot] = true;
                 // Sized once, on the first answer, for every derivation
                 // there is: a message deriving nothing allocates nothing
                 // here, and one deriving nine grows the list once.
@@ -409,15 +423,17 @@ impl Derivations {
                     landed.reserve_exact(self.list.len());
                 }
                 landed.push((derivation.tag, value));
-                wrote = true;
+                any = true;
             }
-            if !wrote {
+            if !any {
                 break;
             }
+            moved = wrote;
         }
-        if !landed.is_empty() {
-            msg.set_each(landed)?;
+        if landed.is_empty() {
+            return Ok(());
         }
+        msg.set_each(landed)?;
         Ok(())
     }
 
@@ -536,10 +552,14 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
         if let Some(component) = registry.get_msgtype(held.header().msgtype()) {
             let identifiers = component.identifier_mapping(&held)?;
             if !identifiers.is_null() {
-                held.set(super::IDENTIFIERS_TAG_NAME.0, identifiers)?;
+                held.set_unsettled(super::IDENTIFIERS_TAG_NAME.0, identifiers)?;
             }
         }
     }
+    // Settled once, at the end: a built message arrives unsettled, a
+    // restatement leaves it so and the writes above land unsettled - so
+    // every message is settled here, once, after everything the pass wrote.
+    held.settle();
     Ok(held)
 }
 
@@ -605,20 +625,6 @@ where
         // of their own order and a walk over the stream would refuse to chain
         // them.
         Self::over(source, false)
-    }
-
-    /// The walk over messages that already arrive in their own order - none
-    /// [`Element::is_before`](crate::graph::Element::is_before) one before
-    /// it - which it therefore streams rather than collecting and sorting.
-    ///
-    /// One answer per message, in the order it got them, which is what lets
-    /// a caller holding something *beside* each message - the batch door
-    /// holds the cells of the row each came out of - put its messages in
-    /// that order itself and keep the pairing across the walk. A stream that
-    /// is not in that order chains less than it should rather than failing,
-    /// so this is the door for a caller that sorted, never a shortcut.
-    pub(super) fn sorted(source: I) -> Self {
-        Self::over(source, true)
     }
 
     fn over(source: I, sorted: bool) -> Self {

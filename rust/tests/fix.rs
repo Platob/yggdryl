@@ -41,6 +41,9 @@ mod map_groups;
 mod merge;
 #[path = "fix/message.rs"]
 mod message;
+/// The threads a codec reads on.
+#[path = "fix/parallel.rs"]
+mod parallel;
 #[path = "fix/pipeline.rs"]
 mod pipeline;
 #[path = "fix/schema.rs"]
@@ -170,8 +173,12 @@ fn dated_line(
     use yggdryl::text::{TextBytes, TextLine};
 
     let codec = codec.clone().with_capture_names(["beginstring"]);
-    let line = TextLine::from_bytes(0, TextBytes::from_bytes(body)?)?
-        .with_captures(vec![Some(TextBytes::from_bytes(version.as_bytes())?)])?;
+    let line = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(body)?,
+        std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+    )?
+    .with_captures(vec![Some(TextBytes::from_bytes(version.as_bytes())?)])?;
     sole_message(codec.parse_text_line(&line)?)
 }
 
@@ -238,7 +245,7 @@ fn crated_components() -> usize {
     yggdryl::fix_crate_fields()
         .expect("the crate's own fields")
         .iter()
-        .filter(|field| matches!(field.dtype(), yggdryl::DataType::Structure(_)))
+        .filter(|field| matches!(field.dtype(), yggdryl::DataType::Struct(_)))
         .count()
 }
 
@@ -266,11 +273,11 @@ fn sequence(value: yggdryl::Scalar) -> Vec<yggdryl::Scalar> {
 ///
 /// One nested shape is a field rather than a definition: a list of non-null
 /// scalars under one of this crate's own tags is one column under one name -
-/// `parentuuids` is that - because a group's occurrence is a Struct of
-/// members a wire states one tag at a time.
+/// `parentuuids` and `srcuuids` are that - because a group's occurrence is a
+/// Struct of members a wire states one tag at a time.
 fn category_of(field: &yggdryl::Field) -> yggdryl::FixCategory {
     match field.dtype() {
-        yggdryl::DataType::Structure(_) => yggdryl::FixCategory::Components,
+        yggdryl::DataType::Struct(_) => yggdryl::FixCategory::Components,
         yggdryl::DataType::Sequence(yggdryl::SequenceType::List(item))
         | yggdryl::DataType::Sequence(yggdryl::SequenceType::LargeList(item))
             if !item.is_nullable() && !item.dtype().is_nested() =>

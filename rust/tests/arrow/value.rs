@@ -244,7 +244,7 @@ mod widths {
 
 mod bulk {
 
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
     use yggdryl::{DataType, Field, Scalar};
 
     #[test]
@@ -260,7 +260,7 @@ mod bulk {
 
     #[test]
     fn named_records_build_one_schema_ordered_record_batch() {
-        let root = StructureType::from_fields([
+        let root = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("venue"),
         ])
@@ -268,9 +268,9 @@ mod bulk {
         .unwrap()
         .required_field("row");
         let rows = Scalar::from_sequence([
-            Scalar::from_record([("venue", Scalar::from("XNAS")), ("id", Scalar::from(1))])
+            Scalar::from_struct([("venue", Scalar::from("XNAS")), ("id", Scalar::from(1))])
                 .unwrap(),
-            Scalar::from_record([("id", Scalar::from(2))]).unwrap(),
+            Scalar::from_struct([("id", Scalar::from(2))]).unwrap(),
         ]);
 
         let batch = yggdryl::arrow::batch_from_value(&root, &rows).unwrap();
@@ -288,7 +288,7 @@ mod bulk {
         let field = Field::new("id", DataType::Int64, false);
         assert!(yggdryl::arrow::array_from_value(&field, &Scalar::from(1)).is_err());
 
-        let root = StructureType::from_fields([field])
+        let root = StructType::from_fields([field])
             .map(DataType::from)
             .unwrap()
             .required_field("row");

@@ -15,7 +15,7 @@ use yggdryl::expression::{
     Attribute, Bound, Bounds, ColumnBounds, Cost, Expression, Filter, Literal, Projection,
     Residual, Selector, Term,
 };
-use yggdryl::{DataType, Field, MediaType, Result, Scalar, StructureType, TimeUnit, Timezone, Url};
+use yggdryl::{DataType, Field, MediaType, Result, Scalar, StructType, TimeUnit, Timezone, Url};
 
 // ---------------------------------------------------------------------------
 // Text
@@ -214,7 +214,7 @@ fn a_pattern_that_changes_per_row_is_refused_at_bind() {
 fn rows_schema() -> Field {
     Field::new(
         "rows",
-        StructureType::from_fields([
+        StructType::from_fields([
             Field::new("i", DataType::Int64, true),
             Field::new("f", DataType::Float64, true),
             Field::new("d", DataType::decimal128(9, 2).unwrap(), true),
@@ -232,8 +232,7 @@ fn rows_schema() -> Field {
             Field::new(
                 "nested",
                 DataType::from(
-                    StructureType::from_fields([Field::new("leg", DataType::utf8(), true)])
-                        .unwrap(),
+                    StructType::from_fields([Field::new("leg", DataType::utf8(), true)]).unwrap(),
                 ),
                 true,
             ),
@@ -259,11 +258,11 @@ fn rows_schema() -> Field {
 /// One leg: a currency, a size, and notes that are themselves a list of
 /// structs.
 fn leg_field() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::utf8().nullable_field("ccy"),
         DataType::Int64.nullable_field("size"),
         DataType::list(
-            StructureType::from_fields([
+            StructType::from_fields([
                 DataType::utf8().nullable_field("k"),
                 DataType::Int64.nullable_field("v"),
             ])
@@ -471,7 +470,7 @@ fn scalar_arithmetic_propagates_checked_failures() {
     let schema = Field::new(
         "rows",
         DataType::from(
-            StructureType::from_fields([Field::new("small", DataType::Int8, false)]).unwrap(),
+            StructType::from_fields([Field::new("small", DataType::Int8, false)]).unwrap(),
         ),
         false,
     );
@@ -638,7 +637,7 @@ fn a_parameter_inside_a_predicate_is_supplied_at_bind() {
 fn a_predicate_segment_over_a_sliced_large_list_matches_the_row_tier() {
     let schema = Field::new(
         "rows",
-        StructureType::from_fields([Field::new("legs", DataType::large_list(leg_field()), true)])
+        StructType::from_fields([Field::new("legs", DataType::large_list(leg_field()), true)])
             .map(DataType::from)
             .unwrap(),
         false,
@@ -1553,7 +1552,7 @@ fn a_pattern_with_no_wildcard_becomes_an_equality() {
 fn a_column_named_twice_in_two_cases_is_ambiguous() {
     let schema = Field::new(
         "rows",
-        StructureType::from_fields([
+        StructType::from_fields([
             Field::new("Value", DataType::Int64, true),
             Field::new("value", DataType::Int64, true),
         ])
@@ -1588,7 +1587,7 @@ fn an_exact_quotient_keeps_room_to_be_a_quotient() {
 fn binds_and_evaluates_rows() {
     let schema = Field::new(
         "trades",
-        StructureType::from_fields([
+        StructType::from_fields([
             Field::new("ccy", DataType::utf8(), true),
             Field::new("price", DataType::decimal128(9, 2).unwrap(), true),
             Field::new("size", DataType::Int32, true),

@@ -113,7 +113,17 @@ fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     assert_eq!(third.get_prevuuid(), Some(second.get_curruuid()));
     assert_eq!(third.get_seqnum(), 2);
     assert_eq!(third.get_creaunix(), Some(at(5)));
+    // The parents are the whole lifecycle, oldest first, the one followed
+    // last - and a walk over the walked answers the same parents.
+    assert_eq!(second.get_parentuuids(), [first.get_curruuid()]);
+    assert_eq!(
+        third.get_parentuuids(),
+        [first.get_curruuid(), second.get_curruuid()]
+    );
     assert!(walk.next().is_none());
+    let walked = vec![first.clone(), other.clone(), second.clone(), third.clone()];
+    let again: Vec<MarketEventData> = EventIterator::new(walked, true).collect();
+    assert_eq!(again, [first, other, second, third]);
     // Both orders are still alive, the latest incarnation of each.
     assert_eq!(
         alive(&walk),
@@ -243,6 +253,7 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     assert_eq!(twin.get_seqnum(), 1, "the chain grows by nothing");
     assert_eq!(twin.get_prevuuid(), second.get_prevuuid());
     assert_eq!(twin.get_curruuid(), second.get_curruuid());
+    assert_eq!(twin.get_parentuuids(), second.get_parentuuids());
     assert_eq!(twin, second);
     // The next one follows the twin, which is to say the fill.
     let third = walk.next().expect("the third");

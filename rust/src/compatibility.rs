@@ -9,7 +9,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::path::{Path, Segment};
 use crate::text::{elide_display, expected_got};
-use crate::{Error, Field, Result, Scheme, StructureType, TimeUnit};
+use crate::{Error, Field, Result, Scheme, StructType, TimeUnit};
 
 use crate::enums::EnumType;
 use crate::sequence::SequenceType;
@@ -175,7 +175,7 @@ fn normalize_dtype(target: Target, dtype: &DataType, path: &Path<'_>) -> Result<
             let (field, _) = normalize_item(target, field, path)?;
             Ok((D::list(field), true))
         }
-        D::Structure(fields) => normalize_struct(target, dtype, fields, path),
+        D::Struct(fields) => normalize_struct(target, dtype, fields, path),
         D::Union(..) if !target.supports_union() => incompatible(
             target,
             path,
@@ -219,7 +219,7 @@ fn normalize_item(target: Target, field: &Field, path: &Path<'_>) -> Result<(Fie
 fn normalize_struct(
     target: Target,
     dtype: &DataType,
-    fields: &crate::StructureType,
+    fields: &crate::StructType,
     path: &Path<'_>,
 ) -> Result<(DataType, bool)> {
     for (index, field) in fields.iter().enumerate() {
@@ -247,10 +247,7 @@ fn normalize_struct(
             let remaining_path = path.field(remaining.name());
             transformed.push(normalize_field(target, remaining, &remaining_path)?.0);
         }
-        return Ok((
-            DataType::from(StructureType::from_fields(transformed)?),
-            true,
-        ));
+        return Ok((DataType::from(StructType::from_fields(transformed)?), true));
     }
     Ok((dtype.clone(), false))
 }
@@ -778,7 +775,7 @@ fn field_with_dtype(
 
 /// Reports whether a field still carries a *foreign* Arrow extension label.
 ///
-/// The extensions this workspace owns never reach here: `arrow.parquet.variant`,
+/// The extensions this workspace owns never reach here: `yggdryl.variant`,
 /// `geoarrow.wkb`, `yggdryl.string`, `arrow.uuid`, and each registered code's
 /// own `yggdryl.{country,currency,mic,cfi}` import as the first-class
 /// `variant`, `geometry`, `geography`, string, `uuid` and code datatypes

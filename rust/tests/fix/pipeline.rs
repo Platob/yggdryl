@@ -578,8 +578,10 @@ fn every_row_keeps_its_event_clock_capture_clock_and_fix_version() {
     let read = read(&CAPTURE);
     let stage = text_stage(&CAPTURE);
 
-    // A capture instant is ordinary context. TransactTime, else SendingTime,
-    // settles the real event independently of when the bridge logged it.
+    // A capture instant is ordinary context. `SendingTime` dates the event
+    // independently of when the bridge logged it, and a row stating none -
+    // the routed fill, keyed by name - takes the codec's clock: what its
+    // `TransactTime` says is the lifecycle's to read.
     let clock = column(&stage, "timestamp");
     let carried = column(&read, "timestamp");
     let stamp = tag_column(&read, yggdryl::CURRUNIX_TAG_NAME.0);
@@ -602,7 +604,7 @@ fn every_row_keeps_its_event_clock_capture_clock_and_fix_version() {
         Some(1_786_682_790_415_655_000)
     );
     assert_eq!(millis(FILL_ROW), Some(1_786_682_796_000));
-    assert_eq!(millis(ROUTED_ROW), Some(1_786_682_796_000));
+    assert_eq!(millis(ROUTED_ROW), Some(1_704_190_530_000));
 
     // Every row says which FIX it was read as: the wire's own `BeginString`
     // where the frame stated one, and `FIX.` and the version the row was read

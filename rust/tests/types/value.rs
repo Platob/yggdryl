@@ -1,10 +1,10 @@
 //! The value a datatype accepts: canonicalization, readings, and absence.
 
-use yggdryl::{DataType, Field, Scalar, StructureType, TimeUnit, Timezone};
+use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
 use yggdryl::{DateTimeType, DurationType, TimeType};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
-    DataType::from(StructureType::from_fields(fields).unwrap()).required_field("row")
+    DataType::from(StructType::from_fields(fields).unwrap()).required_field("row")
 }
 
 #[test]
@@ -13,7 +13,7 @@ fn a_record_maps_names_to_schema_order_and_fills_field_defaults() {
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ]);
-    let record = Scalar::from_record([("id", Scalar::from(7))]).unwrap();
+    let record = Scalar::from_struct([("id", Scalar::from(7))]).unwrap();
 
     schema.validate_value(&record).unwrap();
     assert_eq!(
@@ -26,7 +26,7 @@ fn a_record_maps_names_to_schema_order_and_fills_field_defaults() {
 fn a_record_refuses_unknown_names() {
     let schema = root([DataType::Int64.required_field("id")]);
     let record =
-        Scalar::from_record([("id", Scalar::from(7)), ("unknown", Scalar::from(1))]).unwrap();
+        Scalar::from_struct([("id", Scalar::from(7)), ("unknown", Scalar::from(1))]).unwrap();
 
     let validation = schema.validate_value(&record).unwrap_err().to_string();
     let canonical = schema.canonicalize_value(record).unwrap_err().to_string();
@@ -287,7 +287,7 @@ mod readings {
     #[test]
     fn a_record_is_the_entries_a_map_column_holds() {
         let map = dtype("map<utf8, int32>");
-        let record = Scalar::from_record([("a", Scalar::from(1_i32))]).unwrap();
+        let record = Scalar::from_struct([("a", Scalar::from(1_i32))]).unwrap();
 
         assert_eq!(
             map.scalar(record).unwrap(),

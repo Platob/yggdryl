@@ -6,7 +6,7 @@ use std::process::Command;
 use std::time::Instant;
 
 use yggdryl::local::Folder;
-use yggdryl::{DataType, FixCategory, FixCode, FixRegistry, StructureType};
+use yggdryl::{DataType, FixCategory, FixCode, FixRegistry, StructType};
 
 struct Fixture(PathBuf, PathBuf);
 
@@ -27,7 +27,7 @@ impl Fixture {
             }
             registry.create_definition(FixCategory::Fields, field)?;
         }
-        let party = DataType::from(StructureType::from_fields([
+        let party = DataType::from(StructType::from_fields([
             DataType::utf8().nullable_field("PartyID")
         ])?)
         .required_field("Party");
@@ -36,7 +36,7 @@ impl Fixture {
         group.as_fix_mut().set_counter(1)?;
         group.as_fix_mut().set_component("Party")?;
         registry.create_definition(FixCategory::Groups, group)?;
-        let mut message = DataType::from(StructureType::from_fields([
+        let mut message = DataType::from(StructType::from_fields([
             DataType::utf8().nullable_field("ClOrdID")
         ])?)
         .required_field("Order");

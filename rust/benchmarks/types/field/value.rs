@@ -6,7 +6,7 @@ use criterion::{BatchSize, Criterion};
 use yggdryl::expression::Function;
 use yggdryl::{
     DataType, Field, MediaType, Metadata, MimeType, PythonKind, PythonMetadata, Scalar, Scheme,
-    StructureType, Url,
+    StructType, Url,
 };
 
 use super::nested_field;
@@ -111,7 +111,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     let partitioned = Field::new(
         "row",
-        StructureType::from_fields((0..64).map(|index| {
+        StructType::from_fields((0..64).map(|index| {
             let column = DataType::Int64.required_field(format!("column-{index:02}"));
             if index % 8 == 0 {
                 column.with_partition(true)
@@ -152,7 +152,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .expect("a transform of one argument");
     let declaring = Field::new(
         "row",
-        StructureType::from_fields([DataType::date32().required_field("event"), derived])
+        StructType::from_fields([DataType::date32().required_field("event"), derived])
             .map(DataType::from)
             .expect("the two columns are unique"),
         false,
@@ -465,7 +465,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // sizes: a value already in its declared representation must cost the
     // same at both, because deciding a row is canonical never reads or copies
     // what it holds, while a layout rewrite shares the storage it retags.
-    let payload_root = StructureType::from_fields([
+    let payload_root = StructType::from_fields([
         Field::new("symbol", DataType::utf8(), false),
         Field::new("payload", DataType::binary(), false),
         Field::new("ccy", DataType::Currency, false),
@@ -473,7 +473,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     .map(DataType::from)
     .expect("the payload row schema is valid")
     .required_field("row");
-    let large_root = StructureType::from_fields([
+    let large_root = StructType::from_fields([
         Field::new("symbol", DataType::large_utf8(), false),
         Field::new("payload", DataType::large_binary(), false),
         Field::new("ccy", DataType::Currency, false),

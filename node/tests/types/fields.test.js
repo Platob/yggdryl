@@ -279,9 +279,8 @@ test('typed field factories cover every native datatype variant', () => {
 
   // The factories cover every datatype Arrow has a layout for. `int128` and
   // `uint128` are the two identifiers `Scalar` stores and `DataType` cannot,
-  // so no field builds them, and `struct2` is the two-child leaf a mapping's
-  // entries have rather than a shape a caller declares.
-  const unbuildable = ['int128', 'uint128', 'struct2']
+  // so no field builds them.
+  const unbuildable = ['int128', 'uint128']
   assert.equal(byId.size, binding.enums.dataTypeIds.length - unbuildable.length)
   assert.deepEqual(
     [...byId.keys()].sort(),

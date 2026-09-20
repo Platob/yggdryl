@@ -41,7 +41,7 @@ use crate::arrow::BatchReader;
 use crate::cast::ArrowCastOptions;
 use crate::expression::{Attribute, Bound, Bounds};
 use crate::holder::Holder;
-use crate::{DataType, Error, Field, Filter, Result, Scalar, StructureType};
+use crate::{DataType, Error, Field, Filter, Result, Scalar, StructType};
 
 /// One data file a scan reads, with everything a rewrite of it would need.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -950,7 +950,7 @@ fn file_projection(
     if !renamed {
         return wanted.clone();
     }
-    StructureType::from_fields(children)
+    StructType::from_fields(children)
         .map(DataType::from)
         .and_then(|dtype| {
             Field::from_parts(
@@ -1090,7 +1090,7 @@ pub(super) fn read_root(root: &Field, schema: &Field, filter: &Filter) -> Result
     }
     Field::from_parts(
         root.name(),
-        DataType::from(StructureType::from_fields(children)?),
+        DataType::from(StructType::from_fields(children)?),
         root.is_nullable(),
         root.metadata_iter(),
     )
@@ -1132,7 +1132,7 @@ mod delete_tests {
     }
 
     fn schema() -> Field {
-        StructureType::from_fields([DataType::Int64.required_field("id")])
+        StructType::from_fields([DataType::Int64.required_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("row")
@@ -1325,7 +1325,7 @@ mod bound_tests {
     use super::*;
 
     fn schema(dtype: DataType) -> Field {
-        let mut schema = StructureType::from_fields([dtype.required_field("value")])
+        let mut schema = StructType::from_fields([dtype.required_field("value")])
             .map(DataType::from)
             .unwrap()
             .required_field("row");

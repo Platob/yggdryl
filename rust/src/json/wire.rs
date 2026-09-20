@@ -137,7 +137,7 @@ impl Serialize for JsonRef<'_> {
                 }
                 sequence.end()
             }
-            Scalar::Record(entries) => {
+            Scalar::Struct(entries) => {
                 let mut mapping = serializer.serialize_map(Some(entries.as_map().len()))?;
                 for (name, value) in entries.as_map() {
                     mapping.serialize_entry(name, &JsonRef(value))?;

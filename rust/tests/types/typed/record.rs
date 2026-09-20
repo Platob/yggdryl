@@ -12,7 +12,7 @@ fn hash_of<T: Hash>(value: &T) -> u64 {
 }
 
 fn schema() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         Field::new("id", DataType::Int64, false),
         Field::new("symbol", DataType::utf8(), true),
         Field::new("price", DataType::decimal128(10, 2).unwrap(), true),
@@ -60,10 +60,10 @@ fn a_row_pairs_every_cell_with_its_child() {
 
 #[test]
 fn a_name_resolves_exactly_as_the_field_resolves_it() {
-    let schema = StructureType::from_fields([
+    let schema = StructType::from_fields([
         Field::new("Symbol", DataType::utf8(), false),
         Field::new("symbol", DataType::utf8(), false),
-        StructureType::from_fields([Field::new("px", DataType::Float64, false)]).map(DataType::from)
+        StructType::from_fields([Field::new("px", DataType::Float64, false)]).map(DataType::from)
             .unwrap()
             .required_field("leg"),
     ]).map(DataType::from)
@@ -103,22 +103,22 @@ fn a_name_resolves_exactly_as_the_field_resolves_it() {
 #[test]
 fn a_named_record_and_an_ordered_sequence_read_alike() {
     let schema = schema();
-    let named = Scalar::from_record([
+    let named = Scalar::from_struct([
         ("price", Scalar::d128(150, 2)),
         ("symbol", Scalar::from("AAPL")),
         ("id", Scalar::from(7)),
     ])
     .unwrap();
-    let from_record = FieldRecord::new(&schema, named).unwrap();
+    let from_struct = FieldRecord::new(&schema, named).unwrap();
     let from_sequence = FieldRecord::new(&schema, row()).unwrap();
-    assert_eq!(from_record, from_sequence);
-    assert_eq!(hash_of(&from_record), hash_of(&from_sequence));
+    assert_eq!(from_struct, from_sequence);
+    assert_eq!(hash_of(&from_struct), hash_of(&from_sequence));
     // The cells are what the field stores: the id was narrowed on the way in.
-    assert_eq!(from_record[0].value(), &Scalar::from(7_i64));
-    assert_eq!(from_record.clone().into_scalar(), row());
-    assert_eq!(Scalar::from(from_record.clone()), row());
+    assert_eq!(from_struct[0].value(), &Scalar::from(7_i64));
+    assert_eq!(from_struct.clone().into_scalar(), row());
+    assert_eq!(Scalar::from(from_struct.clone()), row());
     assert_eq!(
-        from_record.into_values(),
+        from_struct.into_values(),
         row().as_sequence().unwrap().to_vec()
     );
 }
@@ -149,13 +149,13 @@ fn the_root_must_be_a_required_struct_and_the_row_must_fit_it() {
     );
 
     let extra =
-        Scalar::from_record([("id", Scalar::from(1)), ("volume", Scalar::from(1))]).unwrap();
+        Scalar::from_struct([("id", Scalar::from(1)), ("volume", Scalar::from(1))]).unwrap();
     assert!(FieldRecord::new(&schema, extra).is_err());
 }
 
 #[test]
 fn an_empty_struct_reads_an_empty_row() {
-    let schema = DataType::from(StructureType::from_fields([]).unwrap()).required_field("row");
+    let schema = DataType::from(StructType::from_fields([]).unwrap()).required_field("row");
     let record = FieldRecord::new(&schema, Scalar::from_sequence([])).unwrap();
     assert!(record.is_empty());
     assert_eq!(record.names().count(), 0);
@@ -189,7 +189,7 @@ fn rows_compare_by_datatype_and_cells_and_never_by_the_root_around_them() {
     .unwrap();
     assert_ne!(left, other);
 
-    let widened = StructureType::from_fields([
+    let widened = StructType::from_fields([
         Field::new("id", DataType::Int64, false),
         Field::new("symbol", DataType::large_utf8(), true),
         Field::new("price", DataType::decimal128(10, 2).unwrap(), true),
@@ -282,7 +282,7 @@ mod arrow {
             .to_string();
         assert!(past.contains("row 2"), "{past}");
 
-        let narrower = StructureType::from_fields([Field::new("id", DataType::Int64, false)]).map(DataType::from)
+        let narrower = StructType::from_fields([Field::new("id", DataType::Int64, false)]).map(DataType::from)
             .unwrap()
             .required_field("row");
         let refused = FieldRecord::from_arrow_batch(&narrower, &batch, 0)

@@ -2,9 +2,7 @@
 
 use std::sync::Arc;
 
-use yggdryl::{
-    DataType, Field, FixCategory, FixMsg, FixRegistry, Scalar, StructureType, fix_schema,
-};
+use yggdryl::{DataType, Field, FixCategory, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
 
 fn mapping_group(name: &str, tag: i32, sorted: bool) -> Field {
     let mut field = DataType::map_of(DataType::utf8(), DataType::utf8(), sorted)
@@ -24,7 +22,7 @@ fn fresh(registry: Arc<FixRegistry>, schema: &Field, mut values: Vec<Scalar>) ->
             .unwrap()
             .clone(),
     );
-    let schema = StructureType::from_fields(fields)
+    let schema = StructType::from_fields(fields)
         .map(DataType::from)
         .unwrap()
         .required_field(schema.name());
@@ -40,13 +38,14 @@ fn maps_are_groups_with_one_reserved_counter_and_never_scalar_fields() {
     registry.insert(group.clone()).unwrap();
     assert_eq!(registry.get_field_by_counter(65_090), Some(&group));
     assert!(registry.get_field_by_tag(65_090).is_none());
-    // Every wire field is a leaf but the one list of scalars the crate owns:
-    // `parentuuids` is one column under one name, because a group's
-    // occurrence is a Struct of members a wire states one tag at a time and
-    // that is not.
+    // Every wire field is a leaf but the two lists of scalars the crate owns:
+    // `parentuuids` and `srcuuids` are one column each under one name,
+    // because a group's occurrence is a Struct of members a wire states one
+    // tag at a time and those are not.
     assert!(
-        super::definitions(&registry, FixCategory::Fields)
-            .all(|field| !field.dtype().is_nested() || field.name() == "parentuuids")
+        super::definitions(&registry, FixCategory::Fields).all(|field| {
+            !field.dtype().is_nested() || matches!(field.name(), "parentuuids" | "srcuuids")
+        })
     );
 
     let before = registry.clone();
@@ -107,7 +106,7 @@ fn map_counters_refuse_scalar_collisions_in_either_insertion_order() {
 #[test]
 fn ordinary_list_groups_still_require_a_separate_int32_counter() {
     let mut group = DataType::list(
-        StructureType::from_fields([DataType::utf8().nullable_field("id")])
+        StructType::from_fields([DataType::utf8().nullable_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("occurrence"),
@@ -166,7 +165,7 @@ fn altids_has_exactly_one_nullable_sorted_column_without_a_scalar_counter() {
 fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
     let registry = Arc::new(FixRegistry::new());
     let group = registry.get_field_by_counter(65_020).unwrap().clone();
-    let schema = StructureType::from_fields([group])
+    let schema = StructType::from_fields([group])
         .map(DataType::from)
         .unwrap()
         .required_field("fix");
@@ -198,11 +197,10 @@ fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
 #[test]
 fn map_paths_distinguish_present_missing_and_absent_maps() {
     let registry = Arc::new(FixRegistry::new());
-    let schema =
-        StructureType::from_fields([registry.get_field_by_counter(65_020).unwrap().clone()])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("fix");
+    let schema = StructType::from_fields([registry.get_field_by_counter(65_020).unwrap().clone()])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("fix");
     let key = yggdryl::FieldPath::from_str("identifiers['clordid']").unwrap();
     let missing = yggdryl::FieldPath::from_str("identifiers['missing']").unwrap();
     let named_child = yggdryl::FieldPath::from_str("identifiers.clordid").unwrap();
@@ -243,7 +241,7 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
     label.as_fix_mut().set_names(["Identifiers"]).unwrap();
     registry.insert(label.clone()).unwrap();
     let map = registry.get_field_by_counter(65_020).unwrap().clone();
-    let schema = StructureType::from_fields([label, map])
+    let schema = StructType::from_fields([label, map])
         .map(DataType::from)
         .unwrap()
         .required_field("fix");
@@ -298,7 +296,7 @@ fn map_and_component_roots_remain_ambiguous_despite_scalar_aliases() {
             label.as_fix_mut().set_names(["Identifiers"]).unwrap();
             registry.insert(label).unwrap();
         }
-        let component = StructureType::from_fields([DataType::utf8().nullable_field("note")])
+        let component = StructType::from_fields([DataType::utf8().nullable_field("note")])
             .map(DataType::from)
             .unwrap()
             .required_field("Identifiers");

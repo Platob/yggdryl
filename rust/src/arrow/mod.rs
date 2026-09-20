@@ -12,7 +12,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::cast::ArrowCastPlan;
 use crate::enums::EnumType;
-use crate::{DataType, Field, Scalar, StructureType};
+use crate::{DataType, Field, Scalar, StructType};
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
 
@@ -342,10 +342,10 @@ pub type BatchReader = Box<dyn arrow_array::RecordBatchReader + Send>;
 ///
 /// use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
 /// use yggdryl::DataType;
-/// use yggdryl::StructureType;
+/// use yggdryl::StructType;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+/// let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
 ///     .required_field("row");
 /// let arrow_schema = schema.into_arrow_schema()?;
 /// let batch = RecordBatch::try_new(
@@ -439,10 +439,10 @@ pub(crate) fn appended(
 ///
 /// use arrow_array::{Int64Array, RecordBatch};
 /// use yggdryl::DataType;
-/// use yggdryl::StructureType;
+/// use yggdryl::StructType;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let root = DataType::from(StructureType::from_fields([DataType::Int64.nullable_field("id")])?)
+/// let root = DataType::from(StructType::from_fields([DataType::Int64.nullable_field("id")])?)
 ///     .required_field("row");
 /// let schema = root.clone().into_arrow_schema()?;
 /// let batch = RecordBatch::try_new(
@@ -514,12 +514,12 @@ pub fn combined_as(
 ///
 /// use arrow_array::{Int64Array, RecordBatch, StringArray};
 /// use yggdryl::DataType;
-/// use yggdryl::StructureType;
+/// use yggdryl::StructType;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let left_root = DataType::from(StructureType::from_fields([DataType::Int64.nullable_field("id")])?)
+/// let left_root = DataType::from(StructType::from_fields([DataType::Int64.nullable_field("id")])?)
 ///     .required_field("row");
-/// let right_root = DataType::from(StructureType::from_fields([
+/// let right_root = DataType::from(StructType::from_fields([
 ///     DataType::Int64.nullable_field("id"),
 ///     DataType::utf8().nullable_field("venue"),
 /// ])?)
@@ -596,7 +596,7 @@ fn merged_root(left: &Field, right: &Field) -> Result<Field> {
         columns.push(column.clone().with_nullable(true));
     }
     // The root name is left's, and the root is what a cast target must be.
-    Ok(DataType::from(StructureType::from_fields(columns)?).required_field(left.name()))
+    Ok(DataType::from(StructType::from_fields(columns)?).required_field(left.name()))
 }
 
 /// Reconcile one column present on both sides, or refuse naming both.
@@ -838,7 +838,7 @@ pub fn array_from_value(field: &Field, values: &Scalar) -> Result<ArrayRef> {
 /// Materialize a sequence of native struct rows as one Arrow record batch.
 ///
 /// The outer value is a sequence and each child is an ordered row sequence or
-/// a named [`crate::structure::Record`]. The root Field validates and canonicalizes every
+/// a named [`crate::structure::Struct`]. The root Field validates and canonicalizes every
 /// row before one columnar build.
 ///
 /// # Errors
@@ -1264,7 +1264,7 @@ pub(crate) fn field_from_arrow_schema(name: &str, schema: &Schema) -> Result<Fie
         .iter()
         .map(|field| Field::from_arrow_field_ref(field.clone()).map_err(Error::Core))
         .collect::<Result<Vec<_>>>()?;
-    let dtype = DataType::from(StructureType::from_fields(fields)?);
+    let dtype = DataType::from(StructType::from_fields(fields)?);
     let mut field = Field::from_parts(name, dtype, false, metadata)?;
     if !dictionary_ids.is_empty() {
         let dtype =

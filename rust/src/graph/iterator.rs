@@ -127,10 +127,15 @@ enum Source<E, I> {
 pub struct EventIterator<E, I> {
     source: Source<E, I>,
     alive: HashMap<Uuid, Live<E>>,
-    /// Every name a live element goes by, under the identity it is alive
-    /// under: where an element arrives under no live identity, a name it
-    /// shares with a live element is the chain it belongs to.
-    named: HashMap<(String, String), Uuid>,
+    /// Every name a live element goes by, by scheme then name, under the
+    /// identity it is alive under: where an element arrives under no live
+    /// identity, a name it shares with a live element is the chain it
+    /// belongs to. Two levels, so a name is looked up by the borrowed
+    /// scheme and name an element states and never by a copy of them.
+    named: HashMap<String, HashMap<String, Uuid>>,
+    /// The names each live identity is known by, so retiring it forgets
+    /// exactly those.
+    names_of: HashMap<Uuid, Vec<(String, String)>>,
     /// The grid step in nanoseconds, or nothing positive for no grid.
     snapshot_ns: i64,
 }
@@ -169,6 +174,7 @@ where
             source,
             alive: HashMap::new(),
             named: HashMap::new(),
+            names_of: HashMap::new(),
             snapshot_ns: 0,
         }
     }
@@ -222,8 +228,16 @@ where
     /// alive, its names with it, and retires the identity where it is not.
     fn settle(&mut self, identity: Uuid, element: &E, step: Option<i64>, arrived: Uuid) {
         if is_alive(element) {
+            let known = self.names_of.entry(identity).or_default();
             for (scheme, name) in element.get_identifiers() {
-                self.named.insert((scheme.clone(), name.clone()), identity);
+                let held = self
+                    .named
+                    .entry(scheme.clone())
+                    .or_default()
+                    .insert(name.clone(), identity);
+                if held != Some(identity) {
+                    known.push((scheme.clone(), name.clone()));
+                }
             }
             self.alive.insert(
                 identity,
@@ -234,7 +248,13 @@ where
                 },
             );
         } else {
-            self.named.retain(|_, held| *held != identity);
+            for (scheme, name) in self.names_of.remove(&identity).unwrap_or_default() {
+                if let Some(names) = self.named.get_mut(&scheme) {
+                    if names.get(&name) == Some(&identity) {
+                        names.remove(&name);
+                    }
+                }
+            }
             self.alive.remove(&identity);
         }
     }
@@ -252,7 +272,12 @@ where
         element
             .get_identifiers()
             .iter()
-            .find_map(|(scheme, name)| self.named.get(&(scheme.clone(), name.clone())).copied())
+            .find_map(|(scheme, name)| {
+                self.named
+                    .get(scheme.as_str())
+                    .and_then(|names| names.get(name.as_str()))
+                    .copied()
+            })
             .filter(|identity| self.alive.contains_key(identity))
             .unwrap_or(own)
     }

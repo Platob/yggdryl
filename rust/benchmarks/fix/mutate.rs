@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
-use yggdryl::{DataType, Field, FixCode, FixRegistry, StructureType};
+use yggdryl::{DataType, Field, FixCode, FixRegistry, StructType};
 
 use super::{LARGE_FIELDS, generated, seed, venue};
 
@@ -99,7 +99,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
-    let nested = StructureType::from_fields([DataType::utf8().nullable_field("VenueSymbol")])
+    let nested = StructType::from_fields([DataType::utf8().nullable_field("VenueSymbol")])
         .map(DataType::from)
         .unwrap()
         .required_field("VenueInstrument");
@@ -122,8 +122,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let mut instrument = seeded.field_by_name("Instrument").unwrap().clone();
     instrument
         .set_dtype(DataType::from(
-            StructureType::from_fields(instrument.fields().iter().cloned().chain([member]))
-                .unwrap(),
+            StructType::from_fields(instrument.fields().iter().cloned().chain([member])).unwrap(),
         ))
         .unwrap();
     group.bench_function("add_field_extends_component", |bencher| {
@@ -276,7 +275,7 @@ fn coded_catalog() -> FixRegistry {
     counter.as_fix_mut().set_tag(453).unwrap();
     let mut registry = FixRegistry::from_fields([party.clone(), counter.clone()]).unwrap();
     party.as_fix_mut().set_field_ref("PartyID").unwrap();
-    let component = StructureType::from_fields([party])
+    let component = StructType::from_fields([party])
         .map(DataType::from)
         .unwrap()
         .required_field("Party");
@@ -288,7 +287,7 @@ fn coded_catalog() -> FixRegistry {
     let mut group = registry.field_by_name("Parties").unwrap().clone();
     group.as_fix_mut().set_group("Parties").unwrap();
     counter.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
-    let mut message = StructureType::from_fields([counter, group])
+    let mut message = StructType::from_fields([counter, group])
         .map(DataType::from)
         .unwrap()
         .required_field("Order");

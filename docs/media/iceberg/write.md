@@ -32,12 +32,12 @@ The folder *is* the table, so the shared [record surface](../../holder/iobase/re
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::local::Folder;
-    use yggdryl::{StructureType, arrow, DataType};
+    use yggdryl::{StructType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use std::sync::Arc;
 
-    let mut schema = DataType::from(StructureType::from_fields([
+    let mut schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])?)
@@ -190,14 +190,14 @@ Rust only.
 ```rust
 use yggdryl::media::IORecordOptions;
 use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-use yggdryl::{IOBase, IOMedia, StructureType};
+use yggdryl::{IOBase, IOMedia, StructType};
 use yggdryl::local::Folder;
 use yggdryl::{arrow, DataType, MimeType};
 
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use std::sync::Arc;
 
-let mut schema = DataType::from(StructureType::from_fields([
+let mut schema = DataType::from(StructType::from_fields([
     DataType::Int64.required_field("id"),
     DataType::utf8().nullable_field("venue"),
 ])?)
@@ -277,9 +277,9 @@ A merge joins on the identity partition columns first and the caller's key after
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
     use yggdryl::local::Folder;
-    use yggdryl::{StructureType, arrow, DataType, Selector};
+    use yggdryl::{StructType, arrow, DataType, Selector};
 
-    let mut schema = DataType::from(StructureType::from_fields([
+    let mut schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
         DataType::utf8().nullable_field("venue"),
@@ -440,9 +440,9 @@ use yggdryl::iceberg::{
     assign_field_ids,
 };
 use yggdryl::local::Folder;
-use yggdryl::{DataType, StructureType, arrow};
+use yggdryl::{DataType, StructType, arrow};
 
-let mut schema = DataType::from(StructureType::from_fields([
+let mut schema = DataType::from(StructType::from_fields([
     DataType::Int64.required_field("id"),
     DataType::utf8().nullable_field("symbol"),
     DataType::utf8().nullable_field("venue"),
@@ -512,9 +512,9 @@ The partition groups of one commit are independent - each writes its own files u
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::iceberg::{FormatVersion, IcebergOptions, PartitionSpec, Table, assign_field_ids};
     use yggdryl::local::Folder;
-    use yggdryl::{StructureType, arrow, DataType};
+    use yggdryl::{StructType, arrow, DataType};
 
-    let mut schema = DataType::from(StructureType::from_fields([
+    let mut schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])?)
@@ -643,9 +643,9 @@ The option resolves like every other: the explicit value, then the table propert
         FormatVersion, IcebergOptions, PartitionSpec, Table, WriteStaging, assign_field_ids,
     };
     use yggdryl::local::Folder;
-    use yggdryl::{StructureType, arrow, DataType};
+    use yggdryl::{StructType, arrow, DataType};
 
-    let mut schema = DataType::from(StructureType::from_fields([
+    let mut schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])?)
@@ -780,13 +780,13 @@ The bindings read the target as `target_file_size` / `targetFileSize`, and Parqu
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::iceberg::{Catalog, FormatVersion};
     use yggdryl::local::Folder;
-    use yggdryl::{DataType, StructureType};
+    use yggdryl::{DataType, StructType};
 
     let warehouse = Folder::temporary()?.path()?.join("yggdryl-doc-compaction");
     let _ = std::fs::remove_dir_all(&warehouse);
     let catalog = Catalog::new(Folder::new(&warehouse)?);
 
-    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+    let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let arrow_schema = schema.clone().into_arrow_schema()?;
     let one = |id: i64| {
@@ -910,12 +910,12 @@ Every knob a table honors lives on `IcebergOptions`, and every field resolves th
         FormatVersion, IcebergOptions, PartitionSpec, Table,
     };
     use yggdryl::local::Folder;
-    use yggdryl::{DataType, StructureType};
+    use yggdryl::{DataType, StructType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-options");
     let _ = std::fs::remove_dir_all(&root);
 
-    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+    let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let mut table = Table::create(
         Folder::new(&root)?,
@@ -1044,12 +1044,12 @@ The JavaScript constructor takes an object naming any of the eleven fields, and 
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::iceberg::{FormatVersion, IcebergOptions, PartitionSpec, Table};
     use yggdryl::local::Folder;
-    use yggdryl::{DataType, MimeType, StructureType};
+    use yggdryl::{DataType, MimeType, StructType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-data-format");
     let _ = std::fs::remove_dir_all(&root);
 
-    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+    let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let mut table = Table::create(
         Folder::new(&root)?,
@@ -1178,12 +1178,12 @@ Rust only.
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::local::Folder;
-    use yggdryl::{DataType, StructureType};
+    use yggdryl::{DataType, StructType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-concurrency");
     let _ = std::fs::remove_dir_all(&root);
 
-    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+    let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     Table::create(
         Folder::new(&root)?,
@@ -1245,12 +1245,12 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::local::Folder;
-    use yggdryl::{DataType, StructureType};
+    use yggdryl::{DataType, StructType};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-doc-branching");
     let _ = std::fs::remove_dir_all(&root);
 
-    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+    let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let mut table = Table::create(
         Folder::new(&root)?,

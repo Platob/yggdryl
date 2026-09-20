@@ -2,7 +2,7 @@
 
 use yggdryl::FieldValue as _;
 use yggdryl::Uuid;
-use yggdryl::{DataType, Error, Scalar, StructureType};
+use yggdryl::{DataType, Error, Scalar, StructType};
 
 fn assert_round_trips(value: Uuid, version: u8, text: &str) {
     assert_eq!(value.to_string(), text);
@@ -163,7 +163,7 @@ fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
     let row = |field: Field| {
         Field::new(
             "row",
-            DataType::from(StructureType::from_fields([field]).unwrap()),
+            DataType::from(StructType::from_fields([field]).unwrap()),
             false,
         )
     };
@@ -279,7 +279,7 @@ mod value {
 
     use arrow_array::{Array, FixedSizeBinaryArray};
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
 
     use yggdryl::{DataType, DataTypeId, DataTypeKind};
     use yggdryl::{Field, Scalar};
@@ -318,7 +318,7 @@ mod value {
 
         // Every accepted rendering canonicalizes to the exact packed UUID leaf.
         let field = uuid.clone().required_field("id");
-        let row = StructureType::from_fields([field.clone()])
+        let row = StructType::from_fields([field.clone()])
             .map(DataType::from)
             .unwrap()
             .required_field("row");
@@ -452,12 +452,16 @@ mod parameters {
                 .unwrap();
             assert!(DataType::from_value(mapping).is_err(), "{spelling}");
         }
-        // The identifier numbers the retired leaves held stay unused.
-        assert_eq!(DataTypeId::ALL.len(), 84);
+        // The one uuid leaf sits in the uuid family's range, and the
+        // retired versioned leaves left no number behind: the family's own
+        // number is the placeholder no leaf takes.
+        assert_eq!(DataTypeId::ALL.len(), 83);
+        assert_eq!(DataTypeId::Uuid.as_u8(), 0x81);
+        assert_eq!(DataTypeId::from_u8(0x80), None);
         assert!(
             DataTypeId::ALL
                 .iter()
-                .all(|id| !(69..=71).contains(&id.as_u8()))
+                .all(|id| id == &DataTypeId::Uuid || !(0x80..=0x8f).contains(&id.as_u8()))
         );
     }
 

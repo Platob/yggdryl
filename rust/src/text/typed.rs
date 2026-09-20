@@ -25,7 +25,7 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
         return Ok(value);
     }
     match field.dtype() {
-        DataType::Structure(fields) => named(value, fields, field),
+        DataType::Struct(fields) => named(value, fields, field),
         DataType::Sequence(SequenceType::List(child))
         | DataType::Sequence(SequenceType::ListView(child))
         | DataType::Sequence(SequenceType::FixedSizeList(child, _))
@@ -82,7 +82,7 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
 }
 
 /// Re-key one canonical struct row by the names its Field declares.
-fn named(value: Scalar, fields: &crate::StructureType, field: &Field) -> Result<Scalar> {
+fn named(value: Scalar, fields: &crate::StructType, field: &Field) -> Result<Scalar> {
     let Some(values) = value.as_sequence() else {
         // A record already carries its names; anything else is not a struct
         // row and the format writer refuses it under its own rules.
@@ -98,7 +98,7 @@ fn named(value: Scalar, fields: &crate::StructureType, field: &Field) -> Result<
             ),
         ));
     }
-    Scalar::from_record(
+    Scalar::from_struct(
         values
             .iter()
             .zip(fields.iter())
@@ -136,7 +136,7 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
         | DataType::Sequence(SequenceType::LargeListView(child)) => {
             sequence(value, |value| prepare(value, child), field)
         }
-        DataType::Structure(fields) => structure(value, fields, field),
+        DataType::Struct(fields) => structure(value, fields, field),
         DataType::Union(fields, _) => union(value, fields, field),
         DataType::Enum(EnumType::Dictionary(dictionary)) => {
             prepare_for_type(value, dictionary.value(), field)
@@ -172,9 +172,9 @@ fn sequence(
 }
 
 /// Descend a document object or ordered array under a struct's children.
-fn structure(value: Scalar, fields: &crate::StructureType, field: &Field) -> Result<Scalar> {
+fn structure(value: Scalar, fields: &crate::StructType, field: &Field) -> Result<Scalar> {
     match value {
-        Scalar::Record(entries) => {
+        Scalar::Struct(entries) => {
             let prepared = entries
                 .as_map()
                 .iter()
@@ -185,7 +185,7 @@ fn structure(value: Scalar, fields: &crate::StructureType, field: &Field) -> Res
                     Ok((name.clone(), prepare(value.clone(), child)?))
                 })
                 .collect::<Result<Vec<_>>>()?;
-            Scalar::from_record(prepared)
+            Scalar::from_struct(prepared)
         }
         Scalar::Sequence(values) => {
             if values.as_slice().len() != fields.len() {
@@ -239,7 +239,7 @@ fn mapping(value: Scalar, map: &crate::MappingType, field: &Field) -> Result<Sca
         Scalar::Mapping(entries) => entries.as_slice().to_vec(),
         // A record is a map keyed by name, which the value contract reads too;
         // the entries are shaped here so the walk reaches their byte leaves.
-        Scalar::Record(entries) => entries
+        Scalar::Struct(entries) => entries
             .as_map()
             .iter()
             .map(|(name, value)| (Scalar::from(name.as_str()), value.clone()))
@@ -264,7 +264,7 @@ fn holds_byte_leaf(dtype: &DataType) -> bool {
         | DataType::Sequence(SequenceType::LargeList(child))
         | DataType::Sequence(SequenceType::LargeListView(child)) => holds_byte_leaf(child.dtype()),
         DataType::RunEndEncoded(encoded) => holds_byte_leaf(encoded.values().dtype()),
-        DataType::Structure(fields) => fields.iter().any(|field| holds_byte_leaf(field.dtype())),
+        DataType::Struct(fields) => fields.iter().any(|field| holds_byte_leaf(field.dtype())),
         DataType::Union(fields, _) => fields
             .iter()
             .any(|(_, field)| holds_byte_leaf(field.dtype())),

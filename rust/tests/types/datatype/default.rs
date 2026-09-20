@@ -1,7 +1,7 @@
 use yggdryl::BytesType;
 use yggdryl::DecimalType;
 use yggdryl::SequenceType;
-use yggdryl::{DataType, Field, Scalar, StructureType, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone, UnionMode};
 use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 fn all_variants() -> Vec<DataType> {
@@ -55,7 +55,7 @@ fn all_variants() -> Vec<DataType> {
         DataType::fixed_size_list(item(), 2).unwrap(),
         DataType::large_list(item()),
         DataType::large_list_view(item()),
-        StructureType::from_fields([
+        StructType::from_fields([
             Field::new("required", DataType::Int32, false),
             Field::new("optional", DataType::utf8(), true),
         ])
@@ -106,7 +106,7 @@ fn every_datatype_variant_has_a_bounded_valid_default() {
         );
         let root = Field::new(
             "Root",
-            DataType::from(StructureType::from_fields([field]).unwrap()),
+            DataType::from(StructType::from_fields([field]).unwrap()),
             false,
         );
         let row = Scalar::from_sequence([value]);
@@ -149,7 +149,7 @@ fn default_matching_is_allocation_free_for_wide_values_and_exact_for_unions() {
 
 #[test]
 fn nested_defaults_respect_child_field_nullability() {
-    let structure = StructureType::from_fields([
+    let structure = StructType::from_fields([
         Field::new("required", DataType::Int32, false),
         Field::new("optional", DataType::utf8(), true),
     ])
@@ -315,11 +315,11 @@ fn null_only_nested_layouts_obey_physical_field_constraints() {
     assert!(positive.default_value().is_err());
 
     let required_null = DataType::from(
-        StructureType::from_fields([Field::new("nothing", DataType::Null, false)]).unwrap(),
+        StructType::from_fields([Field::new("nothing", DataType::Null, false)]).unwrap(),
     );
     assert!(required_null.default_value().is_err());
     let optional_null = DataType::from(
-        StructureType::from_fields([Field::new("nothing", DataType::Null, true)]).unwrap(),
+        StructType::from_fields([Field::new("nothing", DataType::Null, true)]).unwrap(),
     );
     assert_eq!(
         optional_null

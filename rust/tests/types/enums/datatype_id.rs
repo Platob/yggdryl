@@ -34,7 +34,7 @@ fn every_kind_is_reachable() {
 
 #[test]
 fn the_strings_and_the_codes_are_text() {
-    assert_eq!(DataTypeId::ALL.len(), 84);
+    assert_eq!(DataTypeId::ALL.len(), 83);
     for id in [
         DataTypeId::Utf8String,
         DataTypeId::FixedUtf8String,
@@ -121,109 +121,145 @@ fn the_two_arrow_less_integer_widths_are_named_here_and_nowhere_in_datatype() {
 
 #[test]
 fn every_discriminant_is_stated_and_pinned() {
-    // The byte `Scalar::write_bytes` writes as a value's tag. Every
-    // variant states its number, a retired one leaves its number unused
-    // (58 was `msgdirection`, since retired), and this pins every byte so a
-    // moved or reused number is a failure rather than a surprise.
+    // The byte `Scalar::write_bytes` and the variant encoding write as a
+    // value's tag. Every variant states its number, laid out by family -
+    // the family's own number first, then its leaves in the family's range
+    // - and this pins every byte so a moved or reused number is a failure
+    // rather than a surprise.
     let pinned = [
-        (DataTypeId::Null, 0),
-        (DataTypeId::Boolean, 1),
-        (DataTypeId::Int8, 2),
-        (DataTypeId::Int16, 3),
-        (DataTypeId::Int32, 4),
-        (DataTypeId::Int64, 5),
-        (DataTypeId::UInt8, 6),
-        (DataTypeId::UInt16, 7),
-        (DataTypeId::UInt32, 8),
-        (DataTypeId::UInt64, 9),
-        (DataTypeId::Int128, 10),
-        (DataTypeId::UInt128, 11),
-        (DataTypeId::Float16, 12),
-        (DataTypeId::Float32, 13),
-        (DataTypeId::Float64, 14),
-        (DataTypeId::DateTime64, 15),
-        (DataTypeId::Date32, 16),
-        (DataTypeId::Date64, 17),
-        (DataTypeId::Time32, 18),
-        (DataTypeId::Time64, 19),
-        (DataTypeId::Duration32, 20),
-        (DataTypeId::Duration64, 21),
-        (DataTypeId::Interval, 22),
-        (DataTypeId::Binary, 23),
-        (DataTypeId::FixedBinary, 24),
-        (DataTypeId::LargeBinary, 25),
-        (DataTypeId::BinaryView, 26),
-        (DataTypeId::Utf8String, 27),
-        (DataTypeId::FixedUtf8String, 28),
-        (DataTypeId::Utf8StringView, 29),
-        (DataTypeId::LargeUtf8String, 30),
-        (DataTypeId::LargeUtf8StringView, 31),
-        (DataTypeId::Country, 32),
-        (DataTypeId::Currency, 33),
-        (DataTypeId::Mic, 34),
-        (DataTypeId::Cfi, 35),
-        (DataTypeId::Uuid, 36),
-        (DataTypeId::List, 37),
-        (DataTypeId::ListView, 38),
-        (DataTypeId::FixedSizeList, 39),
-        (DataTypeId::LargeList, 40),
-        (DataTypeId::LargeListView, 41),
-        (DataTypeId::Struct, 42),
-        (DataTypeId::Union, 43),
-        (DataTypeId::Dictionary, 44),
-        (DataTypeId::Decimal32, 45),
-        (DataTypeId::Decimal64, 46),
-        (DataTypeId::Decimal128, 47),
-        (DataTypeId::Decimal256, 48),
-        (DataTypeId::Map, 49),
-        (DataTypeId::RunEndEncoded, 50),
-        (DataTypeId::Variant, 51),
-        (DataTypeId::Geometry, 52),
-        (DataTypeId::Geography, 53),
-        (DataTypeId::Version, 54),
-        (DataTypeId::Side, 55),
-        (DataTypeId::State, 56),
-        (DataTypeId::TimeInForce, 57),
-        (DataTypeId::Url, 59),
-        (DataTypeId::Isin, 60),
-        (DataTypeId::Timezone, 61),
-        (DataTypeId::MimeType, 62),
-        (DataTypeId::MediaType, 63),
-        (DataTypeId::Cusip, 64),
-        (DataTypeId::Sedol, 65),
-        (DataTypeId::Bloomberg, 66),
-        (DataTypeId::SortedMap, 67),
-        (DataTypeId::Struct2, 68),
-        // 69 to 71 were the versioned uuid leaves, retired and never reused.
-        (DataTypeId::LargeBinaryView, 72),
-        (DataTypeId::SizedBinary, 73),
-        (DataTypeId::SizedUtf8String, 74),
-        (DataTypeId::AsciiString, 75),
-        (DataTypeId::LargeAsciiString, 76),
-        (DataTypeId::AsciiStringView, 77),
-        (DataTypeId::LargeAsciiStringView, 78),
-        (DataTypeId::FixedAsciiString, 79),
-        (DataTypeId::SizedAsciiString, 80),
-        (DataTypeId::Cp1252String, 81),
-        (DataTypeId::LargeCp1252String, 82),
-        (DataTypeId::Cp1252StringView, 83),
-        (DataTypeId::LargeCp1252StringView, 84),
-        (DataTypeId::FixedCp1252String, 85),
-        (DataTypeId::SizedCp1252String, 86),
-        (DataTypeId::Urn, 87),
+        (DataTypeId::Null, 0x00),
+        (DataTypeId::Boolean, 0x09),
+        (DataTypeId::Int8, 0x11),
+        (DataTypeId::Int16, 0x12),
+        (DataTypeId::Int32, 0x13),
+        (DataTypeId::Int64, 0x14),
+        (DataTypeId::Int128, 0x15),
+        (DataTypeId::UInt8, 0x19),
+        (DataTypeId::UInt16, 0x1a),
+        (DataTypeId::UInt32, 0x1b),
+        (DataTypeId::UInt64, 0x1c),
+        (DataTypeId::UInt128, 0x1d),
+        (DataTypeId::Float16, 0x21),
+        (DataTypeId::Float32, 0x22),
+        (DataTypeId::Float64, 0x23),
+        (DataTypeId::Decimal32, 0x29),
+        (DataTypeId::Decimal64, 0x2a),
+        (DataTypeId::Decimal128, 0x2b),
+        (DataTypeId::Decimal256, 0x2c),
+        (DataTypeId::DateTime64, 0x31),
+        (DataTypeId::Date32, 0x32),
+        (DataTypeId::Date64, 0x33),
+        (DataTypeId::Time32, 0x34),
+        (DataTypeId::Time64, 0x35),
+        (DataTypeId::Duration32, 0x36),
+        (DataTypeId::Duration64, 0x37),
+        (DataTypeId::Interval, 0x38),
+        (DataTypeId::Binary, 0x41),
+        (DataTypeId::LargeBinary, 0x42),
+        (DataTypeId::BinaryView, 0x43),
+        (DataTypeId::LargeBinaryView, 0x44),
+        (DataTypeId::FixedBinary, 0x45),
+        (DataTypeId::SizedBinary, 0x46),
+        (DataTypeId::Utf8String, 0x51),
+        (DataTypeId::LargeUtf8String, 0x52),
+        (DataTypeId::Utf8StringView, 0x53),
+        (DataTypeId::LargeUtf8StringView, 0x54),
+        (DataTypeId::FixedUtf8String, 0x55),
+        (DataTypeId::SizedUtf8String, 0x56),
+        (DataTypeId::AsciiString, 0x57),
+        (DataTypeId::LargeAsciiString, 0x58),
+        (DataTypeId::AsciiStringView, 0x59),
+        (DataTypeId::LargeAsciiStringView, 0x5a),
+        (DataTypeId::FixedAsciiString, 0x5b),
+        (DataTypeId::SizedAsciiString, 0x5c),
+        (DataTypeId::Cp1252String, 0x5d),
+        (DataTypeId::LargeCp1252String, 0x5e),
+        (DataTypeId::Cp1252StringView, 0x5f),
+        (DataTypeId::LargeCp1252StringView, 0x60),
+        (DataTypeId::FixedCp1252String, 0x61),
+        (DataTypeId::SizedCp1252String, 0x62),
+        (DataTypeId::Version, 0x63),
+        (DataTypeId::Url, 0x64),
+        (DataTypeId::Urn, 0x65),
+        (DataTypeId::Timezone, 0x66),
+        (DataTypeId::MimeType, 0x67),
+        (DataTypeId::MediaType, 0x68),
+        (DataTypeId::Country, 0x71),
+        (DataTypeId::Currency, 0x72),
+        (DataTypeId::Mic, 0x73),
+        (DataTypeId::Cfi, 0x74),
+        (DataTypeId::Side, 0x75),
+        (DataTypeId::State, 0x76),
+        (DataTypeId::TimeInForce, 0x77),
+        (DataTypeId::Isin, 0x78),
+        (DataTypeId::Cusip, 0x79),
+        (DataTypeId::Sedol, 0x7a),
+        (DataTypeId::Bloomberg, 0x7b),
+        (DataTypeId::Uuid, 0x81),
+        (DataTypeId::List, 0x91),
+        (DataTypeId::LargeList, 0x92),
+        (DataTypeId::ListView, 0x93),
+        (DataTypeId::LargeListView, 0x94),
+        (DataTypeId::FixedSizeList, 0x95),
+        (DataTypeId::Struct, 0x96),
+        (DataTypeId::Map, 0x97),
+        (DataTypeId::SortedMap, 0x98),
+        (DataTypeId::Union, 0x99),
+        (DataTypeId::Dictionary, 0x9a),
+        (DataTypeId::RunEndEncoded, 0x9b),
+        (DataTypeId::Variant, 0x9c),
+        (DataTypeId::Geometry, 0xb1),
+        (DataTypeId::Geography, 0xb2),
     ];
     assert_eq!(pinned.len(), DataTypeId::ALL.len());
     for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::ALL) {
         assert_eq!(id, held, "declaration order");
         assert_eq!(id.as_u8(), byte, "{id}");
     }
-    assert!(
-        DataTypeId::ALL.iter().all(|id| id.as_u8() != 58),
-        "58 is retired and never reused"
-    );
     assert_eq!(DataTypeId::Isin.code_width(), Some(12));
     assert_eq!(DataTypeId::Cusip.code_width(), Some(9));
     assert_eq!(DataTypeId::Sedol.code_width(), Some(7));
+}
+
+#[test]
+fn every_leaf_sits_in_its_familys_range_and_no_leaf_takes_the_familys_number() {
+    use yggdryl::DataTypeKind;
+
+    for kind in DataTypeKind::ALL {
+        // The null family's own number is its one leaf: a null has no leaf
+        // to tell from another.
+        let placeholder = if kind == DataTypeKind::Null {
+            Some(DataTypeId::Null)
+        } else {
+            None
+        };
+        assert_eq!(
+            DataTypeId::from_u8(kind.id()),
+            placeholder,
+            "{kind}: a family's own number is a placeholder"
+        );
+        assert_eq!(DataTypeKind::of_u8(kind.id()), Some(kind), "{kind}");
+    }
+    for id in DataTypeId::ALL {
+        let family = id.kind();
+        // The null leaf is the family's own number: a null has no leaf to
+        // tell from another.
+        if id == DataTypeId::Null {
+            assert_eq!(id.as_u8(), family.id());
+        } else {
+            assert!(id.as_u8() > family.id(), "{id}");
+        }
+        assert_eq!(DataTypeKind::of_u8(id.as_u8()), Some(family), "{id}");
+        assert_eq!(DataTypeId::from_u8(id.as_u8()), Some(id), "{id}");
+    }
+    // Every family starts after the last one ends.
+    let mut starts: Vec<u8> = DataTypeKind::ALL.iter().map(|kind| kind.id()).collect();
+    starts.sort_unstable();
+    starts.dedup();
+    assert_eq!(starts.len(), DataTypeKind::ALL.len());
+    // A byte past every family names nothing.
+    assert_eq!(DataTypeKind::of_u8(0xff), None);
+    assert_eq!(DataTypeId::from_u8(0xff), None);
 }
 
 #[test]

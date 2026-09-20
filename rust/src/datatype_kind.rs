@@ -100,6 +100,55 @@ impl DataTypeKind {
     }
 
     /// Return whether the category is a fixed-width or exact number.
+    /// The family's own number: the start of the range of bytes its leaves
+    /// take, and a byte no leaf takes, so a value tagged with it is a value
+    /// of the family and of no leaf - the placeholder the encodings keep.
+    ///
+    /// ```
+    /// use yggdryl::{DataTypeId, DataTypeKind};
+    ///
+    /// assert_eq!(DataTypeKind::Text.id(), 0x50);
+    /// assert_eq!(DataTypeKind::of_u8(DataTypeId::Utf8String.as_u8()), Some(DataTypeKind::Text));
+    /// assert_eq!(DataTypeKind::of_u8(0xf0), None);
+    /// ```
+    pub const fn id(self) -> u8 {
+        match self {
+            Self::Null => 0x00,
+            Self::Boolean => 0x08,
+            Self::Integer => 0x10,
+            Self::Floating => 0x20,
+            Self::Decimal => 0x28,
+            Self::Temporal => 0x30,
+            Self::Bytes => 0x40,
+            Self::Text => 0x50,
+            Self::Code => 0x70,
+            Self::Uuid => 0x80,
+            Self::Nested => 0x90,
+            Self::Geospatial => 0xb0,
+        }
+    }
+
+    /// The family whose range one byte is in - the family's own number or
+    /// one of its leaves, stated or still a placeholder - or nothing for a
+    /// byte past every family.
+    pub const fn of_u8(byte: u8) -> Option<Self> {
+        Some(match byte {
+            0x00..=0x07 => Self::Null,
+            0x08..=0x0f => Self::Boolean,
+            0x10..=0x1f => Self::Integer,
+            0x20..=0x27 => Self::Floating,
+            0x28..=0x2f => Self::Decimal,
+            0x30..=0x3f => Self::Temporal,
+            0x40..=0x4f => Self::Bytes,
+            0x50..=0x6f => Self::Text,
+            0x70..=0x7f => Self::Code,
+            0x80..=0x8f => Self::Uuid,
+            0x90..=0xaf => Self::Nested,
+            0xb0..=0xbf => Self::Geospatial,
+            _ => return None,
+        })
+    }
+
     pub const fn is_numeric(self) -> bool {
         matches!(self, Self::Integer | Self::Floating | Self::Decimal)
     }

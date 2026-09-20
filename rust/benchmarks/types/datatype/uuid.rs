@@ -10,7 +10,7 @@ use arrow_array::{ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::FieldValue as _;
 use yggdryl::Uuid;
-use yggdryl::{ArrowCastOptions, DataType, Field, StructureType};
+use yggdryl::{ArrowCastOptions, DataType, Field, StructType};
 
 use super::doors;
 
@@ -19,9 +19,7 @@ const ROWS: usize = crate::bench_profile::corpus(10_000, 1_024);
 fn root(field: Field) -> Field {
     Field::new(
         "row",
-        DataType::from(
-            StructureType::from_fields([field]).expect("the benchmark fields are valid"),
-        ),
+        DataType::from(StructType::from_fields([field]).expect("the benchmark fields are valid")),
         false,
     )
 }

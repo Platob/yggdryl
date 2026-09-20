@@ -28,7 +28,7 @@ use yggdryl::{
     FixCodec as CoreFixCodec, FixEntry as CoreFixEntry, FixField as CoreFixField,
     FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg,
     FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType, Scalar,
-    StructureType, TimeUnit, Timezone, from_json_scalar_with_field, into_json_scalar,
+    StructType, TimeUnit, Timezone,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -78,7 +78,7 @@ fn entry_tuple<'py>(py: Python<'py>, entry: &CoreFixEntry) -> PyResult<Bound<'py
 
 /// A native identity as the uuid `Scalar` it is: the binding has no `Uuid`
 /// class of its own, and `as_py()` answers the hyphenated text.
-fn uuid_scalar(uuid: CoreUuid) -> PyScalar {
+pub(crate) fn uuid_scalar(uuid: CoreUuid) -> PyScalar {
     PyScalar::from_inner(Scalar::Uuid(uuid))
 }
 
@@ -1164,7 +1164,7 @@ impl PyFixFieldIterator {
 /// here - that is `Field::canonicalize_value`'s work, on what this hands it.
 fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
     match field.dtype() {
-        CoreDataType::Structure(_) => {
+        CoreDataType::Struct(_) => {
             let children = field.fields();
             if let Some(items) = value.as_sequence() {
                 if items.len() == children.len() {
@@ -1190,7 +1190,7 @@ fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
                     .collect()
             });
             named
-                .and_then(|named| Scalar::from_record(named).ok())
+                .and_then(|named| Scalar::from_struct(named).ok())
                 .unwrap_or(value)
         }
         CoreDataType::Sequence(sequence) => {
@@ -1209,8 +1209,9 @@ fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
 }
 
 /// What [`PyFixMsg::__reduce__`] hands pickle: the rebuilder and the three
-/// documents it needs - the schema, the value, and the dictionary's fields.
-type MsgPickle = (Py<PyAny>, (String, String, String));
+/// parts it needs - the schema as JSON, the row as the variant encoding,
+/// and the dictionary's fields as JSON.
+type MsgPickle = (Py<PyAny>, (String, Py<PyAny>, String));
 
 /// A FIX message: a typed market event with a content row, against the
 /// registry that types it.
@@ -1316,12 +1317,15 @@ impl PyFixMsg {
     /// of the FIX fields a message lifts, `Text(58)` - fills the holder that
     /// owns it and leaves the row. The clocks settle: `SendingTime` is the stated one,
     /// else UTC now, so a message meant to compare equal to another states
-    /// one; the instant `currunix` is the stated one, else `TransactTime`, else
-    /// `SendingTime`; the creation is the stated one, else
-    /// `OrigSendingTime`, else the instant. The identity is then derived:
-    /// the cross code from the first stated of `OrderID`, `ClOrdID`,
-    /// `OrigClOrdID`, `QuoteID`, `QuoteReqID` and `MDReqID`, the hash code
-    /// over the facts and the row, and the identities from both.
+    /// one; the instant `currunix` is the stated one, else `SendingTime`,
+    /// and the creation the stated one, else the instant - what
+    /// `TransactTime` or `OrigSendingTime` says is the lifecycle's to read.
+    /// The identity is then derived:
+    /// the cross code from the bridge's `msgsessionid:msgctxid` where the
+    /// row header stated both, else the first stated of `OrderID`,
+    /// `ClOrdID`, `OrigClOrdID`, `QuoteID`, `QuoteReqID` and `MDReqID`; the
+    /// hash code over the facts, the lifted fields and the row, the
+    /// standard header and trailer left out; and the identities from both.
     #[new]
     #[pyo3(signature = (field, value, registry=None))]
     fn new(
@@ -1345,11 +1349,11 @@ impl PyFixMsg {
     /// columns fill the holders, the content is rebuilt from the
     /// `fixentries` column - so `into_bytes` re-emits the line the row was
     /// read from, and a row without that column has no content - and a
-    /// capture's own column is read past - the one the crate tags,
-    /// `sourceurl`, and every column no tag and no counter names - so
-    /// nothing on the message holds one; a column whose name
-    /// holds a `.` is a bridge's own statement and lands in the metadata.
-    /// They stay the row's, and whoever writes rows back restates them.
+    /// capture's own column is carried - the one the crate tags,
+    /// `sourceurl`, and every column no tag and no counter names - each
+    /// under its name, as `carried` answers, and held as no fact; a column
+    /// whose name holds a `.` is a bridge's own statement and lands in the
+    /// metadata. `into_row` states each carried cell again at its column.
     /// Nothing is parsed again and no clock is read: a row carries the
     /// instant, the creation and the identities its message settled, and a
     /// row that does not fit the schema is a located `ValueError`.
@@ -1368,11 +1372,12 @@ impl PyFixMsg {
             .map_err(value_error)
     }
 
-    /// Rebuild a message from the three parts pickle carried.
+    /// Rebuild a message from the three parts pickle carried: the schema
+    /// as JSON, the row as the variant encoding, the registry as JSON.
     #[staticmethod]
-    fn _from_pickle(field: &str, value: &str, registry: &str) -> PyResult<Self> {
+    fn _from_pickle(field: &str, value: &[u8], registry: &str) -> PyResult<Self> {
         let field = CoreField::from_json(field).map_err(value_error)?;
-        let value = from_json_scalar_with_field(value, &field).map_err(value_error)?;
+        let value = Scalar::decode_variant_bytes(value).map_err(value_error)?;
         let registry = CoreFixRegistry::from_json(registry).map_err(value_error)?;
         CoreFixMsg::with_registry(Arc::new(registry), field, value)
             .map(Self::from_inner)
@@ -1609,13 +1614,16 @@ impl PyFixMsg {
         let mut field = root.clone();
         field
             .set_dtype(
-                StructureType::from_fields(members)
+                StructType::from_fields(members)
                     .map(CoreDataType::from)
                     .map_err(value_error)?,
             )
             .map_err(value_error)?;
         let field = field.into_json().map_err(value_error)?;
-        let value = into_json_scalar(&Scalar::from_sequence(values)).map_err(value_error)?;
+        let value =
+            pyo3::types::PyBytes::new(py, &Scalar::from_sequence(values).into_variant_bytes())
+                .into_any()
+                .unbind();
         let registry = self.inner.registry().into_json().map_err(value_error)?;
         Ok((callable, (field, value, registry)))
     }
@@ -1692,16 +1700,19 @@ impl PyFixMsg {
     }
 
     /// The cross code: the identifier every message of one lifecycle
-    /// shares, as the message spells it - `OrderID`, else `ClOrdID`,
-    /// `OrigClOrdID`, `QuoteID`, `QuoteReqID` or `MDReqID`, the first
-    /// stated - and empty where it names none.
+    /// shares, as the message spells it - the bridge's conversation,
+    /// `msgsessionid:msgctxid`, where the row header stated both, else
+    /// `OrderID`, `ClOrdID`, `OrigClOrdID`, `QuoteID`, `QuoteReqID` or
+    /// `MDReqID`, the first stated - and empty where it names none.
     #[getter]
     fn crosscode(&self) -> &str {
         self.inner.get_crosscode()
     }
 
     /// The code the message's content digests to: the XXH3-64 of what the
-    /// event states and the named FIX content behind it.
+    /// event states, the text, the metadata, `MsgType`, the FIX fields the
+    /// message lifted and its named content - everything but the standard
+    /// header and trailer, and never the chain it is in.
     #[getter]
     fn currhashcode(&self) -> u64 {
         self.inner.get_currhashcode()
@@ -1714,7 +1725,7 @@ impl PyFixMsg {
     }
 
     /// When the message happened: nanoseconds since the Unix epoch, UTC -
-    /// the stated instant, else `TransactTime`, else `SendingTime`.
+    /// the stated instant, else `SendingTime`.
     #[getter]
     fn currunix(&self) -> i64 {
         self.inner.get_currunix()
@@ -1746,6 +1757,34 @@ impl PyFixMsg {
             .iter()
             .copied()
             .map(uuid_scalar)
+            .collect()
+    }
+
+    /// The identities of the elements this one was read from: the text line
+    /// it was parsed out of, and none for one parsed from bytes. Provenance,
+    /// never lineage: no walk moves it.
+    #[getter]
+    fn srcuuids(&self) -> Vec<PyScalar> {
+        self.inner
+            .get_srcuuids()
+            .iter()
+            .copied()
+            .map(uuid_scalar)
+            .collect()
+    }
+
+    /// The capture's own cells the message carries, each under the column
+    /// it was read from: where the line was read from, its place in the
+    /// object, the body it was cut from, when it was recorded. Provenance
+    /// and never content - none is an entry, none reaches the wire or the
+    /// hash code - and `into_row` states each again at its column. Empty
+    /// for a message parsed from bytes.
+    #[getter]
+    fn carried(&self) -> Vec<(String, PyScalar)> {
+        self.inner
+            .carried()
+            .iter()
+            .map(|(name, value)| (name.to_string(), PyScalar::from_inner(value.clone())))
             .collect()
     }
 
@@ -2044,8 +2083,12 @@ impl PyFixCodec {
     /// empty; `batch_byte_size` and `batch_row_size` are the raw bytes and
     /// the row count one Arrow batch targets, the core's 128 MiB and 32,768
     /// rows when unstated, whichever the batch reaches first;
-    /// `include_msgtypes` and `exclude_msgtypes` are the message types a
-    /// parse keeps and refuses, each read before a frame is built, spelled
+    /// `threads` is how many threads the line and row doors read on, one
+    /// when unstated - more read a stream a chunk ahead, each line on some
+    /// thread, and answer in the lines' order, so the doors answer what one
+    /// thread answers, sooner; `include_msgtypes` and `exclude_msgtypes`
+    /// are the message types a parse keeps and refuses, each read before a
+    /// frame is built, spelled
     /// as codes or as names - `"0"`, `"Heartbeat"` - with `"unknown"`
     /// standing for a line stating no type at all. Unstated, the core
     /// refuses `Heartbeat`, `TestRequest` and the untyped line; passing an
@@ -2064,6 +2107,7 @@ impl PyFixCodec {
         batch_row_size=None,
         include_msgtypes=None,
         exclude_msgtypes=None,
+        threads=None,
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -2078,6 +2122,7 @@ impl PyFixCodec {
         batch_row_size: Option<usize>,
         include_msgtypes: Option<Vec<String>>,
         exclude_msgtypes: Option<Vec<String>>,
+        threads: Option<usize>,
     ) -> PyResult<Self> {
         let registry = registry_or_global(registry)?;
         let mut inner =
@@ -2110,6 +2155,9 @@ impl PyFixCodec {
         }
         if let Some(held) = exclude_msgtypes {
             inner = inner.with_exclude_msgtypes(held);
+        }
+        if let Some(held) = threads {
+            inner = inner.with_threads(held);
         }
         Ok(Self { inner, registry })
     }
@@ -2165,6 +2213,13 @@ impl PyFixCodec {
     #[getter]
     fn batch_row_size(&self) -> usize {
         self.inner.batch_row_size()
+    }
+
+    /// The threads the line and row doors read on; one reads a stream
+    /// where it stands.
+    #[getter]
+    fn threads(&self) -> usize {
+        self.inner.threads()
     }
 
     /// The message types a parse keeps, empty where it keeps every type
@@ -2261,7 +2316,7 @@ impl PyFixCodec {
     /// by position. The line's `timestamp` is capture context and stamps
     /// nothing: `SendingTime` is the message's own, else a `SendingTime`
     /// capture, else the codec's `default_sending_time`, else UTC now, and
-    /// the instant `currunix` is `TransactTime`, else that `SendingTime`.
+    /// the instant `currunix` is that `SendingTime`.
     ///
     /// A `msgpluginid` capture fills the crate's `msgpluginid` field and selects
     /// nothing: the dictionary is one namespace.
@@ -2311,7 +2366,7 @@ impl PyFixCodec {
     /// `pyarrow.RecordBatchReader` pulling one batch at a time. The schema is
     /// decided before the first row: the capture's own columns lead and the
     /// fixed FIX columns follow. Every row is parsed as the line door
-    /// parses one, and batches close on the raw bytes of the payload column
+    /// parses one, and batches close on the bytes each row lands as
     /// against `batch_byte_size`.
     ///
     /// The capture's own columns fill nothing: the carried ones, and the one
@@ -2339,11 +2394,10 @@ impl PyFixCodec {
     /// untouched. Nothing is parsed again, and batches close on the raw
     /// bytes of each message's arrival record against `batch_byte_size`.
     ///
-    /// A carried column returns to its place because the door keeps it, not
-    /// because the message does: a message holds nothing about the reading
-    /// it arrived through, so each row's own cells travel beside the message
-    /// it made and are stated again where that message lands. The pairing is
-    /// by message and never by position - a walk answers messages in their
+    /// A carried column returns to its place because the message carries
+    /// it: each row's own cells are read into the message it made, under
+    /// their names, and stated again where that message lands. The pairing
+    /// is by message and never by position - a walk answers messages in their
     /// own order, which a capture's lines are routinely not in.
     fn lifecycle_arrow_reader<'py>(
         &self,
@@ -2362,10 +2416,9 @@ impl PyFixCodec {
     /// it without a parse. One half of what the Arrow twins compose;
     /// `arrow_reader` is the other.
     ///
-    /// The capture's own columns are not carried: a message holds none of
-    /// them, so `arrow_reader(schema, messages(reader))` answers them null
-    /// where `lifecycle_arrow_reader(reader)` keeps them. A stage that has
-    /// to keep them runs as one pass instead.
+    /// The capture's own columns are carried: each row's own cells are read
+    /// into the message it makes, so `arrow_reader(schema, messages(reader))`
+    /// states them again exactly as `lifecycle_arrow_reader(reader)` does.
     fn messages(&self, source: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let source = batch_reader_from_value(source)?;
         Ok(PyFixMessages::over(self.inner.messages(source)))
@@ -2377,8 +2430,7 @@ impl PyFixCodec {
     /// builds, or the one read off a batch - and `messages` any iterable of
     /// `FixMsg`, pulled one message at a time as `pyarrow` pulls batches.
     /// Each message fills one row through `FixMsg.into_row`, and batches
-    /// close on the raw bytes of each message's arrival record against
-    /// `batch_byte_size`. An item that is not a message is the reader's
+    /// close on the bytes each row lands as against `batch_byte_size`. An item that is not a message is the reader's
     /// error, raised by the batch it would have landed in.
     fn arrow_reader<'py>(
         &self,
@@ -2438,9 +2490,8 @@ impl PyFixCodec {
     /// The Arrow twin of `format_messages`, and the last stage of the
     /// pipeline a capture runs. The schema is answered before a row is read,
     /// from the source's carried columns and `field`, and the capture's own
-    /// columns still lead the row - restated from the source batch, not
-    /// asked of the message, which holds none of them. A source carrying no
-    /// arrival record is a
+    /// columns still lead the row - stated from the cells each message
+    /// carries. A source carrying no arrival record is a
     /// projection already and is cast batch by batch instead of read back as
     /// messages.
     fn format_arrow_reader<'py>(
@@ -2462,13 +2513,18 @@ impl PyFixCodec {
     /// its chain, under the cross identity its cross code derives, still
     /// alive - so a chained message carries its predecessor's identity and
     /// instant as `prevuuid` and `prevunix`, its place in the chain as
-    /// `seqnum`, the predecessor among its `parentuuids`, the lifecycle's
-    /// creation carried forward as `creaunix`, and is settled again around
+    /// `seqnum`, the whole chain before it as its `parentuuids`, the
+    /// lifecycle's creation carried forward as `creaunix`, and is settled
+    /// again around
     /// them; a message that arrives before the live one it would follow is
     /// yielded as it came. A message the walk refuses raises `ValueError`
     /// where it is met and the stream continues; an item that is not a
     /// `FixMsg`, or a failure of the iterable itself, raises as itself and
-    /// ends it.
+    /// ends it. The walk reads the structured message first: one whose
+    /// sending clock the parse supplied rather than read is dated by the
+    /// `TransactTime(60)` it states, so a capture whose frames state no
+    /// `SendingTime(52)` still orders, expires and folds by when its
+    /// transactions happened.
     fn lifecycle(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let pulled = Pulled::new(messages, message_of)?;
         let failed = pulled.failed.clone();
@@ -2596,15 +2652,18 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 
 /// The definitions this crate lists, in tag order from 65003.
 ///
-/// The event's clocks - `currunix`, `creaunix`, `prevunix`, `snapunix` - its
-/// identities - `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid`,
-/// `prevuuid`, `parentuuids`, the `crosscode` they derive from, its `seqnum` -
-/// what a bridge's own log states about a line - the `msgpluginid`, the
-/// `msgctxid`, the `msgsessionid` - the `sourceurl` a line was read from, the
-/// `nofixentries` that counts its content, and the two Map groups
-/// `identifiers` and `metadata`. Nineteen in all, and every one a fact no
-/// dictionary publishes: what a message says about its *market* is FIX's
-/// own field, and the graph traits answer it off those.
+/// The event's clocks - `currunix`, `creaunix`, `prevunix`, `snapunix`,
+/// `expirunix` - its identities - `currhashcode`, `crosshashcode`,
+/// `curruuid`, `crossuuid`, `prevuuid`, `parentuuids`, the `crosscode` they
+/// derive from, its `seqnum` - the `state` it reached - the `srcuuids` of
+/// the lines it was read from - what a bridge's own log states about a line
+/// - the `msgpluginid`, the `msgctxid`, the `msgsessionid` - the `sourceurl`
+/// a line was read from, the `nofixentries` that counts its content, and the
+/// two Map groups `identifiers` and `metadata`. Twenty-two in all, and every
+/// one a fact no dictionary publishes: what a message says about its
+/// *market* is FIX's own field, and the graph traits answer it off those;
+/// the state and the expiry are the event's own, the two facts a lifecycle
+/// walk folds forward, each at the datatype its graph event column names.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
@@ -2845,13 +2904,15 @@ impl PyFixHeader {
 /// What a bridge's own row header states about the line it wrote - the
 /// plugin, the message context and the session instance - read off the
 /// line's own bytes like every other fact a message holds. None of it is
-/// FIX and none is content, so nothing here reaches the code the message
-/// digests to.
+/// FIX and none is content, so none of it is an entry or on the wire; where
+/// the row header brackets both a session instance and a message context,
+/// the two name the chain through the cross code, which is the chain's
+/// identity and not the message's, and which the content code leaves out.
 ///
-/// What the *reader* said about the line is not here and is held nowhere on
-/// a message: the object it was read from, and whatever else the reader
-/// carried, are the capture's own columns, stated on the row by whoever
-/// read it.
+/// What the *reader* said about the line is not here: the object it was
+/// read from, and whatever else the reader carried, are the capture's own
+/// columns, which the message carries under their names - `carried` - and
+/// `into_row` states again.
 ///
 /// A copy at the moment it was asked for; immutable, so it compares and
 /// hashes by its facts.
@@ -2991,6 +3052,19 @@ impl PyMarketEventData {
     fn parentuuids(&self) -> Vec<PyScalar> {
         self.inner
             .get_parentuuids()
+            .iter()
+            .copied()
+            .map(uuid_scalar)
+            .collect()
+    }
+
+    /// The identities of the elements this one was read from: the text line
+    /// it was parsed out of, and none for one parsed from bytes. Provenance,
+    /// never lineage: no walk moves it.
+    #[getter]
+    fn srcuuids(&self) -> Vec<PyScalar> {
+        self.inner
+            .get_srcuuids()
             .iter()
             .copied()
             .map(uuid_scalar)

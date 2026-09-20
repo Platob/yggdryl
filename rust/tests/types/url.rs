@@ -9,8 +9,8 @@ use yggdryl::DataType;
 use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
-    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StructureType,
-    UriField, UriType, Url,
+    ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, StructType, UriField,
+    UriType, Url,
 };
 
 fn url(text: &str) -> Scalar {
@@ -18,7 +18,7 @@ fn url(text: &str) -> Scalar {
 }
 
 fn root(field: Field) -> Field {
-    StructureType::from_fields([field])
+    StructType::from_fields([field])
         .map(DataType::from)
         .unwrap()
         .required_field("row")
@@ -41,8 +41,9 @@ fn datatype_identity_naming_and_serde_are_total() {
     assert_eq!("URL".parse::<DataType>().unwrap(), dtype);
     assert_eq!("URL".parse::<DataTypeId>().unwrap(), DataTypeId::Url);
     assert_eq!(DataTypeId::Url.as_str(), "url");
-    // Appended last, because `as_u8` is a wire contract.
-    assert_eq!(DataTypeId::Url.as_u8(), 59);
+    // In the text family's range, because `as_u8` is a wire contract laid
+    // out by family.
+    assert_eq!(DataTypeId::Url.as_u8(), 0x64);
     assert_eq!(DataTypeId::Url.fixed_byte_width(), None);
     assert!(!DataTypeId::Url.is_parameterized());
     assert!(DataTypeId::Url.is_string());

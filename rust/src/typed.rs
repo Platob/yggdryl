@@ -47,7 +47,7 @@ mod record {
     ///
     /// Building one canonicalizes the row through the field's own row
     /// canonicalization, so an ordered [`Scalar::Sequence`](Scalar) and a named
-    /// [`Scalar::Record`](Scalar) are both accepted, and the cells are exactly
+    /// [`Scalar::Struct`](Scalar) are both accepted, and the cells are exactly
     /// what [`Field::canonicalize_value`] answers; a row already canonical costs
     /// the one `Vec` the cells live in. Reading a cell, a name, or iterating
     /// allocates nothing; [`Self::into_scalar`] is the allocating counterpart.
@@ -56,16 +56,16 @@ mod record {
     /// name, nullability, or metadata - the rule [`FieldScalar`] states.
     ///
     /// ```
-    /// use yggdryl::{DataType, FieldRecord, Scalar, StructureType};
+    /// use yggdryl::{DataType, FieldRecord, Scalar, StructType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let row = DataType::from(StructureType::from_fields([
+    /// let row = DataType::from(StructType::from_fields([
     ///     DataType::Int64.required_field("id"),
     ///     DataType::utf8().nullable_field("symbol"),
     /// ])?)
     /// .required_field("row");
     ///
-    /// let record = FieldRecord::new(&row, Scalar::from_record([
+    /// let record = FieldRecord::new(&row, Scalar::from_struct([
     ///     ("symbol", Scalar::from("AAPL")),
     ///     ("id", Scalar::from(7)),
     /// ])?)?;
@@ -198,10 +198,10 @@ mod record {
         ///
         /// ```
         /// use yggdryl::arrow::batch_from_value;
-        /// use yggdryl::{DataType, FieldRecord, Scalar, StructureType};
+        /// use yggdryl::{DataType, FieldRecord, Scalar, StructType};
         ///
         /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-        /// let row = DataType::from(StructureType::from_fields([
+        /// let row = DataType::from(StructType::from_fields([
         ///     DataType::Int64.required_field("id"),
         ///     DataType::utf8().nullable_field("symbol"),
         /// ])?)
@@ -802,8 +802,8 @@ impl<'a> FieldScalar<'a> {
     }
 
     /// Return record fields in name order when the value is a record.
-    pub fn as_record(&self) -> Option<&std::collections::BTreeMap<SmolStr, Scalar>> {
-        self.value.as_record()
+    pub fn as_struct(&self) -> Option<&std::collections::BTreeMap<SmolStr, Scalar>> {
+        self.value.as_struct()
     }
 
     /// Look up a sequence index.

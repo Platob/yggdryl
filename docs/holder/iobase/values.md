@@ -139,7 +139,7 @@ Reads feed the parser from `pstream_bytes`, so decoded pages are not retained. T
 
     let media = Url::from_str("file:///trade.json.gz")?.media_type();
     let mut handle = Buffer::new().with_media_type(media);
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         ("quantity", Scalar::from(2_i64)),
         ("symbol", Scalar::from("AAPL")),
     ])?;

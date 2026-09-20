@@ -68,12 +68,13 @@ use std::sync::Arc;
 use quick_xml::events::Event;
 use smol_str::SmolStr;
 
+use crate::graph::Element as _;
 use crate::mime_type::line;
-use crate::text::{TextBytes, TextEntries, TextEntry, TextLine};
+use crate::text::{TextBytes, TextEntries, TextEntry, TextLine, TextOptions};
 use crate::{Error, Field, Result, Scalar, Version};
 
 use super::build::{BEGINSTRING_COLUMN, Builder, Fill, FixPair, RowExtras, root_name, version_of};
-use super::memo::Memo;
+use super::warmth::Warmth;
 use super::{FixMessages, FixMsg, FixRegistry};
 
 /// One bridge row read into the pairs a build folds in, beside the message
@@ -425,11 +426,18 @@ impl CaptureRole {
     /// A capture named for the capture's own column - `sourceurl` - is
     /// silent: what a reader says about a line is not something the message
     /// it holds says, so it fills no field here and is stated on the row by
-    /// whoever read it.
+    /// whoever read it. A capture named for one of the sixteen event columns
+    /// is silent too: it is the line's own fact - the place, the state, the
+    /// instant the line reads off it - and the line states its identity as
+    /// the message's source, which is all a line says about a message; the
+    /// batch door reads a carrier's event columns the same way.
     fn of(name: &str, codec: &FixCodec) -> Self {
         let is = |known: &str| crate::folds_equal(known, name);
         if is(BEGINSTRING_COLUMN) {
             return Self::Version;
+        }
+        if crate::graph::EventColumn::of_name(name).is_some() {
+            return Self::Silent;
         }
         match codec.fill_target(name) {
             Some((_, tag)) if super::identity::is_capture_tag(tag) => Self::Silent,
@@ -475,15 +483,19 @@ pub struct FixCodec {
     /// The rows one Arrow batch of messages targets, whichever bound the
     /// batch reaches first.
     batch_row_size: usize,
+    /// The threads the line and row doors read on.
+    threads: usize,
     /// The `BeginString` child every built message carries, resolved once:
     /// a bridge row states no version, so every one of them would otherwise
     /// look the field up per line.
     beginstring: Field,
-    /// What this run has already asked its dictionary, shared by every
-    /// stream the codec is cloned into: a capture asks the same few
-    /// questions a million times, and each is answered off the dictionary
-    /// once.
-    memo: Arc<Memo>,
+}
+
+/// The source a message parsed out of `line` states: the line's identity,
+/// and none where the line has none - an instant no UUIDv7 holds is the nil
+/// identity, and nil names no element.
+fn source_of(line: &TextLine) -> Option<crate::Uuid> {
+    Some(line.get_curruuid()).filter(|uuid| !uuid.is_nil())
 }
 
 impl FixCodec {
@@ -554,8 +566,8 @@ impl FixCodec {
             exclude_stated: false,
             batch_byte_size: Self::DEFAULT_BATCH_BYTE_SIZE,
             batch_row_size: Self::DEFAULT_BATCH_ROW_SIZE,
+            threads: 1,
             beginstring,
-            memo: Arc::new(Memo::new()),
         }
     }
 
@@ -680,7 +692,8 @@ impl FixCodec {
     /// # use yggdryl::{FixCodec, FixRegistry, MSGPLUGINID_TAG_NAME};
     /// let codec = FixCodec::new(Arc::new(FixRegistry::new())).with_capture_names(["msgpluginid"]);
     ///
-    /// let line = TextLine::from_bytes(0, TextBytes::from_bytes(b"8=FIX.4.4|35=D|11=A|10=0|")?)?
+    /// let options = Arc::new(yggdryl::text::TextOptions::new());
+    /// let line = TextLine::from_bytes(0, TextBytes::from_bytes(b"8=FIX.4.4|35=D|11=A|10=0|")?, options)?
     ///     .with_captures(vec![Some(TextBytes::from_bytes(b"VNU")?)])?;
     /// let message = codec.parse_text_line(&line)?.next().expect("one message")?;
     /// // The capture filled the crate's own field.
@@ -769,6 +782,47 @@ impl FixCodec {
     #[must_use]
     pub const fn batch_row_size(&self) -> usize {
         self.batch_row_size
+    }
+
+    /// Sets the threads the line and row doors read on.
+    ///
+    /// One, the default, reads a stream where it stands, a line at a time.
+    /// More read it [`Self::PARALLEL_CHUNK`] lines per thread ahead, each
+    /// line parsed on some thread and every message answered in the lines'
+    /// order, so [`Self::parse_lines`], [`Self::parse_text_lines`],
+    /// [`Self::parse_arrow_messages`] and [`Self::messages`] answer exactly
+    /// what one thread answers, sooner, and [`Self::arrow_reader`] fills
+    /// its rows the same way. A [`lifecycle`](Self::lifecycle) is one walk
+    /// and reads on the thread that pulls it whatever this says. Zero reads
+    /// as one.
+    #[must_use]
+    pub const fn with_threads(mut self, threads: usize) -> Self {
+        self.set_threads(threads);
+        self
+    }
+
+    /// [`Self::with_threads`], in place.
+    pub const fn set_threads(&mut self, threads: usize) {
+        self.threads = if threads == 0 { 1 } else { threads };
+    }
+
+    /// The threads the line and row doors read on.
+    #[must_use]
+    pub const fn threads(&self) -> usize {
+        self.threads
+    }
+
+    /// The lines each thread reads ahead where the doors read on several:
+    /// what bounds the read-ahead, and what one spawn is amortized over.
+    pub const PARALLEL_CHUNK: usize = 64;
+
+    /// The lines the doors read ahead: one thread reads none ahead.
+    pub(super) const fn chunk(&self) -> usize {
+        if self.threads == 1 {
+            1
+        } else {
+            self.threads * Self::PARALLEL_CHUNK
+        }
     }
 
     /// The message types this codec reads, named in any spelling the
@@ -1081,13 +1135,19 @@ impl FixCodec {
     pub fn parse_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
         I: IntoIterator,
-        I::Item: AsRef<[u8]>,
+        I::Item: AsRef<[u8]> + Send,
     {
         let codec = self.clone();
-        lines
-            .into_iter()
-            .fuse()
-            .flat_map(move |line| FixMessages::from_result(codec.parse_line(line.as_ref())))
+        let threads = self.threads();
+        crate::parallel::ordered::<Warmth, _, _, _>(lines, threads, self.chunk(), move |line| {
+            let messages = FixMessages::from_result(codec.parse_line(line.as_ref()));
+            if threads > 1 {
+                messages.collected()
+            } else {
+                messages
+            }
+        })
+        .flatten()
     }
 
     /// Parses one decoded line into the messages it carries.
@@ -1111,16 +1171,22 @@ impl FixCodec {
     /// A line that states none of them reads exactly as its bytes would,
     /// which is what makes this an entry point and not a second contract.
     ///
-    /// # The line's own fields are the reader's, and reach no message
+    /// # The line is the source, and its own fields reach no message
     ///
-    /// Nothing else a [`TextLine`] holds is communicated: not the object it
-    /// names, not the instant it carries, not its media type, not its place
-    /// in that object, not the body itself as a value - and a capture named
-    /// for one of [the capture's own columns](FixMsg::from_row) fills
-    /// nothing either. The answer is the message the line's bytes parsed to
-    /// and no more. Where a line came from is the reader's to state, on the
-    /// row, which is what [`Self::parse_text_arrow_reader`] does with the
-    /// columns the batch already carries.
+    /// Every message the line carries states the line's identity -
+    /// [`Element::get_curruuid`](crate::graph::Element::get_curruuid), which
+    /// the line derives from its instant and its bytes - as its one source,
+    /// [`Element::get_srcuuids`](crate::graph::Element::get_srcuuids): the
+    /// same line parsed again states the same source, and a message parsed
+    /// from raw bytes states none. Nothing else a [`TextLine`] holds is
+    /// communicated: not the object it names, not the instant it carries,
+    /// not its media type, not its place in that object, not the body
+    /// itself as a value - and a capture named for one of [the capture's
+    /// own columns](FixMsg::from_row) fills nothing either. The answer is
+    /// the message the line's bytes parsed to and no more. Where a line came
+    /// from is the reader's to state, on the row, which is what
+    /// [`Self::parse_text_arrow_reader`] does with the columns the batch
+    /// already carries.
     ///
     /// # Errors
     ///
@@ -1157,6 +1223,7 @@ impl FixCodec {
             fills: &fills,
             direction: None,
             direction_pin: None,
+            source: source_of(line),
         };
         let page = line.body_bytes();
         if page.is_empty() {
@@ -1182,35 +1249,68 @@ impl FixCodec {
     where
         I: IntoIterator,
         I::Item: Into<Result<L>>,
-        L: Borrow<TextLine>,
+        L: Borrow<TextLine> + Send,
     {
         let codec = self.clone();
-        lines.into_iter().fuse().flat_map(move |line| {
-            FixMessages::from_result(
-                line.into()
-                    .and_then(|line: L| codec.parse_text_line(line.borrow())),
-            )
-        })
+        let threads = self.threads();
+        crate::parallel::ordered::<Warmth, _, _, _>(
+            lines.into_iter().map(Into::into),
+            threads,
+            self.chunk(),
+            move |line: Result<L>| {
+                let messages = FixMessages::from_result(
+                    line.and_then(|line: L| codec.parse_text_line(line.borrow())),
+                );
+                if threads > 1 {
+                    messages.collected()
+                } else {
+                    messages
+                }
+            },
+        )
+        .flatten()
     }
 
-    /// One payload read under what its row stated, a row of nothing included.
+    /// One row's payload read under what the row stated, a row of nothing
+    /// included, as the text line the row was cut from.
     ///
-    /// A row's content can never fail the batch it arrives in: a payload
-    /// nobody could read is a row holding an empty message, dated and
-    /// versioned by what the row itself said. A row that carried no message
-    /// to read is a different fact and answers no message at all.
-    pub(super) fn parse_bytes_with(&self, extras: RowExtras<'_>, bytes: &[u8]) -> FixMessages {
-        if bytes.is_empty() {
+    /// The payload is the line: it is read into a [`TextLine`] dated by the
+    /// row's own `mtime`, so what the messages state as their source is the
+    /// identity the line door states for the same line, and the text the
+    /// codec reads is the text a line is. A row's content can never fail
+    /// the batch it arrives in: a payload nobody could read is a row
+    /// holding an empty message, dated and versioned by what the row itself
+    /// said. A row that carried no message to read is a different fact and
+    /// answers no message at all.
+    pub(super) fn parse_row_with(
+        &self,
+        extras: RowExtras<'_>,
+        payload: &[u8],
+        mtime: Option<i64>,
+        options: &Arc<TextOptions>,
+    ) -> FixMessages {
+        if payload.is_empty() {
             // A row with no payload at all carries no message.
             return FixMessages::none();
         }
         // Page capacity is a materialization bound, never malformed syntax.
-        let page = match TextBytes::from_bytes(bytes) {
-            Ok(page) => page,
+        let line = TextBytes::from_bytes(payload)
+            .and_then(|page| TextLine::from_bytes(0, page, Arc::clone(options)));
+        let line = match line {
+            Ok(mut line) => {
+                line.set_handle_mtime(mtime);
+                line
+            }
             Err(error) => return FixMessages::from_result(Err(error)),
         };
+        // The row's own identity where the carrier stated one, else the
+        // identity the same bytes at the same instant derive.
+        let extras = RowExtras {
+            source: extras.source.or_else(|| source_of(&line)),
+            ..extras
+        };
         FixMessages::from_result(
-            self.parse_page_with(&page, extras)
+            self.parse_page_with(line.body_bytes(), extras)
                 .or_else(|_| self.empty_with(extras).map(FixMessages::one)),
         )
     }
@@ -1621,12 +1721,12 @@ impl FixCodec {
     }
 
     /// The row's bare spellings: every pair the line did not mark whose value
-    /// is not a stated absence.
-    fn bare_spellings<'row>(&self, arrived: &'row [Arrived<'_>]) -> Vec<(&'row [u8], &'row [u8])> {
+    /// is not a stated absence, each under the digest of its stem.
+    fn bare_spellings<'row>(&self, arrived: &'row [Arrived<'_>]) -> Vec<Twin<'row>> {
         arrived
             .iter()
             .filter(|held| !held.marked && !self.is_absent(held.value()))
-            .map(|held| (held.key(), held.value()))
+            .map(|held| twin(held.key(), held.value()))
             .collect()
     }
 
@@ -1640,7 +1740,7 @@ impl FixCodec {
         &self,
         held: &Arrived<'_>,
         arrived: &[Arrived<'_>],
-        bare: &[(&[u8], &[u8])],
+        bare: &[Twin<'_>],
     ) -> Option<Judged> {
         if !held.marked {
             return Some(Judged::Ranged(held.key.clone()));
@@ -1652,9 +1752,9 @@ impl FixCodec {
                 .filter(|held| !self.is_absent(held.value()))
                 .map(|held| (held.written(), held.value.as_ref().clone()))
                 .collect();
-            let row: Vec<(&[u8], &[u8])> = written
+            let row: Vec<Twin<'_>> = written
                 .iter()
-                .map(|(key, value)| (key.as_bytes(), value.as_bytes()))
+                .map(|(key, value)| twin(key.as_bytes(), value.as_bytes()))
                 .collect();
             judge_hashed(stripped, &row)
         } else {
@@ -1878,6 +1978,12 @@ impl FixCodec {
     /// move through in the order the source had them, and never advance the
     /// walk; exhaustion is fused.
     ///
+    /// The walk reads the structured message before it walks: a message
+    /// whose sending clock the parse supplied rather than read is dated by
+    /// the `TransactTime(60)` it states, [`FixMsg::dated_by_transaction`],
+    /// so a capture whose frames state no `SendingTime(52)` still orders,
+    /// expires and folds by when its transactions happened.
+    ///
     /// A message whose type this codec refuses never enters the walk: a
     /// keepalive belongs to the session rather than to a chain, and a
     /// message handed here from somewhere other than this codec's own parse
@@ -1890,8 +1996,7 @@ impl FixCodec {
         I::Item: Into<Result<FixMsg>>,
     {
         let codec = self.clone();
-        let walked =
-            messages
+        let walked = messages
                 .into_iter()
                 .fuse()
                 .map(Into::into)
@@ -1901,24 +2006,11 @@ impl FixCodec {
                     // lose the one report of it.
                     Err(_) => true,
                     Ok(message) => codec.reads_msgtype(message.header().msgtype()),
-                });
+                })
+                // The walk reads the structured message: a frame the parse
+                // dated by a stand-in clock is dated by its transaction.
+                .map(|held: Result<FixMsg>| held.and_then(FixMsg::dated_by_transaction));
         super::enrich::Walked::new(walked)
-    }
-
-    /// [`Self::lifecycle`] over messages a caller has already put in their
-    /// own order, streamed rather than collected and sorted.
-    ///
-    /// One answer per message, in the order it got them. The batch door
-    /// sorts the messages a batch holds beside the cells of the rows they
-    /// came out of, so what a *row* states - where its line was read from,
-    /// when it was recorded - stays with the message the walk's order moved,
-    /// which a message holding nothing about its reading could not do for
-    /// itself.
-    pub(super) fn lifecycle_sorted<I>(messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
-    where
-        I: IntoIterator<Item = Result<FixMsg>>,
-    {
-        super::enrich::Walked::sorted(messages.into_iter().fuse())
     }
 
     /// Builds one message from pairs the caller already split.
@@ -1993,7 +2085,7 @@ impl FixCodec {
             &self.registry,
             message,
             &self.beginstring,
-            &self.memo,
+            self.registry.memo(),
             version,
             pairs.len(),
         );
@@ -2055,6 +2147,7 @@ impl FixCodec {
                 .as_ref()
                 .filter(|value| !value.is_null())
                 .or(self.default_sending_time.as_ref()),
+            extras.source,
         )?;
         super::enrich::enrich(&self.registry, message)
     }
@@ -2763,12 +2856,14 @@ const fn name_separator(byte: u8) -> bool {
 /// pair a duplicate; the bytes are compared trimmed of the space the row put
 /// around them and never folded, because a value is a value and `abc` is
 /// not `ABC`.
-fn judge_hashed(stripped: &[u8], twins: &[(&[u8], &[u8])]) -> Hashed {
+fn judge_hashed(stripped: &[u8], twins: &[Twin<'_>]) -> Hashed {
     let stem = stem_of(stripped);
+    let digest = stem_digest(stem);
     let mut twinned = false;
     let mut occurrences = 0;
-    for &(held, _) in twins {
-        if !folds_twin(stem_of(held), stem) {
+    for &(held_digest, held, _) in twins {
+        // The digest says which twins can fold equal; the fold says which do.
+        if held_digest != digest || !folds_twin(stem_of(held), stem) {
             continue;
         }
         twinned = true;
@@ -2788,6 +2883,30 @@ fn judge_hashed(stripped: &[u8], twins: &[(&[u8], &[u8])]) -> Hashed {
 /// The group an indexed key addresses, or the key itself.
 fn stem_of(key: &[u8]) -> &[u8] {
     group_index(key).map_or(key, |(group, _)| group)
+}
+
+/// One spelling a `#` key may restate: the digest of its stem under the
+/// fold [`folds_twin`] compares by, the key and the value.
+type Twin<'row> = (u64, &'row [u8], &'row [u8]);
+
+fn twin<'row>(key: &'row [u8], value: &'row [u8]) -> Twin<'row> {
+    (stem_digest(stem_of(key)), key, value)
+}
+
+/// A digest of one stem under the fold [`folds_twin`] compares by: two
+/// stems that fold equal digest equal, so a row of a hundred marked keys
+/// probes its bare spellings by digest and folds only the ones that can
+/// match.
+fn stem_digest(stem: &[u8]) -> u64 {
+    let mut digest: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in stem {
+        if name_separator(*byte) {
+            continue;
+        }
+        digest ^= u64::from(byte.to_ascii_lowercase());
+        digest = digest.wrapping_mul(0x0100_0000_01b3);
+    }
+    digest
 }
 
 /// Whether two key spellings name one field under the FIX name fold.
@@ -2926,7 +3045,12 @@ mod clock_intake_tests {
     }
 
     fn text_line(body: &[u8]) -> TextLine {
-        TextLine::from_bytes(0, TextBytes::from_bytes(body).unwrap()).unwrap()
+        TextLine::from_bytes(
+            0,
+            TextBytes::from_bytes(body).unwrap(),
+            std::sync::Arc::new(crate::text::TextOptions::new()),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -2947,7 +3071,7 @@ mod clock_intake_tests {
     }
 
     #[test]
-    fn seeded_clocks_type_once_and_impact_precedes_sending() {
+    fn seeded_clocks_type_once_and_sending_dates_the_event() {
         let codec = codec();
         for tag in [52, 60] {
             assert_eq!(
@@ -2960,15 +3084,22 @@ mod clock_intake_tests {
             .unwrap();
         assert!(message.by_tag(52).unwrap().as_datetime64().is_some());
         assert!(message.by_tag(60).unwrap().as_datetime64().is_some());
-        // `TransactTime` settles the instant the clocks default to; what it
-        // does not do is fill `snapunix`, which says this row is a reading a
-        // walk took.
+        // `SendingTime` dates the event and `TransactTime` stays the typed
+        // field the lifecycle reads; neither fills `snapunix`, which says
+        // this row is a reading a walk took.
         assert_eq!(
             Some(message.get_currunix()),
             message
-                .by_tag(60)
+                .by_tag(52)
                 .unwrap()
                 .temporal_count_at(TimeUnit::Nanosecond)
+        );
+        assert_eq!(
+            message
+                .by_tag(60)
+                .unwrap()
+                .temporal_count_at(TimeUnit::Nanosecond),
+            Some(1_767_348_931_000_000_000)
         );
         assert_eq!(message.get_snapunix(), None);
         let absent = codec.parse_fix_line(b"8=FIX.4.4|35=D|").unwrap();
@@ -2980,7 +3111,7 @@ mod clock_intake_tests {
     fn capture_context_clock_is_not_a_fix_clock() {
         let codec = codec().with_capture_names(["timestamp"]);
         let line = text_line(b"8=FIX.4.4|35=D|")
-            .with_timestamp(99)
+            .with_handle_mtime(99)
             .with_captures(vec![Some(
                 TextBytes::from_bytes(b"not-a-FIX-clock").unwrap(),
             )])

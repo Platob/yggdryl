@@ -15,9 +15,20 @@ use crate::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
 use crate::sequence::SequenceType;
 use crate::xxhash;
 use crate::{
-    Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol, Side, State, StructureType, Uuid,
+    Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol, Side, State, StructType, Uuid,
 };
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
+
+/// The nanoseconds in one day: what a transaction time at midnight to the
+/// nanosecond is a multiple of, and what a day-only `TransactTime(60)` is
+/// restated as.
+const NANOS_PER_DAY: i64 = 86_400 * 1_000_000_000;
+
+/// The row stated the state the message reached: the derivation leaves it.
+const ROW_STATED_STATE: u8 = 1;
+
+/// The row stated when the message expires: the derivation leaves it.
+const ROW_STATED_EXPIRY: u8 = 2;
 
 /// A FIX message: a market event with a FIX body around it.
 ///
@@ -46,12 +57,15 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 /// tag; the separate collection is reached by name, such as `Parties`.
 ///
 /// The message's identity is settled from what it states: the code is the
-/// XXH3-64 of the event's facts, the header and the named content of the
-/// row, the identity the UUIDv7 the instant and the code derive, and the
-/// cross identity the UUIDv8 the cross code's digest derives - the first
-/// chain identifier the message spells, `OrderID` before `ClOrdID`. Every
-/// write settles it again, so a written code or identity is overwritten by
-/// the settled one. [`Self::entries`] is the row read as a tree, for a
+/// XXH3-64 of the event's facts, the text, the metadata, the FIX fields it
+/// lifted and the named content of the row - everything but the standard
+/// header and trailer, less `MsgType`, and never the chain it is in - the
+/// identity the UUIDv7 the instant and the code derive, and the cross
+/// identity the UUIDv8 the cross code's digest derives - the bridge's
+/// conversation, `session:context`, where the row header bracketed one,
+/// else the first chain identifier the message spells, `OrderID` before
+/// `ClOrdID`. Every write settles it again, so a written code or identity
+/// is overwritten by the settled one. [`Self::entries`] is the row read as a tree, for a
 /// consumer that walks one shape, and [`Self::into_bytes`] re-emits the
 /// message from it.
 ///
@@ -65,7 +79,7 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 /// use std::sync::Arc;
 ///
 /// use yggdryl::graph::{Element, Event};
-/// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructureType};
+/// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructType};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut symbol = DataType::utf8().required_field("Symbol");
@@ -75,9 +89,9 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
 /// qty.as_fix_mut().set_tag(38)?;
 /// let registry = Arc::new(FixRegistry::from_fields([symbol.clone(), qty.clone()])?);
 ///
-/// let root = DataType::from(StructureType::from_fields([symbol, qty, DataType::utf8().nullable_field("9999")])?)
+/// let root = DataType::from(StructType::from_fields([symbol, qty, DataType::utf8().nullable_field("9999")])?)
 ///     .required_field("NewOrderSingle");
-/// let value = Scalar::from_record([
+/// let value = Scalar::from_struct([
 ///     ("Symbol", Scalar::from("AAPL")),
 ///     ("OrderQty", Scalar::from(100)),
 ///     ("9999", Scalar::from("custom")),
@@ -110,7 +124,7 @@ pub struct FixMsg {
     header: Box<FixHeader>,
     /// What the line said about the capture it was written for, typed: a
     /// bridge's own row header. What the *reader* said about the line is
-    /// held nowhere here.
+    /// [`Self::carried`].
     capture: Box<FixCapture>,
     /// The FIX fields the message lifted out of its row: the prices, the
     /// quantities and the identifiers, each exactly as the message stated
@@ -124,6 +138,12 @@ pub struct FixMsg {
     /// else's answer - the state a walk folded forward, the price it says
     /// this message moved from - and re-deriving would throw it away.
     forced: bool,
+    /// Which of the two lifecycle facts the row stated - the state it
+    /// reached, when it expires - as [`ROW_STATED_STATE`] and
+    /// [`ROW_STATED_EXPIRY`]: the derivation leaves those as the row's
+    /// word, so a chained message read back keeps what the walk folded
+    /// forward rather than what its own fields say.
+    row_stated: u8,
     /// `Text(58)`, where the message carries one.
     text: Option<SmolStr>,
     /// What a bridge stated under its own namespaces - `TECH.CLIENTID`,
@@ -152,6 +172,11 @@ pub struct FixMsg {
     /// The row read as a tree, derived on the first ask and dropped by
     /// every write.
     entries: OnceLock<Vec<FixEntry>>,
+    /// The capture's own cells: what the row this message was read from
+    /// said for itself, each under the column's name. Provenance and never
+    /// content - outside the code, the entries and the wire - stated back at
+    /// the column of its name by [`Self::into_row`].
+    carried: Vec<(SmolStr, Scalar)>,
 }
 
 /// One child a write lands: replaced at `at`, appended when there is none,
@@ -266,7 +291,9 @@ pub(super) fn stage_writes(
             appended,
         });
     }
-    let dtype = DataType::from(StructureType::from_fields(members)?);
+    // A write replaces the child it reached or appends a field no child is
+    // named as, so the members stay named once.
+    let dtype = DataType::from(StructType::from_unique_fields(members));
     let field = Field::new_with_metadata(
         root.name(),
         dtype,
@@ -304,12 +331,14 @@ fn tag_positions(columns: &super::schema::Columns) -> Vec<(i32, usize)> {
     held
 }
 
-fn group_positions(field: &Field) -> Vec<(i32, usize)> {
+fn group_positions(field: &Field, registry: &FixRegistry) -> Vec<(i32, usize)> {
     let mut held: Vec<_> = field
         .fields()
         .iter()
         .enumerate()
-        .filter_map(|(index, child)| Some((child.as_fix().counter().ok()??, index)))
+        .filter_map(|(index, child)| {
+            Some((super::schema::tag_and_counter(registry, child).1?, index))
+        })
         .collect();
     held.sort_unstable();
     held
@@ -348,7 +377,7 @@ impl FixMsg {
     /// fit.
     pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self> {
         let value = field.canonicalize_value(value)?;
-        Self::assemble(registry, field, value, None)
+        Self::assemble(registry, field, value, None, None, true)
     }
 
     /// Builds the message the one builder finished, checking nothing twice.
@@ -356,30 +385,43 @@ impl FixMsg {
     /// Every value in the row went through the contract of the field it
     /// lands under, so the row is canonical by construction. The sending
     /// clock is what the message stated, else `fallback_sending_time`, else
-    /// now: initial intake settles clocks, and replay never reads now.
+    /// now: initial intake settles clocks, and replay never reads now. The
+    /// identity is not settled here: the [enriching pass](super::enrich)
+    /// that takes every built message restates and fills it first, and
+    /// settles it once at its end, so nothing is digested that a later
+    /// write of the same pass rewrites.
     pub(super) fn from_built(
         registry: Arc<FixRegistry>,
         built: super::build::Built,
         fallback_sending_time: Option<&Scalar>,
+        source: Option<Uuid>,
     ) -> Result<Self> {
         let super::build::Built { field, value, .. } = built;
-        Self::assemble(registry, field, value, fallback_sending_time)
+        Self::assemble(registry, field, value, fallback_sending_time, source, false)
     }
 
     /// One message from a root and its canonical row: the typed facts are
     /// lifted out of the children that state them, the rest is the row,
-    /// the clocks are settled and the identity derived.
+    /// the clocks are settled and, where `settle` says so, the identity
+    /// derived. `source` is the identity of the line the row was parsed out
+    /// of, stated as the message's one source before it is settled; a row
+    /// stating a `srcuuids` column of its own states those instead.
     fn assemble(
         registry: Arc<FixRegistry>,
         field: Field,
         value: Scalar,
         fallback_sending_time: Option<&Scalar>,
+        source: Option<Uuid>,
+        settle: bool,
     ) -> Result<Self> {
         let plan = super::schema::column_plan_of(&field, &registry)?;
         let held = value.as_sequence().ok_or_else(|| {
             identity::refused(field.name(), "a canonical Struct row", value.kind())
         })?;
         let mut event = Box::new(MarketEventData::default());
+        if let Some(source) = source {
+            event.set_srcuuids(vec![source]);
+        }
         let mut header = Box::new(FixHeader::unknown());
         let mut capture = Box::new(FixCapture::default());
         let mut lifted = Box::new(FixLifted::default());
@@ -387,11 +429,11 @@ impl FixMsg {
         let mut metadata = BTreeMap::new();
         let mut members = Vec::with_capacity(field.fields().len());
         let mut values = Vec::with_capacity(held.len());
+        let mut kept = Vec::with_capacity(plan.len());
         let mut stated_sending = false;
         let mut stated_unix = false;
         let mut stated_creation = false;
-        let mut transact = None;
-        let mut origin = None;
+        let mut row_stated = 0_u8;
         // A typed tag is lifted out of the row onto its holder, and a holder
         // keeps one fact per tag - so a row stating one tag twice is left
         // where it stands rather than collapsed into one slot. Two children
@@ -427,6 +469,12 @@ impl FixMsg {
                     stated_sending |= tag == 52;
                     stated_unix |= tag == super::CURRUNIX_TAG_NAME.0;
                     stated_creation |= tag == super::CREAUNIX_TAG_NAME.0;
+                    if tag == super::STATE_TAG_NAME.0 {
+                        row_stated |= ROW_STATED_STATE;
+                    }
+                    if tag == super::EXPIRUNIX_TAG_NAME.0 {
+                        row_stated |= ROW_STATED_EXPIRY;
+                    }
                 }
                 // A key spelled under a namespace - `TECH.CLIENTID` - is a
                 // bridge's own statement and goes to the metadata, under
@@ -442,19 +490,10 @@ impl FixMsg {
                 // about the reading it arrived through - and never kept as
                 // a child, which would make it content the wire re-emits.
                 Some(tag) if identity::is_capture_tag(tag) => {}
-                Some(60) => {
-                    transact = value.temporal_count_at(crate::TimeUnit::Nanosecond);
-                    members.push(child.clone());
-                    values.push(value.clone());
-                }
-                Some(122) => {
-                    origin = value.temporal_count_at(crate::TimeUnit::Nanosecond);
-                    members.push(child.clone());
-                    values.push(value.clone());
-                }
                 _ => {
                     members.push(child.clone());
                     values.push(value.clone());
+                    kept.push(*column);
                 }
             }
         }
@@ -468,34 +507,30 @@ impl FixMsg {
                 header.set_sendingtime(unix);
             }
         }
-        // The instant the message happened: what it states, else when the
-        // transaction it reports happened, else when it was sent. A
-        // `TransactTime` stating a day and no clock - which a bridge writes
-        // as `20260814` - names no instant, so the sending clock stands in.
+        // The instant the message happened: what it states, else when it
+        // was sent - the one clock every message carries. A parse structures
+        // what a line said and dates it by that clock; what a transaction's
+        // own `TransactTime(60)` or a resend's `OrigSendingTime(122)` says
+        // is the lifecycle's to read off the structured message.
         if !stated_unix {
-            const DAY: i64 = 86_400_000_000_000;
-            let transact = transact.filter(|unix| unix.rem_euclid(DAY) != 0);
-            event.set_currunix(transact.unwrap_or_else(|| header.sendingtime()));
+            event.set_currunix(header.sendingtime());
         }
-        // What a message says about its own creation, strongest first: a
-        // stated creation, then `OrigSendingTime(122)`, then the instant it
-        // happened. 122 is in the middle because of what it means: a resend
-        // carries the instant the original was sent, and that original is
-        // when this message came into being, so a replayed message dated
-        // only by the resend would otherwise be created at the moment it
-        // was replayed.
         if !stated_creation {
-            event.set_creaunix(Some(origin.unwrap_or_else(|| event.get_currunix())));
+            event.set_creaunix(Some(event.get_currunix()));
         }
+        // The members are the planned root's children less the lifted
+        // ones, named once as that root named them.
         let field = Field::new_with_metadata(
             field.name(),
-            DataType::from(StructureType::from_fields(members)?),
+            DataType::from(StructType::from_unique_fields(members)),
             field.is_nullable(),
             field.as_metadata().clone(),
         );
-        let plan = super::schema::column_plan_of(&field, &registry)?;
+        // The row keeps the planned root's children less the lifted ones,
+        // so its plan is those children's, read once above.
+        let plan = super::schema::Columns::over(kept);
         let tags = tag_positions(&plan);
-        let groups = group_positions(&field);
+        let groups = group_positions(&field, &registry);
         let mut message = Self {
             registry,
             event,
@@ -503,6 +538,7 @@ impl FixMsg {
             capture,
             lifted,
             forced: false,
+            row_stated,
             text,
             metadata,
             tags,
@@ -511,14 +547,19 @@ impl FixMsg {
             field,
             value: Scalar::from_sequence(values),
             entries: OnceLock::new(),
+            carried: Vec::new(),
         };
-        message.settle();
+        if settle {
+            message.settle();
+        }
         Ok(message)
     }
 
     /// Replaces the row with another statement of the same content, as a
     /// restatement leaves it: the typed facts a restated child states fill
-    /// their holders, the indexes are reread, and the identity settled.
+    /// their holders and the indexes are reread. The identity is not
+    /// settled: the pass that restates settles once, after everything it
+    /// writes.
     pub(super) fn replace_content(&mut self, field: Field, values: Vec<Scalar>) -> Result<()> {
         let plan = super::schema::column_plan_of(&field, &self.registry)?;
         let mut members = Vec::with_capacity(field.fields().len());
@@ -548,21 +589,22 @@ impl FixMsg {
         }
         self.field = Field::new_with_metadata(
             field.name(),
-            DataType::from(StructureType::from_fields(members)?),
+            DataType::from(StructType::from_unique_fields(members)),
             field.is_nullable(),
             field.as_metadata().clone(),
         );
         self.value = Scalar::from_sequence(kept);
         let plan = super::schema::column_plan_of(&self.field, &self.registry)?;
         self.tags = tag_positions(&plan);
-        self.groups = group_positions(&self.field);
+        self.groups = group_positions(&self.field, &self.registry);
         self.named = OnceLock::new();
         self.entries = OnceLock::new();
-        self.settle();
         Ok(())
     }
 
     /// Records one typed fact on the holder that owns it; a null clears it.
+    /// A state or an expiry recorded is the row's word from then on, and a
+    /// null recorded hands the fact back to the derivation.
     fn record(&mut self, tag: i32, value: &Scalar) -> bool {
         if tag == identity::TEXT_TAG {
             self.text = value.as_str().map(SmolStr::new);
@@ -572,14 +614,29 @@ impl FixMsg {
             self.metadata = metadata_of(value);
             return true;
         }
-        identity::record(
+        let recorded = identity::record(
             &mut self.event,
             &mut self.header,
             &mut self.capture,
             &mut self.lifted,
             tag,
             value,
-        )
+        );
+        if recorded {
+            for (held, bit) in [
+                (super::STATE_TAG_NAME.0, ROW_STATED_STATE),
+                (super::EXPIRUNIX_TAG_NAME.0, ROW_STATED_EXPIRY),
+            ] {
+                if tag == held {
+                    if value.is_null() {
+                        self.row_stated &= !bit;
+                    } else {
+                        self.row_stated |= bit;
+                    }
+                }
+            }
+        }
+        recorded
     }
 
     /// What the message states under one typed tag, as the tag's own field
@@ -622,12 +679,28 @@ impl FixMsg {
     /// where it names none yet, the cross codes in step with it, the code
     /// the content digests to, and the identity the instant and the code
     /// derive.
+    ///
+    /// The cross code names the chain. A bridge brackets every line it
+    /// writes with the session instance and the message context the line
+    /// belongs to, and those two name the conversation the message is one
+    /// hop of: where the row header stated both, the code is the two as
+    /// the bridge spells them, `session:context`. A line stating neither -
+    /// a wire capture - is named by the first stated of the identifiers a
+    /// chain is named by, `OrderID(37)` first; a line stating one of the
+    /// two and not the other has bracketed nothing, and is named as a wire
+    /// capture is.
     pub(super) fn settle(&mut self) {
         if self.event.get_crosscode().is_empty() {
-            let code = identity::CROSS_TAGS.iter().find_map(|tag| {
-                self.get_by_tag(*tag)
-                    .and_then(|value| value.as_str().map(str::to_owned))
-                    .filter(|code| !code.is_empty())
+            let bracketed = match (self.capture.msgsessionid(), self.capture.msgctxid()) {
+                (Some(session), Some(context)) => Some(format!("{session}:{context}")),
+                _ => None,
+            };
+            let code = bracketed.or_else(|| {
+                identity::CROSS_TAGS.iter().find_map(|tag| {
+                    self.get_by_tag(*tag)
+                        .and_then(|value| value.as_str().map(str::to_owned))
+                        .filter(|code| !code.is_empty())
+                })
             });
             if let Some(code) = code {
                 self.event.set_crosscode(code);
@@ -653,16 +726,19 @@ impl FixMsg {
     /// which is where the ladder that decides what the message is *about*
     /// lives - [`MarketElement::fill_market`], called straight after.
     ///
-    /// Only an absent fact is filled, so what a lifecycle walk folded
-    /// forward - the state it reached, what a price moved from, the
-    /// instrument the chain is about - survives being settled again. And
-    /// nothing filled here reaches the wire, the arrival record or the code
-    /// the message digests to: those read what the message *stated*, and a
-    /// derived fact is not a statement.
+    /// What a lifecycle walk forced - the state it reached, what a price
+    /// moved from, the instrument the chain is about - survives being
+    /// settled again, and so do the state and the expiry a row stated: a
+    /// chained message read back keeps what the walk folded forward rather
+    /// than what its own fields say. And nothing filled here reaches the
+    /// wire, the arrival record or the code the message digests to: those
+    /// read what the message *stated*, and a derived fact is not a
+    /// statement.
     fn derive_market(&mut self) {
         if self.forced {
             return;
         }
+        let row_stated = self.row_stated;
         let text = |value: Option<Scalar>| {
             value
                 .and_then(|held| held.as_str().map(str::trim).map(str::to_owned))
@@ -756,7 +832,9 @@ impl FixMsg {
         event.set_bidqty(bidqty);
         event.set_askpx(askpx);
         event.set_askqty(askqty);
-        event.set_expirunix(expirunix);
+        if row_stated & ROW_STATED_EXPIRY == 0 {
+            event.set_expirunix(expirunix);
+        }
         event.set_tradable(tradable);
         event.set_side(side.unwrap_or_else(Side::unknown));
         event.set_currency(currency.unwrap_or_else(Currency::none));
@@ -769,7 +847,9 @@ impl FixMsg {
         event.set_sedolcode(sedolcode);
         event.set_bloombergcode(bloombergcode);
         event.set_miccode(miccode);
-        event.set_state(state.unwrap_or_else(State::unknown));
+        if row_stated & ROW_STATED_STATE == 0 {
+            event.set_state(state.unwrap_or_else(State::unknown));
+        }
     }
 
     /// The instrument's identifier under one of `sources`, read as the code
@@ -821,42 +901,68 @@ impl FixMsg {
             .find_map(|held| read(&held))
     }
 
-    /// The code the message digests to: the event's own chain facts through
-    /// [`Event::digest_event`], then the frame and the named content behind
-    /// them - every header and trailer fact, every lifted fact and every
-    /// row child that holds a value, by name - and never the capture,
-    /// because where a line was read from is a fact about the capture and
-    /// not about the message.
+    /// The code the message digests to: the event's own facts - the names
+    /// it goes by, its parents, its state, its place in the chain and its
+    /// predecessor - then every field the message states but the standard
+    /// header and trailer - the text, the metadata, the FIX fields it
+    /// lifted and every row child that holds a value, by name - and never
+    /// the capture, because where a line was read from is a fact about the
+    /// capture and not about the message.
     ///
-    /// The market is not here, and that is the point: every market fact the
-    /// event answers is derived from a FIX field the content already
-    /// digests, so feeding it would digest one statement twice, and a walk
-    /// that folded a fact forward would move the code of a message whose
-    /// line never named it.
+    /// The standard header and trailer are the frame's, less the one tag in
+    /// them that says what the message *is*: which session carried the
+    /// message, its place in that session, when it was sent and how it was
+    /// checked are the frame's, and `MsgType(35)` is not - an order and a
+    /// report carrying the same tags are not one message, the exception
+    /// [the wire digest](super::digest) states too. A capture logs one
+    /// message at every hop it passes and each hop frames it in a session
+    /// of its own, so a code over the rest of the frame would make one
+    /// message as many messages as hops; and so would the cross code, where
+    /// a bridge bracketed the hop's own conversation as it, which is why
+    /// the chain is the one fact of the event this code leaves out.
+    ///
+    /// The market is not here either: every market fact the event answers
+    /// is derived from a FIX field the content already digests, so feeding
+    /// it would digest one statement twice, and a walk that folded a fact
+    /// forward would move the code of a message whose line never named it.
     fn currhashcode(&self) -> u64 {
-        let mut state = self.event.digest_event();
-        let mut cells: Vec<(&str, Scalar)> = Vec::with_capacity(self.field.fields().len() + 8);
+        let mut state = crate::xxhash::Xxh3::new();
+        crate::graph::element::feed_event_facts(&mut state, &*self.event);
+        let mut cells: Vec<(SmolStr, Scalar)> =
+            Vec::with_capacity(self.field.fields().len() + identity::LIFTED_TAGS.len() + 2);
         if let Some(text) = self.text.as_deref() {
-            cells.push(("text", Scalar::from(text)));
+            cells.push((SmolStr::new_static("text"), Scalar::from(text)));
+        }
+        if !self.header.msgtype().is_empty() {
+            let name = self
+                .registry
+                .get_field_by_tag(super::MSGTYPE_TAG_NAME.0)
+                .map_or_else(
+                    || SmolStr::new_static(super::MSGTYPE_TAG_NAME.1),
+                    |field| SmolStr::new(field.name()),
+                );
+            cells.push((name, Scalar::from(self.header.msgtype())));
         }
         for (key, value) in &self.metadata {
-            cells.push((key.as_str(), Scalar::from(value.as_str())));
+            cells.push((key.clone(), Scalar::from(value.as_str())));
         }
-        for (tag, name) in [
-            (8, "beginstring"),
-            (35, "msgtype"),
-            (49, "sendercompid"),
-            (56, "targetcompid"),
-            (34, "msgseqnum"),
-            (43, "possdupflag"),
-        ] {
-            if let Some(fact) = self.header.fact(tag) {
-                cells.push((name, fact));
-            }
+        // The fields the message lifted out of its row, under the names the
+        // row's children are digested by.
+        for tag in identity::LIFTED_TAGS {
+            let Some(fact) = self.typed_fact(tag) else {
+                continue;
+            };
+            let name = self.registry.get_field_by_tag(tag).map_or_else(
+                || format_smolstr!("{tag}"),
+                |field| SmolStr::new(field.name()),
+            );
+            cells.push((name, fact));
         }
-        cells.sort_by(|left, right| left.0.cmp(right.0));
-        let borrowed: Vec<(&str, &Scalar)> =
-            cells.iter().map(|(name, value)| (*name, value)).collect();
+        cells.sort_by(|left, right| left.0.cmp(&right.0));
+        let borrowed: Vec<(&str, &Scalar)> = cells
+            .iter()
+            .map(|(name, value)| (name.as_str(), value))
+            .collect();
         xxhash::write_named_bytes(&mut state, borrowed.into_iter(), 0);
         // Then the content, as the entries state it rather than as the row
         // stores it. Two readings of one message lay its children out
@@ -867,6 +973,69 @@ impl FixMsg {
         // entries are what the message says, and they are what this feeds.
         feed_entries(&mut state, self.entries());
         state.as_u64()
+    }
+
+    /// The message dated by the transaction it states, where the parse
+    /// dated it by a stand-in: a message whose `SendingTime(52)` was
+    /// supplied rather than stated - a carrier's, the codec's default, the
+    /// intake's own clock - takes `TransactTime(60)` as its instant where it
+    /// states one with a clock, and a resend's `OrigSendingTime(122)` as its
+    /// creation where that is earlier, its stand-in sending clock moved to
+    /// the same instant, and is enriched again around them - restated under
+    /// the rules its date selects, filled and settled - exactly as a parse
+    /// dated there would have built it. A stated sending clock stands: the
+    /// parse dated the message by what it said, and the walk does not
+    /// second-guess it. What the
+    /// [lifecycle](super::FixCodec::lifecycle) reads off the structured
+    /// message before it walks, so a capture whose frames state no sending
+    /// clock still orders, expires and folds by when its transactions
+    /// happened rather than by when it was read.
+    ///
+    /// # Errors
+    ///
+    /// Returns the enriching pass's refusal, which a message this crate
+    /// built never raises.
+    pub fn dated_by_transaction(mut self) -> Result<Self> {
+        if self.header.stated_sendingtime() {
+            return Ok(self);
+        }
+        // By the index alone: a lookup that falls through to the name table
+        // is a read the walk has no use for.
+        let Some(Scalar::DateTime64(transaction)) = self.indexed_by_tag(60) else {
+            return Ok(self);
+        };
+        let Some(unix) =
+            Scalar::DateTime64(transaction).temporal_count_at(crate::TimeUnit::Nanosecond)
+        else {
+            return Ok(self);
+        };
+        // A transaction stating a day and no clock - `60=20260814`, which
+        // the parse restates as that day's midnight - dates nothing: what it
+        // says is the day, and the sending clock stands. Midnight to the
+        // nanosecond is that statement and no other a venue makes.
+        if unix.rem_euclid(NANOS_PER_DAY) == 0 {
+            return Ok(self);
+        }
+        let current = self.get_currunix();
+        let created = self.get_creaunix();
+        self.event.set_currunix(unix);
+        // The stand-in sending clock follows: it was never a fact of the
+        // message, and a row read back states the instant as the clock.
+        self.header.set_sendingtime(unix);
+        if created.is_none_or(|held| held == current) {
+            self.event.set_creaunix(Some(unix));
+        }
+        let origin = match self.indexed_by_tag(122) {
+            Some(Scalar::DateTime64(origin)) => {
+                Scalar::DateTime64(origin).temporal_count_at(crate::TimeUnit::Nanosecond)
+            }
+            _ => None,
+        };
+        if let Some(origin) = origin.filter(|origin| *origin < unix) {
+            self.event.set_creaunix(Some(origin));
+        }
+        let registry = Arc::clone(&self.registry);
+        super::enrich::enrich(&registry, self)
     }
 
     /// The event this message is: every fact the three graph traits answer,
@@ -921,6 +1090,40 @@ impl FixMsg {
         &self.capture
     }
 
+    /// The capture's own cells: what the row this message was read from
+    /// said for itself, each under the column's name.
+    ///
+    /// Where the line was read from, its place in the object, the body it
+    /// was cut from, when it was recorded, what a bound dropped: the columns
+    /// a reader stated beside the payload, the carried ones and the one the
+    /// crate tags, `sourceurl`. Provenance and never content: none of them
+    /// is an entry, none reaches the wire or the code the message answers
+    /// to - the same message read from a second copy of one day's log is
+    /// the same message - and [`Self::into_row`] states each again at the
+    /// column of its name, which is how a row read back through
+    /// [`Self::from_row`] and written again keeps what it said for itself.
+    /// A message parsed from bytes carries none; one parsed out of a row
+    /// carries that row's, and one read back out of a row carries the
+    /// row's.
+    #[must_use]
+    pub fn carried(&self) -> &[(SmolStr, Scalar)] {
+        &self.carried
+    }
+
+    /// States the capture's own cells, replaced whole.
+    pub fn set_carried(&mut self, cells: Vec<(SmolStr, Scalar)>) {
+        self.carried = cells;
+    }
+
+    /// The cell carried under `name`, folded as a column is named, else
+    /// null.
+    pub(super) fn carried_cell(&self, name: &str) -> Scalar {
+        self.carried
+            .iter()
+            .find(|(held, _)| crate::folds_equal(held, name))
+            .map_or(Scalar::Null, |(_, value)| value.clone())
+    }
+
     /// The row read as a tree: one entry per child it states, a group's
     /// occurrences and a component's members nested under the entry that
     /// heads them; nothing for a child stating null.
@@ -946,7 +1149,7 @@ impl FixMsg {
         let Some(values) = self.value.as_sequence() else {
             return Vec::new();
         };
-        entries_of(self.field.fields(), values)
+        entries_of(&self.registry, self.field.fields(), values)
     }
 
     /// Every entry the wire carries, in wire order: the standard header,
@@ -1019,7 +1222,7 @@ impl FixMsg {
     /// use std::sync::Arc;
     ///
     /// use yggdryl::graph::MarketElement;
-    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructureType};
+    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut clordid = DataType::utf8().nullable_field("clordid");
@@ -1028,9 +1231,9 @@ impl FixMsg {
     /// symbol.as_fix_mut().set_tag(55)?;
     /// let registry = Arc::new(FixRegistry::from_fields([clordid, symbol])?);
     ///
-    /// let root = DataType::from(StructureType::from_fields([DataType::utf8().required_field("symbol")])?)
+    /// let root = DataType::from(StructType::from_fields([DataType::utf8().required_field("symbol")])?)
     ///     .required_field("D");
-    /// let value = Scalar::from_record([("symbol", Scalar::from("AAPL"))])?;
+    /// let value = Scalar::from_struct([("symbol", Scalar::from("AAPL"))])?;
     /// let mut msg = FixMsg::with_registry(registry, root, value)?;
     ///
     /// // `ClOrdID(11)` is a fact the message lifts, so it lands on its
@@ -1118,8 +1321,8 @@ impl FixMsg {
         self.land(typed, writes)
     }
 
-    /// Writes every value the field it reaches can hold, with one rebuild,
-    /// answering how many landed.
+    /// Writes every value the field it reaches can hold, with one rebuild
+    /// and no settling, answering how many landed.
     ///
     /// The lenient twin of [`Self::set_many`], for a pass whose answers are
     /// best effort: a value the target refuses - an identifier whose check
@@ -1127,7 +1330,8 @@ impl FixMsg {
     /// silence rather than a refusal, and every other value lands as
     /// `set_many` lands it. Nothing else is lenient: the rebuild's refusal,
     /// which no single value causes, is still returned and leaves the
-    /// message unchanged.
+    /// message unchanged. The identity is not settled: the pass that
+    /// writes settles once, after everything it writes.
     ///
     /// # Errors
     ///
@@ -1150,9 +1354,27 @@ impl FixMsg {
         }
         let landed = typed.len() + writes.len();
         if landed > 0 {
-            self.land(typed, writes)?;
+            self.land_unsettled(typed, writes)?;
         }
         Ok(landed)
+    }
+
+    /// [`Self::set`] without settling: for the pass that writes several
+    /// times and settles once after the last.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::set`] returns.
+    pub(super) fn set_unsettled<'key>(
+        &mut self,
+        key: impl Into<FixKey<'key>>,
+        value: Scalar,
+    ) -> Result<()> {
+        let key = key.into();
+        match self.staged(&key, value, &|_, _| Ok(()))? {
+            Staged::Typed(tag, value) => self.land_unsettled(vec![(tag, value)], Vec::new()),
+            Staged::Row(write) => self.land_unsettled(Vec::new(), vec![write]),
+        }
     }
 
     /// Lands staged writes: the typed facts on their holders, the row
@@ -1161,13 +1383,19 @@ impl FixMsg {
         if typed.is_empty() && writes.is_empty() {
             return Ok(());
         }
+        self.land_unsettled(typed, writes)?;
+        self.settle();
+        Ok(())
+    }
+
+    /// [`Self::land`] without settling the identity after.
+    fn land_unsettled(&mut self, typed: Vec<(i32, Scalar)>, writes: Vec<Write>) -> Result<()> {
         if !writes.is_empty() {
             self.write_all(writes)?;
         }
         for (tag, value) in typed {
             self.record(tag, &value);
         }
-        self.settle();
         Ok(())
     }
 
@@ -1244,15 +1472,15 @@ impl FixMsg {
     /// ```
     /// use std::sync::Arc;
     ///
-    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructureType};
+    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, StructType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut symbol = DataType::utf8().nullable_field("symbol");
     /// symbol.as_fix_mut().set_tag(55)?;
     /// let registry = Arc::new(FixRegistry::from_fields([symbol.clone()])?);
-    /// let root = DataType::from(StructureType::from_fields([symbol, DataType::utf8().nullable_field("9999")])?)
+    /// let root = DataType::from(StructType::from_fields([symbol, DataType::utf8().nullable_field("9999")])?)
     ///     .required_field("D");
-    /// let value = Scalar::from_record([
+    /// let value = Scalar::from_struct([
     ///     ("symbol", Scalar::from("AAPL")),
     ///     ("9999", Scalar::from("custom")),
     /// ])?;
@@ -1296,13 +1524,13 @@ impl FixMsg {
         }
         members.remove(at);
         let removed = values.remove(at);
-        let dtype = DataType::from(StructureType::from_fields(members)?);
+        let dtype = DataType::from(StructType::from_fields(members)?);
         let field = self.rerooted(dtype);
         let plan = super::schema::column_plan_of(&field, &self.registry)?;
         self.field = field;
         self.value = Scalar::from_sequence(values);
         self.tags = tag_positions(&plan);
-        self.groups = group_positions(&self.field);
+        self.groups = group_positions(&self.field, &self.registry);
         self.named = OnceLock::new();
         self.entries = OnceLock::new();
         self.settle();
@@ -1786,7 +2014,7 @@ impl FixMsg {
         segment: &FieldSegment,
     ) -> Option<(Field, Scalar)> {
         match field.dtype() {
-            DataType::Structure(_) => {
+            DataType::Struct(_) => {
                 let index = self.segment_index(field, segment)?;
                 Some((
                     field.fields().get(index)?.clone(),
@@ -1845,26 +2073,23 @@ fn feed_entries(state: &mut crate::xxhash::Xxh3, entries: &[FixEntry]) {
 /// it counts - at the root, in a component, in an occurrence alike - since
 /// a group's count is the group entry's own value and the counter child
 /// states nothing the entries do not already.
-fn entries_of(fields: &[Field], values: &[Scalar]) -> Vec<FixEntry> {
+fn entries_of(registry: &FixRegistry, fields: &[Field], values: &[Scalar]) -> Vec<FixEntry> {
     let counters: Vec<i32> = fields
         .iter()
         .filter(|child| child.dtype().is_nested())
-        .filter_map(|child| child.as_fix().counter().ok().flatten())
+        .filter_map(|child| super::schema::tag_and_counter(registry, child).1)
         .collect();
     let counted = |child: &Field| {
         !child.dtype().is_nested()
-            && child
-                .as_fix()
-                .tag()
-                .ok()
-                .flatten()
+            && super::schema::tag_and_counter(registry, child)
+                .0
                 .is_some_and(|tag| counters.contains(&tag))
     };
     fields
         .iter()
         .zip(values)
         .filter(|(child, _)| !counted(child))
-        .filter_map(|(child, value)| entry_of(child, value))
+        .filter_map(|(child, value)| entry_of(registry, child, value))
         .collect()
 }
 
@@ -1872,12 +2097,12 @@ fn entries_of(fields: &[Field], values: &[Scalar]) -> Vec<FixEntry> {
 /// repeating group as its counter entry with an entry per occurrence and
 /// the occurrence's members under each, a component as an entry heading
 /// its members; nothing for a child stating null.
-fn entry_of(field: &Field, value: &Scalar) -> Option<FixEntry> {
+fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<FixEntry> {
     if value.is_null() {
         return None;
     }
-    let tag = field.as_fix().tag().ok().flatten().unwrap_or(0);
-    let counter = field.as_fix().counter().ok().flatten();
+    let (tag, counter) = super::schema::tag_and_counter(registry, field);
+    let tag = tag.unwrap_or(0);
     match field.dtype() {
         DataType::Sequence(SequenceType::List(item))
         | DataType::Sequence(SequenceType::LargeList(item)) => {
@@ -1885,12 +2110,15 @@ fn entry_of(field: &Field, value: &Scalar) -> Option<FixEntry> {
             let nested: Vec<FixEntry> = occurrences
                 .iter()
                 .filter_map(|occurrence| match item.dtype() {
-                    DataType::Structure(_) => {
-                        let members = entries_of(item.fields(), occurrence.as_sequence()?);
-                        let own = item.as_fix().tag().ok().flatten().unwrap_or(0);
+                    DataType::Struct(_) => {
+                        let members =
+                            entries_of(registry, item.fields(), occurrence.as_sequence()?);
+                        let own = super::schema::tag_and_counter(registry, item)
+                            .0
+                            .unwrap_or(0);
                         Some(FixEntry::new(own, item.name(), None).with_entries(members))
                     }
-                    _ => entry_of(item, occurrence),
+                    _ => entry_of(registry, item, occurrence),
                 })
                 .collect();
             match counter {
@@ -1905,8 +2133,8 @@ fn entry_of(field: &Field, value: &Scalar) -> Option<FixEntry> {
                 None => Some(FixEntry::new(tag, field.name(), None).with_entries(nested)),
             }
         }
-        DataType::Structure(_) => {
-            let members = entries_of(field.fields(), value.as_sequence()?);
+        DataType::Struct(_) => {
+            let members = entries_of(registry, field.fields(), value.as_sequence()?);
             Some(FixEntry::new(tag, field.name(), None).with_entries(members))
         }
         DataType::Mapping(_) => {
@@ -2000,6 +2228,7 @@ impl Clone for FixMsg {
             capture: self.capture.clone(),
             lifted: self.lifted.clone(),
             forced: self.forced,
+            row_stated: self.row_stated,
             text: self.text.clone(),
             metadata: self.metadata.clone(),
             tags: self.tags.clone(),
@@ -2008,6 +2237,7 @@ impl Clone for FixMsg {
             field: self.field.clone(),
             value: self.value.clone(),
             entries: OnceLock::new(),
+            carried: self.carried.clone(),
         }
     }
 }
@@ -2037,6 +2267,7 @@ impl PartialEq for FixMsg {
             && self.metadata == other.metadata
             && self.field == other.field
             && self.value == other.value
+            && self.carried == other.carried
             && (Arc::ptr_eq(&self.registry, &other.registry) || self.registry == other.registry)
     }
 }
@@ -2111,6 +2342,14 @@ impl Element for FixMsg {
         self.event.set_parentuuids(parents);
     }
 
+    fn get_srcuuids(&self) -> &[Uuid] {
+        self.event.get_srcuuids()
+    }
+
+    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+        self.event.set_srcuuids(sources);
+    }
+
     /// A message's order is its instant.
     fn is_after(&self, other: &Self) -> bool {
         self.event.is_after(&other.event)
@@ -2121,19 +2360,10 @@ impl Element for FixMsg {
         self.settle();
     }
 
-    /// The timed reading, and the predecessor adopted as a parent: a
-    /// message descends from the one it follows.
+    /// The timed market reading: a message descends from the whole lineage
+    /// of the one it follows, the predecessor last.
     fn with_previous(self, previous: &Self) -> Option<Self> {
-        let parent = previous.get_curruuid();
-        let adopted = !self.get_parentuuids().contains(&parent);
-        let mut this = self.following_market(previous)?;
-        if adopted {
-            let mut parents = this.get_parentuuids().to_vec();
-            parents.push(parent);
-            this.set_parentuuids(parents);
-            this.finalize();
-        }
-        Some(this)
+        self.following_market(previous)
     }
 
     fn merge_with(self, other: &Self) -> Option<Self> {

@@ -13,7 +13,7 @@ use yggdryl::holder::Buffer;
 use yggdryl::local::Folder;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::{
-    DataType, FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, StructureType, Timezone, Url,
+    DataType, FixCodec, FixMsg, FixRegistry, Scalar, StringEnum, StructType, Timezone, Url,
     fix_schema,
 };
 use yggdryl::{Isin, State};
@@ -727,7 +727,7 @@ fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads()
                     .clone()
             })
             .collect();
-        let schema = StructureType::from_fields(inputs)
+        let schema = StructType::from_fields(inputs)
             .map(DataType::from)
             .expect("distinct columns")
             .required_field("row");
@@ -757,8 +757,10 @@ fn a_market_fact_the_message_derived_is_answered_and_columned_nowhere() {
     // A derived market fact is the traits' answer and not a column: the
     // row carries the FIX fields it was read off - `SecurityID(48)` under
     // its source, `ExDestination(100)`, `ExecType(150)` - and no column
-    // restates the ISIN, the market or the ranked state, because a second
-    // owner of a fact is what this crate stopped keeping.
+    // restates the ISIN or the market, because a second owner of a fact is
+    // what this crate stopped keeping. The ranked state is the one
+    // exception: an event fact a walk folds forward, stated at its own
+    // column so a reader of the rows sees what the walk folded.
     let reader = reader();
     let schema = yggdryl::fix_schema(reader.registry(), "fix").expect("the fixed schema");
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|";
@@ -768,9 +770,14 @@ fn a_market_fact_the_message_derived_is_answered_and_columned_nowhere() {
         let at = schema.index_of(name).expect(name);
         row.as_sequence().expect("a row")[at].clone()
     };
-    for name in ["isincode", "miccode", "state", "px", "qty", "symbolticker"] {
+    for name in ["isincode", "miccode", "px", "qty", "symbolticker"] {
         assert_eq!(schema.index_of(name), None, "{name} is no column");
     }
+    assert_eq!(
+        column("state"),
+        yggdryl::Scalar::State(yggdryl::State::read(&state("F")).expect("a state")),
+        "the ranked state is a column of its own"
+    );
     assert_eq!(column("securityid").as_str(), Some("US0378331005"));
     assert_eq!(column("exdestination").as_str(), Some("XNAS"));
     assert_eq!(column("exectype").as_str(), Some("F"));
@@ -863,14 +870,14 @@ fn a_registry_whose_derivations_do_not_compile_refuses_on_every_door() {
     let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|";
     // A parse is one of the doors that refuses, so the message the row and
     // the batch doors are handed is built rather than read.
-    let root = StructureType::from_fields([
+    let root = StructType::from_fields([
         reader.registry().field_by_tag(37).expect("OrderID").clone(),
         reader.registry().field_by_tag(32).expect("LastQty").clone(),
     ])
     .map(DataType::from)
     .expect("a struct root")
     .required_field("8");
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         ("orderid", Scalar::from("A")),
         ("lastqty", super::decimal("10")),
     ])

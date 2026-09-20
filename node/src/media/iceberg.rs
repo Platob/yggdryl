@@ -22,7 +22,7 @@ use yggdryl::iceberg::{
     assign_field_ids, can_promote, last_column_id, schema_from_json, schema_into_json,
 };
 use yggdryl::media::DEFAULT_ROOT_NAME;
-use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar as CoreScalar, StructureType};
+use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar as CoreScalar, StructType};
 
 use crate::enums::{JsMimeType, MimeTypeInput, mime_type_from_input};
 use crate::iobase::{JsIOBase, LocationInput, folder_from_input};
@@ -77,7 +77,7 @@ fn schema_from_input(value: TableSchemaInput<'_>) -> Result<CoreField> {
         Either3::B(text) => CoreField::from_str(&text).map_err(napi_error),
         Either3::C(children) => {
             let fields = children.iter().map(|child| child.inner.clone());
-            Ok(StructureType::from_fields(fields)
+            Ok(StructType::from_fields(fields)
                 .map(CoreDataType::from)
                 .map_err(napi_error)?
                 .required_field(DEFAULT_ROOT_NAME))

@@ -339,7 +339,7 @@ pub(super) fn v1_manifest_list(snapshot_id: i64) -> String {
 }
 
 fn with_name(document: &Scalar, name: &str, value: impl Into<Scalar>) -> Result<Scalar> {
-    if document.as_record().is_some() {
+    if document.as_struct().is_some() {
         document.with_field(name, value)
     } else {
         document.with_key(name, value)
@@ -347,7 +347,7 @@ fn with_name(document: &Scalar, name: &str, value: impl Into<Scalar>) -> Result<
 }
 
 fn without_name(document: &Scalar, name: &str) -> Result<Scalar> {
-    if document.as_record().is_some() {
+    if document.as_struct().is_some() {
         document.without_field(name)
     } else {
         document.without_key(name)

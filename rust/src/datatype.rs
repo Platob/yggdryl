@@ -14,7 +14,7 @@ use crate::interval::IntervalType;
 use crate::mapping::MappingType;
 use crate::runend::RunEndEncodedType;
 use crate::sequence::SequenceType;
-use crate::structure::StructureType;
+use crate::structure::StructType;
 use crate::time::TimeType;
 use crate::union::UnionFields;
 use crate::{DataTypeId, DataTypeKind, Error, Field, Result, Scalar, UnionMode, UriType};
@@ -155,11 +155,9 @@ pub enum DataType {
     /// Every leaf holds one item field, so a reader walking children asks
     /// [`SequenceType::item`] and never branches on the layout.
     Sequence(SequenceType),
-    /// Named children, or the two-child pair: the whole structure family.
-    ///
-    /// The leaf - a struct's ordered children, or a mapping's key-value
-    /// pair - is [`StructureType`]'s business, not this enum's.
-    Structure(StructureType),
+    /// Named children in declaration order: a row, a group occurrence, a
+    /// mapping's key and value.
+    Struct(StructType),
     /// Tagged union fields and layout mode.
     Union(UnionFields, UnionMode),
     /// A value stored as a code that stands for it: the whole enum family.
@@ -315,7 +313,7 @@ impl DataType {
             Self::Sequence(SequenceType::FixedSizeList(..)) => DataTypeId::FixedSizeList,
             Self::Sequence(SequenceType::LargeList(_)) => DataTypeId::LargeList,
             Self::Sequence(SequenceType::LargeListView(_)) => DataTypeId::LargeListView,
-            Self::Structure(_) => DataTypeId::Struct,
+            Self::Struct(_) => DataTypeId::Struct,
             Self::Union(..) => DataTypeId::Union,
             Self::Enum(EnumType::Dictionary(_)) => DataTypeId::Dictionary,
             Self::Decimal(DecimalType::Decimal32 { .. }) => DataTypeId::Decimal32,
@@ -455,7 +453,7 @@ impl DataType {
                 validate_non_negative("FixedSizeList", "length", *length)?;
                 field.validate()
             }
-            Self::Structure(fields) => validate_fields(fields.as_fields(), "Struct"),
+            Self::Struct(fields) => validate_fields(fields.as_fields(), "Struct"),
             Self::Union(fields, _) => validate_union_fields(fields),
             Self::Enum(EnumType::Dictionary(dictionary)) => {
                 validate_dictionary_key(&dictionary.key)?;
@@ -523,7 +521,7 @@ impl Ord for DataType {
                 D::Sequence(SequenceType::FixedSizeList(left_field, left_size)),
                 D::Sequence(SequenceType::FixedSizeList(right_field, right_size)),
             ) => cmp_fields(left_field, right_field).then_with(|| left_size.cmp(right_size)),
-            (D::Structure(left), D::Structure(right)) => left.cmp(right),
+            (D::Struct(left), D::Struct(right)) => left.cmp(right),
             (D::Union(left_fields, left_mode), D::Union(right_fields, right_mode)) => left_mode
                 .cmp(right_mode)
                 .then_with(|| left_fields.cmp(right_fields)),
@@ -627,7 +625,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Sequence(SequenceType::FixedSizeList(..)) => 38,
         DataType::Sequence(SequenceType::LargeList(_)) => 39,
         DataType::Sequence(SequenceType::LargeListView(_)) => 40,
-        DataType::Structure(_) => 41,
+        DataType::Struct(_) => 41,
         DataType::Union(..) => 42,
         DataType::Enum(EnumType::Dictionary(_)) => 43,
         DataType::Decimal(DecimalType::Decimal32 { .. }) => 44,
@@ -706,10 +704,10 @@ impl DataType {
 ///
 /// ```
 /// use yggdryl::DataType;
-/// use yggdryl::StructureType;
+/// use yggdryl::StructType;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let row = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?);
+/// let row = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?);
 /// assert_eq!(row["id"].dtype(), &DataType::Int64);
 /// # Ok(())
 /// # }
@@ -778,7 +776,7 @@ mod arrow {
     use crate::mime_type::MimeTypeType;
     use crate::runend::RunEndEncodedType;
     use crate::sequence::SequenceType;
-    use crate::structure::StructureType;
+    use crate::structure::StructType;
     use crate::timezone::TimezoneType;
     use crate::union::UnionFields;
     use crate::uri::UriType;
@@ -849,7 +847,7 @@ mod arrow {
                 | R::Decimal(DecimalType::Decimal128 { .. })
                 | R::Decimal(DecimalType::Decimal256 { .. }) => decimal::arrow_storage(self)?,
                 R::Sequence(sequence) => sequence.arrow_storage()?,
-                R::Structure(structure) => structure.arrow_storage()?,
+                R::Struct(structure) => structure.arrow_storage()?,
                 R::Union(fields, mode) => fields.arrow_storage(*mode)?,
                 R::Enum(enumeration) => enumeration.arrow_storage()?,
                 R::Mapping(mapping) => mapping.arrow_storage()?,
@@ -873,7 +871,7 @@ mod arrow {
             match self {
                 R::DateTime(_) => datetime::into_arrow_storage(self),
                 R::Sequence(sequence) => sequence.into_arrow_storage(),
-                R::Structure(structure) => structure.into_arrow_storage(),
+                R::Struct(structure) => structure.into_arrow_storage(),
                 R::Union(fields, mode) => fields.into_arrow_storage(mode),
                 R::Enum(enumeration) => enumeration.into_arrow_storage(),
                 R::Mapping(mapping) => mapping.into_arrow_storage(),
@@ -943,7 +941,7 @@ mod arrow {
                 | A::FixedSizeList(..)
                 | A::LargeList(_)
                 | A::LargeListView(_) => SequenceType::from_arrow_storage_at_depth(value, children),
-                A::Struct(fields) => StructureType::from_arrow_storage_at_depth(fields, children),
+                A::Struct(fields) => StructType::from_arrow_storage_at_depth(fields, children),
                 A::Union(fields, mode) => {
                     UnionFields::from_arrow_storage_at_depth(fields, *mode, children)
                 }
@@ -1019,7 +1017,7 @@ mod arrow {
             use DataType as R;
             let parts = match &self {
                 R::Sequence(sequence) => sequence.arrow_ffi_parts()?,
-                R::Structure(structure) => structure.arrow_ffi_parts()?,
+                R::Struct(structure) => structure.arrow_ffi_parts()?,
                 R::Union(fields, mode) => fields.arrow_ffi_parts(*mode)?,
                 R::Enum(enumeration) => enumeration.arrow_ffi_parts()?,
                 R::Mapping(mapping) => mapping.arrow_ffi_parts()?,
@@ -1138,7 +1136,7 @@ mod arrow {
         pub(crate) fn arrow_import_is_projection_equivalent(&self) -> bool {
             match self {
                 Self::Sequence(sequence) => sequence.item().arrow_import_is_projection_equivalent(),
-                Self::Structure(fields) => fields
+                Self::Struct(fields) => fields
                     .iter()
                     .all(Field::arrow_import_is_projection_equivalent),
                 Self::Union(fields, _) => fields

@@ -29,10 +29,9 @@ use std::sync::Arc;
 use yggdryl::FieldValue as _;
 use yggdryl::graph::{Element, Event};
 use yggdryl::holder::Buffer;
-use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
+use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
-    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, StructureType, UncheckedFieldScalar,
-    Uuid,
+    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, StructType, UncheckedFieldScalar, Uuid,
 };
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
@@ -354,7 +353,7 @@ const VENUE: &str = "venue";
 /// instead of leaving it among the entries, which is a different cost from
 /// what a pair adds, and the probes below measure the latter.
 fn fix_registry(extra: usize) -> FixRegistry {
-    let item = StructureType::from_fields([DataType::utf8().nullable_field("PartyID")])
+    let item = StructType::from_fields([DataType::utf8().nullable_field("PartyID")])
         .map(DataType::from)
         .expect("a struct item")
         .required_field("item");
@@ -528,7 +527,7 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
         .as_fix_mut()
         .set_branches([VENUE])
         .expect("a static membership");
-    let root = StructureType::from_fields([symbol, trade, DataType::utf8().nullable_field("9999")])
+    let root = StructType::from_fields([symbol, trade, DataType::utf8().nullable_field("9999")])
         .map(DataType::from)
         .expect("three children")
         .required_field("row");
@@ -583,7 +582,7 @@ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
     // The header, the capture and the event are held beside the row rather
     // than in it, so reading one is a borrow whatever the row carries.
     for width in [0, 64, 1_024] {
-        let field = StructureType::from_fields(
+        let field = StructType::from_fields(
             (0..width).map(|index| DataType::Int64.required_field(format!("datum{index}"))),
         )
         .map(DataType::from)
@@ -749,11 +748,13 @@ fn a_read_allocates_only_what_it_hands_back() {
 
 #[cfg(feature = "iceberg")]
 #[test]
-fn an_iceberg_read_costs_only_a_key_the_inline_buffer_cannot_hold() {
+fn an_iceberg_read_costs_only_what_it_hands_back() {
     let field = iceberg_field(256);
 
-    // A lookup key is assembled into a `SmolStr`, which holds 23 bytes inline.
-    // `ICEBERG:schema-id` and `ICEBERG:spec-id` fit, so those reads are free.
+    // A lookup key is written into a stack buffer whatever its length, so no
+    // read pays for its key: `ICEBERG:schema-id` and `ICEBERG:spec-id` are
+    // free, and so is the 27-byte `ICEBERG:partition-source-id` that used to
+    // reach the heap when the key was a `SmolStr` past its inline 23 bytes.
     free("doc", || {
         let _ = black_box(field.as_iceberg().doc());
     });
@@ -767,16 +768,14 @@ fn an_iceberg_read_costs_only_a_key_the_inline_buffer_cannot_hold() {
         let _ = black_box(field.as_iceberg().transform());
     });
 
-    // `ICEBERG:partition-source-id` is 27 bytes and does not, so the assembled
-    // key goes to the heap. This is the boundary, pinned: it is a property of
-    // how long the name is, not of the value being parsed.
-    costs("partition_source_id", 2, || {
+    free("partition_source_id", || {
         let _ = black_box(field.as_iceberg().partition_source_id());
     });
 
-    // The identifier list costs that same long key plus the vector it returns,
-    // which grows by doubling rather than once per identifier.
-    costs("identifier_field_ids", 3, || {
+    // The identifier list costs the vector it returns, which grows by
+    // doubling rather than once per identifier. The counts last moved down
+    // by two when the property read stopped assembling its key on the heap.
+    costs("identifier_field_ids", 1, || {
         let _ = black_box(field.as_iceberg().identifier_field_ids());
     });
     let mut wider = iceberg_field(0);
@@ -784,7 +783,7 @@ fn an_iceberg_read_costs_only_a_key_the_inline_buffer_cannot_hold() {
         .as_iceberg_mut()
         .set_identifier_field_ids(&[1, 2, 3, 4, 5, 6, 7, 8, 9])
         .expect("static identifier columns");
-    costs("identifier_field_ids over nine", 5, || {
+    costs("identifier_field_ids over nine", 3, || {
         let _ = black_box(wider.as_iceberg().identifier_field_ids());
     });
 }
@@ -960,7 +959,7 @@ fn timezone_handle_hits_and_copies_allocate_nothing() {
 /// A leaf, a wide record, and a deep nest: the three the benchmark measures
 /// and the three where a stray allocation would hide.
 fn feed_corpus() -> Vec<(&'static str, Scalar)> {
-    let wide = Scalar::from_record(
+    let wide = Scalar::from_struct(
         (0..64).map(|index| (format!("column_{index:03}"), Scalar::from(index))),
     )
     .expect("the generated record names are unique");
@@ -1018,7 +1017,7 @@ fn borrowed_value_bytes_allocate_nothing() {
 /// it exactly. These are the columns whose canonical form used to be built and
 /// thrown away once per row: the payload is unbounded, so the copy was too.
 fn payload_row() -> (Field, Scalar) {
-    let root = StructureType::from_fields([
+    let root = StructType::from_fields([
         Field::new("symbol", DataType::utf8(), false),
         Field::new("payload", DataType::binary(), false),
         Field::new("ccy", DataType::Currency, false),
@@ -1185,7 +1184,7 @@ fn cast_corpus() -> (
     };
     let root = Field::new(
         "row",
-        StructureType::from_fields([
+        StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("symbol"),
             DataType::utf8().required_field("venue"),
@@ -1506,7 +1505,7 @@ fn typing_a_value_a_field_already_holds_allocates_nothing() {
 
 /// A canonical row of `width` integer columns under its Struct root.
 fn wide_row(width: usize) -> (Field, Scalar) {
-    let root = StructureType::from_fields(
+    let root = StructType::from_fields(
         (0..width).map(|index| DataType::Int64.required_field(format!("column_{index}"))),
     )
     .map(DataType::from)
@@ -1593,8 +1592,16 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 ///
 /// A caller who decoded the line already owns the page, and
 /// [`FIX_TEXT_LINE_COSTS`] is the same three widths through the door that
-/// takes it: one fewer at each, which is the page's own vector.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 59), (16, 84), (64, 145)];
+/// takes it: the page's own vector saved at each, and the one source the
+/// message states - the line it was read from - paid instead.
+///
+/// The constant last moved down by two when the enriching pass began to
+/// settle a message once, after everything it writes: one arrival record
+/// derived and one digest fed per message, rather than one per write.
+/// It last moved up by one when the content code took `MsgType` as a
+/// cell of its own: the header's one tag that says what a message is is
+/// fed beside the lifted fields, and its text is one allocation.
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 40), (16, 60), (64, 115)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -1644,7 +1651,7 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 /// from one that does not. The narrow column of this table is
 /// [`FIX_LINE_COSTS`] at the same widths, and moves with it.
 const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
-    [(4, (59, 68)), (16, (84, 129)), (64, (145, 334))];
+    [(4, (40, 46)), (16, (60, 90)), (64, (115, 241))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -1669,8 +1676,8 @@ fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
         // the same at every width, and nothing that scales with the bytes.
         assert_eq!(
             wide - narrow,
-            3 * (pairs - 1),
-            "a {pairs}-pair line's wide values cost more than three each"
+            2 * (pairs - 1),
+            "a {pairs}-pair line's wide values cost more than two each"
         );
     }
 }
@@ -1687,7 +1694,7 @@ fn fix_group_registry(members: usize) -> FixRegistry {
         field.as_fix_mut().set_tag(tag).expect("a generated tag");
         field
     });
-    let item = StructureType::from_fields(declared)
+    let item = StructType::from_fields(declared)
         .map(DataType::from)
         .expect("a struct item")
         .required_field("item");
@@ -1738,7 +1745,7 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// packed value would have been scanned into is not among these.
 /// Two member counts, because the number that matters is the slope and not
 /// the constant a message pays whatever it carries.
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 135), (16, 203)];
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 85), (16, 147)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -1761,30 +1768,38 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 
 /// What the same three lines cost through the door that takes a decoded line.
 ///
-/// One allocation fewer per message than [`FIX_LINE_COSTS`] at every width,
-/// and the one is the page's own buffer. A caller holding a [`TextLine`]
-/// already owns the bytes as a range of a page it read them into, so the
-/// codec is handed that page instead of making a second one - which is what
-/// the byte door must do, because a bare slice is not a page and a message
-/// keeps ranges of one.
+/// The same count as [`FIX_LINE_COSTS`] at every width, and two things move
+/// inside it. One allocation is saved: the page's own buffer. A caller
+/// holding a [`TextLine`] already owns the bytes as a range of a page it
+/// read them into, so the codec is handed that page instead of making a
+/// second one - which is what the byte door must do, because a bare slice
+/// is not a page and a message keeps ranges of one. One allocation is paid:
+/// the source. A message read from a line states that line's identity as
+/// the one element it was read from, and the list holding it is the
+/// message's own; the byte door reads from no element and states none.
 ///
-/// The saving is per message and not per pair, which is exactly right: a page
-/// is one page however many pairs the line carries, so the slope is unchanged
-/// and only the constant moves. Three widths again, so that the claim is the
-/// constant and not a number that happens to be smaller.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 58), (16, 83), (64, 144)];
+/// Both are per message and not per pair, which is exactly right: a page is
+/// one page and a source one source however many pairs the line carries, so
+/// the slope is unchanged and only the constant moves. Three widths again, so
+/// that the claim is the constant and not a number that happens to be equal.
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 40), (16, 60), (64, 115)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
     let codec = FixCodec::new(Arc::new(fix_registry(64)));
     for ((pairs, each), (widest, bytes)) in FIX_TEXT_LINE_COSTS.iter().zip(FIX_LINE_COSTS) {
         assert_eq!(*pairs, widest, "the two pins measure the same widths");
-        assert_eq!(each + 1, bytes, "the page is the whole of the difference");
+        assert_eq!(*each, bytes, "the page saved is the source paid");
         let held = fix_pairs_line(*pairs);
         // The page is made outside the counted closure because that is what a
         // caller reading text actually has: the decode already happened, and
         // what is measured here is what reading a message from it adds.
-        let line = TextLine::from_bytes(0, TextBytes::from_bytes(&held).expect("a page")).unwrap();
+        let line = TextLine::from_bytes(
+            0,
+            TextBytes::from_bytes(&held).expect("a page"),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap();
         costs(
             &format!("a {pairs}-pair decoded line read as a message"),
             *each,
@@ -1799,6 +1814,65 @@ fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
     }
 }
 
+/// A line built by hand and read costs nothing: the body is the range it
+/// was handed, the options a reference count, and no reading is resolved
+/// until asked. The first ask for the captures costs the match - the
+/// locations the regex fills, and the list the line keeps - and the second
+/// ask nothing, because the slot holds it; a line under no header resolves
+/// its captures for nothing.
+#[test]
+fn a_line_built_and_read_allocates_nothing_and_its_captures_once() {
+    let options = Arc::new(
+        TextOptions::new()
+            .try_with_rowheader(r"^\[(?<level>[A-Z]+)\] (?<id>\d+) ")
+            .expect("a header"),
+    );
+    let page = TextBytes::from_bytes("[INFO] 7 body of the line").expect("a page");
+    free("a line built, its body and its index read", || {
+        let line = TextLine::from_bytes(0, page.clone(), Arc::clone(&options)).expect("a line");
+        black_box(line.body());
+        black_box(line.index());
+        black_box(line.get_currhashcode());
+    });
+    // The regex keeps a per-thread cache it fills on its first use, which is
+    // the expression's cost and not a line's: warmed outside the count.
+    black_box(
+        TextLine::from_bytes(0, page.clone(), Arc::clone(&options))
+            .expect("a line")
+            .captures()
+            .len(),
+    );
+    let line = TextLine::from_bytes(0, page.clone(), Arc::clone(&options)).expect("a line");
+    let (first, count) = counted(|| black_box(line.captures().len()));
+    assert_eq!(count, 2);
+    assert_eq!(
+        first, 2,
+        "the match's locations and the list the line keeps"
+    );
+    free("the captures asked again", || {
+        black_box(line.captures().len());
+        black_box(line.capture(1));
+    });
+    let bare = TextLine::from_bytes(0, page, Arc::new(TextOptions::new())).expect("a line");
+    free("the captures of a line under no header", || {
+        black_box(bare.captures().len());
+    });
+    // The tree is the first ask's cost and nothing on the second: a line
+    // read for its body and its row number never pays for it.
+    let paired = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes("[INFO] 7 a=1|b=2").expect("a page"),
+        Arc::clone(&options),
+    )
+    .expect("a line");
+    let (first_ask, entries) = counted(|| paired.entries().map(TextEntries::len));
+    assert_eq!(entries, Some(2));
+    assert!(first_ask > 0, "the tree is built on the first ask");
+    free("the tree asked again", || {
+        black_box(paired.entries().map(TextEntries::len));
+    });
+}
+
 #[test]
 fn first_text_line_from_arrow_does_not_decode_the_rest_of_its_batch() {
     use arrow_array::RecordBatchIterator;
@@ -1808,7 +1882,12 @@ fn first_text_line_from_arrow_does_not_decode_the_rest_of_its_batch() {
     let mut first_cost = None;
     for rows in [1, 64, 1024] {
         let lines = (0..rows).map(|index| {
-            TextLine::from_bytes(index, TextBytes::from_bytes("one body").unwrap()).unwrap()
+            TextLine::from_bytes(
+                index,
+                TextBytes::from_bytes("one body").unwrap(),
+                std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+            )
+            .unwrap()
         });
         let batch = into_arrow_batch(lines, &options).unwrap();
         let stream = || {
@@ -1919,10 +1998,14 @@ const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
 /// is the page, and a line is the range of it the splitter cut, so the
 /// header off its front, the strips off its edges and the byte limit off
 /// its tail move two offsets and copy nothing. With the copy, the assertion
-/// below counts 32 for 16 rows and the same 9 over the copy for 1 024 -
+/// below counts 37 for 16 rows and the same 14 over the copy for 1 024 -
 /// after the two the buffer's first `url` costs, which [`text_lines_cost`]
 /// asks for before the counter is armed and which are in neither number.
-const TEXT_LINES_ONCE: usize = 9;
+///
+/// Five of the fourteen are the sixteen event columns the plan compiles once
+/// per read: the two identity lists, the names' map and the state's own type
+/// allocate as the columns are planned, and nothing of them per line.
+const TEXT_LINES_ONCE: usize = 14;
 
 /// What a reader that keeps its lines pays on top: two per window it had to
 /// leave behind.

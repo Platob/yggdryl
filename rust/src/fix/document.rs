@@ -672,7 +672,7 @@ impl Writer {
 // the JSON it is and reads it back through here.
 //
 // Reading it back cannot trust the file's key order: a JSON object decodes
-// into a sorted `Scalar::Record`, while the stored text is ordered by the
+// into a sorted `Scalar::Struct`, while the stored text is ordered by the
 // grammar each reader walks. So both directions go through the one table
 // below, which is the same declared order the writers write, and a hand-
 // edited document is restated canonically rather than stored as it was
@@ -867,7 +867,7 @@ impl Kind {
 
     /// One entry, its stated keys in the declared order and nothing else.
     fn order_entry(self, keys: &'static [&'static str], entry: &Scalar) -> Result<Scalar> {
-        if entry.as_record().is_none() && entry.as_mapping().is_none() {
+        if entry.as_struct().is_none() && entry.as_mapping().is_none() {
             return Err(self.refused(crate::text::expected_got("an entry object", entry.kind())));
         }
         let mut held: Vec<(Scalar, Scalar)> = Vec::with_capacity(keys.len());
@@ -1070,7 +1070,7 @@ fn properties(value: &Scalar, across: &dyn Fn(Kind, &Scalar) -> Result<Scalar>) 
 /// The keys of a named value, in the order it answers them, or nothing where
 /// it is not one.
 fn named(value: &Scalar) -> Option<Vec<String>> {
-    if value.as_record().is_none() && value.as_mapping().is_none() {
+    if value.as_struct().is_none() && value.as_mapping().is_none() {
         return None;
     }
     Some(value.keys().into_iter().map(str::to_owned).collect())

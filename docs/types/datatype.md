@@ -276,7 +276,7 @@ The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sed
     assert.equal(fields.decimal('amount', 38, 4).dtype.kind, 'decimal')
     ```
 
-Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings.
+Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings. `DataTypeId::as_u8` is the identifier as one byte, laid out by family - `DataTypeKind::id` is the family's own number, the start of the range its leaves take - and `DataTypeId::from_u8` and `DataTypeKind::of_u8` read a byte back; the [variant encoding](variant.md) and the [digest feed](../hashing.md#encoding) write that byte.
 
 ## Arrow projection
 
@@ -349,9 +349,9 @@ The core computes one default; each binding projects it.
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Scalar, StructureType};
+    use yggdryl::{DataType, Field, Scalar, StructType};
 
-    let value = DataType::from(StructureType::from_fields([
+    let value = DataType::from(StructType::from_fields([
         Field::new("id", DataType::Int32, false),
         Field::new("note", DataType::utf8(), true),
     ])?);
@@ -465,10 +465,10 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, StructureType};
+    use yggdryl::{DataType, StructType};
 
     let rows = DataType::list(
-        DataType::from(StructureType::from_fields([DataType::utf8().nullable_field("venue")])?).nullable_field("item"),
+        DataType::from(StructType::from_fields([DataType::utf8().nullable_field("venue")])?).nullable_field("item"),
     );
 
     // Compact still round-trips.
@@ -508,9 +508,9 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Scheme, StructureType, TimeUnit, Timezone};
+    use yggdryl::{DataType, Field, Scheme, StructType, TimeUnit, Timezone};
 
-    let source = DataType::from(StructureType::from_fields([
+    let source = DataType::from(StructType::from_fields([
         Field::new("small", DataType::UInt8, false),
         Field::new("wide", DataType::UInt64, true),
         Field::new(
@@ -534,7 +534,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
     assert_eq!(DataType::UInt32.into_scheme_compat(&Scheme::POLARS)?, DataType::UInt32);
 
     // A rewrite that would reinterpret values is refused, and the path is named.
-    let error = DataType::from(StructureType::from_fields([Field::new(
+    let error = DataType::from(StructType::from_fields([Field::new(
         "created",
         DataType::datetime64(TimeUnit::Nanosecond, Timezone::NAIVE)?,
         false,

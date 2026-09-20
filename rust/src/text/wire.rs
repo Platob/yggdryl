@@ -107,7 +107,7 @@ fn decode_mapping(
             };
             (name.into_inner(), value)
         });
-        return Scalar::from_record(record).map_err(|error| positioned(error, positions, state));
+        return Scalar::from_struct(record).map_err(|error| positioned(error, positions, state));
     }
 
     Scalar::from_mapping(entries).map_err(|error| positioned(error, positions, state))

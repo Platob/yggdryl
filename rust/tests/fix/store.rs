@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use yggdryl::SequenceType;
 use yggdryl::local::Folder;
 use yggdryl::{
-    DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar, StructureType,
+    DataType, Field, FixCategory, FixCode, FixId, FixRegistry, IOBase, Scalar, StructType,
 };
 
 fn scratch(label: &str) -> PathBuf {
@@ -24,11 +24,11 @@ fn scratch(label: &str) -> PathBuf {
 /// them, so a test reads back the one it wrote by name rather than by the
 /// position it happened to land in.
 fn definition_at(document: &Scalar, category: &str, name: &str) -> usize {
-    document.as_record().unwrap()[category]
+    document.as_struct().unwrap()[category]
         .as_sequence()
         .unwrap()
         .iter()
-        .position(|value| value.as_record().unwrap()["name"].as_str() == Some(name))
+        .position(|value| value.as_struct().unwrap()["name"].as_str() == Some(name))
         .unwrap_or_else(|| panic!("{category} states {name}"))
 }
 
@@ -90,7 +90,7 @@ fn catalog() -> FixRegistry {
     let mut registry = FixRegistry::from_fields([counter, partyid]).unwrap();
     let mut member = registry.field(448).unwrap().clone();
     member.as_fix_mut().set_field_ref("PartyID").unwrap();
-    let component = StructureType::from_fields([member])
+    let component = StructType::from_fields([member])
         .map(DataType::from)
         .unwrap()
         .required_field("Party");
@@ -107,7 +107,7 @@ fn catalog() -> FixRegistry {
     group.as_fix_mut().set_group("Parties").unwrap();
     let mut counter = registry.field(453).unwrap().clone();
     counter.as_fix_mut().set_field_ref("NoPartyIDs").unwrap();
-    let mut message = StructureType::from_fields([counter, group])
+    let mut message = StructType::from_fields([counter, group])
         .map(DataType::from)
         .unwrap()
         .required_field("NewOrderSingle");
@@ -128,7 +128,7 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     assert!(snapshot.contains("identifiers"));
     assert_eq!(FixRegistry::from_json(&snapshot).unwrap(), registry);
 
-    let document = Scalar::from_record([
+    let document = Scalar::from_struct([
         ("fields", Scalar::from_sequence([])),
         ("components", Scalar::from_sequence([])),
         (
@@ -159,7 +159,7 @@ fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips(
     let mut registry = FixRegistry::new();
     let mut map = registry.get_field_by_counter(65_020).unwrap().clone();
     map.as_fix_mut().set_group("identifiers").unwrap();
-    let component = StructureType::from_fields([map])
+    let component = StructType::from_fields([map])
         .map(DataType::from)
         .unwrap()
         .required_field("identified");
@@ -186,14 +186,14 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
         key.as_fix_mut().set_field_ref("lookupkey").unwrap();
         let mut value = value;
         value.as_fix_mut().set_field_ref("lookupvalue").unwrap();
-        let entries = StructureType::from_fields([key, value])
+        let entries = StructType::from_fields([key, value])
             .map(DataType::from)
             .unwrap()
             .required_field("entries");
         let mapping = DataType::map(entries, sorted)
             .unwrap()
             .nullable_field("pairs");
-        let component = StructureType::from_fields([mapping])
+        let component = StructType::from_fields([mapping])
             .map(DataType::from)
             .unwrap()
             .required_field("lookup");
@@ -203,7 +203,7 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
         let snapshot = yggdryl::from_json_scalar(&json).unwrap();
         let at = definition_at(&snapshot, "components", "lookup");
         let component = Field::from_value(
-            snapshot.as_record().unwrap()["components"]
+            snapshot.as_struct().unwrap()["components"]
                 .get(at)
                 .unwrap()
                 .clone(),
@@ -266,7 +266,7 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
 #[test]
 fn map_entries_component_references_refresh_without_losing_the_storage_contract() {
     for sorted in [false, true] {
-        let mut component = StructureType::from_fields([
+        let mut component = StructType::from_fields([
             DataType::utf8().required_field("key"),
             DataType::utf8().nullable_field("value"),
         ])
@@ -281,7 +281,7 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
         let mapping = DataType::map(entries, sorted)
             .unwrap()
             .nullable_field("nativepairs");
-        let containing = StructureType::from_fields([mapping])
+        let containing = StructType::from_fields([mapping])
             .map(DataType::from)
             .unwrap()
             .required_field("mappedlookup");
@@ -291,7 +291,7 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
         let document = yggdryl::from_json_scalar(&json).unwrap();
         let at = definition_at(&document, "components", "mappedlookup");
         let mut stored = Field::from_value(
-            document.as_record().unwrap()["components"]
+            document.as_struct().unwrap()["components"]
                 .get(at)
                 .unwrap()
                 .clone(),
@@ -317,12 +317,10 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
             .set_dtype(DataType::map(overridden, sorted).unwrap())
             .unwrap();
         stored
-            .set_dtype(DataType::from(
-                StructureType::from_fields([mapping]).unwrap(),
-            ))
+            .set_dtype(DataType::from(StructType::from_fields([mapping]).unwrap()))
             .unwrap();
         let refused =
-            Scalar::from_record(document.as_record().unwrap().iter().map(|(key, value)| {
+            Scalar::from_struct(document.as_struct().unwrap().iter().map(|(key, value)| {
                 (
                     key.clone(),
                     if key == "components" {
@@ -377,7 +375,7 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
         let mut extended = registry.field_by_name("lookupentry").unwrap().clone();
         extended
             .set_dtype(
-                StructureType::from_fields(
+                StructType::from_fields(
                     extended
                         .fields()
                         .iter()
@@ -406,17 +404,17 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
 
 #[test]
 fn ordinary_stored_component_references_still_require_null_placeholders() {
-    let component = StructureType::from_fields([DataType::utf8().nullable_field("value")])
+    let component = StructType::from_fields([DataType::utf8().nullable_field("value")])
         .map(DataType::from)
         .unwrap()
         .required_field("ordinary");
     let mut occurrence = component.clone();
     occurrence.as_fix_mut().set_component("ordinary").unwrap();
-    let containing = StructureType::from_fields([occurrence])
+    let containing = StructType::from_fields([occurrence])
         .map(DataType::from)
         .unwrap()
         .required_field("containing");
-    let document = Scalar::from_record([
+    let document = Scalar::from_struct([
         ("fields", Scalar::from_sequence([])),
         (
             "components",
@@ -436,7 +434,7 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     let mut substituted = map.clone();
     substituted.as_fix_mut().set_tag(9001).unwrap();
     substituted.as_fix_mut().set_counter(9001).unwrap();
-    let document = Scalar::from_record([
+    let document = Scalar::from_struct([
         ("fields", Scalar::from_sequence([])),
         ("components", Scalar::from_sequence([])),
         (
@@ -477,7 +475,7 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
 
     let json = registry.into_json().unwrap();
     let document = yggdryl::from_json_scalar(&json).unwrap();
-    let record = document.as_record().unwrap();
+    let record = document.as_struct().unwrap();
     assert_eq!(record.len(), FixCategory::ALL.len());
     assert!(record.get("branches").is_none());
     for category in FixCategory::ALL {
@@ -521,7 +519,7 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
     assert_eq!(message.name(), "NewOrderSingle");
     assert_eq!(message.get_group_by_tag(453).unwrap().name(), "Parties");
 
-    let reversed = Scalar::from_record(record.iter().map(|(key, value)| {
+    let reversed = Scalar::from_struct(record.iter().map(|(key, value)| {
         (
             key.clone(),
             Scalar::from_sequence(value.as_sequence().unwrap().iter().rev().cloned()),
@@ -555,7 +553,7 @@ fn canonical_fields_supersede_aliases_in_every_creation_and_snapshot_order() {
         assert_eq!(loaded, registry);
         let document = yggdryl::from_json_scalar(registry.into_json().unwrap()).unwrap();
         let reversed =
-            Scalar::from_record(document.as_record().unwrap().iter().map(|(key, value)| {
+            Scalar::from_struct(document.as_struct().unwrap().iter().map(|(key, value)| {
                 (
                     key.clone(),
                     if key == "fields" {
@@ -710,7 +708,7 @@ fn registry_snapshots_reject_missing_categories_and_unresolved_references() {
     assert_eq!(super::scalars(&empty), super::seeded_fields());
     assert!(empty.dialects().is_empty());
     let document = yggdryl::from_json_scalar(catalog().into_json().unwrap()).unwrap();
-    let missing = Scalar::from_record(document.as_record().unwrap().iter().map(|(key, value)| {
+    let missing = Scalar::from_struct(document.as_struct().unwrap().iter().map(|(key, value)| {
         (
             key.clone(),
             if key == "components" {
@@ -820,9 +818,7 @@ fn catalog_mutations_refuse_dangling_or_stale_resolved_references_atomically() {
     assert_eq!(registry, before);
     assert!(
         registry
-            .update(
-                DataType::from(StructureType::from_fields([]).unwrap()).required_field("Missing")
-            )
+            .update(DataType::from(StructType::from_fields([]).unwrap()).required_field("Missing"))
             .is_err()
     );
     assert_eq!(registry, before);
@@ -953,7 +949,7 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
     // round describes the other field as the holder, with the alias lent
     // the other way - a different dictionary, loaded as written.
     let document = yggdryl::from_json_scalar(&json).unwrap();
-    let reversed = Scalar::from_record(document.as_record().unwrap().iter().map(|(key, value)| {
+    let reversed = Scalar::from_struct(document.as_struct().unwrap().iter().map(|(key, value)| {
         (
             key.clone(),
             Scalar::from_sequence(value.as_sequence().unwrap().iter().rev().cloned()),
@@ -1036,7 +1032,7 @@ fn unresolved_and_cyclic_compact_references_name_the_failure() {
         let folder = Folder::new(&root).unwrap();
         let mut child = DataType::Null.nullable_field("child");
         child.as_fix_mut().set_component(reference).unwrap();
-        let field = StructureType::from_fields([child])
+        let field = StructType::from_fields([child])
             .map(DataType::from)
             .unwrap()
             .required_field("Cycle");
@@ -1314,7 +1310,7 @@ fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_
     let mut source = FixRegistry::from_fields([coded]).unwrap();
     let mut member = source.field(448).unwrap().clone();
     member.as_fix_mut().set_field_ref("PartyID").unwrap();
-    let extended = StructureType::from_fields([member, DataType::Int32.nullable_field("Extra")])
+    let extended = StructType::from_fields([member, DataType::Int32.nullable_field("Extra")])
         .map(DataType::from)
         .unwrap()
         .required_field("Party");
@@ -1364,7 +1360,7 @@ fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_
     let before = target.clone();
     let mut member = source.field(448).unwrap().clone();
     member.as_fix_mut().set_field_ref("PartyID").unwrap();
-    let changed = StructureType::from_fields([member, DataType::Int64.nullable_field("Extra")])
+    let changed = StructType::from_fields([member, DataType::Int64.nullable_field("Extra")])
         .map(DataType::from)
         .unwrap()
         .required_field("Party");
@@ -1432,7 +1428,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .as_fix_mut()
         .set_description("An occurrence override")
         .unwrap();
-    let component = StructureType::from_fields([child])
+    let component = StructType::from_fields([child])
         .map(DataType::from)
         .unwrap()
         .required_field("OverriddenParty");
@@ -1557,11 +1553,11 @@ fn mixed_inline_and_reference_depth_has_one_bound() {
                 .set_component(&format!("Chain{:02}", index + 1))
                 .unwrap();
         }
-        let inline = StructureType::from_fields([child])
+        let inline = StructType::from_fields([child])
             .map(DataType::from)
             .unwrap()
             .required_field("inline");
-        let field = StructureType::from_fields([inline])
+        let field = StructType::from_fields([inline])
             .map(DataType::from)
             .unwrap()
             .required_field(format!("Chain{index:02}"));
@@ -1584,7 +1580,7 @@ fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
     let mut registry = catalog();
     // A code re-declared under another name is a second message: the bare
     // code keeps answering the first holder, the newcomer is reached by name.
-    let mut other = StructureType::from_fields([])
+    let mut other = StructType::from_fields([])
         .map(DataType::from)
         .unwrap()
         .required_field("OtherOrder");
@@ -1604,7 +1600,7 @@ fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
     // re-declared under the folded name it folds into the stored message,
     // under its own name it stands beside it, carrying its membership.
     let mut registry = catalog();
-    let mut restated = StructureType::from_fields([])
+    let mut restated = StructType::from_fields([])
         .map(DataType::from)
         .unwrap()
         .required_field("new_order_single");
@@ -1616,7 +1612,7 @@ fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
     assert_eq!(folded.name(), "NewOrderSingle");
     assert!(folded.as_field().as_fix().has_branch("venue"));
     assert_eq!(folded.get_group_by_tag(453).unwrap().name(), "Parties");
-    let mut message = StructureType::from_fields([])
+    let mut message = StructType::from_fields([])
         .map(DataType::from)
         .unwrap()
         .required_field("VenueOrder");
@@ -1663,13 +1659,13 @@ fn field_enum_updates_refresh_component_and_message_references_atomically() {
         .unwrap();
     let mut member = registry.field(35).unwrap().clone();
     member.as_fix_mut().set_field_ref("MsgType").unwrap();
-    let mut header = StructureType::from_fields([member])
+    let mut header = StructType::from_fields([member])
         .map(DataType::from)
         .unwrap()
         .required_field("Header");
     registry.insert(header.clone()).unwrap();
     header.as_fix_mut().set_component("Header").unwrap();
-    let mut message = StructureType::from_fields([header])
+    let mut message = StructType::from_fields([header])
         .map(DataType::from)
         .unwrap()
         .required_field("EnumReport");
@@ -1742,11 +1738,11 @@ fn message_context_resolves_a_group_whose_global_counter_is_ambiguous() {
         "Parties"
     );
     group.as_fix_mut().set_group("TradeParties").unwrap();
-    let outer = StructureType::from_fields([group])
+    let outer = StructType::from_fields([group])
         .map(DataType::from)
         .unwrap()
         .required_field("Outer");
-    let mut message = StructureType::from_fields([outer])
+    let mut message = StructType::from_fields([outer])
         .map(DataType::from)
         .unwrap()
         .required_field("Trade");
@@ -1771,7 +1767,7 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
         .unwrap();
     let mut parties = registry.field_by_name("Parties").unwrap().clone();
     parties.as_fix_mut().set_group("Parties").unwrap();
-    let hop = StructureType::from_fields([parties.clone()])
+    let hop = StructType::from_fields([parties.clone()])
         .map(DataType::from)
         .unwrap()
         .required_field("Hop");
@@ -1782,7 +1778,7 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
     registry.insert(hops).unwrap();
     let mut hops = registry.field_by_name("Hops").unwrap().clone();
     hops.as_fix_mut().set_group("Hops").unwrap();
-    let mut message = StructureType::from_fields([hops])
+    let mut message = StructType::from_fields([hops])
         .map(DataType::from)
         .unwrap()
         .required_field("HopReport");
@@ -1791,12 +1787,12 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
     let message = registry.msgtype("H").unwrap();
     assert_eq!(message.get_group_by_tag(627).unwrap().name(), "Hops");
     assert_eq!(message.get_group_by_tag(453).unwrap().name(), "Parties");
-    let mut duplicate = StructureType::from_fields([
-        StructureType::from_fields([parties.clone()])
+    let mut duplicate = StructType::from_fields([
+        StructType::from_fields([parties.clone()])
             .map(DataType::from)
             .unwrap()
             .required_field("Left"),
-        StructureType::from_fields([parties])
+        StructType::from_fields([parties])
             .map(DataType::from)
             .unwrap()
             .required_field("Right"),
@@ -1820,18 +1816,18 @@ fn message_types_require_non_null_structs_and_complete_non_control_codes() {
     let mut registry = FixRegistry::new();
     // A Struct stating no message type is a plain component:
     // it is accepted, and no code reaches it.
-    let missing = DataType::from(StructureType::from_fields([]).unwrap()).required_field("Missing");
+    let missing = DataType::from(StructType::from_fields([]).unwrap()).required_field("Missing");
     registry.insert(missing).unwrap();
     assert!(registry.get_msgtype("Missing").is_none());
     assert_eq!(super::msgtypes(&registry).count(), 0);
-    let mut nullable = StructureType::from_fields([])
+    let mut nullable = StructType::from_fields([])
         .map(DataType::from)
         .unwrap()
         .nullable_field("Nullable");
     nullable.as_fix_mut().set_msgtype("X").unwrap();
     assert!(registry.insert(nullable).is_err());
     let mut composite =
-        DataType::from(StructureType::from_fields([]).unwrap()).required_field("Report");
+        DataType::from(StructType::from_fields([]).unwrap()).required_field("Report");
     composite
         .as_fix_mut()
         .set_msgtype("P Report Acknowledgement")
@@ -1845,7 +1841,7 @@ fn message_types_require_non_null_structs_and_complete_non_control_codes() {
         "P Report Acknowledgement"
     );
     let mut refused =
-        DataType::from(StructureType::from_fields([]).unwrap()).required_field("Refused");
+        DataType::from(StructType::from_fields([]).unwrap()).required_field("Refused");
     assert!(refused.as_fix_mut().set_msgtype("A\nB").is_err());
 }
 

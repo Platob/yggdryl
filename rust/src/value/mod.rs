@@ -60,7 +60,7 @@ use smol_str::SmolStr;
 use crate::{
     DataType, DataTypeId, DataTypeKind, Field, Metadata, Result, Scalar, TimeUnit, Timezone, i256,
 };
-use crate::{Mapping, Record, Sequence};
+use crate::{Mapping, Sequence, Struct};
 
 /// One concrete scalar representation.
 ///
@@ -297,7 +297,7 @@ family_value!(
     /// assert_eq!(held.into_scalar(), value);
     /// assert_eq!(Nested::from_scalar(&Scalar::from(1_i64)), None);
     /// ```
-    Nested, Nested, [Sequence, Mapping, Record]
+    Nested, Nested, [Sequence, Mapping, Struct]
 );
 
 /// The per-column facts a field carries that only one datatype has.
@@ -433,6 +433,60 @@ pub trait DataTypeValue:
     /// Returns an error when the value cannot be stated in this datatype.
     fn cast_scalar(&self, value: &crate::Scalar) -> Result<crate::Scalar> {
         self.clone().into_dtype().cast_scalar(value)
+    }
+
+    // ---------------------------------------------------------------------
+    // The variant encoding: `value` cast to this datatype and encoded, and
+    // encoded bytes read back and cast to it. `crate::variant` owns the
+    // bytes; a leaf answers through the datatype it widens to.
+    // ---------------------------------------------------------------------
+
+    /// `value` cast to this datatype and encoded as [the variant
+    /// encoding](crate::Scalar::encode_variant_stream_bytes), one chunk at
+    /// a time.
+    ///
+    /// # Errors
+    ///
+    /// Returns the cast's refusal where the value is not one this datatype
+    /// holds.
+    fn encode_variant_stream_bytes(&self, value: &crate::Scalar) -> Result<crate::VariantStream> {
+        self.clone().into_dtype().encode_variant_stream_bytes(value)
+    }
+
+    /// `value` cast to this datatype and encoded, whole.
+    ///
+    /// # Errors
+    ///
+    /// Returns the cast's refusal where the value is not one this datatype
+    /// holds.
+    fn encode_variant_bytes(&self, value: &crate::Scalar) -> Result<Vec<u8>> {
+        self.clone().into_dtype().encode_variant_bytes(value)
+    }
+
+    /// The value one variant encoding holds, cast to this datatype.
+    ///
+    /// # Errors
+    ///
+    /// Returns the codec's refusal, or the cast's where the bytes hold a
+    /// value this datatype does not.
+    fn decode_variant_bytes(&self, bytes: &[u8]) -> Result<crate::Scalar> {
+        self.clone().into_dtype().decode_variant_bytes(bytes)
+    }
+
+    /// The value a variant encoding split into chunks holds, cast to this
+    /// datatype.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::decode_variant_bytes`] carries the rule.
+    fn decode_variant_stream_bytes<I>(&self, chunks: I) -> Result<crate::Scalar>
+    where
+        I: IntoIterator,
+        I::Item: AsRef<[u8]>,
+    {
+        self.clone()
+            .into_dtype()
+            .decode_variant_stream_bytes(chunks)
     }
 
     /// Cast an Arrow array to this datatype's exact physical array.
@@ -668,8 +722,8 @@ pub enum Children<'a> {
     Sequence(std::slice::Iter<'a, Scalar>),
     /// Mapping keys.
     Mapping(std::slice::Iter<'a, (Scalar, Scalar)>),
-    /// Record field values in sorted name order.
-    Record(std::collections::btree_map::Values<'a, SmolStr, Scalar>),
+    /// Struct field values in sorted name order.
+    Struct(std::collections::btree_map::Values<'a, SmolStr, Scalar>),
 }
 
 impl<'a> Iterator for Children<'a> {
@@ -679,7 +733,7 @@ impl<'a> Iterator for Children<'a> {
         match self {
             Self::Sequence(values) => values.next(),
             Self::Mapping(entries) => entries.next().map(|(key, _)| key),
-            Self::Record(entries) => entries.next(),
+            Self::Struct(entries) => entries.next(),
         }
     }
 
@@ -694,7 +748,7 @@ impl DoubleEndedIterator for Children<'_> {
         match self {
             Self::Sequence(values) => values.next_back(),
             Self::Mapping(entries) => entries.next_back().map(|(key, _)| key),
-            Self::Record(entries) => entries.next_back(),
+            Self::Struct(entries) => entries.next_back(),
         }
     }
 }
@@ -704,7 +758,7 @@ impl ExactSizeIterator for Children<'_> {
         match self {
             Self::Sequence(values) => values.len(),
             Self::Mapping(entries) => entries.len(),
-            Self::Record(entries) => entries.len(),
+            Self::Struct(entries) => entries.len(),
         }
     }
 }

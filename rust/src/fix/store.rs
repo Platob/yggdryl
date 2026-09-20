@@ -12,7 +12,7 @@ use super::FixRegistry;
 use crate::holder::Holder;
 use crate::sequence::SequenceType;
 use crate::text::Formatting;
-use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, StructureType, Url};
+use crate::{DataType, Error, Field, FixCategory, IOBase, Result, Scalar, StructType, Url};
 
 const SHARD_WIDTH: i32 = 100;
 const LOAD_ORDER: [FixCategory; 3] = [
@@ -232,14 +232,14 @@ impl Resolver<'_> {
         Self::depth(field.name(), depth)?;
         let mut height = 0;
         let dtype = match field.dtype() {
-            DataType::Structure(children) => {
+            DataType::Struct(children) => {
                 let mut resolved = Vec::with_capacity(children.len());
                 for child in children.iter() {
                     let (child, child_height) = self.occurrence(child, depth + 1)?;
                     height = height.max(child_height + 1);
                     resolved.push(child);
                 }
-                Some(DataType::from(StructureType::from_fields(resolved)?))
+                Some(DataType::from(StructType::from_fields(resolved)?))
             }
             DataType::Sequence(SequenceType::List(item))
             | DataType::Sequence(SequenceType::LargeList(item)) => {
@@ -306,7 +306,7 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
         }
     }
     let dtype = match field.dtype() {
-        DataType::Structure(children) => Some(DataType::from(StructureType::from_fields(
+        DataType::Struct(children) => Some(DataType::from(StructType::from_fields(
             children
                 .iter()
                 .cloned()
@@ -375,9 +375,9 @@ impl FixRegistry {
     /// reconstructs the same resolved catalog. No filesystem I/O is performed.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry, StructureType};
+    /// use yggdryl::{DataType, FixRegistry, StructType};
     /// let mut registry = FixRegistry::new();
-    /// let mut message = DataType::from(StructureType::from_fields([])?).required_field("Order");
+    /// let mut message = DataType::from(StructType::from_fields([])?).required_field("Order");
     /// message.as_fix_mut().set_msgtype("D")?;
     /// registry.insert(message)?;
     /// let restored = FixRegistry::from_json(&registry.into_json()?)?;
@@ -456,11 +456,11 @@ impl FixRegistry {
             };
             document.push((category.as_str(), Scalar::from_sequence(fields)));
         }
-        Scalar::from_record(document)
+        Scalar::from_struct(document)
     }
 
     fn from_snapshot(document: &Scalar) -> Result<Self> {
-        let record = document.as_record().ok_or_else(|| Error::InvalidRecord {
+        let record = document.as_struct().ok_or_else(|| Error::InvalidRecord {
             path: "fix registry".into(),
             reason: crate::text::expected_got("a JSON registry object", document.kind()),
         })?;

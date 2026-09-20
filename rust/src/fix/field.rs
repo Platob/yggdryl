@@ -285,7 +285,7 @@ impl<'field> FixField<'field> {
             if spelling.is_empty() || spelling.contains(SEPARATOR) {
                 return Err(refused("a nonempty member spelling without a comma"));
             }
-            if !matches!(self.as_field().dtype(), DataType::Structure(_)) {
+            if !matches!(self.as_field().dtype(), DataType::Struct(_)) {
                 return Err(refused(
                     "a Struct component declaring its own scalar members",
                 ));
@@ -805,11 +805,11 @@ impl FixFieldMut<'_> {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut order = DataType::utf8().nullable_field("clordid");
     /// order.as_fix_mut().set_tag(11)?;
-    /// let mut component = DataType::from(StructureType::from_fields([order])?).required_field("order");
+    /// let mut component = DataType::from(StructType::from_fields([order])?).required_field("order");
     /// component.as_fix_mut().set_identifiers(["11"])?;
     /// assert_eq!(component.as_fix().identifiers().collect::<Vec<_>>(), ["clordid"]);
     /// # Ok(())

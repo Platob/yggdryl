@@ -6,7 +6,7 @@ use yggdryl::expression::{
     Filter, FunctionSignature, Selector, Term, UserFunction, UserRef, lookup_function,
     register_function, registered_functions, unregister_function,
 };
-use yggdryl::{DataType, Field, Result, Scalar, StructureType};
+use yggdryl::{DataType, Field, Result, Scalar, StructType};
 
 /// `rs.double(value)`: twice an integer.
 struct Double(FunctionSignature);
@@ -60,7 +60,7 @@ fn registered() {
 }
 
 fn rows() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::Int64.nullable_field("size"),
         DataType::utf8().nullable_field("ccy"),
     ])

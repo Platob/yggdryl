@@ -23,7 +23,7 @@ use iceberg_official::transform::{BoxedTransformFunction, create_transform_funct
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::DecimalType;
-use crate::{DataType, Error, Field, Result, Scalar, StructureType};
+use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 /// The identifier Iceberg assigns to the first partition field of a table.
 pub const FIRST_PARTITION_ID: i32 = 1000;
@@ -563,7 +563,7 @@ impl PartitionSpec {
         }
         let mut partition = Field::new(
             "partition",
-            DataType::from(StructureType::from_fields(children)?),
+            DataType::from(StructType::from_fields(children)?),
             false,
         );
         partition.as_iceberg_mut().set_spec_id(self.spec_id)?;
@@ -932,7 +932,7 @@ pub(super) fn source_path(schema: &Field, source_id: i32) -> Result<(Vec<SmolStr
             if child.parquet_field_id().ok().flatten() == Some(source_id) {
                 return Some(child);
             }
-            if matches!(child.dtype(), DataType::Structure(_)) {
+            if matches!(child.dtype(), DataType::Struct(_)) {
                 if let Some(found) = find(child, source_id, path) {
                     return Some(found);
                 }

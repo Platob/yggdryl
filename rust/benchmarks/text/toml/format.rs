@@ -64,14 +64,14 @@ pub fn toml_benchmarks(criterion: &mut Criterion) {
         });
     });
 
-    let deep = Scalar::from_record([("value", nested(48))]).unwrap();
+    let deep = Scalar::from_struct([("value", nested(48))]).unwrap();
     let deep_encoded = toml::into_bytes(&deep).unwrap();
     group.throughput(Throughput::Bytes(deep_encoded.len() as u64));
     group.bench_function("decode_depth_49", |bencher| {
         bencher.iter(|| toml::from_bytes(black_box(&deep_encoded)).unwrap());
     });
 
-    let wide = Scalar::from_record(
+    let wide = Scalar::from_struct(
         (0_i64..1_024).map(|index| (format!("key_{index}"), Scalar::from(index))),
     )
     .unwrap();

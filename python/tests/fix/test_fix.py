@@ -50,12 +50,12 @@ SEED = REPO / "config" / "fix"
 # order from 65003 and the two Map groups. Nothing about the market is here -
 # every market fact is FIX's own field, and the graph traits answer it off
 # those.
-CRATED = 19
+CRATED = 22
 # What ``FixRegistry()`` holds: the crate's own scalar fields, the two seeded
 # standard clocks SendingTime (52) and TransactTime (60), and the two Map
 # groups. ``len`` counts the groups; iteration walks the scalars alone.
-SEEDED = 21
-SEEDED_SCALARS = 19
+SEEDED = 24
+SEEDED_SCALARS = 22
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
@@ -78,6 +78,9 @@ CROSSUUID_TAG = 65040
 SEQNUM_TAG = 65042
 CROSSCODE_TAG = 65048
 METADATA_TAG = 65049
+SRCUUIDS_TAG = 65051
+STATE_TAG = 65052
+EXPIRUNIX_TAG = 65053
 
 
 def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
@@ -407,9 +410,9 @@ def test_a_new_registry_holds_the_crate_and_the_two_seeded_clocks() -> None:
         assert registry.get_field_by_tag(tag) is None, name
 
     # The retired spellings reach nothing.
-    # `state`, `px`, `qty` and the instrument codes went the same way: what
-    # a message says about its market is FIX's own field, and the traits read
-    # it there.
+    # `px`, `qty` and the instrument codes went the same way: what a message
+    # says about its market is FIX's own field, and the traits read it there.
+    # `state` came back as the event's own column, the one a walk folds.
     for retired in (
         "updatedat",
         "createdat",
@@ -418,7 +421,6 @@ def test_a_new_registry_holds_the_crate_and_the_two_seeded_clocks() -> None:
         "altids",
         "code",
         "version",
-        "state",
         "px",
         "qty",
         "isincode",
@@ -435,10 +437,10 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert len(fields) == CRATED
     # In tag order, one block from 65003, above every tag FIX or a venue
     # publishes: the event's clocks, its identities, the chain, what a
-    # capture stated, and the two Maps. Nothing about the market is here -
-    # the price, the quantity, the instrument's codes, the state and the
-    # lanes are FIX's own fields, and the graph traits answer them off
-    # those.
+    # capture stated, the state reached and the expiry a walk folds, and
+    # the two Maps. Nothing about the market is here - the price, the
+    # quantity, the instrument's codes and the lanes are FIX's own fields,
+    # and the graph traits answer them off those.
     assert list(fields) == [
         "currunix",
         "msgctxid",
@@ -459,10 +461,13 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "seqnum",
         "crosscode",
         "metadata",
+        "srcuuids",
+        "state",
+        "expirunix",
     ]
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
-    assert tags[0] == UNIX_TAG and tags[-1] == METADATA_TAG
+    assert tags[0] == UNIX_TAG and tags[-1] == EXPIRUNIX_TAG
     assert all(field.fix.branches == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
@@ -480,8 +485,9 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # The clocks are instants in UTC, to the nanosecond; the identities are
     # what a lake reads as a UUID and a 64-bit integer; the facts a row
     # derives are typed as the thing they hold.
-    for name in ("currunix", "prevunix", "creaunix", "snapunix"):
+    for name in ("currunix", "prevunix", "creaunix", "snapunix", "expirunix"):
         assert fields[name].dtype == DataType('datetime64(ns,"UTC")'), name
+    assert fields["state"].dtype == DataType("state")
     for name in ("curruuid", "crossuuid", "prevuuid"):
         assert fields[name].dtype == DataType("uuid"), name
     for name in ("currhashcode", "crosshashcode", "seqnum"):
@@ -856,8 +862,8 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
 
     event = message.event()
     assert isinstance(event, MarketEventData)
-    # The instant is TransactTime where the message states one.
-    assert event.currunix == CLOCK_NS + 1_000_000_000
+    # The instant is the sending clock, the one clock every message carries.
+    assert event.currunix == CLOCK_NS
     assert event.creaunix == event.currunix
     assert event.px.as_py() == 10.5
     assert event.qty.as_py() == 100
@@ -882,6 +888,7 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert message.crosshashcode == event.crosshashcode
     assert message.identifiers == event.identifiers
     assert message.parentuuids == event.parentuuids == []
+    assert message.srcuuids == event.srcuuids == []
     assert message.state == event.state
     assert message.seqnum == event.seqnum
     assert message.prevuuid is None
@@ -911,8 +918,9 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert message.by_tag(58).as_py() == "note"
     assert message.by_tag(HASHCODE_TAG).as_py() == message.currhashcode
     assert message.by_tag(CURRUUID_TAG) == message.curruuid
+    # The instant is the sending clock, the one clock every message carries.
     assert message.by_tag(UNIX_TAG).as_py() == dt.datetime.fromtimestamp(
-        (CLOCK_NS + 1_000_000_000) / 1e9, dt.timezone.utc
+        CLOCK_NS / 1e9, dt.timezone.utc
     )
     assert message.by_tag(CROSSCODE_TAG).as_py() == "A1"
     assert message.by_name("crosscode").as_py() == "A1"
@@ -1264,7 +1272,8 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     assert first.into_bytes(ord("|")) == wire
 
     # A message's own clocks precede the pin: SendingTime is the stated one,
-    # and TransactTime settles the event and the creation.
+    # and it dates the event and the creation. TransactTime is a typed field
+    # the parse leaves for the lifecycle to read.
     stated = next(
         codec.parse_line(
             b"8=FIX.4.4|35=0|52=19700101-00:00:02.123456789|60=19700101-00:00:03.987654321|10=0|"
@@ -1273,14 +1282,16 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     assert stated.by_tag(52) == DataType('datetime64(ns,"UTC")').scalar(2_123_456_789)
     assert stated.header().sendingtime == 2_123_456_789
     assert stated.header().stated_sendingtime
-    assert stated.currunix == 3_987_654_321
-    assert stated.event().creaunix == 3_987_654_321
-    # `OrigSendingTime(122)` is when a resent message came into being, and a
-    # TransactTime stating only a day names no instant, so the sending clock
-    # stands in. Both are read off the dictionary's own fields.
+    assert stated.currunix == 2_123_456_789
+    assert stated.event().creaunix == 2_123_456_789
+    assert stated.by_tag(60) == DataType('datetime64(ns,"UTC")').scalar(3_987_654_321)
+    # `OrigSendingTime(122)` and a `TransactTime` are typed off the
+    # dictionary's own fields and date nothing at the parse: the sending
+    # clock stands, for a resent message and a day-only transaction alike.
     dictionary = _fixed(seed, exclude_msgtypes=[])
     resent = next(dictionary.parse_line(b"8=FIX.4.4|35=0|122=19700101-00:00:01|10=0|"))
-    assert resent.event().creaunix == 1_000_000_000
+    assert resent.event().creaunix == CLOCK_NS
+    assert resent.by_tag(122) == DataType('datetime64(ns,"UTC")').scalar(1_000_000_000)
     day = next(dictionary.parse_line(b"8=FIX.4.4|35=D|11=A|60=20260814|10=0|"))
     assert day.currunix == CLOCK_NS
 
@@ -1362,10 +1373,29 @@ def test_a_parse_restates_deprecated_fields_to_their_latest_aliases(seed: FixReg
 # fill, a replace whose new identifier names the old one, its acknowledgement
 # and the fill under the new identifier alone.
 LIFE = [
-    b"8=FIX.4.4|35=D|11=A1|55=AAPL|207=XNAS|15=USD|54=1|38=100|44=12.5|60=20260102-10:15:30.000|10=0|",
-    b"8=FIX.4.4|35=8|11=A1|37=O1|17=E1|150=0|39=0|55=AAPL|207=XNAS|15=USD|38=100|14=0|151=100|60=20260102-10:15:30.250|10=0|",
-    b"8=FIX.4.4|35=8|11=A1|37=O1|17=E2|150=F|39=1|55=AAPL|207=XNAS|15=USD|38=100|14=50|151=50|32=50|31=12.5|60=20260102-10:15:31.000|10=0|",
+    b"8=FIX.4.4|35=D|52=20260102-10:15:30.000|11=A1|55=AAPL|207=XNAS|15=USD|54=1|38=100|44=12.5|10=0|",
+    b"8=FIX.4.4|35=8|52=20260102-10:15:30.250|11=A1|37=O1|17=E1|150=0|39=0|55=AAPL|207=XNAS|15=USD|38=100|14=0|151=100|10=0|",
+    b"8=FIX.4.4|35=8|52=20260102-10:15:31.000|11=A1|37=O1|17=E2|150=F|39=1|55=AAPL|207=XNAS|15=USD|38=100|14=50|151=50|32=50|31=12.5|10=0|",
 ]
+
+
+def test_a_message_read_from_a_line_states_the_line_as_its_one_source(seed: FixRegistry) -> None:
+    """Provenance: the line an event was parsed out of, never the chain."""
+    codec = _fixed(seed)
+    lines = [TextLine(at, body) for at, body in enumerate(LIFE)]
+    # A line is an event of its own, and the message read from it names it.
+    [message] = list(codec.parse_text_line(lines[0]))
+    assert message.srcuuids == [lines[0].curruuid]
+    assert message.event().srcuuids == [lines[0].curruuid]
+    # The source is no part of the code: the same bytes are the same message.
+    [raw] = list(codec.parse_lines(LIFE[:1]))
+    assert raw.srcuuids == []
+    assert raw.curruuid == message.curruuid
+    assert raw.currhashcode == message.currhashcode
+    # A walk carries the chain as parents and leaves every source its own.
+    walked = list(codec.lifecycle(codec.parse_text_lines(lines)))
+    assert [held.srcuuids for held in walked] == [[line.curruuid] for line in lines]
+    assert walked[-1].parentuuids == [held.curruuid for held in walked[:-1]]
 
 
 def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegistry) -> None:
@@ -1388,7 +1418,9 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     for earlier, later in zip(walked, walked[1:]):
         assert later.prevuuid == earlier.curruuid
         assert later.event().prevunix == earlier.currunix
-        assert earlier.curruuid in later.parentuuids
+    # A walked message descends from the whole chain before it, oldest first.
+    for at, later in enumerate(walked):
+        assert later.parentuuids == [held.curruuid for held in walked[:at]]
     # The lifecycle's own creation instant is carried forward.
     assert {held.event().creaunix for held in walked} == {walked[0].event().creaunix}
     # The state moves with the messages.

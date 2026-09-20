@@ -659,6 +659,12 @@ fn read() -> Pinned {
 /// bridge writes `TIMEINFORCE=day` where FIX's code set says `0`, so the
 /// arrival record keeps the word while the column holds the code, and only
 /// the line the word came on still has it to re-emit.
+///
+/// The `lifecycle` ordinals are the walk's order, and the walk orders by
+/// the instant the lifecycle dates each message with: `TransactTime(60)`
+/// where the parse supplied the sending clock, `SendingTime(52)` where the
+/// line stated it, so the same eight messages sit where that stamp puts
+/// them.
 const NESTING_A_SUBGROUP: [&str; 31] = [
     "ulbridge[006]",
     "ulbridge[008]",
@@ -668,14 +674,14 @@ const NESTING_A_SUBGROUP: [&str; 31] = [
     "ulbridge[138]",
     "ulbridge[140]",
     "ulbridge[141]",
-    "lifecycle[015]",
-    "lifecycle[017]",
-    "lifecycle[038]",
-    "lifecycle[063]",
+    "lifecycle[016]",
+    "lifecycle[018]",
+    "lifecycle[039]",
+    "lifecycle[068]",
     "lifecycle[081]",
+    "lifecycle[083]",
     "lifecycle[089]",
     "lifecycle[090]",
-    "lifecycle[091]",
     "frames[000]",
     "frames[005]",
     "frames[010]",

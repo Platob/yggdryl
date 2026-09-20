@@ -5,11 +5,11 @@ use std::sync::Arc;
 use arrow_array::{Array, ArrayRef, Datum, Int64Array, RecordBatch, StringArray, StructArray};
 
 use yggdryl::arrow::batch_reader;
-use yggdryl::{ArrowCastOptions, DataType, Field, StructureType};
+use yggdryl::{ArrowCastOptions, DataType, Field, StructType};
 use yggdryl::{ArrowScalar, ArrowShape};
 
 fn quote_root() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("size"),
     ])
@@ -39,7 +39,7 @@ fn prices() -> ArrayRef {
 mod shapes {
 
     use super::{ArrowScalar, ArrowShape, Field, prices, quote_batch, quote_root};
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
     use yggdryl::{DataType, Scalar};
 
     #[test]
@@ -95,7 +95,7 @@ mod shapes {
 
     #[test]
     fn a_columns_width_is_the_width_of_the_root_its_rows_live_under() {
-        let structure = StructureType::from_fields([
+        let structure = StructType::from_fields([
             DataType::utf8().required_field("symbol"),
             DataType::Int64.required_field("size"),
         ])
@@ -128,7 +128,7 @@ mod shapes {
 mod pairing {
 
     use super::{ArrowScalar, Field, prices, quote_batch, quote_root};
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
     use yggdryl::{DataType, Scalar};
 
     #[test]
@@ -150,7 +150,7 @@ mod pairing {
 
     #[test]
     fn a_declared_root_must_be_exactly_the_rows_own_schema() {
-        let widened = StructureType::from_fields([
+        let widened = StructType::from_fields([
             DataType::utf8().required_field("symbol"),
             DataType::Int64.nullable_field("size"),
         ])
@@ -272,7 +272,7 @@ mod narrowing {
 mod casting {
 
     use super::{ArrowCastOptions, ArrowScalar, Field, batch_reader, prices};
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
     use yggdryl::{DataType, Scalar};
 
     #[test]
@@ -291,11 +291,11 @@ mod casting {
 
     #[test]
     fn a_stream_is_cast_one_batch_at_a_time_under_one_plan() {
-        let source = StructureType::from_fields([DataType::Int64.required_field("size")])
+        let source = StructType::from_fields([DataType::Int64.required_field("size")])
             .map(DataType::from)
             .expect("the root datatype is valid")
             .required_field("row");
-        let target = StructureType::from_fields([DataType::Float64.required_field("size")])
+        let target = StructType::from_fields([DataType::Float64.required_field("size")])
             .map(DataType::from)
             .expect("the root datatype is valid")
             .required_field("row");

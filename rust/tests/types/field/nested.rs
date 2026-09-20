@@ -1,4 +1,4 @@
-use yggdryl::{DataType, Field, StructureType, UnionMode};
+use yggdryl::{DataType, Field, StructType, UnionMode};
 
 use super::typed::assert_typed_marker;
 
@@ -10,8 +10,8 @@ fn nested_markers_cover_every_child_layout() {
     assert_typed_marker::<yggdryl::SequenceType>(DataType::fixed_size_list(item(), 3).unwrap());
     assert_typed_marker::<yggdryl::SequenceType>(DataType::large_list(item()));
     assert_typed_marker::<yggdryl::SequenceType>(DataType::large_list_view(item()));
-    assert_typed_marker::<yggdryl::StructureType>(DataType::from(
-        StructureType::from_fields([item()]).unwrap(),
+    assert_typed_marker::<yggdryl::StructType>(DataType::from(
+        StructType::from_fields([item()]).unwrap(),
     ));
     assert_typed_marker::<yggdryl::UnionType>(
         DataType::union([(4, item())], UnionMode::Dense).unwrap(),
@@ -39,14 +39,14 @@ fn nested_markers_cover_every_child_layout() {
 /// schema node descends the schema.
 #[test]
 fn subscripting_a_schema_node_reaches_a_nested_child() {
-    let line = StructureType::from_fields([
+    let line = StructType::from_fields([
         DataType::Float64.required_field("price"),
         DataType::Int64.required_field("qty"),
     ])
     .map(DataType::from)
     .unwrap()
     .required_field("line");
-    let order = StructureType::from_fields([DataType::Int64.required_field("id"), line])
+    let order = StructType::from_fields([DataType::Int64.required_field("id"), line])
         .map(DataType::from)
         .unwrap()
         .required_field("order");
@@ -74,7 +74,7 @@ fn subscripting_a_schema_node_reaches_a_nested_child() {
 /// Metadata is not reachable by subscript any more, but is through its view.
 #[test]
 fn metadata_is_reached_through_its_own_surface_not_a_subscript() {
-    let mut field = StructureType::from_fields([DataType::Int64.required_field("id")])
+    let mut field = StructType::from_fields([DataType::Int64.required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -92,7 +92,7 @@ fn metadata_is_reached_through_its_own_surface_not_a_subscript() {
 #[test]
 #[should_panic(expected = "is not a child of the field")]
 fn subscripting_an_absent_child_panics_with_a_useful_message() {
-    let row = StructureType::from_fields([DataType::Int64.required_field("id")])
+    let row = StructType::from_fields([DataType::Int64.required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -108,7 +108,7 @@ fn subscripting_a_non_nested_datatype_panics_naming_it() {
 #[test]
 #[should_panic(expected = "so position 5 is out of range")]
 fn subscripting_past_the_end_panics_naming_the_arity() {
-    let row = StructureType::from_fields([DataType::Int64.required_field("id")])
+    let row = StructType::from_fields([DataType::Int64.required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -118,7 +118,7 @@ fn subscripting_past_the_end_panics_naming_the_arity() {
 /// Child mutation is named and cache-aware; no `&mut` child escapes it.
 #[test]
 fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
-    let mut row = StructureType::from_fields([DataType::Int64.required_field("id")])
+    let mut row = StructType::from_fields([DataType::Int64.required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -164,8 +164,8 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
 
 #[test]
 fn a_path_resolves_by_name_before_it_decomposes() {
-    let row = StructureType::from_fields([
-        StructureType::from_fields([DataType::Float64.required_field("price")])
+    let row = StructType::from_fields([
+        StructType::from_fields([DataType::Float64.required_field("price")])
             .map(DataType::from)
             .unwrap()
             .required_field("line"),
@@ -187,7 +187,7 @@ fn a_path_resolves_by_name_before_it_decomposes() {
     assert!(row.get_field_by_path("a.b.c").is_none());
 
     // The same string does resolve when the route exists.
-    let deep = StructureType::from_fields([StructureType::from_fields([
+    let deep = StructType::from_fields([StructType::from_fields([
         DataType::utf8().required_field("c")
     ])
     .map(DataType::from)
@@ -205,9 +205,9 @@ fn a_path_resolves_by_name_before_it_decomposes() {
 
 #[test]
 fn a_list_is_transparent_to_a_dotted_path_when_reading() {
-    let item = StructureType::from_fields([
+    let item = StructType::from_fields([
         DataType::Float64.required_field("price"),
-        StructureType::from_fields([DataType::utf8().required_field("id")])
+        StructType::from_fields([DataType::utf8().required_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("party"),
@@ -215,11 +215,10 @@ fn a_list_is_transparent_to_a_dotted_path_when_reading() {
     .map(DataType::from)
     .unwrap()
     .required_field("item");
-    let orders =
-        StructureType::from_fields([DataType::list(item.clone()).nullable_field("orders")])
-            .map(DataType::from)
-            .unwrap()
-            .required_field("row");
+    let orders = StructType::from_fields([DataType::list(item.clone()).nullable_field("orders")])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
 
     // The item is a step the path need not spell, and both spellings agree.
     assert_eq!(
@@ -252,7 +251,7 @@ fn a_list_is_transparent_to_a_dotted_path_when_reading() {
     assert!(orders.get_field_by_path("orders.quantity").is_none());
 
     // Every list layout reads the same way; a map keeps its entries by name.
-    let leaf = StructureType::from_fields([DataType::Int64.required_field("value")])
+    let leaf = StructType::from_fields([DataType::Int64.required_field("value")])
         .map(DataType::from)
         .unwrap()
         .required_field("item");
@@ -304,7 +303,7 @@ fn a_list_is_transparent_to_a_dotted_path_when_reading() {
 
 #[test]
 fn one_key_reaches_a_child_by_position_or_by_path() {
-    let row = StructureType::from_fields([StructureType::from_fields([
+    let row = StructType::from_fields([StructType::from_fields([
         DataType::Float64.required_field("price")
     ])
     .map(DataType::from)
@@ -347,7 +346,7 @@ fn a_datatype_replaces_removes_and_keeps_its_layout() {
 
     // A struct grows by an unresolved name and shrinks by either key.
     let mut row =
-        DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")]).unwrap());
+        DataType::from(StructType::from_fields([DataType::Int64.required_field("id")]).unwrap());
     row.set_field("venue", DataType::utf8().nullable_field("venue"))
         .unwrap();
     assert_eq!(row.field_len(), 2);
@@ -358,7 +357,7 @@ fn a_datatype_replaces_removes_and_keeps_its_layout() {
 
 #[test]
 fn setting_by_path_reaches_a_nested_child() {
-    let mut row = StructureType::from_fields([StructureType::from_fields([
+    let mut row = StructType::from_fields([StructType::from_fields([
         DataType::Int32.required_field("price")
     ])
     .map(DataType::from)
@@ -433,13 +432,13 @@ fn two_datatypes_meet_at_the_one_that_holds_both() {
 
 #[test]
 fn merging_structs_takes_the_union_of_their_fields() {
-    let left = StructureType::from_fields([
+    let left = StructType::from_fields([
         DataType::Int32.required_field("id"),
         DataType::utf8().required_field("venue"),
     ])
     .map(DataType::from)
     .unwrap();
-    let right = StructureType::from_fields([
+    let right = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float64.required_field("price"),
     ])
@@ -495,7 +494,7 @@ fn merging_reaches_into_every_nested_layout() {
 
     // And the recursion goes all the way down.
     let deep = |inner: DataType| {
-        StructureType::from_fields([StructureType::from_fields([inner.required_field("n")])
+        StructType::from_fields([StructType::from_fields([inner.required_field("n")])
             .map(DataType::from)
             .unwrap()
             .required_field("in")])
@@ -536,11 +535,11 @@ fn merging_fields_unions_metadata_and_keeps_the_receivers_value() {
 
 #[test]
 fn unnesting_flattens_structs_to_leaves_named_by_their_path() {
-    let row = StructureType::from_fields([
+    let row = StructType::from_fields([
         DataType::Int64.required_field("id"),
-        StructureType::from_fields([
+        StructType::from_fields([
             DataType::Float64.required_field("px"),
-            StructureType::from_fields([DataType::utf8().required_field("ccy")])
+            StructType::from_fields([DataType::utf8().required_field("ccy")])
                 .map(DataType::from)
                 .unwrap()
                 .required_field("meta"),
@@ -582,7 +581,7 @@ fn unnesting_flattens_structs_to_leaves_named_by_their_path() {
 
 #[test]
 fn exploding_replaces_each_collection_with_what_it_holds() {
-    let row = StructureType::from_fields([
+    let row = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
         DataType::map_of(DataType::utf8(), DataType::Int64, true)
@@ -625,12 +624,12 @@ fn exploding_replaces_each_collection_with_what_it_holds() {
     assert!(exploded[1].is_nullable());
 
     // One level only, so the depth is the caller's decision.
-    let deep = StructureType::from_fields([DataType::list(
+    let deep = StructType::from_fields([DataType::list(
         DataType::list(DataType::Int64.nullable_field("item")).nullable_field("item"),
     )
     .nullable_field("deep")])
     .map(DataType::from)
     .unwrap();
-    let once = DataType::from(StructureType::from_fields(deep.explode_fields()).unwrap());
+    let once = DataType::from(StructType::from_fields(deep.explode_fields()).unwrap());
     assert!(matches!(once.explode_fields()[0].dtype(), DataType::Int64));
 }

@@ -15,10 +15,10 @@ use crate::{Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol, Side, 
 /// and sets the identity that code derives, RFC 9562 UUIDv8 over it, so
 /// two elements stating the same things are one identity. Its order is
 /// lineage, as a node's is: it is after the elements it descends from, and
-/// it follows another by descending from it.
+/// it follows another by descending from its whole lineage.
 ///
 /// A new element states nothing: no identity, no cross code, no names, no
-/// parents, a price and a quantity of nothing in no currency
+/// parents, no sources, a price and a quantity of nothing in no currency
 /// (`XXX`) and no unit, a side of `UNKNOWN`, no instrument named, no lane
 /// stated. It is what any [`MarketElement`] converts into, dropping
 /// whatever else that element states, and what a [`MarketEventData`] is
@@ -26,11 +26,13 @@ use crate::{Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol, Side, 
 ///
 /// ```
 /// use yggdryl::graph::{Element, Event, MarketElement, MarketElementData, MarketEventData};
-/// use yggdryl::{Decimal18, Side};
+/// use yggdryl::{Decimal18, Side, Uuid};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut element = MarketElementData::default();
 /// element.set_crosscode("O-100".to_owned());
+/// // Where the element was read from: provenance, beside its lineage.
+/// element.set_srcuuids(vec![Uuid::from_v8(7)]);
 /// element.set_px("82.5".parse()?);
 /// element.set_qty(Decimal18::from_int(1_000));
 /// element.set_side(Side::read("Buy")?);
@@ -43,9 +45,14 @@ use crate::{Bloomberg, Cfi, Currency, Cusip, Decimal18, Isin, Mic, Sedol, Side, 
 /// event.finalize();
 /// assert_eq!(event.get_px(), element.get_px());
 /// assert_eq!(event.get_crosscode(), "O-100");
+/// assert_eq!(event.get_srcuuids(), [Uuid::from_v8(7)], "the source survives");
 /// // And back, through the signatures the two share: the event's instants
-/// // drop, and the identity is what the shared facts derive.
+/// // drop, and the identity is what the shared facts derive - a source
+/// // among them not, because where an element was read from is not what it
+/// // states.
 /// let mut again = MarketElementData::from(&event);
+/// assert_eq!(again.get_srcuuids(), [Uuid::from_v8(7)]);
+/// again.set_srcuuids(vec![Uuid::from_v8(8)]);
 /// again.finalize();
 /// assert_eq!(again.get_curruuid(), element.get_curruuid());
 /// # Ok(())
@@ -60,6 +67,7 @@ pub struct MarketElementData {
     crosshashcode: u64,
     identifiers: BTreeMap<String, String>,
     parentuuids: Vec<Uuid>,
+    srcuuids: Vec<Uuid>,
     px: Decimal18,
     currency: Currency,
     qty: Decimal18,
@@ -102,6 +110,7 @@ impl Default for MarketElementData {
             crosshashcode: 0,
             identifiers: BTreeMap::new(),
             parentuuids: Vec::new(),
+            srcuuids: Vec::new(),
             px: Decimal18::ZERO,
             lastpx: None,
             lastqty: None,
@@ -192,6 +201,14 @@ impl Element for MarketElementData {
         self.parentuuids = parents;
     }
 
+    fn get_srcuuids(&self) -> &[Uuid] {
+        &self.srcuuids
+    }
+
+    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+        self.srcuuids = sources;
+    }
+
     fn is_after(&self, other: &Self) -> bool {
         self.parentuuids.contains(&other.curruuid)
     }
@@ -210,10 +227,7 @@ impl Element for MarketElementData {
         }
         let mut changed = super::element::follow_element(&mut self, previous);
         changed |= super::element::follow_market(&mut self, previous);
-        if !self.parentuuids.contains(&previous.curruuid) {
-            self.parentuuids.push(previous.curruuid);
-            changed = true;
-        }
+        changed |= super::element::descend_from(&mut self, previous);
         if !changed {
             return None;
         }
@@ -482,25 +496,30 @@ impl MarketElement for MarketElementData {
 /// at the epoch, for a caller to date.
 ///
 /// ```
-/// use yggdryl::graph::{Element, Event, MarketElement, MarketEventData};
-/// use yggdryl::{Decimal18, Side};
+/// use yggdryl::graph::{Element, Event, MarketElement, MarketElementData, MarketEventData};
+/// use yggdryl::{Decimal18, Side, Uuid};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut event = MarketEventData::at(1_700_000_000_000_000_000);
 /// event.set_px("82.5".parse()?);
 /// event.set_qty(Decimal18::from_int(1_000));
 /// event.set_side(Side::read("Buy")?);
+/// event.set_srcuuids(vec![Uuid::from_v8(7)]);
 /// // The lane the side implies fills from the event's own facts.
 /// event.fill_lanes();
 /// assert_eq!(event.get_bidpx(), Some("82.5".parse()?));
 /// event.finalize();
 /// assert_eq!(event.get_curruuid(), event.time_uuid()?);
 /// assert_ne!(event.get_currhashcode(), 0);
+/// // The source survives both conversions, and is never part of the code.
+/// assert_eq!(MarketEventData::from(&event).get_srcuuids(), [Uuid::from_v8(7)]);
+/// assert_eq!(MarketElementData::from(event.clone()).get_srcuuids(), [Uuid::from_v8(7)]);
 /// // Restating the same facts is the same identity; a new price is not.
 /// let mut same = MarketEventData::at(1_700_000_000_000_000_000);
 /// same.set_px("82.5".parse()?);
 /// same.set_qty(Decimal18::from_int(1_000));
 /// same.set_side(Side::read("Buy")?);
+/// same.set_srcuuids(vec![Uuid::from_v8(8)]);
 /// same.fill_lanes();
 /// same.finalize();
 /// assert_eq!(same.get_curruuid(), event.get_curruuid());
@@ -605,6 +624,14 @@ impl Element for MarketEventData {
 
     fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
         self.element.parentuuids = parents;
+    }
+
+    fn get_srcuuids(&self) -> &[Uuid] {
+        &self.element.srcuuids
+    }
+
+    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+        self.element.srcuuids = sources;
     }
 
     fn is_after(&self, other: &Self) -> bool {
@@ -945,6 +972,7 @@ fn copy_element<T: Element + ?Sized, E: Element + ?Sized>(this: &mut T, other: &
     this.set_crosshashcode(other.get_crosshashcode());
     this.set_identifiers(other.get_identifiers().clone());
     this.set_parentuuids(other.get_parentuuids().to_vec());
+    this.set_srcuuids(other.get_srcuuids().to_vec());
 }
 
 /// Every fact [`Event`] names, copied from `other` into `this`.

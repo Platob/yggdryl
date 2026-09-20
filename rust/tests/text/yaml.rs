@@ -5,8 +5,8 @@ use saphyr_parser::{Event, EventReceiver, Parser};
 use yggdryl::DateTimeType;
 use yggdryl::yaml;
 use yggdryl::{
-    DataType, DataTypeId, Field, Limits, Scalar, StructureType, TimeUnit, Timezone,
-    from_yaml_scalar, from_yaml_scalar_with_field, i256, into_yaml_scalar,
+    DataType, DataTypeId, Field, Limits, Scalar, StructType, TimeUnit, Timezone, from_yaml_scalar,
+    from_yaml_scalar_with_field, i256, into_yaml_scalar,
 };
 
 #[test]
@@ -46,7 +46,7 @@ impl<'input> EventReceiver<'input> for Sink {
 
 #[test]
 fn natural_output_is_accepted_by_an_independent_yaml_parser() {
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         ("active", Scalar::from(true)),
         ("id", Scalar::from(7)),
         ("tags", Scalar::from_sequence([Scalar::from("rust")])),
@@ -62,7 +62,7 @@ fn natural_output_is_accepted_by_an_independent_yaml_parser() {
 
 #[test]
 fn yaml_standard_binary_is_not_a_private_envelope() {
-    let value = Scalar::from_record([("payload", Scalar::from(vec![0, 255]))]).unwrap();
+    let value = Scalar::from_struct([("payload", Scalar::from(vec![0, 255]))]).unwrap();
     let encoded = yaml::into_utf8(&value).unwrap();
     assert!(encoded.contains("!!binary"), "{encoded}");
     assert_eq!(yaml::from_utf8(&encoded).unwrap(), value);
@@ -73,7 +73,7 @@ fn untyped_yaml_preserves_only_syntax_proven_types() {
     let value =
         yaml::from_utf8("amount: '123.4500'\nat: '1970-01-01T00:00:00Z'\npayload: 'AP8='\n")
             .unwrap();
-    let record = value.as_record().unwrap();
+    let record = value.as_struct().unwrap();
     assert!(record["amount"].as_str().is_some());
     assert!(record["at"].as_str().is_some());
     assert!(record["payload"].as_str().is_some());
@@ -82,7 +82,7 @@ fn untyped_yaml_preserves_only_syntax_proven_types() {
 fn typed_row_field() -> Field {
     Field::new(
         "row",
-        StructureType::from_fields([
+        StructType::from_fields([
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
@@ -162,7 +162,7 @@ fn arbitrary_keys_and_standard_custom_tags_have_natural_semantics() {
     );
     assert_eq!(
         yaml::from_utf8("!vendor/value {id: 1}\n").unwrap(),
-        Scalar::from_record([("id", Scalar::from(1))]).unwrap()
+        Scalar::from_struct([("id", Scalar::from(1))]).unwrap()
     );
 }
 
@@ -192,7 +192,7 @@ fn nonfinite_yaml_floats_use_the_core_schema_spelling() {
 
 #[test]
 fn the_scalar_entry_points_answer_what_the_explicit_forms_answer() {
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         ("id", Scalar::from(7)),
         ("name", Scalar::from("ada")),
         ("tags", Scalar::from_sequence([Scalar::from("rust")])),
@@ -236,7 +236,7 @@ fn from_yaml_scalar_with_field_types_and_orders_as_from_bytes_with_field_does() 
         Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
     );
     let untyped = from_yaml_scalar(input).unwrap();
-    assert!(untyped.as_record().unwrap()["amount"].as_str().is_some());
+    assert!(untyped.as_struct().unwrap()["amount"].as_str().is_some());
 }
 
 #[test]

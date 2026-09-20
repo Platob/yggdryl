@@ -38,9 +38,9 @@ The handle's media type selects Parquet, so no call names a format. `row_size` a
     use yggdryl::holder::Holder;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, MimeType, StructureType};
+    use yggdryl::{DataType, MimeType, StructType};
 
-    let field = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+    let field = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
     let schema = field.clone().into_arrow_schema()?;
     let batch = RecordBatch::try_new(
@@ -109,9 +109,9 @@ Parquet's own settings and the shared ones are flat fields of one value.
     use yggdryl::IOMedia;
     use yggdryl::holder::Buffer;
     use yggdryl::parquet::{Parquet, ParquetOptions};
-    use yggdryl::{DataType, Level, MimeType, StructureType};
+    use yggdryl::{DataType, Level, MimeType, StructType};
 
-    let field = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
+    let field = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?).required_field("row");
     let arrow_schema = field.clone().into_arrow_schema()?;
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
@@ -274,9 +274,9 @@ The bindings name page compression as the text the `parquet` crate parses: `zstd
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
     use yggdryl::parquet::{Parquet, ParquetOptions};
-    use yggdryl::{DataType, MimeType, StructureType, Url};
+    use yggdryl::{DataType, MimeType, StructType, Url};
 
-    let field = DataType::from(StructureType::from_fields([
+    let field = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])?)

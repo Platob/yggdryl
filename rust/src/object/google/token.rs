@@ -310,7 +310,7 @@ impl Credential {
                 let held = source.token(agent, scope, now)?;
                 // The body is rendered by the core JSON codec, so nothing
                 // here escapes a string for itself.
-                let body = crate::json::into_utf8(&Scalar::from_record([
+                let body = crate::json::into_utf8(&Scalar::from_struct([
                     (
                         "delegates",
                         Scalar::from_sequence(
@@ -370,8 +370,8 @@ fn assertion(
     if let Some(key_id) = key_id {
         header.push(("kid", Scalar::from(key_id)));
     }
-    let header = crate::json::into_utf8(&Scalar::from_record(header)?)?;
-    let claims = crate::json::into_utf8(&Scalar::from_record([
+    let header = crate::json::into_utf8(&Scalar::from_struct(header)?)?;
+    let claims = crate::json::into_utf8(&Scalar::from_struct([
         ("iss", Scalar::from(email)),
         ("scope", Scalar::from(scope)),
         ("aud", Scalar::from(audience)),

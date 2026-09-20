@@ -9,8 +9,8 @@ Variant, geometry, and geography datatypes plus the dependency-free WKB reader b
 | Owns | `variant`, `geometry(crs)`, `geography(crs, algorithm)`, `Scalar::Geometry`, `Scalar::Geography`, `wkb` |
 | Defaults | CRS `OGC:CRS84`; edges `spherical`; display omits defaults |
 | Algorithms | `spherical`, `vincenty`, `thomas`, `andoyer`, `karney`; case-insensitive ([`EdgeAlgorithm`](scalar.md)) |
-| Arrow | variant: struct of non-nullable `metadata`, `value` binaries under `arrow.parquet.variant`; pair: WKB binary under `geoarrow.wkb`, CRS and algorithm in GeoArrow JSON; both ride `ARROW:extension:name`/`ARROW:extension:metadata` |
-| Variant value | the [`Scalar`](scalar.md) tree itself; no `Scalar::Variant` |
+| Arrow | variant: a `Binary` of the [variant encoding](variant.md) per row under `yggdryl.variant`; pair: WKB binary under `geoarrow.wkb`, CRS and algorithm in GeoArrow JSON; both ride `ARROW:extension:name`/`ARROW:extension:metadata` |
+| Variant value | the [`Scalar`](scalar.md) tree itself; no `Scalar::Variant`; a column stores each value as its [encoding](variant.md) and digests it as the value |
 | WKB reader | Rust only; no dependency; no WKT parser |
 
 ## Use
@@ -170,7 +170,7 @@ assert!(error.to_string().contains("byte 5"), "{error}");
 - `geometry('OGC:CRS84', 'vincenty')` -> refused, `expected no edge algorithm`.
 - `DataType::geometry(Some(""))` -> refused; absent CRS is `None`.
 - `geography('OGC:CRS84', 'euclidean')` -> refused, `expected one of spherical`.
-- Variant value on a Parquet path -> refused by name until Iceberg v3.
+- Variant value on a Parquet path -> a plain binary column of the encoding, no Parquet `VARIANT` logical type.
 - Truncated or trailing WKB bytes -> error naming the byte position.
 - EWKB SRID -> read past, not modeled.
 - `POINT EMPTY` -> NaN coordinates decode as `coordinate: None`.

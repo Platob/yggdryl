@@ -12,13 +12,13 @@ use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use criterion::{Criterion, Throughput};
-use yggdryl::{DataType, Field, IOBase, IOMedia, StructureType};
+use yggdryl::{DataType, Field, IOBase, IOMedia, StructType};
 
 use super::{ROWS, location, options, store};
 
 /// The four-column root the round trips carry.
 fn wide() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
         DataType::Float64.required_field("price"),

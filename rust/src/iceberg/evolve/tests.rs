@@ -7,17 +7,17 @@ use crate::iceberg::{
     FormatVersion, PartitionSpec, Snapshot, SnapshotRef, SortField, SortOrder, TableMetadata,
     Transform, assign_field_ids,
 };
-use crate::{DataType, Field, StructureType};
+use crate::{DataType, Field, StructType};
 
 /// The nested quote schema every evolution test starts from.
 ///
 /// Ids run 1..=5 depth first: `id`, `symbol`, `quote`, `quote.price`,
 /// `quote.size`.
 fn quote_schema() -> Field {
-    let mut schema = StructureType::from_fields([
+    let mut schema = StructType::from_fields([
         DataType::Int32.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
-        StructureType::from_fields([
+        StructType::from_fields([
             DataType::Float32.required_field("price"),
             DataType::Int32.nullable_field("size"),
         ])
@@ -139,7 +139,7 @@ mod promotions {
 mod schema_updates {
 
     use super::{DataType, FormatVersion, SchemaUpdate, metadata};
-    use crate::StructureType;
+    use crate::StructType;
 
     #[test]
     fn an_added_top_level_column_is_numbered_above_the_last_column_id() {
@@ -158,7 +158,7 @@ mod schema_updates {
         let mut update = SchemaUpdate::from_metadata(&metadata).unwrap();
         update.add_column(
             "quote",
-            StructureType::from_fields([
+            StructType::from_fields([
                 DataType::Int64.required_field("bid"),
                 DataType::Int64.required_field("ask"),
             ])
@@ -469,7 +469,7 @@ mod metadata_updates {
         DataType, FormatVersion, PartitionSpec, SchemaUpdate, SmolStr, SnapshotRef, TableMetadata,
         identity_order, metadata, quote_schema, snapshot,
     };
-    use crate::{Scalar, StructureType};
+    use crate::{Scalar, StructType};
 
     #[test]
     fn properties_are_canonical_and_round_trip_through_the_document() {
@@ -907,7 +907,7 @@ mod metadata_updates {
         let mut fields = schema.fields().to_vec();
         fields[1].set_parquet_field_id(1);
         schema
-            .set_dtype(DataType::from(StructureType::from_fields(fields).unwrap()))
+            .set_dtype(DataType::from(StructType::from_fields(fields).unwrap()))
             .unwrap();
         duplicated.schemas[0] = schema;
         let message = duplicated.validate().unwrap_err().to_string();

@@ -9,7 +9,7 @@ use yggdryl::{DataType, DigestAlgorithm, Field, Scalar, Uri};
 /// A leaf, a wide record, and a deep nest: the three shapes the feed walks
 /// differently, and the three where a stray allocation would show.
 fn corpus() -> Vec<(&'static str, Scalar)> {
-    let wide = Scalar::from_record(
+    let wide = Scalar::from_struct(
         (0..64).map(|index| (format!("column_{index:03}"), Scalar::from(index))),
     )
     .expect("the generated record names are unique");

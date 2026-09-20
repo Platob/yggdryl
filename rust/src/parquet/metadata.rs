@@ -267,7 +267,7 @@ fn statistics_record<const N: usize>(entries: [(&'static str, Scalar); N]) -> Sc
     // Every call above uses distinct literals. Keeping construction here makes
     // that one auditable invariant and prevents either binding from growing a
     // separate Parquet DTO renderer.
-    Scalar::from_record(entries).expect("Parquet statistics field names are distinct")
+    Scalar::from_struct(entries).expect("Parquet statistics field names are distinct")
 }
 
 /// Borrow a statistic's encoded minimum, when the writer recorded one.

@@ -26,9 +26,9 @@ The handle's media type selects Avro, so no call names a format. The three inten
     use yggdryl::media::IORecordOptions;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, StructureType, Url};
+    use yggdryl::{DataType, StructType, Url};
 
-    let field = DataType::from(StructureType::from_fields([
+    let field = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])?)
@@ -121,9 +121,9 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
     use yggdryl::media::IORecordOptions;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, StructureType, Url};
+    use yggdryl::{DataType, StructType, Url};
 
-    let row = DataType::from(StructureType::from_fields([
+    let row = DataType::from(StructType::from_fields([
         DataType::fixed_ascii(4)?.nullable_field("code"),
         DataType::fixed_binary(2)?.nullable_field("key"),
         DataType::from_str("binary(8)")?.nullable_field("blob"),
@@ -145,7 +145,7 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
     let spelled: Vec<String> = stored.fields().iter().map(|child| child.dtype().to_string()).collect();
     assert_eq!(spelled, ["utf8", "fixed_binary(2)", "binary"]);
 
-    let legacy = DataType::from(StructureType::from_fields([
+    let legacy = DataType::from(StructType::from_fields([
         DataType::cp1252().nullable_field("note"),
     ])?)
     .required_field("row");

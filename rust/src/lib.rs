@@ -87,6 +87,7 @@ pub mod mic;
 mod mime_type;
 #[cfg(feature = "object")]
 pub mod object;
+mod parallel;
 #[cfg(feature = "parquet")]
 pub mod parquet;
 mod parser;
@@ -119,6 +120,7 @@ pub mod uri;
 pub mod utf8;
 pub mod uuid;
 mod value;
+mod variant;
 pub mod version;
 mod vocabulary;
 pub mod wkb;
@@ -147,16 +149,17 @@ pub use fix::MsgType;
 pub use fix::{
     CRATE_TAG_MAX, CRATE_TAG_MIN, CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME,
     CROSSUUID_TAG_NAME, CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME, CURRUUID_TAG_NAME,
-    DEFAULT_NULL_VALUES, DEFAULT_PAYLOAD_COLUMN, DEFAULT_REFUSED_MSGTYPES, FIX_TYPED_TAGS,
-    FIXMSG_TAG_NAME, FixCapture, FixCode, FixCodeValue, FixCodec, FixCodes, FixDedup, FixDirection,
-    FixDirectionEntry, FixDirections, FixEntry, FixFieldIter, FixHeader, FixId, FixKey, FixLifted,
-    FixMessages, FixMsg, FixPatterns, FixRegistry, FixSpellings, IDENTIFIERS_TAG_NAME,
-    METADATA_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME,
-    MSGSESSIONID_TAG_NAME, NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME, PREVUNIX_TAG_NAME,
-    PREVUUID_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH, SOURCEURL_TAG_NAME,
-    STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, ULBRIDGE_ROWHEADER, Words, fix_column_of,
-    fix_column_tags, fix_crate_fields, fix_schema, fix_schema_carrying, fix_schema_tags,
-    from_fix_document, into_fix_document, is_crate_tag,
+    DEFAULT_NULL_VALUES, DEFAULT_PAYLOAD_COLUMN, DEFAULT_REFUSED_MSGTYPES, EXPIRUNIX_TAG_NAME,
+    FIX_TYPED_TAGS, FIXMSG_TAG_NAME, FixCapture, FixCode, FixCodeValue, FixCodec, FixCodes,
+    FixDedup, FixDirection, FixDirectionEntry, FixDirections, FixEntry, FixFieldIter, FixHeader,
+    FixId, FixKey, FixLifted, FixMessages, FixMsg, FixPatterns, FixRegistry, FixSpellings,
+    IDENTIFIERS_TAG_NAME, METADATA_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME,
+    MSGPLUGINID_TAG_NAME, MSGSESSIONID_TAG_NAME, NOFIXENTRIES_TAG_NAME, PARENTUUIDS_TAG_NAME,
+    PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH,
+    SOURCEURL_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
+    STATE_TAG_NAME, ULBRIDGE_ROWHEADER, Words, fix_column_of, fix_column_tags, fix_crate_fields,
+    fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document,
+    is_crate_tag,
 };
 pub use int256::{i256, u256};
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
@@ -270,6 +273,7 @@ pub use value::{
     FieldValue, FloatingValue, GeographyType, GeometryType, GeospatialValue, IntegerValue, Nested,
     NestedValue, RunEndType, TemporalValue, UnionType, Value,
 };
+pub use variant::{COMPRESS_FROM, VARIANT_VERSION, VariantStream};
 pub(crate) use version::VERSION_EXTENSION_NAME;
 pub use version::*;
 

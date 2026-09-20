@@ -327,7 +327,7 @@ mod tests {
     }
 
     fn sample() -> Scalar {
-        Scalar::from_record([
+        Scalar::from_struct([
             ("quantity", Scalar::from(100)),
             ("symbol", Scalar::from("AAPL")),
         ])
@@ -387,7 +387,7 @@ mod tests {
                 alphabet[state as usize % alphabet.len()] as char
             })
             .collect::<String>();
-        let value = Scalar::from_record([
+        let value = Scalar::from_struct([
             ("quantity", Scalar::from(100)),
             ("message", Scalar::from(message)),
         ])

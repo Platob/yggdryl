@@ -28,7 +28,7 @@
 | Ordered bytes | `TxHash::into_ordered_bytes` is the same ordering with nothing spent on a layout: the instant restated to signed nanoseconds with its sign bit flipped in bytes 0..8, then all 64 digest bits in bytes 8..16. It needs a 64-bit digest, encodes neither unit nor algorithm, and is what a `fixed[16]` column holds where `into_uuid` would have given an identifier. Rust-only |
 | Coupled columns | `txhash::arrow` answers `fixed_size_binary(12|16|24)`, one coupled value per row, whose digest half is exactly `row_digests` or `column_digests` of the same rows under the same algorithm; the instant column is read once as `int64` counts at the declared unit, nulls kept; `compose` and `decompose` are inverses ([Coupled columns](#coupled-columns)) |
 | Coupled holders | `DIGEST:time` names the field whose instant a holder stores in front of its digest; `DIGEST:unit` is its resolution, microseconds when absent, and only beside `DIGEST:time` ([Coupled holders](#coupled-holders)) |
-| FIX identities | a message's `currhashcode` is the XXH3-64 of what the message *states* - the event's facts, the text, the metadata, the header fields it stated, then the entry tree, and never the columns a row happened to lay them out in, so a message read back out of a row is the same message - and its `crosshashcode` the XXH3-64 of the code its chain shares; `curruuid` is the UUIDv7 [`TxHash`](#txhash-values) couples its instant and `currhashcode` into, and `crossuuid` the UUIDv8 of `crosshashcode`. Never a second engine, and the recipes live with [FIX messages](fix/message.md#typed-tags) and the [graph](graph.md) traits that derive them |
+| FIX identities | a message's `currhashcode` is the XXH3-64 of what the message *states* but the standard header and trailer, less `MsgType(35)` - the event's own facts, the names it goes by, its parents, its state and place, then the text, the metadata, `MsgType`, the FIX fields it lifted, then the entry tree - and never the frame a hop carried it in, never the chain it is in, whose bracketed cross code is one hop's, nor the columns a row happened to lay them out in, so a message read back out of a row is the same message and one logged at two hops is one message - and its `crosshashcode` the XXH3-64 of the code its chain shares; `curruuid` is the UUIDv7 [`TxHash`](#txhash-values) couples its instant and `currhashcode` into, and `crossuuid` the UUIDv8 of `crosshashcode`. Never a second engine, and the recipes live with [FIX messages](fix/message.md#typed-tags) and the [graph](graph.md) traits that derive them |
 | Feature flag | none: `xxhash::arrow` and `txhash::arrow` are always compiled |
 | Not | A cryptographic hash, an adversarial integrity check, or a uniqueness guarantee; not Iceberg `bucket[N]`, which is murmur3 x86_32 ([Iceberg](media/iceberg/index.md) never calls this module) |
 | Bindings | Bytes: Python `bytes`, `bytearray`, `memoryview`, any buffer, `str` as UTF-8; JavaScript `Buffer`, `Uint8Array`, `ArrayBuffer`, string as UTF-8. Every `unix` argument is an `int` / `bigint`, a `datetime` / `Date`, timestamp text, or a `Scalar`. Handle digests, `Scalar.digest`, `stable_hash`, a state's `write_scalar` and `apply_arrow_batch`, `TxHasher`, and `TxHash.into_uuid` (a `uuid` `Scalar`) are bound everywhere; `Digester`, `as_value_bytes`, the digest arrays, and the coupled columns are Rust and Python only; `DigestReader`, `DigestWriter`, and `Hashed<H>` are Rust only |
@@ -488,11 +488,11 @@ assert_eq!(
 
 ## Encoding
 
-The tag byte is a wire contract: inserting a `DataTypeId` variant anywhere but the end changes stored digests. A digest identifies the value, not its storage width.
+The tag byte is a wire contract laid out by family: every [`DataTypeKind`](types/datatype.md#identity-and-family) owns a range of bytes, its leaves sit in it and a leaf added later takes the next free byte of its family, so a stored digest never moves; the same byte is what the [variant encoding](types/variant.md) writes after its version. A digest identifies the value, not its storage width.
 
-The tag is the value's own [`DataTypeId`](types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](types/text.md) feeds `utf8` (27) whatever its leaf, and a geography feeds `geometry`. A [code](types/codes.md) feeds its own id - `country`, `currency`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `side`, `state`, `timeinforce` - so a `currency` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
+The tag is the value's own [`DataTypeId`](types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](types/text.md) feeds `utf8` (`0x51`) whatever its leaf, and a geography feeds `geometry`. A [code](types/codes.md) feeds its own id - `country`, `currency`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `side`, `state`, `timeinforce` - so a `currency` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
 
-This is where the one string family changed stored digests: a value read from an `ascii` or `ascii(n)` column used to feed the retired `ascii` tag (30) and now feeds `string` (27), the tag UTF-8 text always fed, and every code value used to feed that same `ascii` tag and now feeds its own id. Digests of UTF-8 text and of bytes did not change.
+The bytes moved once, together, when the identifiers were laid out by family: every stored digest of every value changed in that commit, and none has since; the family layout is what keeps the next leaf from moving any.
 
 | Variant | Tag | Feed after the tag |
 | --- | --- | --- |
@@ -515,7 +515,7 @@ This is where the one string family changed stored digests: a value read from an
 | `Interval` | `interval` | months and days as `i32` little-endian, nanoseconds as `i64` little-endian, then the layout unit as one byte |
 | `Sequence` | `list` | element count `u64` little-endian, then each element's feed |
 | `Mapping` | `map` | entry count `u64` little-endian, then each key feed and value feed in stored order |
-| `Record` | `struct` | entry count `u64` little-endian, then per sorted entry a length-prefixed name and the value's feed |
+| `Struct` | `struct` | entry count `u64` little-endian, then per sorted entry a length-prefixed name and the value's feed |
 
 ## Digest holders and row digests
 
@@ -532,14 +532,14 @@ A digest holder is a field carrying `DIGEST:role=holder`; a state's `apply_arrow
     use arrow_schema::Schema;
     use yggdryl::xxhash::Xxh3;
     use yggdryl::xxhash::arrow::row_digests;
-    use yggdryl::{DataType, DigestAlgorithm, Field, Scalar, StructureType};
+    use yggdryl::{DataType, DigestAlgorithm, Field, Scalar, StructType};
 
     let symbol = Field::new("symbol", DataType::utf8(), false);
     let quantity = Field::new("quantity", DataType::Int64, false);
     let mut holder = Field::new("row_digest", DataType::UInt64, false);
     holder.as_digest_mut().set_holder()?;
     holder.as_digest_mut().set_sources(["symbol"])?;
-    let root = DataType::from(StructureType::from_fields([symbol.clone(), quantity.clone(), holder])?)
+    let root = DataType::from(StructType::from_fields([symbol.clone(), quantity.clone(), holder])?)
         .required_field("row");
 
     // The batch has no holder column; the fill adds it where the root declares it.
@@ -1137,7 +1137,7 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
     use arrow_array::{Array as _, RecordBatch, StringArray, TimestampMicrosecondArray};
     use arrow_schema::Schema;
     use yggdryl::txhash::TxHash;
-    use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, StructureType, TimeUnit, Timezone};
+    use yggdryl::{ArrowCastOptions, DataType, DigestAlgorithm, Field, Scalar, StructType, TimeUnit, Timezone};
 
     let event = Field::new("event", DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC)?, false);
     let symbol = Field::new("symbol", DataType::utf8(), false);
@@ -1145,7 +1145,7 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
     key.as_digest_mut().set_holder()?;
     key.as_digest_mut().set_time("event")?;
     key.as_digest_mut().set_unit(TimeUnit::Second)?;
-    let root = DataType::from(StructureType::from_fields([event.clone(), symbol.clone(), key])?).required_field("row");
+    let root = DataType::from(StructType::from_fields([event.clone(), symbol.clone(), key])?).required_field("row");
 
     let batch = RecordBatch::try_new(
         Arc::new(Schema::new(vec![event.into_arrow_field()?, symbol.into_arrow_field()?])),

@@ -225,12 +225,12 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Nineteen definitions, and every one a fact no dictionary publishes: the
-    // instants, the identities and the codes, the chain, what a bridge's own
-    // log said, and what the reader said about the line. Nothing about the
-    // *market* is here - the price, the quantity, the instrument's codes,
-    // the state and the lanes are FIX's own fields, and the traits answer
-    // them off those.
+    // Twenty-two definitions, and every one a fact no dictionary publishes:
+    // the instants, the identities and the codes, the chain, the state
+    // reached and the expiry a walk folds forward, what a bridge's own log
+    // said, and what the reader said about the line. Nothing about the
+    // *market* is here - the price, the quantity, the instrument's codes and
+    // the lanes are FIX's own fields, and the traits answer them off those.
     assert_eq!(
         names,
         [
@@ -253,6 +253,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "seqnum",
             "crosscode",
             "metadata",
+            "srcuuids",
+            "state",
+            "expirunix",
         ]
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -278,6 +281,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("SeqNum"),
             Some("CrossCode"),
             Some("Metadata"),
+            Some("SrcUuids"),
+            Some("State"),
+            Some("ExpirUnix"),
         ],
     );
     // The columns a message answers from what it said are typed as the thing
@@ -300,16 +306,31 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         assert_eq!(typed(name), &DataType::uuid(), "{name}");
         assert_eq!(field(name).as_fix().names().count(), 0, "{name}");
     }
+    // The two lists of identities - what a message descends from, and what
+    // it was read from - are lists of the same UUID, each item stated.
+    for (name, item) in [("parentuuids", "parentuuid"), ("srcuuids", "srcuuid")] {
+        assert_eq!(
+            typed(name),
+            &DataType::list(DataType::uuid().required_field(item)),
+            "{name}"
+        );
+        assert!(field(name).is_nullable(), "{name}");
+    }
     for name in ["currunix", "creaunix"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(!field(name).is_nullable(), "{name}");
     }
     // The clocks only a walk fills - the predecessor's instant and the grid
     // instant a snapshot was read as - are null on every row that is not one.
-    for name in ["prevunix", "snapunix"] {
+    for name in ["prevunix", "snapunix", "expirunix"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(field(name).is_nullable(), "{name}");
     }
+    // The state the message reached is the ranked code: stated on every row
+    // a message writes, and nullable because a state has no neutral member
+    // for an empty cell to read as.
+    assert_eq!(typed("state"), &DataType::State);
+    assert!(field("state").is_nullable());
     for name in ["currhashcode", "crosshashcode", "curruuid", "crossuuid"] {
         assert!(!field(name).is_nullable(), "{name}");
     }
@@ -384,12 +405,18 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         [
             yggdryl::CROSSCODE_TAG_NAME,
             yggdryl::METADATA_TAG_NAME,
-            yggdryl::FIXMSG_TAG_NAME
+            yggdryl::FIXMSG_TAG_NAME,
+            yggdryl::SRCUUIDS_TAG_NAME,
+            yggdryl::STATE_TAG_NAME,
+            yggdryl::EXPIRUNIX_TAG_NAME
         ],
         [
             (65_048, "crosscode"),
             (65_049, "metadata"),
-            (65_050, "fixmsg")
+            (65_050, "fixmsg"),
+            (65_051, "srcuuids"),
+            (65_052, "state"),
+            (65_053, "expirunix")
         ]
     );
     // The fixed row's own name is a tag of the block and not a field of it:
@@ -539,4 +566,94 @@ fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
         identities[0], identities[1],
         "one message read from two objects is one message",
     );
+}
+
+/// The element a message was read from is a fact the message holds.
+///
+/// A line is an event of its own, and every message parsed out of it
+/// states the line's identity as its one source, before it settles. The
+/// source is provenance and not content: no part of the code, so the same
+/// bytes read through the door that takes no line are the same message
+/// with no source at all, and the wire carries none of it. The row does -
+/// a store keeps where a node came from - and reads it back.
+#[test]
+fn the_line_a_message_was_read_from_is_its_one_source() {
+    use yggdryl::graph::Element;
+    use yggdryl::text::{TextBytes, TextLine, TextOptions};
+
+    let registry = super::committed_registry();
+    let reader = super::fixed_codec(std::sync::Arc::clone(&registry));
+    let schema = yggdryl::fix_schema(&registry, "fix").unwrap();
+    let body = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|10=0|";
+    let line = |index: u64, mtime: i64| {
+        TextLine::from_bytes(
+            index,
+            TextBytes::from_bytes(body).unwrap(),
+            std::sync::Arc::new(TextOptions::new()),
+        )
+        .unwrap()
+        .with_handle_mtime(mtime)
+    };
+    let read =
+        |line: &TextLine| super::sole_message(reader.parse_text_line(line).unwrap()).unwrap();
+
+    let first = line(0, 1_704_190_530_000_000_000);
+    let message = read(&first);
+    assert_eq!(message.get_srcuuids(), [first.get_curruuid()]);
+    // Provenance, not content: the bytes alone are the same message, with
+    // no source, and every code the two derive is the same code.
+    let raw = reader.sole_line(body).unwrap();
+    assert!(
+        raw.get_srcuuids().is_empty(),
+        "raw bytes were read from no element"
+    );
+    assert_eq!(message.get_currhashcode(), raw.get_currhashcode());
+    assert_eq!(message.get_curruuid(), raw.get_curruuid());
+    assert_eq!(message.get_crosshashcode(), raw.get_crosshashcode());
+    assert_eq!(message.digest(), raw.digest());
+    // The same line read again states the same source; the same bytes read
+    // as another line - another instant - state that line.
+    assert_eq!(read(&first).get_srcuuids(), message.get_srcuuids());
+    let later = line(1, 1_704_190_531_000_000_000);
+    assert_ne!(later.get_curruuid(), first.get_curruuid());
+    assert_eq!(read(&later).get_srcuuids(), [later.get_curruuid()]);
+    // A line dated before the epoch has an instant no UUIDv7 holds: its
+    // identity is nil, and nil names no element, so the message states none.
+    let undated = line(2, -1);
+    assert!(undated.get_curruuid().is_nil());
+    assert!(
+        read(&undated).get_srcuuids().is_empty(),
+        "nil names no element"
+    );
+    // Every bytes door states none.
+    let streamed = reader
+        .parse_lines([body])
+        .next()
+        .expect("one message")
+        .unwrap();
+    assert!(streamed.get_srcuuids().is_empty());
+    // The wire never carries it.
+    let wire = String::from_utf8(message.into_bytes(b'|')).unwrap();
+    assert!(!wire.contains("65051="), "{wire}");
+    assert_eq!(wire, String::from_utf8(raw.into_bytes(b'|')).unwrap());
+    // The row does, and reads it back.
+    let at =
+        yggdryl::fix_column_of(&schema, yggdryl::SRCUUIDS_TAG_NAME.0).expect("a srcuuids column");
+    let row = message.into_row(&schema).unwrap();
+    let held = row.as_sequence().expect("a row");
+    let sources: Vec<yggdryl::Uuid> = held[at]
+        .as_sequence()
+        .expect("a list of sources")
+        .iter()
+        .map(|item| match item {
+            Scalar::Uuid(uuid) => *uuid,
+            other => panic!("a uuid, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(sources, [first.get_curruuid()]);
+    let again = yggdryl::FixMsg::from_row(std::sync::Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(again.get_srcuuids(), message.get_srcuuids());
+    assert_eq!(again.get_curruuid(), message.get_curruuid());
+    let none = raw.into_row(&schema).unwrap();
+    assert!(none.as_sequence().expect("a row")[at].is_null());
 }

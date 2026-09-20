@@ -7,7 +7,7 @@ use arrow_schema::ArrowError;
 
 use yggdryl::DataType;
 use yggdryl::IOMedia;
-use yggdryl::StructureType;
+use yggdryl::StructType;
 use yggdryl::holder::Holder;
 use yggdryl::media::IORecordOptions;
 
@@ -159,7 +159,7 @@ fn a_folder_write_routes_each_row_to_the_partition_it_belongs_to() {
 #[test]
 fn an_ascii_partition_column_is_spelled_as_text_in_the_path() {
     let (root, mut handle) = lake("ascii");
-    let field = StructureType::from_fields([
+    let field = StructType::from_fields([
         DataType::fixed_ascii(4).unwrap().required_field("ccy"),
         DataType::Int64.required_field("qty"),
     ])
@@ -218,7 +218,7 @@ fn an_ascii_partition_column_is_spelled_as_text_in_the_path() {
 #[test]
 fn a_code_partition_column_keeps_its_identity_through_the_path() {
     let (root, mut handle) = lake("code");
-    let field = StructureType::from_fields([
+    let field = StructType::from_fields([
         DataType::Currency.required_field("ccy"),
         DataType::Int64.required_field("qty"),
     ])
@@ -619,7 +619,7 @@ fn a_declared_layout_that_contradicts_the_stored_one_is_refused_by_name() {
     // write cannot mean both, so it says so instead of choosing.
     let field = schema()
         .try_with_dtype(
-            StructureType::from_fields([
+            StructType::from_fields([
                 DataType::Int64.required_field("price"),
                 DataType::Int32.required_field("year"),
                 DataType::utf8().required_field("month"),
@@ -671,7 +671,7 @@ fn a_null_partition_value_is_spelled_out_in_the_path() {
     let (root, mut handle) = lake("null-partition");
     seed(&root, "year=2024/month=01", &prices());
 
-    let field = yggdryl::StructureType::from_fields([
+    let field = yggdryl::StructType::from_fields([
         yggdryl::DataType::Int64.required_field("price"),
         yggdryl::DataType::Int32.nullable_field("year"),
         yggdryl::DataType::utf8().nullable_field("month"),

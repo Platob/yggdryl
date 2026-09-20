@@ -4,7 +4,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use yggdryl::interval::Interval;
-use yggdryl::{DataType, Field, FieldScalar, Scalar, StructureType, TimeUnit, Timezone};
+use yggdryl::{DataType, Field, FieldScalar, Scalar, StructType, TimeUnit, Timezone};
 use yggdryl::{DateTimeType, UncheckedFieldScalar};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
@@ -127,7 +127,7 @@ fn a_value_infers_the_shared_field_of_its_own_datatype() {
 #[test]
 fn a_nested_value_is_validated_against_the_field_it_claims() {
     let row = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]);
-    let schema = StructureType::from_fields([
+    let schema = StructType::from_fields([
         Field::new("id", DataType::Int64, false),
         Field::new("symbol", DataType::utf8(), false),
     ])
@@ -161,14 +161,14 @@ fn the_accessors_are_the_values_own() {
     let flag = FieldScalar::infer(Scalar::from(true)).unwrap();
     assert_eq!(flag.as_bool(), Some(true));
 
-    let record = Scalar::from_record([("id", Scalar::from(1_i64))]).unwrap();
+    let record = Scalar::from_struct([("id", Scalar::from(1_i64))]).unwrap();
     let field = record.inferred_scalar_field().unwrap();
     let typed = FieldScalar::new(&field, record).unwrap();
     assert!(
         typed.as_sequence().is_some(),
         "a record canonicalizes to a row"
     );
-    assert_eq!(typed.as_record(), None);
+    assert_eq!(typed.as_struct(), None);
     assert_eq!(typed.get(0), Some(&Scalar::from(1_i64)));
     assert_eq!(typed.as_ref(), typed.value());
 
@@ -328,7 +328,7 @@ fn an_unchecked_pairing_reads_through_the_field_without_committing() {
 
 mod arrow {
 
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
     use yggdryl::{DataType, Field, FieldScalar, Scalar};
 
     #[test]
@@ -387,7 +387,7 @@ mod arrow {
 
     #[test]
     fn a_struct_pairing_decodes_and_reprojects_its_canonical_row_spelling() {
-        let structure = StructureType::from_fields([
+        let structure = StructType::from_fields([
             Field::new("id", DataType::Int64, false),
             Field::new("name", DataType::utf8(), true),
         ])

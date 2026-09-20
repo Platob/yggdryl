@@ -2342,8 +2342,10 @@ impl PyTextOptions {
 
     /// The columns the compiled `rowheader` captures, in order.
     ///
-    /// These are the fields a read produces between `url`/`rownum` and
-    /// `body`, so the full source field is known before any read runs.
+    /// These are the columns a read produces after the fixed ones - the
+    /// sixteen event columns, `sourceurl`, `rownum`, `mtime`, `mimetype`,
+    /// `body`, `dropped_byte_size` - so the full source field is known before
+    /// any read runs.
     #[getter]
     fn capture_names<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
         PyTuple::new(py, self.inner.capture_names())

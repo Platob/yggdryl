@@ -21,18 +21,11 @@ use crate::{DataType, DataTypeId, DataTypeKind, Error, Field, Result};
 use std::collections::{BTreeMap, HashSet};
 
 impl DataType {
-    /// Creates the two-child structure a mapping's entries have.
-    pub fn struct2(first: Field, second: Field) -> Self {
-        Self::Structure(StructureType::Struct2(Arc::new(Struct2Type::new(
-            first, second,
-        ))))
-    }
-
     /// Returns the number of direct child fields without allocating.
     pub fn field_len(&self) -> usize {
         match self {
             Self::Sequence(_) | Self::Mapping(_) => 1,
-            Self::Structure(structure) => structure.len(),
+            Self::Struct(structure) => structure.len(),
             Self::Union(fields, _) => fields.len(),
             Self::RunEndEncoded(_) => 2,
             _ => 0,
@@ -46,7 +39,7 @@ impl DataType {
                 let field = sequence.item();
                 (index == 0).then_some(field)
             }
-            Self::Structure(structure) => structure.get_field(index),
+            Self::Struct(structure) => structure.get(index),
             Self::Union(fields, _) => fields.get(index).map(|(_, field)| field),
             Self::Mapping(mapping) => (index == 0).then_some(mapping.entries()),
             Self::RunEndEncoded(encoded) => match index {
@@ -68,7 +61,7 @@ impl DataType {
                 let field = sequence.item();
                 (field.name() == name).then_some(field)
             }
-            Self::Structure(structure) => structure
+            Self::Struct(structure) => structure
                 .as_fields()
                 .iter()
                 .find(|field| field.name() == name),
@@ -107,17 +100,17 @@ impl DataType {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let row = DataType::from(StructureType::from_fields([
-    ///     DataType::from(StructureType::from_fields([DataType::Float64.required_field("price")])?)
+    /// let row = DataType::from(StructType::from_fields([
+    ///     DataType::from(StructType::from_fields([DataType::Float64.required_field("price")])?)
     ///         .required_field("line"),
     /// ])?);
     /// assert_eq!(row.get_field_by_path("line.price").unwrap().name(), "price");
     ///
     /// // The whole string first: a dotted name is a name, not a path.
-    /// let dotted = DataType::from(StructureType::from_fields([DataType::Int64.required_field("a.b")])?);
+    /// let dotted = DataType::from(StructType::from_fields([DataType::Int64.required_field("a.b")])?);
     /// assert_eq!(dotted.get_field_by_path("a.b").unwrap().name(), "a.b");
     ///
     /// // A list is transparent: its item is a step the path need not spell.
@@ -154,10 +147,10 @@ impl DataType {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let row = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?);
+    /// let row = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?);
     /// assert_eq!(row.get_field(0).unwrap().name(), "id");
     /// assert_eq!(row.get_field("id").unwrap().name(), "id");
     /// assert!(row.get_field("absent").is_none());
@@ -219,10 +212,10 @@ impl DataType {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut row = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?);
+    /// let mut row = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?);
     /// row.set_field_at(0, DataType::utf8().required_field("id"))?;
     ///
     /// assert_eq!(row["id"].dtype(), &DataType::utf8());
@@ -271,11 +264,11 @@ impl DataType {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut row = DataType::from(StructureType::from_fields([
-    ///     DataType::from(StructureType::from_fields([DataType::Int32.required_field("price")])?)
+    /// let mut row = DataType::from(StructType::from_fields([
+    ///     DataType::from(StructType::from_fields([DataType::Int32.required_field("price")])?)
     ///         .required_field("line"),
     /// ])?);
     ///
@@ -322,7 +315,7 @@ impl DataType {
         // Nothing resolved, so the whole string names a new child here.
         let mut children = self.require_struct_children()?;
         children.push(child.with_name(path));
-        *self = Self::from(StructureType::from_fields(children)?);
+        *self = Self::from(StructType::from_fields(children)?);
         Ok(())
     }
 
@@ -358,7 +351,7 @@ impl DataType {
         }
         let mut children = self.require_struct_children()?;
         let removed = children.remove(index);
-        *self = Self::from(StructureType::from_fields(children)?);
+        *self = Self::from(StructType::from_fields(children)?);
         Ok(removed)
     }
 
@@ -418,12 +411,12 @@ impl DataType {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let row = DataType::from(StructureType::from_fields([
+    /// let row = DataType::from(StructType::from_fields([
     ///     DataType::Int64.required_field("id"),
-    ///     DataType::from(StructureType::from_fields([DataType::Float64.required_field("px")])?)
+    ///     DataType::from(StructType::from_fields([DataType::Float64.required_field("px")])?)
     ///         .nullable_field("line"),
     /// ])?);
     ///
@@ -486,10 +479,10 @@ impl DataType {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let row = DataType::from(StructureType::from_fields([
+    /// let row = DataType::from(StructType::from_fields([
     ///     DataType::Int64.required_field("id"),
     ///     DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
     /// ])?);
@@ -569,7 +562,7 @@ impl DataType {
     /// Returns struct children as a borrowed slice, or `None` for other types.
     pub fn as_fields(&self) -> Option<&[Field]> {
         match self {
-            Self::Structure(structure) => Some(structure.as_fields()),
+            Self::Struct(structure) => Some(structure.as_fields()),
             _ => None,
         }
     }
@@ -627,7 +620,7 @@ impl DataType {
             }
             Self::Sequence(SequenceType::LargeList(_)) => Self::large_list(next()),
             Self::Sequence(SequenceType::LargeListView(_)) => Self::large_list_view(next()),
-            Self::Structure(_) => Self::from(StructureType::from_fields(children)?),
+            Self::Struct(_) => Self::from(StructType::from_fields(children)?),
             Self::Union(members, mode) => {
                 let ids: Vec<i8> = members.iter().map(|(id, _)| id).collect();
                 Self::union(ids.into_iter().zip(children), *mode)?
@@ -682,11 +675,11 @@ impl Field {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let order = DataType::from(StructureType::from_fields([
-    ///     DataType::from(StructureType::from_fields([DataType::Float64.required_field("price")])?)
+    /// let order = DataType::from(StructType::from_fields([
+    ///     DataType::from(StructType::from_fields([DataType::Float64.required_field("price")])?)
     ///         .required_field("line"),
     /// ])?)
     /// .required_field("order");
@@ -789,12 +782,12 @@ impl Field {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let row = DataType::from(StructureType::from_fields([
+    /// let row = DataType::from(StructType::from_fields([
     ///     DataType::Int64.required_field("id"),
-    ///     DataType::from(StructureType::from_fields([DataType::Float64.required_field("px")])?)
+    ///     DataType::from(StructType::from_fields([DataType::Float64.required_field("px")])?)
     ///         .nullable_field("line"),
     /// ])?)
     /// .required_field("row");
@@ -825,10 +818,10 @@ impl Field {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let schema = DataType::from(StructureType::from_fields([
+    /// let schema = DataType::from(StructType::from_fields([
     ///     DataType::Int64.required_field("price"),
     ///     DataType::Int32.required_field("year"),
     /// ])?)
@@ -856,7 +849,7 @@ impl Field {
         // The root's metadata describes the rows, not the columns, so it stays.
         Self::from_parts(
             self.name(),
-            DataType::from(StructureType::from_fields(kept)?),
+            DataType::from(StructType::from_fields(kept)?),
             self.is_nullable(),
             self.metadata_iter(),
         )
@@ -890,10 +883,10 @@ impl Field {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let schema = DataType::from(StructureType::from_fields([
+    /// let schema = DataType::from(StructType::from_fields([
     ///     DataType::Int32.required_field("year").with_partition(true),
     ///     DataType::Int64.required_field("price"),
     /// ])?)
@@ -937,7 +930,7 @@ impl Field {
         let kept: Vec<Self> = self.partition_fields().cloned().collect();
         Self::from_parts(
             self.name(),
-            DataType::from(StructureType::from_fields(kept)?),
+            DataType::from(StructType::from_fields(kept)?),
             self.is_nullable(),
             self.metadata_iter(),
         )
@@ -971,10 +964,10 @@ impl Field {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let schema = DataType::from(StructureType::from_fields([
+    /// let schema = DataType::from(StructType::from_fields([
     ///     DataType::Int32.required_field("year"),
     ///     DataType::Int64.required_field("price"),
     /// ])?)
@@ -1018,7 +1011,7 @@ impl Field {
             .collect();
         Self::from_parts(
             self.name(),
-            DataType::from(StructureType::from_fields(children)?),
+            DataType::from(StructType::from_fields(children)?),
             self.is_nullable(),
             self.metadata_iter(),
         )
@@ -1036,10 +1029,10 @@ impl Field {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut row = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+    /// let mut row = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
     ///     .required_field("row");
     ///
     /// row.set_field_at(0, DataType::utf8().required_field("id"))?;
@@ -1065,7 +1058,7 @@ impl Field {
             });
         }
         fields[index] = child;
-        self.set_dtype(DataType::from(StructureType::from_fields(fields)?))
+        self.set_dtype(DataType::from(StructType::from_fields(fields)?))
     }
 
     /// Replaces the struct child named `name`, appending an unknown one.
@@ -1081,10 +1074,10 @@ impl Field {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut row = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+    /// let mut row = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
     ///     .required_field("row");
     ///
     /// // An unknown name appends.
@@ -1142,7 +1135,7 @@ impl Field {
             });
         }
         let removed = fields.remove(index);
-        self.set_dtype(DataType::from(StructureType::from_fields(fields)?))?;
+        self.set_dtype(DataType::from(StructType::from_fields(fields)?))?;
         Ok(removed)
     }
 
@@ -1150,10 +1143,10 @@ impl Field {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut row = DataType::from(StructureType::from_fields([
+    /// let mut row = DataType::from(StructType::from_fields([
     ///     DataType::Int64.required_field("id"),
     ///     DataType::utf8().required_field("venue"),
     /// ])?)
@@ -1263,7 +1256,7 @@ impl DoubleEndedIterator for PartitionFieldNames<'_> {
 impl std::iter::FusedIterator for PartitionFieldNames<'_> {}
 
 // ------------------------------------------------------------------------
-// The structure family: named children, and the two-child leaf beside them.
+// The struct datatype: named children in declaration order.
 // ------------------------------------------------------------------------
 
 /// The named children of a struct, in declaration order.
@@ -1271,7 +1264,7 @@ impl std::iter::FusedIterator for PartitionFieldNames<'_> {}
 /// The one collection of fields the crate has: ordered, immutable, and held
 /// in one shared allocation, so a clone shares the children rather than
 /// copying them and an empty collection holds nothing at all. It is the
-/// payload `DataType::Structure(StructureType::Struct(..))` carries and the
+/// payload `DataType::Struct(StructType::Struct(..))` carries and the
 /// one place a list of children is validated: [`StructType::from_fields`]
 /// refuses two children of one name. It dereferences to the slice, so
 /// everything a caller does with `&[Field]` reads the same through it, and
@@ -1378,6 +1371,31 @@ impl StructType {
         reject_duplicate_field_names(&fields, "StructType")?;
         Ok(Self::from_vec(fields))
     }
+
+    /// The struct over children each already valid - read out of a valid
+    /// struct, or the fields a registry keeps - so only the names are
+    /// checked, once, rather than every child's whole datatype again.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when two children share a name.
+    pub(crate) fn from_checked_fields(fields: Vec<Field>) -> Result<Self> {
+        reject_duplicate_field_names(&fields, "StructType")?;
+        Ok(Self::from_vec(fields))
+    }
+
+    /// The struct over children each already valid and named once by
+    /// construction - a builder that keeps one slot per name, a row that
+    /// replaces a child in place or appends one no child is named as - so
+    /// nothing is checked: the caller's construction is the check, and a
+    /// debug build asserts it.
+    pub(crate) fn from_unique_fields(fields: Vec<Field>) -> Self {
+        debug_assert!(
+            reject_duplicate_field_names(&fields, "StructType").is_ok(),
+            "the children were named once by construction"
+        );
+        Self::from_vec(fields)
+    }
 }
 
 impl Deref for StructType {
@@ -1461,182 +1479,13 @@ impl<'de> Deserialize<'de> for StructType {
     }
 }
 
-/// Exactly two children: a first and a second field.
-///
-/// The shape Arrow's map entries have always had, stated once as a type
-/// rather than re-checked as a struct that happens to hold two children. A
-/// value of this type cannot have one child or three.
-#[repr(transparent)]
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct Struct2Type(pub(crate) [Field; 2]);
-
-impl Struct2Type {
-    /// Pairs two children in order.
-    pub const fn new(first: Field, second: Field) -> Self {
-        Self([first, second])
-    }
-
-    /// Borrows the first child without allocating.
-    pub const fn first(&self) -> &Field {
-        &self.0[0]
-    }
-
-    /// Borrows the second child without allocating.
-    pub const fn second(&self) -> &Field {
-        &self.0[1]
-    }
-
-    /// Borrows both children as a slice without allocating.
-    pub const fn as_fields(&self) -> &[Field] {
-        &self.0
-    }
-}
-
-/// The structure family's datatype payload.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[non_exhaustive]
-pub enum StructureType {
-    /// Named children in declaration order.
-    Struct(StructType),
-    /// Exactly two children, the shape a mapping's entries have.
-    ///
-    /// Behind a shared pointer: two whole fields are wider than this enum,
-    /// and a datatype clone must not walk them.
-    Struct2(Arc<Struct2Type>),
-}
-
-impl StructureType {
-    /// Creates the named-children leaf after rejecting duplicate field names.
-    ///
-    /// The family's door to [`StructType::from_fields`], and what a caller
-    /// building a struct datatype writes:
-    /// `DataType::from(StructureType::from_fields(fields)?)`.
-    ///
-    /// ```
-    /// use yggdryl::{DataType, StructureType};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let row = DataType::from(StructureType::from_fields([
-    ///     DataType::utf8().required_field("symbol"),
-    ///     DataType::Int64.required_field("quantity"),
-    /// ])?);
-    /// assert_eq!(row.field_len(), 2);
-    /// assert_eq!(row.get_field_at(1).map(yggdryl::Field::name), Some("quantity"));
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// [`StructType::from_fields`] carries the rule: two children of one name,
-    /// or a child that does not validate.
-    pub fn from_fields<I>(fields: I) -> Result<Self>
-    where
-        I: IntoIterator<Item = Field>,
-    {
-        Ok(Self::Struct(StructType::from_fields(fields)?))
-    }
-
-    /// Returns the children of whichever leaf this is.
-    ///
-    /// Every structure leaf has ordered children; only how many, and whether
-    /// the count is fixed, differs.
-    pub fn as_fields(&self) -> &[Field] {
-        match self {
-            Self::Struct(structure) => structure.as_fields(),
-            Self::Struct2(pair) => pair.as_fields(),
-        }
-    }
-
-    /// Returns the number of direct children.
-    pub fn len(&self) -> usize {
-        match self {
-            Self::Struct(structure) => structure.len(),
-            Self::Struct2(_) => 2,
-        }
-    }
-
-    /// Returns whether this structure has no children.
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Returns the child at `index`, or `None` past the last one.
-    pub fn get_field(&self, index: usize) -> Option<&Field> {
-        match self {
-            Self::Struct(structure) => structure.as_fields().get(index),
-            Self::Struct2(pair) => pair.as_fields().get(index),
-        }
-    }
-
-    /// Iterates the direct children in order.
-    ///
-    /// The children are contiguous under either leaf, so this is the slice's
-    /// own iterator and allocates nothing.
-    pub fn iter(&self) -> std::slice::Iter<'_, Field> {
-        self.as_fields().iter()
-    }
-
-    /// Returns the child one name picks out, or `None`.
-    pub fn get_by_name(&self, name: &str) -> Option<&Field> {
-        self.as_fields().iter().find(|field| field.name() == name)
-    }
-
-    /// Consumes this payload and returns its children as a collection.
-    ///
-    /// The two-child leaf materializes a collection here, which is the one
-    /// place it costs an allocation; every read path borrows instead.
-    pub fn into_fields(self) -> StructType {
-        match self {
-            Self::Struct(structure) => structure,
-            Self::Struct2(pair) => StructType::from_vec(
-                Arc::try_unwrap(pair)
-                    .map_or_else(|shared| shared.0.clone(), |owned| owned.0)
-                    .to_vec(),
-            ),
-        }
-    }
-
-    /// Returns whether both payloads are the same leaf over one allocation.
-    ///
-    /// The cheap identity check a cache takes before comparing shapes; two
-    /// different leaves never share storage however equal their children.
-    pub fn shares_storage_with(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Struct(left), Self::Struct(right)) => left.shares_storage_with(right),
-            (Self::Struct2(left), Self::Struct2(right)) => Arc::ptr_eq(left, right),
-            _ => false,
-        }
-    }
-
-    /// Returns the named children when this is the struct leaf.
-    pub const fn as_struct(&self) -> Option<&StructType> {
-        match self {
-            Self::Struct(structure) => Some(structure),
-            Self::Struct2(_) => None,
-        }
-    }
-
-    /// Returns the pair when this is the two-child leaf.
-    pub fn as_struct2(&self) -> Option<&Struct2Type> {
-        match self {
-            Self::Struct2(pair) => Some(pair),
-            Self::Struct(_) => None,
-        }
-    }
-}
-
-impl DataTypeValue for StructureType {
-    const FAMILY: &'static str = "structure";
+impl DataTypeValue for StructType {
+    const FAMILY: &'static str = "struct";
 
     type Sidecar = ();
 
     fn id(&self) -> DataTypeId {
-        match self {
-            Self::Struct(_) => DataTypeId::Struct,
-            Self::Struct2(_) => DataTypeId::Struct2,
-        }
+        DataTypeId::Struct
     }
 
     fn kind(&self) -> DataTypeKind {
@@ -1644,51 +1493,33 @@ impl DataTypeValue for StructureType {
     }
 
     fn validate(&self) -> Result<()> {
-        for field in (0..self.len()).filter_map(|index| self.get_field(index)) {
+        for field in self.iter() {
             field.validate()?;
         }
         Ok(())
     }
 
     fn into_dtype(self) -> DataType {
-        DataType::Structure(self)
+        DataType::Struct(self)
     }
 
     fn from_dtype(dtype: &DataType) -> Option<Self> {
         match dtype {
-            DataType::Structure(family) => Some(family.clone()),
+            DataType::Struct(fields) => Some(fields.clone()),
             _ => None,
         }
     }
 }
 
-impl fmt::Display for StructureType {
+impl fmt::Display for StructType {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.id().as_str())
     }
 }
 
-impl From<StructureType> for DataType {
-    fn from(value: StructureType) -> Self {
-        Self::Structure(value)
-    }
-}
-
 impl From<StructType> for DataType {
     fn from(value: StructType) -> Self {
-        Self::Structure(StructureType::Struct(value))
-    }
-}
-
-impl From<StructType> for StructureType {
-    fn from(value: StructType) -> Self {
         Self::Struct(value)
-    }
-}
-
-impl From<Struct2Type> for StructureType {
-    fn from(value: Struct2Type) -> Self {
-        Self::Struct2(Arc::new(value))
     }
 }
 
@@ -1701,29 +1532,6 @@ impl<'a> From<&'a str> for FieldKey<'a> {
 impl<'a> From<&'a String> for FieldKey<'a> {
     fn from(path: &'a String) -> Self {
         Self::Path(path.as_str())
-    }
-}
-
-impl<'a> IntoIterator for &'a StructureType {
-    type Item = &'a Field;
-    type IntoIter = std::slice::Iter<'a, Field>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
-impl AsRef<[Field]> for StructureType {
-    fn as_ref(&self) -> &[Field] {
-        self.as_fields()
-    }
-}
-
-impl Index<usize> for StructureType {
-    type Output = Field;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.as_fields()[index]
     }
 }
 
@@ -1807,7 +1615,10 @@ pub(crate) fn reject_duplicate_field_names(fields: &[Field], kind: &'static str)
     const HASHED_DUPLICATE_CHECK_THRESHOLD: usize = 16;
 
     if fields.len() > HASHED_DUPLICATE_CHECK_THRESHOLD {
-        let mut names = HashSet::with_capacity(fields.len());
+        // Names are short and the set lives for one check, so the hash is
+        // the crate's own rather than a keyed one.
+        let mut names =
+            HashSet::with_capacity_and_hasher(fields.len(), crate::xxhash::Xxh64::new());
         for field in fields {
             if !names.insert(field.name()) {
                 return Err(invalid(
@@ -1833,14 +1644,15 @@ pub(crate) fn reject_duplicate_field_names(fields: &[Field], kind: &'static str)
     Ok(())
 }
 
-/// One deterministic record sorted by field name.
+/// One struct value: its children by name, sorted, so two statements of one
+/// value in two orders are one value.
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct Record(Arc<BTreeMap<SmolStr, Scalar>>);
+pub struct Struct(Arc<BTreeMap<SmolStr, Scalar>>);
 
-impl Record {
-    /// Construct a sorted record.
+impl Struct {
+    /// Construct a sorted struct value.
     pub fn new(values: impl Into<Arc<BTreeMap<SmolStr, Scalar>>>) -> Self {
         Self(values.into())
     }
@@ -1856,19 +1668,19 @@ impl Record {
     }
 }
 
-impl fmt::Display for Record {
+impl fmt::Display for Struct {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{:?}", self.as_map())
     }
 }
 
-impl NestedValue for Record {
+impl NestedValue for Struct {
     fn len(&self) -> usize {
         self.as_map().len()
     }
 
     fn children(&self) -> Children<'_> {
-        Children::Record(self.as_map().values())
+        Children::Struct(self.as_map().values())
     }
 }
 
@@ -1881,18 +1693,18 @@ impl<'a> IntoIterator for &'a Scalar {
     }
 }
 
-impl Value for Record {
+impl Value for Struct {
     fn dtype(&self) -> Result<DataType> {
-        Scalar::Record(self.clone()).dtype()
+        Scalar::Struct(self.clone()).dtype()
     }
 
     fn into_scalar(self) -> Scalar {
-        Scalar::Record(self)
+        Scalar::Struct(self)
     }
 
     fn from_scalar(value: &Scalar) -> Option<&Self> {
         match value {
-            Scalar::Record(value) => Some(value),
+            Scalar::Struct(value) => Some(value),
             _ => None,
         }
     }
@@ -1907,11 +1719,11 @@ mod arrow {
         DataType as ArrowDataType, FieldRef as ArrowFieldRef, Fields as ArrowFields,
     };
 
-    use super::{StructType, StructureType};
+    use super::StructType;
     use crate::value::ArrowFfiParts;
     use crate::{DataType, Field, Result};
 
-    impl StructureType {
+    impl StructType {
         /// The Arrow storage these children lay out.
         ///
         /// # Errors
@@ -1928,7 +1740,6 @@ mod arrow {
         /// [`Self::arrow_storage`] carries the rule.
         pub(crate) fn into_arrow_storage(self) -> Result<ArrowDataType> {
             let fields = self
-                .into_fields()
                 .into_fields()
                 .into_iter()
                 .map(Field::into_arrow_field_ref)
@@ -1951,19 +1762,17 @@ mod arrow {
             ))
         }
 
-        /// The structure datatype one Arrow struct storage imports as.
+        /// The struct datatype one Arrow struct storage imports as.
         ///
         /// # Errors
         ///
         /// Returns an error when a child cannot be imported or the children do
-        /// not form a valid structure.
+        /// not form a valid struct.
         pub(crate) fn from_arrow_storage_at_depth(
             fields: &ArrowFields,
             depth: usize,
         ) -> Result<DataType> {
-            Ok(DataType::Structure(
-                from_arrow_fields_at_depth(fields, depth)?.into(),
-            ))
+            Ok(DataType::Struct(from_arrow_fields_at_depth(fields, depth)?))
         }
     }
 

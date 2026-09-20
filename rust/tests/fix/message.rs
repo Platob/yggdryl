@@ -9,7 +9,7 @@ use yggdryl::fix::FIXENTRIES_COLUMN;
 use yggdryl::graph::{Element, Event};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
-    DataType, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, StructureType, fix_schema,
+    DataType, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, StructType, fix_schema,
     fix_schema_carrying,
 };
 
@@ -375,7 +375,12 @@ fn the_same_line_read_as_text_is_the_decode_of_the_wire() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let wire: &[u8] = b"8=FIX.4.4\x0135=D\x0195=4\x0196=\xff\xfe A\x0110=000\x01";
-    let line = TextLine::from_bytes(0, TextBytes::from_bytes(wire).unwrap()).unwrap();
+    let line = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(wire).unwrap(),
+        std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+    )
+    .unwrap();
     assert_eq!(line.decoded_byte_size(), 2);
     assert_eq!(
         line.body(),
@@ -413,10 +418,10 @@ fn the_same_line_read_as_text_is_the_decode_of_the_wire() {
 }
 
 #[test]
-fn a_captures_own_columns_never_reach_the_message() {
+fn a_captures_own_columns_are_carried_by_the_message_and_never_its_content() {
     let (registry, reader) = reader();
     // Nullable, because a message states none of them - ever.
-    let capture = StructureType::from_fields([
+    let capture = StructType::from_fields([
         DataType::utf8().nullable_field("url"),
         DataType::Int64.nullable_field("rownum"),
         DataType::binary().nullable_field("body"),
@@ -468,13 +473,30 @@ fn a_captures_own_columns_never_reach_the_message() {
         "the object a line came out of is not a fact of the message"
     );
 
-    // So a message alone cannot put them back: the row it writes states them
-    // null, and only a reader holding the batch they arrived in can.
+    // The message carries them out of the row - provenance beside its
+    // content - and states them again at their columns, so the row read
+    // back and written is the row it was read from.
     let written = again.into_row(&schema).unwrap();
     for carrier in ["url", "rownum", "body", "sourceurl"] {
-        assert!(written.get(at(carrier)).unwrap().is_null(), "{carrier}");
+        assert!(
+            again.carried().iter().any(|(name, _)| name == carrier),
+            "{carrier} is carried"
+        );
+        assert_eq!(
+            written.get(at(carrier)),
+            carried.get(at(carrier)),
+            "{carrier}"
+        );
     }
-    assert_eq!(written, row, "every other column is the message's own");
+    assert_eq!(written, carried, "the row written again is the row read");
+    // Parsed from bytes, a message carries nothing and states every one of
+    // them null.
+    let bare = parsed.into_row(&schema).unwrap();
+    assert!(parsed.carried().is_empty());
+    for carrier in ["url", "rownum", "body", "sourceurl"] {
+        assert!(bare.get(at(carrier)).unwrap().is_null(), "{carrier}");
+    }
+    assert_eq!(bare, row);
 }
 
 /// Writing one of the capture's own columns onto a message is refused.
@@ -516,7 +538,7 @@ fn a_row_without_the_entries_group_has_no_entries() {
         })
         .cloned()
         .collect();
-    let narrow = StructureType::from_fields(columns)
+    let narrow = StructType::from_fields(columns)
         .map(DataType::from)
         .unwrap()
         .required_field("fix");

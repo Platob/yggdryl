@@ -27,9 +27,9 @@ One bind per stream, and the stream stays a stream.
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::expression::Plan;
-    use yggdryl::{DataType, Expression, Scalar, StructureType};
+    use yggdryl::{DataType, Expression, Scalar, StructType};
 
-    let root = DataType::from(StructureType::from_fields([
+    let root = DataType::from(StructType::from_fields([
         DataType::utf8().nullable_field("ccy"),
         DataType::Int64.nullable_field("size"),
     ])?)
@@ -57,8 +57,8 @@ One bind per stream, and the stream stays a stream.
 
     // Native records go through the same bound plan, one bind for all of them.
     let rows = [
-        Scalar::from_record([("ccy", Scalar::from("a")), ("size", Scalar::from(1_i64))])?,
-        Scalar::from_record([("ccy", Scalar::from("b")), ("size", Scalar::from(2_i64))])?,
+        Scalar::from_struct([("ccy", Scalar::from("a")), ("size", Scalar::from(1_i64))])?,
+        Scalar::from_struct([("ccy", Scalar::from("b")), ("size", Scalar::from(2_i64))])?,
     ];
     let records = steps.apply_records(Some(&root), rows)?;
     assert_eq!(records.field().fields()[0].name(), "ccy");

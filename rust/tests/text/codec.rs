@@ -95,7 +95,7 @@ impl IOBase for Measured {
 #[test]
 fn text_codec_handle_reads_stream_without_measuring_the_payload() {
     let message = "0123456789abcdef".repeat(32 * 1024);
-    let expected = Scalar::from_record([("message", Scalar::from(message))]).unwrap();
+    let expected = Scalar::from_struct([("message", Scalar::from(message))]).unwrap();
     let plain = Json.into_bytes(&expected).unwrap();
     let encoded = yggdryl::gzip::dump(&plain).unwrap();
     let source = Measured {

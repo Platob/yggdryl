@@ -10,10 +10,10 @@
 //! ```no_run
 //! use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
 //! use yggdryl::local::Folder;
-//! use yggdryl::{DataType, Field, StructureType};
+//! use yggdryl::{DataType, Field, StructType};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut schema = DataType::from(StructureType::from_fields([
+//! let mut schema = DataType::from(StructType::from_fields([
 //!     DataType::Int64.required_field("id"),
 //!     DataType::utf8().nullable_field("venue"),
 //! ])?)
@@ -115,7 +115,7 @@ use crate::expression::Projection;
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::{
-    DataType, Error, Field, Filter, IOKind, MimeType, Result, Scalar, Selector, StructureType, Term,
+    DataType, Error, Field, Filter, IOKind, MimeType, Result, Scalar, Selector, StructType, Term,
 };
 use crate::{IOBase, IOMedia};
 
@@ -3243,7 +3243,7 @@ fn projected_root(stored: &Field, columns: &[String]) -> Option<Field> {
     }
     Field::from_parts(
         stored.name(),
-        StructureType::from_fields(kept).map(DataType::from).ok()?,
+        StructType::from_fields(kept).map(DataType::from).ok()?,
         stored.is_nullable(),
         stored.metadata_iter(),
     )
@@ -3511,7 +3511,7 @@ mod key_bound_tests {
 
     #[test]
     fn generated_nan_merge_bounds_are_conservatively_unbounded() {
-        let mut schema = StructureType::from_fields([DataType::Float64.required_field("ratio")])
+        let mut schema = StructType::from_fields([DataType::Float64.required_field("ratio")])
             .map(DataType::from)
             .unwrap()
             .required_field("row");
@@ -3530,7 +3530,7 @@ mod key_bound_tests {
 
     #[test]
     fn partition_summaries_omit_nan_bounds() {
-        let mut schema = StructureType::from_fields([DataType::Float64.required_field("ratio")])
+        let mut schema = StructType::from_fields([DataType::Float64.required_field("ratio")])
             .map(DataType::from)
             .unwrap()
             .required_field("row");

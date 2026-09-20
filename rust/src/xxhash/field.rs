@@ -6,7 +6,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::metadata::{parse_source_list, render_source_list};
 use crate::protocol::{DigestField, DigestFieldMut};
-use crate::{DataType, DigestAlgorithm, Error, Field, Result, StructureType};
+use crate::{DataType, DigestAlgorithm, Error, Field, Result, StructType};
 
 use crate::txhash::{TIME, UNIT};
 
@@ -144,12 +144,12 @@ impl DigestField<'_> {
     ///
     /// use arrow_array::{ArrayRef, Int64Array, RecordBatch};
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut stored = DataType::UInt64.nullable_field("row_digest");
     /// stored.as_digest_mut().set_holder()?;
-    /// let root = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id"), stored])?)
+    /// let root = DataType::from(StructType::from_fields([DataType::Int64.required_field("id"), stored])?)
     ///     .required_field("row");
     ///
     /// let batch = RecordBatch::try_from_iter([(
@@ -313,7 +313,7 @@ impl Field {
         let kept: Vec<Self> = self.digest_fields().cloned().collect();
         Self::from_parts(
             self.name(),
-            DataType::from(StructureType::from_fields(kept)?),
+            DataType::from(StructType::from_fields(kept)?),
             self.is_nullable(),
             self.metadata_iter(),
         )

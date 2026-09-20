@@ -227,7 +227,7 @@ use quick_xml::events::{BytesStart, Event};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::text::{ERROR_TEXT_LIMIT, elide_to, expected_got};
-use crate::{DataType, Error, Field, FixField, IOBase, Result, StructureType, Url};
+use crate::{DataType, Error, Field, FixField, IOBase, Result, StructType, Url};
 
 use super::{FixCode, FixRegistry, MSGTYPE_TAG_NAME};
 use crate::sequence::SequenceType;
@@ -1615,7 +1615,7 @@ impl<'doc> Parse<'doc> {
                 Event::Eof => return Err(self.unclosed("grammar-binding")),
                 Event::Start(element) if is_named(&element, b"grammar") => {
                     let children = self.read_grammar(1, &msgtype)?;
-                    match StructureType::from_fields(children).map(DataType::from) {
+                    match StructType::from_fields(children).map(DataType::from) {
                         Ok(dtype) => self.roots.push(dtype.required_field(msgtype.clone())),
                         // A root its own children will not make a struct of
                         // is one message dropped, not one file: the binding
@@ -1631,7 +1631,7 @@ impl<'doc> Parse<'doc> {
                 // than a failure: the file bound the message and said it holds
                 // nothing, which is a statement and not a defect.
                 Event::Empty(element) if is_named(&element, b"grammar") => {
-                    let root = DataType::from(StructureType::from_fields([])?)
+                    let root = DataType::from(StructType::from_fields([])?)
                         .required_field(msgtype.clone());
                     self.roots.push(root);
                 }
@@ -1788,7 +1788,7 @@ impl<'doc> Parse<'doc> {
         }
         let built = || -> Result<(Field, Field)> {
             let mut item =
-                DataType::from(StructureType::from_fields(children)?).required_field(entry.clone());
+                DataType::from(StructType::from_fields(children)?).required_field(entry.clone());
             self.stamp(&mut item)?;
             let mut group = DataType::list(item).nullable_field(name);
             group.set_nullable(counter.is_nullable());
@@ -2180,13 +2180,13 @@ fn catalog_entry(
 
 fn catalog_members(registry: &mut FixRegistry, mut field: Field, scope: &str) -> Result<Field> {
     match field.dtype() {
-        DataType::Structure(children) => {
+        DataType::Struct(children) => {
             let children = children
                 .iter()
                 .cloned()
                 .map(|child| catalog_members(registry, child, scope))
                 .collect::<Result<Vec<_>>>()?;
-            field.set_dtype(DataType::from(StructureType::from_fields(children)?))?;
+            field.set_dtype(DataType::from(StructType::from_fields(children)?))?;
         }
         DataType::Sequence(SequenceType::List(item)) => {
             let item = catalog_members(registry, item.as_ref().clone(), scope)?;

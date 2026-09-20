@@ -55,10 +55,34 @@ test('every line becomes one typed row', () => {
   assert.notEqual(lines[0].sourceurl, null)
 })
 
-test('a read wanting no entry builds no tree', () => {
+test('a line reads itself on the first ask', () => {
   const lines = [...source().readTextLines(new TextOptions())]
-  assert.equal(lines[0].entries, null)
-  assert.equal(lines[0].bodytype, null)
+  // Nothing asked for a tree while the line was read; the payload's own
+  // pairs, and what the line is classified as, resolve on the first ask.
+  assert.notEqual(lines[0].entries, null)
+  assert.equal(lines[0].getEntryByPath('55').value, 'AAPL')
+  assert.equal(lines[0].bodytype, 'text/fix')
+})
+
+test('a line is an event under the options it reads itself by', () => {
+  const options = new TextOptions()
+  options.rowheader = String.raw`^\[(?P<level>[A-Z]+)\] `
+  const line = new TextLine(0, '[INFO] 8=FIX|55=AAPL|35=D', null, options)
+  // The body is the whole line, and the header is read off it when asked.
+  assert.equal(line.body, '[INFO] 8=FIX|55=AAPL|35=D')
+  assert.deepEqual(line.captures, ['INFO'])
+  assert.equal(line.mtime, null)
+  assert.equal(line.currunix, 0n)
+  // Its identity derives from its bytes and its instant: the same line is
+  // the same event whatever its index.
+  assert.match(line.curruuid, /^[0-9a-f-]{36}$/)
+  assert.equal(line.curruuid, new TextLine(7, '[INFO] 8=FIX|55=AAPL|35=D', null, options).curruuid)
+  assert.equal(line.currhashcode, new TextLine(0, '[INFO] 8=FIX|55=AAPL|35=D').currhashcode)
+  assert.equal(line.crosscode, '')
+  assert.equal(line.crosshashcode, 0n)
+  assert.match(line.crossuuid, /^[0-9a-f-]{36}$/)
+  // Stated captures are the line's word over its own header.
+  assert.deepEqual(new TextLine(0, '[INFO] 8=FIX|55=AAPL|35=D', ['WARN'], options).captures, ['WARN'])
 })
 
 test('a lifted path builds the tree and is found by path', () => {
@@ -254,7 +278,8 @@ test('a text read is shaped by select and where given as properties', () => {
     table.schema.fields.map((field) => field.name),
     ['n', 'line', 'level', 'tenfold'],
   )
-  assert.deepEqual([...table.getChild('line')], ['second', 'third'])
+  // The body is the whole line, its row header included.
+  assert.deepEqual([...table.getChild('line')], ['[WARN] id=9 second', '[INFO] id=11 third'])
   assert.deepEqual([...table.getChild('tenfold')], [90n, 110n])
   // Given options stay untouched: the properties land on a copy, and an
   // undefined property is skipped.
@@ -263,6 +288,9 @@ test('a text read is shaped by select and where given as properties', () => {
   const lines = handle
     .readArrowReader(options, { select: 'body as line', filter: undefined })
     .intoTable()
-  assert.deepEqual([...lines.getChild('line')], [' first', ' second', ' third', 'plain'])
+  assert.deepEqual(
+    [...lines.getChild('line')],
+    ['[INFO] id=7 first', '[WARN] id=9 second', '[INFO] id=11 third', 'plain'],
+  )
   assert.equal(options.select.isAll, true)
 })

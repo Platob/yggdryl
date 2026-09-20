@@ -356,6 +356,12 @@ impl Metadata {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
+    /// The address of the backing map: what two values sharing storage
+    /// share, and what names this storage for as long as a holder keeps it.
+    pub(crate) fn storage_address(&self) -> usize {
+        Arc::as_ptr(&self.0) as usize
+    }
+
     /// Returns the first entry after `after_key`, or the first entry for `None`.
     ///
     /// This cursor form lets owning FFI iterators advance without repeated
@@ -375,12 +381,26 @@ impl Metadata {
 
     /// Looks up a protocol-prefixed property without allocating a full key.
     ///
-    /// The lookup key is assembled inline - a `scheme:name` pair short enough
-    /// for [`SmolStr`]'s inline storage never allocates - and answered by one
-    /// exact tree lookup rather than by scanning the protocol's range. HTTP
-    /// keeps its protocol-defined ASCII case-insensitive comparison, because
-    /// [`Self::get`] canonicalizes an `HTTP:` key before it looks it up.
+    /// A known scheme stores every property under its prefix and the name
+    /// exactly as spelled - `FIX:tag` - so the key is written into a stack
+    /// buffer and read by one exact tree lookup, with nothing formatted and
+    /// nothing canonicalized: this is the read every field property goes
+    /// through, once per child of every message a codec builds. HTTP folds
+    /// its names and a custom scheme spells its own prefix, so both build
+    /// the key and take the canonical lookup [`Self::get`] makes.
     pub fn get_property(&self, scheme: &Scheme, name: &str) -> Option<&str> {
+        if let Cow::Borrowed(prefix) = protocol_metadata_prefix(scheme) {
+            let len = prefix.len() + 1 + name.len();
+            let mut key = [0_u8; 128];
+            if prefix != HTTP_PREFIX && len <= key.len() {
+                key[..prefix.len()].copy_from_slice(prefix.as_bytes());
+                key[prefix.len()] = b':';
+                key[prefix.len() + 1..len].copy_from_slice(name.as_bytes());
+                // Two `str`s around one ASCII byte are one `str`.
+                let key = std::str::from_utf8(&key[..len]).ok()?;
+                return self.0.get(key).map(String::as_str);
+            }
+        }
         self.get(&property_lookup_key(scheme, name))
     }
 

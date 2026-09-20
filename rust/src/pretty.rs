@@ -20,12 +20,12 @@
 //! stable across runs: nothing here iterates a hash map.
 //!
 //! ```
-//! use yggdryl::{DataType, Field, StructureType};
+//! use yggdryl::{DataType, Field, StructType};
 //!
 //! # fn main() -> yggdryl::Result<()> {
-//! let order = DataType::from(StructureType::from_fields([
+//! let order = DataType::from(StructType::from_fields([
 //!     DataType::Int64.required_field("id"),
-//!     DataType::from(StructureType::from_fields([DataType::Float64.required_field("price")])?)
+//!     DataType::from(StructType::from_fields([DataType::Float64.required_field("price")])?)
 //!         .nullable_field("line"),
 //! ])?)
 //! .required_field("order");
@@ -85,11 +85,11 @@ impl DataType {
     ///
     /// ```
     /// use yggdryl::DataType;
-    /// use yggdryl::StructureType;
+    /// use yggdryl::StructType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let rows = DataType::list(
-    ///     DataType::from(StructureType::from_fields([DataType::utf8().nullable_field("venue")])?).nullable_field("item"),
+    ///     DataType::from(StructType::from_fields([DataType::utf8().nullable_field("venue")])?).nullable_field("item"),
     /// );
     ///
     /// assert_eq!(
@@ -190,7 +190,7 @@ fn write_dtype(
 fn write_head(formatter: &mut fmt::Formatter<'_>, dtype: &DataType) -> fmt::Result {
     use DataType as D;
     match dtype {
-        D::Structure(fields) => write!(formatter, "struct[{}]", fields.len()),
+        D::Struct(fields) => write!(formatter, "struct[{}]", fields.len()),
         D::Sequence(SequenceType::List(_)) => formatter.write_str("list"),
         D::Sequence(SequenceType::ListView(_)) => formatter.write_str("list_view"),
         D::Sequence(SequenceType::LargeList(_)) => formatter.write_str("large_list"),
@@ -224,7 +224,7 @@ fn write_children(
 ) -> fmt::Result {
     use DataType as D;
     match dtype {
-        D::Structure(fields) => {
+        D::Struct(fields) => {
             for field in fields.as_fields() {
                 formatter.write_str("\n")?;
                 write_field(formatter, field, columns)?;

@@ -54,10 +54,10 @@ class MixedPoint:
 
 
 def test_python_records_are_distinct_from_arbitrary_mappings() -> None:
-    assert Scalar.from_(Quote("AAPL", 12.5)).kind == "record"
-    assert Scalar.from_(Point(2, 1)).kind == "record"
-    assert Scalar.from_(SlottedPoint(2, 1)).kind == "record"
-    assert Scalar.from_(MixedPoint(2, 1)).kind == "record"
+    assert Scalar.from_(Quote("AAPL", 12.5)).kind == "struct"
+    assert Scalar.from_(Point(2, 1)).kind == "struct"
+    assert Scalar.from_(SlottedPoint(2, 1)).kind == "struct"
+    assert Scalar.from_(MixedPoint(2, 1)).kind == "struct"
     assert Scalar.from_({"symbol": "AAPL"}).kind == "mapping"
     assert Scalar.from_(Quote("AAPL", 12.5)).as_py() == {
         "price": 12.5,
@@ -354,7 +354,7 @@ def test_native_scalar_mapping_and_record_updates_are_persistent() -> None:
     assert moved.get("price") is None
     assert [key.as_py() for key in moved.keys()] == ["symbol"]
     assert [child.kind for child in record] == ["f64", "string"]
-    with pytest.raises(TypeError, match="record keys"):
+    with pytest.raises(TypeError, match="struct keys"):
         record.set(0, "invalid")
     with pytest.raises(TypeError, match="remove"):
         mapping.remove(0)  # type: ignore[arg-type]
@@ -440,7 +440,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ("sedol", "B0YBKJ7"),
     ]
     record_state = (
-        "record",
+        "struct",
         (
             ("amount", scalar_states[16]),
             ("when", scalar_states[31]),
@@ -465,7 +465,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         assert copy.copy(value) == value
         assert copy.deepcopy(value) == value
 
-    assert Scalar._from_pickle(record_state).kind == "record"
+    assert Scalar._from_pickle(record_state).kind == "struct"
     assert Scalar._from_pickle(mapping_state).kind == "mapping"
     with pytest.raises(ValueError, match="unknown"):
         Scalar._from_pickle(("future", None))

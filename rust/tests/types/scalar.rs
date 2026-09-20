@@ -389,14 +389,14 @@ fn the_structural_wire_validates_interval_layouts() {
 
 #[test]
 fn structural_record_deserialization_canonicalizes_and_rejects_duplicates() {
-    let unordered = r#"{"type":"record","value":{
+    let unordered = r#"{"type":"struct","value":{
             "z":{"type":"i8","value":2},
             "a":{"type":"i8","value":1}
         }}"#;
     let record: Scalar = serde_json::from_str(unordered).unwrap();
     assert_eq!(record.keys(), ["a", "z"]);
 
-    let duplicate = r#"{"type":"record","value":{
+    let duplicate = r#"{"type":"struct","value":{
             "a":{"type":"i8","value":1},
             "a":{"type":"i8","value":2}
         }}"#;
@@ -442,7 +442,7 @@ fn equal_cross_width_values_have_one_stable_hash() {
 
 #[test]
 fn records_are_sorted_and_rebuilt_by_field_name() {
-    let record = Scalar::from_record([
+    let record = Scalar::from_struct([
         ("z", Scalar::from(3)),
         ("a", Scalar::from(1)),
         ("m", Scalar::from(2)),
@@ -488,7 +488,7 @@ fn native_and_json_accessors_have_explicit_borrowing_semantics() {
     assert_eq!(bytes.as_str(), None);
     assert_eq!(geometry.as_bytes(), Some(POINT_EMPTY_WKB.as_slice()));
 
-    let record = Scalar::from_record([
+    let record = Scalar::from_struct([
         ("symbol", Scalar::from("AAPL")),
         ("active", Scalar::from(true)),
     ])
@@ -626,7 +626,7 @@ fn every_family_accessor_answers_its_own_kind_and_no_other() {
         Scalar::Geography(yggdryl::Geography::new(point).unwrap()),
         Scalar::from_sequence([Scalar::from(1_i64)]),
         Scalar::from_mapping([(Scalar::from("k"), Scalar::from(1_i64))]).unwrap(),
-        Scalar::from_record([("id", Scalar::from(1_i64))]).unwrap(),
+        Scalar::from_struct([("id", Scalar::from(1_i64))]).unwrap(),
     ];
 
     // An accessor is the family's own narrowing: it answers exactly where
@@ -870,7 +870,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
         Scalar::from(1_i32),
     )])));
     assert_eq!(mapping.as_slice().len(), 1);
-    let record = structure::Record::new(Arc::new(std::collections::BTreeMap::from([(
+    let record = structure::Struct::new(Arc::new(std::collections::BTreeMap::from([(
         "one".into(),
         Scalar::from(1_i32),
     )])));
@@ -1011,8 +1011,8 @@ fn every_width_leaf_round_trips_under_its_unchanged_tag() {
             "mapping",
         ),
         (
-            Scalar::from_record([("a", Scalar::from(1_i32))]).unwrap(),
-            "record",
+            Scalar::from_struct([("a", Scalar::from(1_i32))]).unwrap(),
+            "struct",
         ),
     ];
     assert_eq!(cases.len(), 28);
@@ -1087,7 +1087,7 @@ fn truthiness_reads_absence_zero_and_emptiness_as_false() {
         Scalar::from(Arc::from(b"".as_slice())),
         Scalar::from_sequence([]),
         Scalar::from_mapping([]).unwrap(),
-        Scalar::from_record(Vec::<(&str, Scalar)>::new()).unwrap(),
+        Scalar::from_struct(Vec::<(&str, Scalar)>::new()).unwrap(),
     ] {
         assert!(!falsy.is_truthy(), "{falsy:?} should read false");
     }
@@ -1142,7 +1142,7 @@ fn truthiness_reads_the_text_a_column_spells_false_with() {
 fn a_container_of_empty_values_is_itself_empty() {
     // The "struct all empty values" case: `is_empty` counts entries, so a
     // record of three nulls is not empty - but nothing in it is set.
-    let all_null = Scalar::from_record(vec![
+    let all_null = Scalar::from_struct(vec![
         ("a", Scalar::Null),
         ("b", Scalar::from("")),
         ("c", Scalar::from_sequence([Scalar::Null])),
@@ -1151,7 +1151,7 @@ fn a_container_of_empty_values_is_itself_empty() {
     assert!(!all_null.is_empty(), "it has three fields");
     assert!(!all_null.is_truthy(), "none of them is set");
 
-    let one_set = Scalar::from_record(vec![("a", Scalar::Null), ("b", Scalar::from(1))]).unwrap();
+    let one_set = Scalar::from_struct(vec![("a", Scalar::Null), ("b", Scalar::from(1))]).unwrap();
     assert!(one_set.is_truthy());
 }
 

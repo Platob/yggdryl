@@ -26,7 +26,7 @@
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use yggdryl::expression::Plan;
     use yggdryl::local::Folder;
-    use yggdryl::{DataType, Expression, StructureType, Url};
+    use yggdryl::{DataType, Expression, StructType, Url};
 
     let root = Folder::temporary()?.path()?.join("yggdryl-docs-plans");
     std::fs::create_dir_all(&root)?;
@@ -38,7 +38,7 @@
     created.execute()?.count();
 
     // A write shapes the stream it is given and sends it to its target.
-    let schema = DataType::from(StructureType::from_fields([
+    let schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("name"),
     ])?)

@@ -12,7 +12,7 @@ use crate::BytesType;
 use crate::DecimalType;
 use crate::StringType;
 use crate::UnionMode;
-use crate::{DataType, StructureType, TimeUnit};
+use crate::{DataType, StructType, TimeUnit};
 use crate::{EdgeAlgorithm, Error, Field, Result};
 
 /// Recursive field grammar and FromStr implementation.
@@ -909,7 +909,7 @@ impl fmt::Display for DataType {
             D::Sequence(SequenceType::LargeListView(field)) => {
                 fmt_single_field_type(formatter, "large_list_view", field)
             }
-            D::Structure(fields) => {
+            D::Struct(fields) => {
                 formatter.write_str("struct(")?;
                 for (index, field) in fields.iter().enumerate() {
                     if index != 0 {
@@ -2074,7 +2074,7 @@ impl Parser<'_> {
         if collection_close.is_some() {
             self.expect_symbol(close)?;
         }
-        StructureType::from_fields(fields).map(DataType::from)
+        StructType::from_fields(fields).map(DataType::from)
     }
 
     pub(crate) fn parse_dictionary(&mut self, depth: usize) -> Result<DataType> {

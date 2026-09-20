@@ -13,7 +13,7 @@ use crate::fs::{
     RandomAccessReader,
 };
 use crate::local::Folder;
-use crate::{DataType, Field, Scalar, StructureType};
+use crate::{DataType, Field, Scalar, StructType};
 
 use super::{
     CommitConflict, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions,
@@ -1015,7 +1015,7 @@ fn root(label: &str) -> std::path::PathBuf {
 
 /// The three-column trade schema every table test writes.
 fn trade_schema() -> Field {
-    let mut schema = StructureType::from_fields([
+    let mut schema = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
         DataType::utf8().nullable_field("venue"),
@@ -1090,7 +1090,7 @@ mod schema_documents {
 
     use super::{Scalar, assign_field_ids, schema_from_json, schema_into_json};
     use crate::DataType;
-    use crate::StructureType;
+    use crate::StructType;
 
     #[test]
     fn a_nested_schema_round_trips_through_json() {
@@ -1137,9 +1137,9 @@ mod schema_documents {
     #[test]
     fn identifiers_are_assigned_depth_first_and_never_reassigned() {
         let inner = DataType::from(
-            StructureType::from_fields([DataType::Int64.required_field("price")]).unwrap(),
+            StructType::from_fields([DataType::Int64.required_field("price")]).unwrap(),
         );
-        let mut schema = StructureType::from_fields([
+        let mut schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
             inner.nullable_field("leg"),
         ])
@@ -1163,7 +1163,7 @@ mod schema_documents {
 
     #[test]
     fn writing_a_schema_without_identifiers_says_what_to_call() {
-        let schema = StructureType::from_fields([DataType::Int64.required_field("id")])
+        let schema = StructType::from_fields([DataType::Int64.required_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("row");
@@ -1272,7 +1272,7 @@ mod schema_documents {
 
     #[test]
     fn emitted_schema_is_checked_by_the_official_model() {
-        let mut schema = StructureType::from_fields([DataType::Int64.nullable_field("id")])
+        let mut schema = StructType::from_fields([DataType::Int64.nullable_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("row");
@@ -1513,7 +1513,7 @@ mod partition_specs {
 
     use super::{PartitionSpec, Transform, trade_schema};
     use crate::DateTimeType;
-    use crate::StructureType;
+    use crate::StructType;
     use crate::iceberg::assign_field_ids;
     use crate::{DataType, Scalar};
 
@@ -1591,7 +1591,7 @@ mod partition_specs {
 
     #[test]
     fn a_partition_directory_is_spelled_the_way_every_other_lake_spells_it() {
-        let schema = StructureType::from_fields([
+        let schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::date32().nullable_field("day"),
         ])
@@ -1684,7 +1684,7 @@ mod partition_specs {
 
     #[test]
     fn scalar_transform_plan_is_total_at_date_extremes_and_truncates_binary() {
-        let mut schema = StructureType::from_fields([
+        let mut schema = StructType::from_fields([
             DataType::date32().required_field("day"),
             DataType::binary().required_field("payload"),
         ])
@@ -2159,7 +2159,7 @@ mod table_metadata {
         fields.push(crate::DataType::Int64.nullable_field("quantity"));
         evolved
             .set_dtype(crate::DataType::from(
-                crate::StructureType::from_fields(fields).unwrap(),
+                crate::StructType::from_fields(fields).unwrap(),
             ))
             .unwrap();
         super::assign_field_ids(&mut evolved, metadata.last_column_id + 1).unwrap();
@@ -2186,7 +2186,7 @@ mod table_metadata {
 }
 
 mod tables {
-    use crate::StructureType;
+    use crate::StructType;
 
     use std::sync::Arc;
 
@@ -2209,7 +2209,7 @@ mod tables {
     fn create_numbers_an_unnumbered_schema_itself() {
         let path = root("unnumbered-create");
         // The schema a user projects straight from Arrow: no ids anywhere.
-        let schema = StructureType::from_fields([
+        let schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::utf8().nullable_field("venue"),
         ])
@@ -2249,7 +2249,7 @@ mod tables {
         let path = root("partly-numbered-create");
         let mut id = DataType::Int64.required_field("id");
         id.set_parquet_field_id(7);
-        let schema = StructureType::from_fields([id, DataType::utf8().nullable_field("venue")])
+        let schema = StructType::from_fields([id, DataType::utf8().nullable_field("venue")])
             .map(DataType::from)
             .unwrap()
             .required_field("row");
@@ -2603,7 +2603,7 @@ mod tables {
     #[test]
     fn data_writes_compute_all_supported_partition_transforms() {
         let path = root("transformed-partitions");
-        let mut schema = StructureType::from_fields([
+        let mut schema = StructType::from_fields([
             DataType::Int32.required_field("id"),
             DataType::utf8().required_field("text"),
             DataType::DateTime(DateTimeType::DateTime64 {
@@ -2730,11 +2730,11 @@ mod tables {
     #[test]
     fn a_nested_struct_partition_source_is_resolved_by_field_id() {
         let path = root("nested-transformed-partition");
-        let nested = StructureType::from_fields([DataType::utf8().required_field("category")])
+        let nested = StructType::from_fields([DataType::utf8().required_field("category")])
             .map(DataType::from)
             .unwrap()
             .required_field("payload");
-        let mut schema = StructureType::from_fields([nested])
+        let mut schema = StructType::from_fields([nested])
             .map(DataType::from)
             .unwrap()
             .required_field("row");
@@ -2924,7 +2924,7 @@ mod tables {
         let mut fields = evolved.fields().to_vec();
         fields.push(DataType::Int64.nullable_field("quantity"));
         evolved
-            .set_dtype(DataType::from(StructureType::from_fields(fields).unwrap()))
+            .set_dtype(DataType::from(StructType::from_fields(fields).unwrap()))
             .unwrap();
         super::assign_field_ids(&mut evolved, 4).unwrap();
         assert_eq!(table.evolve_schema(evolved).unwrap(), 1);
@@ -3301,7 +3301,7 @@ mod tables {
 }
 
 mod planning {
-    use crate::StructureType;
+    use crate::StructType;
 
     use std::sync::Arc;
 
@@ -3500,7 +3500,7 @@ mod planning {
     #[test]
     fn a_filter_column_the_read_never_asked_for_is_read_and_then_dropped() {
         let (_path, table) = venues("plan-projection");
-        let target = StructureType::from_fields([DataType::Int64.required_field("id")])
+        let target = StructType::from_fields([DataType::Int64.required_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("row");
@@ -3594,7 +3594,7 @@ mod planning {
         // way out - and this pins that the storage change did not move it:
         // the bound is the value, at either end of the width.
         let path = root("code-bounds");
-        let mut schema = StructureType::from_fields([
+        let mut schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::Mic.nullable_field("venue"),
         ])
@@ -3662,7 +3662,7 @@ mod planning {
     #[test]
     fn a_scan_root_the_caller_declares_is_what_the_reader_reports() {
         let (_path, table) = venues("plan-schema");
-        let target: Field = StructureType::from_fields([
+        let target: Field = StructType::from_fields([
             DataType::utf8().nullable_field("venue"),
             DataType::Int64.required_field("id"),
         ])
@@ -3679,7 +3679,7 @@ mod planning {
 
 mod handles {
 
-    use crate::StructureType;
+    use crate::StructType;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -4212,7 +4212,7 @@ mod handles {
 
     #[test]
     fn table_and_leaf_complete_unconvertible_input_onto_stored_fields_the_same_way() {
-        let mut stored = StructureType::from_fields([DataType::Int64.nullable_field("id")])
+        let mut stored = StructType::from_fields([DataType::Int64.nullable_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("row");
@@ -4250,7 +4250,7 @@ mod handles {
         )
         .unwrap();
 
-        let loose = StructureType::from_fields([DataType::utf8().nullable_field("id")])
+        let loose = StructType::from_fields([DataType::utf8().nullable_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("row");
@@ -4926,7 +4926,7 @@ fn a_zero_row_append_commits_a_snapshot_that_reads_as_nothing() {
 #[test]
 fn a_nan_value_neither_poisons_a_bound_nor_hides_a_row() {
     let path = root("nan-bounds");
-    let mut schema = StructureType::from_fields([
+    let mut schema = StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float64.nullable_field("ratio"),
     ])
@@ -5317,7 +5317,7 @@ fn compaction_respects_partitions_and_pruning_still_prunes_after_it() {
 #[test]
 fn a_wide_schema_round_trips_with_every_field_numbered() {
     let path = root("wide");
-    let mut schema = StructureType::from_fields(
+    let mut schema = StructType::from_fields(
         (0..300).map(|index| DataType::Int64.nullable_field(format!("column_{index:03}"))),
     )
     .map(DataType::from)
@@ -5859,7 +5859,7 @@ mod datatype_coverage {
     /// Append `rows` under `children`, scan them back, and return the records.
     fn round_trip(label: &str, children: Vec<Field>, rows: &[Vec<Scalar>]) -> Vec<Scalar> {
         let path = root(label);
-        let schema = StructureType::from_fields(children.clone())
+        let schema = StructType::from_fields(children.clone())
             .map(DataType::from)
             .unwrap()
             .required_field("row");
@@ -5983,13 +5983,13 @@ mod datatype_coverage {
 
     #[test]
     fn nested_and_deeply_nested_shapes_round_trip_through_data_files() {
-        let point = StructureType::from_fields([
+        let point = StructType::from_fields([
             DataType::Int64.required_field("x"),
             DataType::utf8().nullable_field("label"),
         ])
         .map(DataType::from)
         .unwrap();
-        let deep = StructureType::from_fields([
+        let deep = StructType::from_fields([
             DataType::Sequence(SequenceType::List(Arc::new(
                 DataType::Int64.nullable_field("item"),
             )))
@@ -6045,7 +6045,7 @@ mod datatype_coverage {
             })
             .nullable_field("price"),
         ];
-        let schema = StructureType::from_fields(children.clone())
+        let schema = StructType::from_fields(children.clone())
             .map(DataType::from)
             .unwrap()
             .required_field("row");
@@ -6280,10 +6280,22 @@ mod line_projection {
             .into();
         options.set_batch_row_size(Some(2));
 
-        let mut schema = source.read_arrow_field(&options).unwrap();
+        // The row opens with the sixteen event columns, two of them the
+        // `uint64` codes Iceberg has no type for: the table takes the
+        // schema as the scheme widens it, `decimal(20, 0)` for those, as a
+        // FIX row's table does.
+        let mut schema = source
+            .read_arrow_field(&options)
+            .unwrap()
+            .into_scheme_compat(&crate::Scheme::ICEBERG)
+            .unwrap();
         assert_eq!(
             schema.get_field_by_path("id").unwrap().dtype(),
             &crate::DataType::Int64
+        );
+        assert_eq!(
+            schema.get_field_by_path("currhashcode").unwrap().dtype(),
+            &crate::DataType::decimal128(20, 0).unwrap()
         );
         schema.assign_parquet_field_ids(1).unwrap();
 
@@ -6324,9 +6336,11 @@ mod line_projection {
             levels.iter().collect::<Vec<_>>(),
             [Some("INFO"), Some("WARN")]
         );
+        // The body is the whole retained record, the row header included
+        // and the edges stripped; the captures are their own columns.
         assert_eq!(
             bodies.iter().collect::<Vec<_>>(),
-            [Some("first"), Some("second")]
+            [Some("[INFO] id=7 first"), Some("[WARN] id=42 second")]
         );
         assert_eq!(
             table
@@ -6874,13 +6888,12 @@ fn a_uuid_column_keeps_its_type_through_a_round_trip() {
 /// states, pinned where the plan, the grouping, and the data-file handles
 /// are visible.
 mod isolation {
-    use crate::StructureType;
+    use crate::StructType;
 
     use std::sync::{Arc, Mutex};
 
     use arrow_array::{
-        Array, ArrayRef, BinaryArray, Int64Array, NullArray, RecordBatch, StructArray,
-        TimestampMicrosecondArray,
+        Array, ArrayRef, BinaryArray, Int64Array, NullArray, RecordBatch, TimestampMicrosecondArray,
     };
 
     use super::{
@@ -7054,7 +7067,7 @@ mod isolation {
     #[test]
     fn a_time_partition_range_skips_manifests_like_the_equality_form() {
         let path = root("isolation-timepartition");
-        let mut schema = StructureType::from_fields([
+        let mut schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::DateTime(DateTimeType::DateTime64 {
                 unit: TimeUnit::Microsecond,
@@ -7627,7 +7640,7 @@ mod isolation {
 
     /// A schema with an `unknown` column beside the ordinary ones.
     fn unknown_schema() -> Field {
-        let mut schema = StructureType::from_fields([
+        let mut schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
             DataType::Null.nullable_field("later"),
         ])
@@ -7658,7 +7671,7 @@ mod isolation {
         assert!(!crate::json::into_utf8(&written).unwrap().contains("binary"));
 
         // A required unknown column is refused by name.
-        let mut required = StructureType::from_fields([DataType::Null.required_field("never")])
+        let mut required = StructType::from_fields([DataType::Null.required_field("never")])
             .map(DataType::from)
             .unwrap()
             .required_field("row");
@@ -7764,20 +7777,16 @@ mod isolation {
 
     /// One variant value: the v1 metadata of an empty dictionary and a null.
     fn variant_column(rows: usize, field: &arrow_schema::Field) -> ArrayRef {
-        let arrow_schema::DataType::Struct(children) = field.data_type() else {
-            panic!("a variant lays out as a struct, got {}", field.data_type());
-        };
-        let metadata = BinaryArray::from_iter_values((0..rows).map(|_| [0x01_u8, 0x00, 0x00]));
-        let value =
-            BinaryArray::from_iter_values((0..rows).map(|row| vec![u8::try_from(row).unwrap()]));
-        Arc::new(
-            StructArray::try_new(
-                children.clone(),
-                vec![Arc::new(metadata), Arc::new(value)],
-                None,
-            )
-            .unwrap(),
-        )
+        assert_eq!(
+            field.data_type(),
+            &arrow_schema::DataType::Binary,
+            "a variant lays out as the binary of its encoding"
+        );
+        Arc::new(BinaryArray::from_iter_values((0..rows).map(|row| {
+            crate::Scalar::from_struct([("row", crate::Scalar::from(row as i64))])
+                .unwrap()
+                .into_variant_bytes()
+        })))
     }
 
     #[test]

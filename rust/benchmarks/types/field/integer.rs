@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::{BatchSize, Criterion};
 use yggdryl::{DataType, Field, FieldRecord, Scalar};
-use yggdryl::{Int64Field, Int64Type, StructureField, StructureType};
+use yggdryl::{Int64Field, Int64Type, StructField, StructType};
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("typed/integer");
@@ -26,11 +26,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.finish();
 
     let mut group = criterion.benchmark_group("typed/struct");
-    let structure = StructureType::from(
-        yggdryl::StructType::from_fields([DataType::Int64.required_field("id")])
-            .expect("the benchmark Struct children are valid"),
-    );
-    let root = StructureField::new("row", structure, false);
+    let structure = StructType::from_fields([DataType::Int64.required_field("id")])
+        .expect("the benchmark Struct children are valid");
+    let root = StructField::new("row", structure, false);
     group.bench_function("into_struct_field", |bencher| {
         bencher.iter_batched(
             || root.clone(),
@@ -45,7 +43,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // it collapses back into is the one allocation a row build pays.
     let mut group = criterion.benchmark_group("typed/record");
     let columns = 16;
-    let root = StructureType::from_fields((0..columns).map(|index| {
+    let root = StructType::from_fields((0..columns).map(|index| {
         let name = format!("column_{index}");
         if index % 2 == 0 {
             DataType::Int64.required_field(name)

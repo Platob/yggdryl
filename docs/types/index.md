@@ -27,6 +27,7 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 | Families | [UUID](uuid.md) | The 128-bit identifier over `fixed_size_binary(16)` storage |
 | Families | [Nested](nested.md) | Children, dictionary and run-end encodings, unions |
 | Families | [Geospatial](geospatial.md) | Variant, geometry, geography, and the WKB reader |
+| Encoding | [Variant encoding](variant.md) | any value as one byte stream and back: the version, the family-laid datatype identifier, the payload; what pickle carries and a variant column stores |
 | Families | [Protocol](protocol.md) | Reserved metadata keys and scheme-prefixed protocol properties |
 | Reference | [Playground](playground.md) | Every US-ASCII string width, code, and refusal, as the package answered them |
 

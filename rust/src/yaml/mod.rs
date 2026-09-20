@@ -52,7 +52,7 @@ pub const MAX_PARSER_DEPTH: usize = 384;
 /// use yggdryl::{Scalar, from_yaml_scalar, into_yaml_scalar};
 ///
 /// let value = from_yaml_scalar("id: 1\n")?;
-/// assert_eq!(value, Scalar::from_record([("id", Scalar::from(1))])?);
+/// assert_eq!(value, Scalar::from_struct([("id", Scalar::from(1))])?);
 /// assert_eq!(into_yaml_scalar(&value)?, "id: 1\n");
 /// # Ok::<(), yggdryl::Error>(())
 /// ```
@@ -89,7 +89,7 @@ pub fn from_yaml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Re
 /// ```
 /// use yggdryl::{Scalar, into_yaml_scalar};
 ///
-/// let value = Scalar::from_record([("id", Scalar::from(1))])?;
+/// let value = Scalar::from_struct([("id", Scalar::from(1))])?;
 /// assert_eq!(into_yaml_scalar(&value)?, "id: 1\n");
 /// # Ok::<(), yggdryl::Error>(())
 /// ```
@@ -358,7 +358,7 @@ pub fn into_bytes(value: &Scalar) -> Result<Vec<u8>> {
 /// use yggdryl::text::Formatting;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let value = Scalar::from_record([("id", Scalar::from(1))])?;
+/// let value = Scalar::from_struct([("id", Scalar::from(1))])?;
 /// assert_eq!(yggdryl::yaml::into_bytes(&value)?, b"id: 1\n");
 ///
 /// let flow = yggdryl::yaml::into_bytes_with_formatting(&value, Formatting::compact())?;
@@ -581,7 +581,7 @@ fn write_node<W: Write>(
                 width,
             )
         }
-        Scalar::Record(entries) if !entries.as_map().is_empty() => {
+        Scalar::Struct(entries) if !entries.as_map().is_empty() => {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
@@ -899,7 +899,7 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             debug_assert!(entries.as_slice().is_empty());
             writer.write_all(b"{}")?;
         }
-        Scalar::Record(entries) => {
+        Scalar::Struct(entries) => {
             debug_assert!(entries.as_map().is_empty());
             writer.write_all(b"{}")?;
         }
@@ -1001,7 +1001,7 @@ fn write_flow<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             writer.write_all(b"}")?;
             Ok(())
         }
-        Scalar::Record(entries) if !entries.as_map().is_empty() => {
+        Scalar::Struct(entries) if !entries.as_map().is_empty() => {
             writer.write_all(b"{")?;
             for (index, (name, value)) in entries.as_map().iter().enumerate() {
                 if index != 0 {

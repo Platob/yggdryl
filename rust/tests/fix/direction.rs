@@ -6,7 +6,7 @@ use std::sync::Arc;
 use yggdryl::fix::{MsgDirection, RECEIVE_PATTERNS, SEND_PATTERNS};
 use yggdryl::{
     DataType, Field, FixCode, FixCodec, FixDirection, FixRegistry, MSGDIRECTION_TAG_NAME,
-    StructureType,
+    StructType,
 };
 
 fn reading() -> MsgDirection {
@@ -638,7 +638,7 @@ fn every_door_fills_tag_385_from_the_reading_and_the_pin_is_the_batch_doors() {
     );
 
     // The pin fills silence on the batch door and never overrides a verb.
-    let field = StructureType::from_fields([DataType::binary().required_field("body")])
+    let field = StructType::from_fields([DataType::binary().required_field("body")])
         .map(DataType::from)
         .unwrap()
         .required_field("capture");

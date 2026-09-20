@@ -144,6 +144,7 @@ nav:
       - UUID: types/uuid.md
       - Nested: types/nested.md
       - Geospatial: types/geospatial.md
+      - Variant encoding: types/variant.md
       - Protocol: types/protocol.md
     - Playground: types/playground.md
   - Holder:

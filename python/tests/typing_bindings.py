@@ -1440,6 +1440,7 @@ fix_message_state: Scalar = fix_message.state
 fix_message_seqnum: int = fix_message.seqnum
 fix_message_prevuuid: Scalar | None = fix_message.prevuuid
 fix_message_parentuuids: list[Scalar] = fix_message.parentuuids
+fix_message_srcuuids: list[Scalar] = fix_message.srcuuids
 fix_message_identifiers: dict[str, str] = fix_message.identifiers
 fix_message_px: Scalar = fix_message.px
 fix_message_qty: Scalar = fix_message.qty
@@ -1477,6 +1478,7 @@ fix_event_currhashcode: int = fix_message_event.currhashcode
 fix_event_crosshashcode: int = fix_message_event.crosshashcode
 fix_event_identifiers: dict[str, str] = fix_message_event.identifiers
 fix_event_parentuuids: list[Scalar] = fix_message_event.parentuuids
+fix_event_srcuuids: list[Scalar] = fix_message_event.srcuuids
 fix_event_currunix: int = fix_message_event.currunix
 fix_event_state: Scalar = fix_message_event.state
 fix_event_seqnum: int = fix_message_event.seqnum
@@ -1534,6 +1536,19 @@ fix_read_lines: fix.FixMessages = fix_reader.parse_lines([b"8=FIX.4.4|35=D|10=0|
 fix_read_line: fix.FixMessages = fix_reader.parse_text_line(TextLine(0, b"35=D|"))
 fix_read_text_lines: fix.FixMessages = fix_reader.parse_text_lines([TextLine(0, b"35=D|")])
 text_line_text: TextLine = TextLine(1, "35=D|", ["FIX.4.4", None])
+text_line_under_options: TextLine = TextLine(2, "35=D|", None, TextOptions())
+text_line_mtime: int | None = text_line_under_options.mtime
+text_line_bodytype: MimeType = text_line_under_options.bodytype
+text_line_identity: Scalar = text_line_text.curruuid
+text_line_cross: Scalar = text_line_text.crossuuid
+text_line_crosscode: str = text_line_text.crosscode
+text_line_hashcode: int = text_line_text.currhashcode
+text_line_crosshash: int = text_line_text.crosshashcode
+text_line_unix: int = text_line_text.currunix
+assert text_line_mtime is None and isinstance(text_line_bodytype, MimeType)
+assert isinstance(text_line_identity, Scalar) and isinstance(text_line_cross, Scalar)
+assert isinstance(text_line_crosscode, str) and text_line_hashcode >= 0
+assert text_line_crosshash >= 0 and text_line_unix == 0
 text_line_body: str = text_line_text.body
 text_line_decoded: int = text_line_text.decoded_byte_size
 text_line_captures: tuple[str | None, ...] = text_line_text.captures
@@ -1691,6 +1706,7 @@ assert isinstance(fix_message_px, Scalar) and isinstance(fix_message_qty, Scalar
 assert isinstance(fix_message_currency, Scalar)
 assert fix_message_prevuuid is None or fix_message_prevuuid
 assert isinstance(fix_message_parentuuids, list) and isinstance(fix_message_crosscode, str)
+assert isinstance(fix_message_srcuuids, list) and isinstance(fix_event_srcuuids, list)
 assert isinstance(fix_message_entries, list)
 assert isinstance(fix_header_beginstring, str) and isinstance(fix_header_msgtype, str)
 assert isinstance(fix_header_sendingtime, int) and isinstance(fix_header_stated, bool)

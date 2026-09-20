@@ -37,14 +37,14 @@
 //!
 //! ```no_run
 //! use yggdryl::DataType;
-//! use yggdryl::StructureType;
+//! use yggdryl::StructType;
 //! use yggdryl::iceberg::Catalog;
 //! use yggdryl::local::Folder;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let catalog = Catalog::new(Folder::new(Folder::temporary()?.path()?.join("warehouse"))?);
 //!
-//! let schema = DataType::from(StructureType::from_fields([
+//! let schema = DataType::from(StructType::from_fields([
 //!     DataType::Int64.required_field("id"),
 //!     DataType::utf8().nullable_field("venue").with_partition(true),
 //! ])?)
@@ -364,7 +364,7 @@ fn read_properties_from(document: &Holder) -> Result<Metadata> {
         )));
     };
     let mut pairs = Vec::with_capacity(entries.len());
-    if let Some(record) = entries.as_record() {
+    if let Some(record) = entries.as_struct() {
         for (key, value) in record {
             let Some(value) = value.as_str() else {
                 return Err(invalid(format_smolstr!(

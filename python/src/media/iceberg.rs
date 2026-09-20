@@ -25,7 +25,7 @@ use yggdryl::iceberg::{
     schema_into_json,
 };
 use yggdryl::media::{DEFAULT_ROOT_NAME, IORecordOptions as _};
-use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar, StructureType};
+use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar, StructType};
 
 use crate::enums::{PyMimeType, core_mime_type_from_value};
 use crate::iobase::PyIOBase;
@@ -190,7 +190,7 @@ fn catalog_schema_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
         for item in items {
             fields.push(core_field_from_value(&item?)?);
         }
-        let dtype = StructureType::from_fields(fields)
+        let dtype = StructType::from_fields(fields)
             .map(CoreDataType::from)
             .map_err(value_error)?;
         return Ok(dtype.required_field(DEFAULT_ROOT_NAME));

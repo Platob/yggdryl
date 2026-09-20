@@ -208,7 +208,7 @@ fn supplied_parameters(parameters: Option<&JsScalar>) -> Result<Vec<(String, Sca
     let Some(parameters) = parameters else {
         return Ok(Vec::new());
     };
-    let entries = parameters.inner.as_record().ok_or_else(|| {
+    let entries = parameters.inner.as_struct().ok_or_else(|| {
         Error::from_reason("parameters must be a Scalar record keyed by parameter name")
     })?;
     Ok(entries
@@ -241,7 +241,7 @@ fn rows_from_scalar(rows: &JsScalar) -> Result<Vec<Scalar>> {
                 })?;
                 named.push((key.to_owned(), value.clone()));
             }
-            records.push(Scalar::from_record(named).map_err(napi_error)?);
+            records.push(Scalar::from_struct(named).map_err(napi_error)?);
         } else {
             records.push(row.clone());
         }

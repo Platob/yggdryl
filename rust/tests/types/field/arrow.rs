@@ -8,8 +8,7 @@ use arrow_schema::{
 };
 use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
 use yggdryl::{
-    ArrowCastOptions, DataType, EdgeAlgorithm, Field, Nullability, StructureType, TimeUnit,
-    Timezone,
+    ArrowCastOptions, DataType, EdgeAlgorithm, Field, Nullability, StructType, TimeUnit, Timezone,
 };
 use yggdryl::{BytesType, DateTimeType};
 
@@ -75,8 +74,7 @@ fn core_ffi_projection_preserves_every_field_and_datatype_flag_recursively() {
     let entries = Field::new(
         "entries",
         DataType::from(
-            StructureType::from_fields([Field::new("key", DataType::utf8(), false), encoded])
-                .unwrap(),
+            StructType::from_fields([Field::new("key", DataType::utf8(), false), encoded]).unwrap(),
         ),
         false,
     );
@@ -115,8 +113,7 @@ fn core_ffi_projection_preserves_every_field_and_datatype_flag_recursively() {
 #[test]
 fn datatype_ffi_projection_preserves_nested_map_flags_and_rejects_invalid_state() {
     let map = DataType::map_of(DataType::utf8(), DataType::Int64, true).unwrap();
-    let dtype =
-        DataType::from(StructureType::from_fields([Field::new("lookup", map, true)]).unwrap());
+    let dtype = DataType::from(StructType::from_fields([Field::new("lookup", map, true)]).unwrap());
 
     let schema = dtype.into_arrow_datatype_ffi().unwrap();
     let map = schema.child(0);
@@ -181,7 +178,7 @@ fn geospatial_and_variant_ffi_schemas_carry_the_extension_identity() {
     let metadata = schema.metadata().unwrap();
     assert_eq!(
         metadata.get("ARROW:extension:name"),
-        Some(&"arrow.parquet.variant".to_owned())
+        Some(&"yggdryl.variant".to_owned())
     );
     assert_eq!(
         metadata.get("ARROW:extension:metadata"),
@@ -245,7 +242,7 @@ fn arrow_exchange_sidecar_restores_nested_dictionary_ids_after_a_c_round_trip() 
         "catalog",
         DataType::dictionary(
             DataType::UInt8,
-            DataType::from(StructureType::from_fields([region]).unwrap()),
+            DataType::from(StructType::from_fields([region]).unwrap()),
         )
         .unwrap(),
         false,
@@ -262,7 +259,7 @@ fn arrow_exchange_sidecar_restores_nested_dictionary_ids_after_a_c_round_trip() 
     let root = Field::from_parts(
         "row",
         DataType::from(
-            StructureType::from_fields([catalog, Field::new("labels", DataType::list(item), true)])
+            StructType::from_fields([catalog, Field::new("labels", DataType::list(item), true)])
                 .unwrap(),
         ),
         false,
@@ -372,7 +369,7 @@ fn arrow_exchange_sidecar_rejects_malformed_missing_and_conflicting_entries() {
 fn arrow_exchange_projection_refuses_caller_owned_sidecar_metadata() {
     let root = Field::from_parts(
         "row",
-        DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")]).unwrap()),
+        DataType::from(StructType::from_fields([DataType::Int64.required_field("id")]).unwrap()),
         false,
         [(IPC_DICTIONARY_IDS_KEY, "v1;0=7")],
     )
@@ -400,7 +397,7 @@ fn applied_root() -> Field {
         .unwrap();
     let mut inner_digest = DataType::UInt64.nullable_field("trade_digest");
     inner_digest.as_digest_mut().set_holder().unwrap();
-    let trade = StructureType::from_fields([
+    let trade = StructType::from_fields([
         DataType::date32().required_field("event"),
         inner_year,
         inner_digest,
@@ -416,7 +413,7 @@ fn applied_root() -> Field {
         .unwrap();
     let mut row_digest = DataType::UInt64.nullable_field("row_digest");
     row_digest.as_digest_mut().set_holder().unwrap();
-    StructureType::from_fields([trade, top_year, row_digest])
+    StructType::from_fields([trade, top_year, row_digest])
         .map(DataType::from)
         .unwrap()
         .required_field("row")
@@ -669,7 +666,7 @@ fn required_applied_root() -> Field {
         .unwrap();
     let mut row_digest = DataType::UInt64.required_field("row_digest");
     row_digest.as_digest_mut().set_holder().unwrap();
-    StructureType::from_fields([DataType::date32().required_field("event"), year, row_digest])
+    StructType::from_fields([DataType::date32().required_field("event"), year, row_digest])
         .map(DataType::from)
         .unwrap()
         .required_field("row")
@@ -734,7 +731,7 @@ fn a_strict_apply_refuses_the_column_whose_protocol_is_switched_off() {
 fn a_strict_apply_refuses_an_ordinary_required_column_the_source_lacks() {
     let root = Field::new(
         "row",
-        StructureType::from_fields([
+        StructType::from_fields([
             DataType::date32().required_field("event"),
             DataType::utf8().required_field("venue"),
         ])
@@ -814,10 +811,7 @@ fn a_strict_applied_reader_answers_its_schema_and_applies_every_batch() {
 }
 
 fn variant_storage() -> ArrowDataType {
-    ArrowDataType::Struct(arrow_schema::Fields::from(vec![
-        ArrowField::new("metadata", ArrowDataType::Binary, false),
-        ArrowField::new("value", ArrowDataType::Binary, false),
-    ]))
+    ArrowDataType::Binary
 }
 
 #[test]
@@ -853,11 +847,11 @@ fn a_geography_projection_carries_the_edge_algorithm_and_round_trips() {
 }
 
 #[test]
-fn a_variant_field_projects_the_canonical_struct_and_reimports_itself() {
+fn a_variant_field_projects_a_binary_and_reimports_itself() {
     let field = Field::new("payload", DataType::variant(), true);
     let arrow = field.clone().into_arrow_field().unwrap();
     assert_eq!(arrow.data_type(), &variant_storage());
-    assert_eq!(arrow.extension_type_name(), Some("arrow.parquet.variant"));
+    assert_eq!(arrow.extension_type_name(), Some("yggdryl.variant"));
     assert_eq!(arrow.extension_type_metadata(), Some(""));
 
     let imported = Field::from_arrow_field(&arrow).unwrap();
@@ -956,7 +950,7 @@ fn a_caller_set_extension_key_on_an_extension_typed_field_is_refused_naming_both
     .unwrap();
     let refused = variant.into_arrow_field().unwrap_err().to_string();
     assert!(refused.contains("shredded"), "{refused}");
-    assert!(refused.contains("arrow.parquet.variant"), "{refused}");
+    assert!(refused.contains("yggdryl.variant"), "{refused}");
 }
 
 #[test]
@@ -965,7 +959,7 @@ fn a_variant_with_a_nonempty_document_or_foreign_shape_keeps_todays_import() {
         ArrowField::new("payload", variant_storage(), true).with_metadata(HashMap::from([
             (
                 EXTENSION_TYPE_NAME_KEY.to_owned(),
-                "arrow.parquet.variant".to_owned(),
+                "yggdryl.variant".to_owned(),
             ),
             (
                 EXTENSION_TYPE_METADATA_KEY.to_owned(),
@@ -973,18 +967,21 @@ fn a_variant_with_a_nonempty_document_or_foreign_shape_keeps_todays_import() {
             ),
         ]));
     let imported = Field::from_arrow_field(&shredded).unwrap();
-    assert!(matches!(imported.dtype(), DataType::Structure(_)));
+    assert!(matches!(imported.dtype(), DataType::Bytes(_)), "{imported}");
 
-    let swapped = ArrowDataType::Struct(arrow_schema::Fields::from(vec![
-        ArrowField::new("value", ArrowDataType::Binary, false),
+    let foreign = ArrowDataType::Struct(arrow_schema::Fields::from(vec![
         ArrowField::new("metadata", ArrowDataType::Binary, false),
+        ArrowField::new("value", ArrowDataType::Binary, false),
     ]));
-    let swapped = ArrowField::new("payload", swapped, true).with_metadata(HashMap::from([(
+    let foreign = ArrowField::new("payload", foreign, true).with_metadata(HashMap::from([(
         EXTENSION_TYPE_NAME_KEY.to_owned(),
-        "arrow.parquet.variant".to_owned(),
+        "yggdryl.variant".to_owned(),
     )]));
-    let imported = Field::from_arrow_field(&swapped).unwrap();
-    assert!(matches!(imported.dtype(), DataType::Structure(_)));
+    let imported = Field::from_arrow_field(&foreign).unwrap();
+    assert!(
+        matches!(imported.dtype(), DataType::Struct(_)),
+        "{imported}"
+    );
 }
 
 #[test]

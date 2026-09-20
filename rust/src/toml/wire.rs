@@ -13,7 +13,7 @@ const NANOSECONDS_PER_SECOND: i64 = 1_000_000_000;
 
 /// Convert a TOML table into the natural named-record value.
 pub(super) fn decode_table(entries: Vec<(String, Scalar)>) -> Result<Scalar> {
-    Scalar::from_record(entries)
+    Scalar::from_struct(entries)
 }
 
 /// Convert one native TOML date-time into its exact temporal value.
@@ -124,7 +124,7 @@ const fn offset_seconds(offset: toml::value::Offset) -> i32 {
 pub(super) fn check_depth(value: &Scalar, maximum: usize) -> Result<()> {
     observe_depth(1, maximum)?;
     match value {
-        Scalar::Record(entries) => {
+        Scalar::Struct(entries) => {
             for value in entries.as_map().values() {
                 check_value(value, 1, maximum)?;
             }
@@ -159,7 +159,7 @@ fn check_value(value: &Scalar, parent: usize, maximum: usize) -> Result<()> {
             }
             Ok(())
         }
-        Scalar::Record(entries) => {
+        Scalar::Struct(entries) => {
             let depth = parent.saturating_add(1);
             observe_depth(depth, maximum)?;
             for value in entries.as_map().values() {
@@ -203,7 +203,7 @@ pub(super) fn write_document<W: Write>(
     layout: Layout,
 ) -> Result<()> {
     match value {
-        Scalar::Record(entries) => {
+        Scalar::Struct(entries) => {
             for (name, value) in entries.as_map() {
                 write_quoted(writer, name)?;
                 writer.write_all(b" = ")?;
@@ -342,7 +342,7 @@ fn write_scalar<W: Write>(
             _ => return Err(codec_error("invalid interval layout")),
         },
         Scalar::Sequence(values) => write_sequence(writer, values.as_slice(), layout, depth)?,
-        Scalar::Record(entries) => {
+        Scalar::Struct(entries) => {
             writer.write_all(b"{")?;
             for (index, (name, value)) in entries.as_map().iter().enumerate() {
                 if index != 0 {

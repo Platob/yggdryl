@@ -33,7 +33,7 @@ use super::{Function, Literal, Operator, Safety, Term, named};
 use crate::DecimalType;
 use crate::enums::EnumType;
 use crate::sequence::SequenceType;
-use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, StructureType, TimeUnit};
+use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, StructType, TimeUnit};
 
 /// The widest exact decimal this crate builds by promotion.
 const DECIMAL_LIMIT: u8 = 38;
@@ -267,7 +267,7 @@ fn resolve(expression: &Term, schema: &Field) -> Result<Field> {
             }
             Ok(named(
                 expression,
-                DataType::from(StructureType::from_fields(fields)?),
+                DataType::from(StructType::from_fields(fields)?),
                 false,
             ))
         }
@@ -297,7 +297,7 @@ fn resolve(expression: &Term, schema: &Field) -> Result<Field> {
             let value = Field::new("value", values.unwrap_or(DataType::Null), nullable);
             let entries_field = Field::new(
                 "entries",
-                DataType::from(StructureType::from_fields([key, value])?),
+                DataType::from(StructType::from_fields([key, value])?),
                 false,
             );
             Ok(named(

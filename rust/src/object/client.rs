@@ -2127,7 +2127,7 @@ impl Client {
                 if let Some(class) = self.options.google().storage_class() {
                     entries.push(("storageClass", crate::Scalar::from(class)));
                 }
-                crate::json::into_utf8(&crate::Scalar::from_record(entries)?)?
+                crate::json::into_utf8(&crate::Scalar::from_struct(entries)?)?
             }
             Provider::Azure => String::new(),
         };

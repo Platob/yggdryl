@@ -10,11 +10,11 @@ use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Buffer;
 use yggdryl::ipc::IpcOptions;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{DataType, Field, StructureType, Url};
+use yggdryl::{DataType, Field, StructType, Url};
 
 /// A struct field is the schema of the batches it describes.
 fn schema() -> Field {
-    StructureType::from_fields([DataType::Int64.required_field("id")])
+    StructType::from_fields([DataType::Int64.required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row")
@@ -86,7 +86,7 @@ fn the_declared_field_is_one_section_of_the_plan() {
     child.insert_metadata("FIELD:comment", "the key").unwrap();
     let sourced = declared
         .clone()
-        .try_with_dtype(DataType::from(StructureType::from_fields([child]).unwrap()))
+        .try_with_dtype(DataType::from(StructType::from_fields([child]).unwrap()))
         .unwrap();
     let with_metadata = IpcOptions::new().with_field(sourced.clone());
     assert_eq!(

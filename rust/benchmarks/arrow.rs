@@ -27,7 +27,7 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{
     ArrowCastOptions, ArrowScalar, DataType, Field, IOBase, IOMedia, IOMode, MediaType, MimeType,
-    Scalar, StructureType, TimeUnit, Timezone, Url,
+    Scalar, StructType, TimeUnit, Timezone, Url,
 };
 
 /// Rows per fixture: one small enough to stay warm, one at the size a
@@ -58,7 +58,7 @@ const EPOCH: i64 = 1_767_225_600_000_000;
 
 /// The trade root: what one commodity tick carries.
 fn root() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::utf8().required_field("symbol"),
         DataType::decimal128(12, 4)
             .expect("the price width is valid")
@@ -367,7 +367,7 @@ fn collect_benchmarks(criterion: &mut Criterion) {
 /// The root a cast reshapes trades onto: reordered, with the price restated at
 /// a wider scale so the cast is a cast rather than an identity.
 fn cast_target() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::DateTime(DateTimeType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,

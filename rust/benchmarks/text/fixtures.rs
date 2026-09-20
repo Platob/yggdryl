@@ -1,14 +1,14 @@
 use std::str::FromStr;
 
 use yggdryl::DateTimeType;
-use yggdryl::{DataType, Field, Scalar, StructureType, TimeUnit, Timezone, i256};
+use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone, i256};
 
 pub(crate) fn nested(depth: usize) -> Scalar {
     (0..depth).fold(Scalar::from(0), |value, _| Scalar::from_sequence([value]))
 }
 
 pub(crate) fn representative() -> Scalar {
-    Scalar::from_record([
+    Scalar::from_struct([
         ("symbol", Scalar::from("MSFT")),
         ("quantity", Scalar::from(120_i64)),
         ("price", Scalar::from(413.75_f64)),
@@ -22,7 +22,7 @@ pub(crate) fn representative() -> Scalar {
 
 /// Exact values projected through natural scalars and restored by one field.
 pub(crate) fn typed() -> (Scalar, Field) {
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         (
             "amount",
             Scalar::d256(i256::from_str("1234500").unwrap(), 4),
@@ -36,7 +36,7 @@ pub(crate) fn typed() -> (Scalar, Field) {
     .unwrap();
     let field = Field::new(
         "row",
-        StructureType::from_fields([
+        StructType::from_fields([
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",

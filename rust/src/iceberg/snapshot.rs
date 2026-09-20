@@ -617,7 +617,7 @@ fn string_mapping(
     if value.is_null() {
         return Ok(Vec::new());
     }
-    if let Some(record) = value.as_record() {
+    if let Some(record) = value.as_struct() {
         return record
             .iter()
             .map(|(name, value)| {

@@ -25,8 +25,8 @@
 //! A column whose Arrow field metadata declares the `geoarrow.wkb` extension
 //! writes Parquet's own `GEOMETRY` or `GEOGRAPHY` logical type over
 //! `BYTE_ARRAY` WKB - CRS and edge algorithm included - and one declaring
-//! `arrow.parquet.variant` writes its metadata/value storage struct with the
-//! `VARIANT` logical type attached. (GeoArrow is a community specification
+//! `yggdryl.variant` writes a plain `BYTE_ARRAY` of the variant encoding,
+//! its extension name kept in the Arrow schema the file carries. (GeoArrow is a community specification
 //! whose own documents say it is not finalized; the `geoarrow.wkb` spelling
 //! here is revisitable if it changes.) The writer then refuses min/max value
 //! bounds for geospatial columns - their sort order is undefined, so a bound
@@ -47,12 +47,12 @@
 //! the Iceberg v3 layer - so variant columns are schema-level until it does.
 //!
 //! ```
-//! use yggdryl::{IOBase, IOMedia, StructureType, holder::Buffer};
+//! use yggdryl::{IOBase, IOMedia, StructType, holder::Buffer};
 //! use yggdryl::parquet::Parquet;
 //! use yggdryl::{DataType, Url};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let field = DataType::from(StructureType::from_fields([
+//! let field = DataType::from(StructType::from_fields([
 //!     DataType::Int64.required_field("id"),
 //!     DataType::utf8().nullable_field("symbol"),
 //! ])?)

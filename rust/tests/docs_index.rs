@@ -6,12 +6,12 @@ use arrow_array::{Int64Array, RecordBatch, StringArray};
 use yggdryl::IOMedia;
 use yggdryl::holder::Buffer;
 use yggdryl::media::IORecordOptions;
-use yggdryl::{DataType, StructureType, Url};
+use yggdryl::{DataType, StructType, Url};
 
 #[test]
 fn the_landing_page_example_runs() -> Result<(), Box<dyn std::error::Error>> {
     // A non-null struct field is the schema. Nothing else describes the rows.
-    let schema = DataType::from(StructureType::from_fields([
+    let schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])?)

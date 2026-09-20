@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use yggdryl::graph::MarketElement;
 use yggdryl::{
-    DataType, Field, FixCodec, FixRegistry, Scalar, StructureType, fix_column_of, fix_schema,
+    DataType, Field, FixCodec, FixRegistry, Scalar, StructType, fix_column_of, fix_schema,
 };
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
@@ -46,18 +46,19 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 110);
+    assert_eq!(tags.len(), 113);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
     // groups kept whole, and last the frame.
     assert_eq!(
-        &tags[..12],
+        &tags[..13],
         [
             yggdryl::CURRUNIX_TAG_NAME.0,
             yggdryl::CREAUNIX_TAG_NAME.0,
             yggdryl::PREVUNIX_TAG_NAME.0,
             yggdryl::SNAPUNIX_TAG_NAME.0,
+            yggdryl::EXPIRUNIX_TAG_NAME.0,
             52,
             122,
             60,
@@ -70,7 +71,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "when it happened, and the clocks a message stops being good at"
     );
     assert_eq!(
-        &tags[12..21],
+        &tags[13..23],
         [
             yggdryl::CURRUUID_TAG_NAME.0,
             yggdryl::CROSSUUID_TAG_NAME.0,
@@ -80,12 +81,13 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             yggdryl::PREVUUID_TAG_NAME.0,
             yggdryl::SEQNUM_TAG_NAME.0,
             yggdryl::PARENTUUIDS_TAG_NAME.0,
+            yggdryl::SRCUUIDS_TAG_NAME.0,
             yggdryl::IDENTIFIERS_TAG_NAME.0,
         ],
         "which event"
     );
     assert_eq!(
-        &tags[21..28],
+        &tags[23..30],
         [8, 35, 34, 49, 56, 43, yggdryl::MSGDIRECTION_TAG_NAME.0],
         "which message"
     );
@@ -215,14 +217,18 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         (yggdryl::CROSSCODE_TAG_NAME.0, "CrossCode"),
         (yggdryl::PREVUNIX_TAG_NAME.0, "PrevUnix"),
         (yggdryl::PREVUUID_TAG_NAME.0, "PrevUuid"),
+        (yggdryl::STATE_TAG_NAME.0, "State"),
+        (yggdryl::EXPIRUNIX_TAG_NAME.0, "ExpirUnix"),
     ] {
         let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");
     }
 
     // The replay bundle and BeginString are required, and nothing else:
-    // `snapshotat` is only what a snapshot stamps, so it is nullable like
-    // every other column a message may not state.
+    // `snapunix` is only what a snapshot stamps, and the state a message
+    // reached, stated on every row a message writes, has no neutral member
+    // to fill an empty cell with, so both are nullable like every other
+    // column a message may not state.
     let required: Vec<&str> = fields
         .iter()
         .filter(|field| !field.is_nullable())
@@ -792,7 +798,7 @@ fn a_value_a_column_will_not_hold_is_that_columns_null() {
     // A message spelling a column's name with a value its datatype cannot
     // hold: five bytes under `SecurityExchange(207)`, which is a four-byte
     // MIC, and four letters under `Currency(15)`, which is three.
-    let root = StructureType::from_fields([
+    let root = StructType::from_fields([
         DataType::utf8().nullable_field("securityexchange"),
         DataType::utf8().nullable_field("currency"),
     ])
@@ -802,7 +808,7 @@ fn a_value_a_column_will_not_hold_is_that_columns_null() {
     let message = yggdryl::FixMsg::with_registry(
         Arc::clone(&registry),
         root,
-        Scalar::from_record([
+        Scalar::from_struct([
             ("securityexchange", Scalar::from("XLONX")),
             ("currency", Scalar::from("EURO")),
         ])

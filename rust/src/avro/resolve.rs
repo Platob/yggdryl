@@ -530,7 +530,7 @@ impl Runner<'_> {
                 Step::Skip(node) => self.writer.skip(node, cursor, depth, budget)?,
             }
         }
-        Scalar::from_record(
+        Scalar::from_struct(
             plan.reader_fields
                 .iter()
                 .zip(values)
@@ -896,7 +896,7 @@ fn default_value_at(
             Scalar::from_mapping(converted)?
         }
         Node::Record(record) => {
-            if default.as_record().is_none() && default.as_mapping().is_none() {
+            if default.as_struct().is_none() && default.as_mapping().is_none() {
                 return Err(bad_default("record", default));
             }
             let mut entries = Vec::with_capacity(record.fields.len());
@@ -916,7 +916,7 @@ fn default_value_at(
                 };
                 entries.push((field.name.clone(), value));
             }
-            Scalar::from_record(entries)?
+            Scalar::from_struct(entries)?
         }
         Node::Ref(name) => {
             let target = names

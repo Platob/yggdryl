@@ -569,8 +569,8 @@ mod records {
 
     #[test]
     fn text_costs() {
-        // Plain-text rows are `url`, `mtime` and `body`, so this one is read
-        // rather than written from a batch. The one `mtime` call per read is
+        // Plain-text rows are the sixteen event columns, `sourceurl`, `mtime`
+        // and `body`, so this one is read rather than written from a batch. The one `mtime` call per read is
         // the whole cost of the column: it is a fact about the handle, so
         // every row shares the answer.
         let media_type = Url::from_str("file:///lake/part.txt")
@@ -595,7 +595,7 @@ mod records {
             &calls,
             "size=1 media_type=1 is_container=2",
             || {
-                assert_eq!(handle.column_size().expect("columns"), 3);
+                assert_eq!(handle.column_size().expect("columns"), 19);
             },
         );
         costs(

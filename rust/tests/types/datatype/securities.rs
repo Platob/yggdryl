@@ -12,14 +12,14 @@ use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArra
 use arrow_schema::DataType as ArrowDataType;
 use yggdryl::FieldValue as _;
 use yggdryl::{
-    ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, StructureType, Term,
+    ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, StructType, Term,
 };
 use yggdryl::{Cusip, CusipField, Sedol, SedolField};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new(
         "row",
-        DataType::from(StructureType::from_fields(fields).unwrap()),
+        DataType::from(StructType::from_fields(fields).unwrap()),
         false,
     )
 }
@@ -372,39 +372,25 @@ fn an_expression_cast_answers_the_identifier_and_try_cast_answers_null() {
 }
 
 #[test]
-fn the_identifiers_are_appended_after_every_earlier_datatype() {
-    // The discriminant is a wire contract, so both are appended after the
-    // last identifier stated before them and never renumbered.
-    assert_eq!(DataTypeId::Cusip.as_u8(), 64);
-    assert_eq!(DataTypeId::Sedol.as_u8(), 65);
-    assert_eq!(DataTypeId::Bloomberg.as_u8(), 66);
-    assert_eq!(
-        &DataTypeId::ALL[DataTypeId::ALL.len() - 22..],
-        &[
-            DataTypeId::MediaType,
-            DataTypeId::Cusip,
-            DataTypeId::Sedol,
-            DataTypeId::Bloomberg,
-            DataTypeId::SortedMap,
-            DataTypeId::Struct2,
-            DataTypeId::LargeBinaryView,
-            DataTypeId::SizedBinary,
-            DataTypeId::SizedUtf8String,
-            DataTypeId::AsciiString,
-            DataTypeId::LargeAsciiString,
-            DataTypeId::AsciiStringView,
-            DataTypeId::LargeAsciiStringView,
-            DataTypeId::FixedAsciiString,
-            DataTypeId::SizedAsciiString,
-            DataTypeId::Cp1252String,
-            DataTypeId::LargeCp1252String,
-            DataTypeId::Cp1252StringView,
-            DataTypeId::LargeCp1252StringView,
-            DataTypeId::FixedCp1252String,
-            DataTypeId::SizedCp1252String,
-            DataTypeId::Urn
-        ]
-    );
+fn the_identifiers_sit_in_the_code_family() {
+    // The discriminant is a wire contract laid out by family: every code
+    // is in the code family's range, beside the codes stated before it.
+    assert_eq!(DataTypeKind::Code.id(), 0x70);
+    assert_eq!(DataTypeId::Cusip.as_u8(), 0x79);
+    assert_eq!(DataTypeId::Sedol.as_u8(), 0x7a);
+    assert_eq!(DataTypeId::Bloomberg.as_u8(), 0x7b);
+    for id in [
+        DataTypeId::Isin,
+        DataTypeId::Cusip,
+        DataTypeId::Sedol,
+        DataTypeId::Bloomberg,
+    ] {
+        assert_eq!(
+            DataTypeKind::of_u8(id.as_u8()),
+            Some(DataTypeKind::Code),
+            "{id}"
+        );
+    }
     // The datatype order is total and appends too, so no earlier pair
     // moved: every code stated before them sorts before them, and the
     // last datatype before them sorts before them as well.

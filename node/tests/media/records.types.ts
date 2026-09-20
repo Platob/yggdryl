@@ -127,13 +127,23 @@ handle.appendArrowBatch(arrowBatch, named)
 handle.mergeArrowBatch(arrowBatch, merging)
 
 // The text row's line and its entries answer text; the ranges stand beside them.
-import { TextLine } from '../..'
+import { TextLine, TextOptions } from '../..'
 
 const textLine: TextLine = new TextLine(0, '58=caf\u00e9|10=0|', ['FIX.4.4', null])
 const lineFromBytes: TextLine = new TextLine(1, Buffer.from('58=caf\u00e9|10=0|'))
+const lineUnderOptions: TextLine = new TextLine(2, '58=caf\u00e9|10=0|', null, new TextOptions())
 const lineBody: string = textLine.body
 const lineCaptures: Array<string | null> = lineFromBytes.captures
 const decoded: number = textLine.decodedByteSize
+const lineMtime: bigint | null = lineUnderOptions.mtime
+const lineBodytype: string = lineUnderOptions.bodytype
+const lineIdentity: string = textLine.curruuid
+const lineCross: string = textLine.crossuuid
+const lineCrosscode: string = textLine.crosscode
+const lineHashcode: bigint = textLine.currhashcode
+const lineCrosshash: bigint = textLine.crosshashcode
+const lineUnix: bigint = textLine.currunix
+void [lineMtime, lineBodytype, lineIdentity, lineCross, lineCrosscode, lineHashcode, lineCrosshash, lineUnix]
 const entry = textLine.getEntryByPath('58')
 if (entry !== null) {
   const key: string = entry.key

@@ -21,6 +21,7 @@ line per row; it converts into the text variant of [`RecordOptions`](../options.
 | `lift_names` / `liftNames` | entry paths lifted into columns of their own, each named by its `as` alias where it writes one; unset lifts nothing beyond the row header's captures |
 | `autotype` | infer capture datatypes from regex syntax before reading; default `true` |
 | `timezone` | zone applied when autotyping offset-free timestamps |
+| `batch_row_size` / `batchRowSize`, `batch_byte_size` | the [shared batch targets](../options.md), a batch closing on whichever it reaches first; a text read states `35 * 1024` rows and 64 MiB where the options state none |
 
 ## Surfaces
 
@@ -57,10 +58,10 @@ line per row; it converts into the text variant of [`RecordOptions`](../options.
         .read_arrow_reader(&record_options)?
         .next()
         .unwrap()?;
-    assert_eq!(text_batch.schema().fields().len(), 6);
+    assert_eq!(text_batch.schema().fields().len(), 22);
     assert_eq!(
         text_batch
-            .column(1)
+            .column(17)
             .as_any()
             .downcast_ref::<Int64Array>()
             .unwrap()
@@ -69,12 +70,12 @@ line per row; it converts into the text variant of [`RecordOptions`](../options.
     );
     assert_eq!(
         text_batch
-            .column(3)
+            .column(19)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
             .value(0),
-        "first\n detail A",
+        "[INFO] id=7 first\n detail A",
     );
     ```
 
@@ -101,8 +102,8 @@ line per row; it converts into the text variant of [`RecordOptions`](../options.
         rows = list(handle.read_records())
         assert [row["rownum"] for row in rows] == [1, 3]
         assert [row["body"] for row in rows] == [
-            "first\n detail A",
-            "second\n detail B",
+            "[INFO] id=7 first\n detail A",
+            "[WARN] id=9 second\n detail B",
         ]
         assert [row["id"] for row in rows] == [7, 9]
     ```
@@ -133,7 +134,7 @@ line per row; it converts into the text variant of [`RecordOptions`](../options.
     assert.deepEqual(textRows.map((row) => row.rownum), [1n, 3n])
     assert.deepEqual(
       textRows.map((row) => row.body),
-      ['first\n detail A', 'second\n detail B'],
+      ['[INFO] id=7 first\n detail A', '[WARN] id=9 second\n detail B'],
     )
     assert.deepEqual(textRows.map((row) => row.id), [7n, 9n])
 
@@ -142,20 +143,41 @@ line per row; it converts into the text variant of [`RecordOptions`](../options.
 
 ## Row schema
 
-The source field is complete before any source bytes are read.
+The source field is complete before any source bytes are read. It opens with the sixteen [event columns](../../graph.md#columns) every event's schema opens with - a line is an [event](#lines) of the graph, and the FIX row parsed out of it opens with the same sixteen under the same names, so a message's `srcuuids` joins the line's `curruuid` without a mapping - then the line's own columns.
 
 | column | datatype | value |
 | --- | --- | --- |
+| `currunix` | `datetime64(ns, UTC)` | required; when the line happened: a stated instant, else `mtime`, else the epoch |
+| `creaunix` | `datetime64(ns, UTC)` | nullable; a `creaunix` capture as an instant, else what a walk folded, else null |
+| `expirunix` | `datetime64(ns, UTC)` | nullable; an `expirunix` capture as an instant, else what a walk folded, else null |
+| `prevunix` | `datetime64(ns, UTC)` | nullable; a `prevunix` capture, else what a walk stamped, else null |
+| `snapunix` | `datetime64(ns, UTC)` | nullable; a `snapunix` capture, else what a grid stamped, else null |
+| `curruuid` | `uuid` | required; the line's identity, the UUIDv7 of `currunix` and `currhashcode`; the nil identity where the instant has no UUIDv7 |
+| `crossuuid` | `uuid` | required; the UUIDv8 of `crosshashcode`, or `curruuid` where the line names no cross code |
+| `crosscode` | `utf8` | nullable; a `crosscode` capture, else what a walk forced, else null |
+| `currhashcode` | `uint64` | required; the XXH3-64 of the body's bytes |
+| `crosshashcode` | `uint64` | required; the XXH3-64 of `crosscode`, zero where none |
+| `prevuuid` | `uuid` | nullable; a `prevuuid` capture, else what a walk stamped, else null |
+| `seqnum` | `uint64` | nullable; a `seqnum` capture, else the row number under `start_rownum`, else the index; null where zero |
+| `parentuuids` | `list<uuid>` | nullable; what a walk stated, else null |
+| `srcuuids` | `list<uuid>` | nullable; what was stated, else null: a line read from a handle has no source |
+| `identifiers` | `map<utf8, utf8>` | nullable; every named capture the line matched, under its name, sorted; null where none |
+| `state` | `state` | nullable, and never null on a row the reader wrote: a `state` capture, else `00UNKNOWN` |
 | `sourceurl` | `url` | nullable; the source location, and null for an unlocated buffer |
 | `rownum` | `int64` | present only when `start_rownum` is set; first value is exactly that setting |
 | `mtime` | `datetime64(ns, UTC)` | nullable; present unless `parse_mtime` is off |
 | `mimetype` | `utf8` | present only with `parse_mimetype` |
-| `body` | `utf8` | required; the retained record as text: decoded at the transport under [a declared charset](#declaring-a-charset), else [where the line is made](#a-line-is-text) |
+| `body` | `utf8` | required; the whole retained record as text, the row header included and the edges stripped: decoded at the transport under [a declared charset](#declaring-a-charset), else [where the line is made](#a-line-is-text) |
 | `dropped_byte_size` | `uint64` | nullable; present only with `max_record_byte_size`, and non-null only when bytes were dropped; counts bytes as read, in the units the limit counts |
 
 Named `rowheader` captures follow these columns and stay nullable in both modes,
 and the columns `lift_names` [lifts](#lifting-an-entry-into-a-column) follow
-the captures.
+the captures. A capture named for an event fact the line reads off a capture -
+`seqnum`, `state`, `crosscode`, `prevuuid`, `creaunix`, `expirunix`, `prevunix`,
+`snapunix` - feeds that column and appears beside nothing, as an `mtime`
+capture feeds `mtime`; one named for a fact the line derives - `currunix`,
+`curruuid`, `crossuuid`, `currhashcode`, `crosshashcode`, `parentuuids`,
+`srcuuids`, `identifiers` - is refused with the reserved names.
 [`DataType::from_regex`](../../types/text.md) types captures constrained to
 booleans, signed 64-bit integers, finite floats, ISO dates, times, and
 datetimes. `yggdryl::ULBRIDGE_ROWHEADER` is the header a bridge log writes,
@@ -226,7 +248,7 @@ The `select` and `where` sections of the options shape a text read as they shape
         filter="n > 1 and line like '%d' and level is not null",
     ).read_all()
     assert table.schema.names == ["n", "line", "level", "tenfold"]
-    assert table.column("line").to_pylist() == ["second", "third"]
+    assert table.column("line").to_pylist() == ["[WARN] id=9 second", "[INFO] id=11 third"]
     assert table.column("tenfold").to_pylist() == [90, 110]
     ```
 
@@ -249,7 +271,7 @@ The `select` and `where` sections of the options shape a text read as they shape
       })
       .intoTable()
     assert.deepEqual(table.schema.fields.map((field) => field.name), ['n', 'line', 'level', 'tenfold'])
-    assert.deepEqual([...table.getChild('line')], ['second', 'third'])
+    assert.deepEqual([...table.getChild('line')], ['[WARN] id=9 second', '[INFO] id=11 third'])
     assert.deepEqual([...table.getChild('tenfold')], [90n, 110n])
     ```
 
@@ -259,24 +281,48 @@ The `select` and `where` sections of the options shape a text read as they shape
 through it, so a caller reading lines and a caller reading batches read one
 decode rather than two.
 
-A line is a struct, not a map: `index`, `sourceurl`, `timestamp`, `bodytype`, `body`,
-`dropped_byte_size`, `decoded_byte_size`, the row header's
-`captures` in the order the expression declares them, and the `entries` it
-carries. Each field already holds what its column holds, so building a batch
-reads the struct rather than re-deriving a datatype per value.
+A line is an [event](../../graph.md) of the graph, and a struct rather than a
+map. It holds what the reader cut and nothing it derived: `index`,
+`sourceurl`, the whole `body` with its row header included,
+`dropped_byte_size`, `decoded_byte_size`, and the options it reads itself by.
+Everything else is a reading of the body under those options, resolved on its
+first ask, once, and never before: `mtime`, `bodytype`, the row header's
+`captures` in the order the expression declares them, the `entries` the payload
+carries, and the identity - `curruuid` from the instant and the XXH3-64 of the
+bytes, `crossuuid` and `crosscode`, `currhashcode`, `crosshashcode`,
+`currunix` - so a line handed on as a line resolves only what is asked of it,
+while a batch built from lines asks every row for the sixteen event columns it
+opens with, a projection reading fewer of them afterwards - and a message
+parsed out of a line states the line's `curruuid` among its
+[`srcuuids`](../../fix/capture.md#the-crates-own-columns). A capture named for
+an event fact - `mtime`, `seqnum`, `state`, `prevuuid`, `crosscode`, the four
+lifecycle instants - feeds that reading by its exact name, parsed at the fact's
+own datatype, and one that does not parse is a named refusal on the reading and
+on every column built from it. Every one of the sixteen facts is a column of
+the [row schema](#row-schema), filled from these readings and restated on a
+line read back out of a batch, so a batch of lines, a batch of the messages
+parsed from them and a batch of the lifecycle's messages join on one column
+set: the message's `srcuuids` to the line's `curruuid`, the chained message's
+`prevuuid` and `parentuuids` to the messages' `curruuid`. A `set_` states a fact over the line's own
+reading: stated captures are the line's word over its header, and `set_body`
+drops every reading resolved so far.
 
-`TextLine::from_bytes(index, body)` makes one from the bytes the reader cut, and
-is where those bytes [become text](#a-line-is-text); `set_body` and
-`set_captures` / `with_captures` take bytes the same way, and the Python and
-JavaScript constructors take a `str` / `string` body beside bytes. `set_body`,
+`TextLine::from_bytes(index, body, options)` makes one from the bytes the
+reader cut and the shared `Arc<TextOptions>` it reads itself by, and is where
+those bytes [become text](#a-line-is-text); `set_body` and `set_captures` /
+`with_captures` take bytes the same way, and the Python and JavaScript
+constructors take a `str` / `string` body beside bytes and the options as an
+optional last argument, the default options where none is given. `set_body`,
 `with_captures` and `body_bytes` are Rust-only. `body` answers `&str`,
 `capture(index)` answers `Option<&str>`, and `body_bytes` answers the body as
 the range of its page for a reader that works in offsets.
 
-`timestamp` counts nanoseconds UTC in 128 bits, wider than the column it fills.
-A 64-bit nanosecond count runs out in 2262, so a capture reading past that has
-somewhere to land; narrowing happens once, where the column is built, and a
-count that will not fit is refused by name rather than truncated.
+`mtime` is the header's `mtime` capture as an instant where it declares one and
+the line matched, else the modification time of the handle the line was read
+from, else none: 64-bit nanoseconds UTC, as the column holds them, and a capture
+that is not an instant is refused by name where it is read rather than
+truncated. It is also what dates the line as an event: `currunix` is the
+stated instant, else `mtime`, else zero.
 
 === "Rust"
 
@@ -389,13 +435,16 @@ find the lines the reader repaired without decoding them again.
 === "Rust"
 
     ```rust
-    use yggdryl::text::{TextBytes, TextLine};
+    use std::sync::Arc;
 
-    let line = TextLine::from_bytes(0, TextBytes::from_bytes(b"58=caf\xe9|10=0|")?)?;
+    use yggdryl::text::{TextBytes, TextLine, TextOptions};
+
+    let options = Arc::new(TextOptions::new());
+    let line = TextLine::from_bytes(0, TextBytes::from_bytes(b"58=caf\xe9|10=0|")?, Arc::clone(&options))?;
     assert_eq!(line.body(), "58=café|10=0|");
     assert_eq!(line.decoded_byte_size(), 1);
 
-    let text = TextLine::from_bytes(1, TextBytes::from_bytes("58=café|10=0|")?)?;
+    let text = TextLine::from_bytes(1, TextBytes::from_bytes("58=café|10=0|")?, options)?;
     assert_eq!(text.body(), line.body());
     assert_eq!(text.decoded_byte_size(), 0);
     ```
@@ -512,7 +561,7 @@ handle's fact, not a second option on every reader.
     // The transport read the declaration below the splitter: the header saw
     // the text and a Unicode class matched `ü`, and the line repaired nothing.
     assert_eq!(line.capture(0), Some("Zürich"));
-    assert_eq!(line.body(), "premièr");
+    assert_eq!(line.body(), "Zürich premièr");
     assert_eq!(line.decoded_byte_size(), 0);
 
     // Undeclared, the same bytes are the wire: each stray byte reads as the
@@ -540,7 +589,7 @@ handle's fact, not a second option on every reader.
     # The transport read the declaration below the splitter: the header saw
     # the text and a Unicode class matched `ü`.
     assert row["city"] == "Zürich"
-    assert row["body"] == "premièr"
+    assert row["body"] == "Zürich premièr"
 
     # Undeclared, the same bytes are the wire: each stray byte reads as the
     # Windows-1252 character it is, and the line counts the two it read so.
@@ -568,7 +617,7 @@ handle's fact, not a second option on every reader.
     // The transport read the declaration below the splitter: the header saw
     // the text and a Unicode class matched `ü`.
     assert.equal(row.city, 'Zürich')
-    assert.equal(row.body, 'premièr')
+    assert.equal(row.body, 'Zürich premièr')
 
     // Undeclared, the same bytes are the wire: each stray byte reads as the
     // Windows-1252 character it is, and the line counts the two it read so.
@@ -695,10 +744,10 @@ decides which entry paths become columns and never what they are called.
 ### What is copied
 
 The page a line is a range of is the reader's own window, shared with every
-other line cut from it. A body that was UTF-8 as read copies no byte: the row
-header off its front, the strips off both edges, the byte limit off its tail
-and every named capture are offsets into that window, and the Arrow value the
-body lands in is built from the same page. A record joining several physical
+other line cut from it. A body that was UTF-8 as read copies no byte: the
+strips off both edges, the byte limit past the row header, the header's own
+end and every named capture are offsets into that window, and the Arrow value
+the body lands in is built from the same page. A record joining several physical
 lines is assembled into a page of its own and copies once, and so is a line
 that spanned two windows, one whose row header matched in the middle rather
 than at an edge, and one that [was not UTF-8](#a-line-is-text). Every value
@@ -760,6 +809,9 @@ without retaining it.
 - `autotype = false` or a broad capture (`\S+`) -> `utf8`.
 - classification columns ahead of the captures -> the captures keep the types their patterns gave them; a `thread` capture is `utf8` whatever the classification read before it.
 - an unlocated buffer -> `sourceurl` and `mtime` are both null: a buffer has no location and records no modification time, and neither the empty string nor a clock reading is one.
+- an event fact nothing states -> the column's null, but for the ones never null: `currunix` the epoch, `curruuid` the nil identity where the instant has no UUIDv7, `crossuuid` the line's own identity, the two codes zero; and `state`, nullable, is written `00UNKNOWN` all the same.
+- a capture named `seqnum`, `state`, `prevuuid` or an instant the line cannot read at the fact's datatype -> a refusal naming the row, the object and the fact, on the batch as on the reading.
+- a line batch written to an [Iceberg](../iceberg/index.md) table -> the schema goes through `into_scheme_compat(&Scheme::ICEBERG)` first, as a FIX row's does: the two `uint64` codes have no Iceberg type and widen to `decimal(20, 0)`.
 - Python `read_records()` over a file whose modification time is finer than a microsecond -> the `datetime` a record hands back is floored to the microsecond it can hold, never refused. The batch path carries the full nanosecond reading.
 - a row header declaring an `mtime` capture with `parse_mtime` off -> an ordinary capture, typed by its own syntax.
 - empty, missing, compressed, local, or foreign Arrow-filesystem resource -> the full schema before iteration.

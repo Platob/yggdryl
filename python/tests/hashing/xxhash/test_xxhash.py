@@ -301,7 +301,16 @@ class TestStates:
         assert filled.column("signed64").type == pa.int64()
         assert filled.column("signed32").to_pylist() == expected32
         assert filled.column("signed64").to_pylist() == expected64
-        assert expected32[1] < 0 and expected64[0] < 0
+        # The signed holder keeps every bit: read unsigned again, each value
+        # is the digest itself, whichever way its high bit fell.
+        assert [value % 2**32 for value in expected32] == [
+            int.from_bytes(bytes(Scalar.from_([value]).digest("xxh32")), "big")
+            for value in ("AAPL", "8")
+        ]
+        assert [value % 2**64 for value in expected64] == [
+            int.from_bytes(bytes(Scalar.from_([value]).digest("xxh3-64")), "big")
+            for value in ("AAPL", "8")
+        ]
 
         conditional_root = yggdryl.Field(
             "row",

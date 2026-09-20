@@ -26,7 +26,7 @@ The closed function set, and its one door: a user-defined function is registered
     use yggdryl::expression::{
         FunctionSignature, UserFunction, UserRef, register_function, unregister_function,
     };
-    use yggdryl::{DataType, Field, Filter, Result, Scalar, Selector, StructureType};
+    use yggdryl::{DataType, Field, Filter, Result, Scalar, Selector, StructType};
 
     struct Double(FunctionSignature);
 
@@ -47,7 +47,7 @@ The closed function set, and its one door: a user-defined function is registered
     )?;
     register_function(Arc::new(Double(signature)))?;
 
-    let rows = DataType::from(StructureType::from_fields([DataType::Int64.nullable_field("size")])?).required_field("rows");
+    let rows = DataType::from(StructType::from_fields([DataType::Int64.nullable_field("size")])?).required_field("rows");
     let batch = RecordBatch::try_from_iter([(
         "size",
         Arc::new(Int64Array::from(vec![Some(1), None, Some(3)])) as ArrayRef,

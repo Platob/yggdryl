@@ -109,7 +109,7 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         // struct projects positionally, exactly like a list.
         D::Interval(IntervalType::Interval(TimeUnit::DayTime | TimeUnit::MonthDayNano))
         | D::Sequence(_)
-        | D::Structure(_) => JsValueHint::Array,
+        | D::Struct(_) => JsValueHint::Array,
         // A union carries its selected type id, so `union_to_js` builds a
         // `{ typeId, value }` object rather than a positional sequence.
         D::Union(..) => JsValueHint::Object,
@@ -157,7 +157,7 @@ fn dtype_to_js<'env>(env: &'env Env, dtype: &DataType, value: &Scalar) -> Result
     match dtype {
         D::Null => Null.into_unknown(env),
         D::Sequence(sequence) => sequence_to_js(env, sequence.item(), value),
-        D::Structure(structure) => struct_to_js(env, structure.as_fields(), value),
+        D::Struct(structure) => struct_to_js(env, structure.as_fields(), value),
         D::Union(fields, _) => union_to_js(env, fields, value),
         D::Enum(dictionary) => dtype_to_js(env, dictionary.value(), value),
         D::Mapping(mapping) => map_to_js(env, mapping.parameters(), value),

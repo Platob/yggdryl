@@ -120,7 +120,7 @@ pub(crate) fn write_arrow<H: IOBase + ?Sized>(
                 rows.into_result()?;
                 let document = Scalar::from_sequence(held);
                 let document = if matches!(format, Format::Toml) {
-                    Scalar::from_record([(name, document)])?
+                    Scalar::from_struct([(name, document)])?
                 } else {
                     document
                 };

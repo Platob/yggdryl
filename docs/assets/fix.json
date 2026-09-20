@@ -96,7 +96,7 @@
     ]
   },
   "kpi": {
-    "fields": 6258,
+    "fields": 6261,
     "groups": 582,
     "enumFields": 2026,
     "codes": 27209,
@@ -104,10 +104,10 @@
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 114,
+    "columns": 117,
     "memberships": 0,
     "dialects": 0,
-    "datatypes": 21,
+    "datatypes": 23,
     "dtypes": [
       [
         "int32",
@@ -143,7 +143,7 @@
       ],
       [
         "datetime64(ns,\"UTC\")",
-        72
+        73
       ],
       [
         "time64(ns)",
@@ -186,7 +186,15 @@
         1
       ],
       [
+        "list(field(\"srcuuid\",uuid,nullable=false,metadata={}))",
+        1
+      ],
+      [
         "side",
+        1
+      ],
+      [
+        "state",
         1
       ],
       [
@@ -379220,6 +379228,55 @@
         },
         "name": "crosscode",
         "nullable": true
+      },
+      {
+        "dtype": {
+          "field": {
+            "dtype": {
+              "type": "uuid"
+            },
+            "metadata": {},
+            "name": "srcuuid",
+            "nullable": false
+          },
+          "type": "list"
+        },
+        "metadata": {
+          "FIX:tag": "65051",
+          "FIX:transient": "false",
+          "description": "The identities of the elements this message was read from: the text line it was parsed out of, and none for one parsed from raw bytes. Provenance, never lineage: no walk moves it.",
+          "display": "SrcUuids"
+        },
+        "name": "srcuuids",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "state"
+        },
+        "metadata": {
+          "FIX:tag": "65052",
+          "FIX:transient": "false",
+          "description": "The state the message reached, ranked so the column sorts by lifecycle: OrdStatus, else ExecType, 00UNKNOWN where neither states one; the furthest its chain knows once followed.",
+          "display": "State"
+        },
+        "name": "state",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "FIX:tag": "65053",
+          "FIX:transient": "false",
+          "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; the latest its chain knows once followed.",
+          "display": "ExpirUnix"
+        },
+        "name": "expirunix",
+        "nullable": true
       }
     ],
     "groups": [
@@ -393235,6 +393292,13 @@
         "x": "The grid instant a walk read this message as the snapshot of; empty on every row no snapshot was taken of."
       },
       {
+        "c": "expirunix",
+        "t": 65053,
+        "n": "ExpirUnix",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; the latest its chain knows once followed."
+      },
+      {
         "c": "sendingtime",
         "t": 52,
         "n": "SendingTime",
@@ -393345,6 +393409,13 @@
         "n": "ParentUuids",
         "y": "list(field(\"parentuuid\",uuid,nullable=false,metadata={}))",
         "x": "The identities of the messages this one descends from, in the order it states them."
+      },
+      {
+        "c": "srcuuids",
+        "t": 65051,
+        "n": "SrcUuids",
+        "y": "list(field(\"srcuuid\",uuid,nullable=false,metadata={}))",
+        "x": "The identities of the elements this message was read from: the text line it was parsed out of, and none for one parsed from raw bytes. Provenance, never lineage: no walk moves it."
       },
       {
         "c": "identifiers",
@@ -393751,6 +393822,13 @@
         "n": "OfferSize",
         "y": "decimal128(38,18)",
         "x": "Quantity of offer"
+      },
+      {
+        "c": "state",
+        "t": 65052,
+        "n": "State",
+        "y": "state",
+        "x": "The state the message reached, ranked so the column sorts by lifecycle: OrdStatus, else ExecType, 00UNKNOWN where neither states one; the furthest its chain knows once followed."
       },
       {
         "c": "ordstatus",
@@ -394191,19 +394269,20 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-41fb-7000-83aa-9fea9c9c464c",
+        "curruuid": "018d64aa-4180-7000-9c75-fcb54b8d52db",
         "crossuuid": "00000000-0000-8000-a343-26b3b448dbed",
         "crosscode": "ORDER-1",
-        "currhashcode": "9487571395008022092",
+        "currhashcode": "6662509079351349979",
         "crosshashcode": "16375975223314930669",
         "identifiers": {
           "clordid": "ORDER-1"
         },
         "parentuuids": [],
-        "currunix": "1706790896123000000",
+        "srcuuids": [],
+        "currunix": "1706790896000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
-        "creaunix": "1706790896123000000",
+        "creaunix": "1706790896000000000",
         "expirunix": null,
         "prevunix": null,
         "prevuuid": null,
@@ -394509,20 +394588,21 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-48ec-7000-9718-fb12f5e77fe5",
+        "curruuid": "018d64aa-48d8-7000-8111-98e2fd432ccb",
         "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
         "crosscode": "O-9",
-        "currhashcode": "10887728158021746661",
+        "currhashcode": "13912068824603241675",
         "crosshashcode": "15690705969207961054",
         "identifiers": {
           "execid": "E-1",
           "orderid": "O-9"
         },
         "parentuuids": [],
-        "currunix": "1706790897900000000",
+        "srcuuids": [],
+        "currunix": "1706790897880000000",
         "state": "80FILLED",
         "seqnum": 0,
-        "creaunix": "1706790897900000000",
+        "creaunix": "1706790897880000000",
         "expirunix": null,
         "prevunix": null,
         "prevuuid": null,
@@ -394935,19 +395015,20 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-58f0-7000-8136-50c7427e8649",
+        "curruuid": "018cc9ab-d1d0-7000-917c-2f5360de319a",
         "crossuuid": "00000000-0000-8000-aed9-a4c54eea99f9",
         "crosscode": "ORDER-2",
-        "currhashcode": "13922404114806769225",
+        "currhashcode": "1259934030910861722",
         "crosshashcode": "7987596581457795577",
         "identifiers": {
           "clordid": "ORDER-2"
         },
         "parentuuids": [],
-        "currunix": "1706790902000000000",
+        "srcuuids": [],
+        "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
-        "creaunix": "1706790902000000000",
+        "creaunix": "1704190530000000000",
         "expirunix": null,
         "prevunix": null,
         "prevuuid": null,
@@ -398029,13 +398110,14 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-8b4f-fe1d37d13f4b",
-        "crossuuid": "018cc9ab-d1d0-7000-8b4f-fe1d37d13f4b",
+        "curruuid": "018cc9ab-d1d0-7000-bd40-e74ad7c9d4d1",
+        "crossuuid": "018cc9ab-d1d0-7000-bd40-e74ad7c9d4d1",
         "crosscode": "",
-        "currhashcode": "815149459021315915",
+        "currhashcode": "4413781943457010897",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
+        "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
@@ -398317,17 +398399,18 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-5120-7000-8285-3c80e7b1939a",
-        "crossuuid": "018d64aa-5120-7000-8285-3c80e7b1939a",
+        "curruuid": "018cc9ab-d1d0-7000-95cb-67b988716713",
+        "crossuuid": "018cc9ab-d1d0-7000-95cb-67b988716713",
         "crosscode": "",
-        "currhashcode": "14016675939601191834",
+        "currhashcode": "10793834978479269651",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
-        "currunix": "1706790900000000000",
+        "srcuuids": [],
+        "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
-        "creaunix": "1706790900000000000",
+        "creaunix": "1704190530000000000",
         "expirunix": null,
         "prevunix": null,
         "prevuuid": null,
@@ -398536,13 +398619,14 @@
         }
       ],
       "event": {
-        "curruuid": "018d648a-4600-7000-9eb4-db2f2428d827",
-        "crossuuid": "018d648a-4600-7000-9eb4-db2f2428d827",
+        "curruuid": "018d648a-4600-7000-91e4-abad22ff7ce7",
+        "crossuuid": "018d648a-4600-7000-91e4-abad22ff7ce7",
         "crosscode": "",
-        "currhashcode": "11436006349317134375",
+        "currhashcode": "1289344153439665383",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
+        "srcuuids": [],
         "currunix": "1706788800000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
@@ -398688,13 +398772,14 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-5508-7000-a6c9-742e404dab0f",
-        "crossuuid": "018d64aa-5508-7000-a6c9-742e404dab0f",
+        "curruuid": "018d64aa-5508-7000-8210-e28f8dd13d7d",
+        "crossuuid": "018d64aa-5508-7000-8210-e28f8dd13d7d",
         "crosscode": "",
-        "currhashcode": "2794892785756252943",
+        "currhashcode": "9372239930745503101",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
+        "srcuuids": [],
         "currunix": "1706790901000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
@@ -398870,13 +398955,14 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-9e08-4a0fb1919116",
-        "crossuuid": "018cc9ab-d1d0-7000-9e08-4a0fb1919116",
+        "curruuid": "018cc9ab-d1d0-7000-9cca-f4d8be36d8f2",
+        "crossuuid": "018cc9ab-d1d0-7000-9cca-f4d8be36d8f2",
         "crosscode": "",
-        "currhashcode": "2164061052215595286",
+        "currhashcode": "6686425808526301426",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
+        "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
@@ -399119,10 +399205,10 @@
         }
       ],
       "event": {
-        "curruuid": "018d64ab-3b80-7000-941f-d59870798b40",
+        "curruuid": "018cc9ab-d1d0-7000-b40f-2b3ff2cb5daa",
         "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
         "crosscode": "O-9",
-        "currhashcode": "15285170511017511744",
+        "currhashcode": "17586322623561424298",
         "crosshashcode": "15690705969207961054",
         "identifiers": {
           "clordid": "ORDER-3",
@@ -399130,10 +399216,11 @@
           "origclordid": "ORDER-1"
         },
         "parentuuids": [],
-        "currunix": "1706790960000000000",
+        "srcuuids": [],
+        "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
-        "creaunix": "1706790960000000000",
+        "creaunix": "1704190530000000000",
         "expirunix": null,
         "prevunix": null,
         "prevuuid": null,
@@ -399429,13 +399516,14 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-bd6b-8a55ca883f30",
-        "crossuuid": "018cc9ab-d1d0-7000-bd6b-8a55ca883f30",
+        "curruuid": "018cc9ab-d1d0-7000-9f8e-2e62fc069f69",
+        "crossuuid": "018cc9ab-d1d0-7000-9f8e-2e62fc069f69",
         "crosscode": "",
-        "currhashcode": "13649155196751200048",
+        "currhashcode": "16108863919820808041",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
+        "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
@@ -399829,13 +399917,14 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-a814-9aa974f3eba6",
-        "crossuuid": "018cc9ab-d1d0-7000-a814-9aa974f3eba6",
+        "curruuid": "018cc9ab-d1d0-7000-9970-71203ea28176",
+        "crossuuid": "018cc9ab-d1d0-7000-9970-71203ea28176",
         "crosscode": "",
-        "currhashcode": "2888103313653623718",
+        "currhashcode": "6444775450070909302",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
+        "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
@@ -400138,13 +400227,14 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-9df2-bb0f2b896be0",
-        "crossuuid": "018cc9ab-d1d0-7000-9df2-bb0f2b896be0",
+        "curruuid": "018cc9ab-d1d0-7000-ac2b-0c4398df270d",
+        "crossuuid": "018cc9ab-d1d0-7000-ac2b-0c4398df270d",
         "crosscode": "",
-        "currhashcode": "11381364882147994592",
+        "currhashcode": "17017709101416654605",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
+        "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
@@ -400347,15 +400437,16 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-89d9-cd5277b792f4",
+        "curruuid": "018cc9ab-d1d0-7000-a9a9-c4f6def9d3c7",
         "crossuuid": "00000000-0000-8000-a639-a6636194481b",
         "crosscode": "ORDER-4",
-        "currhashcode": "709824170367095540",
+        "currhashcode": "7613833209628447687",
         "crosshashcode": "7366101611310237723",
         "identifiers": {
           "clordid": "ORDER-4"
         },
         "parentuuids": [],
+        "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
@@ -400547,13 +400638,14 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-8f46-a570f9823f1a",
-        "crossuuid": "018cc9ab-d1d0-7000-8f46-a570f9823f1a",
+        "curruuid": "018cc9ab-d1d0-7000-961a-e92014087e07",
+        "crossuuid": "018cc9ab-d1d0-7000-961a-e92014087e07",
         "crosscode": "",
-        "currhashcode": "5712435082007035674",
+        "currhashcode": "1592841742213217799",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
+        "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
@@ -400736,13 +400828,14 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-9432-12f70435ab18",
-        "crossuuid": "018cc9ab-d1d0-7000-9432-12f70435ab18",
+        "curruuid": "018cc9ab-d1d0-7000-a63a-0211128c3258",
+        "crossuuid": "018cc9ab-d1d0-7000-a63a-0211128c3258",
         "crosscode": "",
-        "currhashcode": "10678618518585715480",
+        "currhashcode": "7366202412866744920",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
+        "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
@@ -400947,13 +401040,14 @@
       "size": 5,
       "columns": [],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-9f89-fce300592642",
-        "crossuuid": "018cc9ab-d1d0-7000-9f89-fce300592642",
+        "curruuid": "018cc9ab-d1d0-7000-8ac0-c8819cc328c6",
+        "crossuuid": "018cc9ab-d1d0-7000-8ac0-c8819cc328c6",
         "crosscode": "",
-        "currhashcode": "11495997575733519938",
+        "currhashcode": "14609897650196261062",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
+        "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,
@@ -401162,13 +401256,14 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-8529-11f7cebcc33f",
-        "crossuuid": "018cc9ab-d1d0-7000-8529-11f7cebcc33f",
+        "curruuid": "018cc9ab-d1d0-7000-8887-61f1142d487b",
+        "crossuuid": "018cc9ab-d1d0-7000-8887-61f1142d487b",
         "crosscode": "",
-        "currhashcode": "4983534218685236031",
+        "currhashcode": "14449625617495050363",
         "crosshashcode": "0",
         "identifiers": {},
         "parentuuids": [],
+        "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
         "seqnum": 0,

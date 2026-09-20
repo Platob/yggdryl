@@ -23,9 +23,9 @@ Every child-bearing type answers length and item access alike.
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, StructureType};
+    use yggdryl::{DataType, Field, StructType};
 
-    let quote = DataType::from(StructureType::from_fields([
+    let quote = DataType::from(StructType::from_fields([
         Field::new("symbol", DataType::utf8(), false),
         Field::new("levels", DataType::list(DataType::Float64.nullable_field("item")), true),
     ])?);

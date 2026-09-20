@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::sequence::SequenceType;
-use crate::{DataType, Error, Field, Result, Scalar, StructureType};
+use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 const MAX_DEPTH: usize = 64;
 
@@ -86,7 +86,7 @@ impl GroupPlan {
         check_depth(field, depth)?;
         for (index, child) in field.fields().iter().enumerate() {
             path.push(index);
-            if matches!(child.dtype(), DataType::Structure(_)) {
+            if matches!(child.dtype(), DataType::Struct(_)) {
                 Self::columns(child, path, columns, paths, depth + 1)?;
             } else {
                 columns.push(child.clone());
@@ -142,7 +142,7 @@ fn nullable_layout(field: &Field, nullable: bool, depth: usize) -> Result<Field>
     check_depth(field, depth)?;
     let mut held = field.clone();
     let dtype = match field.dtype() {
-        DataType::Structure(fields) => DataType::from(StructureType::from_fields(
+        DataType::Struct(fields) => DataType::from(StructType::from_fields(
             fields
                 .iter()
                 .map(|child| nullable_layout(child, true, depth + 1))
@@ -168,7 +168,7 @@ fn component_value(field: &Field, values: &mut std::vec::IntoIter<Scalar>, root:
         .fields()
         .iter()
         .map(|child| {
-            if matches!(child.dtype(), DataType::Structure(_)) {
+            if matches!(child.dtype(), DataType::Struct(_)) {
                 component_value(child, values, false)
             } else {
                 values
@@ -196,17 +196,17 @@ mod tests {
     }
 
     fn parties() -> Field {
-        let subparty = StructureType::from_fields([tagged("PartySubID", 523, DataType::utf8())])
+        let subparty = StructType::from_fields([tagged("PartySubID", 523, DataType::utf8())])
             .map(DataType::from)
             .unwrap()
             .required_field("SubParty");
         let mut nested = DataType::large_list(subparty).required_field("SubParties");
         nested.as_fix_mut().set_counter(802).unwrap();
-        let attribution = StructureType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
+        let attribution = StructType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
             .map(DataType::from)
             .unwrap()
             .required_field("Attribution");
-        let item = StructureType::from_fields([
+        let item = StructType::from_fields([
             tagged("PartyID", 448, DataType::utf8()),
             attribution,
             tagged("NoPartySubIDs", 802, DataType::Int32),
@@ -259,7 +259,7 @@ mod tests {
 
     #[test]
     fn message_and_nested_scope_borrow_one_precompiled_plan() {
-        let mut field = StructureType::from_fields([parties()])
+        let mut field = StructType::from_fields([parties()])
             .map(DataType::from)
             .unwrap()
             .required_field("Report");
@@ -292,7 +292,7 @@ mod tests {
             original,
             registry.get_group_plan_by_tag(453).unwrap()
         ));
-        let item = StructureType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
+        let item = StructType::from_fields([tagged("PartyRole", 452, DataType::Int32)])
             .map(DataType::from)
             .unwrap()
             .required_field("Party");

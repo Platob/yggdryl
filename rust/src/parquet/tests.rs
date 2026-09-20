@@ -58,13 +58,6 @@ fn extension_field(
 }
 
 /// The canonical variant storage: a struct of two required binaries.
-fn variant_storage() -> ArrowDataType {
-    ArrowDataType::Struct(arrow_schema::Fields::from(vec![
-        ArrowField::new("metadata", ArrowDataType::Binary, false),
-        ArrowField::new("value", ArrowDataType::Binary, false),
-    ]))
-}
-
 /// Write one file holding the given fields and columns.
 fn written(name: &str, fields: Vec<ArrowField>, columns: Vec<ArrayRef>) -> Parquet<Buffer> {
     let schema = Arc::new(Schema::new(fields));
@@ -312,45 +305,58 @@ fn a_geometry_nested_in_a_struct_still_gets_the_logical_type() {
 }
 
 #[test]
-fn the_variant_storage_struct_publishes_the_variant_logical_type() {
-    // Schema level only: a variant *value* cannot cross an Arrow array
-    // boundary yet - the binary encoding lands with the Iceberg v3 layer.
+fn a_variant_column_writes_a_plain_byte_array_and_keeps_its_identity() {
+    // A variant column is the variant encoding of each value, one binary per
+    // row: Parquet stores it as a plain `BYTE_ARRAY` with no logical type,
+    // and the Arrow schema the file carries keeps the extension name, so the
+    // column reads back as a variant holding the values it was written with.
+    let values = [
+        crate::Scalar::from(7_i64),
+        crate::Scalar::from_struct([("symbol", crate::Scalar::from("AAPL"))]).unwrap(),
+    ];
+    let column: ArrayRef = Arc::new(arrow_array::BinaryArray::from_iter_values(
+        values.iter().map(crate::Scalar::into_variant_bytes),
+    ));
     let media = written(
         "variant.parquet",
         vec![extension_field(
             "payload",
-            variant_storage(),
-            "arrow.parquet.variant",
+            ArrowDataType::Binary,
+            "yggdryl.variant",
             Some(""),
         )],
-        Vec::new(),
+        vec![column],
     );
 
-    let builder = super::open_builder(media.handle()).unwrap();
-    let root = builder.parquet_schema().root_schema_ptr();
-    let payload = root
-        .get_fields()
-        .iter()
-        .find(|field| field.name() == "payload")
-        .unwrap();
-    assert_eq!(
-        payload.get_basic_info().logical_type_ref(),
-        Some(&LogicalType::variant(None))
-    );
-
-    // The storage struct itself round-trips as a plain struct.
+    assert_eq!(leaf_logical(&media, "payload"), None);
     let schema = media.read_arrow_schema().unwrap();
     let field = schema.field_with_name("payload").unwrap();
     assert_eq!(
         field.metadata().get("ARROW:extension:name"),
-        Some(&"arrow.parquet.variant".to_owned())
+        Some(&"yggdryl.variant".to_owned())
     );
-    let ArrowDataType::Struct(children) = field.data_type() else {
-        panic!("expected struct storage, got {}", field.data_type());
-    };
-    assert_eq!(children.len(), 2);
-    assert_eq!(children[0].name(), "metadata");
-    assert_eq!(children[1].name(), "value");
+    assert_eq!(field.data_type(), &ArrowDataType::Binary);
+    let imported = crate::Field::from_arrow_field(field).unwrap();
+    assert_eq!(imported.dtype(), &crate::DataType::Variant);
+
+    let options = media.record_options().unwrap();
+    let batch = media
+        .read_arrow_reader(&options)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    let read: Vec<crate::Scalar> = (0..batch.num_rows())
+        .map(|row| {
+            crate::arrow::value::value_from_array(
+                &crate::DataType::Variant,
+                batch.column(0).as_ref(),
+                row,
+            )
+            .unwrap()
+        })
+        .collect();
+    assert_eq!(read, values);
 }
 
 #[test]
@@ -414,7 +420,7 @@ fn an_ascii_field_round_trips_through_the_embedded_arrow_schema() {
         .next()
         .unwrap()
         .unwrap();
-    let text = crate::StructureType::from_fields([crate::DataType::utf8().nullable_field("ccy")])
+    let text = crate::StructType::from_fields([crate::DataType::utf8().nullable_field("ccy")])
         .map(crate::DataType::from)
         .unwrap()
         .required_field("row")
@@ -524,7 +530,7 @@ fn a_field_declared_schema_drives_the_logical_types_end_to_end() {
     // The schema comes from the Field layer's own projection rather than
     // hand-spelled metadata, so the two layers are proven to agree; rows
     // stay out because a variant value cannot cross an Arrow array yet.
-    let root = crate::StructureType::from_fields([
+    let root = crate::StructType::from_fields([
         crate::DataType::Int64.required_field("id"),
         crate::DataType::geometry(Some("EPSG:3857"))
             .unwrap()
@@ -567,10 +573,9 @@ fn a_field_declared_schema_drives_the_logical_types_end_to_end() {
         .find(|field| field.name() == "payload")
         .cloned()
         .unwrap();
-    assert_eq!(
-        payload.get_basic_info().logical_type_ref(),
-        Some(&LogicalType::variant(None))
-    );
+    // A variant column is a plain byte array of the encoding: no logical
+    // type, the extension name in the Arrow schema the file carries.
+    assert_eq!(payload.get_basic_info().logical_type_ref(), None);
 
     // And the identity survives the read: the reimported root speaks the
     // datatypes the declaration did, extension transport keys stripped.

@@ -11,7 +11,7 @@ const ROWS: usize = crate::bench_profile::corpus(16_384, 1_024);
 
 fn value() -> Scalar {
     Scalar::from_sequence((0..ROWS).map(|id| {
-        Scalar::from_record([
+        Scalar::from_struct([
             (
                 "id",
                 Scalar::from(i64::try_from(id).expect("the fixture id fits i64")),

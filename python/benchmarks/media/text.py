@@ -70,7 +70,8 @@ def baseline(target: pathlib.Path) -> int:
     text = gzip.decompress(encoded).decode() if target.suffix == ".gz" else encoded.decode()
     # The rowheader names no `mtime` capture, so the native read dates every row
     # with the file's own modification time, read once. The baseline builds the
-    # same column the same way, so both sides carry the same field.
+    # same column the same way, so both sides carry the same field; the native
+    # read carries the sixteen event columns in front of it as well.
     modified = datetime.fromtimestamp(target.stat().st_mtime, timezone.utc)
     columns: dict[str, list[object]] = {
         "sourceurl": [],

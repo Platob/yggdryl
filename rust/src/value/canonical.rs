@@ -17,7 +17,7 @@ use crate::integer::{
 };
 use crate::sequence::SequenceType;
 use crate::string::str_from_value;
-use crate::structure::StructureType;
+use crate::structure::StructType;
 use crate::temporal::{validate_date64, validate_time};
 use crate::{DataType, Error, Field, Result, Scalar, TemporalKind, TimeUnit, Timezone};
 use crate::{DateTimeType, DateType, DecimalType, DurationType, TimeType, UriType};
@@ -187,7 +187,7 @@ impl Field {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let field = Field::from_str("row: struct<symbol: utf8, size: int64> not null")?;
-    /// let row = field.from_natural_value(Scalar::from_record([
+    /// let row = field.from_natural_value(Scalar::from_struct([
     ///     ("symbol", Scalar::from("AAPL")),
     ///     ("size", Scalar::from(100_i64)),
     /// ])?)?;
@@ -275,7 +275,7 @@ impl Field {
 /// Validate one row value against a struct root field.
 pub(crate) fn validate_row(root: &Field, value: &Scalar) -> Result<()> {
     let expected = root.field_len();
-    if let Some(record) = value.as_record() {
+    if let Some(record) = value.as_struct() {
         validate_record_fields(root.fields(), record, 0)
             .map_err(|failure| validation_error(root.name(), failure))?;
         return Ok(());
@@ -375,7 +375,7 @@ fn spells_bare_null(dtype: &DataType, value: &Scalar) -> bool {
 
 /// Rewrite one row value into the exact representation a root field declares.
 pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
-    if let Some(record) = value.as_record() {
+    if let Some(record) = value.as_struct() {
         let values = record_values(root.fields(), record)?;
         return canonicalize_row(root, Scalar::from_sequence(values));
     }
@@ -507,7 +507,7 @@ fn read_as(dtype: &DataType, value: &Scalar) -> Option<Result<Scalar>> {
         // entries; the key field then reads each name as its own datatype,
         // exactly as a struct root reads a record's field names.
         D::Mapping(_) => {
-            let record = value.as_record()?;
+            let record = value.as_struct()?;
             Some(Scalar::from_mapping(
                 record
                     .iter()
@@ -885,7 +885,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Sequence(SequenceType::LargeListView(field)) => {
             canonical_sequence(value, |value| canonicalize_field_value(field, value))
         }
-        D::Structure(fields) => canonical_struct(fields, value),
+        D::Struct(fields) => canonical_struct(fields, value),
         D::Union(fields, _) => canonical_union(fields, value),
         D::Enum(EnumType::Dictionary(dictionary)) => {
             canonicalize_dtype_value(dictionary.value(), value)
@@ -1080,14 +1080,14 @@ fn canonical_sequence(
     }
 }
 
-fn canonical_struct(fields: &StructureType, value: &Scalar) -> Result<(Scalar, bool)> {
-    if let Some(record) = value.as_record() {
+fn canonical_struct(fields: &StructType, value: &Scalar) -> Result<(Scalar, bool)> {
+    if let Some(record) = value.as_struct() {
         let values = record_values(fields.as_fields(), record)?;
         let sequence = Scalar::from_sequence(values);
         return canonical_struct(fields, &sequence).map(|(value, _)| (value, true));
     }
     let Some(values) = value.as_sequence() else {
-        return canonicalization_failure(&DataType::Structure(fields.clone()));
+        return canonicalization_failure(&DataType::Struct(fields.clone()));
     };
     if let Some(canonical) = canonicalize_slice(values, |index, value| {
         canonicalize_field_value(&fields[index], value)
@@ -1555,7 +1555,7 @@ fn validate_dtype_value(
             "fixed_size_list",
             depth + 1,
         ),
-        D::Structure(fields) => validate_struct(fields, value, depth + 1),
+        D::Struct(fields) => validate_struct(fields, value, depth + 1),
         D::Union(fields, _) => validate_union(fields, value, depth + 1),
         D::Enum(EnumType::Dictionary(dictionary)) => {
             validate_dtype_value(dictionary.value(), value, depth + 1)
@@ -1618,11 +1618,11 @@ fn validate_sequence(
 }
 
 fn validate_struct(
-    fields: &StructureType,
+    fields: &StructType,
     value: &Scalar,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
-    if let Some(record) = value.as_record() {
+    if let Some(record) = value.as_struct() {
         return validate_record_fields(fields.as_fields(), record, depth);
     }
     let values = value

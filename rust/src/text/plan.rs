@@ -1,10 +1,13 @@
 //! The compiled column plan one text read is answered by.
 //!
-//! Everything the old decoder decided per row - which columns exist, in what
-//! order, under which names, at which datatypes, whether a capture is consumed
-//! by the timestamp - is decided here, once, before a byte is read. The per-row
-//! path then moves bytes under a plan that is already resolved, which is what
-//! `AGENTS.md` means by resolution being a boundary event.
+//! Which columns exist, in what order, under which names, at which datatypes,
+//! whether a capture is consumed by a column the line already states - is
+//! decided here, once, before a byte is read. The per-row path then reads
+//! each planned column off the line's own reading of it, which resolves on
+//! the first ask and once: a batch asks every row for every column of the
+//! plan, the sixteen event columns it opens with included, and a projection
+//! reads fewer of them afterwards; a line handed on as a line resolves only
+//! what is asked of it.
 //!
 //! The schema and the plan are one derivation: [`TextOptions::source_field`] is
 //! built from the plan, so a column cannot exist in one and not the other.
@@ -13,13 +16,16 @@ use std::collections::BTreeMap;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataType, Error, Field, FieldPath, Result, StructureType};
+use crate::graph::EventColumn;
+use crate::{DataType, Error, Field, FieldPath, Result, StructType};
 
 use super::options::{MIMETYPE_COLUMN, MTIME_COLUMN, TextOptions, mtime_dtype};
 
 /// What fills one emitted column.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum TextSource {
+    /// One of the sixteen columns the line is stated in as an event.
+    Event(EventColumn),
     /// The object the line was read from.
     Url,
     /// The physical line number, offset by the configured first value.
@@ -36,18 +42,6 @@ pub(crate) enum TextSource {
     Capture(usize),
     /// One entry, by resolved path.
     Entry(FieldPath),
-}
-
-impl TextSource {
-    /// Whether filling this column needs the line's entry tree.
-    const fn reads_entries(&self) -> bool {
-        matches!(self, Self::Entry(_))
-    }
-
-    /// Whether filling this column needs the line classified.
-    const fn reads_classification(&self) -> bool {
-        matches!(self, Self::BodyType)
-    }
 }
 
 /// One emitted column, fully resolved.
@@ -69,8 +63,6 @@ pub(crate) struct TextColumn {
 #[derive(Clone, Debug)]
 pub(crate) struct TextPlan {
     columns: Vec<TextColumn>,
-    reads_entries: bool,
-    reads_classification: bool,
 }
 
 impl TextPlan {
@@ -82,7 +74,22 @@ impl TextPlan {
     /// columns renamed onto one name, or a lifted path colliding with a column.
     /// The options are left exactly as they were.
     pub(crate) fn compile(options: &TextOptions) -> Result<Self> {
-        let mut columns = Vec::with_capacity(8 + options.capture_names().len());
+        let mut columns =
+            Vec::with_capacity(EventColumn::ALL.len() + 8 + options.capture_names().len());
+        // The event the line is, in the sixteen columns every graph event
+        // is stated in - the same a FIX row opens with - so a message's
+        // `srcuuids` joins the line's `curruuid` here, and a line read back
+        // keeps the identity a message named.
+        for column in EventColumn::ALL {
+            push_named(
+                &mut columns,
+                TextSource::Event(column),
+                SmolStr::new_static(column.name()),
+                column.datatype()?,
+                column.nullable(),
+                Some(column.description()),
+            );
+        }
         push(
             &mut columns,
             TextSource::Url,
@@ -127,7 +134,7 @@ impl TextPlan {
             "body",
             DataType::utf8(),
             false,
-            "The line itself, as text, with whatever was read off its front removed.",
+            "The line itself, as text: the row header included, the edges stripped, the byte limit applied.",
         );
         if options.max_record_byte_size().is_some() {
             push(
@@ -177,32 +184,12 @@ impl TextPlan {
         }
         rename(&mut columns, options.rename_columns())?;
         refuse_duplicates(&columns)?;
-        Ok(Self {
-            reads_entries: columns.iter().any(|column| column.source.reads_entries()),
-            reads_classification: columns
-                .iter()
-                .any(|column| column.source.reads_classification()),
-            columns,
-        })
+        Ok(Self { columns })
     }
 
     /// The emitted columns, in order.
     pub(crate) fn columns(&self) -> &[TextColumn] {
         &self.columns
-    }
-
-    /// Whether any column reads the entry tree.
-    ///
-    /// The one question the decoder asks before every line: materializing a
-    /// tree is the only thing on the decode path that allocates, so a read
-    /// whose columns never touch one must not build it.
-    pub(crate) const fn reads_entries(&self) -> bool {
-        self.reads_entries
-    }
-
-    /// Whether any column needs the line classified.
-    pub(crate) const fn reads_classification(&self) -> bool {
-        self.reads_classification
     }
 
     /// The root field this plan answers.
@@ -226,7 +213,7 @@ impl TextPlan {
                 Ok(field)
             })
             .collect::<Result<Vec<_>>>()?;
-        Ok(DataType::from(StructureType::from_fields(fields)?).required_field(name))
+        Ok(DataType::from(StructType::from_fields(fields)?).required_field(name))
     }
 }
 

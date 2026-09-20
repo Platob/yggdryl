@@ -2,7 +2,7 @@
 //!
 //! A row canonicalizes to one ordered
 //! [`Sequence`](crate::sequence::Sequence) under a non-null Struct
-//! [`Field`]. A sorted [`Record`](crate::structure::Record) is the named
+//! [`Field`]. A sorted [`Struct`](crate::structure::Struct) is the named
 //! input shape, not a second schema model. Rust structs opt in with
 //! `TryInto<Scalar>`, and the I/O methods widen that iterator into the one Arrow
 //! reader primitive.
@@ -410,7 +410,7 @@ fn payload_bytes(value: &Scalar) -> u64 {
             .sum::<u64>()
             + ROW_OVERHEAD;
     }
-    if let Some(held) = value.as_record() {
+    if let Some(held) = value.as_struct() {
         return held
             .iter()
             .map(|(key, held)| key.len() as u64 + payload_bytes(held))
@@ -423,7 +423,7 @@ fn payload_bytes(value: &Scalar) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::StructureType;
+    use crate::StructType;
     use std::convert::Infallible;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -436,7 +436,7 @@ mod tests {
     use super::reader;
 
     fn field() -> Field {
-        StructureType::from_fields([
+        StructType::from_fields([
             DataType::Int32.required_field("id"),
             DataType::utf8().nullable_field("name"),
         ])
@@ -561,7 +561,7 @@ mod tests {
 
     #[test]
     fn empty_struct_rows_preserve_their_row_count() {
-        let root = DataType::from(StructureType::from_fields([]).unwrap()).required_field("empty");
+        let root = DataType::from(StructType::from_fields([]).unwrap()).required_field("empty");
         let mut batches = reader(
             &root,
             [Scalar::from_sequence([]), Scalar::from_sequence([])],

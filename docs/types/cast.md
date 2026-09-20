@@ -216,7 +216,7 @@ width it declares and pads to it on the way out, because that is what the fixed 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Scalar, StructureType};
+    use yggdryl::{DataType, Scalar, StructType};
 
     let money: DataType = "decimal128(10, 2)".parse()?;
     assert_eq!(money.scalar("10.50")?, Scalar::d128(1_050, 2));
@@ -230,11 +230,11 @@ width it declares and pads to it on the way out, because that is what the fixed 
     // A record is a map keyed by name, so a map column reads one.
     let prices: DataType = "map<utf8, int32>".parse()?;
     assert_eq!(
-        prices.scalar(Scalar::from_record([("a", Scalar::from(1_i32))])?)?,
+        prices.scalar(Scalar::from_struct([("a", Scalar::from(1_i32))])?)?,
         Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i32))])?
     );
 
-    let schema = DataType::from(StructureType::from_fields([
+    let schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::Float32.nullable_field("price"),
     ])?)
@@ -299,9 +299,9 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
     use arrow_array::{Int32Array, RecordBatch, StringArray};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
     use yggdryl::FieldValue as _;
-use yggdryl::{ArrowCastOptions, DataType, Field, StructureType};
+use yggdryl::{ArrowCastOptions, DataType, Field, StructType};
 
-    let schema = DataType::from(StructureType::from_fields([
+    let schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])?)
@@ -370,10 +370,10 @@ strictness is about declared values that are absent, not about columns nobody de
     use arrow_array::{ArrayRef, Int32Array, RecordBatch};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
     use yggdryl::FieldValue as _;
-    use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, StructureType};
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, StructType};
 
     let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
-    let root = DataType::from(StructureType::from_fields([
+    let root = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("symbol"),
     ])?)
@@ -564,9 +564,9 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, Int32Array, RecordBatch};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
-use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, StructureType};
+use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, StructType};
 
-let root = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+let root = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
     .required_field("row");
 let source = Arc::new(Schema::new(vec![ArrowField::new(
     "id",

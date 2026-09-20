@@ -113,7 +113,7 @@ mod limits {
                     )?;
                     self.add_repeated_field_default(child, child_rows, include_dictionary_values)
                 }
-                DataType::Structure(fields) => {
+                DataType::Struct(fields) => {
                     self.add_array_layout(dtype, rows)?;
                     for field in fields {
                         self.add_repeated_field_default(field, rows, include_dictionary_values)?;
@@ -182,7 +182,7 @@ mod limits {
                         .map_err(|_| invalid_value("a fixed list size within usize", size))?;
                     self.add_repeated_field_default(child, size, true)
                 }
-                DataType::Structure(fields) => {
+                DataType::Struct(fields) => {
                     self.add_array_layout_without_slots(dtype, 1)?;
                     for field in fields {
                         self.add_repeated_field_default(field, 1, true)?;
@@ -250,7 +250,7 @@ mod limits {
                     )?;
                     self.add_array(child.dtype(), child_rows)?;
                 }
-                DataType::Structure(fields) => {
+                DataType::Struct(fields) => {
                     for field in fields {
                         self.add_array(field.dtype(), rows)?;
                     }
@@ -397,7 +397,7 @@ mod limits {
                 DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
                 DataType::Null
                 | DataType::Sequence(SequenceType::FixedSizeList(..))
-                | DataType::Structure(_)
+                | DataType::Struct(_)
                 | DataType::RunEndEncoded(_) => {}
                 DataType::Union(_, mode) => self.add_union_buffers(rows, *mode)?,
                 DataType::Enum(EnumType::Dictionary(dictionary)) => {
@@ -515,7 +515,7 @@ mod limits {
                         checked_physical_mul(rows, size, "fixed-size-list slots", MAX_PHYSICAL_SLOTS)?;
                     self.add_null_array(child.dtype(), child_rows)?;
                 }
-                DataType::Structure(fields) => {
+                DataType::Struct(fields) => {
                     for field in fields {
                         self.add_null_array(field.dtype(), rows)?;
                     }
@@ -1100,7 +1100,7 @@ fn reserve_source_children_and_payload(
                 budget,
             )?;
         }
-        DataType::Structure(fields) => {
+        DataType::Struct(fields) => {
             let array = downcast::<StructArray>(array)?;
             if fields.len() != array.num_columns() {
                 return Err(Error::IncompatibleSchema(
@@ -1284,7 +1284,7 @@ pub(crate) fn reserve_cast_output_payload(
         DataType::Sequence(SequenceType::List(_))
         | DataType::Sequence(SequenceType::LargeList(_))
         | DataType::Sequence(SequenceType::FixedSizeList(..))
-        | DataType::Structure(_)
+        | DataType::Struct(_)
         | DataType::Mapping(_)
         | DataType::Union(..)
         | DataType::Enum(EnumType::Dictionary(_))
@@ -1359,7 +1359,7 @@ pub(crate) fn reserve_concat_copy(
             budget.add_array_layout(dtype, array.len())?;
             reserve_concat_copy(array.values().as_ref(), child.dtype(), budget)?;
         }
-        DataType::Structure(fields) => {
+        DataType::Struct(fields) => {
             let array = downcast::<StructArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             for (field, child) in fields.iter().zip(array.columns()) {
@@ -1486,7 +1486,7 @@ fn reserve_new_materialized_array_without_dictionary_values(
                 budget,
             )?;
         }
-        DataType::Structure(fields) => {
+        DataType::Struct(fields) => {
             let output = downcast::<StructArray>(output.as_ref())?;
             let source = downcast::<StructArray>(source.as_ref())?;
             for ((field, output), source) in
@@ -1667,7 +1667,7 @@ pub(crate) fn reserve_new_dictionary_vocabularies(
                 )?;
             }
         }
-        DataType::Structure(fields) => {
+        DataType::Struct(fields) => {
             let output = downcast::<StructArray>(output.as_ref())?;
             let source = downcast::<StructArray>(source.as_ref())?;
             for ((field, output), source) in

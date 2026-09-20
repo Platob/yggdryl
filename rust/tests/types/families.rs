@@ -8,7 +8,7 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::{
     BytesType, DataType, DateTimeType, DateType, DecimalType, DictionaryType, DurationType,
     FloatingType, GeospatialType, IntegerType, IntervalType, MapType, RunEndEncodedType,
-    StringType, StructType, StructureType, TimeType, TimeUnit, UnionFields, UnionMode,
+    StringType, StructType, TimeType, TimeUnit, UnionFields, UnionMode,
 };
 use yggdryl::{Charset, Error, Field, Timezone};
 
@@ -133,7 +133,7 @@ fn nested_helper_values_have_total_order_and_hash() {
 fn canonical_display_json_and_arrow_are_lossless() {
     let item = Field::from_parts(
         "item,東京",
-        StructureType::from_fields([
+        StructType::from_fields([
             Field::new("id", DataType::Int64, false),
             Field::from_parts(
                 "text",
@@ -473,7 +473,7 @@ fn every_arrow_variant_has_a_lossless_owned_equivalent() {
         DataType::large_list(item()),
         DataType::large_list_view(item()),
         DataType::from(
-            StructureType::from_fields([Field::new("value", DataType::Int32, false)]).unwrap(),
+            StructType::from_fields([Field::new("value", DataType::Int32, false)]).unwrap(),
         ),
         DataType::union(
             [

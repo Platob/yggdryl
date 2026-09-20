@@ -25,12 +25,12 @@ Create in a folder, append, and reopen with no catalog in between.
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
     use yggdryl::local::Folder;
-    use yggdryl::{StructureType, arrow, DataType};
+    use yggdryl::{StructType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use std::sync::Arc;
 
-    let mut schema = DataType::from(StructureType::from_fields([
+    let mut schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])?)
@@ -183,12 +183,12 @@ A commit adds one metadata document under `metadata/`; the earlier documents and
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table};
     use yggdryl::IOBase;
     use yggdryl::local::Folder;
-    use yggdryl::{StructureType, arrow, DataType};
+    use yggdryl::{StructType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch};
     use std::sync::Arc;
 
-    let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+    let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
         .required_field("row");
 
     let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-layout");
@@ -304,9 +304,9 @@ Rust only. The bindings read the version a table declares as its `format_version
 ```rust
 use yggdryl::iceberg::{FormatVersion, PartitionSpec, TableMetadata};
 use yggdryl::DataType;
-use yggdryl::StructureType;
+use yggdryl::StructType;
 
-let schema = DataType::from(StructureType::from_fields([DataType::Int64.required_field("id")])?)
+let schema = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
     .required_field("row");
 
 // v1 keeps the singular `schema` and `partition-spec` keys and has no
@@ -384,12 +384,12 @@ Two Avro levels sit between a snapshot and its rows: the manifest list, then eac
     };
     use yggdryl::IOBase;
     use yggdryl::local::Folder;
-    use yggdryl::{StructureType, arrow, DataType, MimeType};
+    use yggdryl::{StructType, arrow, DataType, MimeType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use std::sync::Arc;
 
-    let mut schema = DataType::from(StructureType::from_fields([
+    let mut schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])?)
@@ -532,9 +532,9 @@ A field carries its own Iceberg vocabulary: `field.as_iceberg()` and `as_iceberg
 
 ```rust
 use yggdryl::iceberg::{PartitionSpec, Transform, assign_field_ids};
-use yggdryl::{DataType, Scalar, StructureType};
+use yggdryl::{DataType, Scalar, StructType};
 
-let mut schema = DataType::from(StructureType::from_fields([
+let mut schema = DataType::from(StructType::from_fields([
     DataType::Int64.required_field("id"),
     DataType::utf8().nullable_field("venue"),
 ])?)
@@ -598,12 +598,12 @@ A table marks its stored schema on create and on open, so `Table::schema` report
     ```rust
     use yggdryl::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
     use yggdryl::local::Folder;
-    use yggdryl::{StructureType, arrow, DataType};
+    use yggdryl::{StructType, arrow, DataType};
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
     use std::sync::Arc;
 
-    let mut schema = DataType::from(StructureType::from_fields([
+    let mut schema = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])?)

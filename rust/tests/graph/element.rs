@@ -29,6 +29,7 @@ struct Report {
     crosshashcode: u64,
     identifiers: BTreeMap<String, String>,
     parents: Vec<Uuid>,
+    sources: Vec<Uuid>,
     unix: i64,
     state: State,
     seqnum: u64,
@@ -52,6 +53,7 @@ impl Report {
             crosshashcode: 0,
             identifiers: BTreeMap::new(),
             parents: Vec::new(),
+            sources: Vec::new(),
             unix,
             state: State::from_spelling("New").expect("a shipped state"),
             seqnum: 0,
@@ -120,6 +122,14 @@ impl Element for Report {
 
     fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
         self.parents = parents;
+    }
+
+    fn get_srcuuids(&self) -> &[Uuid] {
+        &self.sources
+    }
+
+    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+        self.sources = sources;
     }
 
     fn is_after(&self, other: &Self) -> bool {
@@ -303,6 +313,30 @@ fn an_element_answers_the_identities_codes_and_parents_it_was_given() {
     // An empty list makes it a root again.
     element.set_parentuuids(Vec::new());
     assert!(element.get_parentuuids().is_empty());
+
+    // The sources are the element's provenance, stated in the same way and
+    // kept apart from its lineage: a new element was read from nothing.
+    assert!(element.get_srcuuids().is_empty());
+    let sources = vec![Uuid::from_v8(70), Uuid::from_v8(71)];
+    element.set_srcuuids(sources.clone());
+    assert_eq!(element.get_srcuuids(), sources.as_slice());
+    assert!(
+        element.get_parentuuids().is_empty(),
+        "a source is no parent"
+    );
+    element.set_srcuuids(Vec::new());
+    assert!(element.get_srcuuids().is_empty());
+
+    // The lineage a follower takes: the parents, oldest first, then the
+    // element itself, each once.
+    element.set_curruuid(Uuid::from_v8(3));
+    element.set_parentuuids(vec![Uuid::from_v8(9), Uuid::from_v8(3), Uuid::from_v8(1)]);
+    assert_eq!(
+        element.lineage(),
+        [Uuid::from_v8(9), Uuid::from_v8(3), Uuid::from_v8(1)]
+    );
+    element.set_parentuuids(Vec::new());
+    assert_eq!(element.lineage(), [Uuid::from_v8(3)]);
 }
 
 #[test]
@@ -480,13 +514,22 @@ fn following_records_the_predecessor_and_refuses_what_cannot_follow() {
         .expect("a later element follows an earlier one");
     assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
     assert_eq!(second.get_prevunix(), Some(10));
-    // The place in the chain is the one after the predecessor's, and what
-    // the element itself says stays: its parents, its instant.
+    // The place in the chain is the one after the predecessor's, the
+    // parents are the predecessor's lineage, and what the element itself
+    // says stays: its instant.
     assert_eq!(second.get_seqnum(), 1);
-    assert!(second.get_parentuuids().is_empty());
+    assert_eq!(second.get_parentuuids(), [first.get_curruuid()]);
     assert_eq!(second.get_currunix(), 20);
+    // A chain of three ends with two parents, oldest first, the immediate
+    // predecessor last; following what it already follows changes nothing.
     let third = Report::at(4, 30).with_previous(&second).expect("follows");
     assert_eq!(third.get_seqnum(), 2);
+    assert_eq!(
+        third.get_parentuuids(),
+        [first.get_curruuid(), second.get_curruuid()]
+    );
+    assert_eq!(third.get_parentuuids(), second.lineage());
+    assert!(third.clone().with_previous(&second).is_none());
     let mut deep = Report::at(5, 40);
     deep.set_seqnum(u64::MAX);
     let capped = Report::at(6, 50).with_previous(&deep).expect("follows");
@@ -555,19 +598,26 @@ fn following_carries_the_lifecycle_forward() {
     assert_eq!(next.get_expirunix(), Some(200));
 
     // What the next element itself says moves nowhere: its instant, its
-    // code, its parents, and the cross code it states where the
+    // code, its sources, and the cross code it states where the
     // predecessor states none - with the cross element in step with it.
+    // Its parents are the chain's: the predecessor's lineage replaces the
+    // parent it named on its own. The predecessor's sources reach it not
+    // at all, because provenance travels along no chain.
     let mut own = Report::at(6, 50);
     own.set_currhashcode(0xABC);
     own.set_crosscode("Q-1".to_owned());
     own.set_parentuuids(vec![Uuid::from_v8(61)]);
+    own.set_srcuuids(vec![Uuid::from_v8(70)]);
+    let mut previous = previous.clone();
+    previous.set_srcuuids(vec![Uuid::from_v8(60)]);
     let own = own.with_previous(&previous).expect("follows");
     assert_eq!(own.get_currunix(), 50);
     assert_eq!(own.get_currhashcode(), 0xABC);
     assert_eq!(own.get_crosscode(), "Q-1");
     assert_eq!(own.get_crosshashcode(), crosshash("Q-1"));
     assert_eq!(own.get_crossuuid(), own.cross_uuid());
-    assert_eq!(own.get_parentuuids(), [Uuid::from_v8(61)]);
+    assert_eq!(own.get_parentuuids(), [previous.get_curruuid()]);
+    assert_eq!(own.get_srcuuids(), [Uuid::from_v8(70)]);
 
     // The names the predecessor went by carry forward where the next one
     // does not state them, and its own word stays where it does.
@@ -656,12 +706,14 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
     let mut live = live.with_previous(&first).expect("follows");
     live.set_snapunix(Some(20));
     // Its twin, as another hop logged it: the same instant, its own
-    // names, its own parents, a cross code of its own and a lifecycle it
-    // knows less of.
+    // names, its own parents, a cross code of its own, a line of its own
+    // and a lifecycle it knows less of.
+    live.set_srcuuids(vec![Uuid::from_v8(70)]);
     let mut twin = Report::at(2, 20);
     twin.set_crosscode("O-999".to_owned());
     twin.set_identifiers(identifiers([("ExecID", "E-2"), ("ClOrdID", "C-9")]));
     twin.set_parentuuids(vec![Uuid::from_v8(8), Uuid::from_v8(9)]);
+    twin.set_srcuuids(vec![Uuid::from_v8(71)]);
     twin.set_creaunix(Some(8));
     twin.set_expirunix(Some(99));
     let twin = twin.restating(&live);
@@ -675,10 +727,17 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
     assert_eq!(twin.get_crosshashcode(), crosshash("O-100"));
     assert_eq!(twin.get_crossuuid(), live.get_crossuuid());
     // The names it lacks are taken, its own word kept; the parents are the
-    // union in its order, then the live one's.
+    // union in its order, then the live one's - which following gave the
+    // chain's lineage. The sources stay the twin's own: the line it was
+    // read from, never the live one's, because provenance travels along no
+    // chain.
     assert_eq!(twin.get_identifiers()["ClOrdID"], "C-9");
     assert_eq!(twin.get_identifiers()["ExecID"], "E-2");
-    assert_eq!(twin.get_parentuuids(), [Uuid::from_v8(8), Uuid::from_v8(9)]);
+    assert_eq!(
+        twin.get_parentuuids(),
+        [Uuid::from_v8(8), Uuid::from_v8(9), first.get_curruuid()]
+    );
+    assert_eq!(twin.get_srcuuids(), [Uuid::from_v8(71)]);
     // The lifecycle folds: the earliest creation, the latest expiration,
     // the furthest state. What it says of itself - its instant - is its own.
     assert_eq!(twin.get_creaunix(), Some(5));
@@ -708,6 +767,7 @@ fn merging_folds_another_statement_of_the_same_element() {
     let mut first = Report::at(1, 10);
     first.set_currhashcode(0xA);
     first.set_parentuuids(vec![Uuid::from_v8(7)]);
+    first.set_srcuuids(vec![Uuid::from_v8(70)]);
     first.set_creaunix(Some(9));
     first.set_prevuuid(Some(Uuid::from_v8(0)));
     first.set_prevunix(Some(1));
@@ -716,6 +776,7 @@ fn merging_folds_another_statement_of_the_same_element() {
     later.set_currhashcode(0xB);
     later.set_crosscode("O-10".to_owned());
     later.set_parentuuids(vec![Uuid::from_v8(8), Uuid::from_v8(7)]);
+    later.set_srcuuids(vec![Uuid::from_v8(71), Uuid::from_v8(70)]);
     later.set_creaunix(Some(4));
     later.set_expirunix(Some(99));
     later.set_state(filled());
@@ -742,6 +803,12 @@ fn merging_folds_another_statement_of_the_same_element() {
     assert_eq!(
         merged.get_parentuuids(),
         [Uuid::from_v8(7), Uuid::from_v8(8)]
+    );
+    // The sources are the same union, once each: the merged statement was
+    // read from both lines.
+    assert_eq!(
+        merged.get_srcuuids(),
+        [Uuid::from_v8(70), Uuid::from_v8(71)]
     );
     // The lifecycle folds as following folds it.
     assert_eq!(merged.get_creaunix(), Some(4));
@@ -1202,6 +1269,8 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
     moved.set_curruuid(Uuid::from_v8(7));
     moved.set_currhashcode(0xAB);
     moved.set_crosshashcode(0xCD);
+    moved.set_crossuuid(Uuid::from_v8(77));
+    moved.set_srcuuids(vec![Uuid::from_v8(70)]);
     moved.set_creaunix(Some(1));
     moved.set_expirunix(Some(200));
     moved.set_snapunix(Some(10));
@@ -1256,6 +1325,92 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
 }
 
 #[test]
+fn the_identity_never_reads_the_cross_hash_the_cross_element_or_a_source() {
+    // The code and the identity are what an element states and when: the
+    // cross hash code and the cross element are derived from the cross
+    // code and a source is where the element was read, so none of the
+    // three is an input to either, on the crate's holder or on an
+    // implementor of the signatures alone.
+    let stated = trade(10);
+    let mut crossed = stated.clone();
+    crossed.set_crosshashcode(0xCD);
+    crossed.set_crossuuid(Uuid::from_v8(77));
+    crossed.set_srcuuids(vec![Uuid::from_v8(70)]);
+    assert_eq!(
+        crossed.digest_market_event().as_u64(),
+        stated.digest_market_event().as_u64()
+    );
+    assert_eq!(
+        crossed.time_uuid().expect("an identity"),
+        stated.time_uuid().expect("an identity")
+    );
+    // Finalized, the identity is the same and the cross facts are back in
+    // step with the cross code, which states none.
+    let mut finalized = crossed.clone();
+    finalized.finalize();
+    assert_eq!(finalized.get_curruuid(), stated.get_curruuid());
+    assert_eq!(finalized.get_currhashcode(), stated.get_currhashcode());
+    assert_eq!(finalized.get_crosshashcode(), 0);
+    assert_eq!(finalized.get_crossuuid(), finalized.get_curruuid());
+    assert_eq!(
+        finalized.get_srcuuids(),
+        [Uuid::from_v8(70)],
+        "kept, not fed"
+    );
+
+    let report = Report::at(1, 10);
+    let mut crossed = report.clone();
+    crossed.set_crosshashcode(0xCD);
+    crossed.set_crossuuid(Uuid::from_v8(77));
+    crossed.set_srcuuids(vec![Uuid::from_v8(70)]);
+    assert_eq!(
+        crossed.digest_event().as_u64(),
+        report.digest_event().as_u64()
+    );
+    assert_eq!(
+        crossed.time_uuid().expect("an identity"),
+        report.time_uuid().expect("an identity")
+    );
+}
+
+#[test]
+fn merging_two_incarnations_of_one_identity_unions_their_lineages_once() {
+    // Two incarnations of one identity, each walked behind a chain of its
+    // own: merged, the lineage is the union in this one's order, then the
+    // other's, each identity once, and merged again it moves nothing.
+    let root = Report::at(1, 10);
+    let branch = Report::at(2, 15).with_previous(&root).expect("follows");
+    let mut left = Report::at(5, 20).with_previous(&branch).expect("follows");
+    left.set_curruuid(Uuid::from_v8(5));
+    let other = Report::at(3, 12).with_previous(&root).expect("follows");
+    let mut right = Report::at(5, 30).with_previous(&other).expect("follows");
+    right.set_curruuid(Uuid::from_v8(5));
+    assert_eq!(
+        left.get_parentuuids(),
+        [root.get_curruuid(), branch.get_curruuid()]
+    );
+    assert_eq!(
+        right.get_parentuuids(),
+        [root.get_curruuid(), other.get_curruuid()]
+    );
+    let merged = left.clone().merge_with(&right).expect("the same element");
+    assert_eq!(
+        merged.get_parentuuids(),
+        [
+            root.get_curruuid(),
+            branch.get_curruuid(),
+            other.get_curruuid()
+        ]
+    );
+    // Each identity once: the same statement folded again changes nothing,
+    // and a fold that changes nothing is no fold.
+    assert!(
+        merged.clone().merge_with(&right).is_none(),
+        "a second merge changes nothing"
+    );
+}
+
+#[test]
 fn the_crates_own_holders_derive_their_identity_from_what_they_state() {
     // A market element's identity is its content: RFC 9562 UUIDv8 over the
     // code, so two elements stating the same things are one identity.
@@ -1306,6 +1461,7 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     event.set_crosscode("O-100".to_owned());
     event.set_identifiers(identifiers([("ClOrdID", "C-1")]));
     event.set_parentuuids(vec![Uuid::from_v8(9)]);
+    event.set_srcuuids(vec![Uuid::from_v8(70)]);
     event.set_state(filled());
     event.set_seqnum(3);
     event.set_creaunix(Some(at(5)));
@@ -1327,6 +1483,7 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     assert_eq!(element.get_crosshashcode(), event.get_crosshashcode());
     assert_eq!(element.get_identifiers(), event.get_identifiers());
     assert_eq!(element.get_parentuuids(), event.get_parentuuids());
+    assert_eq!(element.get_srcuuids(), [Uuid::from_v8(70)]);
     assert_eq!(element.get_px(), event.get_px());
     assert_eq!(element.get_currency(), event.get_currency());
     assert_eq!(element.get_qty(), event.get_qty());
@@ -1351,6 +1508,7 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     assert_eq!(back.get_snapunix(), None);
     assert_eq!(back.get_curruuid(), element.get_curruuid());
     assert_eq!(back.get_crosscode(), "O-100");
+    assert_eq!(back.get_srcuuids(), [Uuid::from_v8(70)]);
     assert_eq!(back.get_px(), event.get_px());
     assert_eq!(back.get_isincode(), event.get_isincode());
     assert_eq!(MarketElementData::from(&back), element);

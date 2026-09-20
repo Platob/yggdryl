@@ -23,9 +23,9 @@
     use std::sync::Arc;
 
     use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::{DataType, Field, Selector, StructureType};
+    use yggdryl::{DataType, Field, Selector, StructType};
 
-    let root = DataType::from(StructureType::from_fields([
+    let root = DataType::from(StructType::from_fields([
         DataType::utf8().nullable_field("ccy"),
         DataType::Int64.nullable_field("size"),
     ])?)
@@ -59,7 +59,7 @@
     assert_eq!(stored.fields()[2].get_metadata("TRANSFORM:expression"), Some("size * 2"));
     // A call over plain columns is stored as the function and its sources.
     let year: Selector = "year(event) as year".parse()?;
-    let dated = DataType::from(StructureType::from_fields([DataType::date32().required_field("event")])?).required_field("rows");
+    let dated = DataType::from(StructType::from_fields([DataType::date32().required_field("event")])?).required_field("rows");
     let stored_year = year.into_field(&dated)?;
     assert_eq!(stored_year.fields()[0].get_metadata("TRANSFORM:function"), Some("year"));
     assert_eq!(stored_year.fields()[0].get_metadata("TRANSFORM:sources"), Some(r#"["event"]"#));

@@ -279,6 +279,37 @@ pub(super) fn canonical_id(field: &Field) -> Result<FixId> {
     canonical_identity(field).map(|(_, id)| id)
 }
 
+/// What one registry field's metadata states that every reader of a
+/// message asks for, read once when the field is indexed and answered
+/// without a metadata read after.
+///
+/// A message's child is stated under the dictionary's own field, sharing
+/// its metadata, so what the field states the child states: the tag it
+/// carries, the group it counts, whether a rule restates it and whether
+/// the specification retired it. A field one of these does not read as
+/// its own - a stored tag that is not a tag - states no facts, and a
+/// reader asks the metadata as it always did.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct FieldFacts {
+    /// `FIX:tag`.
+    pub(super) tag: Option<i32>,
+    /// `FIX:counter`, on a group's count field.
+    pub(super) counter: Option<i32>,
+    /// Whether the field carries a replacement rule.
+    pub(super) ruled: bool,
+}
+
+impl FieldFacts {
+    pub(super) fn of(field: &Field) -> Option<Self> {
+        let view = field.as_fix();
+        Some(Self {
+            tag: view.tag().ok()?,
+            counter: view.counter().ok()?,
+            ruled: view.replacements().next_ok().is_some(),
+        })
+    }
+}
+
 /// FIX field definitions resolved by identity, tag or folded name.
 pub struct FixRegistry {
     fields: Vec<Field>,
@@ -297,6 +328,17 @@ pub struct FixRegistry {
     /// field's own view costs. Kept in step by [`Self::index`], which runs
     /// after every change to `fields`.
     identities: Vec<Option<(i32, FixId)>>,
+    /// What each field's metadata states, by position, read when the field
+    /// is indexed; and each field's position by the address of its
+    /// metadata storage, which a message's child stated under the field
+    /// shares. Kept in step by [`Self::index`] and [`Self::unindex`].
+    facts: Vec<Option<FieldFacts>>,
+    by_metadata: FixMap<usize, usize>,
+    /// What this dictionary has answered about itself - a key's field, a
+    /// field's null spellings, a code's translation - shared by every codec
+    /// and every row read against it, and forgotten by every change to the
+    /// fields.
+    memo: super::memo::Memo,
     /// The `FIX:derivation` of every field, compiled once on the first
     /// enrichment or row fill and shared by every codec and message reading
     /// this registry - or the refusal that compile answered, kept the same
@@ -353,6 +395,9 @@ impl FixRegistry {
             aliases: Index::default(),
             positions_by_id: Vec::new(),
             identities: Vec::new(),
+            facts: Vec::new(),
+            by_metadata: FixMap::default(),
+            memo: super::memo::Memo::new(),
             derivations: OnceLock::new(),
         };
         match super::fix_crate_fields() {
@@ -975,7 +1020,7 @@ impl FixRegistry {
     /// last and wins.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry, StructureType};
+    /// use yggdryl::{DataType, FixRegistry, StructType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut symbol = DataType::utf8().nullable_field("Symbol");
@@ -986,7 +1031,7 @@ impl FixRegistry {
     /// symbol.as_fix_mut().set_description("Ticker symbol")?;
     /// let mut price = DataType::Float64.nullable_field("Price");
     /// price.as_fix_mut().set_tag(44)?;
-    /// let instrument = DataType::from(StructureType::from_fields([DataType::utf8().nullable_field("Symbol")])?)
+    /// let instrument = DataType::from(StructType::from_fields([DataType::utf8().nullable_field("Symbol")])?)
     ///     .required_field("Instrument");
     /// assert_eq!(registry.add_fields([symbol, price, instrument])?, (2, 1));
     /// assert_eq!(registry.field_by_tag(55)?.description(), Some("Ticker symbol"));
@@ -1030,13 +1075,13 @@ impl FixRegistry {
     /// Answers the count added and the count merged, over the fields.
     ///
     /// ```
-    /// use yggdryl::{DataType, FixRegistry, StructureType};
+    /// use yggdryl::{DataType, FixRegistry, StructType};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut symbol = DataType::utf8().nullable_field("Symbol");
     /// symbol.as_fix_mut().set_tag(55)?;
     /// let mut held = FixRegistry::from_fields([symbol.clone()])?;
-    /// held.insert(DataType::from(StructureType::from_fields([symbol.clone()])?).required_field("Instrument"))?;
+    /// held.insert(DataType::from(StructType::from_fields([symbol.clone()])?).required_field("Instrument"))?;
     ///
     /// // The other dictionary holds the same field under its own tag, with a
     /// // second name, and knows one more member of the component.
@@ -1045,7 +1090,7 @@ impl FixRegistry {
     /// ticker.as_fix_mut().set_names(["Ticker"])?;
     /// let mut other = FixRegistry::from_fields([ticker])?;
     /// let venue = DataType::utf8().nullable_field("VenueSymbol");
-    /// other.insert(DataType::from(StructureType::from_fields([symbol, venue])?).required_field("Instrument"))?;
+    /// other.insert(DataType::from(StructType::from_fields([symbol, venue])?).required_field("Instrument"))?;
     ///
     /// // Symbol and the two standard clock seeds merge.
     /// assert_eq!(held.merge_with(&other)?, (0, 3));
@@ -1323,8 +1368,12 @@ impl FixRegistry {
         }
         self.unindex(position, position);
         self.derivations.take();
+        // The field departing may be the last, which `index` never touches
+        // again: the memo forgets what it answered for it here.
+        self.memo.clear();
         let removed = self.fields.swap_remove(position);
         let departed = self.identities.swap_remove(position);
+        self.facts.swap_remove(position);
         if position != last {
             self.index(position);
         }
@@ -1499,13 +1548,43 @@ impl FixRegistry {
     /// definition's member, a message's child - answers what its own
     /// metadata says, exactly as [`FixField::id`](crate::FixField::id) does.
     pub(super) fn identity_of(&self, field: &Field) -> Option<(i32, FixId)> {
+        match self.position_of_own(field) {
+            Some(at) => self.identities.get(at).copied().flatten(),
+            None => canonical_identity(field).ok(),
+        }
+    }
+
+    /// The position of a borrowed field that points into this registry's
+    /// own storage.
+    fn position_of_own(&self, field: &Field) -> Option<usize> {
         let start = self.fields.as_ptr() as usize;
         let at =
             (std::ptr::from_ref(field) as usize).wrapping_sub(start) / std::mem::size_of::<Field>();
-        match self.fields.get(at) {
-            Some(held) if std::ptr::eq(held, field) => self.identities.get(at).copied().flatten(),
-            _ => canonical_identity(field).ok(),
+        self.fields
+            .get(at)
+            .filter(|held| std::ptr::eq(*held, field))
+            .map(|_| at)
+    }
+
+    /// What `field`'s metadata states, read off the index: for one of this
+    /// registry's own fields, and for a field sharing its metadata with
+    /// one - a message's child stated under the dictionary's field - so a
+    /// reader of a million rows reads the dictionary once. Nothing for a
+    /// field the registry does not know, whose metadata the reader asks
+    /// as it always did.
+    pub(super) fn facts_of(&self, field: &Field) -> Option<FieldFacts> {
+        if let Some(at) = self.position_of_own(field) {
+            return self.facts.get(at).copied().flatten();
         }
+        let storage = field.as_metadata().storage_address();
+        if let Some(position) = self.by_metadata.get(&storage).copied() {
+            if let Some(held) = self.fields.get(position) {
+                if held.as_metadata().shares_storage_with(field.as_metadata()) {
+                    return self.facts.get(position).copied().flatten();
+                }
+            }
+        }
+        self.catalog.facts_of(field)
     }
 
     /// Every key `field` holds proven free of every field but `owner`.
@@ -1577,8 +1656,9 @@ impl FixRegistry {
 
     fn index(&mut self, position: usize) {
         // Every change to the fields lands here, so what was compiled off
-        // them is forgotten here too.
+        // them, and what was answered off them, is forgotten here too.
         self.derivations.take();
+        self.memo.clear();
         let Some(field) = self.fields.get(position) else {
             return;
         };
@@ -1590,6 +1670,13 @@ impl FixRegistry {
             self.identities.resize(position + 1, None);
         }
         self.identities[position] = identity;
+        let facts = FieldFacts::of(field);
+        if position >= self.facts.len() {
+            self.facts.resize(position + 1, None);
+        }
+        self.facts[position] = facts;
+        self.by_metadata
+            .insert(field.as_metadata().storage_address(), position);
         let Some((tag, id)) = identity else {
             return;
         };
@@ -1616,6 +1703,10 @@ impl FixRegistry {
         let Some(field) = self.fields.get(position) else {
             return;
         };
+        let storage = field.as_metadata().storage_address();
+        if self.by_metadata.get(&storage) == Some(&pointing_at) {
+            self.by_metadata.remove(&storage);
+        }
         let view = field.as_fix();
         if let Ok((tag, id)) = canonical_identity(field) {
             if self.ids.get(&id) == Some(&pointing_at) {
@@ -1723,6 +1814,12 @@ impl FixRegistry {
     /// catalog change that lands without staging a clone calls this.
     pub(super) fn forget_derivations(&mut self) {
         self.derivations.take();
+        self.memo.clear();
+    }
+
+    /// What this dictionary has answered about itself.
+    pub(super) fn memo(&self) -> &super::memo::Memo {
+        &self.memo
     }
 }
 
@@ -1743,6 +1840,9 @@ impl Clone for FixRegistry {
             aliases: self.aliases.clone(),
             positions_by_id: self.positions_by_id.clone(),
             identities: self.identities.clone(),
+            facts: self.facts.clone(),
+            by_metadata: self.by_metadata.clone(),
+            memo: super::memo::Memo::new(),
             derivations: OnceLock::new(),
         }
     }

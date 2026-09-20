@@ -194,6 +194,32 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
         FixCodec(seed, branch="cme")  # type: ignore[call-arg]
 
 
+def test_threads_read_what_one_thread_reads_and_a_message_carries_its_rows_cells(
+    seed: FixRegistry,
+) -> None:
+    one = _fixed(seed)
+    four = _fixed(seed, threads=4)
+    assert one.threads == 1
+    assert four.threads == 4
+    assert _fixed(seed, threads=0).threads == 1
+
+    # The line doors answer on four threads what they answer on one: the
+    # same messages, in the same order.
+    def stated(messages: Iterator[Any]) -> list[tuple[Scalar, bytes]]:
+        return [(held.curruuid, held.into_bytes(ord("|"))) for held in messages]
+
+    assert stated(four.parse_lines(CAPTURE)) == stated(one.parse_lines(CAPTURE))
+    parsed = four.parse_text_arrow_reader(_capture(CAPTURE, 3)).read_all()
+    assert parsed.equals(one.parse_text_arrow_reader(_capture(CAPTURE, 3)).read_all())
+    assert stated(four.messages(parsed)) == stated(one.messages(parsed))
+
+    # A message read back out of a row carries the row's own cells - the
+    # body its line was cut from - and one parsed from bytes carries none.
+    held = next(iter(one.messages(parsed)))
+    assert dict(held.carried)["body"].as_py() == CAPTURE[0]
+    assert next(one.parse_line(CAPTURE[0])).carried == []
+
+
 def test_the_schema_is_decided_before_the_first_row_is_read(seed: FixRegistry) -> None:
     reader = _fixed(seed).parse_text_arrow_reader(_capture([], 1))
     names = reader.schema.names
@@ -371,8 +397,8 @@ def test_a_row_reads_back_into_the_message_that_made_it(seed: FixRegistry) -> No
     assert FixMsg.from_row(schema, row).registry is not None
 
 
-def test_a_captures_own_columns_never_reach_the_message(seed: FixRegistry) -> None:
-    """A message is what parsing a line answered, and nothing the reader said."""
+def test_a_captures_own_columns_are_carried_and_never_become_facts(seed: FixRegistry) -> None:
+    """A message carries what the reader said about its line, and states none of it."""
     codec = _fixed(seed)
     capture = Field(
         "line",
@@ -387,30 +413,40 @@ def test_a_captures_own_columns_never_reach_the_message(seed: FixRegistry) -> No
     assert schema.field("url").nullable
     parsed = _one(codec, ORDER)
 
-    # A parsed message has no capture columns: they are null in its row, the
-    # one the crate tags among them.
+    # A message parsed out of a line carries nothing: the capture's own
+    # columns are null in its row, the one the crate tags among them.
+    assert parsed.carried == []
     row = parsed.into_row(schema)
     held_row = row.as_py()
     for carrier in ("url", "rownum", "body", "sourceurl"):
         assert held_row[schema.index_of(carrier)] is None, carrier
 
-    # A row a reader stated them on reads back holding none of them: no
-    # child, no entry, and nothing to answer by name.
+    # A row a reader stated them on reads back carrying them, each under its
+    # column's name: no child, no entry, nothing to answer by name, and the
+    # content identity untouched.
     stated = list(held_row)
     stated[schema.index_of("url")] = "file:///capture.log"
     stated[schema.index_of("rownum")] = 42
     again = FixMsg.from_row(schema, stated, seed)
     assert again.entries() == parsed.entries()
+    assert again.currhashcode == parsed.currhashcode
+    assert {name: value.as_py() for name, value in again.carried} == {
+        "url": "file:///capture.log",
+        "rownum": 42,
+    }
     for carrier in ("url", "rownum", "body"):
         assert again.field.index_of(carrier) is None, carrier
     # And writing one onto the message is refused rather than silently kept.
     with pytest.raises(ValueError):
         again.set("sourceurl", "file:///capture.log")
 
-    # So a message alone writes them null: the readers restate them.
+    # So a message states them again at their columns, and nowhere else.
     written = again.into_row(schema).as_py()
-    for carrier in ("url", "rownum", "body", "sourceurl"):
+    assert written[schema.index_of("url")] == "file:///capture.log"
+    assert written[schema.index_of("rownum")] == 42
+    for carrier in ("body", "sourceurl"):
         assert written[schema.index_of(carrier)] is None, carrier
+    assert "65026=" not in again.into_text("|")
 
 
 def test_a_row_without_the_entries_column_has_no_content(seed: FixRegistry) -> None:

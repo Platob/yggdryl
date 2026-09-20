@@ -130,7 +130,7 @@ impl Placeholders {
     /// key is not a string.
     pub fn from_variables(variables: &Scalar) -> Result<Self> {
         let mut placeholders = Self::new();
-        if let Some(entries) = variables.as_record() {
+        if let Some(entries) = variables.as_struct() {
             placeholders.variables.extend(
                 entries
                     .iter()
@@ -305,7 +305,7 @@ fn walk(value: Scalar, placeholders: &Placeholders, path: &mut String) -> Result
             }
             Scalar::from_mapping(replaced)
         }
-        Scalar::Record(entries) => {
+        Scalar::Struct(entries) => {
             let mut replaced = Vec::with_capacity(entries.as_map().len());
             for (name, held) in entries.as_map() {
                 let mark = path.len();
@@ -319,7 +319,7 @@ fn walk(value: Scalar, placeholders: &Placeholders, path: &mut String) -> Result
                 path.truncate(mark);
                 replaced.push((SmolStr::new(name), held));
             }
-            Scalar::from_record(replaced)
+            Scalar::from_struct(replaced)
         }
         // Every other value is moved through untouched: only string scalars can
         // hold a placeholder, in any of the three formats.

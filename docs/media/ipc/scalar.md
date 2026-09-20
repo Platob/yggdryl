@@ -8,7 +8,7 @@ Native rows - a tuple, a mapping, a dataclass, a plain object - in and out of an
 | --- | --- |
 | Writes | `overwrite_records`, `append_records`, `merge_records`, `write_records`; a row is anything that converts into a [`Scalar`](../../types/scalar.md) |
 | Reads | Python `read_records`, JavaScript `readRecords`; Rust reads Arrow and crosses with `ArrowScalar::into_scalar` |
-| Row shape | an ordered `Scalar::Sequence` under the root, or a name-sorted `Scalar::Record` resolved to that order |
+| Row shape | an ordered `Scalar::Sequence` under the root, or a name-sorted `Scalar::Struct` resolved to that order |
 | Schema | `options.field` declares the root; a non-empty mapping or dataclass source infers it, a positional one cannot |
 | Batching | rows are grouped into batches bounded by `batch_row_size` and published on the `commit_row_size` cadence |
 | Documents | `read_scalar` and `write_scalar` are structured-text calls; an IPC name refuses them |
@@ -22,7 +22,7 @@ The three intents carry the same rows as the [batch surface](arrow.md), one row 
     ```rust
     use yggdryl::holder::Buffer;
     use yggdryl::media::IORecordOptions;
-    use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, StructureType};
+    use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, StructType};
 
     struct Quote(i64, &'static str);
 
@@ -32,7 +32,7 @@ The three intents carry the same rows as the [batch surface](arrow.md), one row 
         }
     }
 
-    let field = DataType::from(StructureType::from_fields([
+    let field = DataType::from(StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().required_field("venue"),
     ])?)

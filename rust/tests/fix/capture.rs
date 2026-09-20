@@ -457,8 +457,12 @@ fn a_document_is_one_unknown_row_at_every_door() {
     // the byte door and at the line door alike: one message stating no type,
     // no entries, and nothing on the wire but the version every built
     // message states.
-    let line =
-        TextLine::from_bytes(0, TextBytes::from_bytes(STRANGER.as_bytes()).unwrap()).unwrap();
+    let line = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(STRANGER.as_bytes()).unwrap(),
+        std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+    )
+    .unwrap();
     let unknown = |message: yggdryl::FixMsg, door: &str| {
         assert_eq!(message.as_field().name(), "unknown", "{door}");
         assert!(message.entries().is_empty(), "{door}");
@@ -490,7 +494,7 @@ fn a_document_is_one_unknown_row_at_every_door() {
 
     // And on the batch door a row that carried a document is a row carrying
     // its own source columns, exactly as it is at the other two.
-    let field = yggdryl::StructureType::from_fields([
+    let field = yggdryl::StructType::from_fields([
         yggdryl::DataType::utf8().required_field("url"),
         yggdryl::DataType::Int64.required_field("rownum"),
         yggdryl::DataType::binary().required_field("body"),

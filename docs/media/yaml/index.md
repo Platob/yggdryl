@@ -61,7 +61,7 @@ Rust returns the shared `Scalar`; Python and JavaScript project it into native o
     value = yaml.loads("symbol: AAPL\nquantity: 2\n", cls=Scalar)
     encoded = yaml.dumps(value)
 
-    assert value.kind == "record"
+    assert value.kind == "struct"
     assert value.as_py() == natural == {"quantity": 2, "symbol": "AAPL"}
     assert encoded == b"quantity: 2\nsymbol: AAPL\n"
     assert yaml.loads(encoded, cls=Scalar) == value
@@ -78,7 +78,7 @@ Rust returns the shared `Scalar`; Python and JavaScript project it into native o
     const encoded = yaml.dumps(value)
 
     assert.ok(value instanceof Scalar)
-    assert.equal(value.kind, 'record')
+    assert.equal(value.kind, 'struct')
     assert.deepEqual(value.asJs(), natural)
     assert.ok(Buffer.isBuffer(encoded))
     assert.equal(encoded.toString(), 'quantity: 2\nsymbol: AAPL\n')

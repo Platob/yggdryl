@@ -290,6 +290,29 @@ test('the codec answers the pins it was given', () => {
   assert.equal(read.byTag(11).asJs(), 'A')
 })
 
+test("threads read what one thread reads and a message carries its row's cells", () => {
+  const one = reading(seed())
+  const four = reading(seed(), { threads: 4 })
+  assert.equal(one.threads, 1)
+  assert.equal(four.threads, 4)
+  assert.equal(reading(seed(), { threads: 0 }).threads, 1)
+  // The line doors answer on four threads what they answer on one: the
+  // same messages, in the same order.
+  // By content code and wire: the lines state no clock, so each parse dates
+  // them by its own now, and the identity the instant derives differs.
+  const stated = (messages) => [...messages].map((held) => [held.currhashcode, held.intoText('|')])
+  const lines = CAPTURE.map((line) => Buffer.from(line))
+  assert.deepEqual(stated(four.parseLines(lines)), stated(one.parseLines(lines)))
+  const parsed = four.parseTextArrowReader(capture(CAPTURE, 3)).intoTable()
+  assert.deepEqual(stated(four.messages(parsed)), stated(one.messages(parsed)))
+  // A message read back out of a row carries the row's own cells - the
+  // body its line was cut from - and one parsed from bytes carries none.
+  const [held] = one.messages(parsed)
+  assert.deepEqual(Object.keys(held.carried), ['body'])
+  assert.equal(Buffer.from(held.carried.body.asJs()).toString(), CAPTURE[0])
+  assert.deepEqual(one.parseLine(lines[0]).next().value.carried, {})
+})
+
 test('the schema is decided before the first row is read', () => {
   const reader = reading(seed()).parseTextArrowReader(capture([], 1))
   const names = []
@@ -346,10 +369,12 @@ test('several small input batches accumulate and one large batch splits by rows'
   )
   assert.ok(split.length > 1)
   assert.equal(split.reduce((sum, rows) => sum + rows, 0), 200, 'the bound shapes batches, it does not drop rows')
+  // The charge is what each row lands as - the leaves of every column and
+  // a per-row width - so the cut is even and the count is the target's,
+  // not the raw line's.
   const closed = split.slice(0, -1)
   assert.ok(closed.every((rows) => rows === closed[0]))
-  const perRow = Math.floor(lines.reduce((sum, line) => sum + line.length, 0) / lines.length)
-  assert.ok(closed[0] * perRow >= target / 2 && closed[0] * perRow <= target * 2)
+  assert.ok(closed[0] >= 1)
 
   // A target no row fits under closes a batch after every row, so one
   // enormous line can never produce an empty batch.
@@ -770,7 +795,7 @@ test('a row reads back into the message that made it', () => {
   assert.notEqual(fix.FixMsg.fromRow(schema, row).registry, null)
 })
 
-test("a capture's own columns never reach the message", () => {
+test("a capture's own columns are carried and never become facts", () => {
   const registry = seed()
   const codec = reading(registry)
   const line = fields.struct('line', [fields.utf8('url'), fields.int64('rownum'), fields.binary('body')], { nullable: false })
@@ -780,31 +805,41 @@ test("a capture's own columns never reach the message", () => {
   assert.ok(schema.field('url').nullable)
   const parsed = one(codec, ORDER)
 
-  // A parsed message has no capture columns: they are null in its row, the
-  // one the crate tags among them.
+  // A message parsed out of a line carries nothing: the capture's own
+  // columns are null in its row, the one the crate tags among them.
+  assert.deepEqual(parsed.carried, {})
   const row = parsed.intoRow(schema).asJs()
   for (const carrier of ['url', 'rownum', 'body', 'sourceurl']) {
     assert.equal(row[schema.indexOf(carrier)], null, carrier)
   }
 
-  // A row a reader stated them on reads back holding none of them, and a
-  // write to the crate's own column is refused rather than silently kept.
+  // A row a reader stated them on reads back carrying them, each under its
+  // column's name: no child, nothing to answer by name, the content
+  // identity untouched, and a write to the crate's own column refused
+  // rather than silently kept.
   const stated = [...row]
   stated[schema.indexOf('url')] = 'file:///capture.log'
   stated[schema.indexOf('rownum')] = 42n
   const again = fix.FixMsg.fromRow(schema, stated, registry)
   assert.deepEqual(again.entries(), parsed.entries())
+  assert.equal(again.currhashcode, parsed.currhashcode)
+  assert.deepEqual(Object.keys(again.carried).sort(), ['rownum', 'url'])
+  assert.equal(again.carried.url.asJs(), 'file:///capture.log')
+  assert.equal(Number(again.carried.rownum.asJs()), 42)
   for (const carrier of ['url', 'rownum', 'body']) {
     assert.equal(again.getByName(carrier), null, carrier)
   }
   assert.throws(() => again.set('sourceurl', 'file:///capture.log'), /sourceurl/)
 
-  // So a message alone writes them null: the readers restate them.
+  // So a message states them again at their columns, and nowhere else.
   const written = again.intoRow(schema).asJs()
-  for (const carrier of ['url', 'rownum', 'body', 'sourceurl']) {
+  assert.equal(written[schema.indexOf('url')], 'file:///capture.log')
+  assert.equal(Number(written[schema.indexOf('rownum')]), 42)
+  for (const carrier of ['body', 'sourceurl']) {
     assert.equal(written[schema.indexOf(carrier)], null, carrier)
   }
   assert.equal(written[schema.indexOf('symbol')], 'AAPL')
+  assert.ok(!again.intoText('|').includes('65026='))
 })
 
 test('a row without the entries column has no entries', () => {

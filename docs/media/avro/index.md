@@ -167,7 +167,7 @@ A `Schema` resolves namespaces, aliases, defaults, and recursive references at p
                                         "precision": 10, "scale": 2}}
         ]}"#,
     )?;
-    let row = Scalar::from_record([
+    let row = Scalar::from_struct([
         (
             "day",
             Scalar::date32_in(19_782, TimeUnit::Day, Timezone::NAIVE)?,

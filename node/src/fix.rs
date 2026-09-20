@@ -27,7 +27,7 @@ mod catalog;
 
 pub use catalog::JsMsgType;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 use std::thread::ThreadId;
 
@@ -744,22 +744,27 @@ pub struct FixEventView {
     /// over the `crosshashcode`, or `curruuid` when no cross code names a
     /// chain.
     pub crossuuid: String,
-    /// The code the chain is named by: the first stated of `OrderID(37)`,
-    /// `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)`
-    /// and `MDReqID(262)`, or empty.
+    /// The code the chain is named by: the bridge's `msgsessionid:msgctxid`
+    /// where the row header stated both, else the first stated of
+    /// `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`,
+    /// `QuoteReqID(131)` and `MDReqID(262)`, or empty.
     pub crosscode: String,
-    /// The XXH3-64 of the event, the text, the metadata, the header and the
-    /// row.
+    /// The XXH3-64 of the event, the text, the metadata, the lifted fields
+    /// and the row - every field but the standard header and trailer.
     pub currhashcode: BigInt,
     /// The XXH3-64 of the cross code, `0n` where there is none.
     pub crosshashcode: BigInt,
     /// The identifiers the message is known by, scheme to value, sorted.
     #[napi(ts_type = "Record<string, string>")]
     pub identifiers: BTreeMap<String, String>,
-    /// The UUIDs of the messages this one descends from.
+    /// The UUIDs of the messages this one descends from: the whole chain
+    /// before it, oldest first.
     pub parentuuids: Vec<String>,
-    /// When the event happened: `TransactTime(60)` where the message states
-    /// one with a clock, else its sending time.
+    /// The UUIDs of the elements this one was read from: the text line it
+    /// was parsed out of, and none for one parsed from bytes.
+    pub srcuuids: Vec<String>,
+    /// When the event happened: the message's sending time, the one clock
+    /// every message carries.
     pub currunix: BigInt,
     /// The order state the message reached, ranked: `20NEW`, `80FILLED`.
     pub state: String,
@@ -861,6 +866,7 @@ fn event_view(event: &MarketEventData) -> Result<FixEventView> {
         crosshashcode: BigInt::from(event.get_crosshashcode()),
         identifiers: identifiers_view(event),
         parentuuids: parents_view(event),
+        srcuuids: sources_view(event),
         currunix: instant(event.get_currunix()),
         state: event.get_state().as_str().to_owned(),
         seqnum: exact_f64(event.get_seqnum(), "seqnum")?,
@@ -905,6 +911,15 @@ fn identifiers_view(event: &MarketEventData) -> BTreeMap<String, String> {
 fn parents_view(event: &MarketEventData) -> Vec<String> {
     event
         .get_parentuuids()
+        .iter()
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// The sources an event states, each as its text.
+fn sources_view(event: &MarketEventData) -> Vec<String> {
+    event
+        .get_srcuuids()
         .iter()
         .map(ToString::to_string)
         .collect()
@@ -981,12 +996,16 @@ fn header_view(header: &FixHeader) -> Result<FixHeaderView> {
 /// plain values.
 ///
 /// What the line itself said about the capture it was written for: a
-/// bridge's own row header. None of it is FIX, none is content, and none
-/// reaches the code the message digests to.
+/// bridge's own row header. None of it is FIX and none is content, so none
+/// of it is an entry or on the wire; where the row header brackets both a
+/// session instance and a message context, the two name the chain through
+/// the cross code, which is the chain's identity and not the message's,
+/// and which the content code leaves out.
 ///
 /// What the *reader* said about the line - the object it came out of, when
-/// it was recorded - is held nowhere on a message: those are the capture's
-/// own columns, and they are read off the row.
+/// it was recorded - is not here: those are the capture's own columns,
+/// which the message carries under their names - `carried` - and `intoRow`
+/// states again.
 #[napi(object, object_from_js = false)]
 pub struct FixCaptureView {
     /// The plugin that logged the line inside a bridge, as the bridge names
@@ -1025,8 +1044,10 @@ fn capture_view(capture: &FixCapture) -> FixCaptureView {
 /// by its facts and its row, against the registry it was resolved against.
 ///
 /// Every message carries its identity settled: the cross code read off the
-/// first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
-/// over it, the `currhashcode` over everything the message says, the `curruuid`
+/// bridge's `msgsessionid:msgctxid` where the row header stated both, else
+/// the first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
+/// over it, the `currhashcode` over everything the message says but the
+/// standard header and trailer, the `curruuid`
 /// over its instant and that hash, and the `crossuuid` over the cross hash -
 /// or the `curruuid` itself when no cross code names a chain. Every write
 /// settles it again.
@@ -1056,10 +1077,10 @@ impl JsFixMsg {
     /// against `field`. A child stating a typed fact - a header or trailer
     /// tag, a crate column, one of the FIX fields a message lifts,
     /// `Text(58)` - fills the holder that owns it and leaves the row. `SendingTime` reads UTC now
-    /// when the value states none; the event's instant is `TransactTime(60)`
-    /// where it states one with a clock, else the sending time; the creation
-    /// instant is `OrigSendingTime(122)` else that instant. The identity is
-    /// then settled.
+    /// when the value states none; the event's instant is the stated one,
+    /// else that sending time, and the creation the stated one, else the
+    /// instant - what `TransactTime(60)` or `OrigSendingTime(122)` says is
+    /// the lifecycle's to read. The identity is then settled.
     #[napi(constructor)]
     pub fn new(
         field: &JsField,
@@ -1082,11 +1103,12 @@ impl JsFixMsg {
     /// through the dictionary exactly as the builder types a pair, so
     /// `intoBytes` re-emits the line the row was read from; a row without
     /// that column has the typed facts and no content. Every capture column
-    /// is read past - the one the crate tags, `sourceurl`, and every column
-    /// no tag and no counter names - so nothing on the message holds one; a
-    /// column whose name holds a `.` is a bridge's own statement and lands
-    /// in the metadata. They stay the row's, and whoever writes rows back
-    /// restates them. Nothing is parsed again and no clock is read. The
+    /// is carried - the one the crate tags, `sourceurl`, and every column
+    /// no tag and no counter names - each under its name, as `carried`
+    /// answers, and held as no fact; a column whose name holds a `.` is a
+    /// bridge's own statement and lands in the metadata. `intoRow` states
+    /// each carried cell again at its column. Nothing is parsed again and
+    /// no clock is read. The
     /// process default is the registry when none is named.
     #[napi(factory)]
     pub fn from_row(
@@ -1225,10 +1247,34 @@ impl JsFixMsg {
         self.inner.get_prevuuid().map(|uuid| uuid.to_string())
     }
 
-    /// The identities of the messages this one descends from.
+    /// The identities of the messages this one descends from: the whole
+    /// chain before it, oldest first.
     #[napi(getter)]
     pub fn parentuuids(&self) -> Vec<String> {
         parents_view(self.inner.event())
+    }
+
+    /// The identities of the elements this one was read from: the text line
+    /// it was parsed out of, and none for one parsed from bytes. Provenance,
+    /// never lineage: no walk moves it.
+    #[napi(getter)]
+    pub fn srcuuids(&self) -> Vec<String> {
+        sources_view(self.inner.event())
+    }
+
+    /// The capture's own cells the message carries, each under the column
+    /// it was read from: where the line was read from, its place in the
+    /// object, the body it was cut from, when it was recorded. Provenance
+    /// and never content - none is an entry, none reaches the wire or the
+    /// hash code - and `intoRow` states each again at its column. Empty
+    /// for a message parsed from bytes.
+    #[napi(getter, ts_return_type = "Record<string, Scalar>")]
+    pub fn carried(&self) -> HashMap<String, JsScalar> {
+        self.inner
+            .carried()
+            .iter()
+            .map(|(name, value)| (name.to_string(), JsScalar::from_core(value.clone())))
+            .collect()
     }
 
     /// The identifiers the message is known by, scheme to value, sorted.
@@ -1918,7 +1964,10 @@ impl JsFixCodec {
     /// `"R"` - the core's `Send` code when unstated and no pin at all when
     /// empty; `batchByteSize` and `batchRowSize` are the raw bytes and the
     /// rows one Arrow batch targets, the core's 128 MiB and 32,768 rows when
-    /// unstated, whichever the batch reaches first; `includeMsgtypes` and
+    /// unstated, whichever the batch reaches first; `threads` is how many
+    /// threads the line and row doors read on, one when unstated - more
+    /// read a stream a chunk ahead, each line on some thread, and answer in
+    /// the lines' order; `includeMsgtypes` and
     /// `excludeMsgtypes` are the message types a parse keeps and refuses,
     /// each read before a frame is built and spelled as a code or a name -
     /// `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type - the
@@ -1963,6 +2012,12 @@ impl JsFixCodec {
             let rows = usize::try_from(rows)
                 .map_err(|_| napi_error("batchRowSize must not be negative"))?;
             inner = inner.with_batch_row_size(rows);
+        }
+        if let Some(held) = options.threads {
+            let threads = exact_i64(held, "threads")?;
+            let threads =
+                usize::try_from(threads).map_err(|_| napi_error("threads must not be negative"))?;
+            inner = inner.with_threads(threads);
         }
         if let Some(held) = options.include_msgtypes {
             inner = inner.with_include_msgtypes(held);
@@ -2030,6 +2085,14 @@ impl JsFixCodec {
     #[napi(getter)]
     pub fn batch_row_size(&self) -> f64 {
         self.inner.batch_row_size() as f64
+    }
+
+    /// The threads the line and row doors read on; one reads a stream
+    /// where it stands.
+    #[allow(clippy::cast_precision_loss)]
+    #[napi(getter)]
+    pub fn threads(&self) -> f64 {
+        self.inner.threads() as f64
     }
 
     /// The message types a parse keeps, empty where it keeps every type the
@@ -2189,8 +2252,8 @@ impl JsFixCodec {
     ///
     /// The schema is decided before the first row: the capture's own columns
     /// lead and the fixed FIX columns follow. Every row is parsed as the
-    /// line door parses one, and batches close on the raw bytes of
-    /// the payload column against `batchByteSize`. The source is consumed.
+    /// line door parses one, and batches close on the bytes each row lands
+    /// as against `batchByteSize`. The source is consumed.
     ///
     /// The capture's own columns fill nothing: the carried ones, and the one
     /// the crate tags - a `sourceurl` column - are read off the source row
@@ -2213,10 +2276,10 @@ impl JsFixCodec {
     /// and written back under the **same** schema, so a carried column
     /// returns to its place. Nothing is parsed again. The source is consumed.
     ///
-    /// A carried column returns to its place because the door keeps it, not
-    /// because the message does: each row's own cells travel beside the
-    /// message it made and are stated again where that message lands. The
-    /// pairing is by message and never by position - a walk answers messages
+    /// A carried column returns to its place because the message carries
+    /// it: each row's own cells are read into the message it made, under
+    /// their names, and stated again where that message lands. The pairing
+    /// is by message and never by position - a walk answers messages
     /// in their own order, which a capture's lines are routinely not in.
     #[napi]
     pub fn lifecycle_arrow_reader(&self, source: &mut JsBatchReader) -> Result<JsBatchReader> {
@@ -2235,10 +2298,9 @@ impl JsFixCodec {
     /// without a parse. One half of what the Arrow twins compose;
     /// `arrowReader` is the other. The source is consumed.
     ///
-    /// The capture's own columns are not carried: a message holds none of
-    /// them, so `arrowReader(schema, messages(reader))` answers them null
-    /// where `lifecycleArrowReader(reader)` keeps them. A stage that has to
-    /// keep them runs as one pass instead.
+    /// The capture's own columns are carried: each row's own cells are read
+    /// into the message it makes, so `arrowReader(schema, messages(reader))`
+    /// states them again exactly as `lifecycleArrowReader(reader)` does.
     #[napi]
     pub fn messages(&self, source: &mut JsBatchReader) -> Result<JsFixMessages> {
         Ok(JsFixMessages::over(self.inner.messages(source.take()?)))
@@ -2249,8 +2311,7 @@ impl JsFixCodec {
     /// The loader turns the iterable into the pull function this takes, and
     /// the reader pulls one message at a time as its batches are read. Each
     /// message fills one row through `FixMsg.intoRow`, and batches close on
-    /// the raw bytes of each message's arrival record against
-    /// `batchByteSize`. An item that is not a message is the reader's error,
+    /// the bytes each row lands as against `batchByteSize`. An item that is not a message is the reader's error,
     /// thrown by the batch it would have landed in.
     #[napi(js_name = "_arrowReaderNative", skip_typescript)]
     pub fn arrow_reader_native(
@@ -2313,9 +2374,8 @@ impl JsFixCodec {
     /// The Arrow twin of `formatMessages`, and the last stage of the pipeline
     /// a capture runs. The schema is answered before a row is read, from the
     /// source's carried columns and `field`, and the capture's own columns
-    /// still lead the row - restated from the source batch, not asked of the
-    /// message, which holds none of them. A source carrying no arrival
-    /// record is a
+    /// still lead the row - stated from the cells each message carries. A
+    /// source carrying no arrival record is a
     /// projection already and is cast batch by batch instead of read back as
     /// messages. The source is consumed.
     #[napi]
@@ -2338,11 +2398,15 @@ impl JsFixCodec {
     /// follows - the last message of its chain, under the cross identity its
     /// cross code derives, still alive - so a chained message carries its
     /// predecessor's `prevuuid` and `prevunix`, its `seqnum` in the chain,
-    /// the predecessor among its `parentuuids` and the chain's `creaunix`,
+    /// the whole chain before it as its `parentuuids` and the chain's `creaunix`,
     /// and is settled again around them. A message no live one precedes is
     /// answered as it came. The loader turns the iterable into the pull
     /// function this takes; a failure of the iterable throws and ends the
-    /// stream.
+    /// stream. The walk reads the structured message first: one whose
+    /// sending clock the parse supplied rather than read is dated by the
+    /// `TransactTime(60)` it states, so a capture whose frames state no
+    /// `SendingTime(52)` still orders, expires and folds by when its
+    /// transactions happened.
     #[napi(js_name = "_lifecycleNative", skip_typescript)]
     pub fn lifecycle_native(
         &self,
@@ -2420,6 +2484,11 @@ pub struct FixCodecOptions<'env> {
     /// The rows one Arrow batch targets; the core's 32,768 when unstated.
     /// A batch closes on whichever bound it reaches first.
     pub batch_row_size: Option<f64>,
+    /// The threads the line and row doors read on; one when unstated. More
+    /// read a stream a chunk ahead, each line on some thread, and answer in
+    /// the lines' order, so the doors answer what one thread answers,
+    /// sooner. Zero reads as one.
+    pub threads: Option<f64>,
     /// The message types a parse keeps, spelled as codes or as names -
     /// `"0"`, `"Heartbeat"`, `"unknown"` for a line stating no type. Empty
     /// or unstated keeps every type the refusals leave.
@@ -2516,20 +2585,25 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// The definitions this crate owns, in tag order, above every tag FIX or a
 /// venue publishes.
 ///
-/// The event's instant `currunix` and the chain's `creaunix`, `prevunix`
-/// and `snapunix`; the identities `currhashcode`, `crosshashcode`,
-/// `curruuid`, `crossuuid`, `prevuuid` and the `parentuuids` list; the
-/// `crosscode` and the `seqnum`; the `identifiers` and `metadata` Map
-/// groups; what a bridge's capture states - `msgctxid`, `msgpluginid`,
-/// `msgsessionid`; the capture's own column, `sourceurl`, which whoever read
-/// the line states on the row and no message holds; and the `nofixentries`
-/// that counts the content record. Nothing about the market is here: every
-/// market fact is FIX's own field, and the graph traits answer it off those.
+/// The event's instant `currunix` and the chain's `creaunix`, `prevunix`,
+/// `snapunix` and `expirunix`; the identities `currhashcode`,
+/// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid` and the
+/// `parentuuids` list; the `srcuuids` list of the lines it was read from;
+/// the `crosscode`, the `seqnum` and the `state` reached; the `identifiers`
+/// and `metadata` Map groups; what a bridge's capture states - `msgctxid`,
+/// `msgpluginid`, `msgsessionid`; the capture's own column, `sourceurl`,
+/// which whoever read the line states on the row and no message holds; and
+/// the `nofixentries` that counts the content record. Twenty-two in all.
+/// Nothing about the market is here: every market fact is FIX's own field,
+/// and the graph traits answer it off those; the state and the expiry are
+/// the event's own, the two facts a lifecycle walk folds forward, each at
+/// the datatype its graph event column names.
 ///
 /// `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and
-/// `crossuuid` are non-null. Every registry already holds them, so this is
-/// the listing a schema or a document walks rather than something a caller
-/// registers.
+/// `crossuuid` are non-null; `state` is written on every row a message
+/// writes and stays nullable, a state having no neutral member. Every
+/// registry already holds them, so this is the listing a schema or a
+/// document walks rather than something a caller registers.
 #[napi(js_name = "fixCrateFields")]
 pub fn fix_crate_fields() -> Result<Vec<JsField>> {
     yggdryl::fix_crate_fields()

@@ -7,12 +7,12 @@ use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{DataType, Field, StructureType, Url};
+use yggdryl::{DataType, Field, StructType, Url};
 use yggdryl::{IOBase, IOMedia};
 
 /// Two columns: one key and one payload, so an update is visible.
 fn schema() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])
@@ -249,7 +249,7 @@ fn an_empty_target_appends_every_row() {
 
 #[test]
 fn a_null_key_matches_another_null_key() {
-    let field = StructureType::from_fields([
+    let field = StructType::from_fields([
         DataType::Int64.nullable_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])
@@ -310,7 +310,7 @@ fn a_null_key_matches_another_null_key() {
 
 #[test]
 fn a_composite_key_matches_on_every_column() {
-    let field = StructureType::from_fields([
+    let field = StructType::from_fields([
         DataType::utf8().required_field("venue"),
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
@@ -393,7 +393,7 @@ fn an_incoming_schema_that_disagrees_is_cast_to_the_target_first() {
     // `id` arrives as text, `symbol` comes first, and `venue` is not declared
     // at all: the cast to the target reorders, converts, and drops before a
     // single key is compared.
-    let loose = StructureType::from_fields([
+    let loose = StructType::from_fields([
         DataType::utf8().nullable_field("symbol"),
         DataType::utf8().required_field("id"),
         DataType::utf8().nullable_field("venue"),

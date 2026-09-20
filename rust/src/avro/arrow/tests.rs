@@ -5,11 +5,11 @@
 //! a caller can observe lives in `tests/media/avro.rs`.
 
 use crate::DataType;
-use crate::StructureType;
+use crate::StructType;
 
 #[test]
 fn an_ascii_column_is_an_avro_string() {
-    let root = StructureType::from_fields([
+    let root = StructType::from_fields([
         DataType::fixed_ascii(4).unwrap().required_field("ccy"),
         DataType::fixed_ascii(16).unwrap().nullable_field("code"),
     ])
@@ -44,7 +44,7 @@ fn a_string_in_another_charset_is_not_an_avro_string() {
     // Avro's string is UTF-8; bytes in another charset are not, so the
     // column is refused by name rather than written as mojibake.
     let latin = DataType::cp1252();
-    let root = StructureType::from_fields([latin.required_field("label")])
+    let root = StructType::from_fields([latin.required_field("label")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -78,7 +78,7 @@ fn a_code_column_is_an_avro_string_and_a_code_key_is_spellable() {
             .required_field("by_venue"),
     );
     let codes = DataType::CODES.len();
-    let root = DataType::from(StructureType::from_fields(fields).unwrap()).required_field("row");
+    let root = DataType::from(StructType::from_fields(fields).unwrap()).required_field("row");
     let schema = super::schema_json_from_field(&root).unwrap();
     let fields = schema
         .get_key_str("fields")

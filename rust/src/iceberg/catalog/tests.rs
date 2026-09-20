@@ -8,7 +8,7 @@ use super::{Catalog, Catalogs};
 use crate::IOBase;
 use crate::iceberg::Transform;
 use crate::local::Folder;
-use crate::{DataType, Field, IOKind, StructureType};
+use crate::{DataType, Field, IOKind, StructType};
 
 /// Build a catalog over a scratch warehouse unique to this test and process.
 fn warehouse(label: &str) -> (std::path::PathBuf, Catalog<Folder>) {
@@ -25,7 +25,7 @@ fn warehouse(label: &str) -> (std::path::PathBuf, Catalog<Folder>) {
 /// The two-column taxi schema the catalog tests write, deliberately
 /// unnumbered so the catalog has to number it.
 fn taxi_schema() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
     ])
@@ -36,7 +36,7 @@ fn taxi_schema() -> Field {
 
 /// The taxi schema with `venue` marked as its own partition column.
 fn marked_taxi_schema() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8()
             .nullable_field("venue")

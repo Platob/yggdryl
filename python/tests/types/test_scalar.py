@@ -219,18 +219,18 @@ def test_the_payload_bytes_of_a_value_carry_no_tag_and_no_length() -> None:
 
 
 def test_a_record_says_that_its_names_are_field_names() -> None:
-    record = Scalar.from_record({"b": 2, "a": 1})
-    assert record.kind == "record"
+    record = Scalar.from_struct({"b": 2, "a": 1})
+    assert record.kind == "struct"
     assert record.as_py() == {"a": 1, "b": 2}
 
     # A Python mapping is a mapping; a record is what a struct row resolves to.
     assert Scalar.from_({"a": 1}).kind == "mapping"
-    assert Scalar.from_record([("a", 1), ("b", 2)]).kind == "record"
+    assert Scalar.from_struct([("a", 1), ("b", 2)]).kind == "struct"
 
     with pytest.raises(ValueError):
-        Scalar.from_record([("a", 1), ("a", 2)])
+        Scalar.from_struct([("a", 1), ("a", 2)])
     with pytest.raises(TypeError):
-        Scalar.from_record([(1, "a")])
+        Scalar.from_struct([(1, "a")])
 
 
 def test_a_default_answers_for_an_absent_name_and_for_a_stored_null() -> None:
@@ -241,6 +241,37 @@ def test_a_default_answers_for_an_absent_name_and_for_a_stored_null() -> None:
     assert value.get_or("venue", "XNAS").as_py() == "XNAS"
     assert value.get_or("absent", "XNAS").as_py() == "XNAS"
 
-    record = Scalar.from_record({"symbol": "MSFT"})
+    record = Scalar.from_struct({"symbol": "MSFT"})
     assert record.get_or("symbol", "?").as_py() == "MSFT"
     assert record.get_or("absent", 0).as_py() == 0
+
+
+def test_variant_bytes_carry_any_value_and_pickle_rides_them() -> None:
+    import pickle
+
+    value = DataType("int32").scalar(7)
+    data = value.into_variant_bytes()
+    assert isinstance(data, bytes)
+    # The version, the identifier, then four little-endian bytes.
+    assert data[0] == 0 and len(data) == 6 and data[2:] == b"\x07\x00\x00\x00"
+    assert Scalar.from_variant_bytes(data) == value
+    assert Scalar.from_variant_bytes(bytearray(data)) == value
+
+    quote = Scalar.from_struct({"symbol": "AAPL", "sizes": [100, None]})
+    assert Scalar.from_variant_bytes(quote.into_variant_bytes()) == quote
+    assert Scalar.from_variant_bytes(quote.into_variant_bytes()).kind == "struct"
+    # Pickle hands the same bytes to `_from_pickle`.
+    rebuilder, (state,) = quote.__reduce__()
+    assert state == quote.into_variant_bytes()
+    assert rebuilder(state) == quote
+    assert pickle.loads(pickle.dumps(quote)) == quote
+
+    long = Scalar.from_("x" * (4 * 1024 + 1))
+    data = long.into_variant_bytes()
+    assert data[2] == 1 and len(data) < 64
+    assert Scalar.from_variant_bytes(data) == long
+
+    with pytest.raises(ValueError, match="version 1"):
+        Scalar.from_variant_bytes(b"\x01\x00")
+    with pytest.raises(ValueError, match="bytes left"):
+        Scalar.from_variant_bytes(b"\x00\x00\x00")

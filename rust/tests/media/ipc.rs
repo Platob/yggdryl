@@ -10,12 +10,12 @@ use yggdryl::holder::Buffer;
 use yggdryl::holder::buffered::{Buffered, BufferedOptions};
 use yggdryl::ipc::Ipc;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{Codec, DataType, Field, StructureType, Url};
+use yggdryl::{Codec, DataType, Field, StructType, Url};
 use yggdryl::{IOBase, IOMedia};
 
 /// A struct field is the schema of the batches it describes.
 fn schema() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("symbol"),
     ])
@@ -309,7 +309,7 @@ fn an_open_cache_tracks_the_published_field_after_a_fitting_overwrite() {
     // text and `symbol` is absent. The overwrite completion keeps the stored
     // Int64 + nullable Utf8 shape, so an open cache must not retain this
     // reader's pre-cast schema.
-    let loose = StructureType::from_fields([DataType::utf8().required_field("id")])
+    let loose = StructType::from_fields([DataType::utf8().required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -466,7 +466,7 @@ fn dimensions_count_message_metadata_and_ignore_transient_read_shaping() {
 
 #[test]
 fn same_handle_byte_and_option_mutations_invalidate_open_dimensions() {
-    let renamed = StructureType::from_fields([DataType::Int64.required_field("code")])
+    let renamed = StructType::from_fields([DataType::Int64.required_field("code")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -559,7 +559,7 @@ fn schema_reads_bypass_buffer_pages_and_stop_before_the_batch_body() {
 
     // Projection setup also needs the stored schema. It must keep using the
     // sequential path instead of warming a random-access page as a side effect.
-    let narrow = StructureType::from_fields([DataType::Int64.required_field("id")])
+    let narrow = StructType::from_fields([DataType::Int64.required_field("id")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -681,7 +681,7 @@ fn an_unprojected_reader_uses_one_normal_transport_stream() {
 mod pushdown {
 
     use arrow_array::RecordBatchReader;
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
 
     use super::{Ipc, handle, reader, schema};
     use yggdryl::DataType;
@@ -691,7 +691,7 @@ mod pushdown {
 
     /// One of the two stored columns.
     fn narrow() -> Field {
-        StructureType::from_fields([DataType::Int64.required_field("id")])
+        StructType::from_fields([DataType::Int64.required_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("row")
@@ -736,7 +736,7 @@ mod pushdown {
 mod limits {
 
     use std::sync::Arc;
-    use yggdryl::StructureType;
+    use yggdryl::StructType;
 
     use arrow_array::RecordBatchReader;
     use arrow_array::cast::AsArray;
@@ -840,7 +840,7 @@ mod limits {
         let handle = stored();
         // The declared root both projects the stream down to `id` and casts
         // it to text, so what the limit counts is the shaped result.
-        let declared = StructureType::from_fields([DataType::utf8().required_field("id")])
+        let declared = StructType::from_fields([DataType::utf8().required_field("id")])
             .map(DataType::from)
             .unwrap()
             .required_field("row");

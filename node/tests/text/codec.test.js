@@ -717,7 +717,7 @@ test('fromJs and asJs are the conversion every codec entry point crosses', () =>
   assert.deepEqual(Scalar.from(new Set([1, 2])).asJs(), [1, 2])
   assert.equal(Scalar.from(new Map([['id', 1]])).kind, 'mapping')
   assert.deepEqual(Scalar.from(new Map([['id', 1]])).asJs(), new Map([['id', 1]]))
-  assert.equal(Scalar.from({ id: 1 }).kind, 'record')
+  assert.equal(Scalar.from({ id: 1 }).kind, 'struct')
   assert.equal(Scalar.from(undefined).kind, 'null')
 
   // dumps is fromJs with bytes on the far side, and loads is asJs - except
@@ -1711,4 +1711,29 @@ test('raw DEFLATE round-trips, reads node:zlib, and shares no framing with zlib'
   // instead of decoding it into something plausible.
   assert.throws(() => zlib.loads(zlib.dumpsRaw(payload)), /deflate/)
   assert.throws(() => zlib.loadsRaw(zlib.dumps(payload)), /deflate/)
+})
+
+test('variant bytes carry any value and read back as itself', () => {
+  const value = new DataType('int32').scalar(7)
+  const data = value.intoVariantBytes()
+  assert.ok(Buffer.isBuffer(data))
+  // The version, the identifier, then four little-endian bytes.
+  assert.equal(data[0], 0)
+  assert.equal(data.length, 6)
+  assert.deepEqual([...data.subarray(2)], [7, 0, 0, 0])
+  assert.ok(Scalar.fromVariantBytes(data).equals(value))
+  assert.ok(Scalar.fromVariantBytes(new Uint8Array(data)).equals(value))
+
+  const quote = Scalar.from({ symbol: 'AAPL', sizes: [100, null] })
+  assert.ok(Scalar.fromVariantBytes(quote.intoVariantBytes()).equals(quote))
+  assert.equal(Scalar.fromVariantBytes(quote.intoVariantBytes()).kind, 'struct')
+
+  const long = Scalar.from('x'.repeat(4 * 1024 + 1))
+  const packed = long.intoVariantBytes()
+  assert.equal(packed[2], 1)
+  assert.ok(packed.length < 64)
+  assert.ok(Scalar.fromVariantBytes(packed).equals(long))
+
+  assert.throws(() => Scalar.fromVariantBytes(Buffer.from([1, 0])), /version 1/)
+  assert.throws(() => Scalar.fromVariantBytes(Buffer.from([0, 0, 0])), /bytes left/)
 })

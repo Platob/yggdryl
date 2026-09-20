@@ -3,7 +3,7 @@ use std::sync::Arc;
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use yggdryl::BytesType;
 use yggdryl::SequenceType;
-use yggdryl::{DataType, Field, StructureType, TimeUnit, Timezone, UnionMode};
+use yggdryl::{DataType, Field, StructType, TimeUnit, Timezone, UnionMode};
 use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
 fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &str) {
@@ -118,7 +118,7 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
     let entries = || {
         Field::new(
             "entries",
-            StructureType::from_fields([
+            StructType::from_fields([
                 Field::new("key", DataType::utf8(), false),
                 Field::new("value", DataType::Int64, true),
             ])
@@ -166,7 +166,7 @@ fn every_arrow_datatype_variant_round_trips_borrowed_owned_display_json_and_debu
         DataType::large_list(item()),
         DataType::large_list_view(item()),
         DataType::from(
-            StructureType::from_fields([Field::new("value", DataType::Int32, false)]).unwrap(),
+            StructType::from_fields([Field::new("value", DataType::Int32, false)]).unwrap(),
         ),
         DataType::union(
             [
@@ -238,7 +238,7 @@ fn every_extension_datatype_survives_arrow_projection_in_every_shape() {
             DataType::dictionary(DataType::Int32, dtype.clone()).unwrap(),
             DataType::list(Field::new("item", dtype.clone(), true)),
             DataType::from(
-                StructureType::from_fields([Field::new("child", dtype.clone(), true)]).unwrap(),
+                StructType::from_fields([Field::new("child", dtype.clone(), true)]).unwrap(),
             ),
             DataType::run_end_encoded(
                 Field::new("run_ends", DataType::Int32, false),
@@ -284,7 +284,7 @@ fn every_extension_datatype_survives_arrow_projection_in_every_shape() {
 
 #[test]
 fn an_extension_schema_survives_an_ipc_round_trip() {
-    let root = StructureType::from_fields(
+    let root = StructType::from_fields(
         extension_datatypes()
             .into_iter()
             .enumerate()
@@ -358,7 +358,7 @@ fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
         DataType::map(
             Field::new(
                 "entries",
-                StructureType::from_fields([
+                StructType::from_fields([
                     Field::new("key", DataType::utf8(), true),
                     Field::new("value", DataType::Int64, true),
                 ])

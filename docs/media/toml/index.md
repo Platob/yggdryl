@@ -60,7 +60,7 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
     value = toml.loads(source, cls=Scalar)
     encoded = toml.dumps(value)
 
-    assert value.kind == "record"
+    assert value.kind == "struct"
     assert value.as_py() == natural == {
         "count": 3,
         "owner": {"name": "Ada"},
@@ -82,7 +82,7 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
     const encoded = toml.dumps(value)
 
     assert.ok(value instanceof Scalar)
-    assert.equal(value.kind, 'record')
+    assert.equal(value.kind, 'struct')
     assert.deepEqual(value.asJs(), natural)
     assert.ok(Buffer.isBuffer(encoded))
     assert.deepEqual(toml.loads(encoded), natural)
@@ -114,13 +114,13 @@ A Struct Field yields a row `Sequence` in Rust; bindings restore field names, an
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Scalar, StructureType};
+    use yggdryl::{DataType, Field, Scalar, StructType};
     use yggdryl::toml;
 
     let amount = Field::new("amount", DataType::decimal128(8, 2)?, false);
     let row = Field::new(
         "row",
-        DataType::from(StructureType::from_fields([amount])?),
+        DataType::from(StructType::from_fields([amount])?),
         false,
     );
     let decoded = toml::from_utf8_with_field("amount = '12.50'\n", &row)?;

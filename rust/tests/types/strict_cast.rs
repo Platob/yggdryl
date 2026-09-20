@@ -19,12 +19,12 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schem
 use yggdryl::FieldValue as _;
 use yggdryl::SequenceType;
 use yggdryl::arrow::scalar_value;
-use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, StructureType};
+use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, StructType};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     Field::new(
         "row",
-        DataType::from(StructureType::from_fields(fields).unwrap()),
+        DataType::from(StructType::from_fields(fields).unwrap()),
         false,
     )
 }
@@ -168,7 +168,7 @@ fn a_nested_struct_child_is_named_by_its_whole_path() {
     .unwrap();
 
     // A required child the source struct does not carry at all.
-    let missing = root([StructureType::from_fields([
+    let missing = root([StructType::from_fields([
         DataType::utf8().nullable_field("city"),
         DataType::utf8().required_field("zip code"),
     ])
@@ -191,12 +191,12 @@ fn a_nested_struct_child_is_named_by_its_whole_path() {
         ))],
     )
     .unwrap();
-    let required_child = root([StructureType::from_fields([
-        DataType::utf8().required_field("city")
-    ])
-    .map(DataType::from)
-    .unwrap()
-    .required_field("address")]);
+    let required_child = root([
+        StructType::from_fields([DataType::utf8().required_field("city")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("address"),
+    ]);
     assert_eq!(
         refusal(&required_child, null_batch),
         "required Arrow field $.address.city holds 1 null values"
@@ -237,7 +237,7 @@ fn a_required_map_value_is_named_under_its_entries() {
     let source = schema(vec![ArrowField::new("tags", map.data_type().clone(), true)]);
     let batch = RecordBatch::try_new(source, vec![map]).unwrap();
 
-    let entries = StructureType::from_fields([
+    let entries = StructType::from_fields([
         DataType::utf8().required_field("keys"),
         DataType::Int32.required_field("values"),
     ])
@@ -339,7 +339,7 @@ fn an_empty_text_cell_in_a_required_child_is_a_null_by_its_path() {
     )
     .unwrap();
     let target = root([
-        StructureType::from_fields([DataType::Int32.required_field("zip")])
+        StructType::from_fields([DataType::Int32.required_field("zip")])
             .map(DataType::from)
             .unwrap()
             .required_field("address"),
@@ -411,7 +411,7 @@ fn an_empty_text_cell_in_a_required_child_is_a_null_by_its_path() {
     let map: ArrayRef = Arc::new(builder.finish());
     let source = schema(vec![ArrowField::new("tags", map.data_type().clone(), true)]);
     let batch = RecordBatch::try_new(source, vec![map]).unwrap();
-    let entries = StructureType::from_fields([
+    let entries = StructType::from_fields([
         DataType::utf8().required_field("keys"),
         DataType::Int32.required_field("values"),
     ])

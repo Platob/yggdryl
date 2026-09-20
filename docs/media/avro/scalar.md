@@ -222,7 +222,7 @@ The header makes a container self-describing, so `read_container` needs only the
     let schema = json::from_utf8(r#"{"type":"record","name":"row","fields":[
         {"name":"id","type":"long"}]}"#)?;
     let rows: Vec<Scalar> = (0..3)
-        .map(|id| Scalar::from_record([("id", Scalar::from(id))]))
+        .map(|id| Scalar::from_struct([("id", Scalar::from(id))]))
         .collect::<Result<_, _>>()?;
     let mut handle = Buffer::new();
     avro::write_container(&mut handle, &schema, &[], &rows)?;
@@ -284,7 +284,7 @@ Each datum frames as `C3 01`, the writer schema's Rabin fingerprint in little-en
 
     let schema = Schema::from_str(r#"{"type":"record","name":"tick","fields":[
         {"name":"price","type":"double"}]}"#)?;
-    let value = Scalar::from_record([("price", Scalar::from(187.5))])?;
+    let value = Scalar::from_struct([("price", Scalar::from(187.5))])?;
     let framed = avro::into_single_object_vec(&schema, &value)?;
 
     assert_eq!(&framed[..2], &[0xC3, 0x01]);

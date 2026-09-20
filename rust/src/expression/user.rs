@@ -35,7 +35,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::term::Term;
 use super::{Function, named};
-use crate::{DataType, Error, Field, Result, Scalar, StructureType};
+use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 /// The metadata property naming a signature's return field.
 const RETURNS_KEY: &str = "FUNCTION:returns";
@@ -294,7 +294,7 @@ impl FunctionSignature {
                 "not null"
             }
         );
-        DataType::from(StructureType::from_fields(self.parameters.clone())?)
+        DataType::from(StructType::from_fields(self.parameters.clone())?)
             .required_field(self.reference.as_str())
             .try_with_metadata_entries([(RETURNS_KEY, returns.as_str())])
     }

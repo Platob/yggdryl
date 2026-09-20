@@ -444,7 +444,7 @@ pub trait IOBase: Send + IOMedia {
                 .filter(|conjunct| conjunct.columns().is_empty()),
         );
         let bound = answerable.bind(
-            &crate::DataType::from(crate::StructureType::from_fields([])?).required_field("holder"),
+            &crate::DataType::from(crate::StructType::from_fields([])?).required_field("holder"),
         )?;
         // The predicate is asked of each entry as it arrives, so a losing entry
         // is dropped before the next one is fetched and nothing accumulates.
@@ -672,7 +672,7 @@ pub trait IOBase: Send + IOMedia {
     /// # fn main() -> yggdryl::Result<()> {
     /// let media = Url::from_str("file:///trade.json.gz")?.media_type();
     /// let mut handle = Buffer::new().with_media_type(media);
-    /// let value = Scalar::from_record([("quantity", Scalar::from(2))])?;
+    /// let value = Scalar::from_struct([("quantity", Scalar::from(2))])?;
     /// handle.write_scalar(&value)?;
     ///
     /// let field = Field::from_str("trade: struct<quantity: int64 not null> not null")?;

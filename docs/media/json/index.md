@@ -60,7 +60,7 @@ Loads return only types the JSON grammar proves; dumps interoperate.
     value = json.loads('{"symbol":"AAPL","quantity":100}', cls=Scalar)
     encoded = json.dumps(value)
 
-    assert value.kind == "record"
+    assert value.kind == "struct"
     assert value.as_py() == natural == {"quantity": 100, "symbol": "AAPL"}
     assert encoded == b'{"quantity":100,"symbol":"AAPL"}'
     assert json.loads(encoded, cls=Scalar) == value
@@ -77,7 +77,7 @@ Loads return only types the JSON grammar proves; dumps interoperate.
     const encoded = json.dumps(value)
 
     assert.ok(value instanceof Scalar)
-    assert.equal(value.kind, 'record')
+    assert.equal(value.kind, 'struct')
     assert.deepEqual(value.asJs(), natural)
     assert.ok(Buffer.isBuffer(encoded))
     assert.equal(encoded.toString(), '{"quantity":100,"symbol":"AAPL"}')

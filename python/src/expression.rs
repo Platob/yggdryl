@@ -327,7 +327,7 @@ fn rows_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<Scalar>> {
                     crate::types::scalar::from_py(&value)?,
                 ));
             }
-            rows.push(Scalar::from_record(entries).map_err(value_error)?);
+            rows.push(Scalar::from_struct(entries).map_err(value_error)?);
         } else {
             rows.push(crate::types::scalar::from_py(&row)?);
         }

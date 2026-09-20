@@ -25,7 +25,7 @@ use yggdryl::holder::Holder;
 use yggdryl::ipc::Ipc;
 use yggdryl::media::{IORecordOptions, Media};
 use yggdryl::parquet::Parquet;
-use yggdryl::{DataType, Field, IOMode, Scalar, StructureType};
+use yggdryl::{DataType, Field, IOMode, Scalar, StructType};
 
 use super::{batch, handle, reader, stored_with, wide};
 
@@ -211,7 +211,7 @@ fn cast_source() -> RecordBatch {
 }
 
 fn cast_field() -> Field {
-    StructureType::from_fields([
+    StructType::from_fields([
         DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("price"),
         DataType::utf8().required_field("venue"),
@@ -234,7 +234,7 @@ fn nested_wide() -> (Field, RecordBatch) {
         .map(|column| DataType::Int64.required_field(format!("c{column:02}")))
         .collect::<Vec<_>>();
     fields.push(
-        StructureType::from_fields([
+        StructType::from_fields([
             DataType::Int64.required_field("sequence"),
             DataType::utf8().required_field("label"),
         ])
@@ -243,7 +243,7 @@ fn nested_wide() -> (Field, RecordBatch) {
         .required_field("details"),
     );
     fields.push(DataType::list(DataType::Int32.required_field("item")).required_field("tags"));
-    let field = StructureType::from_fields(fields)
+    let field = StructType::from_fields(fields)
         .map(DataType::from)
         .expect("a wide nested root")
         .required_field("row");

@@ -14,7 +14,7 @@ pub(super) fn hash_of<T: std::hash::Hash>(value: &T) -> u64 {
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions as _, RecordOptions};
 use yggdryl::text::{LeadingFragment, LineSep, Text, TextLine, TextOptions, read_text_lines};
-use yggdryl::{Codec, DataType, Field, StructureType, Timezone};
+use yggdryl::{Codec, DataType, Field, StructType, Timezone};
 use yggdryl::{IOBase as _, IOMedia as _};
 
 fn named(name: &str, bytes: &[u8]) -> Buffer {
@@ -31,6 +31,33 @@ fn options(rowheader: &str) -> TextOptions {
 
 fn framed(rowheader: &str) -> TextOptions {
     options(rowheader).with_framing(true)
+}
+
+/// The sixteen event columns every line batch opens with, in front of the
+/// line's own: the line is an event of the graph, and a message parsed out
+/// of it opens with the same sixteen.
+const EVENT_COLUMNS: [&str; 16] = [
+    "currunix",
+    "creaunix",
+    "expirunix",
+    "prevunix",
+    "snapunix",
+    "curruuid",
+    "crossuuid",
+    "crosscode",
+    "currhashcode",
+    "crosshashcode",
+    "prevuuid",
+    "seqnum",
+    "parentuuids",
+    "srcuuids",
+    "identifiers",
+    "state",
+];
+
+/// The names of a line batch: the event columns, then the line's own.
+fn with_event(rest: &[&'static str]) -> Vec<&'static str> {
+    EVENT_COLUMNS.iter().chain(rest).copied().collect()
 }
 
 fn collect(source: &impl yggdryl::IOBase, options: TextOptions) -> Vec<arrow_array::RecordBatch> {
@@ -175,7 +202,9 @@ fn options_are_flat_and_validate_rowheader_names() {
         .try_with_rowheader(r"(?<body>.+)")
         .unwrap_err()
         .to_string();
-    assert!(error.contains("distinct from sourceurl, rownum, body, and dropped_byte_size"));
+    assert!(error.contains(
+        "distinct from sourceurl, rownum, body, dropped_byte_size and the event columns the line derives"
+    ));
 }
 
 #[test]
@@ -197,36 +226,42 @@ fn ordinary_record_reading_emits_optional_row_numbers_and_regex_typed_captures()
         .unwrap();
     assert_eq!(batches.len(), 1);
     let batch = &batches[0];
-    assert_eq!(batch.schema().field(0).name(), "sourceurl");
-    assert_eq!(batch.schema().field(1).name(), "rownum");
-    assert_eq!(batch.schema().field(2).name(), "mtime");
-    assert_eq!(batch.schema().field(3).name(), "body");
+    assert_eq!(batch.schema().field(16).name(), "sourceurl");
+    assert_eq!(batch.schema().field(17).name(), "rownum");
+    assert_eq!(batch.schema().field(18).name(), "mtime");
+    assert_eq!(batch.schema().field(19).name(), "body");
     assert_eq!(
-        batch.schema().field(5).data_type(),
+        batch.schema().field(21).data_type(),
         &arrow_schema::DataType::Int64
     );
     assert_eq!(
         batch
-            .column(1)
+            .column(17)
             .as_any()
             .downcast_ref::<Int64Array>()
             .unwrap()
             .values(),
         &[10, 11, 12]
     );
+    // The body is the line as cut - the header included, the edges
+    // stripped - and the captures are read off it beside it.
     assert_eq!(
         batch
-            .column(3)
+            .column(19)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
             .iter()
             .collect::<Vec<_>>(),
-        [Some("first"), Some("second"), Some("plain")]
+        [
+            Some("[INFO] id=7 first"),
+            Some("[WARN] id=9 second"),
+            Some("plain")
+        ]
     );
     assert_eq!(
         batch
-            .column(4)
+            .column(20)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
@@ -258,7 +293,7 @@ fn capture_schema_is_derived_from_regex_before_reading() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        batch.schema().field(3).data_type(),
+        batch.schema().field(19).data_type(),
         &arrow_schema::DataType::Int64
     );
 
@@ -270,7 +305,7 @@ fn capture_schema_is_derived_from_regex_before_reading() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        batch.schema().field(3).data_type(),
+        batch.schema().field(19).data_type(),
         &arrow_schema::DataType::Utf8
     );
     assert_eq!(
@@ -280,7 +315,7 @@ fn capture_schema_is_derived_from_regex_before_reading() {
             .iter()
             .map(|field| field.name().as_str())
             .collect::<Vec<_>>(),
-        ["sourceurl", "mtime", "body", "value"]
+        with_event(&["sourceurl", "mtime", "body", "value"])
     );
 }
 
@@ -296,7 +331,7 @@ fn row_numbers_start_at_the_requested_i64_and_overflow_loudly() {
     let first = reader.next().unwrap().unwrap();
     assert_eq!(
         first
-            .column(1)
+            .column(17)
             .as_any()
             .downcast_ref::<Int64Array>()
             .unwrap()
@@ -326,7 +361,7 @@ fn url_column_is_rendered_from_the_handlers_real_url() {
         .unwrap();
     assert_eq!(
         batch
-            .column(0)
+            .column(16)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
@@ -349,12 +384,12 @@ fn autotyping_reads_a_session_clock_past_the_end_of_its_day() {
         .unwrap();
 
     assert_eq!(
-        batch.schema().field(3).data_type(),
+        batch.schema().field(19).data_type(),
         &arrow_schema::DataType::Time32(arrow_schema::TimeUnit::Second)
     );
     assert_eq!(
         batch
-            .column(3)
+            .column(19)
             .as_any()
             .downcast_ref::<arrow_array::Time32SecondArray>()
             .unwrap()
@@ -388,21 +423,23 @@ fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        batch.schema().field(3).data_type(),
+        batch.schema().field(19).data_type(),
         &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Microsecond, Some("UTC".into()))
     );
     assert_eq!(
         batch
-            .column(2)
+            .column(18)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
             .value(0),
-        "Execution report (execId: 20260828180000369318, from session:"
+        "2026-08-29 00:00:00.434_958 [77-2f3e6ff7:9f4d2a08b1:128] \
+[ModuleFailFastFilterChecker] (DEBUG) Execution report \
+(execId: 20260828180000369318, from session:"
     );
     assert_eq!(
         batch
-            .column(4)
+            .column(20)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
@@ -411,7 +448,7 @@ fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
     );
     assert_eq!(
         batch
-            .column(5)
+            .column(21)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
@@ -442,12 +479,12 @@ fn a_comma_fraction_and_a_variable_width_one_are_timestamp_columns() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        batch.schema().field(3).data_type(),
+        batch.schema().field(19).data_type(),
         &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Millisecond, Some("UTC".into()))
     );
     assert_eq!(
         batch
-            .column(3)
+            .column(19)
             .as_any()
             .downcast_ref::<arrow_array::TimestampMillisecondArray>()
             .unwrap()
@@ -474,12 +511,12 @@ fn a_comma_fraction_and_a_variable_width_one_are_timestamp_columns() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        batch.schema().field(3).data_type(),
+        batch.schema().field(19).data_type(),
         &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Microsecond, Some("UTC".into()))
     );
     assert_eq!(
         batch
-            .column(3)
+            .column(19)
             .as_any()
             .downcast_ref::<arrow_array::TimestampMicrosecondArray>()
             .unwrap()
@@ -504,8 +541,8 @@ fn framing_normalizes_every_physical_terminator_and_keeps_start_rownums() {
     assert_eq!(
         bodies(&batches),
         [
-            b"first\ncontinuation one".to_vec(),
-            b"second\ncontinuation two".to_vec(),
+            b"[A] first\ncontinuation one".to_vec(),
+            b"[B] second\ncontinuation two".to_vec(),
         ]
     );
     assert_eq!(rownums(&batches), [10, 12]);
@@ -528,11 +565,11 @@ fn framing_carries_a_record_across_input_windows_and_output_batches() {
     let bodies = bodies(&batches);
     assert_eq!(
         bodies[0].len(),
-        6 + yggdryl::DEFAULT_STREAM_BATCH_SIZE + 17 + 18
+        4 + 6 + yggdryl::DEFAULT_STREAM_BATCH_SIZE + 17 + 18
     );
-    assert!(bodies[0].starts_with(b"first\nxxxxxxxx"));
+    assert!(bodies[0].starts_with(b"[A] first\nxxxxxxxx"));
     assert!(bodies[0].ends_with(b"\nlast continuation"));
-    assert_eq!(bodies[1], b"next\nend");
+    assert_eq!(bodies[1], b"[B] next\nend");
 }
 
 #[test]
@@ -567,7 +604,7 @@ fn a_result_row_limit_does_not_convert_the_following_record() {
     options.set_max_row_size(Some(1));
 
     let batches = collect(&source, options);
-    assert_eq!(bodies(&batches), [b"first".to_vec()]);
+    assert_eq!(bodies(&batches), [b"A first".to_vec()]);
     assert_eq!(rownums(&batches), [i64::MAX]);
 }
 
@@ -580,7 +617,7 @@ fn a_physical_row_limit_does_not_convert_the_following_line() {
     options.set_max_row_size(Some(1));
 
     let batches = collect(&source, options);
-    assert_eq!(bodies(&batches), [b"first".to_vec()]);
+    assert_eq!(bodies(&batches), [b"A first".to_vec()]);
     assert_eq!(rownums(&batches), [i64::MAX]);
 }
 
@@ -595,7 +632,7 @@ fn an_unconvertible_next_record_follows_the_completed_record_batch_prefix() {
     let mut reader = source.read_arrow_reader(&options.into()).unwrap();
 
     let prefix = reader.next().unwrap().unwrap();
-    assert_eq!(bodies(&[prefix]), [b"first".to_vec()]);
+    assert_eq!(bodies(&[prefix]), [b"A first".to_vec()]);
     let error = reader.next().unwrap().unwrap_err().to_string();
     assert!(
         error.contains("text row number exceeds i64::MAX"),
@@ -621,21 +658,26 @@ fn a_line_that_was_not_utf_8_reaches_its_row_decoded_and_says_so() {
         .map(|line| line.unwrap())
         .collect();
     assert_eq!(lines.len(), 2);
-    assert_eq!(lines[0].body(), "first \u{e9}");
+    // The header is retained whole and the limit bounds what follows it:
+    // `[café] ` then seven of the twelve wire bytes past it.
+    assert_eq!(lines[0].body(), "[caf\u{e9}] first \u{e9}");
     assert_eq!(lines[0].capture(0), Some("caf\u{e9}"));
     assert_eq!(lines[0].decoded_byte_size(), 2);
     assert_eq!(
         lines[0].dropped_byte_size(),
         Some(5),
-        "the limit and the count are wire bytes: 12 read, 7 kept"
+        "the limit and the count are wire bytes past the header: 12 read, 7 kept"
     );
-    assert_eq!(lines[1].body(), "second");
+    assert_eq!(lines[1].body(), "[plain] second");
     assert_eq!(lines[1].decoded_byte_size(), 0);
 
     let batches = collect(&source, framed(r"^\[(?<kind>(?-u:[^\]]+))\] "));
     assert_eq!(
         bodies(&batches),
-        ["first \u{e9} line".as_bytes().to_vec(), b"second".to_vec()]
+        [
+            "[caf\u{e9}] first \u{e9} line".as_bytes().to_vec(),
+            b"[plain] second".to_vec()
+        ]
     );
     let batch = &batches[0];
     assert_eq!(
@@ -663,7 +705,7 @@ fn a_record_cut_inside_a_character_reads_the_bytes_that_are_left() {
         .unwrap()
         .map(|line| line.unwrap())
         .collect();
-    assert_eq!(lines[0].body(), "x\u{e2}\u{201a}");
+    assert_eq!(lines[0].body(), "[A] x\u{e2}\u{201a}");
     assert_eq!(lines[0].decoded_byte_size(), 2);
     assert_eq!(lines[0].dropped_byte_size(), Some(1));
 }
@@ -677,7 +719,7 @@ fn leading_fragments_are_kept_dropped_or_rejected_and_eof_finishes_a_record() {
     let kept = collect(&source, keep);
     assert_eq!(
         bodies(&kept),
-        [b"before\nstill before".to_vec(), b"final".to_vec()]
+        [b"before\nstill before".to_vec(), b"[A] final".to_vec()]
     );
     assert_eq!(rownums(&kept), [1, 3]);
     let kind = kept[0]
@@ -691,7 +733,7 @@ fn leading_fragments_are_kept_dropped_or_rejected_and_eof_finishes_a_record() {
         &source,
         framed(r"^\[(?<kind>[A-Z])\] ").with_leading_fragment(LeadingFragment::Drop),
     );
-    assert_eq!(bodies(&dropped), [b"final".to_vec()]);
+    assert_eq!(bodies(&dropped), [b"[A] final".to_vec()]);
 
     let rejected = framed(r"^\[(?<kind>[A-Z])\] ").with_leading_fragment(LeadingFragment::Error);
     let mut reader = source.read_arrow_reader(&rejected.into()).unwrap();
@@ -704,25 +746,33 @@ fn leading_fragments_are_kept_dropped_or_rejected_and_eof_finishes_a_record() {
 fn record_byte_limit_reports_only_bytes_beyond_the_retained_prefix() {
     let source = named("limit.log", b"[A] abc\ndef\n[B] xyz\n");
 
+    // The limit bounds what follows the header, which is retained whole: a
+    // record is known by its header, so a limit of nothing still leaves it.
     let exact = collect(
         &source,
         framed(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(7),
     );
-    assert_eq!(bodies(&exact), [b"abc\ndef".to_vec(), b"xyz".to_vec()]);
+    assert_eq!(
+        bodies(&exact),
+        [b"[A] abc\ndef".to_vec(), b"[B] xyz".to_vec()]
+    );
     assert_eq!(dropped(&exact), [None, None]);
 
     let limited = collect(
         &source,
         framed(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(6),
     );
-    assert_eq!(bodies(&limited), [b"abc\nde".to_vec(), b"xyz".to_vec()]);
+    assert_eq!(
+        bodies(&limited),
+        [b"[A] abc\nde".to_vec(), b"[B] xyz".to_vec()]
+    );
     assert_eq!(dropped(&limited), [Some(1), None]);
 
     let zero = collect(
         &source,
         framed(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(0),
     );
-    assert_eq!(bodies(&zero), [Vec::<u8>::new(), Vec::new()]);
+    assert_eq!(bodies(&zero), [b"[A] ".to_vec(), b"[B] ".to_vec()]);
     assert_eq!(dropped(&zero), [Some(7), Some(3)]);
 }
 
@@ -736,7 +786,10 @@ fn oversized_continuations_are_drained_before_the_following_record() {
     let options = framed(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(8);
 
     let batches = collect(&source, options);
-    assert_eq!(bodies(&batches), [b"begin\nxx".to_vec(), b"after".to_vec()]);
+    assert_eq!(
+        bodies(&batches),
+        [b"[A] begin\nxx".to_vec(), b"[B] after".to_vec()]
+    );
     assert_eq!(
         dropped(&batches),
         [Some(u64::try_from(oversized - 2).unwrap()), None]
@@ -753,7 +806,10 @@ fn an_oversized_matching_line_retains_only_its_body_prefix() {
     let options = framed(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(8);
 
     let batches = collect(&source, options);
-    assert_eq!(bodies(&batches), [b"xxxxxxxx".to_vec(), b"after".to_vec()]);
+    assert_eq!(
+        bodies(&batches),
+        [b"[A] xxxxxxxx".to_vec(), b"[B] after".to_vec()]
+    );
     assert_eq!(
         dropped(&batches),
         [Some(u64::try_from(oversized - 8).unwrap()), None]
@@ -816,7 +872,7 @@ fn gzip_and_zstd_framing_decode_the_same_logical_records() {
         let batches = collect(&source, framed(r"^\[(?<kind>[A-Z])\] "));
         assert_eq!(
             bodies(&batches),
-            [b"first\ncontinued".to_vec(), b"second".to_vec()]
+            [b"[A] first\ncontinued".to_vec(), b"[B] second".to_vec()]
         );
     }
 }
@@ -836,7 +892,7 @@ fn framed_schema_is_complete_before_empty_or_absent_input_is_pulled() {
             .iter()
             .map(|field| field.name().as_str())
             .collect::<Vec<_>>(),
-        ["sourceurl", "mtime", "body", "dropped_byte_size", "kind"]
+        with_event(&["sourceurl", "mtime", "body", "dropped_byte_size", "kind"])
     );
     assert!(
         reader
@@ -863,7 +919,7 @@ fn framed_schema_is_complete_before_empty_or_absent_input_is_pulled() {
                 .iter()
                 .map(|field| field.name().as_str())
                 .collect::<Vec<_>>(),
-            ["sourceurl", "mtime", "body", "dropped_byte_size", "kind"]
+            with_event(&["sourceurl", "mtime", "body", "dropped_byte_size", "kind"])
         );
         assert!(
             reader
@@ -912,9 +968,9 @@ fn folder_leaves_never_share_framing_state_and_restart_physical_rownums() {
     assert_eq!(
         bodies(&batches),
         [
-            b"first\ncontinued in a".to_vec(),
+            b"[A] first\ncontinued in a".to_vec(),
             b"leading in b".to_vec(),
-            b"second".to_vec(),
+            b"[B] second".to_vec(),
         ]
     );
     assert_eq!(rownums(&batches), [1, 1, 2]);
@@ -926,7 +982,7 @@ fn folder_leaves_never_share_framing_state_and_restart_physical_rownums() {
 fn generic_record_writes_use_only_the_text_body() {
     let mut target = named("out.txt", b"old");
     let mut options: RecordOptions = TextOptions::new().into();
-    let field = StructureType::from_fields([
+    let field = StructType::from_fields([
         DataType::utf8().required_field("sourceurl"),
         DataType::Int64.required_field("rownum"),
         DataType::utf8().required_field("body"),
@@ -936,13 +992,13 @@ fn generic_record_writes_use_only_the_text_body() {
     .required_field("row");
     options.set_field(field);
     let rows = [
-        yggdryl::Scalar::from_record([
+        yggdryl::Scalar::from_struct([
             ("sourceurl", yggdryl::Scalar::from("input")),
             ("rownum", yggdryl::Scalar::from(1_i64)),
             ("body", yggdryl::Scalar::from("first")),
         ])
         .unwrap(),
-        yggdryl::Scalar::from_record([
+        yggdryl::Scalar::from_struct([
             ("sourceurl", yggdryl::Scalar::from("input")),
             ("rownum", yggdryl::Scalar::from(2_i64)),
             ("body", yggdryl::Scalar::from("second")),
@@ -996,7 +1052,7 @@ fn a_binary_body_is_refused_by_a_write_naming_what_it_expected() {
     // written as if it were: the refusal names the column and the layout.
     let mut target = named("refused.txt", b"old");
     let mut options: RecordOptions = TextOptions::new().into();
-    let field = StructureType::from_fields([
+    let field = StructType::from_fields([
         DataType::utf8().required_field("sourceurl"),
         DataType::binary().required_field("body"),
     ])
@@ -1004,7 +1060,7 @@ fn a_binary_body_is_refused_by_a_write_naming_what_it_expected() {
     .unwrap()
     .required_field("row");
     options.set_field(field);
-    let rows = [yggdryl::Scalar::from_record([
+    let rows = [yggdryl::Scalar::from_struct([
         ("sourceurl", yggdryl::Scalar::from("input")),
         ("body", yggdryl::Scalar::from(&b"first"[..])),
     ])
@@ -1120,7 +1176,10 @@ fn the_classification_column_reads_the_line_and_leaves_the_body() {
         .iter()
         .map(Field::name)
         .collect();
-    assert_eq!(names, ["sourceurl", "mtime", "mimetype", "body"]);
+    assert_eq!(
+        names,
+        with_event(&["sourceurl", "mtime", "mimetype", "body"])
+    );
 
     let batches = collect(&source, options);
     assert_eq!(
@@ -1368,7 +1427,7 @@ mod fetching {
             plain.extend_from_slice(b"[INFO] ");
             plain.extend_from_slice(&body);
             plain.push(b'\n');
-            bodies.push(body);
+            bodies.push([b"[INFO] ".as_slice(), &body].concat());
         }
         (plain, bodies)
     }
@@ -1491,14 +1550,14 @@ fn the_mtime_column_prefers_the_header_capture_over_the_handles_own_time() {
         .collect();
     // One column, not two: the capture fills `mtime` rather than sitting
     // beside it under the same name.
-    assert_eq!(names, ["sourceurl", "mtime", "body", "id"]);
+    assert_eq!(names, with_event(&["sourceurl", "mtime", "body", "id"]));
     assert_eq!(
-        batch.schema().field(1).data_type(),
+        batch.schema().field(17).data_type(),
         &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into()))
     );
     assert_eq!(
         batch
-            .column(1)
+            .column(17)
             .as_any()
             .downcast_ref::<TimestampNanosecondArray>()
             .unwrap()
@@ -1520,7 +1579,7 @@ fn an_mtime_capture_that_states_only_a_date_dates_the_line_at_midnight() {
         .unwrap();
     assert_eq!(
         batch
-            .column(1)
+            .column(17)
             .as_any()
             .downcast_ref::<TimestampNanosecondArray>()
             .unwrap()
@@ -1536,7 +1595,7 @@ fn an_mtime_capture_that_states_only_a_date_dates_the_line_at_midnight() {
         .unwrap();
     assert_eq!(
         batch
-            .column(1)
+            .column(17)
             .as_any()
             .downcast_ref::<TimestampNanosecondArray>()
             .unwrap()
@@ -1603,7 +1662,7 @@ fn the_mtime_column_is_off_when_the_flag_is_and_frees_its_name_for_a_capture() {
         .pop()
         .unwrap();
     assert_eq!(
-        batch.schema().field(2).data_type(),
+        batch.schema().field(18).data_type(),
         &arrow_schema::DataType::Int64
     );
 }
@@ -1750,9 +1809,13 @@ mod values {
             )
             .with_entries(nested),
         ]);
-        let line = TextLine::from_bytes(0, TextBytes::from_bytes("body").expect("a body"))
-            .unwrap()
-            .with_entries(entries);
+        let line = TextLine::from_bytes(
+            0,
+            TextBytes::from_bytes("body").expect("a body"),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_entries(entries);
 
         assert_eq!(
             line.get_entry_by_path(&path("55"))
@@ -1778,9 +1841,13 @@ mod values {
 
     #[test]
     fn a_miss_is_null_and_never_an_error_or_a_panic() {
-        let line = TextLine::from_bytes(0, TextBytes::new())
-            .unwrap()
-            .with_entries(TextEntries::from_iter([entry("a", "1")]));
+        let line = TextLine::from_bytes(
+            0,
+            TextBytes::new(),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_entries(TextEntries::from_iter([entry("a", "1")]));
         for text in ["b", "a.b", "a.b.c", "[9]", "[-9]"] {
             assert!(
                 line.get_entry_by_path(&path(text)).is_none(),
@@ -1788,7 +1855,12 @@ mod values {
             );
         }
         // A line carrying no tree at all misses the same way.
-        let bare = TextLine::from_bytes(0, TextBytes::new()).unwrap();
+        let bare = TextLine::from_bytes(
+            0,
+            TextBytes::new(),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap();
         assert!(bare.get_entry_by_path(&path("a")).is_none());
         // The raising form says why, and names the path.
         let error = bare.entry_by_path(&path("a")).expect_err("raises");
@@ -1797,9 +1869,13 @@ mod values {
 
     #[test]
     fn a_key_with_no_value_is_found_and_is_not_a_miss() {
-        let line = TextLine::from_bytes(0, TextBytes::new())
-            .unwrap()
-            .with_entries(TextEntries::from_iter([entry("a", "")]));
+        let line = TextLine::from_bytes(
+            0,
+            TextBytes::new(),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_entries(TextEntries::from_iter([entry("a", "")]));
         let found = line
             .get_entry_by_path(&path("a"))
             .expect("the key is there");
@@ -1808,7 +1884,12 @@ mod values {
 
     #[test]
     fn the_setter_creates_what_is_not_there() {
-        let mut line = TextLine::from_bytes(0, TextBytes::new()).unwrap();
+        let mut line = TextLine::from_bytes(
+            0,
+            TextBytes::new(),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap();
         line.set_entry_by_path(
             &path("order.price"),
             TextBytes::from_bytes("12").expect("a value"),
@@ -1839,9 +1920,13 @@ mod values {
 
     #[test]
     fn a_position_naming_no_entry_refuses_and_changes_nothing() {
-        let mut line = TextLine::from_bytes(0, TextBytes::new())
-            .unwrap()
-            .with_entries(TextEntries::from_iter([entry("a", "1")]));
+        let mut line = TextLine::from_bytes(
+            0,
+            TextBytes::new(),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_entries(TextEntries::from_iter([entry("a", "1")]));
         let before = line.clone();
         let error = line
             .set_entry_by_path(&path("[4]"), TextBytes::from_bytes("x").expect("a value"))
@@ -1852,7 +1937,12 @@ mod values {
 
     #[test]
     fn the_root_path_is_not_a_place_to_set() {
-        let mut line = TextLine::from_bytes(0, TextBytes::new()).unwrap();
+        let mut line = TextLine::from_bytes(
+            0,
+            TextBytes::new(),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap();
         assert!(
             line.set_entry_by_path(&FieldPath::root(), TextBytes::new())
                 .is_err()
@@ -1861,9 +1951,13 @@ mod values {
 
     #[test]
     fn removing_takes_one_entry_at_the_path() {
-        let mut line = TextLine::from_bytes(0, TextBytes::new())
-            .unwrap()
-            .with_entries(TextEntries::from_iter([entry("a", "1"), entry("b", "2")]));
+        let mut line = TextLine::from_bytes(
+            0,
+            TextBytes::new(),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_entries(TextEntries::from_iter([entry("a", "1"), entry("b", "2")]));
         let removed = line.remove_entry_by_path(&path("a")).expect("removes");
         assert_eq!(removed.key_bytes().as_str(), Some("a"));
         assert_eq!(line.entries().map(TextEntries::len), Some(1));
@@ -1872,12 +1966,16 @@ mod values {
 
     #[test]
     fn a_repeated_key_is_two_entries_reachable_by_position() {
-        let line = TextLine::from_bytes(0, TextBytes::new())
-            .unwrap()
-            .with_entries(TextEntries::from_iter([
-                entry("tag", "first"),
-                entry("tag", "second"),
-            ]));
+        let line = TextLine::from_bytes(
+            0,
+            TextBytes::new(),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_entries(TextEntries::from_iter([
+            entry("tag", "first"),
+            entry("tag", "second"),
+        ]));
         assert_eq!(
             line.get_entry_by_path(&path("tag"))
                 .and_then(|held| held.value_bytes().as_str()),
@@ -1893,21 +1991,29 @@ mod values {
 
     #[test]
     fn a_line_carries_what_no_other_field_can_recover() {
-        let mut line =
-            TextLine::from_bytes(7, TextBytes::from_bytes("hello").expect("a body")).unwrap();
+        let mut line = TextLine::from_bytes(
+            7,
+            TextBytes::from_bytes("hello").expect("a body"),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap();
         assert_eq!(line.index(), 7);
-        line.set_timestamp(Some(1_700_000_000_000_000_000));
+        line.set_handle_mtime(Some(1_700_000_000_000_000_000));
         line.set_dropped_byte_size(Some(12));
-        assert_eq!(line.timestamp(), Some(1_700_000_000_000_000_000));
+        assert_eq!(line.mtime().unwrap(), Some(1_700_000_000_000_000_000));
         assert_eq!(line.dropped_byte_size(), Some(12));
         assert_eq!(line.body(), "hello");
     }
 
     #[test]
     fn a_path_segment_naming_nothing_addressable_misses_rather_than_panics() {
-        let line = TextLine::from_bytes(0, TextBytes::new())
-            .unwrap()
-            .with_entries(TextEntries::from_iter([entry("a", "1")]));
+        let line = TextLine::from_bytes(
+            0,
+            TextBytes::new(),
+            std::sync::Arc::new(yggdryl::text::TextOptions::new()),
+        )
+        .unwrap()
+        .with_entries(TextEntries::from_iter([entry("a", "1")]));
         let by_index = FieldPath::new([FieldSegment::index(0)]);
         assert!(line.get_entry_by_path(&by_index).is_some());
         let deep = FieldPath::new([FieldSegment::index(0), FieldSegment::field("x")]);
@@ -2101,12 +2207,450 @@ mod values {
     }
 }
 
+// --- The line as an event: every reading resolved from the body on ask ---
+
+mod event {
+    use std::sync::Arc;
+
+    use yggdryl::graph::{Element, Event, EventIterator};
+    use yggdryl::text::{
+        DEFAULT_TEXT_BATCH_BYTE_SIZE, DEFAULT_TEXT_BATCH_ROW_SIZE, TextBytes, TextEntries,
+        TextLine, TextOptions, into_arrow_batch, read_text_lines,
+    };
+    use yggdryl::{FieldPath, Scalar, Uuid};
+
+    use super::named;
+
+    /// The header naming every fact an event reads off a capture.
+    const HEADER: &str = concat!(
+        r"^(?<mtime>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) ",
+        r"\[(?<state>[A-Za-z]+)\] (?<seqnum>\d+) (?<prevuuid>[0-9a-f-]{36}) (?<crosscode>\S+) ",
+    );
+    /// The same facts, each capture admitting any spelling, so a line that
+    /// spells one wrongly still matches and the fact's own reading refuses.
+    const LOOSE: &str = r"^(?<mtime>\S+) \[(?<state>[^\]]+)\] (?<seqnum>\S+) (?<prevuuid>\S+) ";
+    /// A chain's lines: an instant, a state and the code every line shares.
+    const CHAIN: &str = r"^(?<mtime>\S+) \[(?<state>[A-Za-z]+)\] (?<crosscode>\S+) ";
+    const INSTANT: i64 = 1_767_348_930_000_000_000;
+    const PREVIOUS: &str = "0198a3b2-1c4d-7e5f-8a9b-0c1d2e3f4a5b";
+
+    fn options() -> Arc<TextOptions> {
+        Arc::new(
+            TextOptions::new()
+                .try_with_rowheader(HEADER)
+                .expect("a header"),
+        )
+    }
+
+    fn line(body: &str, options: &Arc<TextOptions>) -> TextLine {
+        TextLine::from_bytes(
+            0,
+            TextBytes::from_bytes(body).expect("a page"),
+            Arc::clone(options),
+        )
+        .expect("a line")
+    }
+
+    #[test]
+    fn a_new_value_batches_on_rows_or_bytes_whichever_binds_first() {
+        let options = TextOptions::new();
+        assert_eq!(options.batch_row_size, Some(DEFAULT_TEXT_BATCH_ROW_SIZE));
+        assert_eq!(options.batch_byte_size, Some(DEFAULT_TEXT_BATCH_BYTE_SIZE));
+        assert_eq!(DEFAULT_TEXT_BATCH_ROW_SIZE, 35 * 1024);
+        assert_eq!(DEFAULT_TEXT_BATCH_BYTE_SIZE, 64 * 1024 * 1024);
+    }
+
+    #[test]
+    fn every_reading_resolves_from_the_body_under_the_header() {
+        let options = options();
+        let body = format!("2026-01-02T10:15:30Z [Filled] 7 {PREVIOUS} O-100 k=v|x=y");
+        let line = line(&body, &options);
+        // The body is the whole line; the payload is what follows the header.
+        assert_eq!(line.body(), body);
+        assert_eq!(line.payload_bytes().as_str(), Some("k=v|x=y"));
+        assert_eq!(line.entries().map(yggdryl::text::TextEntries::len), Some(2));
+        // The captures, in the order the header declares them, and the
+        // identifiers the named ones make.
+        assert_eq!(line.capture(0), Some("2026-01-02T10:15:30Z"));
+        assert_eq!(line.capture(4), Some("O-100"));
+        assert_eq!(line.get_identifiers()["state"], "Filled");
+        assert_eq!(line.get_identifiers()["prevuuid"], PREVIOUS);
+        assert_eq!(line.get_identifiers().len(), 5);
+        // Each event fact, read off the capture of its name at its own type.
+        assert_eq!(line.mtime().unwrap(), Some(INSTANT));
+        assert_eq!(line.get_currunix(), INSTANT);
+        assert!(line.get_state().is_done());
+        assert_eq!(line.get_seqnum(), 7);
+        let Scalar::Uuid(previous) = yggdryl::DataType::Uuid
+            .scalar(Scalar::from(PREVIOUS))
+            .expect("a uuid")
+        else {
+            panic!("a uuid")
+        };
+        assert_eq!(line.get_prevuuid(), Some(previous));
+        assert_eq!(line.get_crosscode(), "O-100");
+        assert_eq!(line.get_crosshashcode(), yggdryl::xxhash::xxh3(b"O-100"));
+        assert_eq!(line.get_crossuuid(), line.cross_uuid());
+        assert_ne!(line.get_crossuuid(), line.get_curruuid());
+        assert_eq!((line.get_creaunix(), line.get_expirunix()), (None, None));
+        assert_eq!((line.get_prevunix(), line.get_snapunix()), (None, None));
+        // The identity: the body's own digest, coupled with the instant.
+        assert_eq!(
+            line.get_currhashcode(),
+            yggdryl::xxhash::xxh3(body.as_bytes())
+        );
+        assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
+        // A line is read from a handle: no source, and no parent until a
+        // walk states one.
+        assert!(line.get_srcuuids().is_empty() && line.get_parentuuids().is_empty());
+        // Two lines stating the same bytes at the same instant are one identity.
+        assert_eq!(
+            line.get_curruuid(),
+            self::line(&body, &options).get_curruuid()
+        );
+    }
+
+    #[test]
+    fn a_line_the_header_does_not_date_stands_at_the_handles_time_else_the_epoch() {
+        let options = Arc::new(TextOptions::new());
+        let mut line = line("plain", &options);
+        assert_eq!(line.mtime().unwrap(), None);
+        assert_eq!(line.get_currunix(), 0);
+        assert!(line.captures().is_empty());
+        assert!(line.get_identifiers().is_empty());
+        assert_eq!(line.get_crosscode(), "");
+        assert_eq!(line.get_crosshashcode(), 0);
+        assert_eq!(line.get_crossuuid(), line.get_curruuid());
+        assert_eq!(line.get_state().as_str(), "00UNKNOWN");
+        // The place in the chain is the row number under `start_rownum`,
+        // else the physical line number.
+        assert_eq!(line.get_seqnum(), 0);
+        line.set_index(3);
+        assert_eq!(line.get_seqnum(), 3);
+        let mut numbered = TextOptions::new();
+        numbered.start_rownum = Some(10);
+        let numbered = self::line("plain", &Arc::new(numbered));
+        assert_eq!(numbered.get_seqnum(), 10);
+        // The handle's own time dates it, and the identity follows.
+        let before = line.get_curruuid();
+        line.set_handle_mtime(Some(INSTANT));
+        assert_eq!(line.mtime().unwrap(), Some(INSTANT));
+        assert_eq!(line.get_currunix(), INSTANT);
+        assert_ne!(line.get_curruuid(), before);
+        assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
+    }
+
+    #[test]
+    fn a_capture_that_does_not_read_as_its_fact_refuses_by_name() {
+        let options = Arc::new(
+            TextOptions::new()
+                .try_with_rowheader(LOOSE)
+                .expect("a header"),
+        );
+        let line = line("nope [what] x y body", &options);
+        for (name, refused) in [
+            ("mtime", line.mtime().err()),
+            ("state", line.state().err()),
+            ("seqnum", line.seqnum().err()),
+            ("prevuuid", line.prevuuid().err()),
+        ] {
+            let refused = refused
+                .unwrap_or_else(|| panic!("{name} refuses"))
+                .to_string();
+            assert!(
+                refused.contains(&format!("$[0].{name}")),
+                "{name}: {refused}"
+            );
+            assert!(refused.contains("physical line 1"), "{name}: {refused}");
+        }
+        // The trait door cannot refuse: it answers each fact's default.
+        assert_eq!(line.get_currunix(), 0);
+        assert_eq!(line.get_state().as_str(), "00UNKNOWN");
+        assert_eq!(line.get_seqnum(), 0);
+        assert_eq!(line.get_prevuuid(), None);
+        // And the column built from the reading refuses the same way.
+        let error = into_arrow_batch([line], &options)
+            .expect_err("the mtime column refuses")
+            .to_string();
+        assert!(error.contains("$[0].mtime"), "{error}");
+    }
+
+    #[test]
+    fn a_stated_fact_wins_and_a_new_body_drops_every_reading() {
+        let options = options();
+        let body = format!("2026-01-02T10:15:30Z [New] 1 {PREVIOUS} O-100 k=v");
+        let mut line = line(&body, &options);
+        let resolved = line.get_curruuid();
+        line.set_state(yggdryl::State::from_spelling("Filled").expect("a state"));
+        line.set_seqnum(9);
+        line.set_srcuuids(vec![Uuid::from_v8(70)]);
+        assert!(line.get_state().is_done());
+        assert_eq!(line.get_seqnum(), 9);
+        assert_eq!(
+            line.get_curruuid(),
+            resolved,
+            "a stated fact is not the identity's"
+        );
+        // A new body: the readings resolve afresh from it, and the stated
+        // facts stand.
+        line.set_body(TextBytes::from_bytes("plain").expect("a page"))
+            .expect("a body");
+        assert_ne!(line.get_curruuid(), resolved);
+        assert_eq!(line.get_currhashcode(), yggdryl::xxhash::xxh3(b"plain"));
+        assert_eq!(line.mtime().unwrap(), None, "the header no longer matches");
+        assert!(line.get_state().is_done(), "stated, so it stands");
+        assert_eq!(line.get_seqnum(), 9);
+        assert_eq!(line.get_srcuuids(), [Uuid::from_v8(70)]);
+        // The stated identity is dropped by finalizing, which derives it.
+        line.set_curruuid(Uuid::from_v8(1));
+        assert_eq!(line.get_curruuid(), Uuid::from_v8(1));
+        line.finalize();
+        assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
+    }
+
+    /// A line is read across threads as any event is: the slots its readings
+    /// resolve into are shared and sent with it.
+    #[test]
+    fn a_line_is_sent_and_shared_across_threads() {
+        fn sent_and_shared<T: Send + Sync>() {}
+        sent_and_shared::<TextLine>();
+    }
+
+    #[test]
+    fn a_stated_tree_stands_over_a_new_body_and_a_matched_header_does_not() {
+        let options = TextOptions::new()
+            .try_with_rowheader(r"^\[(?<level>[A-Z]+)\] ")
+            .expect("a header")
+            .with_max_record_byte_size(64);
+        let page = |text: &str| TextBytes::from_bytes(text).expect("a page");
+        // A line the cut matched: the header's end and captures were read
+        // over the body the reader cut, so a new body reads them afresh, and
+        // the tree with them.
+        let mut cut = read_text_lines(&named("cut.log", b"[INFO] a=1|b=2\n"), &options)
+            .expect("a reader")
+            .next()
+            .expect("a line")
+            .expect("a line");
+        assert_eq!(cut.capture(0), Some("INFO"));
+        assert_eq!(cut.payload_bytes().as_str(), Some("a=1|b=2"));
+        cut.set_body(page("[DEBUG] c=3")).expect("a body");
+        assert_eq!(cut.capture(0), Some("DEBUG"), "read off the new body");
+        assert_eq!(cut.payload_bytes().as_str(), Some("c=3"));
+        assert_eq!(cut.entries().map(TextEntries::len), Some(1));
+        // Captures a caller stated are the line's word, and stand over every
+        // body: the payload is then the whole of the new one.
+        let options = Arc::new(options);
+        let mut line =
+            TextLine::from_bytes(0, page("[INFO] a=1|b=2"), Arc::clone(&options)).expect("a line");
+        line.set_captures(vec![Some(page("WARN"))])
+            .expect("captures");
+        assert_eq!(line.capture(0), Some("WARN"), "stated, the captures win");
+        assert_eq!(line.entries().map(TextEntries::len), Some(2));
+        line.set_body(page("[DEBUG] c=3")).expect("a body");
+        assert_eq!(line.capture(0), Some("WARN"), "stated, the captures stand");
+        assert_eq!(line.body(), "[DEBUG] c=3");
+        assert_eq!(line.payload_bytes().as_str(), Some("[DEBUG] c=3"));
+        assert_eq!(line.entries().map(TextEntries::len), Some(1));
+        // A stated tree stands over every body, and so does a stated absence.
+        line.set_entries(TextEntries::from_bytes(&page("z=9")));
+        line.set_body(page("[DEBUG] c=3|d=4")).expect("a body");
+        assert_eq!(
+            line.get_entry_by_path(&FieldPath::from_str("z").unwrap())
+                .map(|held| held.value().into_owned()),
+            Some("9".to_owned()),
+            "stated, the tree stands"
+        );
+        line.set_entries(None);
+        assert!(line.entries().is_none(), "cleared, no tree stands");
+        // A tree handed out for mutation is the line's word from then on.
+        let mut mutated =
+            TextLine::from_bytes(1, page("[INFO] a=1"), Arc::clone(&options)).expect("a line");
+        mutated
+            .set_entry_by_path(&FieldPath::from_str("b").unwrap(), page("2"))
+            .expect("an entry");
+        mutated.set_body(page("[INFO] c=3")).expect("a body");
+        assert_eq!(
+            mutated.entries().map(TextEntries::len),
+            Some(2),
+            "mutated, the tree stands"
+        );
+    }
+
+    #[test]
+    fn the_identity_never_reads_the_cross_hash_the_cross_element_or_a_source() {
+        let options = options();
+        let body = format!("2026-01-02T10:15:30Z [New] 1 {PREVIOUS} O-100 k=v");
+        let stated = line(&body, &options);
+        let mut crossed = line(&body, &options);
+        crossed.set_crosshashcode(0xCD);
+        crossed.set_crossuuid(Uuid::from_v8(77));
+        crossed.set_srcuuids(vec![Uuid::from_v8(70)]);
+        assert_eq!(crossed.get_currhashcode(), stated.get_currhashcode());
+        assert_eq!(crossed.get_curruuid(), stated.get_curruuid());
+        assert_eq!(
+            crossed.get_crossuuid(),
+            Uuid::from_v8(77),
+            "stated, so answered"
+        );
+        crossed.finalize();
+        assert_eq!(crossed.get_curruuid(), stated.get_curruuid());
+        assert_eq!(crossed.get_crosshashcode(), stated.get_crosshashcode());
+        assert_eq!(crossed.get_crossuuid(), stated.get_crossuuid());
+    }
+
+    #[test]
+    fn equality_reads_the_stated_facts_and_never_a_resolved_slot() {
+        let options = options();
+        let body = format!("2026-01-02T10:15:30Z [New] 1 {PREVIOUS} O-100 k=v");
+        let left = line(&body, &options);
+        let mut right = line(&body, &options);
+        assert_eq!(left, right);
+        let _ = right.captures();
+        let _ = right.get_curruuid();
+        let _ = right.entries();
+        assert_eq!(left, right, "a resolved slot is not a fact");
+        right.set_seqnum(4);
+        assert_ne!(left, right, "a stated one is");
+    }
+
+    #[test]
+    fn lines_walk_as_events_and_carry_their_lineage() {
+        let options = Arc::new(
+            TextOptions::new()
+                .try_with_rowheader(CHAIN)
+                .expect("a header"),
+        );
+        let read =
+            |instant: &str, state: &str| line(&format!("{instant} [{state}] O-100 k=v"), &options);
+        let arrived = vec![
+            read("2026-01-02T10:15:30Z", "New"),
+            read("2026-01-02T10:15:31Z", "PartiallyFilled"),
+            read("2026-01-02T10:15:32Z", "Filled"),
+        ];
+        let walked: Vec<TextLine> = EventIterator::new(arrived, true).collect();
+        let [first, second, third] = walked.as_slice() else {
+            panic!("three lines")
+        };
+        assert_eq!((first.get_seqnum(), first.get_prevuuid()), (0, None));
+        assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
+        assert_eq!(second.get_prevunix(), Some(first.get_currunix()));
+        assert_eq!(second.get_seqnum(), 1);
+        assert_eq!(second.get_parentuuids(), [first.get_curruuid()]);
+        assert_eq!(
+            third.get_parentuuids(),
+            [first.get_curruuid(), second.get_curruuid()]
+        );
+        assert!(third.get_state().is_done());
+        assert!(walked.iter().all(|line| line.get_srcuuids().is_empty()));
+        assert!(
+            walked
+                .iter()
+                .all(|line| line.get_crossuuid() == first.get_crossuuid())
+        );
+    }
+
+    #[test]
+    fn a_read_line_reads_as_the_batch_reads_it() {
+        let options = TextOptions::new()
+            .try_with_rowheader(HEADER)
+            .expect("a header");
+        let text = format!("2026-01-02T10:15:30Z [Filled] 7 {PREVIOUS} O-100 k=v\n");
+        let source = named("events.log", text.as_bytes());
+        let lines: Vec<TextLine> = read_text_lines(&source, &options)
+            .expect("a reader")
+            .map(|line| line.expect("a line"))
+            .collect();
+        assert_eq!(lines[0].get_currunix(), INSTANT);
+        assert_eq!(lines[0].get_seqnum(), 7);
+        assert!(lines[0].sourceurl().is_some());
+        let batch = into_arrow_batch(lines.clone(), &options).expect("a batch");
+        let schema = batch.schema();
+        let names: Vec<&str> = schema
+            .fields()
+            .iter()
+            .map(|field| field.name().as_str())
+            .collect();
+        // The batch opens with the sixteen event columns the line is stated
+        // in, and a capture named for an event fact - `state`, `seqnum`,
+        // `prevuuid`, `crosscode` - feeds that column rather than trailing
+        // beside it as a column of its own.
+        assert_eq!(names, super::with_event(&["sourceurl", "mtime", "body"]));
+        // Every fact the line read off its captures is what the column
+        // states, at the fact's own datatype rather than as the text the
+        // capture held.
+        let cell = |name: &str| batch.column_by_name(name).expect(name).clone();
+        assert_eq!(
+            cell("seqnum")
+                .as_any()
+                .downcast_ref::<arrow_array::UInt64Array>()
+                .expect("a count")
+                .value(0),
+            7
+        );
+        assert_eq!(
+            cell("crosscode")
+                .as_any()
+                .downcast_ref::<arrow_array::StringArray>()
+                .expect("a code")
+                .value(0),
+            "O-100"
+        );
+        assert_eq!(
+            cell("state")
+                .as_any()
+                .downcast_ref::<arrow_array::StringArray>()
+                .expect("a state")
+                .value(0),
+            lines[0].get_state().as_str()
+        );
+        // And a line read back out of the batch states every one of them
+        // again, the identity a message named as its source included.
+        let back = yggdryl::text::from_arrow_batch(&batch, &options).expect("lines read back");
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0].get_currunix(), INSTANT);
+        assert_eq!(back[0].get_seqnum(), 7);
+        assert!(back[0].get_state().is_done());
+        assert_eq!(back[0].get_prevuuid(), lines[0].get_prevuuid());
+        assert_eq!(back[0].get_crosscode(), "O-100");
+        assert_eq!(back[0].get_curruuid(), lines[0].get_curruuid());
+        assert_eq!(back[0].get_crossuuid(), lines[0].get_crossuuid());
+        assert_eq!(back[0].get_currhashcode(), lines[0].get_currhashcode());
+        assert_eq!(back[0].get_identifiers(), lines[0].get_identifiers());
+    }
+
+    #[test]
+    fn a_batch_refuses_a_capture_the_event_column_cannot_hold_by_the_facts_name() {
+        // The column states the fact at the fact's own datatype, so a
+        // capture spelled as the fact and not readable as it refuses the
+        // batch by the fact's name, where a capture column would have
+        // carried the text: one owner per fact, and one type.
+        let options = TextOptions::new()
+            .try_with_rowheader(LOOSE)
+            .expect("a header");
+        let text = format!("2026-01-02T10:15:30Z [Filled] seven {PREVIOUS} k=v\n");
+        let source = named("events.log", text.as_bytes());
+        let lines: Vec<TextLine> = read_text_lines(&source, &options)
+            .expect("a reader")
+            .map(|line| line.expect("a line"))
+            .collect();
+        // The trait door answers the default over the refusal...
+        assert_eq!(lines[0].get_seqnum(), 0);
+        // ...and the batch, built from the refusing reading, names the fact.
+        let error = into_arrow_batch(lines, &options)
+            .expect_err("a seqnum that is not a count")
+            .to_string();
+        assert!(error.contains("seqnum"), "{error}");
+        assert!(error.contains("seven"), "{error}");
+        assert!(error.contains("physical line 1"), "{error}");
+    }
+}
+
 // --- The one decode path, the plan, and the two new options ---
 
 mod decoding {
 
     use arrow_array::{Array as _, StringArray};
-    use yggdryl::text::TextOptions;
+    use yggdryl::text::{TextEntries, TextOptions};
 
     use yggdryl::FieldPath;
     use yggdryl::text::{into_arrow_batch, read_text_lines};
@@ -2136,14 +2680,19 @@ mod decoding {
     }
 
     #[test]
-    fn a_read_whose_columns_want_no_entry_builds_no_tree() {
+    fn a_read_asking_for_no_entry_resolves_the_tree_on_the_first_ask_alone() {
+        // Nothing is resolved until asked, and the ask resolves it: the tree
+        // the line states, and what the line is classified as. That a read
+        // never pays for what it never asks is the allocation suite's pin,
+        // `a_line_built_and_read_allocates_nothing_and_its_captures_once`.
         let options = TextOptions::new();
         let decoded = lines(b"35=D|55=AAPL\n", &options);
-        assert!(
-            decoded[0].entries().is_none(),
-            "nothing asked for a tree, so none was built"
+        assert_eq!(
+            decoded[0].entries().map(TextEntries::len),
+            Some(2),
+            "asked, the tree is read off the body"
         );
-        assert!(decoded[0].bodytype().is_none(), "and nothing classified it");
+        assert_eq!(decoded[0].bodytype().as_str(), "text/fix");
     }
 
     #[test]
@@ -2300,7 +2849,7 @@ mod decoding {
 ",
             &options,
         );
-        assert!(decoded[0].bodytype().is_some());
+        assert_eq!(decoded[0].bodytype().as_str(), "text/fix");
         let batch = into_arrow_batch(decoded, &options).expect("a batch");
         let shape = batch
             .column_by_name("mimetype")
@@ -2359,6 +2908,7 @@ mod decoding {
 mod intake {
 
     use yggdryl::FieldPath;
+    use yggdryl::graph::Event as _;
     use yggdryl::text::TextOptions;
     use yggdryl::text::{from_arrow_batch, from_arrow_reader};
     use yggdryl::text::{into_arrow_batch, read_text_lines};
@@ -2389,7 +2939,7 @@ mod intake {
                 read.sourceurl().map(ToString::to_string),
                 original.sourceurl().map(ToString::to_string)
             );
-            assert_eq!(read.timestamp(), original.timestamp());
+            assert_eq!(read.mtime().unwrap(), original.mtime().unwrap());
         }
     }
 
@@ -2468,15 +3018,21 @@ mod intake {
     }
 
     #[test]
-    fn a_timestamp_wider_than_the_column_is_refused_by_name() {
-        let options = TextOptions::new();
-        let mut lines = decode(b"one\n", &options);
-        // The line counts in 128 bits; the column holds 64.
-        lines[0].set_timestamp(Some(i128::from(i64::MAX) + 1));
-        let error = into_arrow_batch(lines, &options).expect_err("a count that will not fit");
-        let rendered = error.to_string();
-        assert!(rendered.contains("mtime"), "{rendered}");
-        assert!(rendered.contains("64-bit"), "{rendered}");
+    fn a_stated_instant_is_the_rows_word_over_the_headers() {
+        // The mtime column states the instant a line read back answers, over
+        // whatever its own header would read: the row's word is the fact.
+        let options = TextOptions::new()
+            .try_with_rowheader(r"^(?<mtime>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) ")
+            .expect("a header");
+        let lines = decode(b"2026-01-02T10:15:30Z body\n", &options);
+        let batch = into_arrow_batch(lines.clone(), &options).expect("a batch");
+        let back = from_arrow_batch(&batch, &options).expect("lines read back");
+        assert_eq!(back[0].mtime().unwrap(), lines[0].mtime().unwrap());
+        assert_eq!(back[0].body(), lines[0].body());
+        let mut restated = back[0].clone();
+        restated.set_currunix(7);
+        assert_eq!(restated.mtime().unwrap(), Some(7));
+        assert_eq!(restated.get_currunix(), 7);
     }
 }
 
@@ -2515,7 +3071,7 @@ fn a_text_read_is_shaped_by_its_select_and_where_sections() {
         .iter()
         .map(|line| line.unwrap().to_owned())
         .collect::<Vec<_>>();
-    assert_eq!(lines, ["second", "third"]);
+    assert_eq!(lines, ["[WARN] id=9 second", "[INFO] id=11 third"]);
     let tenfold = batch
         .column(4)
         .as_any()

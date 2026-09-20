@@ -12,7 +12,7 @@ use crate::local::Folder;
 use crate::sequence::SequenceType;
 use crate::{
     DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey, FixMsg,
-    FixRegistry, MimeType, Plan, Scalar, StructureType, Version,
+    FixRegistry, MimeType, Plan, Scalar, StructType, Version,
 };
 
 /// One path, resolved once, as every FIX navigator now takes it.
@@ -69,7 +69,7 @@ fn counter(name: &str, tag: i32) -> Field {
 }
 
 fn named_group(name: &str, tag: i32) -> Field {
-    let item = StructureType::from_fields([tagged("Member", 9_002)])
+    let item = StructType::from_fields([tagged("Member", 9_002)])
         .map(DataType::from)
         .unwrap()
         .required_field("MemberComponent");
@@ -111,7 +111,7 @@ fn crated_components() -> usize {
     crate::fix_crate_fields()
         .expect("the crate's own fields")
         .iter()
-        .filter(|field| matches!(field.dtype(), DataType::Structure(_)))
+        .filter(|field| matches!(field.dtype(), DataType::Struct(_)))
         .count()
 }
 
@@ -127,7 +127,7 @@ fn crate_names_of(groups: bool) -> Vec<&'static str> {
             if groups {
                 matches!(field.dtype(), DataType::Mapping(_))
             } else {
-                !matches!(field.dtype(), DataType::Mapping(_) | DataType::Structure(_))
+                !matches!(field.dtype(), DataType::Mapping(_) | DataType::Struct(_))
             }
         })
         .map(Field::name)
@@ -804,7 +804,7 @@ fn registering_a_message_type_names_it_describes_it_and_never_rewrites_it() {
         FixRegistry::from_fields([tagged("msgtype", super::MSGTYPE_TAG_NAME.0)]).unwrap();
     let value = registry.register_msgtype("D", None, None).unwrap();
     assert_eq!(value.as_str(), "D");
-    assert!(matches!(value.as_field().dtype(), DataType::Structure(_)));
+    assert!(matches!(value.as_field().dtype(), DataType::Struct(_)));
 
     let held = registry
         .register_msgtype(
@@ -1242,8 +1242,7 @@ fn the_fold_table_holds_through_add_field_and_through_merge_with() {
 fn one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one() {
     let mut registry = FixRegistry::from_fields([tagged("MsgType", 35)]).unwrap();
     let message = |name: &str, code: &str| {
-        let mut field =
-            DataType::from(StructureType::from_fields([]).unwrap()).required_field(name);
+        let mut field = DataType::from(StructType::from_fields([]).unwrap()).required_field(name);
         field.as_fix_mut().set_msgtype(code).unwrap();
         field
     };
@@ -1938,14 +1937,14 @@ fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
     let mut role = DataType::Int32.nullable_field("PartyRole");
     role.as_fix_mut().set_tag(452).unwrap();
     let mut group = DataType::list(
-        StructureType::from_fields([party_id.clone(), role])
+        StructType::from_fields([party_id.clone(), role])
             .map(DataType::from)
             .unwrap()
             .required_field("Party"),
     )
     .nullable_field("Parties");
     group.as_fix_mut().set_counter(453).unwrap();
-    let instrument = StructureType::from_fields([tagged("Symbol", 55), tagged("SecurityID", 48)])
+    let instrument = StructType::from_fields([tagged("Symbol", 55), tagged("SecurityID", 48)])
         .map(DataType::from)
         .unwrap()
         .nullable_field("Instrument");
@@ -2288,7 +2287,7 @@ fn nested_shapes_file_as_definitions_and_refuse_a_wire_tag_unchanged() {
     // the registry stands as it was.
     let mut registry = FixRegistry::from_fields([tagged("Symbol", 55)]).unwrap();
     let original = registry.clone();
-    let occurrence = DataType::from(StructureType::from_fields([tagged("Member", 9_001)]).unwrap());
+    let occurrence = DataType::from(StructType::from_fields([tagged("Member", 9_001)]).unwrap());
     for dtype in [
         occurrence.clone(),
         DataType::list(occurrence.required_field("item")),
@@ -2305,7 +2304,7 @@ fn nested_shapes_file_as_definitions_and_refuse_a_wire_tag_unchanged() {
         DataType::list(DataType::utf8().required_field("item")),
         DataType::dictionary(
             DataType::Int32,
-            DataType::from(StructureType::from_fields([tagged("Member", 9_002)]).unwrap()),
+            DataType::from(StructType::from_fields([tagged("Member", 9_002)]).unwrap()),
         )
         .unwrap(),
     ] {
@@ -2344,7 +2343,7 @@ fn derived_definition_tags_keep_the_exact_initial_slots() {
 #[test]
 fn derived_definition_tags_probe_past_scalar_and_component_occupants() {
     let mut registry = FixRegistry::from_fields([tagged("OccupiedScalar", 475_337)]).unwrap();
-    let dtype = DataType::from(StructureType::from_fields([] as [Field; 0]).unwrap());
+    let dtype = DataType::from(StructType::from_fields([] as [Field; 0]).unwrap());
     let mut occupied = dtype.clone().nullable_field("OccupiedComponent");
     occupied.as_fix_mut().set_tag(475_338).unwrap();
     registry
@@ -2621,13 +2620,13 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
     party_id.as_fix_mut().set_tag(448).unwrap();
     let mut role = DataType::Int32.nullable_field("PartyRole");
     role.as_fix_mut().set_tag(452).unwrap();
-    let item = StructureType::from_fields([party_id, role])
+    let item = StructType::from_fields([party_id, role])
         .map(DataType::from)
         .unwrap()
         .required_field("Party");
     let mut group = DataType::list(item).nullable_field("Parties");
     group.as_fix_mut().set_counter(453).unwrap();
-    let instrument = StructureType::from_fields([tagged("Symbol", 55)])
+    let instrument = StructType::from_fields([tagged("Symbol", 55)])
         .map(DataType::from)
         .unwrap()
         .nullable_field("Instrument");
@@ -2644,7 +2643,7 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
         .insert_definition(FixCategory::Components, instrument.clone())
         .unwrap();
     let registry = Arc::new(registry);
-    let root = StructureType::from_fields([
+    let root = StructType::from_fields([
         qty,
         instrument,
         count,
@@ -2655,21 +2654,21 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
     .map(DataType::from)
     .unwrap()
     .required_field("NewOrderSingle");
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         ("OrderQty", Scalar::from(100)),
         (
             "Instrument",
-            Scalar::from_record([("Symbol", Scalar::from("AAPL"))]).unwrap(),
+            Scalar::from_struct([("Symbol", Scalar::from("AAPL"))]).unwrap(),
         ),
         (
             "Parties",
             Scalar::from_sequence([
-                Scalar::from_record([
+                Scalar::from_struct([
                     ("PartyID", Scalar::from("BROKER")),
                     ("PartyRole", Scalar::from(1)),
                 ])
                 .unwrap(),
-                Scalar::from_record([
+                Scalar::from_struct([
                     ("PartyID", Scalar::from("CLIENT")),
                     ("PartyRole", Scalar::from(3)),
                 ])
@@ -2689,7 +2688,7 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
 
 #[test]
 fn folded_message_child_lookup_does_not_choose_between_colliding_names() {
-    let field = StructureType::from_fields([
+    let field = StructType::from_fields([
         DataType::utf8().required_field("A"),
         DataType::utf8().required_field("a"),
     ])
@@ -2831,7 +2830,7 @@ fn a_message_rejects_a_value_its_field_refuses() {
     let error = FixMsg::with_registry(
         Arc::clone(&registry),
         root.clone(),
-        Scalar::from_record([("OrderQty", Scalar::from("many"))]).unwrap(),
+        Scalar::from_struct([("OrderQty", Scalar::from("many"))]).unwrap(),
     )
     .unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
@@ -2868,11 +2867,11 @@ fn a_message_resolves_a_bare_tag_to_its_first_holder_and_an_identity_exactly() {
 
     // A message root the venue's fields shape carries no membership of its
     // own: a message is not a dictionary member.
-    let root = StructureType::from_fields([venue_trade.clone(), msg_type.clone()])
+    let root = StructType::from_fields([venue_trade.clone(), msg_type.clone()])
         .map(DataType::from)
         .unwrap()
         .required_field("VenueExecutionReport");
-    let value = Scalar::from_record([
+    let value = Scalar::from_struct([
         ("TradeID", Scalar::from("T-1")),
         ("MsgType", Scalar::from("8")),
     ])
@@ -2913,14 +2912,14 @@ fn a_message_resolves_a_bare_tag_to_its_first_holder_and_an_identity_exactly() {
 
     // A message shaped by the specification's field reaches it by the tag
     // its own child carries, whoever holds the bare tag in the dictionary.
-    let plain_root = StructureType::from_fields([spec_trade, msg_type])
+    let plain_root = StructType::from_fields([spec_trade, msg_type])
         .map(DataType::from)
         .unwrap()
         .required_field("ExecutionReport");
     let plain = FixMsg::with_registry(
         registry,
         plain_root,
-        Scalar::from_record([
+        Scalar::from_struct([
             ("SecondaryTradeID", Scalar::from("S-1")),
             ("MsgType", Scalar::from("8")),
         ])
@@ -2940,7 +2939,7 @@ fn a_message_root_carrying_membership_is_read_as_any_root_is() {
     // Membership is provenance on a dictionary field; on a root it states
     // nothing the message reads, and a spelling nothing validates on read
     // is not a refusal.
-    let mut root = StructureType::from_fields([tagged("MsgType", 35)])
+    let mut root = StructType::from_fields([tagged("MsgType", 35)])
         .map(DataType::from)
         .unwrap()
         .required_field("row");
@@ -2949,7 +2948,7 @@ fn a_message_root_carrying_membership_is_read_as_any_root_is() {
     let message = FixMsg::with_registry(
         Arc::new(FixRegistry::new()),
         root,
-        Scalar::from_record([("MsgType", Scalar::from("8"))]).unwrap(),
+        Scalar::from_struct([("MsgType", Scalar::from("8"))]).unwrap(),
     )
     .unwrap();
     assert_eq!(message.by_tag(35).unwrap(), Scalar::from("8"));
@@ -4059,7 +4058,7 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
         };
         assert!(entries.insert(item.name()));
         assert!(!item.is_nullable());
-        assert!(matches!(item.dtype(), DataType::Structure(_)));
+        assert!(matches!(item.dtype(), DataType::Struct(_)));
         let component = registry
             .definition(FixCategory::Components, item.name())
             .unwrap();
@@ -4318,13 +4317,13 @@ fn towering(depth: usize) -> (Field, Scalar) {
     let mut field = DataType::utf8().nullable_field("leaf");
     let mut value = Scalar::from("deep");
     for level in (1..depth).rev() {
-        field = StructureType::from_fields([field])
+        field = StructType::from_fields([field])
             .map(DataType::from)
             .unwrap()
             .nullable_field(format!("level{level}"));
         value = Scalar::from_sequence([value]);
     }
-    let root = DataType::from(StructureType::from_fields([field]).unwrap()).required_field("D");
+    let root = DataType::from(StructType::from_fields([field]).unwrap()).required_field("D");
     (root, Scalar::from_sequence([value]))
 }
 

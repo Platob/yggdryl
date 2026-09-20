@@ -37,7 +37,7 @@ fn one_of_every_kind() -> Vec<Scalar> {
         Scalar::duration64(2, TimeUnit::Second).unwrap(),
         Scalar::from_sequence([Scalar::Null]),
         Scalar::from_mapping([(Scalar::from("k"), Scalar::Null)]).unwrap(),
-        Scalar::from_record([("k", Scalar::Null)]).unwrap(),
+        Scalar::from_struct([("k", Scalar::Null)]).unwrap(),
         Scalar::Geometry(
             Geometry::new([
                 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -114,7 +114,7 @@ fn null_answers_absence_everywhere_a_value_is_read() {
     assert!(null.as_d256().is_none());
     assert!(null.as_sequence().is_none());
     assert!(null.as_mapping().is_none());
-    assert!(null.as_record().is_none());
+    assert!(null.as_struct().is_none());
     assert!(!null.is_integer() && !null.is_number() && !null.is_temporal());
 
     assert_eq!(null.len(), 0);
@@ -166,7 +166,7 @@ fn every_accessor_tolerates_every_kind() {
         let _ = value.as_d256();
         let _ = value.as_sequence();
         let _ = value.as_mapping();
-        let _ = value.as_record();
+        let _ = value.as_struct();
         let _ = value.record_iter().count();
         let _ = value.into_json_bytes();
         let _ = value.into_json();
@@ -302,9 +302,9 @@ fn empty_collections_share_process_wide_backing() {
     };
     assert!(std::ptr::eq(left.as_slice(), right.as_slice()));
 
-    let left = Scalar::from_record(std::iter::empty::<(&str, Scalar)>()).unwrap();
-    let right = Scalar::from_record(std::iter::empty::<(&str, Scalar)>()).unwrap();
-    let (Scalar::Record(left), Scalar::Record(right)) = (&left, &right) else {
+    let left = Scalar::from_struct(std::iter::empty::<(&str, Scalar)>()).unwrap();
+    let right = Scalar::from_struct(std::iter::empty::<(&str, Scalar)>()).unwrap();
+    let (Scalar::Struct(left), Scalar::Struct(right)) = (&left, &right) else {
         unreachable!();
     };
     assert!(std::ptr::eq(left.as_map(), right.as_map()));
