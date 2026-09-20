@@ -295,69 +295,109 @@ pub trait NestedValue: Value {
     fn children(&self) -> Children<'_>;
 }
 
-/// One column: a family's column, or the root that redirects to it.
+/// One column: a family's leaf column, or the root that redirects to it.
 ///
-/// A column is many values of one field. The field is the authority the rest
-/// of the project already uses - it decides nullability, dictionary options
-/// and extension identity - and it types every row the column holds.
+/// A column is many values of one field, and it holds them the way Arrow
+/// lays them out - a values buffer, offsets where the layout has them, a
+/// validity bitmap - never one boxed value per row. The field is the
+/// authority the rest of the project already uses: it decides nullability,
+/// dictionary options and extension identity, and it says which of the
+/// crate's leaves the buffers under it are.
 ///
-/// The trait sits over [`NestedValue`] rather than beside it because a column
-/// *is* a value: it widens to `Scalar::Sequence(Sequence::Serie(..))`, its
-/// rows are its children, and [`NestedValue::len`] is the row count.
+/// What every column owes is this trait; what one leaf's buffers *are* is the
+/// leaf's own inherent surface - [`Int32Serie::values`](crate::Int32Serie::values)
+/// lends `&[i32]`, [`Utf8StringSerie::offsets`](crate::Utf8StringSerie::offsets)
+/// lends the offsets, [`StructSerie::child`](crate::StructSerie::child) lends a
+/// child column - because a buffer is the one thing a family cannot share a
+/// spelling for.
 ///
-/// The rows are held the way Arrow lays them out, so the two readings are not
-/// one: [`Self::as_slice`] borrows them only where they are already values
-/// and answers `None` otherwise, and [`Self::rows`] decodes the buffers once
-/// and reports a value the field's own contract refuses. [`Self::get`] and
-/// [`Self::is_null`] read one row without decoding the rest.
+/// The value side is lazy in both directions: [`Self::scalar`] builds one row
+/// only when a caller asks for one, and [`Self::set`] and [`Self::push`] read
+/// the value through the field's own contract and write the buffer under it.
+/// Nothing here stores a [`Scalar`].
 ///
 /// ```
 /// use yggdryl::{DataType, Field, Scalar, Serie, SerieValue};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let field = Field::new("size", DataType::Int64, true);
-/// let serie = Serie::from_rows(field, [Scalar::from(7_i64), Scalar::Null])?;
+/// let serie = Serie::from_scalars(field, [Scalar::from(7_i64), Scalar::Null])?;
 ///
 /// assert_eq!(SerieValue::field(&serie).name(), "size");
-/// assert_eq!(SerieValue::rows(&serie)?.len(), 2);
-/// assert_eq!(SerieValue::get(&serie, 0)?, Scalar::from(7_i64));
+/// assert_eq!(SerieValue::len(&serie), 2);
+/// assert_eq!(SerieValue::scalar(&serie, 0)?, Scalar::from(7_i64));
 /// assert!(SerieValue::is_null(&serie, 1));
-/// assert_eq!(Serie::from_serie(&serie), Some(&serie));
 /// # Ok(())
 /// # }
 /// ```
-pub trait SerieValue: NestedValue {
+// `into_arrow_array` hands back the buffers this column already holds, so it
+// borrows: moving the column to share what it shares would make every caller
+// clone it first. The crate's `into_*` contract is "another representation,
+// borrowing or consuming as useful", and this is the borrowing half.
+#[allow(clippy::wrong_self_convention)]
+pub trait SerieValue:
+    Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + Sized + 'static
+{
     /// Return the field every row of this column is typed by.
     fn field(&self) -> &Field;
 
-    /// Borrow the rows where they are already values, without decoding.
+    /// Return the number of rows.
     ///
-    /// Answers `None` for a column still holding its buffers; [`Self::rows`]
-    /// is the door that decodes one.
-    fn as_slice(&self) -> Option<&[Scalar]>;
+    /// Constant: a column reads its length off its buffers.
+    fn len(&self) -> usize;
 
-    /// Return every row as a value, decoding the buffers once.
+    /// Return whether this column holds no rows.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Return how many rows hold no value.
+    fn null_count(&self) -> usize;
+
+    /// Return whether row `index` holds no value.
+    ///
+    /// A row past the end holds no value either, which is what a reader
+    /// walking one column against a longer one needs.
+    fn is_null(&self, index: usize) -> bool;
+
+    /// Build row `index` as a value, or [`Scalar::Null`] past the end.
+    ///
+    /// One row is read off the buffers here; the rest are not touched.
     ///
     /// # Errors
     ///
     /// Returns the field's own refusal where the buffers hold a value it does
-    /// not accept.
-    fn rows(&self) -> Result<&[Scalar]>;
+    /// not accept - text no code registers, bytes that are not well-known
+    /// binary - which is the proof a buffer import defers.
+    fn scalar(&self, index: usize) -> Result<Scalar>;
 
-    /// Return row `index`, or [`Scalar::Null`] past the end.
+    /// Overwrite row `index` with `value`, through the field's contract.
+    ///
+    /// The buffers are written in place where this column holds them alone,
+    /// and copied once where it does not.
     ///
     /// # Errors
     ///
-    /// [`Self::rows`] carries the rule, for that one row.
-    fn get(&self, index: usize) -> Result<Scalar>;
+    /// Returns an error when `index` is past the end, or when the value is
+    /// not one the field accepts.
+    fn set(&mut self, index: usize, value: Scalar) -> Result<()>;
 
-    /// Return whether row `index` holds no value.
-    fn is_null(&self, index: usize) -> bool;
+    /// Append one row, through the field's contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the value is not one the field accepts.
+    fn push(&mut self, value: Scalar) -> Result<()>;
+
+    /// Return this column's rows as the Arrow array they already are.
+    ///
+    /// The buffers are shared, never copied.
+    fn into_arrow_array(&self) -> arrow_array::ArrayRef;
 
     /// Widen this column to the dynamic serie root.
     fn into_serie(self) -> crate::Serie;
 
-    /// Narrow a dynamic serie to this column without re-validating it.
+    /// Narrow a dynamic serie to this leaf without re-validating it.
     fn from_serie(value: &crate::Serie) -> Option<&Self>;
 }
 

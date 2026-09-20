@@ -216,8 +216,8 @@ impl Scalar {
             // its datatype is read off that field rather than agreed back
             // out of the rows: an empty column names its datatype where an
             // empty sequence cannot.
-            Self::Sequence(crate::Sequence::Serie(serie)) => {
-                Ok(DataType::list(serie.field().clone()))
+            Self::Sequence(crate::Sequence::Serie(rows)) => {
+                Ok(DataType::list(rows.column().field().clone()))
             }
             Self::Sequence(values) => {
                 let (dtype, nullable) = agreed(values.rows()?.iter(), "sequence item", depth)?;

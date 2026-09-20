@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use yggdryl::arrow::batch_reader;
-use yggdryl::{DataType, Field, Scalar, Serie};
+use yggdryl::{DataType, Field, Scalar, Serie, SerieValue};
 
 use super::root;
 
@@ -29,6 +29,11 @@ fn quotes_batch(first: i64, count: i64) -> RecordBatch {
         (first..first + count).map(|_| "AAPL").collect::<Vec<_>>(),
     ));
     RecordBatch::try_new(schema, vec![ids, symbols]).expect("two columns of one length")
+}
+
+/// Every row of `column` as a value, in order.
+fn rows(column: &Serie) -> Vec<Scalar> {
+    column.scalars().expect("readable rows")
 }
 
 #[test]
@@ -54,7 +59,7 @@ fn an_array_of_another_layout_is_refused_rather_than_reinterpreted() {
     let nullable = Field::new("price", DataType::Int64, true);
     let read = Serie::from_arrow_array(nullable, holes).expect("a nullable column");
     assert_eq!(read.len(), 2);
-    assert_eq!(read.get(1).unwrap(), Scalar::Null);
+    assert_eq!(read.scalar(1).unwrap(), Scalar::Null);
     assert!(read.is_null(1));
 }
 
@@ -70,16 +75,16 @@ fn a_multi_batch_stream_drains_into_one_column_of_every_row() {
     assert_eq!(column.field().name(), "row");
     assert_eq!(column.field().dtype(), quotes_root().dtype());
 
-    // Every row is there, in the order the batches yielded them.
+    // Every row is there, in the order the batches yielded them - and the
+    // child is a column of its own, so the ids come off its values buffer.
     let ids = column
+        .as_struct()
+        .expect("a record column")
         .child("id")
         .expect("a named child")
-        .rows()
-        .expect("readable rows")
-        .iter()
-        .filter_map(Scalar::as_i64)
-        .collect::<Vec<_>>();
-    assert_eq!(ids, vec![0, 1, 2, 3, 4, 5]);
+        .as_int64()
+        .expect("an int64 child");
+    assert_eq!(ids.values(), &[0, 1, 2, 3, 4, 5]);
 }
 
 #[test]
@@ -98,7 +103,7 @@ fn an_empty_stream_drains_into_the_empty_column_of_its_declared_root() {
 
 #[test]
 fn a_column_round_trips_a_batch_through_the_reader_it_streams() {
-    let rows = (0..4_i64)
+    let values = (0..4_i64)
         .map(|index| {
             Scalar::from_struct([
                 ("id", Scalar::from(index)),
@@ -107,10 +112,10 @@ fn a_column_round_trips_a_batch_through_the_reader_it_streams() {
             .expect("one record")
         })
         .collect::<Vec<_>>();
-    let column = Serie::from_rows(quotes_root(), rows).expect("four records");
+    let column = Serie::from_scalars(quotes_root(), values).expect("four records");
 
     let back = Serie::from_arrow_reader(column.into_arrow_reader().unwrap()).unwrap();
-    assert_eq!(back.rows().unwrap(), column.rows().unwrap());
+    assert_eq!(rows(&back), rows(&column));
 
     // One held column is one table, so the stream yields exactly one batch.
     let batches = column
@@ -123,7 +128,7 @@ fn a_column_round_trips_a_batch_through_the_reader_it_streams() {
 
 #[test]
 fn a_root_that_is_not_a_record_is_refused_by_name() {
-    let column = Serie::from_rows(
+    let column = Serie::from_scalars(
         Field::new("price", DataType::Int64, false),
         [Scalar::from(1_i64)],
     )
@@ -141,6 +146,25 @@ fn a_root_that_is_not_a_record_is_refused_by_name() {
     // A nullable Struct root is not a record root either: a batch has no row
     // validity to carry the rows a nullable root admits.
     let nullable = Field::new("row", quotes_root().dtype().clone(), true);
-    let rows = Serie::from_rows(nullable, [Scalar::Null]).unwrap();
-    assert!(rows.into_arrow_batch().is_err());
+    let holes = Serie::from_scalars(nullable, [Scalar::Null]).unwrap();
+    assert!(holes.into_arrow_batch().is_err());
+}
+
+#[test]
+fn the_buffers_a_column_was_read_from_are_the_buffers_it_hands_back() {
+    let field = Field::new("price", DataType::Int64, false);
+    let array: ArrayRef = Arc::new(Int64Array::from(vec![7_i64, 8, 9]));
+
+    let column = Serie::from_arrow_array(field, ArrayRef::clone(&array)).expect("an int64 column");
+    let back = column.into_arrow_array();
+
+    // No row was decoded on the way in or on the way out: the values buffer
+    // that came in is the one that goes back out.
+    assert!(
+        std::ptr::eq(
+            array.to_data().buffers()[0].as_ptr(),
+            back.to_data().buffers()[0].as_ptr(),
+        ),
+        "the column shares the values buffer it was read from"
+    );
 }

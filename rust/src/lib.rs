@@ -251,7 +251,7 @@ pub use scalar::Scalar;
 pub(crate) use scalar::code_scalars;
 pub use sedol::*;
 pub use sequence::*;
-pub use serie::{Column, Serie};
+pub use serie::*;
 pub use side::*;
 pub use state::*;
 pub(crate) use string::trim_padding;

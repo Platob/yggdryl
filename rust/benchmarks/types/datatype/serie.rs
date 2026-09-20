@@ -1,9 +1,9 @@
 //! The column side: what holding the buffers buys over boxing the rows.
 //!
-//! Every group here is paired against the thing it is meant to beat - random
-//! access against decoding the whole column, appending a batch against
-//! rebuilding one, dropping a child against rewriting the rows - so a number
-//! that moves says which side moved.
+//! Every group here is paired against the thing it is meant to beat - a
+//! buffer read against building the value that row would cost, a buffer
+//! write against the field's own contract on the way to the same write, so
+//! a number that moves says which side moved.
 
 use std::hint::black_box;
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Int64Array, StringArray, StructArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields};
 use criterion::Criterion;
-use yggdryl::{DataType, Field, Scalar, Serie, StructType};
+use yggdryl::{DataType, Field, Scalar, Serie, SerieValue, StructType};
 
 /// Rows per measured column. The smoke corpus keeps `cargo test
 /// --all-targets` under a second in a debug build.
@@ -74,9 +74,9 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
         });
     });
     let rows = price_rows();
-    group.bench_function("from_rows", |bencher| {
+    group.bench_function("from_scalars", |bencher| {
         bencher.iter(|| {
-            Serie::from_rows(price_field(), black_box(&rows).iter().cloned())
+            Serie::from_scalars(price_field(), black_box(&rows).iter().cloned())
                 .expect("canonical int64 rows")
         });
     });
@@ -89,23 +89,28 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&serie).clone());
     });
 
-    // Random access straight off the buffer, against building the value it
-    // would otherwise cost, against decoding the whole column once.
-    group.bench_function("i64_at", |bencher| {
-        bencher.iter(|| black_box(&serie).i64_at(ROWS / 2));
+    // Random access straight off the values buffer, against building the
+    // value that row would otherwise cost, against decoding the whole column.
+    let leaf = serie.as_int64().expect("an int64 column").clone();
+    group.bench_function("value", |bencher| {
+        bencher.iter(|| black_box(&leaf).value(ROWS / 2));
     });
-    group.bench_function("get", |bencher| {
-        bencher.iter(|| black_box(&serie).get(ROWS / 2).expect("a readable row"));
+    group.bench_function("scalar", |bencher| {
+        bencher.iter(|| black_box(&serie).scalar(ROWS / 2).expect("a readable row"));
     });
-    group.bench_function("rows_uncached", |bencher| {
-        bencher.iter(|| {
-            let fresh = Serie::from_arrow_array(price_field(), ArrayRef::clone(&array))
-                .expect("an int64 column");
-            fresh.rows().expect("readable rows").len()
-        });
+    group.bench_function("scalars", |bencher| {
+        bencher.iter(|| black_box(&serie).scalars().expect("readable rows").len());
     });
 
-    // Growing: a value into the tail, and a whole run as one chunk.
+    // Growing: one native value into the buffer, and one value through the
+    // field's own contract on the way to the same buffer.
+    group.bench_function("push_value", |bencher| {
+        bencher.iter(|| {
+            let mut growing = black_box(&leaf).clone();
+            growing.push_value(Some(1));
+            SerieValue::len(&growing)
+        });
+    });
     group.bench_function("push", |bencher| {
         bencher.iter(|| {
             let mut growing = black_box(&serie).clone();
@@ -113,28 +118,27 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
             growing.len()
         });
     });
-    group.bench_function("append_arrow_array", |bencher| {
+
+    // Rewriting one slot: the buffer write, against the field's contract on
+    // the way to the same write.
+    group.bench_function("set_value", |bencher| {
         bencher.iter(|| {
-            let mut growing = black_box(&serie).clone();
-            growing
-                .append_arrow_array(ArrayRef::clone(&array))
-                .expect("one more run");
-            growing.len()
+            let mut writing = black_box(&leaf).clone();
+            writing.set_value(ROWS / 2, Some(1)).expect("one slot");
+        });
+    });
+    group.bench_function("set", |bencher| {
+        bencher.iter(|| {
+            let mut writing = black_box(&serie).clone();
+            writing
+                .set(ROWS / 2, Scalar::from(1_i64))
+                .expect("one slot");
         });
     });
 
-    // A window shares the buffers it spans.
-    group.bench_function("slice", |bencher| {
-        bencher.iter(|| black_box(&serie).slice(ROWS / 4, ROWS / 2).len());
-    });
-
-    // Out, in both shapes. One run lends its buffers rather than gathering.
+    // Out. The column lends the buffers it holds rather than gathering rows.
     group.bench_function("into_arrow_array", |bencher| {
-        bencher.iter(|| {
-            black_box(&serie)
-                .into_arrow_array()
-                .expect("the column lends its run")
-        });
+        bencher.iter(|| black_box(&serie).into_arrow_array());
     });
 
     // The record doors, and the child mutators that never read a row.
@@ -154,9 +158,10 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
             reader.next().expect("one batch").expect("a readable batch")
         });
     });
+    let structure = records.as_struct().expect("a record column").clone();
     group.bench_function("child", |bencher| {
         bencher.iter(|| {
-            black_box(&records)
+            black_box(&structure)
                 .child("symbol")
                 .expect("a named child")
                 .len()
@@ -164,10 +169,11 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("without_child", |bencher| {
         bencher.iter(|| {
-            black_box(&records)
-                .without_child("symbol")
-                .expect("a named child")
-                .len()
+            SerieValue::len(
+                &black_box(&structure)
+                    .without_child("symbol")
+                    .expect("a named child"),
+            )
         });
     });
 

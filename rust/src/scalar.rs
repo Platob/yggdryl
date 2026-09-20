@@ -763,7 +763,7 @@ impl<'de> Deserialize<'de> for Scalar {
             }
             StructuralWire::Interval(value) => Ok(Self::Interval(value)),
             StructuralWire::Sequence(values) => Ok(Self::from_sequence(values)),
-            StructuralWire::Serie(serie) => Ok(Self::Sequence(Sequence::Serie(serie))),
+            StructuralWire::Serie(serie) => Ok(Self::from(serie)),
             StructuralWire::Mapping(entries) => {
                 Self::from_mapping(entries).map_err(D::Error::custom)
             }
