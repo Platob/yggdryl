@@ -374,12 +374,18 @@ fn an_unknown_key_is_kept_and_a_bad_value_is_null_rather_than_a_failure() {
 #[test]
 fn a_stated_absence_produces_no_field_and_no_entry() {
     let reader = reader();
-    for spelling in ["", "null", "NULL", "<null>"] {
-        let row = format!("8=FIX.4.4|35=D|58={spelling}|10=0|");
+    for spelling in [
+        "", "   ", "null", " NULL ", "<null>", " [n/a] ", "None", " NoNe ",
+    ] {
+        let row = format!("8=FIX.4.4|35=D|58={spelling}|VenueOwnThing={spelling}|10=0|");
         let message = reader.sole_line(row.as_bytes()).expect(&row);
         assert!(message.get_by_tag(58).is_none(), "{spelling}");
+        assert!(message.get_by_name("venueownthing").is_none(), "{spelling}");
         assert!(
-            !message.entries().iter().any(|entry| entry.tag() == 58),
+            !message
+                .entries()
+                .iter()
+                .any(|entry| entry.tag() == 58 || entry.name() == "venueownthing"),
             "{spelling}"
         );
     }
@@ -390,12 +396,12 @@ fn a_stated_absence_produces_no_field_and_no_entry() {
         .unwrap();
     assert_eq!(kept.by_tag(58).unwrap().as_str(), Some("nullable"));
 
-    let literal = reader
-        .clone()
-        .with_null_values::<[&str; 0], &str>([])
-        .sole_line(b"8=FIX.4.4|35=D|58=null|10=0|")
-        .unwrap();
-    assert_eq!(literal.by_tag(58).unwrap().as_str(), Some("null"));
+    let literal_reader = reader.with_null_values::<[&str; 0], &str>([]);
+    for spelling in ["null", "[N/A]", "None"] {
+        let row = format!("8=FIX.4.4|35=D|58={spelling}|10=0|");
+        let literal = literal_reader.sole_line(row.as_bytes()).unwrap();
+        assert_eq!(literal.by_tag(58).unwrap().as_str(), Some(spelling));
+    }
 }
 
 #[test]
@@ -648,7 +654,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     // A bare twin that stated an absence was never sent, so the `#` is the
     // row's sole spelling and drops: the value lands under the dictionary
     // field exactly as a lone `#` key always did.
-    for spelling in ["", "null", "<null>"] {
+    for spelling in ["", "null", "<null>", "[N/A]", "None", " [n/a] ", " NoNe "] {
         let row = format!("MSGTYPE=D|ORDERID={spelling}|#ORDERID=345");
         let message = reader.sole_line(row.as_bytes()).expect(&row);
         assert_eq!(message.by_tag(37).unwrap().as_str(), Some("345"), "{row}");
@@ -1255,6 +1261,48 @@ fn indexed_occurrences_are_built_by_index_and_a_gap_is_null() {
     assert_eq!(values[0].as_str(), Some("first"));
     assert_eq!(values[1], Scalar::Null);
     assert_eq!(values[2].as_str(), Some("third"));
+}
+
+#[test]
+fn three_flat_values_keep_a_null_and_their_arrival_order() {
+    let message = reader()
+        .sole_line(b"MSGTYPE=D|BODYLENGTH=bad|BODYLENGTH=1|BODYLENGTH=2")
+        .unwrap();
+    let held = message.by_name("bodylength").expect("the repeated field");
+    let values = held.as_sequence().expect("three occurrences");
+    assert_eq!(
+        values,
+        &[Scalar::Null, Scalar::from(1_i32), Scalar::from(2_i32)]
+    );
+}
+
+#[test]
+fn indexed_values_keep_gaps_and_nested_rows_replace_outer_occurrences() {
+    // Index zero arrives first. A later index retains it and materializes the
+    // intervening null rather than shifting either occurrence.
+    let indexed = reader()
+        .sole_line(b"MSGTYPE=D|PartyID[0]=first|PartyID[2]=third")
+        .unwrap();
+    let held = indexed.by_name("partyid").expect("the repeated field");
+    let values = held.as_sequence().expect("indexed occurrences");
+    assert_eq!(values.len(), 3);
+    assert_eq!(values[0].as_str(), Some("first"));
+    assert_eq!(values[1], Scalar::Null);
+    assert_eq!(values[2].as_str(), Some("third"));
+
+    // The nested bridge row is the relayed message. Its values replace every
+    // occurrence the envelope accumulated under the same fields.
+    let payload = b"MSGTYPE=D|ORDERQTY=3";
+    let mut frame = format!(
+        "8=FIX.4.4|35=UL|38=bad|38=1|38=2|212={}|213=",
+        payload.len()
+    )
+    .into_bytes();
+    frame.extend_from_slice(payload);
+    frame.extend_from_slice(b"|10=0|");
+    let nested = reader().sole_line(&frame).unwrap();
+    assert_eq!(nested.by_tag(35).unwrap().as_str(), Some("D"));
+    assert_eq!(nested.by_tag(38).unwrap(), super::decimal("3"));
 }
 
 #[test]

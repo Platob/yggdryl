@@ -5,6 +5,7 @@ pub mod cast_plan;
 pub mod comparison;
 pub mod integer;
 pub mod parser;
+pub mod path;
 pub mod value;
 
 pub(crate) use common::nested_field;

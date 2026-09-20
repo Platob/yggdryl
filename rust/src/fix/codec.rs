@@ -372,12 +372,11 @@ pub const SOH: u8 = 0x01;
 
 /// The spellings that mean "nothing was sent", by default.
 ///
-/// A bridge with nothing to say writes one of these, and a reader that keeps
-/// them puts the four characters `null` into a column whose answer is no
-/// answer. The match is on the raw bytes after the whitespace trim, compared
-/// case-insensitively as ASCII - never through the crate's fold, which serves
-/// names and code spellings and would match spellings nobody wrote.
-pub const DEFAULT_NULL_VALUES: [&str; 3] = ["", "null", "<null>"];
+/// A bridge with nothing to say writes empty text, `null`, `<null>`, `none`,
+/// or `[n/a]`; these spellings are omitted from parsed fields and entries. The
+/// raw ASCII bytes are trimmed and compared case-insensitively. A custom
+/// [`FixCodec::with_null_values`] replaces this set.
+pub const DEFAULT_NULL_VALUES: [&str; 5] = ["", "null", "<null>", "none", "[n/a]"];
 
 /// The column a payload is read from when nothing names another.
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";

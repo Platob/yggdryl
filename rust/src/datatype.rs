@@ -698,24 +698,28 @@ impl DataType {
 /// Subscripting a datatype reaches a nested **child**, never metadata.
 ///
 /// The same semantic [`Field`] carries, so a caller walking a schema gets a
-/// child from every node in the graph. The string is resolved by
-/// [`DataType::get_field_by_path`] - an exact name first, a dotted path after -
-/// and that method is the non-panicking form.
+/// child from every node in the graph. The string uses the shared selector
+/// path grammar: dots descend into children, and a literal dotted name must be
+/// quoted. [`DataType::get_field_by_path`] is the non-panicking form.
 ///
 /// ```
 /// use yggdryl::DataType;
 /// use yggdryl::StructType;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let row = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?);
+/// let row = DataType::from(StructType::from_fields([
+///     DataType::Int64.required_field("id"),
+///     DataType::Boolean.required_field("literal.name"),
+/// ])?);
 /// assert_eq!(row["id"].dtype(), &DataType::Int64);
+/// assert_eq!(row[r#""literal.name""#].dtype(), &DataType::Boolean);
 /// # Ok(())
 /// # }
 /// ```
 ///
 /// # Panics
 ///
-/// Panics when this datatype has no child with that name - including when it is a dotted path.
+/// Panics when the selector path does not resolve to a child of this datatype.
 impl Index<&str> for DataType {
     type Output = Field;
 

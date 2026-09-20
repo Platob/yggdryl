@@ -665,7 +665,7 @@ pub struct FixId(i32)  (re-exported at the crate root beside FixFieldIter, FixKe
 
 ### yggdryl::fix::codec  [rust/src/fix/codec.rs]
 pub const SOH: u8 = 0x01;
-pub const DEFAULT_NULL_VALUES: [&str; 3] = ["", "null", "<null>"];
+pub const DEFAULT_NULL_VALUES: [&str; 5] = ["", "null", "<null>", "none", "[n/a]"];
 pub struct FixCodec
   pub const DEFAULT_BATCH_BYTE_SIZE: u64 = 128 * 1024 * 1024;  (the raw bytes one Arrow batch targets; a target, not a ceiling, and a batch always holds one row)
   pub const DEFAULT_BATCH_ROW_SIZE: usize = 32 * 1024;  (the rows one Arrow batch targets; a batch closes on whichever of the two bounds it reaches first)

@@ -1811,11 +1811,11 @@ impl Field {
 /// child, so a caller walking one object graph got two unrelated things from
 /// identical syntax.
 ///
-/// Chained subscripts are the nesting story: `field["order"]["price"]` descends
-/// two levels, because each subscript returns a node that subscripts again.
-/// There is no dotted-string or tuple path form.
+/// Each string subscript uses the shared selector path grammar. Chained
+/// subscripts and a dotted selector both descend through children; a literal
+/// dotted name must be quoted, as in `field[r#""literal.name""#]`.
 ///
-/// Panics when the name is not a child, as [`Index`] idiomatically does;
+/// Panics when the selector path does not resolve, as [`Index`] idiomatically does;
 /// [`Field::get_field_by_path`] is the non-panicking form.
 ///
 /// ```
@@ -1832,13 +1832,14 @@ impl Field {
 /// assert_eq!(order["id"].dtype(), &DataType::Int64);
 /// // Each subscript answers a node that subscripts again.
 /// assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
+/// assert_eq!(order["line.price"].dtype(), &DataType::Float64);
 /// # Ok(())
 /// # }
 /// ```
 ///
 /// # Panics
 ///
-/// Panics when this node has no child with that name.
+/// Panics when the selector path does not resolve to a child of this node.
 impl Index<&str> for Field {
     type Output = Self;
 

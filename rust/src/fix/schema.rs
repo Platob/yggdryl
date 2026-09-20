@@ -933,17 +933,15 @@ fn entry_item(level: usize) -> Result<Field> {
 /// which is what tells "nothing was folded" from "an empty subtree was".
 fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> {
     let tail = if level < ENTRY_DEPTH {
-        let nested: Result<Vec<crate::Scalar>> = entry
-            .entries()
-            .iter()
-            .map(|held| entry_scalar(held, level + 1))
-            .collect();
-        crate::Scalar::from_sequence(nested?)
+        let nested = entry.entries();
+        crate::Scalar::try_sequence(nested.len(), |index| {
+            entry_scalar(&nested[index], level + 1)
+        })?
     } else if entry.entries().is_empty() {
         crate::Scalar::Null
     } else {
-        let folded: Vec<crate::Scalar> = entry.entries().iter().map(folded_scalar).collect();
-        let rendered = crate::into_json_scalar(&crate::Scalar::from_sequence(folded))?;
+        let folded = crate::Scalar::from_sequence(entry.entries().iter().map(folded_scalar));
+        let rendered = crate::into_json_scalar(&folded)?;
         crate::Scalar::from(rendered)
     };
     Ok(crate::Scalar::from_sequence([
@@ -972,13 +970,7 @@ fn folded_scalar(entry: &super::FixEntry) -> crate::Scalar {
             .held_value()
             .cloned()
             .map_or(crate::Scalar::Null, crate::Scalar::from),
-        crate::Scalar::from_sequence(
-            entry
-                .entries()
-                .iter()
-                .map(folded_scalar)
-                .collect::<Vec<_>>(),
-        ),
+        crate::Scalar::from_sequence(entry.entries().iter().map(folded_scalar)),
     ])
 }
 
@@ -1597,37 +1589,25 @@ impl super::FixMsg {
     /// arrival subtree.
     pub fn into_row(&self, schema: &Field) -> Result<crate::Scalar> {
         let plan = column_plan_of(schema, self.registry())?;
-        let values = self.row_values(schema, &plan)?;
-        Ok(crate::Scalar::from_sequence(values))
-    }
-
-    /// The fixed row as the values it is made of, before they are wrapped.
-    ///
-    /// What [`Self::into_row`] answers, still open, so a door writing rows
-    /// wraps each once. `plan` is [`column_plan`] over the same schema, read
-    /// once by the caller rather than once per row.
-    pub(super) fn row_values(&self, schema: &Field, plan: &[Column]) -> Result<Vec<crate::Scalar>> {
         let columns = schema.fields();
-        let mut values: Vec<crate::Scalar> = Vec::with_capacity(columns.len());
         // The crate columns' derivations and the working row they read,
         // gathered off this message once for the three of them, and only
         // when one is asked for.
         let mut derived: Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)> = None;
-        for (column, planned) in columns.iter().zip(plan.iter()) {
+        crate::Scalar::try_sequence(columns.len(), |index| {
+            let column = &columns[index];
+            let planned = &plan[index];
             let value = match column.name() {
                 FIXENTRIES_COLUMN => {
-                    let record = crate::Scalar::from_sequence(
-                        self.entries()
-                            .iter()
-                            .map(|entry| entry_scalar(entry, 1))
-                            .collect::<Result<Vec<_>>>()?,
-                    );
+                    let entries = self.entries();
+                    let record = crate::Scalar::try_sequence(entries.len(), |index| {
+                        entry_scalar(&entries[index], 1)
+                    })?;
                     // Built as the column declares it, so the two walks a
                     // fit pays to prove that are skipped for the largest
                     // value of the row.
                     if planned.entries {
-                        values.push(record);
-                        continue;
+                        return Ok(record);
                     }
                     record
                 }
@@ -1674,9 +1654,8 @@ impl super::FixMsg {
                     },
                 },
             };
-            values.push(fitted(column, value)?);
-        }
-        Ok(values)
+            fitted(column, value)
+        })
     }
 
     /// One group's value, laid out the way the fixed column declares it.
@@ -1703,11 +1682,10 @@ impl super::FixMsg {
             return held;
         };
         // The message's own member names, in the order its values sit in.
-        let spelled: Vec<&str> = self
+        let spelled = self
             .index_of_group(tag)
             .and_then(|at| self.as_field().get_field_at(at))
             .and_then(item_fields)
-            .map(|fields| fields.iter().map(Field::name).collect())
             .unwrap_or_default();
         // Where each declared member stands among the message's own, a fact
         // of the two schemas alone and so read once for every occurrence.
@@ -1716,27 +1694,19 @@ impl super::FixMsg {
             .map(|member| {
                 spelled
                     .iter()
-                    .position(|name| crate::folds_equal(name, member.name()))
+                    .position(|field| crate::folds_equal(field.name(), member.name()))
             })
             .collect();
-        let rows: Vec<crate::Scalar> = occurrences
-            .iter()
-            .map(|occurrence| {
-                let Some(stated) = occurrence.as_sequence() else {
-                    return occurrence.clone();
-                };
-                let row: Vec<crate::Scalar> = placed
-                    .iter()
-                    .map(|at| {
-                        at.and_then(|at| stated.get(at))
-                            .cloned()
-                            .unwrap_or(crate::Scalar::Null)
-                    })
-                    .collect();
-                crate::Scalar::from_sequence(row)
-            })
-            .collect();
-        crate::Scalar::from_sequence(rows)
+        crate::Scalar::from_sequence(occurrences.iter().map(|occurrence| {
+            let Some(stated) = occurrence.as_sequence() else {
+                return occurrence.clone();
+            };
+            crate::Scalar::from_sequence(placed.iter().map(|at| {
+                at.and_then(|at| stated.get(at))
+                    .cloned()
+                    .unwrap_or(crate::Scalar::Null)
+            }))
+        }))
     }
 
     /// One column's value, derived where the message does not carry it.

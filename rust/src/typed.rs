@@ -29,13 +29,11 @@ mod record {
     use std::hash::{Hash, Hasher};
     use std::ops::Index;
 
-    use serde::ser::SerializeStruct;
-    use serde::{Serialize, Serializer};
-    use smol_str::SmolStr;
-
     use super::FieldScalar;
     use crate::FieldKey;
-    use crate::{Error, Field, Result, Scalar};
+    use crate::{Field, Result, Scalar};
+    use serde::ser::SerializeStruct;
+    use serde::{Serialize, Serializer};
 
     /// One row under one Struct [`Field`], with every cell proven.
     ///
@@ -46,12 +44,13 @@ mod record {
     /// and a name reaches a cell exactly as [`Field::index_of`] resolves it: by
     /// exact match, so a key the field refuses the row refuses too.
     ///
-    /// Building one canonicalizes the row through the field's own row
-    /// canonicalization, so an ordered [`Scalar::Sequence`](Scalar) and a named
-    /// [`Scalar::Struct`](Scalar) are both accepted, and the cells are exactly
-    /// what [`Field::canonicalize_value`] answers; a row already canonical costs
-    /// the one `Vec` the cells live in. Reading a cell, a name, or iterating
-    /// allocates nothing; [`Self::into_scalar`] is the allocating counterpart.
+    /// Building one canonicalizes through the field's row walk, so an ordered
+    /// [`Scalar::Sequence`](Scalar) and a named [`Scalar::Struct`](Scalar) are
+    /// both accepted, and the cells are exactly what
+    /// [`Field::canonicalize_value`] answers. Top-level row construction uses
+    /// only the cells' `Vec`; nested canonicalization owns any storage its
+    /// rewrite needs. Reading a cell, a name, or iterating allocates nothing;
+    /// [`Self::into_scalar`] is the allocating counterpart.
     ///
     /// Equality and hashing read the field's datatype and the cells, never its
     /// name, nullability, or metadata - the rule [`FieldScalar`] states.
@@ -97,25 +96,15 @@ mod record {
         ///
         /// Returns an error when the field is nullable or not a Struct, when the
         /// row is neither an ordered sequence of the field's arity nor a record
-        /// naming exactly its children, or when a cell is not a value its child
-        /// accepts.
+        /// naming known children, or when a cell is not a value its child
+        /// accepts. A missing record child takes its field's default.
         pub fn new(field: &'a Field, row: impl Into<Scalar>) -> Result<Self> {
             field.require_struct_root()?;
-            let row = field.canonicalize_row_value(row.into())?;
-            let Some(cells) = row.as_sequence() else {
-                return Err(Error::InvalidRecord {
-                    path: SmolStr::new(field.name()),
-                    reason: SmolStr::new_static("expected an ordered sequence of column values"),
-                });
-            };
-            // Every cell was proven by the one walk above; a shared value clones
-            // a reference, so the cells cost only the `Vec` they live in.
-            let values = field
-                .fields()
-                .iter()
-                .zip(cells)
-                .map(|(child, value)| FieldScalar::from_checked(child, value.clone()))
-                .collect();
+            let row = row.into();
+            let mut values = Vec::with_capacity(field.field_len());
+            crate::value::canonicalize_row_cells(field, &row, |child, value| {
+                values.push(FieldScalar::from_checked(child, value));
+            })?;
             Ok(Self { field, values })
         }
 
@@ -264,7 +253,15 @@ mod record {
         /// cell.
         pub fn into_arrow_batch(self) -> crate::arrow::Result<arrow_array::RecordBatch> {
             let field = self.field;
-            crate::arrow::batch_from_value(field, &Scalar::from_sequence([self.into_scalar()]))
+            let schema = crate::arrow::arrow_schema_from_field(field)?;
+            let mut columns = Vec::with_capacity(self.values.len());
+            for value in self.values {
+                columns.push(value.into_arrow_array()?);
+            }
+            let options = arrow_array::RecordBatchOptions::new().with_row_count(Some(1));
+            Ok(arrow_array::RecordBatch::try_new_with_options(
+                schema, columns, &options,
+            )?)
         }
     }
 

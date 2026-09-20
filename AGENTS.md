@@ -379,6 +379,11 @@ would put a test fixture in the crate's API.
   `Scalar::Sequence`; `Scalar::Struct` is a sorted name-to-scalar *input* shape.
   No second row/schema class or accessor; `FieldRecord<'_>` is a borrowed view
   of one row under that field, never a class of its own.
+- Codec parsing and local per-event enrichment depend only on that event. They
+  may use `parallel.rs`'s existing ordered map when parallelism helps, preserving
+  input order with bounded concurrency. Cross-event state and prior-event order
+  belong only to lifecycle, which performs deeper logical enrichment after
+  parsing.
 - `Field` alone owns metadata, Arrow IPC dictionary identity and cache-aware
   mutation; `DataType` has none. A `Field` *is* its type: one variant per
   `DataType` shape, each carrying name, nullability, metadata and the Arrow

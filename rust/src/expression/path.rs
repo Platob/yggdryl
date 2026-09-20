@@ -607,6 +607,31 @@ impl FieldPath {
         <Self as FromStr>::from_str(value)
     }
 
+    /// Resolve one schema address and borrow its segments for one operation.
+    ///
+    /// A bare identifier is the common one-segment shape, so it stays on the
+    /// stack. Every other spelling crosses the expression parser once; an
+    /// alias names an owned projection and cannot name a borrowed child.
+    pub(crate) fn with_schema_segments<T>(
+        value: &str,
+        apply: impl FnOnce(&[FieldSegment]) -> T,
+    ) -> Result<T> {
+        if super::display::is_bare_identifier(value) {
+            let segment = FieldSegment::Field(SmolStr::new(value));
+            return Ok(apply(std::slice::from_ref(&segment)));
+        }
+        let path = Self::from_str(value)?;
+        if path.alias.is_some() {
+            return Err(Error::InvalidRecord {
+                path: format_smolstr!("$.{value}"),
+                reason: SmolStr::new_static(
+                    "expected a schema address without `as`; a borrowed child cannot be renamed",
+                ),
+            });
+        }
+        Ok(apply(path.segments()))
+    }
+
     /// Borrow the resolved segments.
     #[must_use]
     pub fn segments(&self) -> &[FieldSegment] {

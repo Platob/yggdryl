@@ -331,6 +331,17 @@ assert_eq!(raw.as_i64(), Some(42));
 assert!(matches!(raw.checked()?.value(), Scalar::Int32(_)));
 ```
 
+`FieldRecord` (Rust only) holds a row under a borrowed, non-null Struct field.
+Ordered and named inputs use the same validation and canonicalization as
+`Field::canonicalize_value`; missing named children take their field defaults.
+The holder allocates one vector for its cells, including when their widths
+change. Nested values allocate separately when they need rewriting.
+
+Canonicalizing an already-canonical ordered row reuses its shared storage.
+A changed or named row is built directly in one shared allocation, without a
+temporary vector. The allocation tests cover flat rows at several widths;
+these claims exclude any storage required by nested values or leaf payloads.
+
 ## Inferred fields
 
 Without a schema, `Scalar` exposes the inferred `Field`: `value`, `item`, or `row` by shape.

@@ -850,18 +850,60 @@ fn segment_span(line: &[u8], start: usize, end: usize) -> Option<PairSpan> {
     if !is_segment_key(&line[name_at..equals]) {
         return None;
     }
-    let mut value_end = end;
-    while value_end > equals + 1
-        && matches!(
-            line[value_end - 1],
-            b' ' | b'\t' | b'\r' | b'\n' | b']' | b')' | b'}' | b',' | b';'
-        )
-    {
-        value_end -= 1;
-    }
+    let value_end = equals + 1 + trimmed_segment_end(&line[equals + 1..end]);
     let mut pair = span(name_at..equals, equals + 1..value_end, marked);
     pair.value_end = end;
     Some(pair)
+}
+
+/// The end of a frame value after its transport's trailing decoration.
+///
+/// A closing bracket is decoration only where no byte in the value opened it.
+/// The common unbracketed tail keeps the old backward trim. A tail containing
+/// a closer pays one forward pass over this value, tracking each bracket kind
+/// independently; the last closer that answered an opener protects the bytes
+/// through it from that trim. Brackets are opaque payload bytes here: this
+/// answers only which tail the transport owned, never what a field means.
+fn trimmed_segment_end(value: &[u8]) -> usize {
+    let mut trimmed = value.len();
+    let mut has_closer = false;
+    while trimmed > 0
+        && matches!(
+            value[trimmed - 1],
+            b' ' | b'\t' | b'\r' | b'\n' | b']' | b')' | b'}' | b',' | b';'
+        )
+    {
+        has_closer |= matches!(value[trimmed - 1], b']' | b')' | b'}');
+        trimmed -= 1;
+    }
+    if !has_closer {
+        return trimmed;
+    }
+    let mut square = 0_usize;
+    let mut round = 0_usize;
+    let mut curly = 0_usize;
+    let mut protected = None;
+    for (at, byte) in value.iter().enumerate() {
+        match byte {
+            b'[' => square += 1,
+            b'(' => round += 1,
+            b'{' => curly += 1,
+            b']' if square > 0 => {
+                square -= 1;
+                protected = Some(at + 1);
+            }
+            b')' if round > 0 => {
+                round -= 1;
+                protected = Some(at + 1);
+            }
+            b'}' if curly > 0 => {
+                curly -= 1;
+                protected = Some(at + 1);
+            }
+            _ => {}
+        }
+    }
+    protected.map_or(trimmed, |end| trimmed.max(end))
 }
 
 /// Whether what a segment put in front of its `=` is a key.
@@ -1313,6 +1355,56 @@ mod tests {
         assert_eq!(
             read(b"8=FIX.4.4|35=D|58=trailing space |10=0|"),
             ["8=FIX.4.4", "35=D", "58=trailing space", "10=0"]
+        );
+    }
+
+    #[test]
+    fn a_balanced_value_tail_is_not_the_transport_closing_the_line() {
+        assert_eq!(
+            read(b"MSGTYPE=D|ORDERID=[N/A]|TEXT=(none)|ACCOUNT={n/a}"),
+            ["MSGTYPE=D", "ORDERID=[N/A]", "TEXT=(none)", "ACCOUNT={n/a}",]
+        );
+        assert_eq!(
+            read(b"(MSGTYPE=D|TEXT=[N/A])"),
+            ["MSGTYPE=D", "TEXT=[N/A]"],
+            "the outer close is transport decoration and the inner one is data"
+        );
+        assert_eq!(
+            read(b"MSGTYPE=D|TEXT=[outer({inner})]"),
+            ["MSGTYPE=D", "TEXT=[outer({inner})]"],
+            "nested balanced bracket kinds remain literal bytes"
+        );
+    }
+
+    #[test]
+    fn an_unmatched_trailing_closer_is_transport_decoration() {
+        assert_eq!(
+            read(b"MSGTYPE=D|ORDERID=[N/A])"),
+            ["MSGTYPE=D", "ORDERID=[N/A]"]
+        );
+        assert_eq!(
+            read(b"MSGTYPE=D|ORDERID=[N/A]]"),
+            ["MSGTYPE=D", "ORDERID=[N/A]"]
+        );
+        assert_eq!(
+            read(b"MSGTYPE=D|ORDERID=plain])"),
+            ["MSGTYPE=D", "ORDERID=plain"]
+        );
+    }
+
+    #[test]
+    fn a_long_bracket_tail_is_scanned_once_and_keeps_no_null_policy() {
+        let payload = "x".repeat(16 * 1024);
+        let line = format!("MSGTYPE=D|ORDERID=[{payload}]]|SIDE=none|TEXT=[n/a]");
+        assert_eq!(
+            read(line.as_bytes()),
+            vec![
+                "MSGTYPE=D".to_owned(),
+                format!("ORDERID=[{payload}]"),
+                "SIDE=none".to_owned(),
+                "TEXT=[n/a]".to_owned(),
+            ],
+            "the scanner preserves bytes; default absence is the codec's policy"
         );
     }
 

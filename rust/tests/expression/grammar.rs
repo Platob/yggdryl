@@ -1214,6 +1214,47 @@ fn a_filter_has_to_be_a_predicate() {
 }
 
 #[test]
+fn partition_equal_filters_keep_literal_dotted_and_reserved_column_names_typed() {
+    let schema = StructType::from_fields([
+        DataType::Int64.required_field("a.b"),
+        DataType::Int64.required_field("null"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let bound = Filter::all_partitions_equal(&schema, [("a.b", "2"), ("null", "3")])
+        .bind(&schema)
+        .unwrap();
+
+    // Both names are literal fields, and each directory spelling is cast once
+    // through its declared integer type before it filters the rows.
+    assert!(
+        bound
+            .matches(&Scalar::from_sequence([
+                Scalar::from(2_i64),
+                Scalar::from(3_i64)
+            ]))
+            .unwrap()
+    );
+    assert!(
+        !bound
+            .matches(&Scalar::from_sequence([
+                Scalar::from(99_i64),
+                Scalar::from(3_i64)
+            ]))
+            .unwrap()
+    );
+    assert!(
+        !bound
+            .matches(&Scalar::from_sequence([
+                Scalar::from(2_i64),
+                Scalar::from(99_i64)
+            ]))
+            .unwrap()
+    );
+}
+
+#[test]
 fn a_mask_that_keeps_everything_keeps_the_batch_itself() {
     let schema = rows_schema();
     let batch = batch_of(&schema, &rows());

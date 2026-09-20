@@ -1212,11 +1212,11 @@ impl FixMsg {
     /// reaches neither a field nor a child is refused, and the message is
     /// unchanged.
     ///
-    /// A written value is then [restated](super::latest) exactly as a read
+    /// A written value is then restated exactly as a read
     /// one is: writing `Rule80A(47)` writes the `OrderCapacity(528)` that
     /// replaced it beside it, and writing `ExecBroker(76)` makes the
     /// `Parties` occurrence it became - from the specification's own
-    /// [retirements](super::retired), or from the rule a registry states on
+    /// retirements, or from the rule a registry states on
     /// the field itself. What runs is the rules of the tags written, so a
     /// write of a tag no rule speaks for is the write and nothing more. The
     /// pass never overwrites a stated value and is idempotent, so writing

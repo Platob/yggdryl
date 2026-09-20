@@ -1,5 +1,7 @@
 //! FIX integration tests.
 
+#[path = "fix/allocations.rs"]
+mod allocations;
 #[path = "fix/batch.rs"]
 mod batch;
 #[path = "fix/capture.rs"]
@@ -52,6 +54,9 @@ mod schema;
 mod store;
 #[path = "fix/zero_entries.rs"]
 mod zero_entries;
+
+#[global_allocator]
+static ALLOCATOR: allocations::CountingAllocator = allocations::CountingAllocator;
 
 /// What a reader warned about while it ran, on this thread alone.
 ///

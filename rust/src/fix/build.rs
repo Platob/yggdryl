@@ -146,6 +146,73 @@ impl<'key> Key<'key> {
     }
 }
 
+/// The values one slot holds before it must become a repeated field.
+///
+/// A plain field overwhelmingly arrives once. Keep that scalar in the slot;
+/// the second arrival promotes it to the ordinary amortized vector used for
+/// repetitions and indexed gaps.
+enum SlotValues {
+    Empty,
+    One(Scalar),
+    Many(Vec<Scalar>),
+}
+
+impl SlotValues {
+    fn as_slice(&self) -> &[Scalar] {
+        match self {
+            Self::Empty => &[],
+            Self::One(value) => std::slice::from_ref(value),
+            Self::Many(values) => values,
+        }
+    }
+
+    fn push(&mut self, value: Scalar) {
+        match self {
+            Self::Empty => *self = Self::One(value),
+            Self::One(_) => {
+                let Self::One(first) = std::mem::replace(self, Self::Empty) else {
+                    unreachable!("matched the one-value slot")
+                };
+                let mut values = Vec::new();
+                values.extend([first, value]);
+                *self = Self::Many(values);
+            }
+            Self::Many(values) => values.push(value),
+        }
+    }
+
+    fn pop(&mut self) -> Option<Scalar> {
+        match std::mem::replace(self, Self::Empty) {
+            Self::Empty => None,
+            Self::One(value) => Some(value),
+            Self::Many(mut values) => {
+                let value = values.pop();
+                *self = match values.len() {
+                    0 => Self::Empty,
+                    1 => Self::One(values.pop().expect("one value remains")),
+                    _ => Self::Many(values),
+                };
+                value
+            }
+        }
+    }
+
+    fn clear(&mut self) {
+        *self = Self::Empty;
+    }
+
+    fn set(&mut self, index: usize, value: Scalar) {
+        while self.as_slice().len() <= index {
+            self.push(Scalar::Null);
+        }
+        match self {
+            Self::One(slot) => *slot = value,
+            Self::Many(values) => values[index] = value,
+            Self::Empty => unreachable!("the gap fill made the slot nonempty"),
+        }
+    }
+}
+
 /// One child under construction, with every occurrence it has been given.
 struct Slot {
     field: Field,
@@ -157,7 +224,7 @@ struct Slot {
     /// the message's tag index leaves it out - which is what a reader of the
     /// finished field would find, read once here instead of once per child.
     known: bool,
-    values: Vec<Scalar>,
+    values: SlotValues,
     /// Whether this slot is a repeating group, whatever it has been given.
     ///
     /// A group whose counter arrived and whose members did not is still a
@@ -187,7 +254,7 @@ impl Slot {
             field,
             tag,
             known,
-            values: Vec::new(),
+            values: SlotValues::Empty,
             group: true,
             occurrences: Vec::new(),
         }
@@ -586,13 +653,9 @@ pub(super) struct Builder<'registry> {
     /// compare on the hit, where comparing the names outright made a wide
     /// bridge row quadratic in its keys.
     hashes: Vec<u64>,
-    /// The tag of every entry recorded so far, in arrival order.
+    /// Tags whose arrivals prevent a row fill from writing the same field.
     ///
-    /// A member nests under the latest arrival of its counter, and finding
-    /// that arrival walks the whole record - which is worth doing only where
-    /// the counter arrived at all. One integer per entry answers that
-    /// before the walk, and a document of fifty attributes under a group no
-    /// counter introduced walks nothing.
+    /// The fill collision check is by tag, so it needs no second field lookup.
     recorded: Vec<i32>,
     /// How many slots the line itself built, while a row nested inside one
     /// of its data fields is being read.
@@ -710,7 +773,7 @@ impl<'registry> Builder<'registry> {
             self.arrival = pair.arrived();
             self.push(key, value);
             if let Some((tag, plan)) = group {
-                let value = self.read_numeric_group(tag, plan, pairs, &mut cursor, &absent);
+                let value = self.read_numeric_group(plan, pairs, &mut cursor, &absent);
                 // Not `known`: the group is addressed by the counter's tag
                 // on the wire but does not carry it - the counter's own column
                 // does. Indexing both under one tag makes `by_tag` answer with
@@ -731,7 +794,7 @@ impl<'registry> Builder<'registry> {
                 if let Some(read) = value.as_sequence() {
                     rows.extend(read.iter().cloned());
                 }
-                slot.values = vec![Scalar::from_sequence(rows)];
+                slot.values = SlotValues::One(Scalar::from_sequence(rows));
                 slot.group = false;
                 slot.occurrences.clear();
             }
@@ -758,15 +821,10 @@ impl<'registry> Builder<'registry> {
         }
     }
 
-    /// Reads one numeric group's occurrences, recording each member under the
-    /// counter pair that heads it.
-    ///
-    /// `counter` is that pair's tag: the entries are the arrival record, and a
-    /// repeating group's members ride under the counter that introduced them,
-    /// exactly as a bridge's indexed keys state them.
+    /// Reads one numeric group's occurrences, recording each member that
+    /// arrived on the line.
     fn read_numeric_group(
         &mut self,
-        counter: i32,
         plan: &'registry GroupPlan,
         pairs: &[FixPair],
         cursor: &mut usize,
@@ -798,10 +856,10 @@ impl<'registry> Builder<'registry> {
             let text = String::from_utf8_lossy(raw);
             values[column] = self.typed(plan.column(column), Some(plan.column(column)), raw, &text);
             self.arrival = pair.arrived();
-            self.record_under(counter, tag);
+            self.record(tag);
             *cursor += 1;
             if let Some((column, nested)) = plan.nested(tag) {
-                values[column] = self.read_numeric_group(tag, nested, pairs, cursor, absent);
+                values[column] = self.read_numeric_group(nested, pairs, cursor, absent);
             }
         }
         if let Some(values) = current {
@@ -876,7 +934,7 @@ impl<'registry> Builder<'registry> {
         self.slots
             .iter()
             .find(|slot| slot.tag == 35 && slot.known)
-            .and_then(|slot| slot.values.first())
+            .and_then(|slot| slot.values.as_slice().first())
             .and_then(|value| value.as_str())
             .map(SmolStr::new)
     }
@@ -940,7 +998,7 @@ impl<'registry> Builder<'registry> {
         // child the line built.
         if self.recorded.contains(&fill.tag)
             || self.slots.iter().any(|slot| {
-                (slot.tag == fill.tag && (slot.group || !slot.values.is_empty()))
+                (slot.tag == fill.tag && (slot.group || !slot.values.as_slice().is_empty()))
                     || slot.field.name() == fill.field.name()
             })
         {
@@ -1394,13 +1452,10 @@ impl<'registry> Builder<'registry> {
             if self.shadowed(field.name()) {
                 return;
             }
-            self.record_under(tag, 0);
+            self.record(0);
             let slot = self.slot_for(field, tag, true);
             slot.group = true;
-            while slot.values.len() <= occurrence {
-                slot.values.push(Scalar::Null);
-            }
-            slot.values[occurrence] = Scalar::from(text);
+            slot.values.set(occurrence, Scalar::from(text));
             return;
         }
         let (field, tag, source) = self.field_from(name, located.field, self.scope());
@@ -1424,10 +1479,7 @@ impl<'registry> Builder<'registry> {
         let slot = self.slot_for(field, tag, source.is_some());
         // Indices may be partial or out of order, so occurrences are built by
         // index and a gap is null.
-        while slot.values.len() <= occurrence {
-            slot.values.push(Scalar::Null);
-        }
-        slot.values[occurrence] = value;
+        slot.values.set(occurrence, value);
     }
 
     /// The field, tag and dictionary standing of one group, addressed by
@@ -1514,12 +1566,6 @@ impl<'registry> Builder<'registry> {
                 Located::Flat => break,
             }
         }
-        // An unresolved level nests its members under the build-time tag its
-        // own counter recorded, so the tree keeps what arrived under it.
-        let parent_tag = levels
-            .last()
-            .map(|(_, tag, known, _)| if *known { *tag } else { unresolved(*tag) })
-            .expect("the top group at least");
         // The leaf: a value under its field, or a nested group's counter
         // opening that group in the occurrence - resolved as the flat
         // counter resolves, through the dictionary's nested half first.
@@ -1556,16 +1602,12 @@ impl<'registry> Builder<'registry> {
         } else {
             self.typed(&leaf_field, source, raw, text)
         };
-        // Recorded after the path resolves, so the entry can ride under the
-        // counter pair that heads it - when that pair actually arrived.
-        self.record_under(
-            parent_tag,
-            if leaf_known {
-                leaf_tag
-            } else {
-                unresolved(leaf_tag)
-            },
-        );
+        // Record the member after its path resolves, under the tag it names.
+        self.record(if leaf_known {
+            leaf_tag
+        } else {
+            unresolved(leaf_tag)
+        });
         let (top_field, top_tag, top_known, _) = levels.remove(0);
         let mut slot = self.slot_for(top_field, top_tag, top_known);
         slot.group = true;
@@ -1577,10 +1619,7 @@ impl<'registry> Builder<'registry> {
         if leaf.is_empty() {
             // The sub-occurrence's bare value, by index as a repeated flat
             // field keeps its own.
-            while slot.values.len() <= at {
-                slot.values.push(Scalar::Null);
-            }
-            slot.values[at] = Scalar::from(text);
+            slot.values.set(at, Scalar::from(text));
             return;
         }
         while slot.occurrences.len() <= at {
@@ -1619,29 +1658,13 @@ impl<'registry> Builder<'registry> {
                     field,
                     tag,
                     known,
-                    values: Vec::new(),
+                    values: SlotValues::Empty,
                     group: false,
                     occurrences: Vec::new(),
                 });
                 self.slots.last_mut().expect("just pushed")
             }
         }
-    }
-
-    /// Records what arrived under the counter that heads it, where one did.
-    ///
-    /// `counter_tag` is a build-time tag: an unresolved counter's is the
-    /// [`unresolved`] negation, so its members nest under it exactly as under
-    /// a resolved counter while no resolved tag can match it.
-    ///
-    /// The counter pair itself must have arrived: an entry is the arrival
-    /// record, and a parent nobody sent would be an invention. A member whose
-    /// counter never arrived stays flat at the top, exactly as a wire with no
-    /// stated structure keeps it, and the latest arrival of the counter is
-    /// the one that takes the member - which is what nests each occurrence
-    /// under its own heading.
-    fn record_under(&mut self, _counter_tag: i32, tag: i32) {
-        self.record(tag);
     }
 
     /// Records that a pair arrived, under the tag it resolved to.
@@ -1719,7 +1742,7 @@ impl<'registry> Builder<'registry> {
                 field,
                 tag: 8,
                 known: true,
-                values: vec![value],
+                values: SlotValues::One(value),
                 group: false,
                 occurrences: Vec::new(),
             });
@@ -1944,7 +1967,7 @@ impl Slot {
         // holding nothing, not a scalar: the empty list is what lets the
         // count it stated be compared with what the row actually holds.
         if self.group && self.occurrences.is_empty() {
-            if self.values.is_empty() {
+            if matches!(&self.values, SlotValues::Empty) {
                 let value = Scalar::from_sequence(Vec::new());
                 return Ok((self.field, value));
             }
@@ -1957,7 +1980,8 @@ impl Slot {
                     .required_field(occurrence_name(&self.field)),
             };
             item.set_nullable(true);
-            let values = Scalar::from_sequence(self.values.into_iter().map(|_| Scalar::Null));
+            let values =
+                Scalar::from_sequence((0..self.values.as_slice().len()).map(|_| Scalar::Null));
             let list = list_of(&self.field, item);
             return Ok((list, values));
         }
@@ -1965,9 +1989,13 @@ impl Slot {
             // A value that would not type is null, and a field a null lands
             // in is nullable: the message's schema says the value is there
             // only where it actually is.
-            let absent = self.values.iter().any(Scalar::is_null);
-            if self.values.len() <= 1 {
-                let value = self.values.into_iter().next().unwrap_or(Scalar::Null);
+            let absent = self.values.as_slice().iter().any(Scalar::is_null);
+            if self.values.as_slice().len() <= 1 {
+                let value = match self.values {
+                    SlotValues::Empty => Scalar::Null,
+                    SlotValues::One(value) => value,
+                    SlotValues::Many(_) => unreachable!("many values have length above one"),
+                };
                 let mut field = self.field;
                 if absent || value.is_null() {
                     field.set_nullable(true);
@@ -1982,7 +2010,10 @@ impl Slot {
             // is what keeps this shape distinguishable from a repeating group.
             let mut item = self.field.clone().with_name(self.field.name().to_owned());
             item.set_nullable(absent);
-            let values = Scalar::from_sequence(self.values);
+            let SlotValues::Many(values) = self.values else {
+                unreachable!("a repeated field has many values")
+            };
+            let values = Scalar::from_sequence(values);
             let list = list_of(&self.field, item);
             return Ok((list, values));
         }

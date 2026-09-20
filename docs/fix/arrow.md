@@ -604,6 +604,7 @@ A carried column returns to its place because the message carries it: a message 
     cargo test -p yggdryl --test fix batch::
     cargo test -p yggdryl --test fix batch::the_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix
     cargo test -p yggdryl --test fix dataset::
+    cargo test -p yggdryl --test fix dataset::ulbridge_dataset_allocation_profile_is_sequential_and_staged -- --exact --nocapture --test-threads=1
     ```
 
 === "Python"
@@ -621,6 +622,13 @@ A carried column returns to its place because the message carries it: a message 
     ```
 
 ## Performance
+
+The staged Rust integration profile above counts allocations over `ulbridge.log`
+for text framing, codec parsing, fixed-row materialization, typed row holders,
+and Arrow output. It reports first and second passes separately; requested bytes
+are cumulative allocation requests, not peak memory. Row and arrival-entry
+materialization write into their final shared storage without temporary
+vectors. Timing benchmarks remain separate from these allocation counts.
 
 `fix/pipeline`, the whole path a desk takes over a bridge's own log: `rust/tests/fix/ulbridge.log`, a second of a ULBridge's capture beside every shape a bridge writes - a Jolokia exchange whose answer is a JSON document the codec does not read, FIXML behind a verb, frames spelled with `^A` and `<SOH>`, a `35=UL` frame packing a group inside a group, bridge rows of a hundred named keys, a statistics line, an empty body, the bridge's sixteen handed-over lines and the fifteen of a cancel/reject flow - repeated 64 times: 9,216 lines, 6,080 messages, 13.9 MB. Every stage runs over the same corpus on its own, so a figure is per line of a real capture rather than of one shape, and a row is one per message rather than one per line ([decode](decode.md)). Four of the stages - `parse_lines`, `decoded_lines`, `parse_text_arrow_reader` and `arrow_reader` - run again on two and on four threads, as `threads=2` and `threads=4` rows beside the one-thread figure, so what the lanes buy a stage is read beside what the stage costs on one. Release build (thin LTO, one codegen unit), one Linux x86_64 container, Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB, no other build running, load average 1.1 when the run ended; rustc 1.94.1; the registry the shipped dictionary alone; `cargo bench -p yggdryl --bench fix -j 2 -- 'fix/pipeline/(text_read|parse_text_arrow_reader|parse_lines|parse_text_lines_msgpluginid|into_row|arrow_reader|lifecycle|digest)$' --sample-size 10`, ten samples a case. The run predates the message becoming a typed market event over a content row, which moved the fill into the parse and the chain onto the graph's one walk, so every figure below is the older reading's and is due the regeneration this section ends with.
 
@@ -651,4 +659,3 @@ Regenerate with:
 ```bash
 cargo bench -p yggdryl --bench fix -- fix/pipeline
 ```
-

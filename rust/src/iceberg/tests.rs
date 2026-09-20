@@ -1590,6 +1590,54 @@ mod partition_specs {
     }
 
     #[test]
+    fn identity_partitions_keep_literal_and_reserved_top_level_names() {
+        let mut schema = StructType::from_fields([
+            DataType::utf8().required_field("a.b"),
+            DataType::Int64.required_field("null"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let ids: Vec<i32> = schema
+            .fields()
+            .iter()
+            .map(|field| field.parquet_field_id().unwrap().unwrap())
+            .collect();
+
+        let spec = PartitionSpec::identity(7, &schema, &["a.b", "null"]).unwrap();
+        assert_eq!(
+            spec.fields
+                .iter()
+                .map(|field| field.name.as_str())
+                .collect::<Vec<_>>(),
+            ["a.b", "null"]
+        );
+        assert_eq!(
+            spec.fields
+                .iter()
+                .map(|field| field.source_id)
+                .collect::<Vec<_>>(),
+            ids
+        );
+
+        let marked = spec.mark_partitions(&schema).unwrap();
+        assert_eq!(
+            marked.partition_field_names().collect::<Vec<_>>(),
+            ["a.b", "null"]
+        );
+        assert_eq!(
+            marked
+                .fields()
+                .iter()
+                .map(|field| field.parquet_field_id().unwrap())
+                .collect::<Vec<_>>(),
+            vec![Some(ids[0]), Some(ids[1])]
+        );
+        assert_eq!(PartitionSpec::from_schema(7, &marked).unwrap(), spec);
+    }
+
+    #[test]
     fn a_partition_directory_is_spelled_the_way_every_other_lake_spells_it() {
         let schema = StructType::from_fields([
             DataType::Int64.required_field("id"),

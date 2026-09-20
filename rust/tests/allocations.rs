@@ -580,6 +580,40 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
 }
 
 #[test]
+fn schema_path_hits_and_misses_on_short_names_allocate_nothing() {
+    // The nested child proves the common root lookup does not fall through to
+    // a traversal. This pins only one short identifier, not parsed compound or
+    // long paths.
+    let nested = StructType::from_fields([DataType::Int64.required_field("outside")])
+        .map(DataType::from)
+        .expect("a nested struct")
+        .required_field("nested");
+    let row = StructType::from_fields([DataType::Int64.required_field("id"), nested])
+        .map(DataType::from)
+        .expect("a row")
+        .required_field("row");
+    let dtype = row.dtype();
+
+    assert_eq!(dtype.get_field_by_path("id").map(Field::name), Some("id"));
+    assert!(dtype.get_field_by_path("missing").is_none());
+    assert_eq!(row.get_field_by_path("id").map(Field::name), Some("id"));
+    assert!(row.get_field_by_path("missing").is_none());
+
+    free("a short datatype path hit and miss", || {
+        black_box((
+            dtype.get_field_by_path(black_box("id")).is_some(),
+            dtype.get_field_by_path(black_box("missing")).is_none(),
+        ));
+    });
+    free("a short field path hit and miss", || {
+        black_box((
+            row.get_field_by_path(black_box("id")).is_some(),
+            row.get_field_by_path(black_box("missing")).is_none(),
+        ));
+    });
+}
+
+#[test]
 fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
     // The header, the capture and the event are held beside the row rather
     // than in it, so reading one is a borrow whatever the row carries.
@@ -1061,6 +1095,54 @@ fn canonicalizing_a_row_a_schema_already_holds_allocates_nothing() {
             );
         },
     );
+}
+
+fn row_storage_fixture(width: usize) -> (Field, Scalar, Scalar) {
+    let fields = (0..width)
+        .map(|index| DataType::Int64.required_field(format!("c{index}")))
+        .collect::<Vec<_>>();
+    let named = Scalar::from_struct(
+        fields
+            .iter()
+            .map(|field| (field.name(), Scalar::from(7_i32))),
+    )
+    .expect("unique column names");
+    let row = Scalar::from_sequence((0..width).map(|_| Scalar::from(7_i32)));
+    let field = DataType::from(StructType::from_fields(fields).expect("unique fields"))
+        .required_field("row");
+    (field, row, named)
+}
+
+#[test]
+fn canonical_row_storage_is_allocated_once_when_cells_change() {
+    for width in [4, 64, 1_024] {
+        let (field, row, _) = row_storage_fixture(width);
+        costs(&format!("canonicalizing {width} integer cells"), 1, || {
+            black_box(field.canonicalize_value(black_box(&row).clone()).unwrap());
+        });
+    }
+}
+
+#[test]
+fn canonical_row_storage_is_allocated_once_for_named_input() {
+    for width in [4, 64] {
+        let (field, _, named) = row_storage_fixture(width);
+        costs(&format!("ordering {width} named integer cells"), 1, || {
+            black_box(field.canonicalize_value(black_box(&named).clone()).unwrap());
+        });
+    }
+}
+
+#[test]
+fn typed_row_storage_is_allocated_once_for_named_or_rewritten_input() {
+    for width in [4, 64] {
+        let (field, row, named) = row_storage_fixture(width);
+        for (shape, value) in [("ordered", row), ("named", named)] {
+            costs(&format!("reading {width} {shape} integer cells"), 1, || {
+                black_box(FieldRecord::new(&field, black_box(&value).clone()).unwrap());
+            });
+        }
+    }
 }
 
 #[test]
@@ -1567,6 +1649,28 @@ fn reading_a_typed_row_costs_one_allocation_and_its_accessors_none() {
     }
 }
 
+#[test]
+fn a_typed_row_projects_without_general_row_staging() {
+    for width in [4, 64] {
+        let (field, row) = wide_row(width);
+        let record = FieldRecord::new(&field, row.clone()).unwrap();
+        let rows = Scalar::from_sequence([row]);
+        // Warm Arrow field projection caches before comparing the two doors.
+        drop(yggdryl::arrow::batch_from_value(&field, &rows).unwrap());
+        drop(record.clone().into_arrow_batch().unwrap());
+        let (general_cost, expected) =
+            counted(|| yggdryl::arrow::batch_from_value(&field, &rows).unwrap());
+        let prepared = record.clone();
+        let (typed_cost, actual) = counted(|| prepared.into_arrow_batch().unwrap());
+        assert_eq!(actual, expected);
+        eprintln!("{width}-column Arrow row: general={general_cost}, typed={typed_cost}");
+        assert!(
+            typed_cost < general_cost,
+            "a proven row must skip general row staging"
+        );
+    }
+}
+
 /// A framed body of `pairs` pairs, every one of them a field the dictionary
 /// holds.
 ///
@@ -1597,18 +1701,10 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// takes it: the page's own vector saved at each, and the one source the
 /// message states - the line it was read from - paid instead.
 ///
-/// The constant last moved down by four: the stated `MsgType` is read as
-/// a small string that fits inline rather than rendered into an owned one,
-/// the content code feeds its lifted cells where they stand rather than
-/// through a borrowed copy of them and starts its digest state over the
-/// algorithm's static secret rather than a heap copy of it, and the row's
-/// plan is one counted slice made in one allocation rather than a boxed
-/// slice shrunk to fit inside a counted pointer. The slope moved with it:
-/// the arrival record and the restater's list of the fields a level
-/// reached are each sized to the row's children once rather than grown,
-/// one allocation apiece however wide the row where each had been one,
-/// three and five at these widths.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 36), (16, 52), (64, 103)];
+/// Per-slot `Vec` buffers are gone: every unique ordinary field has one
+/// inline scalar, and the fallback `BeginString` contributes once, saving
+/// `pairs + 1` allocations from this path.
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 31), (16, 35), (64, 38)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -1658,7 +1754,7 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 /// from one that does not. The narrow column of this table is
 /// [`FIX_LINE_COSTS`] at the same widths, and moves with it.
 const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
-    [(4, (36, 42)), (16, (52, 82)), (64, (103, 229))];
+    [(4, (31, 37)), (16, (35, 65)), (64, (38, 164))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -1740,11 +1836,11 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// keys no range of the line names - so they are the one thing on this path
 /// that has to be built rather than pointed at.
 ///
-/// Each is exactly one allocation: the path, held as the bytes it is. That is
-/// the whole reason a rendered key is not a `TextBytes` - wrapping one in a
-/// counted page of its own is three, the rendered vector, a copy of it and
-/// the page, and the page is then only ever borrowed back as a slice. Two
-/// more per member, measured, on the very path whose cost is named above.
+/// Each rendered key is exactly one allocation: the path, held as the bytes
+/// it is, rather than a counted page that would only be borrowed back.
+/// Members stay in `Member::Value` and the group keeps occurrences, so no
+/// `Slot.values` buffer exists. A packed row has exactly three scalar slots:
+/// `MsgType`, the counter, and fallback `BeginString`.
 ///
 /// Four members and sixteen, because the number that matters is the slope,
 /// and the rest of it is the row a wider group builds. The codec reads a
@@ -1753,18 +1849,7 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// Two member counts, because the number that matters is the slope and not
 /// the constant a message pays whatever it carries.
 ///
-/// The constant last moved down by five: the stated `MsgType` is read as a
-/// small string that fits inline rather than rendered into an owned one,
-/// once when the bridge row's pairs are read and once when the message is
-/// built; the content code feeds its lifted cells where they stand rather
-/// than through a borrowed copy of them and starts its digest state over
-/// the algorithm's static secret rather than a heap copy of it; and the
-/// row's plan is one counted slice made in one allocation rather than a
-/// boxed slice shrunk to fit inside a counted pointer. The slope moved with
-/// it: the occurrence's arrival record is sized to its members once rather
-/// than grown, one allocation however many members where sixteen had been
-/// three.
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 80), (16, 140)];
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 77), (16, 137)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -1804,11 +1889,7 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 /// widths again, so that the claim is the constant and not a number that
 /// happens to be equal.
 ///
-/// The two doors last cost the same when this one still read the stated
-/// `MsgType` once before building, to ask whether the codec reads it, and
-/// rendered it into an owned string to do so; a codec reading every type
-/// no longer asks, and the read fits inline where one does.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 35), (16, 51), (64, 102)];
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 30), (16, 34), (64, 37)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {

@@ -123,6 +123,104 @@ fn rows_of(batches: &[RecordBatch]) -> (yggdryl::Field, Vec<Vec<Scalar>>) {
     (schema, rows)
 }
 
+/// Measure twice so the printed pair exposes any first-use cache noise. The
+/// second result is retained by the caller and checked by this test.
+fn profiled<T>(stage: &str, body: impl Fn() -> T) -> T {
+    let (first, first_counts) = super::allocations::measure(&body);
+    let (second, second_counts) = super::allocations::measure(body);
+    eprintln!(
+        "{stage}: first allocations={} reallocations={} requested_bytes={}; \
+         second allocations={} reallocations={} requested_bytes={}",
+        first_counts.allocations,
+        first_counts.reallocations,
+        first_counts.requested_bytes,
+        second_counts.allocations,
+        second_counts.reallocations,
+        second_counts.requested_bytes,
+    );
+    drop(first);
+    second
+}
+
+#[test]
+fn ulbridge_dataset_allocation_profile_is_sequential_and_staged() {
+    // Settle the shared dictionary, schema, and source before the measured
+    // sections. The codec then stays on this thread for every read below.
+    let registry = registry();
+    let target = super::format_target(&registry);
+    let _ = source();
+    let default = codec().with_threads(1);
+    let every = default
+        .clone()
+        .with_exclude_msgtypes::<[&str; 0], &str>([])
+        .with_threads(1);
+    assert_eq!(default.threads(), 1);
+    assert_eq!(every.threads(), 1);
+
+    let lines = profiled("ulbridge text framing", text_lines);
+    assert_eq!(lines.len(), LINES);
+
+    let messages = profiled("ulbridge codec parse default", || {
+        default
+            .parse_text_lines(lines.iter().cloned())
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the prepared lines parse")
+    });
+    assert_eq!(messages.len(), ROWS);
+    let all_messages = profiled("ulbridge codec parse all", || {
+        every
+            .parse_text_lines(lines.iter().cloned())
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the prepared lines parse with no refusals")
+    });
+    assert_eq!(all_messages.len(), EVERY_ROW);
+
+    let canonical_rows = profiled("ulbridge message into_row format_target", || {
+        messages
+            .iter()
+            .map(|message| message.into_row(&target).expect("the fixed row"))
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(canonical_rows.len(), ROWS);
+
+    let records = profiled("ulbridge FieldRecord::new", || {
+        canonical_rows
+            .iter()
+            .cloned()
+            .map(|row| yggdryl::FieldRecord::new(&target, row).expect("a canonical record"))
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(records.len(), canonical_rows.len());
+
+    let round_trip = profiled("ulbridge FieldRecord into_scalar", || {
+        records
+            .iter()
+            .cloned()
+            .map(yggdryl::FieldRecord::into_scalar)
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(round_trip, canonical_rows);
+
+    let record_batches = profiled("ulbridge FieldRecord into_arrow_batch", || {
+        records
+            .iter()
+            .cloned()
+            .map(|record| record.into_arrow_batch().expect("a one-row batch"))
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(record_batches.len(), ROWS);
+    assert!(record_batches.iter().all(|batch| batch.num_rows() == 1));
+
+    let parsed_batches = profiled("ulbridge batch door", || batches(&default));
+    assert_eq!(
+        parsed_batches
+            .iter()
+            .map(RecordBatch::num_rows)
+            .sum::<usize>(),
+        ROWS
+    );
+}
+
 #[test]
 fn the_codec_refuses_the_session_traffic_and_reads_every_other_line() {
     let codec = codec();

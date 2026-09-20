@@ -1,7 +1,8 @@
 //! Schema-directed validation and canonicalization of row values: the walk
 //! the module doc of [`super`] describes.
 
-use std::collections::HashSet;
+use std::borrow::Cow;
+use std::collections::{BTreeMap, HashSet};
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -376,8 +377,13 @@ fn spells_bare_null(dtype: &DataType, value: &Scalar) -> bool {
 /// Rewrite one row value into the exact representation a root field declares.
 pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
     if let Some(record) = value.as_struct() {
-        let values = record_values(root.fields(), record)?;
-        return canonicalize_row(root, Scalar::from_sequence(values));
+        let cells = RowCells::Record(record);
+        return Scalar::try_sequence(root.field_len(), |index| {
+            cells.canonical(&root.fields()[index], index)
+        })
+        .map_err(|error| {
+            prepend_canonical_error(error, PathSegment::Field(SmolStr::new(root.name())))
+        });
     }
     let Some(values) = value.as_sequence() else {
         return Err(Error::InvalidRecord {
@@ -395,10 +401,60 @@ pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
     .map_err(|error| {
         prepend_canonical_error(error, PathSegment::Field(SmolStr::new(root.name())))
     })?;
-    if let Some(canonical) = canonical {
-        Ok(Scalar::from_sequence(canonical))
-    } else {
-        Ok(value)
+    Ok(canonical.unwrap_or(value))
+}
+
+/// Canonicalize a checked row cell-by-cell, without materializing its row
+/// sequence first.
+pub(crate) fn canonicalize_row_cells<'a>(
+    root: &'a Field,
+    value: &Scalar,
+    mut visit: impl FnMut(&'a Field, Scalar),
+) -> Result<()> {
+    validate_row(root, value)?;
+    let Some(cells) = RowCells::from_value(value) else {
+        return Err(Error::InvalidRecord {
+            path: SmolStr::from(root_path(root.name())),
+            reason: SmolStr::new_static("expected an ordered sequence of column values"),
+        });
+    };
+    for (index, field) in root.fields().iter().enumerate() {
+        let canonical = cells.canonical(field, index).map_err(|error| {
+            prepend_canonical_error(error, PathSegment::Field(SmolStr::new(root.name())))
+        })?;
+        visit(field, canonical);
+    }
+    Ok(())
+}
+
+/// The checked cells of one row. Ordered rows borrow their positions; named
+/// rows borrow their entries and only own a schema default when it is absent.
+enum RowCells<'a> {
+    Sequence(&'a [Scalar]),
+    Record(&'a BTreeMap<SmolStr, Scalar>),
+}
+
+impl<'a> RowCells<'a> {
+    fn from_value(value: &'a Scalar) -> Option<Self> {
+        value
+            .as_sequence()
+            .map(Self::Sequence)
+            .or_else(|| value.as_struct().map(Self::Record))
+    }
+
+    fn value(&self, field: &Field, index: usize) -> Result<Cow<'a, Scalar>> {
+        match self {
+            Self::Sequence(values) => Ok(Cow::Borrowed(&values[index])),
+            Self::Record(record) => record
+                .get(field.name())
+                .map(Cow::Borrowed)
+                .map_or_else(|| field.default_value().map(Cow::Owned), Ok),
+        }
+    }
+
+    fn canonical(&self, field: &Field, index: usize) -> Result<Scalar> {
+        let value = self.value(field, index)?;
+        canonicalize_field_value(field, &value).map(|(canonical, _)| canonical)
     }
 }
 
@@ -1074,7 +1130,7 @@ fn canonical_sequence(
         canonicalize(value)
             .map_err(|error| prepend_canonical_error(error, PathSegment::Index(index)))
     })? {
-        Ok((Scalar::from_sequence(canonical), true))
+        Ok((canonical, true))
     } else {
         Ok((value.clone(), false))
     }
@@ -1082,9 +1138,10 @@ fn canonical_sequence(
 
 fn canonical_struct(fields: &StructType, value: &Scalar) -> Result<(Scalar, bool)> {
     if let Some(record) = value.as_struct() {
-        let values = record_values(fields.as_fields(), record)?;
-        let sequence = Scalar::from_sequence(values);
-        return canonical_struct(fields, &sequence).map(|(value, _)| (value, true));
+        let cells = RowCells::Record(record);
+        let sequence =
+            Scalar::try_sequence(fields.len(), |index| cells.canonical(&fields[index], index))?;
+        return Ok((sequence, true));
     }
     let Some(values) = value.as_sequence() else {
         return canonicalization_failure(&DataType::Struct(fields.clone()));
@@ -1092,7 +1149,7 @@ fn canonical_struct(fields: &StructType, value: &Scalar) -> Result<(Scalar, bool
     if let Some(canonical) = canonicalize_slice(values, |index, value| {
         canonicalize_field_value(&fields[index], value)
     })? {
-        Ok((Scalar::from_sequence(canonical), true))
+        Ok((canonical, true))
     } else {
         Ok((value.clone(), false))
     }
@@ -1228,17 +1285,21 @@ fn duplicate_mapping_key_index(entries: &[(Scalar, Scalar)]) -> Option<usize> {
 fn canonicalize_slice(
     values: &[Scalar],
     mut canonicalize: impl FnMut(usize, &Scalar) -> Result<(Scalar, bool)>,
-) -> Result<Option<Vec<Scalar>>> {
+) -> Result<Option<Scalar>> {
     for (index, value) in values.iter().enumerate() {
         let (canonical_value, changed) = canonicalize(index, value)?;
         if changed {
-            let mut canonical = Vec::with_capacity(values.len());
-            canonical.extend_from_slice(&values[..index]);
-            canonical.push(canonical_value);
-            for (remaining_index, value) in values[index + 1..].iter().enumerate() {
-                canonical.push(canonicalize(index + 1 + remaining_index, value)?.0);
-            }
-            return Ok(Some(canonical));
+            let mut changed_value = canonical_value;
+            return Scalar::try_sequence(values.len(), |output_index| {
+                if output_index < index {
+                    Ok(values[output_index].clone())
+                } else if output_index == index {
+                    Ok(std::mem::replace(&mut changed_value, Scalar::Null))
+                } else {
+                    canonicalize(output_index, &values[output_index]).map(|(value, _)| value)
+                }
+            })
+            .map(Some);
         }
     }
     Ok(None)
@@ -1665,30 +1726,6 @@ fn validate_record_fields(
         }
     }
     Ok(())
-}
-
-fn record_values(
-    fields: &[Field],
-    record: &std::collections::BTreeMap<SmolStr, Scalar>,
-) -> Result<Vec<Scalar>> {
-    if let Some(name) = record
-        .keys()
-        .find(|name| !fields.iter().any(|field| field.name() == name.as_str()))
-    {
-        return Err(Error::InvalidRecord {
-            path: SmolStr::new_static("$"),
-            reason: format_smolstr!("record contains unknown field {name:?}"),
-        });
-    }
-    fields
-        .iter()
-        .map(|field| {
-            record
-                .get(field.name())
-                .cloned()
-                .map_or_else(|| field.default_value(), Ok)
-        })
-        .collect()
 }
 
 fn validate_union(

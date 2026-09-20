@@ -1282,6 +1282,27 @@ impl Scalar {
         })
     }
 
+    /// Build a known-width sequence in its final shared storage.
+    ///
+    /// The callback is evaluated once for each index, in ascending order, and
+    /// the first refusal stops the build. Null initializes the shared slice so
+    /// a partial build remains safe to drop without a temporary `Vec`.
+    pub(crate) fn try_sequence(
+        len: usize,
+        mut at: impl FnMut(usize) -> Result<Self>,
+    ) -> Result<Self> {
+        if len == 0 {
+            return Ok(Self::empty_sequence());
+        }
+        let mut values = (0..len).map(|_| Self::Null).collect::<Arc<[_]>>();
+        let unique =
+            Arc::get_mut(&mut values).expect("newly collected sequence storage has one owner");
+        for (index, value) in unique.iter_mut().enumerate() {
+            *value = at(index)?;
+        }
+        Ok(Self::Sequence(Sequence::new(values)))
+    }
+
     /// Construct an insertion-ordered mapping, rejecting duplicate keys.
     pub fn from_mapping(entries: impl IntoIterator<Item = (Self, Self)>) -> Result<Self> {
         // The duplicate check reads the entries in place, so they are
@@ -1981,7 +2002,55 @@ impl Index<&str> for Scalar {
 /// pin crate-private readers: the sign-and-magnitude reader every width
 /// compares through, and the rank sweep that decides how two kinds sort.
 mod tests {
-    use crate::{Scalar, TimeUnit, Timezone, i256};
+    use crate::{Error, Scalar, TimeUnit, Timezone, i256};
+
+    #[test]
+    fn a_fallible_sequence_skips_the_callback_when_empty() {
+        let mut calls = 0;
+        let sequence = Scalar::try_sequence(0, |_| {
+            calls += 1;
+            Ok(Scalar::Null)
+        })
+        .unwrap();
+
+        assert_eq!(calls, 0);
+        assert_eq!(sequence.as_sequence(), Some([].as_slice()));
+    }
+
+    #[test]
+    fn a_fallible_sequence_keeps_every_input_in_index_order() {
+        let inputs = vec![Scalar::from("first"), Scalar::from(2_i64), Scalar::Null];
+        let retained = inputs.clone();
+        let mut calls = Vec::new();
+        let sequence = Scalar::try_sequence(inputs.len(), |index| {
+            calls.push(index);
+            Ok(inputs[index].clone())
+        })
+        .unwrap();
+
+        assert_eq!(calls, [0, 1, 2]);
+        assert_eq!(sequence.as_sequence(), Some(retained.as_slice()));
+        assert_eq!(inputs, retained);
+    }
+
+    #[test]
+    fn a_fallible_sequence_stops_at_its_first_refusal() {
+        let mut calls = Vec::new();
+        let error = Scalar::try_sequence(5, |index| {
+            calls.push(index);
+            if index == 2 {
+                return Err(Error::InvalidRecord {
+                    path: "$[2]".into(),
+                    reason: "refused child".into(),
+                });
+            }
+            Ok(Scalar::from(i64::try_from(index).unwrap()))
+        })
+        .unwrap_err();
+
+        assert_eq!(calls, [0, 1, 2]);
+        assert!(error.to_string().contains("refused child"));
+    }
 
     #[test]
     fn the_integer_sign_and_magnitude_reader_answers_every_width() {
